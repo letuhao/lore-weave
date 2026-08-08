@@ -46,6 +46,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import os
 import pathlib
 import subprocess
 import sys
@@ -53,6 +54,26 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 _PKG_REL = pathlib.Path("services") / "chat-service" / "app" / "agentruntime"
 _CS_REL = pathlib.Path("services") / "chat-service"
+
+#: What a mirror must contain. **Measured, not guessed: 1,333 of 13,599 tracked files — 7%.**
+#:
+#: 🔴 The mirror used to be the WHOLE tracked tree: 214.8 MB and 13,599 files, copied one at a time,
+#: for a suite that runs inside a single directory. Sequentially that is a fixed cost paid once and
+#: it merely felt slow; with one mirror per worker it multiplies, and setup became the thing the
+#: parallel census spent its time on rather than the measurement.
+#:
+#: 🔴 **THIS LIST IS A CLAIM, AND ITS FALSIFIER ALREADY RUNS ON EVERY INVOCATION.** `_selftest_in`
+#: requires the FULL suite to be green in a mirror *before any injection*. A prefix that belongs
+#: here and is missing does not produce a subtly wrong census — it produces
+#: `SELFTEST FAIL: the suite is not green before any injection`, immediately, on the first run. So
+#: widening this is a one-line fix with a loud prompt, never a silent drift.
+MIRROR_PREFIXES = (
+    _CS_REL,                                              # the suite and its subject
+    pathlib.Path("scripts"),                              # guards that read the gate scripts
+    pathlib.Path("contracts"),                            # frozen baseline, allowlist, backlog
+    pathlib.Path(".github"),                              # a guard asserts the gate RUNS in CI
+    pathlib.Path("docs") / "specs" / "2026-08-03-agent-runtime-unification",   # guards parse it
+)
 PKG = ROOT / _PKG_REL
 CS = ROOT / _CS_REL
 
@@ -84,6 +105,7 @@ def _mirror() -> pathlib.Path:
     import tempfile
 
     out = pathlib.Path(tempfile.mkdtemp(prefix="lw-census-"))
+    prefixes = tuple(str(pref).replace("\\", "/") for pref in MIRROR_PREFIXES)
     # 🔴 **THE ALLOCATOR LEAKED, AND FIXING BOTH WRITERS DID NOT COVER IT — the twelfth pair in this
     # run repaired at one end.** `census()` and `_selftest()` each free their mirror in a `finally`
     # now; neither `try` has been ENTERED when this function raises, and `census()`'s `atexit` is not
@@ -100,10 +122,13 @@ def _mirror() -> pathlib.Path:
         for rel in listing.split(b"\0"):
             if not rel:
                 continue
-            src = ROOT / rel.decode("utf-8")
+            name = rel.decode("utf-8")
+            if not name.startswith(prefixes):       # not reachable from the suite - see above
+                continue
+            src = ROOT / name
             if not src.is_file():                   # a submodule or a deleted-but-tracked path
                 continue
-            dst = out / rel.decode("utf-8")
+            dst = out / name
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
     except BaseException:
@@ -385,6 +410,54 @@ def _suite_is_green(cwd) -> bool:
     return r.returncode == 0
 
 
+def default_jobs() -> int:
+    """How many workers, derived from the machine rather than typed."""
+    return max(1, min(12, (os.cpu_count() or 2) - 2))
+
+
+def census_parallel(jobs: int, verbose: bool = False) -> dict[str, bool]:
+    """The same census, N workers, **one mirror each** — and the mirror is the whole safety story.
+
+    🔴 **WHY THIS IS SAFE TO PARALLELISE AT ALL, said as a property and not as a hope.** A site's
+    measurement is *neuter one refusal, run the suite, restore it*. Sites never interact: each
+    worker writes only inside its own `mkdtemp` copy, so two workers cannot see each other's
+    neutered file, and the live tree is not written by any of them. The measurement is therefore
+    identical to the sequential one **by construction**, not by observation — and it is checked
+    against observation anyway, because that is the rule this instrument exists to enforce.
+
+    🔴 **CONCURRENT CENSUS RUNS ONCE DELETED EACH OTHER'S MIRRORS**, reproduced earlier in this run.
+    The repair is already in the tree and is what makes this change small: `_own_mirror()` gates the
+    cleanup, so a worker removes only the directory it created. Without that guard this function
+    would be a reliable way to make the instrument report a site RED because another worker pulled
+    its files out from under it — a wrong answer that looks like a finding.
+
+    Threads, not processes: every worker spends ~all of its wall-clock inside `subprocess.run`
+    waiting on pytest, which holds no GIL. `results` is written under a lock; the site ids are
+    disjoint across shards, so the lock is a formality rather than a correctness argument.
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    results: dict[str, bool] = {}
+    lock = threading.Lock()
+
+    def worker(shard: int) -> None:
+        mirror = _mirror()
+        pkg, cs = mirror / _PKG_REL, mirror / _CS_REL
+        local: dict[str, bool] = {}
+        try:
+            _walk_sites(pkg, cs, local, verbose, shard=shard, nshards=jobs)
+        finally:
+            _discard(mirror)
+        with lock:
+            results.update(local)
+
+    with ThreadPoolExecutor(max_workers=jobs) as pool:
+        for fut in [pool.submit(worker, i) for i in range(jobs)]:
+            fut.result()   # re-raise, rather than losing a shard to a swallowed exception
+    return results
+
+
 def census(verbose: bool = False) -> dict[str, bool]:
     """`{site_id: is_red}` — a site is RED when neutering it makes the suite fail."""
     results: dict[str, bool] = {}
@@ -415,24 +488,41 @@ def census(verbose: bool = False) -> dict[str, bool]:
     else:
         print(f"census: not registering cleanup for {mirror} — this function did not create it")
     try:
-        for path in sorted(pkg.glob("*.py")):
-            if path.name == "__init__.py":
-                continue
-            raw = path.read_bytes()
-            src = raw.decode("utf-8")
-            mod = path.name
-            for site_id, node in _sites(ast.parse(src), mod):
-                path.write_bytes(_neutered(src, node).encode("utf-8"))
-                try:
-                    red = not _suite_is_green(cs)
-                finally:
-                    path.write_bytes(raw)   # inside the mirror; the live tree is never touched
-                results[site_id] = red
-                if verbose:
-                    print(f"  {'RED   ' if red else 'SILENT'} {site_id}", flush=True)
+        _walk_sites(pkg, cs, results, verbose, shard=0, nshards=1)
     finally:
         _discard(mirror)
     return results
+
+
+def _walk_sites(pkg, cs, results: dict, verbose: bool, *, shard: int, nshards: int) -> None:
+    """One worker's pass: neuter each site IT owns, run the suite, restore.
+
+    🔴 **THE SHARD IS AN INDEX FILTER OVER THE ONE ENUMERATION, NEVER A SECOND ENUMERATION.**
+    Every worker walks `sorted(pkg.glob(...))` and `_sites(...)` in the identical order and keeps
+    `i % nshards == shard`, so the union is exactly the sequential set and the shards are disjoint
+    **by construction**. Splitting the site list some other way — by module, by count, by a
+    partition computed once and handed out — would make "did every site get measured" a property
+    somebody has to check, and this run has a standing finding about denominators nobody derives.
+    """
+    i = -1
+    for path in sorted(pkg.glob("*.py")):
+        if path.name == "__init__.py":
+            continue
+        raw = path.read_bytes()
+        src = raw.decode("utf-8")
+        mod = path.name
+        for site_id, node in _sites(ast.parse(src), mod):
+            i += 1
+            if i % nshards != shard:
+                continue
+            path.write_bytes(_neutered(src, node).encode("utf-8"))
+            try:
+                red = not _suite_is_green(cs)
+            finally:
+                path.write_bytes(raw)   # inside this worker's mirror; the live tree is untouched
+            results[site_id] = red
+            if verbose:
+                print(f"  {'RED   ' if red else 'SILENT'} {site_id}", flush=True)
 
 
 def _selftest() -> int:
@@ -454,6 +544,21 @@ def _selftest() -> int:
     if len(sites) < 50:
         print(f"SELFTEST FAIL: found only {len(sites)} raise sites; the enumeration broke")
         return 1
+    # 🔴 **THE SHARDS MUST PARTITION THE SITE SET EXACTLY** — every site measured once, none
+    # twice, at every worker count. A parallel census whose shards overlap reports a site twice and
+    # whichever worker finishes last wins; one whose shards gap reports a SILENT site as absent, and
+    # the allowlist then loses a row nobody decided to remove. Both are wrong answers that look like
+    # results, which is the failure class this whole instrument exists to end.
+    #
+    # `jobs > len(sites)` is in the list deliberately: the empty shards it produces are the shape a
+    # partition written as "chunk of size n//k" gets wrong.
+    for _n in (1, 2, 3, 7, 8, 12, len(sites), len(sites) + 1):
+        _union = [sid for _sh in range(_n)
+                  for i, (sid, _) in enumerate(sites) if i % _n == _sh]
+        if sorted(_union) != sorted(sid for sid, _ in sites) or len(set(_union)) != len(_union):
+            print(f"SELFTEST FAIL: --jobs {_n} does not partition {len(sites)} sites exactly "
+                  f"({len(_union)} measured, {len(set(_union))} distinct)")
+            return 1
     # 🔴 The baseline used to run in the LIVE tree, through `_suite_is_green`'s `cwd or CS` default.
     # It runs in the mirror now — which is both safer (no subprocess is ever started in the real
     # `services/chat-service`) and more correct, since the mirror is what every other measurement in
@@ -512,6 +617,8 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--write", action="store_true", help="regenerate the allowlist")
     ap.add_argument("--selftest", action="store_true")
     ap.add_argument("-v", "--verbose", action="store_true")
+    ap.add_argument("-j", "--jobs", type=int, default=None,
+                    help="workers, one mirror each (default: derived from cpu count; 1 = sequential)")
     args = ap.parse_args(argv)
 
     if args.selftest:
@@ -521,7 +628,15 @@ def main(argv: list[str] | None = None) -> int:
     if rc:
         return rc
 
-    results = census(verbose=args.verbose)
+    jobs = args.jobs if args.jobs is not None else default_jobs()
+    if jobs < 1:
+        print(f"census: --jobs must be >= 1, got {jobs}")
+        return 1
+    if jobs == 1:
+        results = census(verbose=args.verbose)
+    else:
+        print(f"census: {jobs} workers, one mirror each", flush=True)
+        results = census_parallel(jobs, verbose=args.verbose)
     silent = sorted(k for k, red in results.items() if not red)
 
     if args.write:

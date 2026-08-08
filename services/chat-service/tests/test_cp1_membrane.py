@@ -3371,18 +3371,34 @@ class TestStageKindsAreDataNotClosures:
         census_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(census_mod)
 
-        temp_root = pathlib.Path(tempfile.gettempdir())
+        # 🔴 **THIS TRACKED WHAT THE ALLOCATOR ALLOCATED, AFTER GLOBBING THE WHOLE TEMP ROOT.**
+        # `temp_root.glob("lw-census-*")` is a GLOBAL predicate standing in for a question about one
+        # operation, and it made this test a false witness the moment anything else on the machine
+        # held a mirror: a parallel census gives every worker its own `lw-census-*` directory, so
+        # this assertion saw a *sibling's* mirror appear between `before` and `leaked` and failed —
+        # reddening the suite, and with it reporting whichever refusal was under measurement as RED.
+        # Two sites flipped SILENT→RED that way, non-deterministically, which is worse than a stable
+        # wrong answer because a re-run moves it.
+        #
+        # `mkdtemp` is the allocator. Recording what IT returns answers the actual question — *did
+        # this call free what this call created* — and is blind to every other directory in the
+        # world, which is the property a leak check needs and a glob cannot have.
+        allocated: list[pathlib.Path] = []
+        _real_mkdtemp = tempfile.mkdtemp
 
-        def _mirrors_now():
-            return {p for p in temp_root.glob("lw-census-*") if p.is_dir()}
+        def _recording_mkdtemp(*a, **k):
+            d = _real_mkdtemp(*a, **k)
+            allocated.append(pathlib.Path(d))
+            return d
 
         for label, boom in (
             ("`git ls-files` fails", lambda *a, **k: (_ for _ in ()).throw(
                 subprocess.CalledProcessError(128, "git"))),
             ("the copy loop raises mid-way", None),
         ):
-            before = _mirrors_now()
+            allocated.clear()
             with pytest.MonkeyPatch.context() as mp:
+                mp.setattr(tempfile, "mkdtemp", _recording_mkdtemp)
                 if boom is not None:
                     mp.setattr(census_mod.subprocess, "run", boom)
                 else:
@@ -3400,7 +3416,7 @@ class TestStageKindsAreDataNotClosures:
                     mp.setattr(_sh, "copyfile", _fail_after_a_few)
                 with pytest.raises(BaseException):        # noqa: B017 - the failure is the input
                     census_mod._mirror()
-            leaked = sorted(str(p) for p in _mirrors_now() - before)
+            leaked = sorted(str(p) for p in allocated if p.exists())
             assert not leaked, (
                 f"{label}: `_mirror()` left {leaked} behind. It allocated before it could fail, so "
                 f"nothing else can free it: neither writer's `try` has been entered and the "
