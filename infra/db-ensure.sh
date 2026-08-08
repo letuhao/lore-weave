@@ -32,6 +32,7 @@ loreweave_video_gen
 loreweave_jobs
 loreweave_roleplay
 loreweave_agent_registry
+loreweave_meta
 "
 
 for db in $DATABASES; do

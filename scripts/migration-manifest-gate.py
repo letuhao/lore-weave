@@ -45,20 +45,37 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-MANIFEST = REPO / "contracts/migrations/manifest.yaml"
-MIGRATIONS = REPO / "contracts/migrations/per_reality"
+
+# BOTH migration trees. The meta tree is at REPO ROOT, not under `contracts/`,
+# and it had no manifest and no gate until 2026-08-08 -- 35 migrations governing
+# `reality_registry` and the whole control plane, covered by nothing. A gate that
+# knows about one of two trees is `NV-3`: the second is default-uncovered, and
+# `1b7gap-H1` is what that costs on the tree that WAS covered.
+TREES = {
+    "per_reality": (REPO / "contracts/migrations/manifest.yaml",
+                    REPO / "contracts/migrations/per_reality"),
+    "meta":        (REPO / "migrations/meta/manifest.yaml",
+                    REPO / "migrations/meta"),
+}
+MANIFEST, MIGRATIONS = TREES["per_reality"]
 
 # Deliberately unregistered, each with the reason and the trigger that would end
 # it. This list must SHRINK. Adding a row is a decision; leaving one after the
 # id is registered is a finding (R5).
-UNREGISTERED = {
-    "0009_canon_projection": "applied by the projection/test harnesses directly, not the "
-                             "orchestrator's migrate path (D-MANIFEST-0009-0012-UNREGISTERED). "
-                             "Wakes up when canon projection is provisioned per reality.",
-    "0010_canon_projection_indexes": "see 0009 — same harness, same deferral row.",
-    "0011_archive_state": "see 0009 — same harness, same deferral row.",
-    "0012_events_outbox_prune_index": "see 0009 — same harness, same deferral row.",
+# Keyed by TREE, because an exclusion that is right for one tree is not
+# automatically right for the other.
+UNREGISTERED_BY_TREE = {
+    "meta": {},
+    "per_reality": {
+            "0009_canon_projection": "applied by the projection/test harnesses directly, not the "
+                                 "orchestrator's migrate path (D-MANIFEST-0009-0012-UNREGISTERED). "
+                                 "Wakes up when canon projection is provisioned per reality.",
+        "0010_canon_projection_indexes": "see 0009 — same harness, same deferral row.",
+        "0011_archive_state": "see 0009 — same harness, same deferral row.",
+        "0012_events_outbox_prune_index": "see 0009 — same harness, same deferral row.",
+    },
 }
+UNREGISTERED = UNREGISTERED_BY_TREE["per_reality"]
 
 
 def strip_sql_comments(text: str) -> str:
@@ -243,33 +260,43 @@ def main() -> int:
     if self_test() != 0:
         return 2
 
-    if not MANIFEST.is_file() or not MIGRATIONS.is_dir():
-        print(f"migration-manifest-gate: MISUSE — {MANIFEST} or {MIGRATIONS} is absent",
-              file=sys.stderr)
-        return 2
+    total_disk = total_reg = total_excl = 0
+    all_findings: list[str] = []
 
-    on_disk = {p.name[:-len(".up.sql")] for p in MIGRATIONS.rglob("*.up.sql")}
-    downs = {p.name[:-len(".down.sql")] for p in MIGRATIONS.rglob("*.down.sql")}
-    destructive = {
-        p.name[:-len(".up.sql")] for p in MIGRATIONS.rglob("*.up.sql")
-        if re.search(r"(?im)^[ 	]*DROP[ 	]+(TABLE|COLUMN)[ 	]",
-                     strip_sql_comments(p.read_bytes().decode("utf-8", "replace")))
-    }
-    findings = check(MANIFEST.read_bytes().decode("utf-8"), on_disk, downs,
-                     UNREGISTERED, destructive)
+    for tree, (manifest, migdir) in TREES.items():
+        if not manifest.is_file() or not migdir.is_dir():
+            print(f"migration-manifest-gate: MISUSE — {tree}: {manifest} or {migdir} is absent",
+                  file=sys.stderr)
+            return 2
 
-    if findings:
-        print(f"migration-manifest-gate: {len(findings)} finding(s)\n")
-        for f in findings:
+        on_disk = {p.name[:-len(".up.sql")] for p in migdir.rglob("*.up.sql")}
+        downs = {p.name[:-len(".down.sql")] for p in migdir.rglob("*.down.sql")}
+        destructive = {
+            p.name[:-len(".up.sql")] for p in migdir.rglob("*.up.sql")
+            if re.search(r"(?im)^[ 	]*DROP[ 	]+(TABLE|COLUMN)[ 	]",
+                         strip_sql_comments(p.read_bytes().decode("utf-8", "replace")))
+        }
+        unreg = UNREGISTERED_BY_TREE.get(tree, {})
+        findings = check(manifest.read_bytes().decode("utf-8"), on_disk, downs, unreg, destructive)
+        all_findings += [f"[{tree}] {f}" for f in findings]
+
+        total_disk += len(on_disk)
+        total_reg += len(parse_manifest(manifest.read_bytes().decode("utf-8")))
+        total_excl += len(unreg)
+
+    if all_findings:
+        print(f"migration-manifest-gate: {len(all_findings)} finding(s)")
+        print()
+        for f in all_findings:
             print("  " + f)
-        print("\nA migration the orchestrator never applies is a schema change that does not")
+        print()
+        print("A migration the orchestrator never applies is a schema change that does not")
         print("happen. 0014-0019 shipped that way for months, past a comment that tracked four")
         print("other files by name -- a row is not a mechanism.")
         return 1
 
-    registered = len(parse_manifest(MANIFEST.read_bytes().decode("utf-8")))
-    print(f"migration-manifest-gate: OK — {len(on_disk)} migration(s) on disk, {registered} "
-          f"registered, {len(UNREGISTERED)} deliberately excluded with a stated reason, every "
+    print(f"migration-manifest-gate: OK — {len(TREES)} tree(s): {total_disk} migration(s) on disk, "
+          f"{total_reg} registered, {total_excl} deliberately excluded with a stated reason, every "
           f"up has a down, versions strictly increase and no dependency points forward")
     return 0
 
