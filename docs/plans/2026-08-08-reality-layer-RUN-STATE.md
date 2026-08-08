@@ -737,13 +737,40 @@ crate-private constructor ships with its producer.
 | `3C.2` | re-add `tests/ui/forged_reality_id.rs` + `.stderr` — both escapes, `E0603` + `E0624` | the pins READ, not blessed; bite = field → `pub` breaks it |
 | `3D.4` | a test double implementing `ControlPlane` **in `#[cfg(test)]`**, so the trait has an impl and `bind` is exercised end to end | a bound `SessionContext` whose `reality_id()` is the one the double verified |
 
-**`3E` — the ratchet**, per §0.6c. Not started until `3C`/`3D` are in, because
-there is nothing to migrate *to* before then.
+**`3E` — 🅿 PARKED, ordered after slice 5.** Unblocks when a PRODUCTION
+`ControlPlane` implementor exists.
+
+**Why it cannot start now, and this is a fact about the type rather than about
+effort:** a crate adopts `RealityId` by *receiving* one, and the only source is
+`SessionContext::bind`, which needs a `ControlPlane`. The only implementor today
+is a `#[cfg(test)]` double. So a production crate could adopt the type only by
+forging a value — which is precisely what the `pub(crate)` constructor exists to
+prevent. Building the ratchet first would also be a gate that punishes correct
+work: it would refuse a new `reality_id: Uuid` while offering nothing to use
+instead.
+
+**The figure was wrong three times, and the corrections are the useful part:**
+
+| claim | what it counted | measured |
+|---|---|---|
+| the plan's *"457 bare `reality_id` sites"* | — | stale |
+| this file's *"880 across 99 files"* | **every mention** — SQL strings, column names, comments | 884, and not the subject |
+| the actual subject | `reality_id: Uuid` / `&Uuid` / `Option<Uuid>` — what `RealityId` replaces | **178** |
+
+By crate: `world-service` 81 · `dp-kernel` 73 · `rebuilder` 10 · `meta-rs` 7 ·
+`commit-service` 3 · one each in `roleplay-service`, `projections`,
+`dp-kernel-macros`, `contracts-prompt`.
+
+**And `dp-kernel`'s 73 are NOT in scope** — it carries `dp-crate = true`, it *is*
+the data plane, and `RealityId::new_verified` is `pub(crate)` to `dp`, so the
+kernel structurally cannot hold one. The real adoption surface is the game-layer
+services `DPA-SCOPE` names: **`world-service` 81 + `commit-service` 3 = 84**, of
+which `commit-service`'s 3 are reachable first.
 
 | step | what | done = |
 |---|---|---|
-| `3E.1` | `scripts/reality-id-adoption-gate.py` + `contracts/dp/reality-id-baseline.json` — count bare `reality_id: Uuid` per crate, fail on increase, fail on an unrecorded decrease | self-test + 2 bites (a new bare site; a baseline row that improved) |
-| `3E.2` | migrate the crates that already depend on `dp`, highest-count first | the baseline shrinks; gate green |
+| `3E.1` | *(after slice 5)* `scripts/reality-id-adoption-gate.py` + `contracts/dp/reality-id-baseline.json` — count the 84 in-scope sites, fail on increase and on an unrecorded decrease | self-test + 2 bites (a new bare site; a baseline row that improved) |
+| `3E.2` | migrate `commit-service` (3) then `world-service` (81) | the baseline shrinks; gate green |
 
 ### Slice 4 — the tier-typed write surface (gated on `3D`)
 

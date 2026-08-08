@@ -55,4 +55,9 @@ fn tier_and_scope_violations_do_not_compile() {
     // (pub(crate) FUNCTION, E0624). Covering only one would leave the other
     // open, and the .stderr pins both.
     t.compile_fail("tests/ui/forged_reality_id.rs");
+
+    // (f) DP-K7 — the tier argument is CHECKED. A wrong tier does not fail,
+    // it succeeds at building a key nobody reads: DP-R4's stated violation
+    // mode, "the write lands at one key, the read misses elsewhere".
+    t.compile_fail("tests/ui/cache_key_wrong_tier.rs");
 }

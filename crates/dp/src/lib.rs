@@ -72,6 +72,7 @@
 #![deny(missing_debug_implementations)]
 
 pub mod aggregate;
+pub mod cache;
 pub mod error;
 pub mod ids;
 pub mod session;
@@ -79,6 +80,7 @@ pub mod scope;
 pub mod tier;
 
 pub use aggregate::{requires_channel, tier_row, DpAggregate, TierRow};
+pub use cache::KeyId;
 pub use error::DpError;
 pub use ids::{NodeId, RealityId, SessionId};
 pub use session::{BindRequest, CapabilityToken, ControlPlane, SessionContext, VerifiedBind};

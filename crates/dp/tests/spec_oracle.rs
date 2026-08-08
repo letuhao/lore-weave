@@ -1083,9 +1083,64 @@ fn deferred_session_fields_name_fields_dp_k2_declares() {
         "DEFERRED_SESSION_FIELDS is empty; delete this test rather than leaving \
          it green on nothing."
     );
+    let _ = &problems;
     assert!(
         problems.is_empty(),
         "DEFERRED_SESSION_FIELDS is stale:\n  - {}",
+        problems.join("\n  - ")
+    );
+}
+
+/// `DP-K7`'s channel-scoped form is specified and not built. Same register
+/// discipline: the doc must actually specify it, the row must name a producer,
+/// and the row must disappear once the arm exists.
+#[test]
+fn deferred_cache_forms_name_a_dp_k7_form_this_build_lacks() {
+    let doc = dp_doc("04c_subscribe_and_macros.md");
+    let src = crlf_free("src/cache.rs");
+    let mut problems: Vec<String> = Vec::new();
+
+    for (form, producer) in dp::cache::DEFERRED_CACHE_FORMS {
+        if producer.trim().is_empty() {
+            problems.push(format!("deferred cache form `{form}` names no producer"));
+        }
+    }
+
+    // The doc must specify the channel-scoped key, or the row defers nothing.
+    if !doc.contains("dp:{reality}:c:{channel}") {
+        problems.push(
+            "DP-K7 no longer specifies the channel-scoped key shape; the \
+             DEFERRED_CACHE_FORMS row now defers nothing"
+                .to_string(),
+        );
+    }
+
+    // SHRINK RULE — if the macro grew a channel arm, the row has outlived it.
+    if src.contains("channel =") && src.contains("macro_rules! cache_key") {
+        let macro_body = src
+            .split("macro_rules! cache_key")
+            .nth(1)
+            .unwrap_or("")
+            .split("\n}")
+            .next()
+            .unwrap_or("");
+        if macro_body.contains("channel =") {
+            problems.push(
+                "cache_key! has a channel arm but DEFERRED_CACHE_FORMS still \
+                 lists channel_scoped — delete the row"
+                    .to_string(),
+            );
+        }
+    }
+
+    assert!(
+        !dp::cache::DEFERRED_CACHE_FORMS.is_empty(),
+        "DEFERRED_CACHE_FORMS is empty; delete this test rather than leaving it \
+         green on nothing."
+    );
+    assert!(
+        problems.is_empty(),
+        "DEFERRED_CACHE_FORMS is stale:\n  - {}",
         problems.join("\n  - ")
     );
 }
