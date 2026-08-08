@@ -851,6 +851,52 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          "class 3 is **scoreable in the NEW ARM ONLY**",
          "class 3 is now measurable"),
     ],
+
+    # -- F-50 -- the early-return read of a later local -------------------------------------
+    # The mutation restores F-50 IN FULL: un-hoist, and put the assignments back below.
+    # Deleting them alone would not do -- a name bound nowhere reads as a global and the
+    # static check skips it. The defect is the ORDER, so the falsifier must restore order.
+    "test_NO_EARLY_RETURN_BRANCH_READS_A_LOCAL_BOUND_BELOW_IT": [
+        (f"{CS}/app/services/stream_service.py",
+         "    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None\n    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None\n    if not content and not reasoning and not tool_calls_history:",
+         "    if not content and not reasoning and not tool_calls_history:"),
+        (f"{CS}/app/services/stream_service.py",
+         "    # `_advertised_json` / `_withheld_json` are bound at the top of the function — see F-50.\n",
+         "    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None\n    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None\n"),
+    ],
+    "test_AN_EMPTY_TERMINAL_TURN_ISSUES_THE_ORPHAN_UPDATE": [
+        (f"{CS}/app/services/stream_service.py",
+         "    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None\n    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None\n    if not content and not reasoning and not tool_calls_history:",
+         "    if not content and not reasoning and not tool_calls_history:"),
+        (f"{CS}/app/services/stream_service.py",
+         "    # `_advertised_json` / `_withheld_json` are bound at the top of the function — see F-50.\n",
+         "    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None\n    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None\n"),
+    ],
+    "test_THE_CHECK_FINDS_F50_WHEN_IT_IS_PUT_BACK": [
+        # Blind the branch finder: the control must notice it can no longer convict.
+        (T0, "for i, stmt in enumerate(fn.body[:-1]):",
+             "for i, stmt in enumerate(fn.body[:0]):"),
+    ],
+
+    # -- F-50 second layer -- EXCLUDED exists only in an upsert ------------------------------
+    "test_THE_EXCLUDED_FORM_APPEARS_ONLY_INSIDE_AN_ON_CONFLICT_STATEMENT": [
+        # The shipped statement, restored exactly: the default form in a plain UPDATE.
+        (f"{CS}/app/services/stream_service.py",
+         "instrument.segment_merge_sql('withheld_tools', incoming='$3::jsonb')",
+         "instrument.segment_merge_sql('withheld_tools')"),
+    ],
+    "test_A_CALLER_SUPPLIED_EXPRESSION_IS_REFUSED": [
+        (f"{CS}/app/services/instrument.py",
+         "elif not _INCOMING_PLACEHOLDER.match(incoming):",
+         "elif False:"),
+    ],
+    "test_THE_TWO_FORMS_DIFFER_ONLY_IN_THE_INCOMING_TERM": [
+        # Drift: one branch keeps EXCLUDED while the rest is parameterised -- which is what a
+        # second hand-written copy of this expression would look like after one edit.
+        (f"{CS}/app/services/instrument.py",
+         "WHEN {incoming} IS NULL THEN chat_messages.{column}",
+         "WHEN EXCLUDED.{column} IS NULL THEN chat_messages.{column}"),
+    ],
 }
 
 #: Guards whose falsifier is a DECISION not to write one, each with a stated reason.

@@ -12,6 +12,7 @@ Every test states the defect it rejects. If you cannot say what would make it re
 from __future__ import annotations
 
 import ast
+import uuid
 
 import pytest
 
@@ -34,6 +35,9 @@ from app.services.tool_surface import budget_names_by_tokens, budget_names_by_to
 #: `app/` recursively, with the directories that cannot host a turn named as exclusions, so a new
 #: package is IN scope by default and leaving it out is a decision someone writes down.
 _TURN_SCOPE_ROOT = "app"
+
+#: F-50 reads a source file, so it needs the repo root rather than a package-relative path.
+_REPO = Path(__file__).resolve().parents[3]
 _TURN_SCOPE_EXCLUDE = ("__pycache__",)
 
 _APP = Path(__file__).resolve().parents[1] / _TURN_SCOPE_ROOT
@@ -789,8 +793,13 @@ class TestP3EveryTerminalPathRecordsAnOutcome:
 
     def test_the_empty_turn_path_stamps_the_user_row_rather_than_recording_nothing(self):
         src = _stream_src()
+        # 🔴 Bounded by the BLOCK, not by a character count. This was `skip + 4200`, and F-50's
+        # fix — five lines of comment naming why `EXCLUDED` cannot appear here — pushed
+        # `outcome IS NULL` past the end of the window, reddening a test about a property that had
+        # not changed. A window sized by hand is a proxy for "the orphan-stamp branch"; the branch
+        # ends where the function's next statement begins, and that is what this now reads.
         skip = src.index("if not content and not reasoning and not tool_calls_history:")
-        window = src[skip: skip + 4200]
+        window = src[skip: src.index("    parts: dict = {}", skip)]
         assert "UPDATE chat_messages SET outcome" in window, (
             "an empty terminal turn still records nothing — P3 is falsified by this path alone"
         )
@@ -814,8 +823,13 @@ class TestP3EveryTerminalPathRecordsAnOutcome:
         """The same discipline as every other outcome site: derived from the signal, never a
         literal. Four defects in this checkpoint were confident values for unobserved things."""
         src = _stream_src()
+        # 🔴 Bounded by the BLOCK, not by a character count. This was `skip + 4200`, and F-50's
+        # fix — five lines of comment naming why `EXCLUDED` cannot appear here — pushed
+        # `outcome IS NULL` past the end of the window, reddening a test about a property that had
+        # not changed. A window sized by hand is a proxy for "the orphan-stamp branch"; the branch
+        # ends where the function's next statement begins, and that is what this now reads.
         skip = src.index("if not content and not reasoning and not tool_calls_history:")
-        window = src[skip: skip + 4200]
+        window = src[skip: src.index("    parts: dict = {}", skip)]
         assert "instrument.outcome_for_finish_reason(" in window
         assert "_orphan_outcome = outcome or" in window, (
             "an explicitly-passed outcome must win over the derived fallback"
@@ -4040,3 +4054,245 @@ from app.client.knowledge_client import KnowledgeClient
             'test claims and the assertion above proves nothing'
         )
 
+
+# ── F-50 · a name read on a path where it is not yet bound ────────────────────────────────────
+
+class TestAnEarlyReturnCannotReadALaterLocal:
+    """REJECTS: the F-50 shape — a local read inside an early-return branch, assigned below it.
+
+    This is not a style rule. `_persist_terminal_assistant` read `_withheld_json` at its
+    orphan-stamp and assigned it **90 lines later**, past the return the stamp lives in, so every
+    empty terminal turn raised `UnboundLocalError` into the best-effort `except Exception` and
+    recorded nothing — 100%, for two days, with a fully green suite.
+
+    **Three instruments were pointed at that statement and all three read green.** The suite never
+    called the function with an empty turn. The census neuters `raise` statements, and this was not
+    a `raise`. And `test_EVERY_TERMINAL_WRITER_BINDS_WITHHELD_TOOLS` asserts over the **AST** that
+    the UPDATE binds `withheld_tools` — which it does, perfectly, to a name that does not exist yet.
+    *An AST gate proves a statement is written, never that it can run.*
+
+    So this guard is the missing shape: for every branch that can return before the function ends,
+    every local it reads must already be bound.
+    """
+
+    #: Derived from the module, not listed: any function holding an early return is in scope. A
+    #: hand-kept list would have omitted the one function that had the bug, which is how the
+    #: previous three instruments missed it.
+    @staticmethod
+    def _functions_with_early_returns(tree):
+        out = []
+        for fn in ast.walk(tree):
+            if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for i, stmt in enumerate(fn.body[:-1]):
+                if any(isinstance(n, ast.Return) for n in ast.walk(stmt)):
+                    out.append((fn, i, stmt))
+        return out
+
+    def test_NO_EARLY_RETURN_BRANCH_READS_A_LOCAL_BOUND_BELOW_IT(self):
+        # `_swept_root()`, not a typed "app": the meta-gate above convicted the first version of
+        # this line, which is the seventh probe writer it has caught doing exactly that. A path
+        # spelled by hand cannot notice the tree being re-rooted.
+        src = (_swept_root() / "services" / "stream_service.py").read_text(encoding="utf-8")
+        tree = ast.parse(src)
+        offenders = []
+        for fn, idx, branch in self._functions_with_early_returns(tree):
+            params = {a.arg for a in fn.args.args + fn.args.kwonlyargs + fn.args.posonlyargs}
+            if fn.args.vararg:
+                params.add(fn.args.vararg.arg)
+            if fn.args.kwarg:
+                params.add(fn.args.kwarg.arg)
+            # Where each local is first bound, by top-level statement index. A name never bound in
+            # the function is a global or an import -- out of scope for this check.
+            bound_at: dict[str, int] = {}
+            for i, stmt in enumerate(fn.body):
+                for n in ast.walk(stmt):
+                    if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store):
+                        bound_at.setdefault(n.id, i)
+                    elif isinstance(n, (ast.Import, ast.ImportFrom)):
+                        for a in n.names:
+                            bound_at.setdefault((a.asname or a.name).split(".")[0], i)
+            for n in ast.walk(branch):
+                if not (isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)):
+                    continue
+                if n.id in params or n.id not in bound_at:
+                    continue
+                if bound_at[n.id] > idx:
+                    offenders.append(
+                        f"{fn.name}:{n.lineno} reads `{n.id}`, bound at statement {bound_at[n.id]} "
+                        f"-- below the branch at statement {idx}")
+        assert offenders == [], (
+            "a local is read on a path that returns before it is assigned:\n  "
+            + "\n  ".join(offenders)
+            + "\n\nThis is F-50 exactly. If the read sits inside a best-effort `except`, the "
+              "failure is a `logger.warning` nobody reads and a mechanism that never runs."
+        )
+
+    def test_THE_CHECK_FINDS_F50_WHEN_IT_IS_PUT_BACK(self):
+        """The instrument's own control: it must convict the original defect.
+
+        A checker that reports clean on a repaired tree has proven nothing until it has been shown
+        to fire on the unrepaired one. Reconstructed here rather than asserted about, because
+        `git checkout` on a file mid-verification discards real edits alongside the injected one --
+        recorded in this run at a cost of one retracted-but-correct diagnosis.
+        """
+        broken = ast.parse(
+            "async def f(a, content):\n"
+            "    if not content:\n"
+            "        try:\n"
+            "            await q(_late)\n"
+            "        except Exception:\n"
+            "            pass\n"
+            "        return False\n"
+            "    _late = 1\n"
+            "    return True\n"
+        )
+        fn = broken.body[0]
+        found = self._functions_with_early_returns(broken)
+        assert found, "the branch finder does not even see an early return"
+        bound_at = {n.id: i for i, s in enumerate(fn.body) for n in ast.walk(s)
+                    if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Store)}
+        assert bound_at.get("_late") == 1, "the reconstruction is not the F-50 shape"
+        reads = [n.id for n in ast.walk(found[0][2])
+                 if isinstance(n, ast.Name) and isinstance(n.ctx, ast.Load)]
+        assert "_late" in reads and bound_at["_late"] > found[0][1], (
+            "the checker would not have convicted F-50 -- it is green on everything"
+        )
+
+
+class TestTheOrphanStampActuallyRuns:
+    """REJECTS: the stamp being *written* rather than *issued*. That distinction is the whole bug.
+
+    The assertion is deliberately on the UPDATE reaching the connection, NOT on the absence of an
+    exception: this function swallows by design, so `no raise` is what a broken one looks like too.
+    """
+
+    @pytest.mark.asyncio
+    async def test_AN_EMPTY_TERMINAL_TURN_ISSUES_THE_ORPHAN_UPDATE(self):
+        from app.services.stream_service import _persist_terminal_assistant
+
+        seen = []
+
+        class _Conn:
+            async def fetchval(self, sql, *args):
+                seen.append((sql, args))
+                return None
+
+        class _Pool:
+            def acquire(self):
+                class _A:
+                    async def __aenter__(_s):
+                        return _Conn()
+
+                    async def __aexit__(_s, *a):
+                        return False
+                return _A()
+
+        wrote = await _persist_terminal_assistant(
+            _Pool(), msg_id=str(uuid.uuid4()), session_id=str(uuid.uuid4()),
+            user_id=str(uuid.uuid4()), parent_message_id=None, model_ref=None,
+            content="", reasoning="", tool_calls_history=None,
+            finish_reason="error", is_error=True, error_detail=None,
+            outcome=None, advertised_tools=None,
+            withheld_tools=[{"scope": "catalogue", "reason": "outage", "pass": 1}],
+            runtime_variant="legacy",
+        )
+        assert wrote is False, "an orphan stamp creates no assistant row, so it returns False"
+        assert len(seen) == 1, (
+            f"the orphan UPDATE was never issued ({len(seen)} statements reached the connection). "
+            f"For two days this raised UnboundLocalError into the best-effort `except` and the "
+            f"suite stayed green, because nothing called this function with an empty turn."
+        )
+        sql, args = seen[0]
+        assert "UPDATE chat_messages" in sql and "role = 'user'" in sql
+        assert len(args) == 3 and args[1] == "failed", (
+            f"the stamp reached the connection without its outcome/withheld payload: {args!r}"
+        )
+        assert "outage" in (args[2] or ""), (
+            "`withheld_tools` was calculated and dropped -- the exact finding whose repair "
+            "introduced F-50, and which had therefore never once executed"
+        )
+
+
+class TestExcludedOnlyExistsInAnUpsert:
+    """REJECTS: F-50's second layer — the upsert-only merge expression in a plain UPDATE.
+
+    `segment_merge_sql()`'s default emits `EXCLUDED.<col>`, and `EXCLUDED` is a relation Postgres
+    materialises **only inside `ON CONFLICT DO UPDATE`**. Reused verbatim in the CP-0.4 orphan
+    stamp — a plain UPDATE — it produced `UndefinedTableError: missing FROM-clause entry for table
+    "excluded"` on **every** execution, from the same commit as the first layer.
+
+    🔴 **AND IT SURVIVED THE FIX FOR THE FIRST LAYER, WHICH IS THE POINT.** Hoisting the assignment
+    let the statement reach the database for the first time — and the database refused it. Two
+    independent fatal defects in three lines, the first perfectly masking the second: while the
+    `UnboundLocalError` fired, the SQL was never sent, so nothing could report it invalid.
+
+    🔴 **The behavioural guard next door could not catch this and must not be trusted to.** It
+    drives a fake connection, and a fake connection accepts any string as SQL. *A mock validates
+    that a statement was issued, never that it is executable.* Hence a static check on the property
+    itself, plus a DB-gated executor in `test_cp0_merge_db.py`.
+    """
+
+    #: The DB verbs whose FIRST argument is the SQL. Derived membership, not a scan of the file:
+    #: the statement is what must contain `ON CONFLICT`, and only the argument is the statement.
+    _SQL_VERBS = {"execute", "fetchval", "fetchrow", "fetch"}
+
+    @staticmethod
+    def _sql_literal(node) -> str:
+        """Every string CONSTANT inside an expression — the SQL, with interpolations left out.
+
+        🔴 **AND THIS IS WHY IT IS THE AST AND NOT A LINE WINDOW.** The first version of this guard
+        searched ±30 lines of source text for `ON CONFLICT`, and the falsifier that restored the
+        shipped defect left it GREEN: the explanatory comment written at that call site contains the
+        words `ON CONFLICT DO UPDATE`. The gate was reading my own prose about the bug and calling
+        it the absence of the bug. Comments are not in the AST, so this cannot happen here.
+        """
+        return " ".join(n.value for n in ast.walk(node)
+                        if isinstance(n, ast.Constant) and isinstance(n.value, str))
+
+    def test_THE_EXCLUDED_FORM_APPEARS_ONLY_INSIDE_AN_ON_CONFLICT_STATEMENT(self):
+        offenders, checked = [], 0
+        for path in sorted((_swept_root() / "services").glob("*.py")):
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+            for call in ast.walk(tree):
+                if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Attribute)
+                        and call.func.attr in self._SQL_VERBS and call.args):
+                    continue
+                sql = call.args[0]
+                defaults = [m for m in ast.walk(sql)
+                            if isinstance(m, ast.Call) and isinstance(m.func, ast.Attribute)
+                            and m.func.attr == "segment_merge_sql"
+                            and not any(k.arg == "incoming" for k in m.keywords)]
+                if not defaults:
+                    continue
+                checked += 1
+                if "ON CONFLICT" not in self._sql_literal(sql).upper():
+                    offenders.append(f"{path.name}:{call.lineno}")
+        assert checked, (
+            "no statement builds the default (EXCLUDED) merge form at all. The gate's anchor "
+            "stopped matching, so it is green over nothing -- the failure this file convicts "
+            "other gates of by name."
+        )
+        assert offenders == [], (
+            f"{offenders} interpolate the EXCLUDED form into a statement with no ON CONFLICT. "
+            f"`EXCLUDED` is materialised only by an upsert; Postgres refuses the statement outright, "
+            f"and inside a best-effort `except` the mechanism then silently never runs -- which is "
+            f"F-50's second layer, for two days. Pass `incoming='$N::jsonb'` and bind the value."
+        )
+
+    def test_A_CALLER_SUPPLIED_EXPRESSION_IS_REFUSED(self):
+        """The parameter is a placeholder or nothing — this helper interpolates into SQL."""
+        for bad in ["(SELECT 1)", "EXCLUDED.x; DROP TABLE chat_messages", "$1", "$1::json", ""]:
+            with pytest.raises(ValueError, match="bound jsonb placeholder"):
+                instrument.segment_merge_sql("withheld_tools", incoming=bad)
+
+    def test_THE_TWO_FORMS_DIFFER_ONLY_IN_THE_INCOMING_TERM(self):
+        """One expression, two statement shapes. A second hand-written copy for the UPDATE would be
+        the pair-fixed-at-one-end failure that this run has recorded thirteen times."""
+        default = instrument.segment_merge_sql("withheld_tools")
+        bound = instrument.segment_merge_sql("withheld_tools", incoming="$3::jsonb")
+        assert default != bound
+        assert default.replace("EXCLUDED.withheld_tools", "$3::jsonb") == bound, (
+            "the two forms have drifted apart; F-48's three properties are why this helper exists "
+            "and they must hold identically in both statement shapes"
+        )

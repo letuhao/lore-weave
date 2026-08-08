@@ -110,6 +110,17 @@ async def main() -> None:
                 uuid.UUID(sid), uuid.UUID(uid), "CP-2 QC2 throwaway - deleted below",
                 uuid.UUID(uid),
             )
+        # F-50 - the orphan stamp needs a user row to stamp, which is what makes the turn
+        # ORPHANED rather than absent. Without it the UPDATE is accepted and matches nothing,
+        # and "it ran" would be mistaken for "it recorded".
+        user_mid = str(uuid.uuid4())
+        async with pool.acquire() as con:
+            await con.execute(
+                "INSERT INTO chat_messages (message_id, session_id, owner_user_id, role, "
+                "                           content, sequence_num, branch_id, initiated_by) "
+                "VALUES ($1,$2,$3,'user','what happened to my request?',1,0,'user')",
+                uuid.UUID(user_mid), uuid.UUID(sid), uuid.UUID(uid))
+
         # 5a - the EMPTY terminal turn. This is the shape an arm with zero declarations
         # produces, and it takes the CP-0.4 orphan-stamp branch. Captured, not asserted away.
         import io, logging as _lg
@@ -125,13 +136,19 @@ async def main() -> None:
             finish_reason="error", is_error=True, error_detail="CP-2 QC2 empty terminal turn",
             outcome=None,  # the TURN's outcome is derived; C-14's is call-level
             advertised_tools=[dict(e, names=list(e["names"])) for e in record.advertised],
-            withheld_tools=None,
+            withheld_tools=[{"scope": "catalogue", "reason": "outage", "pass": 1}],
             runtime_variant=instrument.current_runtime_variant(),
         )
         _lg.getLogger("app.services.stream_service").removeHandler(h)
         log = buf.getvalue()
+        async with pool.acquire() as con:
+            stamped = await con.fetchrow(
+                "SELECT outcome, withheld_tools FROM chat_messages WHERE message_id = $1",
+                uuid.UUID(user_mid))
         RESULT["5a_empty_terminal_turn"] = {
             "write_returned": empty_wrote,
+            "USER_ROW_outcome": stamped and stamped["outcome"],
+            "USER_ROW_withheld": stamped and stamped["withheld_tools"],
             "orphan_stamp_failed": "orphan-stamp failed" in log,
             "raised": next((l for l in log.splitlines() if "Error" in l), None),
         }

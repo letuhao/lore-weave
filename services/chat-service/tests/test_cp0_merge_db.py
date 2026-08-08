@@ -278,3 +278,61 @@ class TestTheRecorderStampsEveryEntryItProduces:
         the new mechanism."""
         segs = {AdvertisedToolsRecorder().segment for _ in range(200)}
         assert len(segs) == 200
+
+
+# ── F-50 · the ORPHAN UPDATE form, executed ───────────────────────────────────────────────────
+
+#: The parameterised form, taken from the module for the same reason `_MERGE_WITH` is: a retyped
+#: copy would certify a string nothing executes.
+_MERGE_WITH_BOUND = instrument.segment_merge_sql("withheld_tools", incoming="$3::jsonb")
+
+#: The CP-0.4 orphan stamp, in the shape `_persist_terminal_assistant` issues it. A plain UPDATE --
+#: no `ON CONFLICT`, therefore **no `EXCLUDED` relation**, which is precisely what the shipped
+#: statement assumed for two days.
+_ORPHAN_UPDATE = f"""
+UPDATE chat_messages SET outcome = $2,
+  {_MERGE_WITH_BOUND}
+WHERE message_id = $1
+RETURNING message_id
+"""
+
+
+class TestTheOrphanStampExecutesAgainstRealPostgres:
+    """REJECTS: F-50's second layer — a merge expression that only a server can refuse.
+
+    **This is the guard that had to exist and did not.** The first layer (`UnboundLocalError`) meant
+    the statement never reached Postgres, so the second layer (`EXCLUDED` in a plain UPDATE) could
+    not be observed even in production. Fixing the first exposed the second immediately, in a live
+    run, with `UndefinedTableError: missing FROM-clause entry for table "excluded"`.
+
+    No static check and no mock can hold this property. A fake connection accepts any string; an AST
+    gate proves the statement is *written*. Only a server decides whether SQL is executable.
+    """
+
+    async def test_THE_ORPHAN_UPDATE_IS_ACCEPTED_BY_THE_SERVER(self, conn):
+        await conn.execute("ALTER TABLE chat_messages ADD COLUMN outcome text")
+        await conn.execute(
+            "INSERT INTO chat_messages (message_id, withheld_tools) VALUES ('m1', $1::jsonb)",
+            _withheld("seg-a", 2))
+        got = await conn.fetchval(_ORPHAN_UPDATE, "m1", "failed", _withheld("seg-b", 1))
+        assert got == "m1", "the orphan UPDATE matched no row"
+        row = await conn.fetchrow(
+            "SELECT outcome, withheld_tools FROM chat_messages WHERE message_id = 'm1'")
+        assert row["outcome"] == "failed"
+        merged = json.loads(row["withheld_tools"])
+        assert [w["segment"] for w in merged] == ["seg-a", "seg-a", "seg-b"], (
+            f"the stamp did not merge segment-scoped: {merged}. F-48's properties must hold in the "
+            f"UPDATE shape exactly as they do in the upsert -- one expression, two statements."
+        )
+
+    async def test_THE_DEFAULT_FORM_IS_REJECTED_IN_A_PLAIN_UPDATE(self, conn):
+        """The control, and it is the whole finding: prove the server refuses what shipped.
+
+        Without this the fix above is a claim. With it, the defect is reproduced on the same
+        connection that accepts the repair, so 'EXCLUDED does not exist here' is a measurement.
+        """
+        await conn.execute("ALTER TABLE chat_messages ADD COLUMN outcome text")
+        await conn.execute("INSERT INTO chat_messages (message_id) VALUES ('m1')")
+        shipped = f"UPDATE chat_messages SET outcome = $2, {_MERGE_WITH} WHERE message_id = $1"
+        with pytest.raises(asyncpg.exceptions.UndefinedTableError, match="excluded"):
+            await conn.execute(shipped, "m1", "failed")

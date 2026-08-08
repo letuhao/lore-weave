@@ -6271,6 +6271,23 @@ async def _persist_terminal_assistant(
     Skips a truly-empty turn (no content and no reasoning and no tool calls): the
     user message stands alone and a blank assistant bubble would be noise.
     """
+    # 🔴 **F-50 — HOISTED, AND THE BUG WAS THAT THEY WERE NOT.** Both were computed 90 lines below,
+    # on the far side of the early return that reads `_withheld_json`. So **every** empty terminal
+    # turn raised `UnboundLocalError` inside the orphan-stamp, was caught by the best-effort
+    # `except Exception` that exists so an error path cannot add a second failure, and recorded
+    # nothing at all — at a **100% rate**, from `497d6995f` (2026-08-06) until this line.
+    #
+    # The commit that broke it was the fix for the *previous* finding on this same statement: a
+    # verifier measured `withheld_tools` being calculated and dropped here, so `withheld_tools` was
+    # added to the UPDATE — reading a name bound two branches later. **The repair for that finding
+    # therefore never ran once.** Found by CP-2's in-process live turn against a real connection;
+    # invisible to the suite, because the exception is swallowed and no test called this function
+    # with the empty shape.
+    #
+    # They are pure functions of the parameters, so computing them before the branch is free and
+    # removes the ordering hazard rather than documenting it.
+    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None
+    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None
     if not content and not reasoning and not tool_calls_history:
         # CP-0.4, KNOWN HOLE, DELIBERATELY NOT CLOSED HERE. This is a terminal path that records
         # nothing at all — an empty turn leaves no row, so it has no outcome, and it is invisible to
@@ -6316,8 +6333,13 @@ async def _persist_terminal_assistant(
                     # verifier: `wrote_row=False, carries_outage=False`. The orphan-stamp mechanism
                     # exists so a turn with no assistant row still records what happened to it; a
                     # narrowing is part of what happened to it.
+                    # 🔴 `incoming='$3::jsonb'` — F-50's SECOND layer. The default emits
+                    # `EXCLUDED.withheld_tools`, which exists only in an `ON CONFLICT DO UPDATE`;
+                    # this is a plain UPDATE, so Postgres refused every execution with
+                    # `missing FROM-clause entry for table "excluded"`. The bound parameter IS the
+                    # incoming value here.
                     "UPDATE chat_messages SET outcome = $2, "
-                    f"       {instrument.segment_merge_sql('withheld_tools')} "
+                    f"       {instrument.segment_merge_sql('withheld_tools', incoming='$3::jsonb')} "
                     "WHERE message_id = ("
                     "  SELECT message_id FROM chat_messages "
                     "  WHERE session_id = $1 AND role = 'user' AND outcome IS NULL "
@@ -6360,8 +6382,7 @@ async def _persist_terminal_assistant(
         ]
     tool_calls_json = json.dumps(tool_calls_history) if tool_calls_history else None
     _outcome = outcome or instrument.outcome_for_finish_reason(finish_reason, is_error=is_error)
-    _advertised_json = json.dumps(advertised_tools) if advertised_tools else None
-    _withheld_json = json.dumps(withheld_tools) if withheld_tools else None
+    # `_advertised_json` / `_withheld_json` are bound at the top of the function — see F-50.
     try:
         async with pool.acquire() as conn:
             async with conn.transaction():

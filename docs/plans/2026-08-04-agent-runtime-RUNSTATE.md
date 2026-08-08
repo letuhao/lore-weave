@@ -528,7 +528,7 @@ they touch is the legacy diagnostic that is now frozen as-is:
 | **F-45** | **two fixes shipped in the same commit cancel each other.** The sweep writes `finish_reason='abandoned_expired'`; class 4's `CASE` reads `finish_reason='awaiting_input'` | ✅ **FIXED `6d48f7acc`** — class 4 now reads `outcome` **unconditionally**: a row that HAS a recorded outcome cannot belong to a class named *"turns with no recorded outcome"*, whatever word sits beside it. **The verifier's NUMBER does not reproduce**, and that is recorded rather than quietly dropped — see below |
 | **F-48** | `advertised_json()` returns the **whole cumulative list** at six upsert sites on one `message_id`, so a 3-pass turn with 2 checkpoints stores **7** entries. Delta-encoding destroyed; no gate asserts uniqueness or monotonicity | ✅ **CONFIRMED AND FIXED `6d48f7acc`** — reproduced on the real engine (old **7**, `[1,1,2,1,2,3,1]`; new **4**) **and found in production data**: 4 rows carry duplicated passes, the worst a 5-pass turn stored as **13** entries `1,1,2,3,1,2,3,4,1,2,3,4,5` |
 | **F-49** | the *"hoisted `domain_not_selected` out of `if binding_categories:`"* claim is **false about its own history** | ✅ **CLOSED as a false claim, no code defect** — `git show 0362275bc` shows `_unselected` at 4-space (function-level) indent in the commit that introduced it. The change was a **no-op**; it moved the `hot_seed` registration's position. **Eighth instance of asserting without checking** |
-| **F-50** | **the CP-0.4 orphan-stamp has never executed.** `_withheld_json` is read at `stream_service.py:6326` and assigned at `:6364`, *after* the early return it lives in — so **every** empty terminal turn raises `UnboundLocalError`, is caught by the best-effort `except Exception`, and records nothing. Found by CP-2's in-process live turn, not by the suite: the exception is swallowed, so green tests and silent production are the same observation | 🟡 **OPEN, DELIBERATELY.** The writer is the **control arm's** instrument (§7) and the repair belongs to CP-3.6. Fixing it starts stamping outcomes on user rows that carry none today, which moves the baseline CP-2 is measured against. **The fix is one line** — hoist the `_withheld_json` assignment above the `if not content` block |
+| **F-50** | **the CP-0.4 orphan-stamp had never executed — for TWO independent reasons in three lines, both from `497d6995f` (2026-08-06).** ① `_withheld_json` was read at `stream_service.py:6326` and assigned 90 lines below, past the early return it lives in, so every empty terminal turn raised `UnboundLocalError`. ② The stamp interpolated `segment_merge_sql()`'s **default** form, which emits `EXCLUDED.<col>` — a relation Postgres materialises **only inside `ON CONFLICT DO UPDATE`** — into a **plain UPDATE**. Both sat inside the best-effort `except`, and ① perfectly masked ② | ✅ **FIXED 2026-08-08 · verified LIVE.** Assignments hoisted; `segment_merge_sql(column, *, incoming=)` parameterises the incoming term (fail-closed: a bound `$N::jsonb` placeholder or nothing), so **one expression serves both statement shapes** rather than a second hand-written copy. On the deployed image, against real Postgres, the stamp now lands on the user's row with **both** `outcome='failed'` **and** `withheld_tools=[{pass:1,scope:catalogue,reason:outage}]` — the value the founding finding said was *calculated and dropped*, whose repair had never once run. **6 new guards, 4 falsifiers + 2 DB-gated** |
 
 **🔴 F-45's MECHANISM WAS REAL AND ITS NUMBER WAS NOT — measured, both predicates, same corpus.**
 Round 11 predicted drift toward **~9.6%**. On the same 360-row population the old and new predicates
@@ -3707,10 +3707,31 @@ exists to verify.
 so a SILENT site still pays the full suite. `-x` only skips work after the boolean is already known
 — and the guard on that claim is the whole-census comparison above, not an argument.
 
-**Two levers left, if 25 min is still too slow at CP-3/CP-4 scale:** sites are independent and each
-already gets an isolated mirror, so **one mirror per worker gives wall-clock ÷ N** (~5 min here);
-and ~4 s/site of interpreter + collection + `pydantic_ai` import is irreducible without a persistent
-worker (~6 min), worth attacking only after parallelism.
+**Both levers TAKEN, 2026-08-08 — ~25 min → 416 s, verdict identical** (`90 sites · 8 silent · 82
+red`, `rc=0`, which is set equality against the allowlist in both directions):
+
+* **one mirror per worker** (`-j`, default derived from cpu count). Shards are an index filter over
+  the one enumeration, so they partition **by construction**, and a selftest proves it exact at
+  every worker count including `jobs > sites`;
+* **the mirror stopped copying the whole repository** — 13,599 files / 214.8 MB became **1,333 /
+  15.1 MB (7%)**, scoped to what the suite reaches. The prefix list is a claim whose falsifier
+  already ran on every invocation: `_selftest_in` requires the suite green in a mirror *before any
+  injection*. It fired in 17 s and named the missing path.
+
+### 🔴 And the first parallel run gave the WRONG ANSWER — caught by the comparison, not by review
+
+`8 silent → 6`, two sites flipped, **non-deterministically**. The defect was not in the census:
+`test_cp1_membrane.py` asserted the allocator leaks nothing by **globbing the shared system temp
+root** for `lw-census-*` — a global predicate standing in for a question about one operation. Every
+sibling worker's mirror matched it, so the leak assertion failed and whichever refusal was under
+measurement reported RED for an unrelated reason.
+
+Isolated rather than guessed: **scoped mirror + sequential returned SILENT for both**, which cleared
+the scoping and convicted the concurrency. The check now records what `mkdtemp` returned, so it
+answers *did this call free what this call created* and is blind to every other directory on the
+machine. **Shipped without the whole-partition comparison, this would have quietly dropped two rows
+from the allowlist** — two guarded refusals re-labelled as unguarded, by an instrument that exists
+to catch exactly that.
 
 ### ▶ The three QC pillars
 
@@ -3860,6 +3881,73 @@ be lost.
 **A mock could not have found this.** The suite exercises the function's INSERT path; nothing calls
 it with an empty turn against a real connection, and the exception is swallowed, so a green suite
 and a silent production are the same observation. *This is what QC2 is for.*
+
+### ⭐ F-50 — FIXED, and the fix for the first layer exposed a second one underneath it
+
+**Repaired 2026-08-08, after the PO said take it.** The diagnosis in the block above was right
+about the mechanism and **incomplete about the count**: there were *two* independent fatal defects
+in those three lines, both from `497d6995f`, and the first hid the second perfectly.
+
+| | the defect | why nothing saw it |
+|---|---|---|
+| **①** | `_withheld_json` read at `:6326`, assigned at `:6364` — past the early return | swallowed by the best-effort `except`; no test calls the function with an empty turn |
+| **②** | `segment_merge_sql()`'s default emits `EXCLUDED.<col>`; the stamp is a **plain UPDATE**, where no `EXCLUDED` relation exists | **① meant the SQL was never sent**, so the server never got to refuse it |
+
+**② is the more instructive one.** Hoisting the assignment let the statement reach Postgres for the
+first time in two days — and Postgres answered `UndefinedTableError: missing FROM-clause entry for
+table "excluded"`. A fix that appears to work, verified only by "no exception", would have shipped
+a mechanism that is still 100% dead.
+
+**The repair is one expression, not two.** `segment_merge_sql(column, *, incoming=None)`
+parameterises the incoming term — default `EXCLUDED.{column}` for the upsert sites, `'$3::jsonb'`
+for the UPDATE — and refuses anything that is not a bound placeholder, because this helper
+interpolates into SQL. A second hand-written copy for the UPDATE would be the
+pair-fixed-at-one-end failure this run has recorded thirteen times, and F-48's three properties
+(idempotent · segment-scoped · order-preserving) are exactly what must not drift between the two.
+
+### 🔴 Three instruments were pointed at that statement and all three read green
+
+* **the suite** — never called the function with an empty turn;
+* **the census** — neuters `raise` statements, and neither defect was a `raise`;
+* **`test_EVERY_TERMINAL_WRITER_BINDS_WITHHELD_TOOLS`** — asserts over the **AST** that this UPDATE
+  binds `withheld_tools`. It does, perfectly, **to a name that does not exist yet, in a statement
+  the server rejects**. *An AST gate proves a statement is written, never that it can run.*
+
+**And the first version of the new guard for ② required nothing, for the same family of reason.**
+It searched ±30 source lines for `ON CONFLICT`; the falsifier restored the shipped defect and the
+guard stayed GREEN, because **the comment I had just written at that call site explains that
+`EXCLUDED` only exists in an `ON CONFLICT DO UPDATE`**. The gate was reading my own prose about the
+bug and scoring it as the absence of the bug. It now collects the string constants of the
+statement's SQL argument out of the AST, where comments do not exist. *Fifth substring-over-prose
+gate in this run, and the second today.*
+
+**Also re-bounded: two pre-existing tests sliced `src[skip : skip + 4200]`.** Five lines of new
+comment pushed `outcome IS NULL` past the end and reddened a test about a property that had not
+changed. A hand-sized window is a proxy for *"the orphan-stamp branch"*; both now end where the
+function's next statement begins.
+
+### ▶ The guards, and what each can and cannot hold
+
+| guard | holds | cannot hold |
+|---|---|---|
+| `test_NO_EARLY_RETURN_BRANCH_READS_A_LOCAL_BOUND_BELOW_IT` | ① as a **class**, over every function in `stream_service.py` with an early return — derived from the module, never a list | anything about SQL |
+| `test_THE_CHECK_FINDS_F50_WHEN_IT_IS_PUT_BACK` | the checker above **convicts the original shape**, reconstructed rather than asserted about | — |
+| `test_AN_EMPTY_TERMINAL_TURN_ISSUES_THE_ORPHAN_UPDATE` | the UPDATE **reaches a connection** — asserted on the statement arriving, *never* on "no exception", since this function swallows by design | **whether the SQL is valid** — a fake connection accepts any string |
+| `test_THE_EXCLUDED_FORM_APPEARS_ONLY_INSIDE_AN_ON_CONFLICT_STATEMENT` | ② statically, over the SQL the statement builds | that the server accepts it |
+| `test_THE_ORPHAN_UPDATE_IS_ACCEPTED_BY_THE_SERVER` **(DB-gated)** | ② by **execution**, plus the segment-scoped merge in the UPDATE shape | runs only where Postgres does |
+| `test_THE_DEFAULT_FORM_IS_REJECTED_IN_A_PLAIN_UPDATE` **(DB-gated)** | the **control** — the shipped statement reproduced as an error on the same connection that accepts the repair | — |
+
+The two DB-gated rows go to the **unproven backlog**, not to `UNFALSIFIED`: without a Postgres they
+*skip*, and a skip is not a failure — so a falsifier for one would read GREEN and be filed as *"the
+guard requires nothing"*, which would be a lie about a guard that works.
+
+### ▶ LIVE, on the deployed image
+
+`orphan_stamp_failed: false`, `raised: null`, and the user's row carries
+`outcome='failed'` with `withheld_tools=[{"pass":1,"scope":"catalogue","reason":"outage"}]`. A user
+row was inserted into the throwaway session first, deliberately: without one the UPDATE is accepted
+and **matches nothing**, and *"it ran"* would have been mistaken for *"it recorded"*. Session
+deleted, `rows_left_behind = 0`.
 
 ### 🔴 And a second cross-layer fact, found the same way
 

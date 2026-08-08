@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from contextvars import ContextVar
 from typing import Any, Iterable, Literal
 from uuid import uuid4
@@ -1057,7 +1058,12 @@ class AdvertisedToolsRecorder:
         return out or None
 
 
-def segment_merge_sql(column: str) -> str:
+#: The only non-default `incoming` a caller may pass: a bound placeholder. An SQL fragment
+#: from a caller would be an injection point in a helper whose whole job is interpolation.
+_INCOMING_PLACEHOLDER = re.compile(r"^\$\d+::jsonb$")
+
+
+def segment_merge_sql(column: str, *, incoming: str | None = None) -> str:
     """F-48 · the `ON CONFLICT DO UPDATE` expression for a segment-stamped jsonb array.
 
     **A write replaces its own segment and never touches another's.** Both prior behaviours were
@@ -1093,20 +1099,39 @@ def segment_merge_sql(column: str) -> str:
     """
     if not column.isidentifier():  # defensive: this string is interpolated into SQL
         raise ValueError(f"not a column identifier: {column!r}")
+    # 🔴 **F-50, SECOND LAYER — `EXCLUDED` EXISTS ONLY IN AN UPSERT.** This expression was reused
+    # verbatim inside a **plain UPDATE** (the CP-0.4 orphan-stamp), where there is no `EXCLUDED`
+    # relation at all, so Postgres answered `UndefinedTableError: missing FROM-clause entry for
+    # table "excluded"` on **every** execution. It was invisible for the same two reasons the first
+    # layer was: the statement is inside a best-effort `except`, and the suite's fake connection
+    # accepts any string as SQL.
+    #
+    # The incoming value is now a **parameter of the expression** rather than an assumption about
+    # the statement it lands in. The merge SEMANTICS are untouched — F-48's three properties
+    # (idempotent, segment-scoped, order-preserving) are the reason this helper exists, and a second
+    # hand-written copy for the UPDATE would be the pair-fixed-at-one-end failure again.
+    if incoming is None:
+        incoming = f"EXCLUDED.{column}"
+    elif not _INCOMING_PLACEHOLDER.match(incoming):
+        # Fail closed. This string is interpolated into SQL, so the only alternative to the default
+        # is a bound placeholder — never a caller-supplied expression.
+        raise ValueError(
+            f"incoming must be a bound jsonb placeholder like '$3::jsonb', not {incoming!r}"
+        )
     return f"""
                       {column} = CASE
-                        WHEN EXCLUDED.{column} IS NULL THEN chat_messages.{column}
-                        WHEN chat_messages.{column} IS NULL THEN EXCLUDED.{column}
+                        WHEN {incoming} IS NULL THEN chat_messages.{column}
+                        WHEN chat_messages.{column} IS NULL THEN {incoming}
                         -- An unstamped writer keeps the previous append-only behaviour.
-                        WHEN EXCLUDED.{column} -> 0 ->> 'segment' IS NULL
-                          THEN chat_messages.{column} || EXCLUDED.{column}
+                        WHEN {incoming} -> 0 ->> 'segment' IS NULL
+                          THEN chat_messages.{column} || {incoming}
                         ELSE COALESCE((
                                SELECT jsonb_agg(e ORDER BY ord)
                                FROM jsonb_array_elements(chat_messages.{column})
                                     WITH ORDINALITY AS _seg(e, ord)
                                WHERE e ->> 'segment'
-                                     IS DISTINCT FROM EXCLUDED.{column} -> 0 ->> 'segment'
-                             ), '[]'::jsonb) || EXCLUDED.{column}
+                                     IS DISTINCT FROM {incoming} -> 0 ->> 'segment'
+                             ), '[]'::jsonb) || {incoming}
                       END"""
 
 
