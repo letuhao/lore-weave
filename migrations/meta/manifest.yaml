@@ -239,3 +239,9 @@ migrations:
     breaking: false
     dependencies: []
     description: "meta — reality ownership: owner_kind tier + owner_user_id, consistency CHECK"
+
+  - id: "037_reality_owner_not_nil"
+    version: 37
+    breaking: false
+    dependencies: ["036_reality_ownership"]
+    description: "meta — the nil UUID is not a valid reality owner"

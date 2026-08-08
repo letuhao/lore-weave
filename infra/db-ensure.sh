@@ -97,6 +97,14 @@ PROVISIONER_ROLE="loreweave_provisioner"
 # bootstraps a LOCAL compose cluster. A real deployment sets
 # LOREWEAVE_PROVISIONER_PASSWORD. The value is never interpolated into SQL --
 # see the psql -v binding below.
+#
+# ⚠ SET ONCE, NOT ROTATED. This is only read by the CREATE ROLE below, which
+# runs only when the role is ABSENT; the drift block re-asserts ATTRIBUTES, never
+# the password. So changing this variable after first boot is a silent no-op and
+# rotation is a deliberate manual `ALTER ROLE ... PASSWORD`. Re-asserting it on
+# every tick was considered and rejected: this script is the 5s healthcheck, and
+# an unconditional password write is the same shared-catalog churn the attribute
+# block was just fixed to avoid.
 PROVISIONER_PASSWORD="${LOREWEAVE_PROVISIONER_PASSWORD:-loreweave_dev}"
 
 # NOTE ON `2>/dev/null || true`: the rest of this script uses it, and for the
@@ -123,8 +131,14 @@ if ! psql -U loreweave -d postgres -tAc \
   # Fed on STDIN, not `-c`: psql performs variable interpolation in its lexer,
   # which `-c` bypasses entirely -- `psql -v pw=x -c "SELECT :'pw'"` is a syntax
   # error, so the binding would silently not be a binding. Measured, not assumed.
-  # Passing it this way also keeps the secret off the process table (`ps`), which
-  # the `-c` form did not.
+  #
+  # ⚠ It does NOT hide the password from the process table. An earlier version of
+  # this comment claimed it did; a cold-start review ran `ps -eo args` and found
+  # `psql -U loreweave -d postgres -v pw=<secret>` in full, because `-v` is argv
+  # like any other flag. Moving the statement to stdin removed the SQL text from
+  # argv, not the secret. Anyone on this host can read it -- acceptable for a
+  # local dev bootstrap, and a reason a real deployment should hand the password
+  # in another way. Stating it plainly beats a comforting sentence that is false.
   printf '%s\n' \
     "CREATE ROLE $PROVISIONER_ROLE LOGIN PASSWORD :'pw' CREATEDB NOSUPERUSER NOCREATEROLE NOREPLICATION NOBYPASSRLS;" \
     | psql -U loreweave -d postgres -v pw="$PROVISIONER_PASSWORD" \

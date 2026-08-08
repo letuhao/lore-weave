@@ -165,9 +165,31 @@ func NewPgMetaScrubber(metaPool *pgxpool.Pool, cfg *meta.Config, actorID string)
 
 var _ uew.MetaScrubber = (*PgMetaScrubber)(nil)
 
-// ScrubUserMetaRefs deletes every actor_control_binding row for the user, via
-// MetaWriteBatch. See the type doc for why erasure here is a DELETE.
+// ScrubUserMetaRefs removes every meta-tier reference to the user.
+//
+// TWO INDEPENDENT OBLIGATIONS, and they must stay independent. The first
+// version ran the ownership reassignment as the last statement of the binding
+// deleter, *after* its `if len(found) == 0 { return nil }` — so a user who
+// OWNED a reality but drove no actor in it returned early and their
+// `owner_user_id` survived, while the erasure reported success.
+//
+// That is the very case the same commit fixed in `RealitiesForUser`: the
+// lookup learned about owned realities and the writer, one function later, did
+// not. It was not hypothetical — at the time it was found, BOTH user-owned
+// realities in the live meta database belonged to a user with zero bindings, so
+// erasing that user was a no-op on `reality_registry`.
+//
+// Each obligation now owns its own enumeration and its own early return.
 func (s *PgMetaScrubber) ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID) error {
+	if err := s.eraseActorBindings(ctx, userID); err != nil {
+		return err
+	}
+	return s.reassignOwnedRealities(ctx, userID)
+}
+
+// eraseActorBindings deletes every actor_control_binding row for the user, via
+// MetaWriteBatch. See the type doc for why erasure here is a DELETE.
+func (s *PgMetaScrubber) eraseActorBindings(ctx context.Context, userID uuid.UUID) error {
 	// No `revoked_at IS NULL` filter, for the reason RealitiesForUser gives: a
 	// revoked binding is still a reference to this user, and erasure owes
 	// removal of every one of them.
@@ -206,7 +228,7 @@ func (s *PgMetaScrubber) ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID
 	if _, err := meta.MetaWriteBatch(ctx, s.cfg, intents); err != nil {
 		return fmt.Errorf("pglive: erase actor_control_binding for user %s: %w", userID, err)
 	}
-	return s.reassignOwnedRealities(ctx, userID)
+	return nil
 }
 
 // reassignOwnedRealities discharges the `@erasure_method:

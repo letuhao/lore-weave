@@ -32,12 +32,40 @@ import (
 const metaMigrationDir = "../../../../../migrations/meta"
 
 // A user reference is a COLUMN named user_id / user_ref_id / owner_user_id.
-// Anchored at line start and followed by whitespace so an index definition or a
-// REFERENCES clause cannot match — same rule the per-reality walk uses.
-var metaUserColRe = regexp.MustCompile(`(?m)^\s*(user_id|user_ref_id|owner_user_id)\s`)
+//
+// TWO forms, because ONE was not enough and the omission made this gate
+// vacuous against the exact table it was written for:
+//
+//	colDeclRe  — a column line in a CREATE TABLE body: line-start anchored, so
+//	             `CREATE INDEX … (user_id)` and `REFERENCES users (user_id)`
+//	             cannot match. This is the rule the per-reality walk uses.
+//	addColRe   — `ADD COLUMN owner_user_id UUID`, where the name is NOT at line
+//	             start.
+//
+// The first version had only the line-anchored form. Migration 036 introduces
+// `owner_user_id` via `ALTER TABLE … ADD COLUMN`, so the name is preceded by
+// `ADD COLUMN` and never matched — `owner_user_id` appears at line-start in
+// ZERO files under migrations/meta. A cold-start review proved it by removing
+// `reality_registry` from `implemented` and watching the suite stay GREEN, and
+// again by adding a synthetic table the W6 way, also GREEN.
+//
+// So the gate written to catch a default-uncovered column was itself blind to
+// that column: an adjacent decision (the anchor, correct for its own purpose)
+// defeating the check (`NV-4`). The `metaAddColRe` branch below existed for
+// precisely this shape and the anchor cancelled it.
+var (
+	colDeclRe = regexp.MustCompile(`(?m)^\s*(user_id|user_ref_id|owner_user_id)\s`)
+	addColRe  = regexp.MustCompile(`(?i)\bADD COLUMN\s+(?:IF NOT EXISTS\s+)?(user_id|user_ref_id|owner_user_id)\b`)
+)
+
+// metaUserColRe reports whether a fragment of migration text declares a user
+// reference, in either form.
+func metaUserColMatch(fragment string) bool {
+	return colDeclRe.MatchString(fragment) || addColRe.MatchString(fragment)
+}
 
 var (
-	metaCreateHeadRe = regexp.MustCompile(`CREATE TABLE (?:IF NOT EXISTS )?(\w+) \(`)
+	metaCreateHeadRe = regexp.MustCompile(`CREATE TABLE (?:IF NOT EXISTS )?(?:public\.)?(\w+)\s*\(`)
 	metaAddColRe     = regexp.MustCompile(`(?is)ALTER TABLE\s+(\w+)\s+ADD COLUMN`)
 	erasureTagRe     = regexp.MustCompile(`@erasure_method:\s*(\S+)`)
 	// db-safety-gate: ok — a PARSER for migration text, not a statement. This
@@ -78,7 +106,7 @@ func metaTablesWithUserColumn(t *testing.T, dir string) (map[string]string, int)
 			if i+1 < len(heads) {
 				end = heads[i+1][0]
 			}
-			if metaUserColRe.MatchString(body[h[1]:end]) {
+			if metaUserColMatch(body[h[1]:end]) {
 				out[name] = base
 			}
 		}
@@ -90,7 +118,7 @@ func metaTablesWithUserColumn(t *testing.T, dir string) (map[string]string, int)
 			if end < 0 {
 				end = len(body) - m[0]
 			}
-			if metaUserColRe.MatchString(body[m[0] : m[0]+end]) {
+			if metaUserColMatch(body[m[0] : m[0]+end]) {
 				out[name] = base
 			}
 		}
