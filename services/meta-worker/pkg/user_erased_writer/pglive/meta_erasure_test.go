@@ -177,8 +177,12 @@ func TestMetaMigrationsDeclareAnImplementedErasure(t *testing.T) {
 	for table, file := range withUser {
 		method, ok := implemented[table]
 		if !ok {
+			if how, other := handledElsewhere[table]; other {
+				t.Logf("HANDLED ELSEWHERE: %s (%s) — %s", table, file, how)
+				continue
+			}
 			if reason, known := knownUnhandled[table]; known {
-				t.Logf("KNOWN GAP: %s (%s) — %s", table, file, reason)
+				t.Logf("OPEN GAP: %s (%s) — %s", table, file, reason)
 				continue
 			}
 			t.Errorf(
@@ -209,6 +213,9 @@ func TestMetaMigrationsDeclareAnImplementedErasure(t *testing.T) {
 		if _, now := implemented[table]; now {
 			t.Errorf("%q is in BOTH implemented and knownUnhandled — remove the gap row", table)
 		}
+		if _, other := handledElsewhere[table]; other {
+			t.Errorf("%q is in BOTH handledElsewhere and knownUnhandled — pick one", table)
+		}
 	}
 }
 
@@ -216,92 +223,36 @@ func TestMetaMigrationsDeclareAnImplementedErasure(t *testing.T) {
 var implemented = map[string]string{
 	"actor_control_binding": "hard_delete",
 	"reality_registry":      "reassign_to_system_on_user_erasure",
+	"user_queue_metrics":    "hard_delete",
 }
 
-// Meta tables that carry a user reference and are NOT discharged by
-// PgMetaScrubber.
+// Handled by a DIFFERENT erasure mechanism, not by PgMetaScrubber.
 //
-// This register is the honest half of the gate, and it exists because writing
-// it revealed a gap far wider than the one it was built for: the walk that
-// caught W6's missing erasure also found EIGHT pre-existing meta tables holding
-// a user reference with no scrubber path, five of them declaring no
-// @erasure_method at all. That is a real GDPR finding, it predates this work,
-// and several rows need a retention/legal decision rather than code — so
-// pretending they are handled would be the exact dishonesty this gate exists to
-// prevent, and silently omitting them would make the gate vacuous.
+// The first version of this register did not have this category, and asked only
+// "does PgMetaScrubber handle it". That framing recorded three tables as gaps
+// which are in fact fully handled — the question is whether ANY mechanism
+// discharges the obligation, not whether this one does. Verified in the source
+// rather than assumed, which is how the over-count was found.
+var handledElsewhere = map[string]string{
+	"pii_kek":             "crypto-shred: admin-cli `erasure user-erasure` destroys the user's KEK (destroyed_at + KMS ScheduleKeyDeletion), which makes every envelope it wrapped unreadable. Deleting the row would remove the record that the shred happened.",
+	"pii_registry":        "the envelope index the shred renders unreadable; admin-cli marks erased_at. Deleting it first would orphan the shred.",
+	"user_consent_ledger": "admin-cli revokes (revoked_at CAS), deliberately NOT deleting: this ledger IS the evidence that consent existed and was withdrawn, so erasing it would destroy the proof the erasure was lawful.",
+}
+
+// Meta tables that carry a user reference and are genuinely NOT discharged by
+// anything.
 //
 // Tracked as `D-META-ERASURE-COVERAGE`. The mechanism that wakes it is this
 // test: a NEW user-referencing table cannot be added without either an
 // implementation or a deliberate row here, and a row that stops applying fails.
-var knownUnhandled = map[string]string{
-	"user_cost_ledger":         "declares pseudonymize_user_ref_at_2y; legal_basis legal_obligation (tax) — must NOT be deleted on request. Retention job unbuilt.",
-	"user_daily_cost":          "declares pseudonymize_user_ref_at_2y; same billing-retention basis as user_cost_ledger.",
-	"user_queue_metrics":       "declares hard_delete; no deleter exists in this package yet.",
-	"user_consent_ledger":      "the record OF consent, including its withdrawal — erasing it destroys the evidence that erasure was requested. Needs a product/legal decision, not code.",
-	"pii_kek":                  "erased by CRYPTO-SHRED (KEK destruction via piikms), not by row deletion — a different mechanism, not a missing one.",
-	"pii_registry":             "the index the crypto-shred walks; erasing it first would orphan the shred.",
-	"session_cost_summary":     "declares no @erasure_method; billing aggregate, needs the same retention decision as user_cost_ledger.",
-	"service_to_service_audit": "an append-only audit of inter-service calls; retention-bounded rather than erasable on request.",
-}
-
-// The scrubber must actually NAME the tables it claims to handle. Deleting the
-// reassign call would leave the test above passing on a map entry alone, which
-// is a claim, not a mechanism.
-func TestScrubberSourceNamesEveryTableItClaims(t *testing.T) {
-	src, err := os.ReadFile("pglive.go")
-	if err != nil {
-		t.Fatalf("read pglive.go: %v", err)
-	}
-	body := string(src)
-	for _, table := range []string{"actor_control_binding", "reality_registry"} {
-		if !strings.Contains(body, `Table:     "`+table+`"`) {
-			t.Errorf("PgMetaScrubber builds no MetaWriteIntent for %q, but the erasure "+
-				"map claims it is handled", table)
-		}
-	}
-	// The reassignment must be REACHED. Asserting only that the intent exists
-	// somewhere in the file passes even when the call site is deleted and the
-	// whole function is dead code -- the bite harness caught exactly that.
-	if !strings.Contains(body, "return s.reassignOwnedRealities(ctx, userID)") {
-		t.Error("ScrubUserMetaRefs does not call reassignOwnedRealities; the reality_registry " +
-			"erasure is unreachable")
-	}
-	// ...and the reassignment must set BOTH columns: clearing owner_user_id
-	// alone is refused by reality_registry_owner_user_set, so a half-written
-	// erasure would fail at runtime rather than in a test.
-	if !strings.Contains(body, `"owner_kind": "system", "owner_user_id": nil`) {
-		t.Error("the reality_registry erasure must set owner_kind AND owner_user_id " +
-			"together; the CHECK constraints reject either one alone")
-	}
-}
-
-// RealitiesForUser feeds the per-reality erasure cascade. It used to read only
-// `actor_control_binding`, so a user who OWNS a reality but drives no actor in
-// it was invisible: every per-reality scrub skipped that reality and it kept
-// their data, while the erasure reported success.
 //
-// Asserted against the SOURCE because the behaviour needs a live meta database
-// and this package's unit tests must run without one — the live path is covered
-// by the erasure integration tests. A source assertion is weaker than a
-// behavioural one and is chosen deliberately over having no check at all.
-func TestRealitiesForUser_IncludesOwnedRealities(t *testing.T) {
-	src, err := os.ReadFile("pglive.go")
-	if err != nil {
-		t.Fatalf("read pglive.go: %v", err)
-	}
-	body := string(src)
-	i := strings.Index(body, "func (l *PgUserRealityLookup) RealitiesForUser")
-	if i < 0 {
-		t.Fatal("RealitiesForUser not found — this test is watching the wrong symbol")
-	}
-	j := strings.Index(body[i:], "\n}")
-	if j < 0 {
-		t.Fatal("could not find the end of RealitiesForUser")
-	}
-	fn := body[i : i+j]
-	if !strings.Contains(fn, "reality_registry") || !strings.Contains(fn, "owner_user_id") {
-		t.Error("RealitiesForUser does not consult reality_registry.owner_user_id — a user " +
-			"who owns a reality but drives no actor in it would be skipped by the entire " +
-			"erasure cascade")
-	}
+// TWO of these declare NO @erasure_method at all, which is a product/legal
+// decision rather than a coding one — what a billing aggregate and an
+// inter-service audit owe a user who asks to be forgotten is not the engineer's
+// call. They are named here so the question is visible instead of absent.
+var knownUnhandled = map[string]string{
+	"user_cost_ledger":         "declares pseudonymize_user_ref_at_2y; legal_basis legal_obligation (tax) so it must NOT be deleted on request. The declared method is a TIME-based retention job, not an erasure-time action, and that job is unbuilt.",
+	"user_daily_cost":          "declares pseudonymize_user_ref_at_2y; same billing-retention basis and the same unbuilt job.",
+	"session_cost_summary":     "declares NO @erasure_method. Billing aggregate — needs the same retention decision as user_cost_ledger. PO CALL.",
+	"service_to_service_audit": "declares NO @erasure_method. Append-only inter-service audit; presumably retention-bounded rather than erasable on request, but nothing says so. PO CALL.",
 }

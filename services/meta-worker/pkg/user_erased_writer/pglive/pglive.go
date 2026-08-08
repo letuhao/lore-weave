@@ -184,7 +184,44 @@ func (s *PgMetaScrubber) ScrubUserMetaRefs(ctx context.Context, userID uuid.UUID
 	if err := s.eraseActorBindings(ctx, userID); err != nil {
 		return err
 	}
-	return s.reassignOwnedRealities(ctx, userID)
+	if err := s.reassignOwnedRealities(ctx, userID); err != nil {
+		return err
+	}
+	return s.eraseQueueMetrics(ctx, userID)
+}
+
+// eraseQueueMetrics discharges `user_queue_metrics`'s declared
+// `@erasure_method: hard_delete`, which had no deleter.
+//
+// The row is keyed BY the user and holds only counters about their behaviour
+// (queues joined, accepted, abandoned) — there is nothing to preserve for
+// another party and no legal basis to retain it, so removal is the whole
+// obligation. Contrast `user_cost_ledger`, which declares pseudonymisation
+// precisely because a tax record must survive the person.
+//
+// Found by the gate written for W6: it walked the meta tree and asked which
+// user-referencing tables have a handler, and this one declared a method that
+// nothing performed.
+func (s *PgMetaScrubber) eraseQueueMetrics(ctx context.Context, userID uuid.UUID) error {
+	var exists bool
+	if err := s.meta.QueryRow(ctx,
+		`SELECT EXISTS(SELECT 1 FROM user_queue_metrics WHERE user_ref_id = $1)`,
+		userID).Scan(&exists); err != nil {
+		return fmt.Errorf("pglive: check queue metrics for user %s: %w", userID, err)
+	}
+	if !exists {
+		return nil // never queued / already erased — idempotent
+	}
+	if _, err := meta.MetaWriteBatch(ctx, s.cfg, []meta.MetaWriteIntent{{
+		Table:     "user_queue_metrics",
+		Operation: meta.OpDelete,
+		PK:        map[string]any{"user_ref_id": userID},
+		Actor:     meta.Actor{Type: meta.ActorService, ID: s.actorID},
+		Reason:    "gdpr erasure: remove the user's queue counters (declared hard_delete)",
+	}}); err != nil {
+		return fmt.Errorf("pglive: erase queue metrics for user %s: %w", userID, err)
+	}
+	return nil
 }
 
 // eraseActorBindings deletes every actor_control_binding row for the user, via

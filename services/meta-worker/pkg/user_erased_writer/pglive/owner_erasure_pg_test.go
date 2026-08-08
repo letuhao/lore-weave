@@ -114,9 +114,34 @@ func TestLive_OwnerOnlyUser_IsStillErased(t *testing.T) {
 			`DELETE FROM reality_registry WHERE reality_id = $1`, reality)
 	})
 
+	// Same user, a second obligation: user_queue_metrics declares hard_delete
+	// and had no deleter until the meta-erasure gate asked which tables have
+	// one. Seeded here so the scrub is verified to discharge BOTH, not just the
+	// one that happened to be written last.
+	if _, err := pool.Exec(ctx,
+		`INSERT INTO user_queue_metrics (user_ref_id, total_queues_joined) VALUES ($1, 3)`,
+		owner); err != nil {
+		t.Fatalf("seed queue metrics: %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(),
+			`DELETE FROM user_queue_metrics WHERE user_ref_id = $1`, owner)
+	})
+
 	if err := NewPgMetaScrubber(pool, cfg, uuid.New().String()).
 		ScrubUserMetaRefs(ctx, owner); err != nil {
 		t.Fatalf("ScrubUserMetaRefs: %v", err)
+	}
+
+	var queueRows int
+	if err := pool.QueryRow(ctx,
+		`SELECT count(*) FROM user_queue_metrics WHERE user_ref_id = $1`, owner).
+		Scan(&queueRows); err != nil {
+		t.Fatalf("read back queue metrics: %v", err)
+	}
+	if queueRows != 0 {
+		t.Fatalf("user_queue_metrics survived erasure (%d rows) despite declaring hard_delete",
+			queueRows)
 	}
 
 	var kind string
