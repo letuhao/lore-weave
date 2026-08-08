@@ -3551,6 +3551,50 @@ reported all four **in one second**, by name, before anything ran. Previously th
 fifteen minutes of a `--run`. *A falsifier is data about the tree, and data about the tree goes
 stale when the tree moves.*
 
+### ⭐ CP-2.9 — `prompt_hash`, and the three things red team killed are still dead
+
+**Built 2026-08-08.** The row is deliberately small — *"~10 lines, and that is the whole item"* —
+and it closes a **currently undetectable** failure: no column answers *"was this turn assembled from
+the same instructions as that one"*, so a regression caused by an edited system prompt is
+indistinguishable from a model getting worse.
+
+`prompt_hash(prompt) = digest(nfc(prompt))`.
+
+🔴 **The `nfc()` is not tidiness.** §0.14.2: **two byte-sequences that render identically must not
+produce two digests.** This repository has a measured **1.44× NFD/NFC token swing**, so without
+normalisation a prompt that round-trips through a normalising editor reads as *changed* on every
+turn — and the column is noise from the day it ships. The guard uses a Vietnamese fixture with
+combining marks and **asserts the fixture actually differs by bytes first**, or it could not see the
+bug it is written for.
+
+### ✖ The three that are NOT here, each with its measurement — and each GUARDED absent
+
+The first draft of this row bundled four things and red team killed three:
+
+| | why it is not here |
+|---|---|
+| **`code_revision`** | `GIT_SHA` became an **OCI image label**; no Dockerfile consumes it, so `os.environ.get("GIT_SHA")` is `None` in **every** scenario. A column null everywhere is P4's constant with extra steps |
+| **`seed`** | **already forwarded** at `adapters.go:678`; the three typed hops above it drop it; production runs `temperature=0.0`, so a greedy decode consumes no randomness; and Anthropic has no seed parameter at all |
+| **`block_hashes`** | **cannot be computed correctly here** — the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed. **A hash that can be right for the wrong reason is worse than none** |
+
+Each is guarded absent from the record **and** its reason guarded present in the source, because
+*"we decided not to"* is exactly the decision the next person wanting a fingerprint column quietly
+re-litigates. A deletion with no stated cause is one the next reader undoes.
+
+### ▶ The three QC pillars
+
+**QC1 · CODE — `PASS`.** Suite **2407** · census **82 sites · 8 silent · 74 red**, `rc=0` · falsification **359 guards,
+100 falsified, 259 unproven, 0 stale anchors**, **100/100 fire** · membrane gate green. **6 new
+guards, 4 falsifiers.**
+
+**QC2 · LIVE RUN — `CANNOT DETERMINE`.** The digest is computed over a string; nothing in the
+request path calls it yet, because the prompt is assembled in `stream_service` and wiring it there
+is a **write-path** change that belongs with 2.8's stamp. Stated rather than blurred.
+
+**QC3 · DATA — `PASS`.** The artifact is the digest itself, with three falsifiers: a constant
+(answers nothing), a digest that varies per call (answers nothing), and the normalisation removed
+(answers *changed* on an unchanged prompt).
+
 ## ▶ THE RUN, FROM HERE — **one pass through the board, set 2026-08-06**
 
 The transfers are done, so **every remaining item now sits at a checkpoint whose code creates its
@@ -3832,7 +3876,7 @@ declarations, not silently emit a tool-free pass.
 | 2.4 | withheld things stay **reachable on request**; the model can tell *withheld* from *never existed* | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** Reachability came with 2.1; this row is the **second half of §0.14.3** — the model is TOLD, unprompted, that N admitted declarations exist and were withheld. Measured as a PAIR against a never-admitted name, through the real reveal path. Count never names; `None` never *"0 withheld"*. See the CP-2.4 block above |
 | 2.5 | P5 fields written on every path; **guardrail shadow arm — evaluate, record, do not act.** v1 only; un-retrofittable | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `observation.py`: four required fields, **no defaults** — every plausible default is a constant at a write boundary, which is P4. `advertised` is an array PER PASS and a duplicate pass is refused. The guardrail refuses `acted=True` at construction; a fire needs deterministic evidence AND a transition. ✖ wrong-object counter and `manifest_revision` are absent, and guarded absent. See the CP-2.5 block above |
 | **2.7** | **⬅️ INHERITED FROM CP-1, PO decision 2026-08-05 — the four V-LIVE items, unchanged in wording.** On the new surface, driven live: **(A)** the agent **says** it has no declarations rather than answering as if none were needed · **(B)** no legacy declaration is reachable, by any route, including after a refusal and under repeated pressure · **(C)** the empty state is **recorded**, not merely displayed — `NULL` and `[]` mean different things · **(D)** P1 visible in the row, not only in a log. **CP-1 could not check these because nothing routed to the surface**; CP-2 is the checkpoint that creates the route, and is already scale β so the deployment is moved rather than lost. **Plus M4's *"refuses to boot"*** (§3), which needs an importer to exist | 🟡 **PART BUILT 2026-08-08 — M4 IS TRUE.** `boot.py` + `chat-service`'s `lifespan` call it: **the package has a production importer.** §3's literal test passes per required clause, in fresh interpreters; an ABSENT manifest still boots (empty is legitimate). ✅ **A–D now measured** at the advertise chokepoint: the branch is a `return`, the new arm serves `[]` from a populated legacy catalogue, the model is told WHICH emptiness, and the `Surface` comes back with the payload so P1 is one computation. ✖ **A deployed turn against a real model is still `CANNOT DETERMINE`.** See both CP-2.7 blocks above |
-| **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | ⬜ |
+| **2.9** | **`prompt_hash` — chat-service-local, ~10 lines, and that is the whole item.** ⬅️ rewritten 2026-08-05; the original bundled four things and red team killed three. It closes a **currently undetectable** failure: a prompt can change today and nothing notices. 🔴 **NOT included, each for a measured reason:** `code_revision` — `GIT_SHA` becomes an **OCI image label**, no Dockerfile consumes it, `os.environ.get("GIT_SHA")` is `None` in **every** scenario; `seed` — it is **already forwarded** at `adapters.go:678`, the three typed hops above drop it, production runs `temperature=0.0` (greedy, so a seed consumes no randomness) and Anthropic has no seed parameter at all; `block_hashes` — **cannot be computed correctly here**, the cache breakpoint is owned by provider-registry *after* a schema translation, so a chat-service hash can be green while the cached bytes changed | 🟡 **BUILT 2026-08-08 · QC1 `PASS` · QC3 `PASS` · QC2 `CANNOT DETERMINE`.** `digest(nfc(prompt))` — the NFC is load-bearing (1.44× token swing). **All three red-team exclusions guarded absent AND their reasons guarded present.** Not yet called from the request path: that is a write-path change belonging with 2.8. See the CP-2.9 block above |
 | **2.8** | **`runtime_variant='agentruntime'` stamped at a structural chokepoint covering EVERY terminal path** — not at the happy path. `legacy` is fail-safe against **false credit** to the new arm but **not** against **survivorship bias in the new arm's own failure rate**: an unlabelled new-runtime row loses its numerator too, and label-omission correlates with crash and cancel | ⬜ |
 | **2.10** | **⬅️ INHERITED FROM CP-1, PO 2026-08-06.** A pipeline ranks by a **`relevance` its own scoring stage produced** (§0.14.1b), and **the budget arrives as a parameter** rather than as `os.environ` read at import (§0.14.1). CP-1 could check neither: no producer exists, and the boundary module can only supply a budget to a pipeline that runs. Today every pipeline naming `relevance` is rejected — the correct fail-closed direction, and **not** evidence the rule works | ⬜ |
 | **2.6** | **P2 — a call's `source` is assigned STRUCTURALLY, never inferred.** ⬅️ **inherited from CP-0.3, 2026-08-04.** The new runtime dispatches through **one** path, so `source` is a property of *where the code is*, not of what a name looks up to. **Also add `error_class` as a structured enum** — V-METRIC ruled baseline class 3 unscoreable *because* it is a regex over freeform prose from five producers, and *"only a structured enum overturns this, never a better regex"* | ⬜ |

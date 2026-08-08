@@ -368,6 +368,32 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", "        required = list(required)", "        required = required"),
     ],
 
+    # ── CP-2.9 · prompt_hash ──────────────────────────────────────────────────────────────────
+    "test_AN_EDITED_PROMPT_PRODUCES_A_DIFFERENT_DIGEST": [
+        (f"{PKG}/observation.py", "    return digest(prompt)", '    return "constant"'),
+    ],
+    "test_THE_SAME_PROMPT_PRODUCES_THE_SAME_DIGEST": [
+        # A digest that is not a function of its input answers no question at all.
+        # 🔴 The first version appended `str(len(repr(object())))` - whose LENGTH is CONSTANT
+        # across calls, so the digest never varied and the row read GREEN. The SECOND attempt used
+        # `id(object())`, which is worse: CPython reuses the freed address, so it returns the
+        # SAME value twice in a row. Both are the same mistake - reaching for something
+        # ASSUMED to vary. A counter varies because it is made to.
+        (f"{PKG}/observation.py", "    return digest(prompt)",
+         '    prompt_hash.__dict__["n"] = prompt_hash.__dict__.get("n", 0) + 1\n'
+         '    return digest(prompt + str(prompt_hash.__dict__["n"]))'),
+    ],
+    "test_NFD_AND_NFC_OF_ONE_PROMPT_ARE_ONE_DIGEST": [
+        # 🔴 Anchored on `canon._norm`, because that is where the normalisation LIVES. The first
+        # version removed an `nfc(...)` call in `prompt_hash` and read GREEN - `digest` already
+        # normalises, so the removed call was redundant and the docstring calling it load-bearing
+        # was false. The runner found the claim, not a reviewer.
+        (f"{PKG}/canon.py", "        return nfc(value)", "        return value"),
+    ],
+    "test_THE_THREE_RED_TEAM_KILLED_ARE_STILL_ABSENT": [
+        (f"{PKG}/observation.py", "    * **`code_revision`**", "    * **`code-revision`**"),
+    ],
+
     # ── CP-2.7 · THE ROUTE ────────────────────────────────────────────────────────────────────
     "test_THE_CONTROL_ARM_IS_UNTOUCHED_WHEN_THE_FLAG_IS_OFF": [
         # The route taken unconditionally: CP-2's control group stops serving the legacy

@@ -65,6 +65,7 @@ from .observation import (
     NotObservable,
     Observation,
     observe,
+    prompt_hash,
 )
 from .surface import (
     AllowList,
@@ -90,7 +91,7 @@ __all__ = [
     "UnresolvedReference", "UntrustedRow", "build", "declarations", "generate", "load",
     "manifest_path", "validate_document",
     "Narrowing", "NarrowingLog", "Widening", "RequirementNotAdmitted",
-    "OUTCOMES", "SOURCES", "Guardrail", "NotObservable", "Observation", "observe",
+    "OUTCOMES", "SOURCES", "Guardrail", "NotObservable", "Observation", "observe", "prompt_hash",
     "AllowList", "DenyList", "Filter", "OrderBy", "TopK", "TakeWhileBudget",
     "Surface", "SurfaceAssembler", "discover", "rows_of", "validate_pipeline",
 ]

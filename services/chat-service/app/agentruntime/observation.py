@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Sequence
 
+from .canon import digest
+
 #: §5 field 3 — `source` on every result. **58–66% of what the model sees as an error is our own
 #: prose**, and until this exists that fraction of the signal is uninterpretable.
 SOURCES = ("tool", "breaker", "meta")
@@ -38,6 +40,41 @@ OUTCOMES = (
     "done", "partial", "empty", "ambiguous", "refused",
     "degraded", "deferred", "failed", "unknown_effect",
 )
+
+
+def prompt_hash(prompt: str) -> str:
+    """CP-2.9 — the digest of what was actually sent. **Chat-service-local, and that is the item.**
+
+    It closes a **currently undetectable** failure: a prompt can change today and nothing notices.
+    No column answers *"was this turn assembled from the same instructions as that one"*, so a
+    regression caused by an edited system prompt is indistinguishable from a model getting worse.
+
+    **Normalised to NFC**, for the reason §0.14.2 gives: two byte-sequences that render identically
+    must not produce two digests. The repository has a measured 1.44× NFD/NFC token swing, so a
+    prompt that round-trips through a normalising editor would otherwise read as *changed* on every
+    turn and the column would be noise from the day it shipped.
+
+    🔴 **AND THE NORMALISATION IS `canon._norm`'s, NOT THIS FUNCTION'S.** The first version wrote
+    `digest(nfc(prompt))` and the docstring called that call load-bearing. **It was not**: `digest`
+    already normalises every string it walks, so the falsifier that removed the `nfc(...)` left the
+    guard GREEN — *"the guard requires nothing"* — and the runner said so. The redundant call is
+    gone and the claim is corrected to name the place the property actually lives, which is also
+    where its falsifier now points.
+
+    🔴 **THREE THINGS ARE NOT HERE, EACH FOR A MEASURED REASON** (RUNSTATE 2.9), because the first
+    draft of this row bundled four and red team killed three:
+
+    * **`code_revision`** — `GIT_SHA` became an **OCI image label**; no Dockerfile consumes it, so
+      `os.environ.get("GIT_SHA")` is `None` in **every** scenario. A column that is null everywhere
+      is P4's constant with extra steps.
+    * **`seed`** — it is **already forwarded** (`adapters.go:678`); the three typed hops above it
+      drop it; production runs `temperature=0.0`, so a greedy decode consumes no randomness; and
+      Anthropic has no seed parameter at all.
+    * **`block_hashes`** — **cannot be computed correctly here.** The cache breakpoint is owned by
+      provider-registry *after* a schema translation, so a chat-service hash can be green while the
+      cached bytes changed. A hash that can be right for the wrong reason is worse than none.
+    """
+    return digest(prompt)
 
 
 class NotObservable(ValueError):
@@ -191,4 +228,5 @@ def observe(
     )
 
 
-__all__ = ["Guardrail", "NotObservable", "OUTCOMES", "Observation", "SOURCES", "observe"]
+__all__ = ["Guardrail", "NotObservable", "OUTCOMES", "Observation", "SOURCES",
+           "observe", "prompt_hash"]

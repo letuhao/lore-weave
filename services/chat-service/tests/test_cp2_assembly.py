@@ -31,6 +31,7 @@ from app.agentruntime import (
     NotObservable,
     Observation,
     observe,
+    prompt_hash,
     DeclarationToolset,
     DenyList,
     admit,
@@ -51,6 +52,7 @@ from app.agentruntime import (
     withholding_notice,
 )
 from app.agentruntime import assembly as _assembly
+from app.agentruntime import observation as _observation
 
 _REPO = Path(__file__).resolve().parents[3]
 _PACKAGE = _REPO / "services" / "chat-service" / "app" / "agentruntime"
@@ -522,6 +524,56 @@ class TestAPlanStepsDeclarationIsAdvertised:
         defs = _defs(toolset_for(doc, surface, executor=_executor))
         assert advertised_names(defs) == ("a", "b")
         assert deferred_names(defs) == ("c",)
+
+
+# ── 2.9 · prompt_hash ───────────────────────────────────────────────────────────────────────────
+
+class TestAPromptCanChangeAndSomethingNotices:
+    """REJECTS: a turn whose instructions changed with no column that could tell.
+
+    The failure is **currently undetectable**: nothing answers *"was this turn assembled from the
+    same instructions as that one"*, so a regression caused by an edited system prompt is
+    indistinguishable from a model getting worse.
+    """
+
+    def test_AN_EDITED_PROMPT_PRODUCES_A_DIFFERENT_DIGEST(self):
+        a = "You are a co-writer."
+        assert prompt_hash(a) != prompt_hash(a + " Be brief.")
+
+    def test_THE_SAME_PROMPT_PRODUCES_THE_SAME_DIGEST(self):
+        a = "You are a co-writer."
+        assert prompt_hash(a) == prompt_hash(a)
+
+    def test_NFD_AND_NFC_OF_ONE_PROMPT_ARE_ONE_DIGEST(self):
+        """🔴 **TWO BYTE-SEQUENCES THAT RENDER IDENTICALLY MUST NOT PRODUCE TWO DIGESTS** (§0.14.2).
+        This repository has a measured **1.44× NFD/NFC token swing**, so without normalisation a
+        prompt that round-trips through a normalising editor reads as *changed* on every turn and
+        the column is noise from the day it ships."""
+        import unicodedata
+
+        composed = "You are a co-writer for Mị Đế."
+        decomposed = unicodedata.normalize("NFD", composed)
+        assert composed != decomposed, "the fixture has no combining marks; it cannot see the bug"
+        assert prompt_hash(composed) == prompt_hash(decomposed)
+
+    @pytest.mark.parametrize("excluded", ["code_revision", "seed", "block_hashes"])
+    def test_THE_THREE_RED_TEAM_KILLED_ARE_STILL_ABSENT(self, excluded):
+        """🔴 The first draft of this row bundled four things and red team killed three, **each for
+        a measured reason** — `GIT_SHA` is `None` in every scenario, `seed` is already forwarded and
+        consumes no randomness at `temperature=0.0`, and `block_hashes` cannot be computed correctly
+        on this side of a schema translation. A hash that can be right for the wrong reason is worse
+        than none.
+
+        Guarded because *"we decided not to"* is exactly the kind of decision that gets quietly
+        re-litigated by whoever next wants a fingerprint column."""
+        import dataclasses
+
+        names = {f.name for f in dataclasses.fields(Observation)}
+        assert excluded not in names
+        assert excluded in (_observation.prompt_hash.__doc__ or ""), (
+            f"{excluded} was dropped from the record AND from the reasons - a deletion with no "
+            f"stated cause is one the next reader will undo"
+        )
 
 
 # ── 2.7 · THE ROUTE — a turn's advertised set comes from the manifest ───────────────────────────
