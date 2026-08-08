@@ -87,7 +87,7 @@ Re-measure rather than trust this table if more than a session has passed.
 
 | fact | value | command |
 |---|---|---|
-| realities in existence | **2** (was 1; `W3`'s worker made the second) | `psql -d loreweave_meta -tAc "SELECT count(*) FROM reality_registry"` |
+| realities in existence | **7** (was 0 at session start) | `psql -d loreweave_meta -tAc "SELECT count(*) FROM reality_registry"` |
 | a reality's database | `lw_reality_cd0747d24b94`, **12 tables** — ~~13~~, a miscount in the first draft of this table, corrected 2026-08-08 when the second reality's schema was diffed against it and matched exactly | `SELECT count(*) FROM pg_tables WHERE schemaname='public'` |
 | its migration ledger | **15 applied** | `SELECT count(*) FROM schema_migrations` |
 | `channels` in a real reality | **exists, holds a root row, `REC-106` refuses a self-parent** | `SELECT to_regclass('public.channels')` |
@@ -99,7 +99,7 @@ Re-measure rather than trust this table if more than a session has passed.
 | a command that CREATES a reality | **`reality provision`**, shipped by `W3` (was: none — all 8 `reality` commands required one to exist) | `--list` |
 | admin issuance on the dev stack | **was disabled** (`POST /internal/admin/token` → 404, no signing key). `W3` enabled it; the key lives in the operator's env, **not** the repo — regenerate + `export ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM=<base64 PKCS#8>` then `docker compose up -d auth-service` | `curl -o /dev/null -w '%{http_code}' -XPOST …/internal/admin/token` |
 | game-tier services in compose | `game-server` only; `world-service`, `commit-service` absent | `grep -c "^  <svc>:" infra/docker-compose.yml` |
-| Postgres login roles | **1**, `loreweave`, `rolsuper` + `rolbypassrls` | `SELECT rolname, rolsuper FROM pg_roles WHERE rolcanlogin` |
+| Postgres login roles | **3** — `loreweave` (`rolsuper`+`rolbypassrls`), **`loreweave_provisioner`** (`CREATEDB` only, `W7`), `w1p_foreign` (a drill fixture) | `SELECT rolname, rolsuper, rolcreatedb FROM pg_roles WHERE rolcanlogin` |
 
 ---
 
@@ -133,7 +133,7 @@ right**, the fourth finding that two of the third's fixes were regressions. Budg
 | **`W3`** | **`reality provision` — an admin COMMAND, and a real provision worker behind it** | ✅ see evidence below |
 | `W5` | `orphan_scanner` owns the abandoned half-provision | ✅ **detection**; remediation needs a bridge endpoint (below) |
 | `W6` | `owner_user_id` on `reality_registry` — ownership exists before users can request | ✅ column **and its producer**, live both tiers |
-| `W7` | a `CREATEDB`-only system role; stop provisioning as superuser | ⬜ |
+| `W7` | a `CREATEDB`-only system role; stop provisioning as superuser | ✅ `loreweave_provisioner`, live |
 | `W8` | capacity: make the real path read `shard_utilization` (the drill fakes its snapshot) | ⬜ **subsumed by `W3`** |
 
 ### `W3` — RESHAPED 2026-08-08 by Phase 0, and this is why the phase exists
@@ -291,6 +291,43 @@ and DATA were all genuinely green — and the work still carried a split-brain b
 checks. `V.1` is not a formality on top of the axes; **it is the only thing that read the apparatus
 itself.** `BDR-50`.
 
+### `W7` — provisioning no longer runs as superuser
+
+`loreweave` is `rolsuper` **and** `rolbypassrls`, and every reality was created with it: the most
+privileged credential in the platform, used for its most routine automated write. Superuser is
+exactly what RLS, table ownership and per-database GRANTs cannot restrain, so a bug in the
+provisioner had the whole cluster in reach — including every other tenant's database.
+
+Provisioning actually needs **one attribute: `CREATEDB`.** The role that creates a database owns it,
+so it can `REVOKE CONNECT` (I4) and create tables (the migrations) with no further grant.
+
+**The one thing that genuinely required superuser was `CREATE EXTENSION vector`** in migration
+`0008` — pgvector's control file does **not** declare `trusted` (verified by reading it), so
+installing it is superuser-only, and that single line would have kept provisioning privileged.
+Fixed by installing `vector` into **`template1`**: every `CREATE DATABASE` copies it, so
+`CREATE EXTENSION IF NOT EXISTS` becomes a no-op any role can run. Preferred over marking the
+extension trusted — this changes one cluster's template, not an extension's privilege rules.
+
+**Not a per-user role.** Postgres roles are SYSTEM roles; users never hold one (`1b7db-03`, and the
+PO's correction). This is one service credential, identical for every tenant. User-level tenancy is
+`reality_registry.owner_*` (`W6`), enforced in the application.
+
+**Live:** provisioned as `loreweave_provisioner` — 12 tables, 15 migrations, `vector 0.8.1`
+inherited, database `datdba = loreweave_provisioner`, `datacl = {=T/…}` so I4 still holds — then
+again through the **full audited admin path** with an owner.
+
+**Bitten — it genuinely lacks what it gave up:**
+
+| attempt | result |
+|---|---|
+| `UPDATE reality_registry` directly | **permission denied** — I8 is now enforced by privilege, not convention: the bridge is the only door |
+| `SELECT FROM users` in `loreweave_auth` | **permission denied** |
+| `CREATE ROLE … SUPERUSER` | **permission denied**, no `CREATEROLE` — no escalation path |
+| `SELECT FROM shard_utilization` (granted) | succeeds — the grant is real, so the refusals above are not a broken connection |
+
+The attributes are **re-asserted on every start** (`ALTER ROLE … NOSUPERUSER …`), so a role
+hand-edited to superuser loses the drift rather than keeping the name and losing the point.
+
 ### `W6` — a reality now belongs to someone
 
 `reality_registry` had `close_initiated_by` and `drop_approved_by` — the ADMINS who acted on a
@@ -387,7 +424,7 @@ not implement toward it.
 | `W3-LOCKSPAN` | the advisory lock is held across the WHOLE 11-step provision (incl. migrations), not just through `register_pending` at step 3 | provisioning becoming frequent enough that per-shard serialisation hurts. Deliberate: correctness over throughput on an admin-gated action |
 | `W5-REMEDIATE` | the scanner detects but cannot mark: no bridge endpoint writes `reality_close_audit` (allowlisted to world-service, `reality.close.audit_recorded`) | **buildable now, not blocked** — a Go handler on meta-worker + a Rust client method. `--remediate` refuses loudly meanwhile, so this cannot be mistaken for done |
 | `W5-CRON` | nothing schedules the scanner — it is a binary nobody runs | its first real orphan, or `W5-REMEDIATE` landing. A detector nobody invokes is the scaffold problem one level up |
-| `1b7db-03` | `loreweave` is the sole Postgres login and is superuser | `W7`. Not a tenancy mechanism — DB roles are system roles, users never hold one |
+| `1b7db-03` | ~~`loreweave` is the sole Postgres login and is superuser~~ **CLEARED by `W7`** — provisioning runs as `loreweave_provisioner` (`CREATEDB` only). Other services still connect as `loreweave`; narrowing those is a separate, larger sweep | the next service touched |
 | `1b14-07` | `metadata` JSONB / `display_name` / `dissolved_at` unconstrained | the first writer of `channels` |
 | `1b7db-08` | `CREATE TABLE … INHERITS (channels)` bypasses constraints | conscious won't-fix; a non-SDK writer appearing |
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
