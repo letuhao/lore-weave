@@ -1,5 +1,17 @@
 # RUN-STATE — game tier: the actor hub's first consumer, then the command substrate
 
+> ⚠ **SUPERSEDED 2026-08-08 at `9bb0f149b` as the ACTIVE file.** Work continues in
+> [`2026-08-08-reality-layer-RUN-STATE.md`](2026-08-08-reality-layer-RUN-STATE.md).
+>
+> **This file is the RECORD, not the worklist.** 2438 lines: the actor hub, the command substrate,
+> `crates/dp` slices 0-1b (four refutation rounds, all BLOCK), the FLOW audit, and the registers —
+> Decisions, Parked, Debt, and `BDR-1`..`BDR-48` in §7, which remain live and are still appended to.
+>
+> **Read it when you need a decision's history. Do not read it to find out what to do next** — that
+> is what superseded it: 2438 lines of narrative is not a worklist, and treating it as one is how a
+> session spends four rounds verifying a component nothing runs.
+
+
 **Opened:** 2026-08-06 · **Base:** `6c075b5b8` · **Status:** CLARIFY, awaiting PO seal
 **Predecessors:** [actor round](2026-08-02-actor-substrate-RUN-STATE.md) ·
 [command round](2026-08-02-command-interaction-RUN-STATE.md)

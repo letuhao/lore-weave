@@ -2,7 +2,7 @@
 
 ## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
 
-**HEAD:** `adbfcdd9e` · Run-state: [`docs/plans/2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
+**HEAD:** `9bb0f149b` · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state. The older [`2026-08-06-game-tier-build-RUN-STATE.md`](../plans/2026-08-06-game-tier-build-RUN-STATE.md) is the RECORD (registers + `BDR-1`..`BDR-48`) — **read it before `git log`.** §6h is the flow audit (`FLOW-1`..`FLOW-26`), §6i is the SDK board and its DoD, §6j is slice `1b` (the `channels` table), §7 holds Decisions / Parked / Debt / Drift.
 
 ### What this track is, and why it exists
 
