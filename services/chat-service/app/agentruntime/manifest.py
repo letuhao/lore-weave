@@ -79,7 +79,7 @@ def manifest_path() -> Path | None:
 
 
 def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = None,
-         tool_def: dict | None = None) -> dict:
+         tool_def: dict | None = None, definitions: dict | None = None) -> dict:
     # §6.1 layer 3, the WRITE end. `isinstance` first — the type is an accident boundary, so this
     # rejects the duck type — and then the contract is re-run, because holding an `Admitted` is
     # evidence about the past and this row is a claim about now.
@@ -89,7 +89,14 @@ def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = Non
             f"admission; carrying a `.declaration` attribute is not the same thing (ARCHITECTURE "
             f"§6.1 layer 3)."
         )
+    # 🔴 **THE LOOKUP IS HERE, BELOW THE `isinstance`, AND THE FIRST VERSION PUT IT ABOVE.** It read
+    # `(definitions or {}).get(a.id)` in `build`'s comprehension, so a duck-typed object raised
+    # `AttributeError: 'Fake' object has no attribute 'id'` instead of `UntrustedRow` — the type
+    # boundary answered by a crash rather than by a refusal, which is what
+    # `test_an_object_that_merely_LOOKS_admitted_is_refused` exists to catch. It caught it.
     d = admitted.declaration
+    if tool_def is None and definitions is not None:
+        tool_def = definitions.get(admitted.id)
     check_contract(d)
     ident = identity_of(d)
     row = {
@@ -168,6 +175,7 @@ def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = Non
 def build(
     admitted: Iterable[Admitted[Declaration]], *, previous: dict | None = None,
     grandfather: frozenset[str] | set[str] | tuple[str, ...] = (),
+    definitions: dict | None = None,
 ) -> dict:
     """The manifest document for a set of admitted declarations. Pure; writes nothing.
 
@@ -268,7 +276,10 @@ def build(
         # `test_CHECK_ROW_RAISES_EXACTLY_ONE_CLASS` keeps that true, so re-widening `check_row` is a
         # decision that fails here rather than a handler that silently comes back.
         origin[r["id"]] = r["contract_version"]
-    rows = [_row(a, origin=origin) for a in admitted]
+    # CP-4.c — the catalogue entry each declaration was derived from, keyed by id. Absent for a
+    # declaration with no definition to rank (a skill or workflow today), which is why the facets
+    # are optional rather than required: `ROW_REQUIRED` is unchanged.
+    rows = [_row(a, origin=origin, definitions=definitions) for a in admitted]
     # 🔴 A DECLARATION PRESENT IN `previous` AND ABSENT FROM `admitted` WAS SILENTLY DROPPED, and
     # that is how the "origin" stamp turned out not to be an origin at all: a verifier regenerated
     # without one declaration, regenerated again with it, and the row came back **claiming the new
@@ -366,6 +377,7 @@ def generate(
     admitted: Iterable[Admitted[Declaration]], *, path: Path | None = None,
     bootstrap: bool = False,
     grandfather: frozenset[str] | set[str] | tuple[str, ...] = (),
+    definitions: dict | None = None,
 ) -> dict:
     """Build and write. **The generator is the only writer** — a hand-edited manifest is a row that
     passed no contract check, which is the whole mechanism defeated by a text editor.
@@ -408,7 +420,7 @@ def generate(
             f"emptying §6.4's re-admission queue. Pass `bootstrap=True` if this really is the "
             f"first manifest."
         )
-    doc = build(admitted, previous=previous, grandfather=grandfather)
+    doc = build(admitted, previous=previous, grandfather=grandfather, definitions=definitions)
     ambient.write_text(target, json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     return doc
 
