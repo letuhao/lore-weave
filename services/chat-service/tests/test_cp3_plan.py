@@ -1001,3 +1001,76 @@ class TestAPlanSuppliedArgumentIsDistinguishableAfterTheFact:
         src = self._src()
         assert "_plan_supplied: dict | None = None" in src
         assert "if _plan_supplied is not None:" in src
+
+
+class TestEveryEmitPathRefusalIsChecked:
+    """The census found **six** refusals added with this grammar that nothing exercised.
+
+    Each is a distinct malformed input, and a refusal nobody checks is one that can be deleted or
+    inverted with the suite green — which is how a path language quietly starts guessing.
+    """
+
+    def test_A_PATH_THAT_IS_EMPTY_IS_REFUSED_AT_PLAN_BUILD_TIME(self):
+        from app.agentruntime.plan import EmitPathError, check_emit_path
+        with pytest.raises(EmitPathError, match="REQUIRED"):
+            check_emit_path("book_list", "book_id", "")
+
+    def test_A_PATH_THAT_IS_NOT_A_STRING_IS_REFUSED_TOO(self):
+        from app.agentruntime.plan import EmitPathError, check_emit_path
+        with pytest.raises(EmitPathError, match="REQUIRED"):
+            check_emit_path("book_list", "book_id", None)
+
+    def test_A_WILDCARD_OR_PREDICATE_IS_REFUSED__there_is_no_expression_syntax(self):
+        """🔴 `books[?title=~x].book_id` is a PROGRAM, not a location. A path that can compute is a
+        path that can read something it was not handed."""
+        from app.agentruntime.plan import EmitPathError, check_emit_path
+        for bad in ("books[*].book_id", "books[?x].id", "1books.id", "books..id", "books[].id"):
+            with pytest.raises(EmitPathError, match="integer indices only"):
+                check_emit_path("book_list", "book_id", bad)
+
+    def test_TAKING_A_KEY_FROM_A_NON_OBJECT_IS_REFUSED(self):
+        from app.agentruntime.plan import EmitPathError, extract_emit
+        with pytest.raises(EmitPathError, match="expected an object"):
+            extract_emit({"books": 5}, "books.book_id")
+
+    def test_INDEXING_SOMETHING_THAT_IS_NOT_A_LIST_IS_REFUSED(self):
+        from app.agentruntime.plan import EmitPathError, extract_emit
+        with pytest.raises(EmitPathError, match="needs a list"):
+            extract_emit({"books": {"book_id": "x"}}, "books[0].book_id")
+
+    def test_AN_INDEX_PAST_THE_END_NAMES_WHAT_WAS_ACTUALLY_THERE(self):
+        from app.agentruntime.plan import EmitPathError, extract_emit
+        with pytest.raises(EmitPathError, match="out of range; the list holds 1"):
+            extract_emit({"books": [{"book_id": "x"}]}, "books[3].book_id")
+
+    def test_A_MISSING_KEY_LISTS_WHAT_WAS_AVAILABLE(self):
+        from app.agentruntime.plan import EmitPathError, extract_emit
+        with pytest.raises(EmitPathError, match="no key"):
+            extract_emit({"volumes": []}, "books[0].book_id")
+
+
+class TestTheTwoParserRefusalsTheGrammarChangeLeftUNGUARDED:
+    """One is new; **one is a guard I broke.**
+
+    `test_AN_UNRECOGNISED_LINE_IS_REFUSED_AND_LISTS_THE_KEYS` fed `- gatd: true`, which the new
+    unrecognised-KEY check now intercepts — so the catch-all it was written for stopped being
+    exercised and the census reported it NEWLY SILENT. Changing a parser can un-guard a refusal
+    nobody edited.
+    """
+
+    def test_AN_EMIT_WITHOUT_A_FROM_CLAUSE_IS_REFUSED_WITH_ITS_LOCUS(self):
+        with pytest.raises(PlanParseError) as exc:
+            parse("# goal: g\n## step: book_list\n- emits:\n  - book_id\n")
+        assert exc.value.line_no == 4
+        assert "book_id from books[0].book_id" in exc.value.accepted, (
+            "the rejection must show the shape that WOULD be accepted (C-12)"
+        )
+
+    def test_A_LINE_THAT_IS_NOT_A_KEY_AT_ALL_STILL_REACHES_THE_CATCH_ALL(self):
+        """The refusal that stops a parser silently ignoring what it does not understand — which
+        would downgrade a typo'd `gated: true` into a step needing no approval."""
+        with pytest.raises(PlanParseError) as exc:
+            parse("# goal: g\n## step: a\nthis is not a key line at all\n")
+        assert exc.value.line_no == 3
+        assert "unrecognised line" in str(exc.value)
+        assert "gated" in exc.value.accepted
