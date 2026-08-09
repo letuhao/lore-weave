@@ -41,6 +41,12 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.enrichment import (
+    promote_enriched_facts,
+    retract_enriched_facts,
+    upsert_enriched_anchor,
+    upsert_enriched_fact,
+)
 from app.db.neo4j_repos.canonical import canonicalize_entity_name, entity_canonical_id
 from app.middleware.internal_auth import require_internal_token
 
@@ -158,63 +164,11 @@ async def enriched_writeback(
 
     written: list[EnrichedFactRef] = []
     async with neo4j_session() as session:
-        # Ensure the entity anchor exists in the graph so the enriched edge has an
-        # endpoint. The anchor is keyed on `id` (the canonical id = hash of
-        # user/project/canonical_name/kind), MATCHING the canonical glossary→KG sync
-        # (neo4j_repos/entities.py MERGEs (:Entity {id})). Keying on the canonical id
-        # (not the glossary_entity_id) makes write-back idempotent across glossary
-        # entity churn — re-promote, delete+recreate of the same name, or rename all
-        # resolve to one node instead of tripping the UNIQUE on :Entity(id).
-        #
-        # First free this glossary anchor from any OTHER node that still claims it
-        # (a renamed / deleted-recreated entity), mirroring the canonical sync's
-        # null-before-claim discipline (entities.py), so setting it below cannot trip
-        # the UNIQUE on :Entity(glossary_entity_id).
-        await session.run(
-            """
-            MATCH (stale:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
-            WHERE stale.id <> $canon_id
-            SET stale.glossary_entity_id = NULL, stale.updated_at = datetime()
-            """,
-            user_id=str(req.user_id),
-            glossary_entity_id=str(req.glossary_entity_id),
-            canon_id=canon_id,
-        )
-        # Two cases, kept strictly distinct (H0 / FIX-2):
-        #   * ON MATCH — a pre-existing canon anchor (synced by the glossary→KG
-        #     pipeline, or a prior write-back) stays EXACTLY as it is. We do not
-        #     touch its source_type / confidence / origin; enrichment never makes a
-        #     canon node look more or less canon. (Only updated_at bumps, and the
-        #     glossary anchor is back-filled if the node lacks one.)
-        #   * ON CREATE — enrichment is the entity's CREATOR (anchor didn't
-        #     pre-exist). The node is born MARKED-AS-ENRICHMENT: origin=
-        #     'enrichment', pending_validation=true, confidence<1.0,
-        #     source_type='enriched:<technique>'. It is therefore indistinguishable
-        #     from canon NO LONGER — the real glossary→KG sync (a genuine canon
-        #     write) clears these markers ON MATCH when the owner authors/promotes.
-        await session.run(
-            """
-            MERGE (e:Entity {id: $canon_id})
-            ON CREATE SET
-              e.user_id = $user_id,
-              e.glossary_entity_id = $glossary_entity_id,
-              e.name = $name,
-              e.canonical_name = $canon_name,
-              e.kind = $kind,
-              e.project_id = $project_id,
-              e.confidence = $anchor_confidence,
-              e.source_type = $anchor_source_type,
-              e.source_types = [$anchor_source_type],
-              e.origin = $origin,
-              e.pending_validation = true,
-              e.promoted_from_proposal_id = $proposal_id,
-              e.original_technique = $technique,
-              e.created_at = datetime(),
-              e.updated_at = datetime()
-            ON MATCH SET
-              e.glossary_entity_id = coalesce(e.glossary_entity_id, $glossary_entity_id),
-              e.updated_at = datetime()
-            """,
+        # The anchor upsert moved to `neo4j_repos/enrichment.py` (plan T17) — including
+        # the null-before-claim ordering and the strict ON CREATE / ON MATCH split that
+        # keep enrichment from ever making a node look like canon.
+        await upsert_enriched_anchor(
+            session,
             user_id=str(req.user_id),
             glossary_entity_id=str(req.glossary_entity_id),
             canon_id=canon_id,
@@ -233,49 +187,8 @@ async def enriched_writeback(
             node_id = _enriched_node_id(str(req.proposal_id), fact.dimension)
             edge_id = _enriched_edge_id(str(req.proposal_id), fact.dimension)
             confidence = min(fact.confidence, 0.99)  # H0: never canon on write-back
-            await session.run(
-                """
-                MATCH (e:Entity {id: $canon_id})
-                MERGE (f:Fact {id: $node_id})
-                ON CREATE SET
-                  f.user_id = $user_id,
-                  f.project_id = $project_id,
-                  f.type = 'enrichment',
-                  f.dimension = $dimension,
-                  f.content = $content,
-                  f.confidence = $confidence,
-                  f.pending_validation = true,
-                  f.source_type = $source_type,
-                  f.source_types = [$source_type],
-                  f.origin = $origin,
-                  f.promoted_from_proposal_id = $proposal_id,
-                  f.original_technique = $technique,
-                  f.valid_until = NULL,
-                  f.created_at = datetime(),
-                  f.updated_at = datetime()
-                ON MATCH SET
-                  f.content = $content,
-                  f.confidence = $confidence,
-                  f.pending_validation = true,
-                  f.source_type = $source_type,
-                  f.source_types = [$source_type],
-                  f.origin = $origin,
-                  f.valid_until = NULL,
-                  f.updated_at = datetime()
-                MERGE (e)-[r:RELATES_TO {id: $edge_id}]->(f)
-                SET r.user_id = $user_id,
-                    r.predicate = '补充',
-                    r.subject_id = e.id,
-                    r.object_id = $node_id,
-                    r.confidence = $confidence,
-                    r.pending_validation = true,
-                    r.source_type = $source_type,
-                    r.origin = $origin,
-                    r.promoted_from_proposal_id = $proposal_id,
-                    r.original_technique = $technique,
-                    r.valid_until = NULL,
-                    r.updated_at = datetime()
-                """,
+            await upsert_enriched_fact(
+                session,
                 user_id=str(req.user_id),
                 canon_id=canon_id,
                 node_id=node_id,
@@ -327,40 +240,14 @@ async def enriched_promote(
     + ``origin='enrichment'``). Idempotent.
     """
     async with neo4j_session() as session:
-        result = await session.run(
-            """
-            MATCH (f:Fact)
-            WHERE f.user_id = $user_id
-              AND f.origin = $origin
-              AND f.promoted_from_proposal_id = $proposal_id
-            SET f.source_type = 'glossary',
-                f.source_types = ['glossary'],
-                f.confidence = 1.0,
-                f.pending_validation = false,
-                f.promoted_by = $promoted_by,
-                f.promoted_at = $promoted_at,
-                f.updated_at = datetime()
-            WITH count(f) AS nfacts
-            MATCH ()-[r:RELATES_TO]->()
-            WHERE r.user_id = $user_id
-              AND r.origin = $origin
-              AND r.promoted_from_proposal_id = $proposal_id
-            SET r.source_type = 'glossary',
-                r.confidence = 1.0,
-                r.pending_validation = false,
-                r.promoted_by = $promoted_by,
-                r.promoted_at = $promoted_at,
-                r.updated_at = datetime()
-            RETURN nfacts AS affected
-            """,
+        affected = await promote_enriched_facts(
+            session,
             user_id=str(req.user_id),
             origin=_ENRICHMENT_ORIGIN,
             proposal_id=str(req.proposal_id),
             promoted_by=str(req.promoted_by),
             promoted_at=req.promoted_at,
         )
-        record = await result.single()
-        affected = record["affected"] if record else 0
 
     logger.info(
         "C13: enriched PROMOTE → canon proposal=%s facts=%d (origin marker retained)",
@@ -384,27 +271,12 @@ async def enriched_retract(
     touches this proposal's enriched facts; never deletes canon. Idempotent.
     """
     async with neo4j_session() as session:
-        result = await session.run(
-            """
-            MATCH (f:Fact)
-            WHERE f.user_id = $user_id
-              AND f.origin = $origin
-              AND f.promoted_from_proposal_id = $proposal_id
-            SET f.valid_until = datetime(), f.updated_at = datetime()
-            WITH count(f) AS nfacts
-            MATCH ()-[r:RELATES_TO]->()
-            WHERE r.user_id = $user_id
-              AND r.origin = $origin
-              AND r.promoted_from_proposal_id = $proposal_id
-            SET r.valid_until = datetime(), r.updated_at = datetime()
-            RETURN nfacts AS affected
-            """,
+        affected = await retract_enriched_facts(
+            session,
             user_id=str(req.user_id),
             origin=_ENRICHMENT_ORIGIN,
             proposal_id=str(req.proposal_id),
         )
-        record = await result.single()
-        affected = record["affected"] if record else 0
 
     logger.info(
         "C13: enriched RETRACT (soft) proposal=%s facts=%d", req.proposal_id, affected,

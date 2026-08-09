@@ -1090,7 +1090,28 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   point — would have silently stopped being checked. Repointed, and re-bitten to prove the
   assertion still fires through the new seam.
 
-  **Still owed — 9 files, and most are NOT this task's to fix.** The remaining Cypher is
+  **Batch 4 (2026-08-10).** Gate baseline **9 → 8**: `routers/internal_enrichment.py` — five
+  statements (write-back anchor, per-fact upsert, promote, retract) into a new
+  `neo4j_repos/enrichment.py`. Unit suite **4085**.
+
+  🔒 **The safety properties of enrichment live in the Cypher, and NOTHING asserted them.** The
+  existing tests covered id derivation and confidence validation — the Python half. The half that
+  decides whether an AI write-back can corrupt canon was exercised only against a live graph, which
+  meant almost never. Six guards added, five bitten:
+
+  | invariant | what its absence does |
+  |---|---|
+  | `ON MATCH` never touches a canon anchor's `source_type`/`confidence`/`origin` | an enrichment write-back **relabels a genuine canon node as enriched**, and the marker is what a reviewer trusts |
+  | `ON CREATE` marks the node (`origin`, `pending_validation`, proposal id) | an enrichment-created node is **indistinguishable from canon** |
+  | the stale-anchor free excludes `stale.id <> $canon_id` | it strips the glossary anchor off the very node about to claim it, and the MERGE then creates a **second** one |
+  | retract is SOFT (`valid_until`, never `DELETE`) | unrecoverable |
+  | retract is scoped to one proposal's `origin` + id | **it takes canon with it** |
+  | every statement carries `$user_id` | none of these go through `run_write` — the anchor MERGE keys on `id`, so `$user_id` is a property rather than a filter and `assert_user_id_param` would pass for the wrong reason |
+
+  That last row is why the guard exists at all: the usual tenancy check is structurally unable to
+  help here, so the assertion had to be written by hand or not exist.
+
+  **Still owed — 8 files, and most are NOT this task's to fix.** The remaining Cypher is
   graph traversal and truth, which belong to **T18 (`GraphStore`)** and **T19 (`TruthStore`)**;
   they cannot move onto "the two shipped ports" because neither port covers them. Concretely:
   6 `db/migrations/` backfills (admin one-shots, reachable via `internal_backfill.py` — Phase 7

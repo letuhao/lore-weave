@@ -81,3 +81,87 @@ def test_origin_marker_constant_is_enrichment():
     # The permanent origin marker must be 'enrichment' (never 'glossary').
     assert _ENRICHMENT_ORIGIN == "enrichment"
     assert _ENRICHMENT_ORIGIN != "glossary"
+
+
+# ── the Cypher invariants, after the queries moved (plan T17) ──────────
+
+
+class TestEnrichmentCypherInvariants:
+    """The write-back's safety properties live in the Cypher, and nothing asserted them.
+
+    Every existing test above covers id derivation and confidence validation — the Python
+    half. The half that decides whether enrichment can corrupt canon was only ever
+    exercised against a live graph, which meant it was exercised almost never.
+
+    These read the statements in `neo4j_repos/enrichment.py`. They are cheap, they need no
+    database, and each one names a way canon could be damaged.
+    """
+
+    def test_on_match_never_touches_a_canon_anchors_provenance(self):
+        """H0/FIX-2: a pre-existing canon anchor must stay EXACTLY as it is. If ON MATCH
+        set `source_type`, `confidence` or `origin`, an enrichment write-back would relabel
+        a genuine canon node as enriched — and the marker is what the reviewer trusts."""
+        from app.db.neo4j_repos.enrichment import _UPSERT_ANCHOR_CYPHER as cypher
+
+        on_match = cypher.split("ON MATCH SET", 1)[1]
+        for forbidden in ("e.source_type", "e.confidence", "e.origin",
+                          "e.pending_validation", "e.source_types"):
+            assert forbidden not in on_match, (
+                f"ON MATCH sets {forbidden} — enrichment must never change what an existing "
+                "canon anchor claims about itself"
+            )
+        # It may only bump the timestamp and BACK-FILL a missing glossary anchor.
+        assert "e.updated_at" in on_match
+        assert "coalesce(e.glossary_entity_id" in on_match
+
+    def test_on_create_marks_the_node_as_enrichment(self):
+        """The complement: when enrichment CREATES the anchor, the node must be born
+        marked, so it is never indistinguishable from canon. A genuine glossary sync clears
+        these on match, which is what promotion to canon actually means."""
+        from app.db.neo4j_repos.enrichment import _UPSERT_ANCHOR_CYPHER as cypher
+
+        on_create = cypher.split("ON CREATE SET", 1)[1].split("ON MATCH SET", 1)[0]
+        assert "e.origin = $origin" in on_create
+        assert "e.pending_validation = true" in on_create
+        assert "e.promoted_from_proposal_id" in on_create
+
+    def test_the_stale_anchor_is_freed_only_from_a_DIFFERENT_node(self):
+        """Null-before-claim. Without `stale.id <> $canon_id` the statement would strip the
+        glossary anchor off the very node about to claim it — and the MERGE would then
+        create a second one."""
+        from app.db.neo4j_repos.enrichment import _FREE_STALE_GLOSSARY_ANCHOR_CYPHER as cypher
+
+        assert "stale.id <> $canon_id" in cypher
+        assert "stale.glossary_entity_id = NULL" in cypher
+
+    def test_retract_is_soft_and_scoped_to_one_proposal(self):
+        """A hard delete here would be unrecoverable, and an unscoped one would take canon
+        with it. Both properties are in the Cypher and nowhere else."""
+        from app.db.neo4j_repos.enrichment import _RETRACT_CYPHER as cypher
+
+        assert "DELETE" not in cypher.upper(), "retract must be SOFT — set valid_until"
+        assert "f.valid_until = datetime()" in cypher
+        assert "f.origin = $origin" in cypher
+        assert "f.promoted_from_proposal_id = $proposal_id" in cypher
+
+    def test_promote_retains_the_origin_marker(self):
+        """Promotion makes a fact canon but must NOT erase how it got there — `origin`,
+        `promoted_from_proposal_id` and `original_technique` stay so the provenance of an
+        AI-suggested fact survives its approval."""
+        from app.db.neo4j_repos.enrichment import _PROMOTE_CYPHER as cypher
+
+        for erased in ("f.origin = null", "f.origin = NULL",
+                       "f.promoted_from_proposal_id = null"):
+            assert erased not in cypher, "promotion must not erase the enrichment marker"
+        assert "f.pending_validation = false" in cypher
+        assert "f.promoted_by = $promoted_by" in cypher
+
+    def test_every_enrichment_statement_is_tenant_scoped(self):
+        """None of these go through `run_write` — the anchor MERGE keys on `id`, so
+        `$user_id` is a property rather than a filter and `assert_user_id_param` would pass
+        for the wrong reason. The tenant scoping is therefore asserted here instead."""
+        from app.db.neo4j_repos import enrichment as mod
+
+        for name in ("_FREE_STALE_GLOSSARY_ANCHOR_CYPHER", "_UPSERT_ANCHOR_CYPHER",
+                     "_UPSERT_ENRICHED_FACT_CYPHER", "_PROMOTE_CYPHER", "_RETRACT_CYPHER"):
+            assert "$user_id" in getattr(mod, name), f"{name} has no tenant scoping at all"

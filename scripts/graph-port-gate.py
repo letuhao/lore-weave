@@ -97,7 +97,6 @@ BASELINE = {
     os.path.join(SCAN_ROOT, "db", "migrations", "backfill_status.py"),
     os.path.join(SCAN_ROOT, "db", "migrations", "recanon_honorifics.py"),
     os.path.join(SCAN_ROOT, "jobs", "summary_processor.py"),
-    os.path.join(SCAN_ROOT, "routers", "internal_enrichment.py"),
     os.path.join(SCAN_ROOT, "routers", "public", "extraction.py"),
 }
 
