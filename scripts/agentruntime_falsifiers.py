@@ -550,6 +550,24 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/observation.py", "    * **`code_revision`**", "    * **`code-revision`**"),
     ],
 
+    # ── CP-3.10 · THE EXECUTOR · brick 4, finally reachable ───────────────────────────────────
+    "test_THE_MODELS_ARGS_ARE_OVERWRITTEN_NOT_DEFAULTED": [
+        # `setdefault` lets the model's RETYPED value win whenever it sent one — which is every
+        # time, and is the 61.8% this whole design exists to close.
+        (f"{CS}/app/services/stream_service.py",
+         "                        args_obj.update(_bound)",
+         "                        for _k, _v in _bound.items():\n"
+         "                            args_obj.setdefault(_k, _v)"),
+    ],
+    "test_A_PATH_THAT_RESOLVES_TO_NULL_IS_A_FAILURE_NOT_A_NULL_CARRIED_FORWARD": [
+        # 🔴 THIS BRANCH WAS REACHABLE AND UNGUARDED, and the runner is what found it: neutering
+        # the null check left every other executor guard green. A null bound forward is a value
+        # that looks supplied and is not.
+        (f"{PKG}/plan.py",
+         "    if cur is None:\n        raise EmitPathError(path, path, (",
+         "    if False:\n        raise EmitPathError(path, path, ("),
+    ],
+
     # ── CP-3.6a · THE OWNER THE SWEEPER NEVER HAD ─────────────────────────────────────────────
     # Each of these was applied by hand on 2026-08-09 and observed to red the named guard BEFORE
     # being recorded here — the file's own rule: a reversion that does not restore the defect

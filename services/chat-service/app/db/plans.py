@@ -32,7 +32,7 @@ def _spec_to_json(spec: Spec) -> str:
         "steps": [{
             "declaration": s.declaration,
             "contract_version": s.contract_version,
-            "emits": list(s.emits),
+            "emits": dict(s.emits),
             "done_when": s.done_when,
             "gated": s.gated,
             "accepts": {k: {"from_step": b.from_step, "from_emit": b.from_emit,
@@ -53,7 +53,7 @@ def _spec_from_json(raw) -> Spec:
                            literal=b["literal"])
                 for k, b in (s.get("accepts") or {}).items()
             }),
-            emits=tuple(s.get("emits") or ()),
+            emits=MappingProxyType(dict(s.get("emits") or {})),
             done_when=s.get("done_when", ""),
             gated=bool(s.get("gated")),
         )

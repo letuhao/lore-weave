@@ -1753,6 +1753,12 @@ async def _stream_with_tools(
     # server-side. A mid-tier model doesn't transcribe the id from the prose note (the measured
     # VALIDATION-loop blocker); this supplies it deterministically. See _inject_context_ids.
     context_ids: dict | None = None,
+    # CP-3 — the session's live plan, or None. When present, the executor SUPPLIES bound arguments
+    # at the dispatch chokepoint and records what each step handed forward. `plan_events_out`
+    # collects the events for the caller to persist: STATE has exactly one writer (§0.11), and this
+    # loop is not it.
+    plan_turn=None,
+    plan_events_out: list | None = None,
     discovery_catalog: list[dict] | None = None,
     discovery_extra_frontend: list[dict] | None = None,
     discovery_seed_names: set[str] | None = None,
@@ -4530,6 +4536,27 @@ async def _stream_with_tools(
                 # what makes the "our prose vs a real tool" split exact rather than a text match
                 # over breaker phrasing (the earlier attempt at that produced a lower bound which
                 # then got reported as a population count).
+                # ── CP-3 · THE EXECUTOR SUPPLIES THE IDENTIFIER ─────────────────────────────
+                # 🔴 **THIS IS BRICK 4, AND IT IS THE LINE THAT MAKES `resolve_arguments` REACHABLE.**
+                # Until 2026-08-09 that function had ZERO production callers: the plan reached the
+                # model as a system message and the model RETYPED the identifier out of it. Retyping
+                # is the failure — `entity_id:019fafa2-…` at step 12, `"0"` at step 16.
+                #
+                # Per-parameter replacement, plan wins. For a parameter the plan owns, whatever the
+                # model typed is DISCARDED; parameters it does not own (the injected context ids
+                # above) are untouched. A merge that let the model's value win on a blank would be
+                # the fallback-to-asking this whole mechanism exists to refuse.
+                if plan_turn is not None:
+                    from app.services.plan_exec import bound_arguments
+                    _bound = bound_arguments(plan_turn.spec, plan_turn.state, c["name"])
+                    if _bound:
+                        logger.info(
+                            "CP-3 executor: supplying %s to %s from the plan (model sent %s)",
+                            sorted(_bound), c["name"],
+                            {k: args_obj.get(k) for k in _bound},
+                        )
+                        args_obj.update(_bound)
+
                 _dispatch_t0 = _time.monotonic()
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,
@@ -4576,6 +4603,22 @@ async def _stream_with_tools(
                         }
                         break
                 ok = bool(envelope.get("success"))
+                # ── CP-3 · AND THE STEP RECORDS WHAT IT HANDED FORWARD ──────────────────────
+                # The declared `emits` paths are read out of the REAL result, so the next step's
+                # binding has something to resolve against. Appended to the in-memory STATE
+                # immediately, because a two-step plan can run both steps inside ONE turn and the
+                # second would otherwise bind against a history that had not been written yet.
+                # Persisted by `_emit_chat_turn` — STATE has one writer and it is not this loop.
+                if plan_turn is not None:
+                    from app.services.plan_exec import observe_call
+                    _ev = observe_call(plan_turn.spec, plan_turn.state, c["name"],
+                                       ok=ok, result=envelope.get("result"))
+                    if _ev is not None:
+                        plan_turn.state.append(_ev)
+                        if plan_events_out is not None:
+                            plan_events_out.append(_ev)
+                        logger.info("CP-3 executor: step %d -> %s %s", _ev.step_index, _ev.kind,
+                                    sorted(_ev.values) if _ev.values else "")
                 # P-1 step-runner — the single backend chokepoint where every rail step tool
                 # executes. Count a success only for a tool the pinned rail actually names, so
                 # the driver's "a rail step succeeded this turn" gate stays honest. (Confirm/
@@ -6651,6 +6694,12 @@ async def _emit_chat_turn(
     full_content: list[str] = []
     full_reasoning: list[str] = []
     tool_calls_history: list[dict] = []
+    # CP-3 — bound at the TOP of the turn, not inside the branch that fills them. The branch is
+    # nested and the persistence site is not, so a turn that took any other path reached the
+    # persistence block with `_plan_turn` unbound and raised `UnboundLocalError` — caught by 11
+    # existing stream tests, which is the reason the initialisation lives up here.
+    _plan_turn = None
+    _plan_events: list = []
     # CP-0.1/0.2 — the turn's instrument. Created here, at the top of the turn, because a recorder
     # created lazily at the first advertise would miss a turn that was narrowed to nothing before
     # the model ever saw a surface — which is precisely the case worth catching.
@@ -6943,7 +6992,6 @@ async def _emit_chat_turn(
             # system message so the identifiers it carries are in front of the model BEFORE it
             # chooses a call — which is the whole claim: the conversation evicts them, the plan does
             # not.
-            _plan_turn = None
             if settings.agentruntime_arm:
                 from app.services.plan_turn import live_plan_for_turn, plan_message
                 _plan_turn = await live_plan_for_turn(pool, session_id)
@@ -6957,6 +7005,8 @@ async def _emit_chat_turn(
                     )
 
             chunk_stream = _stream_with_tools(
+                plan_turn=_plan_turn,
+                plan_events_out=_plan_events,
                 model_source=model_source,
                 model_ref=model_ref,
                 user_id=user_id,
@@ -7280,6 +7330,20 @@ async def _emit_chat_turn(
         # here is a model that believes it has a plan while the service has none — every later turn
         # then binds against a plan that does not exist, and the failure surfaces at a step nobody
         # can trace back to the parse.
+        # CP-3 — persist what the executor observed, BEFORE any adoption can supersede the plan
+        # those events belong to. A `step_emitted` written against a superseded plan is a fact
+        # filed under the wrong version, which is the shape §0.11 splits SPEC and STATE to prevent.
+        if _plan_turn is not None and _plan_events:
+            try:
+                from app.db import plans as _plan_db
+                async with pool.acquire() as _pc:
+                    for _ev in _plan_events:
+                        await _plan_db.append_event(_pc, UUID(_plan_turn.plan_id), _ev)
+                logger.info("CP-3 executor: persisted %d plan event(s) for %s",
+                            len(_plan_events), _plan_turn.plan_id)
+            except Exception:  # noqa: BLE001 — a plan must never cost the user their reply
+                logger.warning("CP-3 plan event persistence failed", exc_info=True)
+
         _plan_adoption = None
         if settings.agentruntime_arm:
             from app.services.plan_turn import adopt_plan_from_reply

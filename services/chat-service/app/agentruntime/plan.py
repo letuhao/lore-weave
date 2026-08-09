@@ -33,6 +33,8 @@ returns a tool list.
 """
 from __future__ import annotations
 
+import re as _re
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
 
@@ -109,6 +111,70 @@ class Binding:
                 "and the executor would have to choose. Exactly one source.")
 
 
+#: One path segment: a key, optionally followed by integer indices — `books`, `books[0]`, `a[0][1]`.
+_SEG = _re.compile(r"^[A-Za-z_][A-Za-z0-9_]*(?:\[\d+\])*$")
+_INDEX = _re.compile(r"\[(\d+)\]")
+
+
+class EmitPathError(PlanError):
+    """C-12 · an emit path that is malformed, or that finds nothing in the result it is applied to.
+
+    🔴 **A PATH THAT MISSES IS A STEP FAILURE, NEVER A `None`.** Binding `None` forward would hand
+    the next step a value that looks supplied and is not — which is `"0"` instead of
+    `entity_id:019fafa2-…` wearing a different costume, and it is the precise failure the plan
+    exists to remove. The locus names the path, the segment that failed, and what was actually there.
+    """
+
+    def __init__(self, path: str, segment: str, reason: str) -> None:
+        self.path = path
+        self.segment = segment
+        self.reason = reason
+        super().__init__(f"emit path {path!r} failed at {segment!r}: {reason}")
+
+
+def check_emit_path(declaration: str, name: str, path: str) -> None:
+    """Refuse a malformed path at PLAN-BUILD time. **There is no expression syntax, deliberately.**
+
+    Keys and integer indices only — no wildcards, no slices, no predicates, no `*`. A path that can
+    *compute* is a path that can read something it was not handed, and the whole point of declaring
+    it is that the plan says exactly one location. `books[0].book_id` is a location;
+    `books[?title=~x].book_id` is a program.
+    """
+    if type(path) is not str or not path:
+        raise EmitPathError(str(path), "", (
+            f"{declaration} emits {name!r} with no path. The path is REQUIRED: a result carrying "
+            f"197 candidates cannot say which one the plan meant"))
+    for seg in path.split("."):
+        if not _SEG.match(seg):
+            raise EmitPathError(path, seg, (
+                "expected `key`, `key[0]` or `key[0][1]` — keys and integer indices only, and no "
+                "wildcard or predicate syntax exists"))
+
+
+def extract_emit(result, path: str):
+    """The value at `path` in a tool result. Raises `EmitPathError` rather than returning None."""
+    cur = result
+    for seg in path.split("."):
+        key = seg.split("[", 1)[0]
+        if not isinstance(cur, dict):
+            raise EmitPathError(path, seg, f"expected an object to take {key!r} from, got "
+                                           f"{type(cur).__name__}")
+        if key not in cur:
+            raise EmitPathError(path, seg, f"no key {key!r}; available: {sorted(cur)[:12]}")
+        cur = cur[key]
+        for idx in (int(i) for i in _INDEX.findall(seg)):
+            if not isinstance(cur, list):
+                raise EmitPathError(path, seg, f"[{idx}] needs a list, got {type(cur).__name__}")
+            if idx >= len(cur):
+                raise EmitPathError(path, seg, f"[{idx}] out of range; the list holds {len(cur)}")
+            cur = cur[idx]
+    if cur is None:
+        raise EmitPathError(path, path, (
+            "resolved to null. Binding null forward would hand the next step a value that looks "
+            "supplied and is not"))
+    return cur
+
+
 @dataclass(frozen=True, slots=True)
 class Step:
     """One SPEC step. Immutable — a revision writes a new `Spec`, never an edit in place."""
@@ -120,8 +186,16 @@ class Step:
     contract_version: str
     #: `param -> Binding`. Everything this step needs, and where each piece comes from.
     accepts: MappingProxyType = field(default_factory=lambda: MappingProxyType({}))
-    #: The names this step's result hands forward (C-6). Declared, not discovered.
-    emits: tuple[str, ...] = ()
+    #: `name -> path`. What this step's result hands forward (C-6), and **where in the result each
+    #: piece is found**. Declared, not discovered, and the PATH is declared too.
+    #:
+    #: 🔴 **THE PATH IS MANDATORY EVEN WHEN IT LOOKS OBVIOUS** (PO, 2026-08-09). `book_list` emits
+    #: `book_id` and returns **197 books** — "which one" is a question the result cannot answer and
+    #: the plan must. The rejected alternative was name-matching with a refusal on ambiguity, which
+    #: is strictly weaker: it puts a guess one step away from being reachable, and every mechanism
+    #: on this board that could guess eventually did. With the path declared there is no ambiguous
+    #: case to resolve at runtime, so there is no rule that could be wrong.
+    emits: MappingProxyType = field(default_factory=lambda: MappingProxyType({}))
     #: Step-level completion, derived from this step's own `emits` — *did this step hand forward
     #: what it said it would?* Distinct from the plan-level `done_when` (§0.11's "two levels").
     done_when: str = ""
@@ -131,13 +205,18 @@ class Step:
     def __post_init__(self) -> None:
         if type(self.declaration) is not str or not self.declaration:
             raise PlanError(f"declaration is {self.declaration!r}; expected a manifest id")
-        for name in self.emits:
+        if not isinstance(self.emits, Mapping):
+            raise PlanError(
+                f"{self.declaration} declares emits as {type(self.emits).__name__}; expected a "
+                f"mapping of name -> path. A bare list of names cannot say WHERE each value is "
+                f"found, and `book_list` returns 197 candidates for one name")
+        for name, path in self.emits.items():
             if type(name) is not str or not name:
                 raise PlanError(f"emits contains {name!r}; expected non-empty names")
-        if len(set(self.emits)) != len(self.emits):
-            raise PlanError(
-                f"{self.declaration} declares a duplicate name in emits {self.emits}; a later step "
-                f"binding to it could not say which one it meant")
+            # The path is validated HERE, at construction, for the same reason `check_bindings` is:
+            # a malformed path discovered when the step runs is a failure the plan could not have
+            # been built with. §6.2's inversion, applied to extraction.
+            check_emit_path(self.declaration, name, path)
 
 
 @dataclass(frozen=True, slots=True)
@@ -206,7 +285,9 @@ def _step_payload(s: Step) -> dict:
         "declaration": s.declaration,
         "contract_version": s.contract_version,
         "accepts": {k: _binding_payload(v) for k, v in sorted(s.accepts.items())},
-        "emits": list(s.emits),
+        # 🔴 The PATH is inside the hash, not only the name. Changing where a value is taken from
+        # changes what the step does, so an approval must not survive it (§0.8).
+        "emits": {k: v for k, v in sorted(s.emits.items())},
         "done_when": s.done_when,
         "gated": s.gated,
     }

@@ -28,7 +28,7 @@ UUID_VALUE = "019fafa2-7c3d-7a91-b0e2-4f1a2b3c4d5e"
 
 def _spec(version: int = 1, gated: bool = True) -> Spec:
     return Spec(goal="list books and read the newest", version=version, steps=(
-        Step(declaration="book_list", contract_version="1.0.0", emits=("book_id",)),
+        Step(declaration="book_list", contract_version="1.0.0", emits=M({"book_id": "books[0].book_id"})),
         Step(declaration="book_read", contract_version="1.0.0",
              accepts=M({"book_id": Binding(from_step=0, from_emit="book_id")}), gated=gated),
     ))
@@ -326,7 +326,8 @@ class TestTheRequestPathDrivesARealPool:
             await c.execute("DELETE FROM chat_sessions WHERE session_id = $1", sid)
 
     PLAN = ("```plan\n# goal: read the newest book\n\n"
-            "## step: book_list\n- contract_version: 1.0.0\n- emits: book_id\n\n"
+            "## step: book_list\n- contract_version: 1.0.0\n- emits:\n"
+            "  - book_id from books[0].book_id\n\n"
             "## step: book_read\n- contract_version: 1.0.0\n- accepts:\n"
             "  - book_id from step 0.book_id\n```")
 

@@ -33,7 +33,7 @@ UUID = "019fafa2-dead-beef-0000-000000000001"
 def _pair(gated: bool = False) -> Spec:
     """The two-step shape brick 4 names: step 2 consumes step 1's `emits` (C-6)."""
     return Spec(goal="read a book", steps=(
-        Step(declaration="book_list", contract_version="1.0.0", emits=("book_id",)),
+        Step(declaration="book_list", contract_version="1.0.0", emits=M({"book_id": "books[0].book_id"})),
         Step(declaration="book_read", contract_version="1.0.0",
              accepts=M({"book_id": Binding(from_step=0, from_emit="book_id")}), gated=gated),
     ))
@@ -68,7 +68,7 @@ class TestTheCarryForwardIsBoundNotRetyped:
         failure mode of *allow*."""
         with pytest.raises(BindingError) as exc:
             Spec(goal="g", steps=(
-                Step(declaration="a", contract_version="1.0.0", emits=("x",)),
+                Step(declaration="a", contract_version="1.0.0", emits=M({"x": "x"})),
                 Step(declaration="b", contract_version="1.0.0",
                      accepts=M({"p": Binding(from_step=0, from_emit="nope")})),
             ))
@@ -80,7 +80,7 @@ class TestTheCarryForwardIsBoundNotRetyped:
             Spec(goal="g", steps=(
                 Step(declaration="a", contract_version="1.0.0",
                      accepts=M({"p": Binding(from_step=1, from_emit="x")})),
-                Step(declaration="b", contract_version="1.0.0", emits=("x",)),
+                Step(declaration="b", contract_version="1.0.0", emits=M({"x": "x"})),
             ))
 
     def test_A_BINDING_IS_A_REFERENCE_OR_A_LITERAL_AND_NEVER_BOTH(self):
@@ -104,7 +104,7 @@ class TestTheApprovalBindsToTheGatedStepsOnly:
         """
         before = _pair(gated=True)
         after = Spec(goal="read a book", steps=(
-            Step(declaration="book_list", contract_version="1.0.0", emits=("book_id",),
+            Step(declaration="book_list", contract_version="1.0.0", emits=M({"book_id": "books[0].book_id"}),
                  done_when="a book id came back"),          # ungated step edited
             before.steps[1],
         ))
@@ -323,12 +323,21 @@ class TestEveryRefusalInThePlanModuleIsChecked:
 
     def test_A_STEP_EMITTING_AN_EMPTY_NAME_IS_REFUSED(self):
         with pytest.raises(PlanError, match="non-empty names"):
-            Step(declaration="a", contract_version="1.0.0", emits=("",))
+            Step(declaration="a", contract_version="1.0.0", emits=M({"": "books[0].id"}))
+
+    def test_A_BARE_LIST_OF_NAMES_IS_REFUSED_BECAUSE_IT_CANNOT_SAY_WHERE(self):
+        """The pre-2026-08-09 shape. A list of names cannot answer *which* of 197 books."""
+        with pytest.raises(PlanError, match="cannot say WHERE"):
+            Step(declaration="a", contract_version="1.0.0", emits=("book_id",))
 
     def test_A_STEP_EMITTING_A_DUPLICATE_NAME_IS_REFUSED(self):
         """A later step binding to it could not say which one it meant."""
-        with pytest.raises(PlanError, match="duplicate name"):
-            Step(declaration="a", contract_version="1.0.0", emits=("x", "x"))
+        # 🔴 A DUPLICATE IS NOW UNREPRESENTABLE rather than refused: `emits` is a mapping, so two
+        # entries with one name cannot be written down. That is strictly stronger than the check it
+        # replaces — there is no input that reaches a rejection, because there is no such input.
+        assert dict(M({"x": "a", "x": "b"})) == {"x": "b"}  # noqa: F601 - the point IS the collapse
+        step = Step(declaration="a", contract_version="1.0.0", emits=M({"x": "b"}))
+        assert list(step.emits) == ["x"]
 
     def test_AN_UNKNOWN_TERMINATION_SCOPE_IS_REFUSED(self):
         with pytest.raises(PlanError, match="unknown termination scope"):
@@ -352,7 +361,8 @@ class TestTheMarkdownSurfaceRejectsWithALocus:
         "\n"
         "## step: book_list\n"
         "- contract_version: 1.0.0\n"
-        "- emits: book_id\n"
+        "- emits:\n"
+        "  - book_id from books[0].book_id\n"
         "\n"
         "## step: book_read\n"
         "- contract_version: 1.0.0\n"
@@ -377,7 +387,7 @@ class TestTheMarkdownSurfaceRejectsWithALocus:
                                 "  - book_id <- step 0.book_id\n")
         with pytest.raises(PlanParseError) as exc:
             parse(bad)
-        assert exc.value.line_no == 12, f"reported line {exc.value.line_no}"
+        assert exc.value.line_no == 13, f"reported line {exc.value.line_no}"
         assert "from step" in exc.value.accepted and "=" in exc.value.accepted
         assert "invalid" not in str(exc.value).lower(), (
             "C-12: a rejection names the locus and the accepted form, never just `invalid`"
@@ -385,7 +395,7 @@ class TestTheMarkdownSurfaceRejectsWithALocus:
 
     def test_A_PLAN_WITH_NO_GOAL_IS_REFUSED(self):
         with pytest.raises(PlanParseError, match="goal"):
-            parse("## step: book_list\n- emits: book_id\n")
+            parse("## step: book_list\n- emits:\n  - book_id from books[0].book_id\n")
 
     def test_A_PLAN_WITH_NO_STEPS_IS_REFUSED(self):
         """An empty plan cannot reach a `done_when`, so it would be a silent exit by construction."""
@@ -397,7 +407,7 @@ class TestTheMarkdownSurfaceRejectsWithALocus:
         silently keeping the first (or the last) would make which one wins a property of the parser
         rather than a decision anybody took."""
         with pytest.raises(PlanParseError) as exc:
-            parse("# goal: one\n# goal: two\n## step: book_list\n- emits: x\n")
+            parse("# goal: one\n# goal: two\n## step: book_list\n- emits:\n  - x from x\n")
         assert exc.value.line_no == 2
 
     def test_ACCEPTS_WITH_A_VALUE_ON_THE_SAME_LINE_IS_REFUSED(self):
@@ -412,15 +422,15 @@ class TestTheMarkdownSurfaceRejectsWithALocus:
         keeps plan-level and step-level completion separate precisely so a plan cannot complete
         every step while not having done the thing that was asked."""
         with pytest.raises(PlanParseError, match="before any"):
-            parse("some prose\n# goal: g\n## step: a\n- emits: x\n")
+            parse("some prose\n# goal: g\n## step: a\n- emits:\n  - x from x\n")
 
     def test_AN_UNRECOGNISED_LINE_IS_REFUSED_AND_LISTS_THE_KEYS(self):
         """The catch-all still names what would have been accepted (C-12). A parser that ignored
         what it did not understand would drop a `gated: true` to a typo — silently downgrading a
         step that needs approval into one that does not."""
         with pytest.raises(PlanParseError) as exc:
-            parse("# goal: g\n## step: a\n- emits: x\n- gatd: true\n")
-        assert exc.value.line_no == 4
+            parse("# goal: g\n## step: a\n- emits:\n  - x from x\n- gatd: true\n")
+        assert exc.value.line_no == 5
         assert "gated" in exc.value.accepted, "the rejection must list the keys that ARE accepted"
 
     def test_THE_PARSER_HAS_NO_TEMPLATE_INTERPOLATION_ARM(self):
@@ -647,7 +657,8 @@ class TestPlanAdoptionFromAReply:
             "\n"
             "## step: book_list\n"
             "- contract_version: 1.0.0\n"
-            "- emits: book_id\n"
+            "- emits:\n"
+        "  - book_id from books[0].book_id\n"
             "\n"
             "## step: book_read\n"
             "- contract_version: 1.0.0\n"
@@ -788,3 +799,158 @@ class TestTheArmGovernsTheWireAndNotOneProducer:
             "a second inline call to serve.advertise is a second copy of the decision"
         )
         assert src.count("_agentruntime_wire_surface(pass_number=") == 2
+
+
+class TestTheExecutorSuppliesRatherThanTheModelRetyping:
+    """CP-3 · brick 4, at last reachable. **`resolve_arguments` had ZERO production callers.**
+
+    Found 2026-08-09 by asking what the 20/20 V-METRIC result had actually exercised: the plan
+    reached the model as a system message and the model RETYPED the identifier out of it. Retyping
+    is the failure being closed — `entity_id:019fafa2-…` at step 12, `"0"` at step 16.
+    """
+
+    RESULT = {"kind": "books", "books": [{"book_id": UUID, "title": "first"},
+                                         {"book_id": "019f-second", "title": "second"}]}
+
+    def _live(self):
+        from app.services.plan_turn import PlanTurn
+        spec = _pair()
+        return PlanTurn(plan_id="p", spec=spec, state=State(spec.hashed()), projection="")
+
+    def test_THE_MODELS_VALUE_IS_DISCARDED_FOR_A_PARAMETER_THE_PLAN_OWNS(self):
+        """🔴 The whole point. A merge that let the model win on a blank would be the
+        fallback-to-asking this mechanism exists to refuse."""
+        from app.services.plan_exec import bound_arguments, observe_call
+        t = self._live()
+        t.state.append(observe_call(t.spec, t.state, "book_list", ok=True, result=self.RESULT))
+        assert bound_arguments(t.spec, t.state, "book_read") == {"book_id": UUID}
+
+    def test_THE_PLAN_SAYS_NOTHING_ABOUT_A_CALL_IT_DOES_NOT_OWN(self):
+        """None means *not my parameter*, and the legacy path is untouched. It never means
+        *I wanted to supply something and could not* — that raises."""
+        from app.services.plan_exec import bound_arguments
+        t = self._live()
+        assert bound_arguments(t.spec, t.state, "glossary_search") is None
+
+    def test_A_BINDING_THE_PLAN_OWNS_AND_CANNOT_FILL_RAISES(self):
+        from app.services.plan_exec import bound_arguments, current_step
+        from app.agentruntime.plan import Event
+        t = self._live()
+        t.state.append(Event(kind="step_skipped", step_index=0))   # ran, emitted nothing
+        assert current_step(t.spec, t.state) == 1
+        with pytest.raises(BindingError):
+            bound_arguments(t.spec, t.state, "book_read")
+
+    def test_THE_EMITTED_VALUE_COMES_FROM_THE_DECLARED_PATH_NOT_A_SEARCH(self):
+        """`books[0].book_id`, not *the first `book_id` anywhere*. The result holds two."""
+        from app.services.plan_exec import observe_call
+        t = self._live()
+        ev = observe_call(t.spec, t.state, "book_list", ok=True, result=self.RESULT)
+        assert ev.kind == "step_emitted" and dict(ev.values) == {"book_id": UUID}
+
+    def test_A_PATH_THAT_MISSES_IS_A_FAILED_STEP_NOT_A_NULL_BOUND_FORWARD(self):
+        """🔴 Binding null forward hands the next step a value that looks supplied and is not —
+        `"0"` wearing a different costume."""
+        from app.services.plan_exec import observe_call
+        t = self._live()
+        ev = observe_call(t.spec, t.state, "book_list", ok=True, result={"kind": "books"})
+        assert ev.kind == "step_failed" and ev.error_class == "terminal_permanent"
+
+    def test_A_PATH_THAT_RESOLVES_TO_NULL_IS_A_FAILURE_NOT_A_NULL_CARRIED_FORWARD(self):
+        """The path EXISTS and holds null. Distinct from a missing key, and the falsification
+        runner proved it: neutering the null check left every other guard here green, so this
+        branch was reachable and unguarded."""
+        from app.services.plan_exec import observe_call
+        t = self._live()
+        ev = observe_call(t.spec, t.state, "book_list", ok=True,
+                          result={"books": [{"book_id": None}]})
+        assert ev.kind == "step_failed", (
+            "a null bound forward is a value that looks supplied and is not"
+        )
+
+    def test_AN_EMPTY_LIST_AT_THE_INDEX_IS_A_FAILURE_TOO(self):
+        from app.services.plan_exec import observe_call
+        t = self._live()
+        ev = observe_call(t.spec, t.state, "book_list", ok=True, result={"books": []})
+        assert ev.kind == "step_failed"
+
+    def test_A_FAILED_CALL_CARRIES_AN_ERROR_CLASS_FROM_C7(self):
+        from app.agentruntime.observation import ERROR_CLASSES
+        from app.services.plan_exec import observe_call
+        t = self._live()
+        ev = observe_call(t.spec, t.state, "book_list", ok=False, result=None)
+        assert ev.kind == "step_failed" and ev.error_class in ERROR_CLASSES
+
+    def test_A_SUCCESSFUL_STEP_THAT_EMITS_NOTHING_STILL_ADVANCES_THE_PLAN(self):
+        """Otherwise `current_step` returns it forever and the plan stalls on a call that worked."""
+        from app.services.plan_exec import current_step, observe_call
+        spec = Spec(goal="g", steps=(
+            Step(declaration="book_list", contract_version="1.0.0"),
+            Step(declaration="book_read", contract_version="1.0.0"),
+        ))
+        st = State(spec.hashed())
+        st.append(observe_call(spec, st, "book_list", ok=True, result={}))
+        assert current_step(spec, st) == 1
+
+    def test_THE_CURRENT_STEP_IS_DERIVED_FROM_STATE_NOT_STORED(self):
+        """A cursor would be a second source of truth about position.
+
+        🔴 Reads the CODE, not the prose. The first draft of this guard scanned the whole source
+        for the word "cursor" and went red on the docstring that explains why there is not one —
+        the same class of error as the gate satisfied by a comment containing the word "outcome".
+        """
+        import ast
+        import inspect
+
+        from app.services import plan_exec
+        fn = ast.parse(inspect.getsource(plan_exec.current_step)).body[0]
+        if ast.get_docstring(fn):
+            fn.body = fn.body[1:]
+        code = ast.dump(ast.Module(body=fn.body, type_ignores=[]))
+        assert "'events'" in code, "position must be derived from STATE's events"
+        assert "cursor" not in code.lower(), "no stored position anywhere in the body"
+
+
+class TestTheExecutorIsWiredAtTheDispatchChokepoint:
+    """It must be reachable from a real turn, at the ONE place a tool genuinely executes."""
+
+    @staticmethod
+    def _src() -> str:
+        from pathlib import Path
+        import app.services.stream_service as _s
+        return Path(_s.__file__).read_text(encoding="utf-8")
+
+    def test_BOUND_ARGUMENTS_IS_APPLIED_BEFORE_THE_DISPATCH(self):
+        src = self._src()
+        i_bind = src.find("bound_arguments(plan_turn.spec, plan_turn.state, c[\"name\"])")
+        i_exec = src.find("envelope = await knowledge_client.mcp_execute_tool(")
+        assert 0 < i_bind < i_exec, (
+            "the plan must supply arguments BEFORE the tool runs, or it supplied nothing"
+        )
+
+    def test_THE_MODELS_ARGS_ARE_OVERWRITTEN_NOT_DEFAULTED(self):
+        src = self._src()
+        assert "args_obj.update(_bound)" in src, (
+            "for a parameter the plan owns, the model's value must be DISCARDED — a setdefault "
+            "would let the retyped value win exactly when the plan had nothing to say"
+        )
+
+    def test_THE_OBSERVATION_IS_RECORDED_AFTER_THE_DISPATCH(self):
+        src = self._src()
+        i_exec = src.find("envelope = await knowledge_client.mcp_execute_tool(")
+        i_obs = src.find("observe_call(plan_turn.spec, plan_turn.state, c[\"name\"]")
+        assert 0 < i_exec < i_obs
+
+    def test_EVENTS_ARE_PERSISTED_BEFORE_AN_ADOPTION_CAN_SUPERSEDE_THE_PLAN(self):
+        """A `step_emitted` written against a superseded plan is a fact filed under the wrong
+        version — the confusion §0.11 splits SPEC and STATE to prevent."""
+        src = self._src()
+        i_persist = src.find("_plan_db.append_event(_pc, UUID(_plan_turn.plan_id), _ev)")
+        i_adopt = src.find("adopt_plan_from_reply(pool, session_id, final_text)")
+        assert 0 < i_persist < i_adopt
+
+    def test_THE_IN_MEMORY_STATE_ADVANCES_WITHIN_ONE_TURN(self):
+        """A two-step plan can run both steps in ONE turn; the second would otherwise bind against
+        a history not yet written."""
+        src = self._src()
+        assert "plan_turn.state.append(_ev)" in src
