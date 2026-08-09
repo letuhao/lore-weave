@@ -89,10 +89,26 @@ rather than a bug. Pinned by a test that also asserts the naive form is absent.
 ⚠️ A closed label set was guessed from memory and checking caught it: `RECONCILE_LABELS` is
 `("Entity", "Event", "Fact")`, not four — Relations and EntityStatus carry no `evidence_count`.
 
-**▶ Resume at T18** — `GraphStore` + its fake. The gate's baseline is the worklist and it errors
-on a stale entry, so nothing can be quietly skipped. Note for Phase 7: the six `db/migrations/`
-backfills are admin one-shots reachable via `internal_backfill.py` — the engine swap must port or
-retire them, or they break silently.
+**T18 landed — `GraphStore`, the third port.** The one that unblocks T17's remaining 15 files.
+
+🔨 **`relations_for(entity, as_of)` did not exist and now does.** The substrate supported it —
+relations carry the F3 `valid_from_ordinal`/`valid_to_ordinal` and the locked as-of fragment is
+right there — but no relation read applied it; they all read the HEAD. Added to all three 1-hop
+templates ADDITIVELY: omit `as_of` and the read is byte-identical. A **positionless** edge is
+excluded by an as-of read (Cypher gets that from three-valued logic; the fake says it explicitly).
+
+⚠️ Three sketch parameters were wrong and reality won: `upsert_relation` has no `project_id` (an
+edge inherits scope from its endpoints), takes singular `source_event_id`, and direction values are
+`outgoing`/`incoming`. Checking before encoding is what caught all three.
+
+⚠️ The fake set two fields the real models don't have — caught because it is built against the real
+Pydantic models, not dicts. And one bite didn't bite: "resolve mints a duplicate" survived matching
+ids and a count of one, so the test now asserts **source types accumulate**, which only holds if
+the existing entity was returned.
+
+**▶ Resume at T19** — `TruthStore` + its fake, two adapters from the start (glossary book-scoped,
+memory project/global) routed by scope. Then T20 repoints the ~561 live-Neo4j skips onto the three
+fakes — the phase's payoff, and the same edit that lands T17's remaining 15 files.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

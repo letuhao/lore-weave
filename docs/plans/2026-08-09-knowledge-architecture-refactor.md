@@ -48,12 +48,11 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T18** — define `GraphStore` + its fake. **T17 is deliberately parked at 6-of-21, not
-abandoned**: the remaining 15 files carry GRAPH and TRUTH queries, and they cannot move onto "the
-two shipped ports" because neither `VectorStore` nor `OntologyStore` covers a traversal. Defining
-`GraphStore` (T18) and `TruthStore` (T19) is the unblock; T17's leftovers then land with T20's
-test repoint, which is the same edit anyway. The gate's baseline is the worklist and it errors on
-a stale entry, so nothing here can be quietly skipped.
+**RESUME: T19** — define `TruthStore` + its fake, with **two adapters from the start**
+(`GlossaryTruthAdapter` for book-scoped authored facts, `MemoryTruthAdapter` for project/global),
+routed by scope so consumers never learn which answered. Then T20 repoints the ~561 live-Neo4j
+skips onto the three fakes — that is the payoff the whole phase is for, and it is also the edit
+that lands T17's remaining 15 files.
 
 ⚠️ Two of those 15 need a decision rather than a move: the six `db/migrations/` backfills are
 admin one-shots reachable through `internal_backfill.py`, so **Phase 7's engine swap must either
@@ -1043,11 +1042,57 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 <!-- Commit checkpoint: T14–T17 -->
 
-- [ ] **T18** — Define `GraphStore` + its fake
+- [x] **T18** — Define `GraphStore` + its fake — **GREEN**
   Domain operations, not Cypher: `resolve_or_merge_entity` · `find_entities_by_name` ·
   `neighborhood(entity, depth, filters)` · `relations_for(entity, as_of)` · `status_at_order` ·
   `events_in_window(after, before, axis)` · `archive_entity`/`restore_entity` · `upsert_relation`.
   (depends on T17)
+  ---
+  **Evidence.** Port + `Neo4jGraphStore` + `FakeGraphStore` + 16 contract tests; knowledge suite
+  **4056 passed**; 6 bites, each verified to mutate the file, each red then green.
+
+  🔨 **`relations_for(entity, as_of)` did not exist and now does.** The sketch asked for it, and
+  checking before encoding it was the right call: the substrate **does** support it — `Relation`
+  carries the F3 `valid_from_ordinal`/`valid_to_ordinal` and `temporal.AS_OF_ORDINAL_PREDICATE` is
+  the LOCKED shared fragment — but **no relation read applied it**; they all read the HEAD. So the
+  clause was added to all three 1-hop templates, **additively**: omit `as_of` and the read is
+  byte-identical to before. Putting `as_of` on a port whose data could not answer it would be the
+  lie `temporal_capability` already exists to report; adding it where only the query was missing is
+  the port doing its job.
+  **The edge case is the interesting half:** a POSITIONLESS edge (`valid_from_ordinal IS NULL` —
+  legacy data) is **excluded** by an as-of read. Cypher gets that free from three-valued logic;
+  Python does not, so the fake says it explicitly and a test pins it.
+
+  ⚠️ **`events_in_window(…, axis)` — there are THREE axes, not two.** `narrative` (authored
+  `event_order`), `chronological` (in-story, undated events sink last) and `date` (parsed
+  `event_date_iso`). The repo already distinguishes them; collapsing them into one "time"
+  parameter would leave a caller unable to ask the one it means. A test shows the same two events
+  ordering differently on two of them.
+
+  ⚠️ **Two sketch parameters were wrong and reality won.** `upsert_relation` has **no
+  `project_id`** (an edge inherits scope from its endpoints; a third source of truth for the same
+  fact is the one most likely to disagree) and takes **singular `source_event_id`** — the plural
+  lives on the READ, where later events accumulate onto the arc. `RelationDirection` is
+  `outgoing`/`incoming`/`both`, not `out`/`in`.
+
+  **`list_events_filtered` returns `(rows, total_count)` and the port drops the count** — it exists
+  for a paginated browse ("page 3 of N"), and this port asks for a window. Keeping it would force
+  every implementation to have a cheap count.
+
+  ⚠️ **The fake set two fields the real models do not have** (`archived_reason` for
+  `archive_reason`; a missing required `canonical_title` on `Event`) — caught immediately by
+  building against the real Pydantic models rather than dicts. That is exactly the drift a fake is
+  supposed to avoid, and it would have surfaced as a mystery in T20's 561 tests.
+
+  ⚠️ **One bite did not bite, and the fix was to the TEST.** "resolve mints a duplicate" left the
+  suite green: matching ids and a count of one both survive a fake that builds a fresh object and
+  stores it at the same key. The test now asserts **source types accumulate**, which can only hold
+  if the existing entity was returned and updated. Idempotency asserted, not assumed.
+
+  **Deliberately NOT on the port:** subgraph/ego reads, motif and thread writes, causal-edge
+  merges. Every method here must be implemented twice in Phase 7 and faked once; a port grows by
+  demand, and T42 building the second adapter is the forcing function that says which of them
+  belong.
 
 - [ ] **T19** — Define `TruthStore` + its fake
   Two adapters from the start — `GlossaryTruthAdapter` (book-scoped authored facts) and

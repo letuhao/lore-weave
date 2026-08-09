@@ -573,6 +573,9 @@ CALL {
     AND (project_id IS NULL OR peer.project_id = project_id)
     AND r.confidence >= min_confidence
     AND r.valid_until IS NULL
+    AND ($as_of_ordinal IS NULL
+         OR (r.valid_from_ordinal <= $as_of_ordinal
+             AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
     AND (NOT exclude_pending OR coalesce(r.pending_validation, false) = false)
     AND (include_archived_peer OR peer.archived_at IS NULL)
   RETURN properties(r) AS rel,
@@ -590,6 +593,9 @@ CALL {
     AND (project_id IS NULL OR peer.project_id = project_id)
     AND r.confidence >= min_confidence
     AND r.valid_until IS NULL
+    AND ($as_of_ordinal IS NULL
+         OR (r.valid_from_ordinal <= $as_of_ordinal
+             AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
     AND (NOT exclude_pending OR coalesce(r.pending_validation, false) = false)
     AND (include_archived_peer OR peer.archived_at IS NULL)
   RETURN properties(r) AS rel,
@@ -618,6 +624,7 @@ async def find_relations_for_entity(
     min_confidence: float = 0.8,
     exclude_pending: bool = True,
     include_archived_peer: bool = False,
+    as_of_ordinal: int | None = None,
     limit: int = 100,
 ) -> list[Relation]:
     """1-hop RELATES_TO traversal from the given entity.
@@ -645,6 +652,17 @@ async def find_relations_for_entity(
     regardless of direction) are excluded by default — a relation
     that points at a hidden entity creates a dangling pointer in
     the L2 context. Override with `include_archived_peer=True`.
+
+    `as_of_ordinal` (plan T18) reads the edges that were true AT a story position,
+    using the half-open convention `valid_from_ordinal <= N < valid_to_ordinal`.
+    ADDITIVE: `None` (the default) leaves the predicate inert and the read is
+    byte-identical to the pre-T18 behaviour.
+
+    A POSITIONLESS edge (`valid_from_ordinal IS NULL` — legacy data, or an edge
+    written without a chapter position) is EXCLUDED by an as-of read. Cypher's
+    three-valued logic gives that for free (`NULL <= N` is NULL, not true), and it
+    is the behaviour we want: an edge that cannot be placed on the axis must not be
+    mixed into an answer whose whole value is that it is placed.
     """
     if not entity_id:
         raise ValueError("entity_id must be a non-empty string")
@@ -670,6 +688,7 @@ async def find_relations_for_entity(
         min_confidence=min_confidence,
         exclude_pending=exclude_pending,
         include_archived_peer=include_archived_peer,
+        as_of_ordinal=as_of_ordinal,
         limit=limit,
     )
     return [
@@ -954,6 +973,9 @@ _EGO_HOP_STEP = """
     AND NOT nbr.id IN $visited_ids
     AND r.user_id = $user_id
     AND r.valid_until IS NULL
+    AND ($as_of_ordinal IS NULL
+         OR (r.valid_from_ordinal <= $as_of_ordinal
+             AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
     AND coalesce(r.confidence, 0.0) >= $min_confidence
     AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
   WITH DISTINCT nbr

@@ -1,0 +1,206 @@
+"""The `GraphStore` port (plan T18).
+
+The knowledge graph as DOMAIN operations — resolve an entity, find its neighbours, ask
+what its status was at a story position — with no Cypher and no session in any signature.
+This is the port Phase 7 swaps: the Neo4j implementation stays, a second adapter is built
+alongside it (T42), and T43's shadow comparison decides which one wins. Nothing downstream
+of this file learns which answered.
+
+── THE SKETCH SAID `relations_for(entity, as_of)`; TODAY NOTHING HONOURS `as_of` ─────────
+The substrate does support it. `Relation` carries `valid_from_ordinal` /
+`valid_to_ordinal` (the F3 story-time half-open interval), and
+`temporal.AS_OF_ORDINAL_PREDICATE` is the LOCKED shared fragment every as-of read is
+supposed to use. What is missing is that no relation read applies it — the relation
+queries read the HEAD. So `as_of` is on this port, and the Neo4j adapter implements it
+with that shared fragment, ADDITIVELY: omit it and the read is byte-identical to today's.
+
+That distinction matters. Putting `as_of` on the port when the data could not answer it
+would be a port that lies, and the KAL already reports `temporal_capability.kg` precisely
+because that lie is expensive. Putting it on when the data CAN answer it and only the query
+was missing is the port doing its job — the same as-of read Phase 1 built for the glossary,
+on the other substrate.
+
+── `events_in_window(after, before, axis)` — THERE ARE THREE AXES, NOT TWO ───────────────
+`narrative` (the authored `event_order`), `chronological` (in-story chronology, where
+undated events sink last), and `date` (the parsed `event_date_iso` timeline filter). They
+are genuinely different questions and the repo already distinguishes them; collapsing them
+into one "time" parameter would make a caller unable to ask the one it means.
+
+── WHAT IS NOT HERE ─────────────────────────────────────────────────────────────────────
+Subgraph/ego reads (`get_project_subgraph`, `get_world_subgraph`), motif and thread writes,
+causal-edge merges. They are real operations but they are not what the port needs to be
+swappable, and every method here has to be implemented twice in Phase 7 plus faked. A port
+grows by demand, not by inventory — T42 building the second adapter is the forcing function
+that says which of them belong.
+"""
+
+from __future__ import annotations
+
+from typing import Literal, Protocol, runtime_checkable
+
+from app.db.neo4j_repos.entities import Entity, EntityDetail
+from app.db.neo4j_repos.events import Event
+from app.db.neo4j_repos.relations import Relation
+
+__all__ = ["EventAxis", "GraphStore", "RelationDirection"]
+
+# Which time axis an event window is measured on. See the module docstring — these are
+# three different questions, not three spellings of one.
+EventAxis = Literal["narrative", "chronological", "date"]
+
+RelationDirection = Literal["outgoing", "incoming", "both"]
+
+
+@runtime_checkable
+class GraphStore(Protocol):
+    """Implementations: `adapters/neo4j_graph_store.py`, `adapters/fake_graph_store.py`,
+    and (Phase 7) whichever second engine T43's shadow comparison selects."""
+
+    # ── entities ─────────────────────────────────────────────────────
+
+    async def resolve_or_merge_entity(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        name: str,
+        kind: str,
+        source_type: str,
+        confidence: float = 0.0,
+        auto_created: bool = False,
+        provenance: str = "human_authored",
+        job_id: str | None = None,
+    ) -> Entity:
+        """Idempotent upsert keyed on the canonical identity. Returns the entity whether it
+        was created or matched — the caller almost never needs to know which, and the ones
+        that do can compare `created_at`."""
+        ...
+
+    async def find_entities_by_name(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        name: str,
+        include_archived: bool = False,
+        exclude_project_ids: list[str] | None = None,
+    ) -> list[Entity]:
+        """Canonical-name and display-name matches. Archived entities are excluded by
+        default: a resolver that matched one would silently re-anchor extraction onto an
+        entity the author archived."""
+        ...
+
+    async def neighborhood(
+        self,
+        *,
+        user_id: str,
+        glossary_entity_id: str,
+        project_id: str | None = None,
+        rel_cap: int = 50,
+    ) -> EntityDetail | None:
+        """One entity plus its capped one-hop neighbourhood.
+
+        `rel_cap` is part of the contract, not a tuning knob: this feeds a context block,
+        and an uncapped neighbourhood on a hub entity is how a prompt budget disappears.
+        """
+        ...
+
+    async def archive_entity(
+        self, *, user_id: str, canonical_id: str, reason: str,
+    ) -> Entity | None:
+        """Soft-delete. `reason` is required because the archive is auditable — an entity
+        that vanished with no reason cannot be told from one lost to a bug."""
+        ...
+
+    async def restore_entity(self, *, user_id: str, canonical_id: str) -> Entity | None:
+        """Undo an archive. `None` when the id does not exist or is not this user's."""
+        ...
+
+    # ── relations ────────────────────────────────────────────────────
+
+    async def upsert_relation(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        confidence: float = 0.0,
+        source_event_id: str | None = None,
+        valid_from_ordinal: int | None = None,
+    ) -> Relation:
+        """Create or update one edge. `valid_from_ordinal` stamps the story position the
+        edge was established at; leaving it `None` writes a positionless edge, which is
+        what legacy data looks like and what an as-of read cannot place.
+
+        NO `project_id`: an edge inherits its scope from the entities it connects, and both
+        endpoints are already tenant-resolved. A project parameter here would be a third
+        source of truth for the same fact, and the one most likely to disagree.
+
+        `source_event_id` is SINGULAR — the write records the one event that established
+        this edge. The plural lives on the READ (`Relation.source_event_ids`), where later
+        events accumulate onto the same arc.
+        """
+        ...
+
+    async def relations_for(
+        self,
+        *,
+        user_id: str,
+        entity_id: str,
+        project_id: str | None = None,
+        direction: RelationDirection = "both",
+        min_confidence: float = 0.8,
+        as_of: int | None = None,
+        limit: int = 100,
+    ) -> list[Relation]:
+        """This entity's edges. `as_of=None` reads the HEAD — byte-identical to the
+        pre-port behaviour.
+
+        With `as_of=N`, only edges whose story interval covers N are returned, using the
+        half-open convention `valid_from_ordinal <= N < valid_to_ordinal`. **A positionless
+        edge (`valid_from_ordinal IS NULL`) is EXCLUDED** by an as-of read: it cannot be
+        placed on the axis, and including it would silently mix untimed legacy data into an
+        answer whose entire value is that it is timed.
+        """
+        ...
+
+    # ── status ───────────────────────────────────────────────────────
+
+    async def status_at_order(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        entity_ids: list[str],
+        at_order: int,
+        min_evidence: int = 1,
+    ) -> dict[str, str]:
+        """`{entity_id: status}` at a story position — alive/gone as of chapter N.
+
+        `min_evidence` exists because a status derived from a single mention is a guess;
+        the canon guard raises the bar rather than acting on one.
+        """
+        ...
+
+    # ── events ───────────────────────────────────────────────────────
+
+    async def events_in_window(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None = None,
+        after: int | str | None = None,
+        before: int | str | None = None,
+        axis: EventAxis = "narrative",
+        include_archived: bool = False,
+        limit: int = 200,
+    ) -> list[Event]:
+        """Events between two bounds on one axis.
+
+        `after`/`before` are ordinals for `narrative` and `chronological`, and ISO date
+        strings for `date`. Typing them as a union rather than splitting into three methods
+        keeps the axis a value a caller can pass through — which is what the timeline UI
+        actually does with its sort toggle.
+        """
+        ...
