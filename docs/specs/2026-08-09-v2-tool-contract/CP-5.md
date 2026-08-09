@@ -1,207 +1,160 @@
 # CP-5 · the tool contract — the solid ground
 
-**Scale:** β · **Status:** SPEC, nothing built · 2026-08-09
+**Scale:** β · **Status:** SPEC v2, nothing built · 2026-08-09
+**Supersedes** SPEC v1 of the same day, which did not survive its own evaluation. The six findings
+that killed it are kept in `EVALUATION-v1.md` — **four were the spec committing the defect it was
+written to prevent**, and deleting them would destroy the record of why v2 looks like this.
 
 **Why this checkpoint exists.** CP-1 built a contract for a **registry row**. There is no contract
-for a **tool**. C-3…C-17 were deferred with a stated reason — *"their subjects do not exist until a
-declaration is written"* — CP-4 then wrote declarations, and nobody went back. Measured:
-`inputSchema` validated at admission → **0**; declared result shape → **0**.
+for a **tool**. C-3…C-17 were deferred — *"their subjects do not exist until a declaration is
+written"* — CP-4 then wrote declarations, and nobody went back. Measured: `inputSchema` validated at
+admission → **0**; declared result shape → **0**.
 
-**PO directive, 2026-08-09:** *build the new architecture AGAINST the defects we already face, not
-clone them into it.* **No v2 tool is built until CP-5 closes.**
+**PO directive:** *build the new architecture AGAINST the defects we already face, not clone them
+into it.* **No v2 tool is built until CP-5 closes.**
 
 ---
 
-## 0.5 · EVALUATION, 2026-08-09 — six findings against this spec, before anything was built
+## 1 · The evidence
 
-The PO asked for CP-5 to be evaluated rather than started. It does not survive intact. **Four of the
-six findings are the spec committing the defects it was written to prevent.**
+4,175 failed `tool_calls` across **358 sessions**, 480 turns. **The denominator is SESSIONS, not
+calls** — v1 ranked by call events and the top 3 sessions alone held 28.3% of them (median session:
+3). Ranking by events ranks pathological loops.
 
-### E1 · The prioritisation was wrong — ranked by events, not by journeys
+Shares exceed 100% because one session can hit several members. Every figure is a query result.
 
-4,175 failed calls span **358 sessions**, and the **top 3 sessions alone hold 1,180 of them
-(28.3%)**. The median session has **3**. Ranking members by call count therefore ranks a handful of
-pathological loops. By **sessions affected** the order inverts:
+| member | sessions | % of 358 | calls | required? |
+|---|---|---|---|---|
+| **typed inputs** | **101** | **28.2%** | 774 | **core** |
+| **argument supplier** | **85** | **23.7%** | 401 | **core** |
+| **preconditions** | **67** | **18.7%** | 441 | conditional — if it needs scope/capability/prerequisite |
+| **repeat semantics** | 46 | 12.8% | **2039** | **core** (see §3) |
+| **partial outcome** | 37 | 10.3% | 88 | conditional — batch tools |
+| *registry: name source* | 36 | 10.1% | 110 | *registry property, not a member* |
+| **error contract (C-7)** | **29** | **8.1%** | 41 | **core** — these failures carried **no message at all** |
+| **consent** | 20 | 5.6% | 36 | conditional — gated tools |
+| **closed vocabulary** | 10 | 2.8% | 25 | conditional — enum params |
+| **empty-change / uniqueness** | 10 | 2.8% | 109 | conditional — writes |
+| **conditional params** | 6 | 1.7% | 15 | conditional — cross-field constraints |
+| **output contract** | 6 | 1.7% | 40 | **core** (see §2) |
+| **concurrency** | 1 | 0.3% | 17 | conditional — versioned writes |
+| *transport* | 8 | 2.2% | 9 | *not a contract member — C-7 `retryable_transient`* |
+| *unclassified residual* | **18** | **5.0%** | 30 | **stated, not hidden** |
 
-| member | calls | sessions | % of 358 |
+**Two members are invisible in this table and belong anyway:**
+
+* **result completeness — 0% by construction.** `book_list` returns `{total: 197, returned: 20,
+  is_complete: false}`. A model asked for *"the first book"* reads a truncated page and is never
+  told. It cannot fail loudly, so it appears in **no** bucket. This is the quiet-failure class
+  V-METRIC exists to detect, sitting inside a tool result — **a contract that fixes only the loud
+  members converts nothing, it just stops counting.**
+* **effect + undo.** `undo_hint` exists in `_meta` today but is not contractual, so a write's
+  reversibility is a convention.
+
+---
+
+## 2 · Why the output contract outranks its 1.7%
+
+CP-3 declares an `emits` path as a **literal string** (`books[0].book_id`), and `check_emit_path`
+can only prove it is *syntactically* a path. It cannot prove the path exists in `book_list`'s
+result, **because `book_list` has no declared result shape**. So `EmitPathError` fires at
+**execution**.
+
+§6.2's principle is *"a generation error, not a runtime one."* For outputs it is currently inverted,
+and the runtime failure was built and written up as a feature. **An output contract turns that back
+into a plan-build rejection** — which is the entire reason §6.2 exists. Its 1.7% understates it: it
+is load-bearing for CP-3, not for its own error class.
+
+---
+
+## 3 · Repeat semantics — reframed, because v1's version was metric laundering
+
+`tool_list` produced **1,180 repeat errors across 3 sessions — 393 per session**. v1 said *declare
+it idempotent and serve the cache*. That turns 393 errors into **393 silent successes**: the loop
+runs exactly as long, burns the same passes, and emits no signal.
+
+**That is converting loud failures into quiet ones — the precise question V-METRIC exists to ask.**
+
+> **The contract may remove a repeat's COST. It may never remove its SIGNAL.**
+> A declared-idempotent read MAY be served from cache. It **must still be counted, and the breaker
+> must still escalate.** `repeat_served_from_cache` is recorded as its own outcome so the two
+> populations never merge — the same separation `plan_supplied.overrode` had to make on 2026-08-09.
+
+---
+
+## 4 · Where the contract lives — and it is not a Python base class
+
+**v1's fatal error.** The enforcement ladder was `ABC` + `__init_subclass__` + frozen dataclass +
+private token — all **Python-class** mechanisms. chat-service implements **9** tools in Python; the
+catalogue holds **315** federated from Go and Python services (composition 107, glossary 54, book
+35, kg 31). **9 of 324 = 2.8%.** A mechanism whose subject is 2.8% of the population, specified as
+*the* pattern. The clause-with-no-subject failure, inside the document correcting it.
+
+**The contract is a language-neutral declaration in the MCP tool's `_meta`.** That mechanism already
+exists and is already proven — `_meta` carries `tier`, `ambient_book` and `superseded_by` today, and
+CP-4's producer already derives from it for 315/315 tools.
+
+| rung | mechanism | scope | fails at |
 |---|---|---|---|
-| **typed inputs** | 703 | **91** | **25.4%** |
-| **argument supplier** | 401 | **85** | **23.7%** |
-| preconditions | 417 | 58 | 16.2% |
-| **repeat semantics** | **2039** | 46 | **12.8%** ← *was ranked #1 at 48.8%* |
-| registry name source | 198 | 42 | 11.7% |
-| partial outcome | 88 | 37 | 10.3% |
-| consent | 36 | 20 | 5.6% |
-| closed vocabulary | 25 | 10 | 2.8% |
-| output contract | 40 | 6 | 1.7% |
-| **concurrency** | 17 | **1** | **0.3%** |
-| **empty-change** | 16 | **1** | **0.3%** |
+| 1 | `_meta` schema, versioned | **all 324** | — |
+| 2 | **admission refuses an incomplete contract** | **all 324** | **release** |
+| 3 | `ABC` + `__init_subclass__` + frozen + token | the 9 Python tools | import |
+| 4 | CI gate counting registration sites | the 9 | build |
 
-**`typed inputs` + `argument supplier` are the two that break the most user journeys**, and together
-they are one problem: *the model could not supply the right value.* That is the problem CP-3's
-executor already solves for planned steps.
-
-### E2 · Member 6 as specified is metric laundering — the defect this board exists to catch
-
-`tool_list` produced **1,180 repeat errors across 3 sessions — 393 per session.** Declare it
-idempotent and serve the cache, and those become **393 silent successes**. Errors go to zero; the
-loop runs exactly as long, burns exactly as many passes, and now emits no signal at all.
-
-**That is converting loud failures into quiet ones**, which is the precise question V-METRIC was
-built to ask. Corrected requirement: a repeat may be served from cache to remove its *cost*, but it
-**must still be counted and must still escalate** — the breaker stays; only the wasted dispatch goes.
-
-### E3 · No required-vs-optional distinction — and two members have a population of one
-
-`concurrency` and `empty-change` each affect **1 session in 358**. Requiring all 17 members of every
-tool makes migration impossible and is over-engineering. Members must be **conditional on lane and
-shape** (concurrency for writes; partial-outcome for batch tools) — which is ironic, since member 16
-is *conditional parameters*.
-
-### E4 · 🔴 The enforcement ladder governs 2.8% of the tools
-
-Rungs 1–5 (`ABC`, `__init_subclass__`, frozen dataclass, private token, site-counting gate) are
-**Python-class mechanisms**. chat-service implements **9** tools in Python. The catalogue holds
-**315** federated from Go and Python services — composition 107, glossary 54, book 35, kg 31.
-
-**9 of 324 = 2.8%.** I specified a mechanism whose subject is almost the whole point, and it is not
-there. **This is the same clause-with-no-subject failure that produced CP-5**, committed inside the
-document correcting it.
-
-Corrected: the contract is a **language-neutral declaration carried in the MCP tool's `_meta`** —
-a mechanism that already exists and is already proven, since `_meta` carries `tier`, `ambient_book`
-and `superseded_by` today. **Rung 6 is the enforcement for the 97.2%.** Rungs 1–5 apply where
-chat-service owns the implementation, as the reference implementation and nothing more.
-
-### E5 · No measurement plan
-
-The spec assumes that declaring a member fixes the failure. Today's own lesson refutes that: the
-executor was built, measured null, and the null was a **placement bug** — the supply ran after the
-check that rejected the shape it repaired. Every member needs a stated before/after with a control,
-and the metric must be **sessions affected**, not events.
-
-### E6 · The residual is larger by journey than by call
-
-`other` is 5.1% of calls but **21.2% of sessions** (76 of 358) — third-largest by the honest
-denominator. It is not classified, and CP-5 cannot claim coverage while a fifth of affected journeys
-sit in it.
-
-### Verdict
-
-**CP-5's direction holds; its priority, scope and enforcement do not.** Revised order:
-**typed inputs → argument supplier → preconditions**, with repeat semantics reframed per E2 and
-demoted, `concurrency`/`empty-change` dropped to optional, the ladder replaced by `_meta` +
-rung 6, and E6 closed before any coverage claim.
-
-**Do not start 5.1 as written.**
+🔴 **Rung 2 is the whole enforcement, and it needs no other team's cooperation.** chat-service
+cannot rewrite Go services. It can refuse to promote a declaration whose contract is incomplete — so
+an unmigrated tool registers `draft`, never serves, and the pattern becomes mandatory **by
+consequence**. Rung 3 is a reference implementation, not the mechanism.
 
 ---
 
-## 1 · The count
-
-**17 contract members. 5 exist. 12 are missing.** Every share below is measured from 4,175 failed
-`tool_calls` in production; the denominator is the query's own count.
-
-### Present (5)
-
-| # | member | since |
-|---|---|---|
-| 1 | identity + ownership (C-0) | CP-1 |
-| 2 | lane / tier (C-1) | CP-1 |
-| 3 | cost | CP-4 |
-| 4 | supersession | CP-4 |
-| 5 | lifecycle state machine + wire gate | **2026-08-09** |
-
-### Missing (12), ordered by measured cost
-
-| # | member | share | the failure it ends |
-|---|---|---|---|
-| 6 | **repeat semantics** | **48.8%** | `already called X with these exact arguments` — the runtime cannot tell a free re-read from a duplicate create, so it errors on both |
-| 7 | **typed inputs** | **16.8%** | `entity_id must be a UUID` — the schema says `string` |
-| 8 | **preconditions** (scope · capability · prerequisite) | **10.0%** | `book not accessible`, `this project has no embedding model`, `this book has no chapters yet — create one first` |
-| 9 | **argument supplier** (model \| context \| plan) | **9.6%** | `missing required argument(s)` — nothing says who was meant to provide it |
-| 10 | **partial-outcome contract** | 2.1% | `no entities were created — 3 of 3 item(s) failed` — batch tools have no per-item result shape |
-| 11 | **output contract** | 1.0% | `mcp tool returned unparseable content` — **and it is why `emits` paths fail at execution** |
-| 12 | **consent declaration** | 0.9% | `blocked: you chose 'Never allow'` — the tool is still advertised, so it is still called |
-| 13 | **closed vocabularies** | 0.6% | `unknown kind:`, `unknown subagent 'universal'` — the valid set exists only inside the error |
-| 14 | **concurrency / read-version** | 0.4% | `the row changed since you read it (409)` |
-| 15 | **empty-change precondition** | 0.4% | `no fields to update` |
-| 16 | **conditional parameters** | in tail | `arc_id is required when scope='arc'` — a flat required-list cannot express it |
-| 17 | **result completeness** | **0% by construction** | 🔴 see below |
-
-**Directly attributable to a missing member: 90.6%.** A further **4.7%** (`invalid arguments for
-'glossary_propose_entity_edit'` — a name called **101 times at 0% success that does not exist in the
-catalogue**) belongs to the registry, not the tool: *the registry must be the only source of
-callable names.*
-
-### 1a · Member 17 scores 0%, and that is the point
-
-`book_list` returns `{total: 197, returned: 20, has_more: true, is_complete: false}`. A model asked
-for *"the first book"* reads a **truncated page** and is never told. It cannot fail loudly, so it
-appears in **no** error bucket.
-
-**This is the quiet-failure class the whole V-METRIC exercise was built to detect, sitting inside a
-tool result.** Members 6–16 are visible because they are loud. 17 is invisible, and a contract that
-only fixes what is loud converts nothing — it just stops counting.
-
----
-
-## 2 · Enforcement — the ladder, and why Python is not the obstacle
-
-The concern was that C# restricts and Python does not. **This repository already built the
-restriction pattern twice and aimed it at the wrong subject:** `Admitted` cannot be forged (private
-module token + `object.__setattr__`), and `Surface` has exactly one construction site **counted by a
-gate** rather than requested by a docstring.
-
-| level | mechanism | fails at |
-|---|---|---|
-| 1 | `ABC` + abstract members | instantiation |
-| 2 | **`__init_subclass__` validates the class** | **import** — stricter than C#, which needs a source generator or startup reflection |
-| 3 | frozen dataclass + `__slots__` | attribute smuggling |
-| 4 | private-token `Registered` | forgery |
-| 5 | CI gate counting registration sites | a second door |
-| 6 | **admission refuses an incomplete contract** | **release** |
-
-🔴 **Level 6 is the lever that needs no other team.** Tools live in Go and Python services across the
-estate and chat-service cannot rewrite them. It **can** refuse to promote any declaration whose
-contract is incomplete — so an unmigrated tool registers `draft` and never serves. The pattern
-becomes mandatory **by consequence**, not by memo.
-
----
-
-## 3 · Rows
+## 5 · Rows
 
 | row | claim | exit |
 |---|---|---|
-| **5.1** | `ToolContract` — the 17 members as **data**, not prose. Missing member = **import-time** failure | a class omitting any required member cannot be defined |
-| **5.2** | **Level 6** — admission refuses to promote an incomplete contract; incomplete ⇒ stays `draft` | injection: strip one member, promotion refuses, tool does not serve |
-| **5.3** | **repeat semantics** (48.8%) — declared per tool; a re-read returns the **cached result**, a duplicate create is a real error | the generic breaker no longer fires on a declared-idempotent read |
-| **5.4** | **typed inputs + conditional params** (16.8%) — semantic types; `required-when` expressible | `entity_id: str` is refused at registration; `EntityId` is not |
-| **5.5** | **argument supplier** (9.6%) — every input says model \| context \| plan | a `plan`-supplied input the model sends is **discarded** (CP-3.10 already does this; the contract makes it declarable) |
-| **5.6** | **output contract + completeness** (1.0% + the quiet class) — declared result shape, and truncation is a **declared field the runtime must surface** | 🔴 **an `emits` path is checked at PLAN-BUILD time** against the tool's declared output — §6.2 restored for outputs |
-| **5.7** | **preconditions** (10.0%) — scope · capability · prerequisite, checked before dispatch **and** used to gate advertisement (§4.3) | a tool whose precondition is unmet is not advertised, and the withholding is recorded |
-| **5.8** | the remaining members (partial outcome · consent · vocabularies · concurrency · empty-change) | each refuses at registration when absent |
-| **5.9** | **registry is the only name source** (4.7%) — an unknown name is a structured refusal naming the nearest real tool | `glossary_propose_entity_edit` cannot be dispatched 101 times |
+| **5.1** | the `_meta` contract schema — members as **versioned data**, core vs conditional, with the conditionality itself declared | a tool omitting a **core** member fails validation; a conditional member is required only when its trigger is present |
+| **5.2** | **rung 2** — admission refuses to promote an incomplete contract | injection: strip one core member ⇒ promotion refuses ⇒ the tool does not serve |
+| **5.3** | **typed inputs** (28.2%) — semantic types, not `string` | `entity_id: str` is refused; `EntityId` is not |
+| **5.4** | **argument supplier** (23.7%) — every input declares model \| context \| plan | a `plan`-supplied input the model sends is **discarded** — CP-3.10 already does this; the contract makes it *declarable* rather than plan-only |
+| **5.5** | **error contract** (8.1%) — every failure carries a C-7 class **and a message** | a failure with no message cannot be produced |
+| **5.6** | **output contract + completeness** | 🔴 an `emits` path is checked at **plan-build** time; a truncated result is a **declared field the runtime must surface** |
+| **5.7** | **repeat semantics** per §3 — cost removed, signal retained | a cached repeat is still counted and still escalates |
+| **5.8** | **preconditions** (18.7%) — checked pre-dispatch **and** used to gate advertisement (§4.3), withholding recorded | a tool whose precondition is unmet is not advertised |
+| **5.9** | the conditional members, each required only on its trigger | absent-when-triggered is refused |
+| **5.10** | **registry is the only name source** (10.1%) | `glossary_propose_entity_edit` — 101 calls, 0% success, not in the catalogue — cannot be dispatched |
 
 ---
 
-## 4 · QC bar — unchanged, and it applies to CP-5 itself
+## 6 · Measurement — because declaring is not fixing
 
-**CODE** tests + a falsifier that reds on the original defect · **LIVE** real service, real boundary
-· **DATA** measured DB/API state with an explicit falsifier.
+v1 assumed a declared member fixes its failure. **2026-08-09 refuted that in this repo**: the
+executor was built, measured **null**, and the null was a *placement* bug — the supply ran after the
+check that rejected the shape it repaired.
 
-🔴 **And one gate this checkpoint owes specifically, because it is the defect that produced CP-5:**
-every member must have a **subject** and a test that would go red if the member were dropped. A
-member declared and never enforced is C-3…C-17 again, and *"the subject does not exist yet"* is not
-an acceptable state to leave a clause in.
+Every row states, before it is built:
+
+1. **the before figure, in sessions affected** (the table in §1);
+2. **the after measurement, same denominator, same query**;
+3. **a control** — the arm without the member, at the condition where the failure occurs;
+4. **a quiet-failure check** — what would this member convert from loud to silent, and is that
+   population counted? §3 is the worked example.
+
+**No member is claimed closed on a call-count improvement.**
 
 ---
 
-## 5 · Exit
+## 7 · QC and exit
 
-CP-5 closes when a tool that does not implement the pattern **cannot be released**, proven by
-injection, and the first essential tool is admitted **through** the contract with QC evidence.
+**CODE** tests + a falsifier red on the original defect · **LIVE** real service, real boundary ·
+**DATA** measured state with an explicit falsifier.
 
-**Only then does tool v2 resume.** A runtime registry built before this just moves unvalidated rows
-from a file into a table — which is cloning the defect into the new architecture, the one thing this
-checkpoint exists to prevent.
+🔴 **The gate this checkpoint owes specifically, because it is the defect that produced CP-5:**
+every member must have a **subject** and a test that goes red if the member is dropped. *"The
+subject does not exist yet"* is how C-3…C-17 became permanent, and it is not an acceptable state to
+leave a clause in.
+
+**Exit:** a tool that does not implement the pattern **cannot be released**, proven by injection;
+the residual (§1, 5.0%) is either classified or declared out of scope with a reason; and the first
+essential tool is admitted **through** the contract with QC evidence.
+
+**Only then does tool v2 resume.**
