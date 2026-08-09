@@ -954,3 +954,50 @@ class TestTheExecutorIsWiredAtTheDispatchChokepoint:
         a history not yet written."""
         src = self._src()
         assert "plan_turn.state.append(_ev)" in src
+
+
+class TestAPlanSuppliedArgumentIsDistinguishableAfterTheFact:
+    """CP-3 · **the two populations must not be one row.**
+
+    The executor replaced a model-supplied `book_id` live and the recorded call showed only the
+    FINAL value — the substitution existed nowhere but a log line. That is the same merge
+    `outcome_source` and `tool_calls[].source` each exist to undo, and it made a measurement wrong:
+    the first call-level V-METRIC graded `args.book_id` in both arms and read the plan arm 15/15,
+    which is **tautological** — the executor writes that value, so it cannot be wrong.
+    """
+
+    @staticmethod
+    def _src() -> str:
+        from pathlib import Path
+        import app.services.stream_service as _s
+        return Path(_s.__file__).read_text(encoding="utf-8")
+
+    def test_WHAT_THE_MODEL_SENT_IS_CAPTURED_BEFORE_THE_OVERWRITE(self):
+        src = self._src()
+        i_capture = src.find('"model_sent": {k: args_obj.get(k) for k in sorted(_bound)}')
+        i_write = src.find("args_obj.update(_bound)")
+        assert 0 < i_capture < i_write, (
+            "reading the model's value AFTER the update records the plan's own value twice"
+        )
+
+    def test_THE_RECORD_NAMES_WHERE_THE_PLAN_ACTUALLY_CHANGED_THE_OUTCOME(self):
+        """`overrode` is the load-bearing field. Filling a blank and overriding a wrong value are
+        different events, and only the second is evidence the plan did anything."""
+        src = self._src()
+        assert '"overrode": sorted(' in src
+        assert 'if k in args_obj and args_obj[k] != v' in src, (
+            "overrode must compare values, not merely list the bound parameters"
+        )
+
+    def test_IT_RIDES_ON_THE_CALL_RECORD_NOT_ONLY_IN_A_LOG(self):
+        src = self._src()
+        assert 'tool_chunk["plan_supplied"] = _plan_supplied' in src, (
+            "a substitution visible only in logs cannot be measured — logs are not a data source"
+        )
+
+    def test_A_CALL_THE_PLAN_DID_NOT_TOUCH_CARRIES_NO_MARKER(self):
+        """Absent must mean *the plan supplied nothing*, never *nobody looked* — so the field is
+        set only when a substitution actually happened."""
+        src = self._src()
+        assert "_plan_supplied: dict | None = None" in src
+        assert "if _plan_supplied is not None:" in src

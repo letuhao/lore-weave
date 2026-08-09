@@ -4546,14 +4546,30 @@ async def _stream_with_tools(
                 # model typed is DISCARDED; parameters it does not own (the injected context ids
                 # above) are untouched. A merge that let the model's value win on a blank would be
                 # the fallback-to-asking this whole mechanism exists to refuse.
+                _plan_supplied: dict | None = None
                 if plan_turn is not None:
                     from app.services.plan_exec import bound_arguments
                     _bound = bound_arguments(plan_turn.spec, plan_turn.state, c["name"])
                     if _bound:
+                        # 🔴 **WHAT THE MODEL SENT IS CAPTURED BEFORE IT IS OVERWRITTEN, AND IT GOES
+                        # INTO THE ROW.** Without this the recorded call shows only the final value,
+                        # so a plan-supplied argument and a model-typed one are THE SAME ROW — the
+                        # exact merge `outcome_source` and `tool_calls[].source` each exist to undo.
+                        # It also made a measurement wrong: the first call-level V-METRIC graded
+                        # `args.book_id` in both arms and read 15/15 for the plan arm, which is
+                        # TAUTOLOGICAL — the executor writes that value, so it cannot be wrong. Only
+                        # a record that separates the two populations can be graded at all.
+                        _plan_supplied = {
+                            "params": sorted(_bound),
+                            "model_sent": {k: args_obj.get(k) for k in sorted(_bound)},
+                            "overrode": sorted(
+                                k for k, v in _bound.items()
+                                if k in args_obj and args_obj[k] != v
+                            ),
+                        }
                         logger.info(
                             "CP-3 executor: supplying %s to %s from the plan (model sent %s)",
-                            sorted(_bound), c["name"],
-                            {k: args_obj.get(k) for k in _bound},
+                            _plan_supplied["params"], c["name"], _plan_supplied["model_sent"],
                         )
                         args_obj.update(_bound)
 
@@ -4765,6 +4781,12 @@ async def _stream_with_tools(
                     "result": envelope.get("result") if ok else None,
                     "error": None if ok else envelope.get("error"),
                 }
+                # CP-3 — the provenance of the ARGUMENTS, so a plan-supplied call and a
+                # model-typed one are not the same row. `overrode` is the load-bearing field: it
+                # names the parameters where the model had sent something DIFFERENT, which is the
+                # only place the plan changed an outcome rather than filling a blank.
+                if _plan_supplied is not None:
+                    tool_chunk["plan_supplied"] = _plan_supplied
                 # C-ACTIVITY (H16) — a successful Tier-A auto-write emits a visible
                 # "agent did X · Undo" activity event. The op summary + undo come
                 # from the tool RESULT's `_meta` (undo_hint is NET-NEW per provider;
