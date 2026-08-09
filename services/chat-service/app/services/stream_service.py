@@ -3872,6 +3872,51 @@ async def _stream_with_tools(
                     project_id=(context_ids or {}).get("project_id"),
                     studio=bool((context_ids or {}).get("studio")),
                 )
+                # ── CP-3 · THE EXECUTOR SUPPLIES THE IDENTIFIER ─────────────────────────────
+                # 🔴 **POSITION IS THE WHOLE MECHANISM, AND THE FIRST PLACEMENT WAS WRONG.** This
+                # sat just before `mcp_execute_tool`, ~700 lines below — AFTER the
+                # missing-required-args interception. So the one case the plan exists to fix, a
+                # BLANK first attempt (`book_read {}`), was rejected before the plan could fill it,
+                # and the executor only ever saw the model's SECOND, already-correct call.
+                # Measured: V-METRIC round 3 read 1/10 first-attempt on the plan arm against 0/10
+                # on the control and looked like a null result. It was a placement bug.
+                # Ordering now: context-ids -> PLAN -> missing-args -> dispatch.
+                # 🔴 **THIS IS BRICK 4, AND IT IS THE LINE THAT MAKES `resolve_arguments` REACHABLE.**
+                # Until 2026-08-09 that function had ZERO production callers: the plan reached the
+                # model as a system message and the model RETYPED the identifier out of it. Retyping
+                # is the failure — `entity_id:019fafa2-…` at step 12, `"0"` at step 16.
+                #
+                # Per-parameter replacement, plan wins. For a parameter the plan owns, whatever the
+                # model typed is DISCARDED; parameters it does not own (the injected context ids
+                # above) are untouched. A merge that let the model's value win on a blank would be
+                # the fallback-to-asking this whole mechanism exists to refuse.
+                _plan_supplied: dict | None = None
+                if plan_turn is not None:
+                    from app.services.plan_exec import bound_arguments
+                    _bound = bound_arguments(plan_turn.spec, plan_turn.state, c["name"])
+                    if _bound:
+                        # 🔴 **WHAT THE MODEL SENT IS CAPTURED BEFORE IT IS OVERWRITTEN, AND IT GOES
+                        # INTO THE ROW.** Without this the recorded call shows only the final value,
+                        # so a plan-supplied argument and a model-typed one are THE SAME ROW — the
+                        # exact merge `outcome_source` and `tool_calls[].source` each exist to undo.
+                        # It also made a measurement wrong: the first call-level V-METRIC graded
+                        # `args.book_id` in both arms and read 15/15 for the plan arm, which is
+                        # TAUTOLOGICAL — the executor writes that value, so it cannot be wrong. Only
+                        # a record that separates the two populations can be graded at all.
+                        _plan_supplied = {
+                            "params": sorted(_bound),
+                            "model_sent": {k: args_obj.get(k) for k in sorted(_bound)},
+                            "overrode": sorted(
+                                k for k, v in _bound.items()
+                                if k in args_obj and args_obj[k] != v
+                            ),
+                        }
+                        logger.info(
+                            "CP-3 executor: supplying %s to %s from the plan (model sent %s)",
+                            _plan_supplied["params"], c["name"], _plan_supplied["model_sent"],
+                        )
+                        args_obj.update(_bound)
+
                 # The chat agent's arc-plan wants a SYNCHRONOUS plan (mode="rules"): a mid-tier
                 # model cannot reliably watch a background llm-plan job, so it fires the async
                 # job and leaves it unpolled (a §4 "async left unpolled" failure) and the
@@ -4536,43 +4581,6 @@ async def _stream_with_tools(
                 # what makes the "our prose vs a real tool" split exact rather than a text match
                 # over breaker phrasing (the earlier attempt at that produced a lower bound which
                 # then got reported as a population count).
-                # ── CP-3 · THE EXECUTOR SUPPLIES THE IDENTIFIER ─────────────────────────────
-                # 🔴 **THIS IS BRICK 4, AND IT IS THE LINE THAT MAKES `resolve_arguments` REACHABLE.**
-                # Until 2026-08-09 that function had ZERO production callers: the plan reached the
-                # model as a system message and the model RETYPED the identifier out of it. Retyping
-                # is the failure — `entity_id:019fafa2-…` at step 12, `"0"` at step 16.
-                #
-                # Per-parameter replacement, plan wins. For a parameter the plan owns, whatever the
-                # model typed is DISCARDED; parameters it does not own (the injected context ids
-                # above) are untouched. A merge that let the model's value win on a blank would be
-                # the fallback-to-asking this whole mechanism exists to refuse.
-                _plan_supplied: dict | None = None
-                if plan_turn is not None:
-                    from app.services.plan_exec import bound_arguments
-                    _bound = bound_arguments(plan_turn.spec, plan_turn.state, c["name"])
-                    if _bound:
-                        # 🔴 **WHAT THE MODEL SENT IS CAPTURED BEFORE IT IS OVERWRITTEN, AND IT GOES
-                        # INTO THE ROW.** Without this the recorded call shows only the final value,
-                        # so a plan-supplied argument and a model-typed one are THE SAME ROW — the
-                        # exact merge `outcome_source` and `tool_calls[].source` each exist to undo.
-                        # It also made a measurement wrong: the first call-level V-METRIC graded
-                        # `args.book_id` in both arms and read 15/15 for the plan arm, which is
-                        # TAUTOLOGICAL — the executor writes that value, so it cannot be wrong. Only
-                        # a record that separates the two populations can be graded at all.
-                        _plan_supplied = {
-                            "params": sorted(_bound),
-                            "model_sent": {k: args_obj.get(k) for k in sorted(_bound)},
-                            "overrode": sorted(
-                                k for k, v in _bound.items()
-                                if k in args_obj and args_obj[k] != v
-                            ),
-                        }
-                        logger.info(
-                            "CP-3 executor: supplying %s to %s from the plan (model sent %s)",
-                            _plan_supplied["params"], c["name"], _plan_supplied["model_sent"],
-                        )
-                        args_obj.update(_bound)
-
                 _dispatch_t0 = _time.monotonic()
                 envelope = await knowledge_client.mcp_execute_tool(
                     user_id=user_id, session_id=session_id, project_id=project_id,

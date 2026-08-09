@@ -928,6 +928,33 @@ class TestTheExecutorIsWiredAtTheDispatchChokepoint:
             "the plan must supply arguments BEFORE the tool runs, or it supplied nothing"
         )
 
+    def test_IT_SUPPLIES_BEFORE_THE_BLANK_ARGS_INTERCEPTION__not_merely_before_dispatch(self):
+        """🔴 **THE PLACEMENT BUG THAT LOOKED LIKE A NULL RESULT.**
+
+        `_missing_required_names` rejects a call with a blank required arg ~400 lines above the
+        dispatch. With the supply below it, the ONE case the plan exists to fix -- a blank first
+        attempt -- never reached the executor, which then only saw the model's second, already
+        correct call. V-METRIC round 3 read 1/10 vs 0/10 and looked like the mechanism did nothing.
+
+        Being *before the dispatch* is not enough; it has to be before the thing that rejects the
+        very shape it repairs.
+        """
+        src = self._src()
+        i_bind = src.find("bound_arguments(plan_turn.spec, plan_turn.state, c[\"name\"])")
+        i_blank = src.find("_missing_args = _missing_required_names(")
+        assert 0 < i_bind < i_blank, (
+            "the blank-required-args interception runs first, so a blank call is refused before "
+            "the plan can fill it -- which is the only case the plan is for"
+        )
+
+    def test_IT_STILL_SUPPLIES_AFTER_THE_CONTEXT_ID_INJECTION_SO_THE_PLAN_WINS(self):
+        """Ordering is context-ids -> PLAN -> missing-args -> dispatch. Moving above the
+        context-id injection would let that injection overwrite a plan-bound value."""
+        src = self._src()
+        i_ctx = src.find("# S02 fix — fill the session's known context-ids")
+        i_bind = src.find("bound_arguments(plan_turn.spec, plan_turn.state, c[\"name\"])")
+        assert 0 < i_ctx < i_bind, "the plan must be applied AFTER context-id injection, not before"
+
     def test_THE_MODELS_ARGS_ARE_OVERWRITTEN_NOT_DEFAULTED(self):
         src = self._src()
         assert "args_obj.update(_bound)" in src, (
