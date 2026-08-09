@@ -106,9 +106,26 @@ Pydantic models, not dicts. And one bite didn't bite: "resolve mints a duplicate
 ids and a count of one, so the test now asserts **source types accumulate**, which only holds if
 the existing entity was returned.
 
-**▶ Resume at T19** — `TruthStore` + its fake, two adapters from the start (glossary book-scoped,
-memory project/global) routed by scope. Then T20 repoints the ~561 live-Neo4j skips onto the three
-fakes — the phase's payoff, and the same edit that lands T17's remaining 15 files.
+**T19 landed — `TruthStore`, the fourth and last port of Phase 2.** Two real adapters (glossary
+book-scoped, memory project/global), a `ScopedTruthStore` router that is the ONLY thing consumers
+hold, and a fake. Phase 8 merges the two stores, so a consumer holding a concrete adapter would be
+a rewrite.
+
+🔀 **The two time axes are the design risk and they are made loud.** Book truth sits on story
+ordinals, memory truth on wall clock — T45 owns reconciling them. `as_of` is `int | datetime` and
+**the wrong one raises**: Python compares two ints or two datetimes happily, so a mixed axis does
+not crash, it returns a confidently wrong set of facts.
+
+⚠️ `GlossaryTruthAdapter.search_facts` raises rather than returning `[]` — glossary has no
+free-text fact search, and an empty list is indistinguishable from "this book has no facts".
+⚠️ It reads glossary's `/internal/…/facts` directly. It cannot use the KAL (the gateway calls
+knowledge-service — a cycle), the HTTP-surface gate already exempts this service, and the hop
+disappears in Phase 8. Stated in the adapter rather than left implicit.
+
+**▶ Resume at T20** — repoint the ~561 live-Neo4j skips onto the three fakes. The phase's payoff,
+and the same edit that lands T17's remaining 15 files: a test that stops needing a session stops
+needing the module that opened one. Expect the fakes to be found wrong along the way — that is the
+mechanism working, and QC-2 is the backstop.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

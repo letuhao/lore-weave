@@ -48,11 +48,11 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T19** — define `TruthStore` + its fake, with **two adapters from the start**
-(`GlossaryTruthAdapter` for book-scoped authored facts, `MemoryTruthAdapter` for project/global),
-routed by scope so consumers never learn which answered. Then T20 repoints the ~561 live-Neo4j
-skips onto the three fakes — that is the payoff the whole phase is for, and it is also the edit
-that lands T17's remaining 15 files.
+**RESUME: T20** — retire the ~561 tests that skip without a live Neo4j by repointing them at the
+three fakes (`FakeGraphStore`, `FakeVectorStore`, `FakeTruthStore`). This is the phase's payoff and
+**the same edit that lands T17's remaining 15 files** — a test that stops needing a session stops
+needing the module that opened one. Expect the fakes to be found wrong in the process; that is the
+mechanism working, and QC-2 (adapter-parity live proof) is the backstop that keeps them honest.
 
 ⚠️ Two of those 15 need a decision rather than a move: the six `db/migrations/` backfills are
 admin one-shots reachable through `internal_backfill.py`, so **Phase 7's engine swap must either
@@ -1094,10 +1094,52 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   demand, and T42 building the second adapter is the forcing function that says which of them
   belong.
 
-- [ ] **T19** — Define `TruthStore` + its fake
+- [x] **T19** — Define `TruthStore` + its fake — **GREEN**
   Two adapters from the start — `GlossaryTruthAdapter` (book-scoped authored facts) and
   `MemoryTruthAdapter` (project/global) — routed by scope. Consumers never learn which answered.
   (depends on T18)
+  ---
+  **Evidence.** Port + **four** implementations (`GlossaryTruthAdapter`, `MemoryTruthAdapter`,
+  `ScopedTruthStore` router, `FakeTruthStore`) + 15 contract tests; knowledge suite **4071 passed**;
+  6 bites, each verified to mutate, each red then green. Both INV-KAL gates still pass.
+
+  **`ScopedTruthStore` is the thing consumers hold, and that is the whole task.** Phase 8 (T44–T46)
+  merges the two stores — the Go bitemporal machinery moves to Python and the HTTP hop disappears —
+  so any consumer holding a concrete adapter would be a rewrite. The router dispatches on the
+  `scope` ARGUMENT, never on "is `book_id` set?": inference breaks the first time a project read
+  carries a book id for logging, and **a misroute is silent** because the wrong store still returns
+  well-formed facts. A test passes a `book_id` to a project read and asserts it still goes to
+  memory.
+
+  ⚠️ **`TruthFact` deliberately drops store-specific fields** (`canonical_content`,
+  `pending_validation`, `coverage_xid`). A consumer that touched one would be pinned to that store.
+  The renames live in the adapters: glossary's `attr_or_predicate` and memory's `(type, content)`
+  both become `(attribute, value)` exactly once.
+
+  🔀 **The two axes are the design risk, and they are made LOUD rather than smoothed.** Book truth
+  is positioned on story ordinals, memory truth on wall clock — the plan names this as the one
+  piece of Phase 8 that must be *designed* (T45). So `as_of` is `int | datetime` and **the wrong
+  one raises**: Python compares two ints or two datetimes happily, so a mixed axis does not crash,
+  it returns a confidently wrong set of facts. Both directions are asserted, on both adapters and
+  the fake. The interval rule is identical on both axes (`valid_from <= as_of < valid_to`) so T45
+  inherits one convention to reconcile, not two.
+
+  ⚠️ **`GlossaryTruthAdapter.search_facts` raises `NotImplementedError` instead of returning `[]`.**
+  glossary exposes no free-text fact search — its fact routes are keyed by entity. An empty list
+  would be indistinguishable from *"this book has no matching facts"*, so a caller would conclude
+  the book is empty when the **capability** is absent. That is the silent-success failure this repo
+  keeps recording, so it fails loudly and names the alternative.
+
+  ⚠️ **A new cross-service read, and the exemption it leans on is stated.** knowledge-service reads
+  glossary's `/internal/…/facts` directly. It cannot go through the KAL — the gateway calls
+  knowledge-service, so that would be a cycle — and `knowledge-http-surface-gate.py` already exempts
+  `services/knowledge-service/`. Recorded in the adapter's docstring because leaning on an exemption
+  without saying so is how an invariant quietly stops meaning anything. The hop is **temporary by
+  design**: Phase 8 removes it.
+
+  **Six bites:** scope isolation removed · the interval end made inclusive · an unpositioned fact
+  leaking into an as-of read · the axis guard removed · the router inferring the store from
+  `book_id` · glossary search returning `[]` instead of raising.
 
 - [ ] **T20** — Retire the 561 skips that needed a live Neo4j
   `services/knowledge-service/tests/` — repoint at the fakes; make `-n auto` safe.
