@@ -18,7 +18,7 @@
 //! The bound is `A: DpAggregate<Tier = T2>` on `t2_write`, so this is an
 //! ordinary associated-type mismatch.
 
-use dp::{scope::RealityScope, tier::T3, DpAggregate};
+use dp::{scope::RealityScope, tier::T3, DpAggregate, DpError};
 
 struct Ledger;
 
@@ -31,16 +31,19 @@ impl DpAggregate for Ledger {
     const TYPE_NAME: &'static str = "write_wrong_tier_fixture";
 }
 
+// Encode is implemented, so the ONLY thing wrong with the call below is the
+// tier. Without this impl the file would still fail to compile -- for the wrong
+// reason -- and the pin would stop testing DP-R5.
+impl dp::Encode for Ledger {
+    fn encode(_delta: &i64) -> Result<Vec<u8>, DpError> {
+        Ok(Vec::new())
+    }
+}
+
 struct NoBackend;
 
 impl dp::WriteBackend for NoBackend {
-    fn apply(
-        &self,
-        _aggregate: &'static str,
-        _tier: dp::TierLevel,
-        _key: &str,
-        _delta: &dyn core::any::Any,
-    ) -> Result<dp::WriteAck, dp::DpError> {
+    fn apply(&self, _req: &dp::WriteRequest<'_>) -> Result<dp::WriteAck, dp::DpError> {
         unimplemented!()
     }
 }
@@ -48,5 +51,5 @@ impl dp::WriteBackend for NoBackend {
 fn main() {
     let ctx: &dp::SessionContext = todo!();
     // A T3 aggregate down the T2 path. Must not compile.
-    let _ = dp::t2_write::<Ledger, _>(&NoBackend, ctx, 0, "k", 1i64);
+    let _ = dp::t2_write::<Ledger, _>(&NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64);
 }

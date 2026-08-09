@@ -87,6 +87,6 @@ pub use error::DpError;
 pub use ids::{NodeId, RealityId, SessionId};
 pub use session::{BindRequest, CapabilityToken, ControlPlane, SessionContext, VerifiedBind};
 pub use read::{read_projection_reality, read_tier, Decode, ReadBackend};
-pub use write::{t0_write, t1_write, t2_write, t3_write, WriteAck, WriteBackend};
+pub use write::{t0_write, t1_write, t2_write, t3_write, Encode, WriteAck, WriteBackend, WriteRequest};
 pub use scope::{ChannelScope, RealityScope, Scope, ScopeKind};
 pub use tier::{Coherency, Tier, TierLevel, T0, T1, T2, T3};
