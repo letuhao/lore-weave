@@ -148,6 +148,51 @@ with a floor check so an empty expansion fails loudly rather than passing having
 
 All gates green under `gate-wiring-gate.py --run-all`.
 
+### ✅ CLOSED (2026-08-09) — `domain-db-smoke` had been red since 2026-08-05, and nothing said so
+
+**"All workflows green" was measured over the workflows that RAN.** `domain-db-smoke` is
+path-filtered to `services/book-service|glossary-service|admin-cli|meta-worker`. The commits
+checked on 2026-08-08 touched frontend, scripts, docs and `tests/` — so it did not run, and its
+absence read as green. It ran again on 2026-08-09 only because the DB-guard sweep touched
+`services/admin-cli`. A path-filtered workflow that does not run is **unknown**, not passing;
+`gh run list` shows the last run, not the last *relevant* run.
+
+Three failures, all from the 2026-08-05 genre work, all breaking tests written in June and never
+updated since. Two distinct causes:
+
+**1. A read path silently undid a write.** `loadBookOntology` — GET `/ontology` — calls
+`ensureDefaultBookOntology`, which re-inserts every default genre into `book_active_genres`.
+`ON CONFLICT DO NOTHING` protects a row that exists; it cannot protect a row the user
+deliberately *removed*, because "this genre is off" is expressed as the ABSENCE of a row and is
+indistinguishable from "never set up". So `PUT /ontology/active-genres` returned 200 and the next
+page load brought the deactivated genre back — a setting no number of retries could make stick.
+Now guarded by `NOT EXISTS`, which is what the function's own doc says it is for.
+
+**2. Universal attributes were copied onto every genre.** `SeedGenreKindAttributes` fanned each
+universal attribute definition across every genre linked to a kind, so a `character` in a
+six-genre book had **seven `name` attributes**, all `sort_order = 1`. Universal attributes
+already reach an entity through the universal genre, so the copy added nothing visible and
+multiplied every identity field. Removed; the genre→book propagation beside it is kept, since
+that does something the universal genre cannot.
+
+It surfaced as two unrelated-looking bugs. `POST /entities` writes `display_name` to the
+universal `name` row while `recalculate_entity_snapshot` picked one of the seven **arbitrarily** —
+the name was stored correctly and `cached_name` came back empty, which is what every downstream
+reader joins on, so the entity was unfindable while looking perfectly well-formed in the table it
+was written to. And `sync/apply` reconciles one attribute row, so `take_theirs` on `aliases` left
+six identical siblings still reporting `update_available`.
+
+That `ORDER BY` was **non-deterministic on its own merits** — `sort_order` with no unique final
+key — and is now a total order (non-empty value first, then name/term, then universal, then
+sort_order, then `attr_id`). The aliases select beside it had no `ORDER BY` at all. Fixed
+independently of the seed: a query that is right in testing and a coin toss in production is
+worse than one that is plainly wrong.
+
+Verified: `glossary-service/internal/api` and `book-service/internal/api` both green, glossary
+run twice against one persistent DB. **Pre-existing and NOT fixed** —
+`internal/migrate/TestSystemAttrDescriptions_SeedsDescriptionsAndRefreshesHash` fails identically
+with these changes stashed (`empty descriptions = 3, want 93`); that package is in no workflow.
+
 ### ⚠️ NEXT-1 — `infra/patroni/patroni.yml` declares a `pg_hba` that Postgres never receives
 
 Surfaced while trying to give the `reality_lifecycle` rename a runtime proof. The two tests in

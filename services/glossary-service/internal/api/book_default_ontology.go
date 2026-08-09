@@ -28,10 +28,25 @@ func (s *Server) ensureDefaultBookOntology(ctx context.Context, bookID uuid.UUID
 		ON CONFLICT (book_id, code) DO NOTHING`, bookID); err != nil {
 		return err
 	}
+	// ONLY when the book has no active-genre rows at all.
+	//
+	// `ON CONFLICT DO NOTHING` protects a row that EXISTS. It cannot protect a row the
+	// user deliberately REMOVED, because "this genre is off" is expressed here as the
+	// absence of a row — indistinguishable from "never set up". So this statement,
+	// reached from `loadBookOntology` on every GET /ontology, re-activated every default
+	// genre on every read: PUT /ontology/active-genres with universal+faction returned
+	// 200, and the next page load brought xianxia back. A read path silently undoing a
+	// write, and the user's setting could not be made to stick by any number of retries.
+	//
+	// The NOT EXISTS restores what this function's own doc says it is for — making a
+	// book with NO book-tier ontology usable. Topping up a book that already has one is
+	// safe for catalogue rows (a genre/kind/attribute the user has not got yet), and is
+	// exactly wrong for a user's on/off choice.
 	if _, err := tx.Exec(ctx, `
 		INSERT INTO book_active_genres (book_id, genre_id)
 		SELECT $1, bg.genre_id FROM book_genres bg JOIN system_genres sg ON sg.code = bg.code
 		WHERE bg.book_id = $1 AND sg.is_default AND sg.deprecated_at IS NULL
+		  AND NOT EXISTS (SELECT 1 FROM book_active_genres bag WHERE bag.book_id = $1)
 		ON CONFLICT DO NOTHING`, bookID); err != nil {
 		return err
 	}

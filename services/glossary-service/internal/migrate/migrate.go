@@ -2399,20 +2399,56 @@ BEGIN
   END IF;
 
   -- ── Read name + aliases from EAV for the read-cache (book tier) ──────────
+  --
+  -- THE ORDER BY IS LOAD-BEARING, and it was not always. This read assumed ONE
+  -- 'name' attribute per entity. SeedGenreKindAttributes (2026-08-05) copies the
+  -- universal attribute definitions onto EVERY genre linked to a kind, so a
+  -- character in a book with six genres now has SEVEN 'name' rows -- one per genre
+  -- plus universal -- all carrying sort_order = 1. The old ORDER BY could not
+  -- distinguish them, so LIMIT 1 returned an arbitrary row, and six of the seven
+  -- are empty.
+  --
+  -- POST /entities writes display_name to the UNIVERSAL row specifically. The entity
+  -- therefore had its name stored correctly and cached_name came back '' anyway --
+  -- and cached_name is what every downstream reader joins on, so the entity was
+  -- unfindable while looking perfectly well-formed in the table it was written to.
+  --
+  -- Four tie-breakers, in this order, and each earns its place:
+  --   1. a NON-EMPTY value wins. Whichever genre the writer chose, the row that has
+  --      the name is the row that means something. This alone fixes the bug.
+  --   2. name beats term (unchanged -- terminology names itself with 'term').
+  --   3. universal beats a genre-specific row, matching where the create handler
+  --      writes, so a deliberate empty and a never-set empty resolve the same way.
+  --   4. sort_order, then attr_id -- a TOTAL order. Without a unique final key the
+  --      result is still arbitrary whenever the earlier keys tie, which is exactly
+  --      how this got shipped: a query that is right in testing and a coin toss in
+  --      production is worse than one that is plainly wrong.
   SELECT av.original_value INTO v_cached_name
   FROM entity_attribute_values av
   JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+  LEFT JOIN book_genres bg ON bg.genre_id = ad.genre_id
   WHERE av.entity_id = p_entity_id
     AND ad.code IN ('name','term')
   ORDER BY
+    (COALESCE(av.original_value, '') <> '') DESC,
     CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END,
-    ad.sort_order
+    (bg.code = 'universal') DESC NULLS LAST,
+    ad.sort_order,
+    ad.attr_id
   LIMIT 1;
 
+  -- Same fan-out, same fix. This one had NO ORDER BY at all, so it was arbitrary
+  -- even before the genre fan-out gave it seven rows to choose between.
   SELECT av.original_value INTO v_aliases_raw
   FROM entity_attribute_values av
   JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+  LEFT JOIN book_genres bg ON bg.genre_id = ad.genre_id
   WHERE av.entity_id = p_entity_id AND ad.code = 'aliases'
+  ORDER BY
+    (COALESCE(av.original_value, '') <> '') DESC,
+    (bg.code = 'universal') DESC NULLS LAST,
+    ad.sort_order,
+    ad.attr_id
   LIMIT 1;
 
   BEGIN
