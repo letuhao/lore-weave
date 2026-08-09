@@ -22,6 +22,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verdict};
+use commit_service::spine_args::parse_args;
 use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
 use commit_service::hostclock::now_rfc3339;
@@ -35,83 +36,19 @@ use sim_core::{EntityId, Island, IslandId, Lane, Outcome, SeenWindow, StepStatus
 use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 
-struct Args {
-    redis_url: String,
-    pg_url: String,
-    reality: Uuid,
-    channel: i64,
-    drain_once: bool,
-    /// F2 — the reality layer's TOML. Absent = the engine default, which is
-    /// the bootstrap floor, NOT a silent fallback: the digest still describes
-    /// exactly the rules in force, and the startup line says which.
-    ruleset: Option<String>,
-    /// Root for the ruleset state: `<root>/content` (immutable, content-
-    /// addressed) and `<root>/bindings` (mutable `reality -> digest`). The two
-    /// are separate directories on purpose — a binding MOVES on an epoch switch,
-    /// and mutable state inside a content-addressed store is a category error.
-    ruleset_state: Option<String>,
-    /// The META DB. Present ⇒ the reality's ruleset binding lives in
-    /// `reality_ruleset_binding` (Q1 B2, append-only, one row per epoch) instead
-    /// of a TOML file. Absent ⇒ files, which is what every offline tool and the
-    /// existing smokes want and is why this is an OPTION rather than a
-    /// replacement: a node with no meta DB reachable should fail loudly at
-    /// startup, not fall back to a private file and run different rules from its
-    /// neighbours.
-    meta_url: Option<String>,
-    /// The polyglot allowlist SoT that MetaWrite validates against.
-    meta_allowlist: String,
-    /// Resolve the layer stack, store it, and bind this reality to it — ONCE.
-    /// Without this flag the binary only LOADS, which is what a running node
-    /// does.
-    create_reality: bool,
-}
-
-fn parse_args() -> anyhow::Result<Args> {
-    let mut redis_url = "redis://127.0.0.1:6399/0".to_string();
-    let mut pg_url = None;
-    let mut reality = None;
-    let mut channel = 1i64;
-    let mut drain_once = false;
-    let mut ruleset = None;
-    let mut ruleset_state = None;
-    let mut create_reality = false;
-    let mut meta_url = None;
-    let mut meta_allowlist = "contracts/meta/events_allowlist.yaml".to_string();
-    let argv: Vec<String> = std::env::args().skip(1).collect();
-    let mut i = 0;
-    while i < argv.len() {
-        match argv[i].as_str() {
-            "--redis-url" => { redis_url = argv[i + 1].clone(); i += 2; }
-            "--pg-url" => { pg_url = Some(argv[i + 1].clone()); i += 2; }
-            "--reality" => { reality = Some(argv[i + 1].parse()?); i += 2; }
-            "--channel" => { channel = argv[i + 1].parse()?; i += 2; }
-            "--drain-once" => { drain_once = true; i += 1; }
-            "--ruleset" => { ruleset = Some(argv[i + 1].clone()); i += 2; }
-            "--ruleset-state" => { ruleset_state = Some(argv[i + 1].clone()); i += 2; }
-            "--create-reality" => { create_reality = true; i += 1; }
-            "--meta-url" => { meta_url = Some(argv[i + 1].clone()); i += 2; }
-            "--meta-allowlist" => { meta_allowlist = argv[i + 1].clone(); i += 2; }
-            other => anyhow::bail!("unknown arg {other}"),
-        }
-    }
-    Ok(Args {
-        redis_url,
-        pg_url: pg_url.ok_or_else(|| anyhow::anyhow!("--pg-url required"))?,
-        reality: reality.ok_or_else(|| anyhow::anyhow!("--reality <uuid> required"))?,
-        channel,
-        ruleset,
-        ruleset_state,
-        create_reality,
-        meta_url,
-        meta_allowlist,
-        drain_once,
-    })
-}
-
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = parse_args()?;
     let vocab = Vocabulary::from_json(COMBAT_V1_JSON)?;
+
+    // ── 3E: VERIFY the reality FIRST — before the pool, before the lease.
+    // There is no point acquiring a writer lease on a world we may not write.
+    // See `reality_bind` for what a raw `--reality <uuid>` did not check.
+    let session =
+        commit_service::reality_bind::bind_reality(args.meta_url.as_deref(), &args.meta_allowlist, args.reality)
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
+    println!("bound reality {} as session {}", session.reality_id(), session.session_id());
 
     // ── durability side: lease + fenced writer (dp-kernel SDK) ──
     let pool = Arc::new(PgPoolOptions::new().max_connections(4).connect(&args.pg_url).await?);
@@ -172,7 +109,7 @@ async fn main() -> anyhow::Result<()> {
     // apply twice (audit CNC-F6).
     let recovered = commit_service::recovery::recover_writer_state(
         &pool,
-        args.reality,
+        session.reality_id().to_owned(),
         args.channel,
         commit_service::recovery::RECOVERY_TAIL,
     )

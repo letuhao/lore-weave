@@ -50,6 +50,10 @@ thiserror = { workspace = true }
 
 # ── S3a spine (bus → admission → island → epoch-fenced commit) ──
 # The DP SDK: channel-ordered, epoch-fenced event append (DP-A16).
+# 3E — the data-plane SDK CONTRACT, so this service holds a VERIFIED
+# `RealityId` rather than a uuid it asserted about itself. `dp` declares no
+# I/O; taking it adds types, not a runtime.
+dp = { path = "../../crates/dp" }
 dp-kernel = { path = "../../crates/dp-kernel" }
 # Q1 B2b — the Meta Access Library's Rust port + its concrete Postgres adapter.
 # Every meta write goes through MetaWrite (I8), so the binding row, its

@@ -773,7 +773,42 @@ which `commit-service`'s 3 are reachable first.
 | step | what | done = |
 |---|---|---|
 | `3E.1` | *(after slice 5)* `scripts/reality-id-adoption-gate.py` + `contracts/dp/reality-id-baseline.json` — count the 84 in-scope sites, fail on increase and on an unrecorded decrease | self-test + 2 bites (a new bare site; a baseline row that improved) |
-| `3E.2` | migrate `commit-service` (3) then `world-service` (81) | the baseline shrinks; gate green |
+| `3E.2` | migrate `commit-service` (3) then `world-service` (73) | ✅ **commit-service: 3 → 0.** `Manager` and `recover_writer_state` take a verified `dp::RealityId`; `spine` binds through the real `MetaControlPlane` before acquiring a lease. Baseline lowered, ratchet re-bitten. ⬜ **world-service: 73, and it is NOT a sweep — see below** |
+
+> ### ⚠ `world-service`'s 73 sites are NOT mechanically adoptable, measured 2026-08-09
+>
+> The plan treated the remainder as a bulk rename. It is not, and the reason is
+> structural rather than effortful.
+>
+> **A `dp::RealityId` asserts a specific fact: the control plane confirmed this
+> reality EXISTS and ACCEPTS COMMANDS.** `MetaControlPlane` refuses
+> `Provisioning`, `Frozen`, `Archived`, `SoftDeleted` and `Dropped`. Now look at
+> where the sites actually are:
+>
+> | file | sites | what it does |
+> |---|---|---|
+> | `provisioner.rs` | 10 | CREATES the reality. `ProvisionRequest.reality_id` is documented *"caller-generated"*, and `register_pending` INSERTs it with `status=provisioning` |
+> | `reality_seeder/*` | 22 | seeds a reality that is not yet open |
+> | `deprovisioner.rs` | 7 | DROPS the database of a reality being torn down |
+>
+> **Roughly half the sites are lifecycle code whose entire job is realities that
+> do not accept commands.** Binding one is not merely unimplemented — it is a
+> contradiction, and forcing it would mean either weakening
+> `accepts_commands()` (breaking the guarantee for everyone) or minting an
+> unverified `RealityId` (breaking the one property `forged_reality_id.rs`
+> pins).
+>
+> **So the open question is a DESIGN one, not a migration one:** what identity
+> should lifecycle code carry? A plain `Uuid` is honest for it — the value is
+> genuinely unverified at that point — which would mean the gate's `IN_SCOPE`
+> is wrong to count those files at all, and the real remaining figure is the
+> ~40 sites in the read/serve paths.
+>
+> **Not decided here, and deliberately not:** narrowing a gate's scope is
+> exactly the move that needs a reason on the record rather than a quiet edit,
+> and §0.6c's `3E` seal says the reversal trigger is *"the count falls below
+> ~50, at which point one commit is reviewable"*. The count is 73. The ratchet
+> holds it there and fails on any increase.
 
 ### Slice 4 — the tier-typed write surface (gated on `3D`)
 

@@ -32,6 +32,9 @@ use sim_core::{
     Outcome, Producer, QueuedInput, SeenWindow, Seq, StepStatus,
 };
 
+mod support;
+use support::verified_reality;
+
 /// Default aggregate for single-channel tests. The `events` PK is
 /// (reality, aggregate_type, aggregate_id, aggregate_version, recorded_at), so
 /// two channels writing the same aggregate at the same version COLLIDE — one
@@ -156,7 +159,7 @@ async fn recovery_reads_back_what_the_writer_committed() {
         writer.append(&env, &serde_json::json!([])).await.unwrap();
     }
 
-    let rec = recover_writer_state(&pool, reality, ch.get(), RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), ch.get(), RECOVERY_TAIL).await.unwrap();
     assert_eq!(rec.seen_input_ids.len(), 3, "every committed dedup key came back");
     assert!(rec.seen_input_ids.contains(&InputId(big)), "128-bit id survived the round trip");
     assert_eq!(rec.turn_number, 3, "turn counter recovered, not reset to 0");
@@ -191,7 +194,7 @@ async fn a_redelivered_intent_does_not_apply_twice_after_writer_handover() {
 
     // Node B takes the lease and the bus redelivers the SAME intent.
     let _lease_b = acquire_writer_lease(&pool, reality, ch).await.unwrap();
-    let rec = recover_writer_state(&pool, reality, ch.get(), RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), ch.get(), RECOVERY_TAIL).await.unwrap();
     assert!(rec.seen_input_ids.contains(&InputId(in_flight)));
 
     // (a) WITHOUT recovery — the pre-fix behaviour, kept as the control. If
@@ -246,7 +249,7 @@ async fn recovery_does_not_block_new_intents() {
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
     writer.append(&envelope(reality, 1, 0xAAA, 1, &ts), &serde_json::json!([])).await.unwrap();
 
-    let rec = recover_writer_state(&pool, reality, ch.get(), RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), ch.get(), RECOVERY_TAIL).await.unwrap();
     let mut isle = island();
     let at = isle.tick_now();
     seed_seen(&mut isle, &rec.seen_input_ids, at);
@@ -283,7 +286,7 @@ async fn recovery_is_scoped_to_its_own_channel() {
         w.append(&env, &serde_json::json!([])).await.unwrap();
     }
 
-    let rec = recover_writer_state(&pool, reality, 10, RECOVERY_TAIL).await.unwrap();
+    let rec = recover_writer_state(&pool, verified_reality(reality), 10, RECOVERY_TAIL).await.unwrap();
     assert!(rec.seen_input_ids.contains(&InputId(0x111)), "own key present");
     assert!(!rec.seen_input_ids.contains(&InputId(0x222)), "neighbour's key must NOT leak in");
 }

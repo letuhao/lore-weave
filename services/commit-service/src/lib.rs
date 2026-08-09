@@ -32,6 +32,8 @@ pub mod manager;
 /// `ruleset-loader` so the game-logic tier keeps its three dependencies.
 pub mod pg_binding;
 pub mod producer;
+pub mod reality_bind;
+pub mod spine_args;
 pub mod recovery;
 /// How a node gets the rules it runs (RLS-A3 at startup). Split from
 /// `bin/spine.rs` when `--meta-url` pushed that file past its IMP-D3 ceiling.

@@ -100,11 +100,18 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
         610, "a measurement binary — one long table of scenarios, which is the "
              "shape that file is FOR"),
     "services/commit-service/src/bin/spine.rs": (
-        425, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
+        370, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
              "one linear sequence that reads worse cut in half. RETIGHTENED "
              "445 -> 425 after Q1 B2b moved the RLS-A3 startup path into "
-             "src/ruleset_boot.rs — same rule as digest.rs: a cap left at its old "
-             "value after a split is a silent licence to regrow into it"),
+             "src/ruleset_boot.rs, then 425 -> 370 after 3E moved the argument "
+             "parser into src/spine_args.rs and the reality bind into "
+             "src/reality_bind.rs. THE GATE FORCED BOTH: 3E's bind pushed the "
+             "file to 435 and this row refused it, so the responsibilities moved "
+             "rather than the cap — which is what the sentence below has been "
+             "asking for since it was written. Same rule as digest.rs: a cap left "
+             "at its old value after a split is a silent licence to regrow into "
+             "it. The parser gained its first three tests on the way out; nothing "
+             "in a `bin` is reachable from a test"),
     "crates/ruleset-core/tests/digest.rs": (
         455, "the digest verification suite; the per-field mutation tables are "
              "long by design (v2_every_*_field_reaches_the_digest). RETIGHTENED "

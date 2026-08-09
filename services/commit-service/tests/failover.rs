@@ -34,6 +34,9 @@ use sim_core::{
     Outcome, Producer, QueuedInput, SeenWindow, Seq,
 };
 
+mod support;
+use support::verified_reality;
+
 fn dsn() -> Option<String> {
     std::env::var("LOREWEAVE_TEST_PG_URL").ok()
 }
@@ -147,7 +150,7 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     let in_flight: u128 = 0xF0_1105;
 
     // ── A adopts the channel with a HEALTHY lease and commits one turn ──
-    let mut a = Manager::new(pool.clone(), reality);
+    let mut a = Manager::new(pool.clone(), verified_reality(reality));
     assert!(matches!(
         a.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::Adopted { .. }
@@ -162,7 +165,7 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     }
 
     // ── B cannot steal a HEALTHY lease ──
-    let mut b = Manager::new(pool.clone(), reality);
+    let mut b = Manager::new(pool.clone(), verified_reality(reality));
     assert_eq!(
         b.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::HeldByAnother,
@@ -173,7 +176,7 @@ async fn a_dead_writer_is_replaced_without_applying_anything_twice() {
     expire_lease(&pool, reality, channel).await;
 
     // ── B takes over: claim → recover → step ──
-    let mut b2 = Manager::new(pool.clone(), reality);
+    let mut b2 = Manager::new(pool.clone(), verified_reality(reality));
     let outcome = b2.adopt(channel, build_island).await.unwrap();
     let AdoptOutcome::Adopted { recovered_ids, turn_number } = outcome else {
         panic!("an expired lease must be claimable — this IS failover, got {outcome:?}");
@@ -215,11 +218,11 @@ async fn after_failover_new_intents_still_resolve() {
     let reality = Uuid::new_v4();
     let channel = 2i64;
 
-    let mut dead = Manager::new(pool.clone(), reality);
+    let mut dead = Manager::new(pool.clone(), verified_reality(reality));
     dead.adopt(channel, build_island).await.unwrap();
     expire_lease(&pool, reality, channel).await;
 
-    let mut successor = Manager::new(pool.clone(), reality);
+    let mut successor = Manager::new(pool.clone(), verified_reality(reality));
     assert!(matches!(
         successor.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::Adopted { .. }
@@ -248,10 +251,10 @@ async fn relinquish_hands_over_immediately() {
     let reality = Uuid::new_v4();
     let channel = 3i64;
 
-    let mut a = Manager::new(pool.clone(), reality);
+    let mut a = Manager::new(pool.clone(), verified_reality(reality));
     a.adopt(channel, build_island).await.unwrap();
 
-    let mut b = Manager::new(pool.clone(), reality);
+    let mut b = Manager::new(pool.clone(), verified_reality(reality));
     assert_eq!(
         b.adopt(channel, build_island).await.unwrap(),
         AdoptOutcome::HeldByAnother,
@@ -276,14 +279,14 @@ async fn losing_one_lease_does_not_drop_the_others() {
     let reality = Uuid::new_v4();
 
     // A holds two channels.
-    let mut a = Manager::new(pool.clone(), reality);
+    let mut a = Manager::new(pool.clone(), verified_reality(reality));
     a.adopt(10, build_island).await.unwrap();
     a.adopt(11, build_island).await.unwrap();
 
     // Channel 11's lease lapses (A stalled on that one); someone else claims
     // it, fencing A out of 11 ONLY.
     expire_lease(&pool, reality, 11).await;
-    let mut thief = Manager::new(pool.clone(), reality);
+    let mut thief = Manager::new(pool.clone(), verified_reality(reality));
     thief.adopt(11, build_island).await.unwrap();
 
     let lost = a.renew_all().await.unwrap();
@@ -300,7 +303,7 @@ async fn adopt_is_idempotent_per_channel() {
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
 
-    let mut m = Manager::new(pool.clone(), reality);
+    let mut m = Manager::new(pool.clone(), verified_reality(reality));
     m.adopt(20, build_island).await.unwrap();
     m.adopt(20, build_island).await.unwrap();
     assert_eq!(m.hosted(), vec![20], "one channel, one island");
