@@ -1,6 +1,6 @@
 # CP-5 · the tool contract — the solid ground
 
-**Scale:** β · **Status:** SPEC **v3**, nothing built · 2026-08-09
+**Scale:** β · **Status:** SPEC **v3 · evaluated**, nothing built · 2026-08-09
 **Supersedes** SPEC v1 of the same day, which did not survive its own evaluation. The six findings
 that killed it are kept in `EVALUATION-v1.md` — **four were the spec committing the defect it was
 written to prevent**, and deleting them would destroy the record of why v2 looks like this.
@@ -73,6 +73,58 @@ which is a real defect but a smaller and different one. Every remaining row keep
 
 **The lesson this evaluation is an instance of:** *measuring a failure correctly and naming its cure
 from the error text are two different acts, and the second one is where the audit failed.*
+
+---
+
+## 0.6 · EVALUATION of v3 — three findings; the design holds, two claims do not
+
+v3's *design* survives: two branches with no guess arm, a read-lane constraint, recorded
+substitution. **Two of its CLAIMS do not, and one is the same sampling error that produced this
+morning's V-METRIC null.**
+
+### W1 · 🔴 "Needs no other team" is FALSE as written
+
+v3 says the ref/resolver declaration *"is a statement about how two existing tools relate, so it
+needs no other team."* But it was specified to live in the tool's **`_meta`** — and `_meta` is
+produced by the **owning service**. Declaring `entity_id` an `EntityRef` in glossary's `_meta`
+requires glossary-service to change. The claim contradicts the placement.
+
+**Correction, and it satisfies the PO constraint better than the original:** the ref/resolver map is
+a **runtime-registry fact** — *data in the registry, not a literal in source* — authored once per ref
+type and later pushed upstream into `_meta`. So it is *"no other team to START"*, not *"no other team
+ever"*. Written as a chat-service constant it would be the hardcoding the PO rejected; written as a
+registry row it is exactly the runtime control that was asked for.
+
+### W2 · 🔴 The success rate is measured on a population the member would not serve
+
+v3 cites **11 of 18 exactly-one-exact** as evidence resolution works. Those 18 searches come from
+**9 sessions**. The failure it would serve spans **24 sessions**. **The overlap is ONE session.**
+
+The two populations are almost disjoint. The model ran a search precisely in the sessions where it
+did *not* send a bare name — so the exact-match rate is measured on the cases that **already went
+right**. It cannot be assumed to transfer.
+
+**This is the V-METRIC null again**: a premise measured on a convenient population instead of the
+one the mechanism is for, found on the same day, by the same question. **Row 5.3 requires a pilot
+before build** — take the actual failing names (`"Ember Codex"`, `"Lâm Uyên"`, `"Count Dracula"`)
+against their own books and measure what fraction resolve exactly. Until that runs, the 61%/39%
+split is **not evidence**, and the spec may not claim resolution "fixes the 390".
+
+### W3 · The member does not cover every id failure, and should not claim to
+
+`book_id: "all"` (9 calls) is a **quantifier, not a name** — no resolver applies, and the model is
+asking for something the parameter cannot express. That is a separate defect (an unexpressible
+intent), and folding it into resolution would inflate the member's scope.
+
+### Verdict
+
+**Design: keep.** **Claims: two withdrawn pending a pilot.** Row 5.3 gains a pilot as its first
+task, on the pattern that worked this morning: *measure the premise on the real population before
+building the mechanism.*
+
+**And the recurring lesson, now three-for-three today:** every one of these evaluations found the
+error in **where a thing sat or what population it was measured on** — never in the mechanism
+itself. The mechanism is the easy part.
 
 ---
 
