@@ -81,13 +81,16 @@
 #![warn(unused_extern_crates)]
 
 extern crate rustc_hir;
+extern crate rustc_lint;
+extern crate rustc_middle;
+extern crate rustc_session;
 extern crate rustc_span;
 
 use rustc_hir as hir;
 use rustc_lint::{LateContext, LateLintPass, LintContext};
 use rustc_span::Symbol;
 
-dylint_linting::impl_late_lint! {
+rustc_session::declare_lint! {
     /// ### What it does
     /// Forbids a non-SDK crate from importing a raw kernel storage client.
     ///
@@ -114,8 +117,7 @@ dylint_linting::impl_late_lint! {
     /// ```
     pub FORBID_RAW_KERNEL_CLIENT,
     Deny,
-    "a non-SDK crate must not import a raw kernel storage client (DP-R3)",
-    ForbidRawKernelClient::default()
+    "a non-SDK crate must not import a raw kernel storage client (DP-R3)"
 }
 
 /// Lint state: the exemption verdict for the crate under compilation.
@@ -250,4 +252,127 @@ impl<'tcx> LateLintPass<'tcx> for ForbidRawKernelClient {
             }
         }
     }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `dp::forbid_swallowed_backpressure` (`DP-R6` / `R-6`)
+// ─────────────────────────────────────────────────────────────────────────────
+
+rustc_session::declare_lint! {
+    /// ### What it does
+    /// Forbids discarding a `Result<_, DpError>` with `.ok()`,
+    /// `.unwrap_or_default()` or `.unwrap_or_else(|_| ...)`.
+    ///
+    /// ### Why is this bad?
+    /// `DP-R6`: backpressure "MUST be propagated by callers", not swallowed and
+    /// retried. Two `DpError` variants — `RateLimited` and `CircuitOpen` — are
+    /// the store telling the caller to SLOW DOWN. `.ok()` turns that into
+    /// `None`, so the caller proceeds at full rate against a store that just
+    /// asked it not to, and the failure reappears as a load problem nobody can
+    /// trace to the line that caused it.
+    ///
+    /// It is `.ok()` on ANY `Result<_, DpError>` rather than only on the two
+    /// backpressure variants, and that is deliberate: a `Result` is not a
+    /// variant, and no analysis at this level can tell which variant a call
+    /// might return. Flagging the discard is the decidable question.
+    ///
+    /// ### Example
+    /// ```rust,ignore
+    /// let _ = t2_write::<Inv, _>(&backend, ctx, now, key, delta).ok();  // error
+    /// ```
+    /// Use instead:
+    /// ```rust,ignore
+    /// t2_write::<Inv, _>(&backend, ctx, now, key, delta)?;              // propagate
+    /// ```
+    pub FORBID_SWALLOWED_BACKPRESSURE,
+    Deny,
+    "a Result<_, DpError> must be propagated, not discarded (DP-R6)"
+}
+
+/// The discarding methods `R-6` names.
+const SWALLOWERS: &[&str] = &["ok", "unwrap_or_default", "unwrap_or_else"];
+
+impl<'tcx> LateLintPass<'tcx> for ForbidSwallowedBackpressure {
+    fn check_expr(&mut self, cx: &LateContext<'tcx>, expr: &'tcx hir::Expr<'tcx>) {
+        let hir::ExprKind::MethodCall(seg, receiver, _args, _) = expr.kind else {
+            return;
+        };
+        let method = seg.ident.name.as_str();
+        if !SWALLOWERS.contains(&method) {
+            return;
+        }
+
+        // The RECEIVER's type is what decides this, not the method name — a
+        // `.ok()` on any other Result is none of this lint's business.
+        let ty = cx.typeck_results().expr_ty(receiver);
+        if !is_result_with_dp_error(cx, ty) {
+            return;
+        }
+
+        cx.span_lint(FORBID_SWALLOWED_BACKPRESSURE, expr.span, |diag| {
+            diag.primary_message(format!(
+                "`.{method}()` discards a `Result<_, DpError>` (DP-R6)"
+            ));
+            diag.help(
+                "propagate it with `?`. RateLimited and CircuitOpen are the store asking the \
+                 caller to slow down; discarding one proceeds at full rate against a store that \
+                 just said not to",
+            );
+        });
+    }
+}
+
+/// Is `ty` a `Result<_, E>` whose `E` is named `DpError`?
+///
+/// Matched on the type's NAME rather than its `DefId`, and the limit is worth
+/// stating: resolving `dp::DpError` by id would require every linted crate to
+/// depend on `dp`, which is exactly the crate that has not adopted it yet — the
+/// lint would then be unable to see the code it exists for. Name matching costs
+/// a false positive on some other crate's unrelated `DpError`; there is none in
+/// this workspace, and the alternative costs the whole rule.
+fn is_result_with_dp_error<'tcx>(cx: &LateContext<'tcx>, ty: rustc_middle::ty::Ty<'tcx>) -> bool {
+    let rustc_middle::ty::Adt(def, args) = ty.kind() else {
+        return false;
+    };
+    if !cx.tcx.is_diagnostic_item(rustc_span::sym::Result, def.did()) {
+        return false;
+    }
+    // Result<T, E> — the error is the second generic argument.
+    let Some(err) = args.types().nth(1) else {
+        return false;
+    };
+    let rustc_middle::ty::Adt(err_def, _) = err.kind() else {
+        return false;
+    };
+    cx.tcx.item_name(err_def.did()).as_str() == "DpError"
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The library entry point.
+//
+// WRITTEN OUT rather than generated. `dylint_linting::declare_late_lint!` emits
+// the registration boilerplate along with the lint, which is exactly right for
+// a one-lint library and a compile error for a two-lint one: the second
+// invocation re-defines `register_lints`, `dylint_version` and three extern
+// crates (`E0259`/`E0428`). Adding `R-6` is what forced this, and the explicit
+// form is better anyway — the set of lints this library ships is now a list
+// someone can read, rather than a property of how many macros were invoked.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// The R-6 pass carries no state: the decision is per-expression and reads
+/// only the receiver type.
+pub struct ForbidSwallowedBackpressure;
+
+rustc_session::impl_lint_pass!(ForbidRawKernelClient => [FORBID_RAW_KERNEL_CLIENT]);
+rustc_session::impl_lint_pass!(ForbidSwallowedBackpressure => [FORBID_SWALLOWED_BACKPRESSURE]);
+
+dylint_linting::dylint_library!();
+
+#[allow(clippy::no_mangle_with_rust_abi)]
+#[no_mangle]
+pub fn register_lints(sess: &rustc_session::Session, store: &mut rustc_lint::LintStore) {
+    dylint_linting::init_config(sess);
+    store.register_lints(&[FORBID_RAW_KERNEL_CLIENT, FORBID_SWALLOWED_BACKPRESSURE]);
+    store.register_late_pass(|_| Box::new(ForbidRawKernelClient::default()));
+    store.register_late_pass(|_| Box::new(ForbidSwallowedBackpressure));
 }

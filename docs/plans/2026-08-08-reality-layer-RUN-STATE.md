@@ -782,9 +782,45 @@ before `3D`, because every signature takes `&SessionContext`.
 | `4A` | `cache_key!` (`DP-R4`) | ✅ reality-scoped form; tier checked by construction (`E0271`), `KeyId` refuses `:` and empty; channel form deferred |
 | `4B` | `t0_write`..`t3_write` typed by the tier marker traits | ✅ `DP-R5` held by rustc (`E0271`), bitten |
 | `4C` | `read_projection_*` per `04b` | ✅ scope held by rustc (`E0271`), bitten; `Decode` split from `DpAggregate` |
-| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | ⬜ **buildable now, still subject-less** — see below |
+| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | ✅ **BUILT** — fires on exactly 3 of 5 fixture cases; armed, zero workspace subjects yet |
 
-#### `4D` — the one row where "no subject" is still the honest answer
+#### `4D` — BUILT, and the "no subject" reasoning was wrong
+
+**The PO overruled the park, and was right.** `4D` was parked twice on the
+grounds that `R-6` would be "green by emptiness". §0.3 is what settles it: a
+blocker is something EXTERNAL you cannot write. *"It would flag nothing today"*
+is not that. The rule the lint enforces is not made truer or falser by how many
+violations currently exist — and a rule armed **before** the first adopter is
+strictly better than one armed after, because the first adopter is exactly who
+would otherwise establish the pattern.
+
+**What it does.** Flags `.ok()`, `.unwrap_or_default()` and
+`.unwrap_or_else()` on any `Result<_, DpError>`. Deliberately the whole error
+type rather than only the two backpressure variants: a `Result` is not a
+variant, and nothing at this level can know which variant a call may return.
+Flagging the DISCARD is the decidable question, and `DpError::is_backpressure`
+remains the single home of the `{RateLimited, CircuitOpen}` set so the lint
+never mints a second copy.
+
+**Non-vacuity is a COUNT, not a boolean.** `fixtures/swallower` holds five
+functions: three discards, one discard of a `Result` whose error is *not* a
+`DpError`, and one that propagates. The self-test asserts **exactly 3** —
+"it fired" would also be true of a lint that flagged all five. Bitten: removing
+the receiver-type check yields *"R-6 MISCOUNTED: 4 finding(s), expected 3"*.
+
+**Zero workspace subjects, measured and stated.** `dp-clippy-gate` over all 29
+members reports the same 8 `DP-R3` findings and no `R-6` findings, because no
+crate outside `crates/dp` yet holds a `Result<_, DpError>` to discard. The lint
+is armed for the first one — which is `3E`'s adoption.
+
+**A structural change came with it.** Two lints cannot each emit their own
+`register_lints`: `dylint_linting::declare_late_lint!` bundles the library entry
+point with the lint, so the second invocation re-defines it (`E0259`/`E0428`).
+The entry point is now written out, and the self-test gained a leg asserting the
+library still loads — because a silently-dropped `register_late_pass` would
+leave one rule inert while every other leg kept passing.
+
+#### The superseded reasoning, kept because it was wrong in an instructive way
 
 `R-6` flags `.ok()` / `unwrap_or_default()` applied to a `Result<_, DpError>`.
 After `4B`/`4C` that type finally exists on a real surface, so the lint has

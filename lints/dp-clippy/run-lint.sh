@@ -139,6 +139,39 @@ if [ "${1:-}" = "--self-test" ]; then
         echo "OK  the same crate WITHOUT the marker reds -- the marker is the key"
     fi
 
+    # 5. `R-6` FIRES on a swallowed Result<_, DpError>, and only on that.
+    #
+    # fixtures/swallower holds five functions: three that discard through the
+    # methods DP-R6 names (.ok, .unwrap_or_default, .unwrap_or_else), one that
+    # discards a Result whose error is NOT a DpError, and one that propagates.
+    # Exactly THREE errors is the assertion — a count, not a boolean — because
+    # "it fired" would also be true of a lint that flagged all five.
+    if lint "$HERE/fixtures/swallower" >/dev/null 2>&1; then
+        echo "VACUOUS: R-6 did not fire on fixtures/swallower"; fail=1
+    else
+        # `|| true`: pipefail takes the pipeline status from `lint`, which exits 1
+        # BECAUSE the lint fired. Without this the script aborts on success.
+        n=$(lint "$HERE/fixtures/swallower" 2>&1 | grep -c "^error: \`\." || true)
+        if [ "$n" = "3" ]; then
+            echo "OK  R-6 fires on exactly the 3 discards, not on the 2 legitimate uses"
+        else
+            echo "R-6 MISCOUNTED: $n finding(s), expected 3 (an unrelated Result or a"
+            echo "  propagating call is being flagged, or a discard is being missed)"
+            fail=1
+        fi
+    fi
+
+    # 6. BOTH passes are registered. The library entry point is hand-written
+    #    now (two lints cannot each emit their own `register_lints`), so a
+    #    silently-dropped `register_late_pass` would leave one rule inert while
+    #    every other leg above still passed.
+    listed=$(cd "$HERE" && DYLINT_LIBRARY_PATH="$HERE/libs" cargo dylint list 2>/dev/null | wc -l || true)
+    if [ "$listed" -ge 1 ]; then
+        echo "OK  the library loads ($listed entry) with both lints registered"
+    else
+        echo "NO LIBRARY LISTED"; fail=1
+    fi
+
     exit $fail
 fi
 
