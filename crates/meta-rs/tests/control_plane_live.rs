@@ -66,6 +66,16 @@ impl CapabilityStore for EphemeralStore {
         let rows = self.rows.lock().expect("poisoned");
         Ok(rows.iter().find(|(d, _)| d == digest).map(|(_, r)| r.clone()))
     }
+    fn find_by_session(
+        &self,
+        session_id: uuid::Uuid,
+    ) -> Result<Option<SessionRecord>, meta_rs::MetaError> {
+        let rows = self.rows.lock().expect("poisoned");
+        Ok(rows
+            .iter()
+            .find(|(_, r)| r.session_id == session_id)
+            .map(|(_, r)| r.clone()))
+    }
     fn extend(&self, _s: uuid::Uuid, _e: u64, _n: u64) -> Result<bool, meta_rs::MetaError> {
         Ok(false)
     }

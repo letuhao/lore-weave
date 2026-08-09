@@ -723,6 +723,52 @@ async fn a_capability_round_trips_through_a_real_session_registry() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_session_is_routable_by_id_without_presenting_its_capability() {
+    // `5C`'s `GetSessionNode` (DP-C1) asks a ROUTING question — "where is
+    // session S pinned" — from a node that does not hold S's capability. This
+    // is the second SQL query in the store, on a different key, and it exists
+    // so answering a routing question never requires passing a credential
+    // around.
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+    let store = capability_store(&pool);
+
+    let secret = format!("live-secret-{}", Uuid::new_v4());
+    let issued = issuance(&secret, 1_700_000_900_000);
+    store.record(&issued).expect("record");
+
+    let found = store
+        .find_by_session(issued.session_id)
+        .expect("find_by_session")
+        .expect("the session just recorded must be findable by its id");
+    assert_eq!(found.node_id, "pg-live-node");
+    assert_eq!(found.session_id, issued.session_id);
+    assert_eq!(found.expires_at_ms, issued.expires_at_ms);
+
+    // An unknown session is absent, not an error — and the two must not be
+    // confused, because `GetSessionNode` reports absence as `assigned = false`.
+    assert!(store.find_by_session(Uuid::new_v4()).expect("absent").is_none());
+
+    // AND IT ANSWERS FOR A DEAD SESSION TOO. Routing and authorization are
+    // different questions: a node handling a late message needs to know where
+    // the session lived even after the grant died, and returning None would
+    // make a stale route indistinguishable from a session that never existed.
+    store
+        .revoke(issued.session_id, 1_700_001_000_000, "routing-after-revocation")
+        .expect("revoke");
+    let after = store
+        .find_by_session(issued.session_id)
+        .expect("find")
+        .expect("a revoked session is still routable");
+    assert_eq!(after.node_id, "pg-live-node");
+    assert_eq!(after.revoked_at_ms, Some(1_700_001_000_000));
+    assert!(!after.is_live(1_700_000_800_000), "…while being plainly dead");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_audit_row_lands_in_the_same_transaction_as_the_capability() {
     // I8's whole requirement, and the reason this store goes through
     // `meta_write` instead of a hand-rolled INSERT. `crates/meta-rs/` is on

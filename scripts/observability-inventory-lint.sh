@@ -109,6 +109,22 @@ for sub in ("services", "crates", "contracts"):
             continue
         if path.name.endswith(("_test.go", "_test.rs")):
             continue
+        # RUST INTEGRATION TESTS live in a `tests/` DIRECTORY, not in files
+        # named `*_test.rs`. That naming rule is Go's, and this is the SECOND
+        # time it has been applied to Rust here: the first produced six false
+        # positives from `#[cfg(test)]` blocks, fixed by `strip_cfg_test` above,
+        # and the same Go-shaped assumption left a whole directory uncovered.
+        # Found 2026-08-09 by `crates/dp-control-plane/tests/surface.rs`, whose
+        # fixture db_name `lw_reality_surface` was read as an undeclared metric.
+        #
+        # `tests/` is cargo's own definition of a test target, so this is a
+        # STRUCTURAL exclusion rather than an allowlist — a test file added
+        # tomorrow is covered without anyone remembering to add it. It excludes
+        # only test targets: a metric emitted solely from a test is not a metric
+        # the inventory should declare, which is the whole reason test code was
+        # being excluded already.
+        if any(part == "tests" for part in path.parts):
+            continue
         try:
             body = path.read_text(encoding="utf-8", errors="replace")
         except OSError:

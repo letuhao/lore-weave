@@ -43,6 +43,11 @@ members = [
     # the DP lock, by a different track — see FLOW-7 / REC-100. `dp` holds the
     # tiers, the scopes and the aggregate contract, and NO I/O by design.
     "crates/dp",
+    # 5C (2026-08-09) — `DP-C3`'s gRPC control-plane surface. The proto in
+    # contracts/proto/ is the contract; server AND client are generated from it,
+    # so the two sides cannot drift the way two hand-written structs can. The
+    # client is what keeps the server from being a surface with no consumer.
+    "crates/dp-control-plane",
     # 2026-08-02 (actor hub, feature #1) — the `GoneState` existence lattice,
     # extracted DOWN out of dp-kernel::entity_status so a PURE crate can hold
     # it. dp-kernel re-exports it; `dp_kernel::entity_status::GoneState` is
@@ -187,6 +192,18 @@ sha2 = "0.10"
 # TilemapSeed (TMP_002 §8). rand provides the SeedableRng/Rng traits.
 rand = "0.9"
 rand_chacha = "0.9"
+
+# DP-C3 (slice 5C) — the control plane's gRPC surface. `tonic` brings its own
+# `prost` and its own `hyper`; both are pinned here rather than in the member
+# crate so a second gRPC consumer cannot arrive on a different major and give
+# the workspace two incompatible `prost::Message` traits.
+tonic = "0.12"
+prost = "0.13"
+tonic-build = "0.12"
+# The `Stream` trait the two streaming RPCs' associated types name. Taken
+# directly rather than through tonic's re-exports so the bound is visible at the
+# signature instead of hidden behind a path that changes between tonic minors.
+tokio-stream = "0.1"
 
 # Error handling
 thiserror = "2.0"

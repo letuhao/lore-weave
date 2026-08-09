@@ -130,6 +130,42 @@ where
         Self { meta, store, clock, secrets, ttl_ms }
     }
 
+    /// The registry row for a reality, or `None` if there is no such reality.
+    ///
+    /// Exposed because `DP-C3`'s `VerifyReality` and `ResolveReality` ask the
+    /// registry questions that are not binds, and routing a read through
+    /// `verify_bind` would mint a capability as a side effect of asking whether
+    /// a world exists.
+    pub fn reality_routing(
+        &self,
+        reality: Uuid,
+    ) -> Result<Option<crate::routing::RealityRouting>, crate::errors::MetaError> {
+        self.meta.get_reality_routing(reality)
+    }
+
+    /// Where a session is pinned (`GetSessionNode`, `DP-C1`), or `None`.
+    ///
+    /// Answers for a REVOKED or EXPIRED session too, and that is deliberate:
+    /// routing and authorization are different questions. A node handling a
+    /// late-arriving message needs to know where the session lived even after
+    /// the grant died, and returning `None` would make a stale route
+    /// indistinguishable from a session that never existed.
+    pub fn session_node(
+        &self,
+        session_id: Uuid,
+    ) -> Result<Option<String>, crate::errors::MetaError> {
+        Ok(self.store.find_by_session(session_id)?.map(|r| r.node_id))
+    }
+
+    /// The clock this plane stamps expiries with.
+    ///
+    /// A transport needs it to evaluate `now` on the SAME clock the expiries
+    /// were minted against — reading a second clock is how two components end
+    /// up disagreeing about whether a capability is live.
+    pub fn now_unix_ms(&self) -> u64 {
+        self.clock.now_unix_ms()
+    }
+
     /// Is this presented secret a live capability, and whose?
     ///
     /// The server-side counterpart of `dp::SessionContext::check_live`. The SDK
@@ -408,6 +444,17 @@ mod tests {
             }
             let rows = self.rows.lock().expect("poisoned");
             Ok(rows.iter().find(|(d, _)| d == digest).map(|(_, r)| r.clone()))
+        }
+
+        fn find_by_session(&self, session_id: Uuid) -> Result<Option<SessionRecord>, MetaError> {
+            if self.refuse_reads {
+                return Err(MetaError::Backend("simulated store failure".into()));
+            }
+            let rows = self.rows.lock().expect("poisoned");
+            Ok(rows
+                .iter()
+                .find(|(_, r)| r.session_id == session_id)
+                .map(|(_, r)| r.clone()))
         }
 
         fn extend(

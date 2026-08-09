@@ -907,8 +907,67 @@ exists and holds 7 rows.
 | `5A` | **a real `ControlPlane`** over `reality_registry` | ✅ `d82cf4671` — LIVE bind against the real registry; the run caught an `INT2`/`INT4` decode bug no mock could reach |
 | `5-WIRE` | **`dp-kernel` behind `WriteBackend` + `ReadBackend`** | ✅ `7f88dcd59` — end-to-end `t2_write` → `EventStore`, event read back and asserted |
 | `5B` | the capability STORE — `RefreshCapability` needs one; today a capability is minted and never recorded. **Bearer + lookup, sealed above**, and it carries a second obligation: **`BindRequest` gains the calling service identity**, because today `bind` authenticates nothing | ✅ migration `039_session_registry` (5 annotations) · `session_store.rs` + `PgCapabilityStore` writing through `meta_write` (audit row same-TX, asserted live) · `ServiceIdentity` · the `DP-C8` amendment written · `dp-slice5b-bite-gate` **7/7** + **2 live SQL bites** · LIVE: bind → validate → revoke → re-validation refused, against real Postgres |
-| `5C` | the gRPC surface (`DP-C3`) — `tonic`, protos, the four non-channel RPC groups. **In scope**, sealed above | contract-first: the proto is the contract, generated and checked. Phase 0 first settles the `I1` question **with evidence**: is a cluster-only control plane an external entry point at all? |
+| `5C` | the gRPC surface (`DP-C3`) — `tonic`, protos, the non-channel RPC groups. **In scope**, sealed above | ✅ `contracts/proto/dp_control_plane.proto` (the contract; server AND client generated from it) · `crates/dp-control-plane` · 9 tests over a **real TCP socket** · `dp-slice5c-bite-gate` **7/7** · `I11` ACL rows for the 6 served RPCs · `UNIMPLEMENTED_METHODS` asserted against the running server |
+
+**`I1` — settled with evidence, and the answer is that it does not apply.** `I1`
+governs *"all **external** traffic… no service accepts direct **public** traffic"*,
+enforced by *"AWS security groups expose ONLY `api-gateway-bff` and `game-server`
+to the public subnet"*. `DP-C3` specifies *"gRPC over mTLS **between CP and game
+services**"* — service-to-service, inside the cluster, no third public listener.
+So `5C` neither amends nor violates it, and **`I11` is the invariant that does
+apply**: every inter-service RPC needs an ACL row naming allowed callers and
+principal mode. Those rows are in `contracts/service_acl/matrix.yaml` as
+`control-plane-rpcs`.
+
+**The count in this row was wrong and is corrected.** `DP-C3` lists **26** RPCs in
+**10** groups, not 13; the non-channel surface is **six** groups and **14** RPCs,
+not four. The proto covers all fourteen. `crates/meta-rs/src/control_plane.rs`
+carried the same wrong figure and is fixed.
+
+**Six of the fourteen are served; eight return `UNIMPLEMENTED` naming the missing
+table** — `tier_policy`, `tier_capability`, `npc_binding` and `schema_version` are
+absent from every migration, measured. A contract may declare more than today's
+server can serve; a MODEL may not, which is why they are RPCs and not tables.
+`UNIMPLEMENTED_METHODS` is compared to what the running server actually refuses,
+so the list cannot rot in either direction.
+
+**What `5C` is NOT:** a deployable `services/control-plane-service` binary. That
+needs a capacity budget (`I17`), an SLO row, timeouts (`I16`), an observability
+inventory (`I19`) and a security-group manifest — a deployment story, not a
+transport. Its trigger is the first out-of-process caller.
 | `5D` | channel tree + writer leases (`DP-A16`, `DP-Ch9`) — **this is what produces `ChannelId`**, and therefore what retires four DEFERRED registers at once | `DEFERRED_IDS`, `DEFERRED_SESSION_FIELDS`, `DEFERRED_CACHE_FORMS` and `DEFERRED_READ_FORMS` each shrink, and their shrink arms red until the rows go |
+
+> ### ⚠ `5D`'s PREMISE IS WRONG, found by Phase 0 on 2026-08-09 — read this before starting it
+>
+> This board says `5D` *"is what produces `ChannelId`"*, and `crates/dp`'s
+> `DEFERRED_IDS` says the same: *"nothing mints a `ChannelId`"*. **Something
+> does.** `crates/dp-kernel/src/channel.rs` (425 lines) has shipped a
+> `ChannelId`, a `WriterLease`, a `ChannelWriter` and a `HeldLease`, with two
+> integration tests (`integration_channel_writer.rs`,
+> `integration_writer_lease.rs`), migration `0014_channel_ordering`, and a
+> `channels` table in `0019_channels`.
+>
+> **And the two `ChannelId`s disagree about their representation.**
+> `dp-kernel`'s is `ChannelId(pub(crate) i64)`; `DP-Ch1` specifies a `Uuid`.
+> That file already argues the case and calls it settled — *"the spec says
+> `Uuid`; the build, the wire contract (`Uint64String`) and `DP-Ch11`'s
+> allocator all say 64-bit, and two of three win — `i64` is adopted into the
+> spec"* — so `5D` must NOT mint a second, `Uuid`-shaped `ChannelId` in
+> `crates/dp`. Two types with one name, differing in representation, is the
+> `pc_*`/`npc_*` shape with a compiler behind it.
+>
+> `dp-kernel` also carries `ChannelId::unverified(raw: i64)`, documented as a
+> **PRE-SDK SEAM** whose own doc comment says: *"when `crates/dp` lands this
+> function is deleted and the compiler enumerates the migration.
+> `rg 'ChannelId::unverified'` is the worklist."* `crates/dp` has landed. That
+> sentence is `5D`'s actual first task, and it is a worklist somebody already
+> wrote.
+>
+> **So `5D` is not "build a channel tree". It is: adopt the EXISTING one into
+> `crates/dp`, delete the unverified seam, and reconcile `DEFERRED_IDS` with the
+> `i64` decision.** Scoping it as new construction would rebuild what exists —
+> the exact failure `Phase 0` question 1 was added to catch, after the actor-hub
+> round designed feature #1 without auditing what already modelled an actor.
 
 **Two findings `5B`'s Phase 0 handed to `5D`, recorded rather than silently fixed:**
 

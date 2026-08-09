@@ -111,6 +111,25 @@ service DpControlPlane {
 }
 ```
 
+> **IMPLEMENTATION NOTE (2026-08-09, slice `5C`).** The **non-channel** half of
+> this surface — six groups, fourteen RPCs — is implemented in
+> `crates/dp-control-plane`, generated from `contracts/proto/dp_control_plane.proto`
+> so the server and client cannot drift. The four CHANNEL groups (twelve RPCs)
+> are slice `5D`, which is what first produces a `ChannelId`.
+>
+> **Six of the fourteen are served: `VerifyReality`, `BindSession`,
+> `RefreshCapability`, `ResolveReality`, `GetSessionNode`, `Health`.** The other
+> eight return `UNIMPLEMENTED` naming the state that is missing — `tier_policy`,
+> `tier_capability`, `npc_binding` and `schema_version` have no migration in this
+> repo, measured rather than assumed. The list is asserted against the running
+> server, so it cannot rot in either direction.
+>
+> **`I1` does not apply to this surface** and that was checked rather than
+> assumed: `I1` governs public traffic and is enforced by security groups
+> exposing only `api-gateway-bff` and `game-server`. This is service-to-service
+> inside the cluster. **`I11` applies** — the ACL rows are `control-plane-rpcs` in
+> `contracts/service_acl/matrix.yaml`.
+
 **Transport:** gRPC over mTLS between CP and game services. Service-to-service auth uses mTLS certs issued via the existing service-to-service auth infrastructure ([02_storage/S11](../02_storage/S11_service_to_service_auth.md)).
 
 **Debug endpoints:** HTTP/JSON sidecar server (port offset +1) exposes read-only versions of the same methods for operator debugging; write methods not exposed on HTTP.

@@ -4,8 +4,41 @@
 
 **HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
-> **▶ DO NEXT — `5C`, then `5D`, then `3E.2`.** Slices 3 and 4 are CLOSED. Slice 5 is `5A` +
-> `5-WIRE` + `5B` in; `5C` and `5D` remain.
+> **▶ DO NEXT — `5D`, then `3E.2`, then the data-plane review.** Slices 3 and 4 are CLOSED.
+> Slice 5 is `5A` + `5-WIRE` + `5B` + `5C` in; `5D` remains.
+>
+> **`5C` put `DP-C3` on the wire, and its Phase 0 settled the `I1` question by reading the
+> invariant rather than assuming.** `I1` governs PUBLIC traffic and is enforced by security groups
+> exposing only `api-gateway-bff` and `game-server`; `DP-C3` is mTLS service-to-service inside the
+> cluster, so it neither amends nor violates it. **`I11` is the invariant that applies** — the ACL
+> rows are `control-plane-rpcs` in `contracts/service_acl/matrix.yaml`.
+>
+> `contracts/proto/dp_control_plane.proto` is the contract and **both** sides are generated from it,
+> so server and client cannot drift. The client matters as much as the server: a gRPC surface with
+> no consumer is the orphan shape, and `GrpcControlPlane` implements `dp::ControlPlane`, so
+> `SessionContext::bind` — the one constructor for a `RealityId` — now works against a REMOTE
+> control plane. Nine tests over a real TCP socket.
+>
+> **Six of the fourteen non-channel RPCs are served; eight return `UNIMPLEMENTED` naming the
+> missing table.** `tier_policy`, `tier_capability`, `npc_binding` and `schema_version` are absent
+> from every migration — measured. A contract may declare more than the server can serve; a MODEL
+> may not. `UNIMPLEMENTED_METHODS` is compared against what the running server actually refuses, so
+> the list cannot rot in either direction.
+>
+> **Two governed figures were wrong and are fixed:** `DP-C3` has **26** RPCs, not the 13 that
+> `control_plane.rs` claimed; the non-channel surface is **six** groups, not the four the run-state
+> row said.
+>
+> **`dp-clippy-gate` broke loudly, exactly as its own comment promised it would.** Its
+> routing-definer exemption was a single name, `meta-rs`, on the stated grounds that "the registry
+> lives in the crate called meta-rs" is a fact that should break if it stops being true.
+> `dp-control-plane` is a second resolver — `ResolveReality` returns `db_host`/`db_name` — so the
+> gate refused its platform claim. The FACT was updated, not the rule: `ROUTING_RESOLVERS` is a list
+> of two, and a bite confirms a non-resolver platform crate naming `db_name` still fails.
+>
+> **`5C` is a transport, NOT a deployable service.** `services/control-plane-service` needs a
+> capacity budget (`I17`), an SLO row, timeouts (`I16`), an observability inventory (`I19`) and a
+> security-group manifest. Its trigger is the first out-of-process caller.
 >
 > **`5B` shipped the capability STORE, and its Phase 0 found the table was never the problem —
 > the SCHEMA was missing while three locked sections already queried it.** `session_registry` is

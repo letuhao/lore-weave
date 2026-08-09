@@ -128,11 +128,33 @@ def declares_marker(manifest_dir: Path) -> bool:
 # cannot claim `platform`. That is the property worth having: the crates that
 # most need DP-R3 are the ones the exemption refuses.
 PER_REALITY_DB_SYMBOLS = ("db_name", "reality_db")
-# The META REGISTRY owns the `db_name` column — it records where realities live
-# without opening one. Named rather than pattern-matched, because "the registry
-# lives in the crate called meta-rs" is a fact about this repo that should break
-# loudly if it stops being true.
-ROUTING_DEFINER = "meta-rs"
+# Crates that RESOLVE routing rather than CONSUME it — they name a reality's
+# database without ever opening one. Named rather than pattern-matched, because
+# "these are the crates that hand out routing" is a fact about this repo that
+# should break loudly if it stops being true.
+#
+# IT DID BREAK LOUDLY, 2026-08-09, AND THAT WAS THE MECHANISM WORKING
+#   This was a single name, `meta-rs`, and slice `5C` added a second resolver:
+#   `dp-control-plane` serves `DP-C3`'s `ResolveReality`, whose entire job is to
+#   return `db_host`/`db_name` to a caller. The gate refused its platform claim,
+#   correctly by its own rule, and the fix is to update the FACT rather than to
+#   relax the rule — a `plane = "platform"` crate that names a reality database
+#   is still a finding for everyone not on this list.
+#
+#   Still a LIST and not a predicate, deliberately. The distinction between
+#   resolving and consuming is not mechanically separable here: `meta-rs`
+#   SELECTs `db_name` through a `PgPool`, so any "does it also open a
+#   connection" heuristic flags the definer itself. A list of two, each
+#   justified below, breaks loudly on the third — which is the property worth
+#   having and the one a fuzzy predicate would lose.
+ROUTING_RESOLVERS = (
+    # Owns the `db_name` COLUMN. It records where realities live; it does not
+    # go there.
+    "meta-rs",
+    # `DP-C3` ResolveReality: copies `meta-rs`'s answer into a proto response.
+    # It holds no pool for a per-reality database and no aggregate.
+    "dp-control-plane",
+)
 
 
 def consumes_routing(manifest_dir: Path) -> str | None:
@@ -392,7 +414,7 @@ def main() -> int:
                 f"{'dp-crate = true' if dp.get('dp-crate') else 'plane = platform'} "
                 f"with reason={reason!r}. State which databases it opens; an "
                 f"exemption nobody has to justify is an exemption nobody reviews.")
-        if dp.get("plane") == "platform" and name != ROUTING_DEFINER:
+        if dp.get("plane") == "platform" and name not in ROUTING_RESOLVERS:
             hit = consumes_routing(member_dirs[name])
             if hit:
                 fails.append(

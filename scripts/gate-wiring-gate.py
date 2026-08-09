@@ -463,6 +463,10 @@ def run_all() -> int:
         # here on the day it was written rather than after a flaky sweep, which
         # is the only cheap moment to do it.
         "scripts/dp-slice5b-bite-gate.py",
+        # `5C`. Mutates crates/dp-control-plane and runs cargo on it; it also
+        # IMPORTS the 5b harness for its read/restore machinery, so the two
+        # must never run concurrently against the same tree.
+        "scripts/dp-slice5c-bite-gate.py",
         "scripts/gate-bite-harness.py",
         "scripts/reality-layer-bite-harness.py",
     )

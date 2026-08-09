@@ -503,3 +503,80 @@ services:
 
       meta_outbox:
         - INSERT
+
+  # ── Slice 5C (2026-08-09) — DP-C3, the control plane's gRPC surface.
+  #
+  # I11 is the invariant that governs this surface, and Phase 0 checked which
+  # one does: I1 (the gateway invariant) is about PUBLIC traffic and is enforced
+  # by security groups exposing only api-gateway-bff and game-server. DP-C3
+  # specifies "gRPC over mTLS between CP and game services" — internal,
+  # service-to-service — so it neither amends nor violates I1. I11 does apply:
+  # "every inter-service RPC requires a SPIFFE-like SVID" and every RPC declares
+  # its allowed callers and principal mode.
+  #
+  # THE TWO CALLERS ARE THE TWO SERVICES `01_scope_and_boundary.md` §4 NAMES as
+  # game-layer (DPA-SCOPE: world-service, commit-service) plus admin-cli for the
+  # operator path. They are listed rather than left open: an RPC map with an
+  # empty or absent allowed_callers is the confused-deputy state I11 exists to
+  # prevent, and "we will fill it in when a caller arrives" is how it stays
+  # empty.
+  #
+  # principal_mode is `system_only` for every RPC here. None of them acts on
+  # behalf of a human: binding a session, resolving a reality and refreshing a
+  # capability are all a SERVICE establishing its own access. An RPC on this
+  # surface that ever needs `requires_user` is a design change, not a config
+  # change.
+  #
+  # NOT LISTED: the eight methods that return UNIMPLEMENTED (see
+  # dp_control_plane::UNIMPLEMENTED_METHODS, asserted against the running server
+  # by tests/surface.rs). An ACL row for a method nothing can serve would be a
+  # grant with no referent — and when those methods gain an implementation they
+  # gain a row in the same change, which is the moment the caller list is
+  # actually knowable.
+  - name: control-plane-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/control-plane
+    notes: |
+      DP-C3 slice 5C. Transport is gRPC (contracts/proto/dp_control_plane.proto);
+      server and client are generated from that file in crates/dp-control-plane,
+      so the two sides cannot drift.
+
+      The `service_identity` field on BindSession is ATTRIBUTION, not
+      authorization: DP-C4's tier_capability is the authorization table and has
+      no producer in this repo yet. Under mTLS the field is populated from the
+      peer certificate's subject; until then it is the caller's own assertion,
+      validated for shape only (dp::ServiceIdentity).
+    rpcs:
+      VerifyReality:
+        allowed_callers:
+          - world-service
+          - commit-service
+          - admin-cli
+        principal_mode: system_only
+      BindSession:
+        allowed_callers:
+          - world-service
+          - commit-service
+        principal_mode: system_only
+      RefreshCapability:
+        allowed_callers:
+          - world-service
+          - commit-service
+        principal_mode: system_only
+      ResolveReality:
+        allowed_callers:
+          - world-service
+          - commit-service
+          - admin-cli
+        principal_mode: system_only
+      GetSessionNode:
+        allowed_callers:
+          - world-service
+          - commit-service
+          - admin-cli
+        principal_mode: system_only
+      Health:
+        allowed_callers:
+          - world-service
+          - commit-service
+          - admin-cli
+        principal_mode: system_only

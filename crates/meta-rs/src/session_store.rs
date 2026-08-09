@@ -139,6 +139,20 @@ pub trait CapabilityStore: Send + Sync {
     /// and is unknown to every validator, which is a grant nobody can revoke.
     fn record(&self, issued: &IssuedCapability) -> Result<(), MetaError>;
 
+    /// Find a session by its id, without a capability.
+    ///
+    /// `DP-C3`'s `GetSessionNode` asks *"where is session S pinned"* — a
+    /// ROUTING question asked by a node that does not hold S's capability and
+    /// must not need it. Reachable only with the session id, which is not a
+    /// credential: knowing it lets a caller learn a node name, not act as the
+    /// session.
+    ///
+    /// Deliberately NOT served by [`Self::lookup`]: that one is keyed by the
+    /// digest, and answering a routing question would then require presenting
+    /// the secret, which is how a routing table becomes a reason to pass
+    /// credentials around.
+    fn find_by_session(&self, session_id: Uuid) -> Result<Option<SessionRecord>, MetaError>;
+
     /// Find the session a presented secret's digest belongs to.
     ///
     /// `Ok(None)` means no such capability was ever issued — distinct from a

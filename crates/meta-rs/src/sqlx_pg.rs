@@ -812,6 +812,52 @@ impl crate::session_store::CapabilityStore for PgCapabilityStore {
         ))
     }
 
+    fn find_by_session(
+        &self,
+        session_id: uuid::Uuid,
+    ) -> Result<Option<crate::session_store::SessionRecord>, MetaError> {
+        // The same column list as `lookup`, on the other key. Written out rather
+        // than factored behind a `WHERE` parameter because the two differ in
+        // what they are ALLOWED to be asked with — a digest is a credential, a
+        // session id is not — and collapsing them into one query would make that
+        // distinction a matter of which argument a caller happened to pass.
+        const SQL: &str = "SELECT session_id, reality_id, node_id, service_identity, \
+                           expires_at, revoked_at FROM session_registry \
+                           WHERE session_id = $1";
+
+        type Row = (
+            uuid::Uuid,
+            uuid::Uuid,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            Option<chrono::DateTime<chrono::Utc>>,
+        );
+
+        let row: Option<Row> = tokio::task::block_in_place(|| {
+            self.handle.block_on(async {
+                sqlx::query_as(SQL)
+                    .bind(session_id)
+                    .fetch_optional(&self.pool)
+                    .await
+            })
+        })
+        .map_err(|e| MetaError::Backend(Box::new(e)))?;
+
+        Ok(row.map(
+            |(session_id, reality_id, node_id, service_identity, expires_at, revoked_at)| {
+                crate::session_store::SessionRecord {
+                    session_id,
+                    reality_id,
+                    node_id,
+                    service_identity,
+                    expires_at_ms: ts_to_ms(expires_at),
+                    revoked_at_ms: revoked_at.map(ts_to_ms),
+                }
+            },
+        ))
+    }
+
     fn extend(
         &self,
         session_id: uuid::Uuid,
