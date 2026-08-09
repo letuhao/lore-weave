@@ -4531,6 +4531,88 @@ retrofitted to whatever gets built.
 
 ---
 
+## ▶ NEXT RUN — CP-5: seal the tool contract, then build essential tools
+
+*The `/goal` points here. If the prompt and this section disagree, **this section wins.***
+
+### Read first, in this order
+
+1. `docs/specs/2026-08-09-v2-tool-contract/CP-5.md` — 🔒 **SEALED v3.** The spec.
+2. `docs/specs/2026-08-09-v2-tool-contract/EVALUATION-v1.md` — why v1 died.
+3. This section.
+
+### The state you are inheriting
+
+CP-0 · CP-1 · CP-2 · CP-3 · CP-4 all closed. **CP-5 is spec-only and BLOCKS tool v2 by PO directive:**
+*build the new architecture AGAINST the defects we already face, not clone them into it.*
+
+**There is no contract for a TOOL.** CP-1 constrains ten fields of a registry ROW. Measured:
+`inputSchema` validated at admission → **0**; declared result shape → **0**; C-3…C-17 implemented →
+**no**. **17 members: 5 exist, 12 missing.** 4,175 failures over **358 sessions** — 88% are a
+missing declaration on the tool.
+
+**Landed 2026-08-09 and already in the tree:** `lifecycle` is a real state machine
+(`LIFECYCLE_MOVES`, `check_transition`), it **gates the wire** (`SERVED_LIFECYCLES`), and
+`derive.py` no longer self-releases — derivation yields `draft`, and `admitted` is a decision.
+
+### Scope, frozen
+
+| # | item |
+|---|---|
+| 1 | **`5.3-pilot` — FIRST, BEFORE ANY CODE.** Run the real failing names against their own books; measure the exact-match rate on the population the member SERVES |
+| 2 | **5.1 / 5.2** — the `_meta` contract schema (core vs conditional) and **rung 2: admission refuses an incomplete contract** |
+| 3 | **5.3** — identifier resolution, gated on the pilot |
+| 4 | then **the essential tools**, each released only on QC evidence |
+
+**Not in scope:** typed inputs as a top member (demoted — needs four teams and would not have fixed
+the failure), bulk admission, the third-party sunset window.
+
+### 🔴 The three lessons this spec cost, and they are about MEASUREMENT, not mechanism
+
+Three evaluation rounds killed v1, corrected v2 and withdrew two of v3's claims. **Every finding was
+about where a thing sat or what population it was measured on — never the mechanism.**
+
+1. **v1 aimed its enforcement at 2.8% of the tools.** `ABC`/`__init_subclass__` govern the 9 tools
+   chat-service implements, not the 315 federated. **The contract lives in `_meta`/the registry, and
+   rung 2 is the enforcement.**
+2. **v2 had the right symptom and the wrong cure.** `typed inputs` (28.2%) is really **identifier
+   resolution**: 390 of 392 UUID failures are a human NAME in an id field. A semantic type rejects it
+   one layer earlier and fixes nothing. **The frozen baseline already named this — class 3, 40.3%.**
+3. **v3's evidence came from the wrong population.** 11/18 exact matches came from **9 sessions**;
+   the failure spans **24**; **overlap = 1.** The model searched precisely where it did *not* send a
+   bare name. **Hence item 1 is a pilot.**
+
+### Rules already paid for
+
+* **Measure the premise on the real population before building** — twice today: the distance ladder
+  saved an hour, and W2 caught the same error in the spec.
+* **A correction recorded in an evaluation is not a correction** until it reaches the spec body.
+  Happened **three times** on 2026-08-09 (CP-1/CP-2 summary rows, the v2 reorder, the v3 pilot).
+* **Never remove a failure's SIGNAL to remove its COST** — v1's repeat-semantics member turned a
+  393-call loop into 393 silent successes.
+* **A resolver must be `lane=read`** — auto-resolution dispatches a tool the user never asked for.
+* **Record every substitution** (`plan_supplied.overrode` is the pattern) so two populations never
+  merge into one row.
+* Gates go stale on any mirrored edit: batch the work, `--check` continuously, full gates at a batch
+  edge. Read the verdict file, never the tail.
+* Every denominator from live data or the SSOT. **Never typed** — and no literal tool count anywhere.
+
+### QC and stop condition
+
+**CODE** tests + a falsifier red on the original defect · **LIVE** real service, real boundary ·
+**DATA** measured state with an explicit falsifier. A row closes only on all three.
+
+🔴 **The gate CP-5 owes itself:** every member needs a **subject** and a test that reds if the member
+is dropped. *"The subject does not exist yet"* is how C-3…C-17 became permanent.
+
+**STOP AND ASK** on a product decision, a second failed verification pass, or a hit budget.
+
+**Objective:** CP-5 closes — a tool that does not implement the pattern **cannot be released**,
+proven by injection — and the first essential tool is admitted **through** the contract with QC
+evidence. Only then does tool v2 resume.
+
+---
+
 ## ▶ ~~NEXT RUN~~ — EXECUTED 2026-08-09. All six frozen items closed; verdicts below.
 
 | # | item | verdict |

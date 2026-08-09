@@ -1,6 +1,7 @@
 # CP-5 · the tool contract — the solid ground
 
-**Scale:** β · **Status:** SPEC **v3 · evaluated**, nothing built · 2026-08-09
+**Scale:** β · **Status:** 🔒 **SEALED v3** — three evaluation rounds applied, nothing built · 2026-08-09
+**Next action:** `5.3-pilot`. Do not write code before it returns.
 **Supersedes** SPEC v1 of the same day, which did not survive its own evaluation. The six findings
 that killed it are kept in `EVALUATION-v1.md` — **four were the spec committing the defect it was
 written to prevent**, and deleting them would destroy the record of why v2 looks like this.
@@ -209,8 +210,15 @@ still returned `tier: exact`. It normalises.
 
 **The contract.** A ref field declares its resolver — *`entity_id` is an `EntityRef`, resolved by
 `glossary_search(query) → entities[].entity_id`, matched on `tier == "exact"`*. This is a statement
-about **how two existing tools relate**, so it needs **no other team** — unlike typed inputs, which
-needs four.
+about **how two existing tools relate**, so it needs **no other team to START** — unlike typed
+inputs, which needs four before anything ships.
+
+🔴 **It is a RUNTIME-REGISTRY ROW, not a chat-service constant, and not `_meta` on day one.**
+v3 first placed it in the tool's `_meta` while claiming it needed no other team — but `_meta` is
+produced by the owning service, so the placement contradicted the claim (W1). Written as a
+constant in chat-service it would be the hardcoding the PO rejected. Written as a registry row
+it is the runtime control that was asked for, authored once per ref type and pushed upstream
+into `_meta` when the owning service catches up.
 
 **The runtime rule — two branches, no third:**
 
@@ -274,7 +282,8 @@ consequence**. Rung 3 is a reference implementation, not the mechanism.
 |---|---|---|
 | **5.1** | the `_meta` contract schema — members as **versioned data**, core vs conditional, with the conditionality itself declared | a tool omitting a **core** member fails validation; a conditional member is required only when its trigger is present |
 | **5.2** | **rung 2** — admission refuses to promote an incomplete contract | injection: strip one core member ⇒ promotion refuses ⇒ the tool does not serve |
-| **5.3** | 🔴 **identifier resolution** — a ref field declares its RESOLVER; the runtime resolves at the dispatch chokepoint | a name in an id field is resolved and **recorded**, or refused with candidates. **Never guessed** — see §3a |
+| **5.3-pilot** | 🔴 **FIRST TASK, BEFORE ANY CODE.** Run the ACTUAL failing names (`"Ember Codex"`, `"Lâm Uyên"`, `"Count Dracula"`) against **their own books** and measure what fraction resolve to exactly one exact match | a rate measured on the population the member SERVES. **W2: the 11/18 figure came from 9 sessions whose overlap with the 24 failing sessions is ONE** — the model searched precisely where it did not send a bare name, so the rate was measured on the cases that already went right. If the pilot rate is low, 5.3 is redirected, not built |
+| **5.3** | 🔴 **identifier resolution** — a ref field declares its RESOLVER (a registry row); the runtime resolves at the dispatch chokepoint | a name in an id field is resolved and **recorded**, or refused with candidates. **Never guessed** — see §3a. **Gated on 5.3-pilot** |
 | 5.3b | untyped properties — the 120 with no `type` at all | conditional; refused at registration when absent |
 | **5.4** | **argument supplier** (23.7%) — every input declares model \| context \| plan | a `plan`-supplied input the model sends is **discarded** — CP-3.10 already does this; the contract makes it *declarable* rather than plan-only |
 | **5.5** | **error contract** (8.1%) — every failure carries a C-7 class **and a message** | a failure with no message cannot be produced |
