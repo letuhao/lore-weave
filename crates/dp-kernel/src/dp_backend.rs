@@ -262,7 +262,11 @@ mod tests {
         let reality = Uuid::new_v4();
         let ctx = SessionContext::bind(
             &Cp,
-            BindRequest { reality, node: "n".into() },
+            BindRequest {
+                reality,
+                node: "n".into(),
+                service: dp::ServiceIdentity::new("dp-kernel-test").expect("valid"),
+            },
             0,
         )
         .expect("bind");
@@ -330,7 +334,11 @@ mod tests {
         }
         let ctx = dp::SessionContext::bind(
             &Cp,
-            dp::BindRequest { reality, node: "n".into() },
+            dp::BindRequest {
+                reality,
+                node: "n".into(),
+                service: dp::ServiceIdentity::new("dp-kernel-test").expect("valid"),
+            },
             0,
         )
         .expect("bind");

@@ -467,6 +467,9 @@ def run_all() -> int:
         # IMPORTS the 5b harness for its read/restore machinery, so the two
         # must never run concurrently against the same tree.
         "scripts/dp-slice5c-bite-gate.py",
+        # `5D`. Mutates crates/dp and runs cargo on it, and also imports the
+        # 5b harness — same reason as 5c.
+        "scripts/dp-slice5d-bite-gate.py",
         "scripts/gate-bite-harness.py",
         "scripts/reality-layer-bite-harness.py",
     )

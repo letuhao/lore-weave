@@ -935,7 +935,7 @@ so the list cannot rot in either direction.
 needs a capacity budget (`I17`), an SLO row, timeouts (`I16`), an observability
 inventory (`I19`) and a security-group manifest — a deployment story, not a
 transport. Its trigger is the first out-of-process caller.
-| `5D` | channel tree + writer leases (`DP-A16`, `DP-Ch9`) — **this is what produces `ChannelId`**, and therefore what retires four DEFERRED registers at once | `DEFERRED_IDS`, `DEFERRED_SESSION_FIELDS`, `DEFERRED_CACHE_FORMS` and `DEFERRED_READ_FORMS` each shrink, and their shrink arms red until the rows go |
+| `5D` | channel tree + writer leases (`DP-A16`, `DP-Ch9`) — **this is what produces `ChannelId`**, and therefore what retires four DEFERRED registers at once | ✅ `dp::ChannelId` (i64, ADOPTED from `dp-kernel`, which now re-exports it) · `ChannelTree` + `SessionContext::move_to_channel` (the producer) · `channel_key` · `read_projection_channel` · `DEFERRED_IDS`/`_SESSION_FIELDS`/`_CACHE_FORMS` **deleted**, `_READ_FORMS` 3→2 · `dp-slice5d-bite-gate` **8/8** including a bite proving the shrink rule itself still fires · `channel-id-adoption-gate` ratchets the 22 remaining `unverified` sites |
 
 > ### ⚠ `5D`'s PREMISE IS WRONG, found by Phase 0 on 2026-08-09 — read this before starting it
 >
@@ -968,6 +968,25 @@ transport. Its trigger is the first out-of-process caller.
 > `i64` decision.** Scoping it as new construction would rebuild what exists —
 > the exact failure `Phase 0` question 1 was added to catch, after the actor-hub
 > round designed feature #1 without auditing what already modelled an actor.
+>
+> **DONE 2026-08-09, with two deviations from the plan above, both stated:**
+>
+> 1. **`ChannelId::unverified` is RATCHETED, not deleted.** 22 call sites remain.
+>    Deleting it in one commit means routing every one through a real tree, and
+>    for the unit tests among them that means inventing a fake tree — trading an
+>    honest escape hatch for a dishonest verification. §0.6c already sealed the
+>    shape for `3E`: *a ratchet, never a big bang.*
+>    `scripts/channel-id-adoption-gate.py` + `contracts/dp/channel-id-baseline.json`
+>    fail on an increase and on an unrecorded decrease. The doc comment that had
+>    promised deletion "when `crates/dp` lands" had been wrong since slice 1 with
+>    nothing to say so — a worklist in a comment is a worklist nobody runs, which
+>    is why this is a gate.
+> 2. **`session_registry.current_channel_id` is still absent, and stays absent.**
+>    `move_to_channel` is an SDK-side operation; nothing writes a session's
+>    channel back to the control plane, because `DP-Ch9`'s CP-side RPC lives in
+>    the four CHANNEL groups that `5C` deliberately left out of the proto. Adding
+>    the column now would be a column NULL in every row — the orphan shape with a
+>    schema. Its trigger is the channel RPC group.
 
 **Two findings `5B`'s Phase 0 handed to `5D`, recorded rather than silently fixed:**
 

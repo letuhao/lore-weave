@@ -101,23 +101,70 @@ verified_uuid_newtype!(
     "session"
 );
 
-/// Ids `DP-K1` names that are NOT built here, with the producer each waits on.
+/// Which channel a call addresses (`DP-Ch1`, `DP-A16`).
 ///
-/// `ChannelId` was written, and clippy's dead-code pass removed it — which is
-/// the mechanism working rather than an inconvenience. `RealityId`,
-/// `SessionId` and `NodeId` are all minted by
-/// [`crate::session::SessionContext::bind`]; nothing mints a `ChannelId`,
-/// because its producer is `DP-Ch9`'s `move_session_to_channel` and that is
-/// slice 5. §0.6c of the run-state seals the rule this obeys: *anything the
-/// spec names that has no producer is not shipped.*
+/// # `i64`, not `Uuid` — and the code decided this before the spec did
 ///
-/// A test that constructs one does not count as a producer — the goal
-/// condition names "test-only consumers" among the things that do not.
+/// `DP-Ch1` writes this as a `Uuid`. `crates/dp-kernel/src/channel.rs` has
+/// shipped it as `i64` since long before `crates/dp` existed, and states the
+/// case there: *"the spec says `Uuid`; the build, the wire contract
+/// (`Uint64String`) and `DP-Ch11`'s allocator all say 64-bit, and two of three
+/// win — `i64` is adopted into the spec rather than the code being changed."*
+/// `contracts/migrations/per_reality/0019_channels` agrees: `id BIGINT`.
 ///
-/// Read by `tests/spec_oracle.rs`, so this cannot quietly become permanent.
-pub const DEFERRED_IDS: &[(&str, &str)] = &[
-    ("ChannelId", "DP-Ch9 move_session_to_channel (slice 5)"),
-];
+/// So this type is an ADOPTION, not a second opinion. Minting a `Uuid`-shaped
+/// `ChannelId` here would have produced two types with one name differing in
+/// representation — the `pc_*`/`npc_*` shape with a compiler behind it.
+/// `dp-kernel` now re-exports THIS type; there is exactly one.
+///
+/// # The producer
+///
+/// [`crate::session::SessionContext::move_to_channel`], via
+/// [`crate::session::ChannelTree`] — `DP-Ch9`'s `move_session_to_channel`,
+/// which is what `DEFERRED_IDS` waited on until this slice.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct ChannelId(pub(crate) i64);
+
+impl ChannelId {
+    /// Mint one from a value the channel tree has RESOLVED.
+    ///
+    /// `pub(crate)`, so the only route is a [`crate::session::ChannelTree`]
+    /// answer — the same discipline the UUID newtypes get from
+    /// `verified_uuid_newtype!`.
+    pub(crate) fn new_verified(raw: i64) -> Self {
+        Self(raw)
+    }
+
+    /// ⚠ **PRE-SDK SEAM — mint a `ChannelId` from a value nothing verified.**
+    ///
+    /// Moved here from `dp-kernel`, where it has lived since before a resolver
+    /// existed. It is **not** deleted in this slice, and the reason is the same
+    /// one §0.6c sealed for `3E`: *a ratchet, never a big bang.* There are 22
+    /// call sites; routing them through a real tree means every one of them
+    /// needs a `channels` row, which for the unit tests among them means
+    /// inventing a fake tree — trading an honest escape hatch for a dishonest
+    /// verification.
+    ///
+    /// What makes it a mechanism rather than a promise: the count is baselined
+    /// in `contracts/dp/channel-id-baseline.json` and
+    /// `scripts/channel-id-adoption-gate.py` fails on an INCREASE and on an
+    /// unrecorded decrease. `rg 'ChannelId::unverified'` is still the worklist;
+    /// it can now only get shorter.
+    pub fn unverified(raw: i64) -> Self {
+        Self(raw)
+    }
+
+    /// Read the raw `BIGINT` — needed to bind it as a query parameter.
+    pub fn get(self) -> i64 {
+        self.0
+    }
+}
+
+impl fmt::Display for ChannelId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, f)
+    }
+}
 
 /// The node a session is bound to (`DP-K1`).
 ///

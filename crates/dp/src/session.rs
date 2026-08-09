@@ -30,7 +30,7 @@
 use core::fmt;
 use core::time::Duration;
 
-use crate::ids::{NodeId, RealityId, ServiceIdentity, SessionId};
+use crate::ids::{ChannelId, NodeId, RealityId, ServiceIdentity, SessionId};
 use crate::DpError;
 
 /// Milliseconds since the **Unix epoch**.
@@ -180,10 +180,58 @@ pub trait ControlPlane {
     fn verify_bind(&self, req: &BindRequest) -> Result<VerifiedBind, DpError>;
 }
 
+/// Where a channel sits in the tree, as the tree itself reports it.
+///
+/// The ancestors come back WITH the channel because `DP-Ch9`'s consumers need
+/// the chain, and resolving it in a second call would let the two answers come
+/// from different reads of a tree that changes.
+///
+/// # Raw `i64`, exactly like [`VerifiedBind`]'s raw `Uuid`s
+///
+/// The first draft of this struct held `ChannelId`s, and that made it
+/// unimplementable: `ChannelId::new_verified` is `pub(crate)`, so a
+/// [`ChannelTree`] living in another crate — which every real one does — could
+/// not construct the value it was required to return. The trait would have been
+/// satisfiable only from inside `crates/dp`, i.e. only by a test double.
+///
+/// So this is the UNVERIFIED side of the boundary and carries raw numbers;
+/// [`SessionContext::move_to_channel`] is what mints the newtypes, which is
+/// also what keeps minting in one place. `VerifiedBind` learned the same lesson
+/// first and this now matches it.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ChannelResolution {
+    /// The channel itself.
+    pub channel: i64,
+    /// Root-first, excluding `channel`. Empty for a root channel.
+    pub ancestors: Vec<i64>,
+}
+
+/// The channel-tree seam — `DP-Ch9`, and the producer of every [`ChannelId`].
+///
+/// Same shape and same reason as [`ControlPlane`]: `crates/dp` declares no I/O,
+/// so it states what it needs answered and slice 5's implementor answers it
+/// against the real `channels` table.
+///
+/// # Why this trait exists at all rather than a plain constructor
+///
+/// A `ChannelId` a caller made up addresses a channel it was never granted —
+/// the same hole `RealityId` closes for realities. `resolve` is where a raw
+/// `BIGINT` from a request body becomes an identity, and it is the ONLY place
+/// that conversion is allowed to happen (with the ratcheted
+/// [`ChannelId::unverified`] escape hatch counted separately).
+pub trait ChannelTree {
+    /// Resolve a raw channel id within a reality, or say why not.
+    ///
+    /// `DpError::ChannelDissolved` for a channel that exists but is gone;
+    /// `DpError::AggregateNotFound` for one the tree does not have.
+    fn resolve(&self, reality: &RealityId, raw: i64) -> Result<ChannelResolution, DpError>;
+}
+
 /// Everything an SDK entry point needs, established once per session.
 ///
 /// Effectively immutable — `DP-K2` says channel changes return a NEW context
-/// rather than mutating this one.
+/// rather than mutating this one, which is why
+/// [`SessionContext::move_to_channel`] takes `&self` and returns `Self`.
 #[derive(Clone, Debug)]
 pub struct SessionContext {
     reality_id: RealityId,
@@ -191,6 +239,12 @@ pub struct SessionContext {
     node_id: NodeId,
     capability: CapabilityToken,
     bound_at_ms: Millis,
+    /// `DP-K2`. `None` until the session moves into a channel — a bound session
+    /// is in its reality and nowhere narrower, and `Option` says that rather
+    /// than a sentinel channel 0 that every reader would have to know about.
+    current_channel_id: Option<ChannelId>,
+    /// Root-first, excluding `current_channel_id`.
+    ancestor_channels: Vec<ChannelId>,
 }
 
 impl SessionContext {
@@ -231,7 +285,80 @@ impl SessionContext {
             node_id: NodeId::new_verified(req.node),
             capability: CapabilityToken::new_verified(v.capability_secret, v.expires_at_ms),
             bound_at_ms: now_ms,
+            current_channel_id: None,
+            ancestor_channels: Vec::new(),
         })
+    }
+
+    /// `DP-Ch9` — move this session into a channel, returning a NEW context.
+    ///
+    /// This is the producer of every verified [`ChannelId`], and the reason
+    /// `DEFERRED_IDS` could finally shrink.
+    ///
+    /// # `&self -> Self`, not `&mut self`
+    ///
+    /// `DP-K2` specifies that channel changes return a new context. That is not
+    /// style: a context is handed to in-flight work, and mutating one in place
+    /// would silently re-address a read that was already running. The old
+    /// context stays valid and stays pointed at the old channel.
+    ///
+    /// # The capability is re-checked first
+    ///
+    /// Moving channels is an SDK entry point, and `DP-K2` says every entry
+    /// point checks liveness. Checking here rather than only at the next read
+    /// means an expired session cannot quietly acquire a new address and fail
+    /// later somewhere that reads like a channel problem.
+    pub fn move_to_channel<T: ChannelTree>(
+        &self,
+        tree: &T,
+        raw_channel: i64,
+        now_ms: Millis,
+    ) -> Result<Self, DpError> {
+        self.check_live(now_ms)?;
+        let resolved = tree.resolve(&self.reality_id, raw_channel)?;
+
+        // The tree is authoritative, but a resolution naming a DIFFERENT
+        // channel than was asked for is a protocol violation rather than a
+        // redirect — the same check, for the same reason, that `bind` makes
+        // against the control plane's reality.
+        if resolved.channel != raw_channel {
+            return Err(DpError::RealityMismatch {
+                ctx: format!("channel {raw_channel}"),
+                requested: format!("tree resolved to {}", resolved.channel),
+            });
+        }
+
+        // A channel that is its own ancestor is a cycle, and a cycle in the
+        // ancestor chain is an infinite walk for every consumer that follows it
+        // — `DP-Ch28`'s bubble-up aggregator walks exactly this list. Caught
+        // here because this is the only place the chain enters the type system.
+        if resolved.ancestors.contains(&resolved.channel) {
+            return Err(DpError::ChannelDissolved {
+                channel: format!(
+                    "{raw_channel} appears in its own ancestor chain — the tree returned a cycle"
+                ),
+            });
+        }
+
+        Ok(Self {
+            current_channel_id: Some(ChannelId::new_verified(resolved.channel)),
+            ancestor_channels: resolved
+                .ancestors
+                .into_iter()
+                .map(ChannelId::new_verified)
+                .collect(),
+            ..self.clone()
+        })
+    }
+
+    /// The channel this session is in, or `None` if it is reality-scoped.
+    pub fn current_channel_id(&self) -> Option<ChannelId> {
+        self.current_channel_id
+    }
+
+    /// Root-first ancestors of [`Self::current_channel_id`], excluding it.
+    pub fn ancestor_channels(&self) -> &[ChannelId] {
+        &self.ancestor_channels
     }
 
     pub fn reality_id(&self) -> &RealityId {
@@ -284,17 +411,16 @@ impl SessionContext {
     }
 }
 
-/// `DEFERRED` — `DP-K2`'s channel fields.
-///
-/// `current_channel_id: ChannelId` and `ancestor_channels: Vec<ChannelId>` are
-/// specified and are NOT here, for the reason §0.6c seals: nothing produces a
-/// `ChannelId` yet. `DpControlPlane::move_session_to_channel` (`DP-Ch9`) is the
-/// producer, and it is slice 5. Recorded in code rather than in a comment
-/// nobody greps, and read by `tests/spec_oracle.rs`.
-pub const DEFERRED_SESSION_FIELDS: &[(&str, &str)] = &[
-    ("current_channel_id", "DP-Ch9 move_session_to_channel"),
-    ("ancestor_channels", "DP-Ch9 move_session_to_channel"),
-];
+// `DEFERRED_SESSION_FIELDS` IS GONE, AND ITS ORACLE TEST WITH IT (slice 5D).
+//
+// It deferred `current_channel_id` and `ancestor_channels` on the grounds that
+// nothing produced a `ChannelId`. `move_to_channel` above produces one, so both
+// fields are on `SessionContext` and the register has nothing left to hold.
+//
+// Deleted rather than left empty, because the oracle test said so in its own
+// assertion message: "DEFERRED_SESSION_FIELDS is empty; delete this test rather
+// than leaving it green on nothing." A register that survives its last row is a
+// check that cannot fail.
 
 #[cfg(test)]
 mod tests {
@@ -383,6 +509,115 @@ mod tests {
         let ctx = SessionContext::bind(&cp, req(1), 0).expect("bind");
         let err = ctx.check_live(1_000).expect_err("expired");
         assert_eq!(err.variant_name(), "CapabilityExpired");
+    }
+
+    // ── 5D — `DP-Ch9`, the ChannelId producer ───────────────────────────────
+
+    /// A tree that answers from a fixed map — the first implementor of
+    /// [`ChannelTree`], which is what makes `move_to_channel` a live path.
+    struct Tree {
+        answer: Result<ChannelResolution, DpError>,
+    }
+
+    impl ChannelTree for Tree {
+        fn resolve(&self, _reality: &RealityId, _raw: i64) -> Result<ChannelResolution, DpError> {
+            match &self.answer {
+                Ok(r) => Ok(r.clone()),
+                Err(_) => Err(DpError::AggregateNotFound { aggregate: "channel", id: "?".into() }),
+            }
+        }
+    }
+
+    fn bound() -> SessionContext {
+        let cp = Double { answer: Ok(granted(1, 10_000)) };
+        SessionContext::bind(&cp, req(1), 0).expect("bind")
+    }
+
+    #[test]
+    fn a_bound_session_starts_in_no_channel() {
+        // `None`, not channel 0. A sentinel would be a value every reader had
+        // to know was special.
+        let ctx = bound();
+        assert_eq!(ctx.current_channel_id(), None);
+        assert!(ctx.ancestor_channels().is_empty());
+    }
+
+    #[test]
+    fn move_to_channel_mints_the_channel_id_and_its_ancestors() {
+        let tree = Tree { answer: Ok(ChannelResolution { channel: 42, ancestors: vec![1, 7] }) };
+        let moved = bound().move_to_channel(&tree, 42, 0).expect("move");
+
+        assert_eq!(moved.current_channel_id().map(ChannelId::get), Some(42));
+        assert_eq!(
+            moved.ancestor_channels().iter().map(|c| c.get()).collect::<Vec<_>>(),
+            vec![1, 7],
+            "root-first, excluding the channel itself"
+        );
+        // Everything else survives the move.
+        assert_eq!(moved.reality_id().as_uuid(), uuid::Uuid::from_u128(1));
+        assert_eq!(moved.session_id().as_uuid(), uuid::Uuid::from_u128(99));
+    }
+
+    #[test]
+    fn the_original_context_is_untouched_because_dp_k2_says_so() {
+        // A context is handed to in-flight work. Mutating one in place would
+        // silently re-address a read that was already running.
+        let before = bound();
+        let tree = Tree { answer: Ok(ChannelResolution { channel: 5, ancestors: vec![] }) };
+        let after = before.move_to_channel(&tree, 5, 0).expect("move");
+
+        assert_eq!(before.current_channel_id(), None, "the OLD context must not have moved");
+        assert_eq!(after.current_channel_id().map(ChannelId::get), Some(5));
+    }
+
+    #[test]
+    fn a_tree_naming_a_different_channel_is_refused() {
+        // The same protocol-violation guard `bind` makes against the control
+        // plane: authoritative is not the same as unquestioned.
+        let tree = Tree { answer: Ok(ChannelResolution { channel: 9, ancestors: vec![] }) };
+        let err = bound().move_to_channel(&tree, 42, 0).expect_err("must refuse");
+        assert_eq!(err.variant_name(), "RealityMismatch");
+    }
+
+    #[test]
+    fn a_channel_that_is_its_own_ancestor_is_refused() {
+        // A cycle here is an infinite walk for every consumer that follows the
+        // chain — DP-Ch28's aggregator walks exactly this list.
+        let tree = Tree { answer: Ok(ChannelResolution { channel: 3, ancestors: vec![1, 3] }) };
+        let err = bound().move_to_channel(&tree, 3, 0).expect_err("must refuse a cycle");
+        assert_eq!(err.variant_name(), "ChannelDissolved");
+        assert!(err.to_string().contains("own ancestor chain"), "{err}");
+    }
+
+    #[test]
+    fn an_expired_session_cannot_move_into_a_channel() {
+        // DP-K2: every SDK entry point checks liveness first. Without it an
+        // expired session acquires a new address and fails later somewhere that
+        // reads like a channel problem.
+        let tree = Tree { answer: Ok(ChannelResolution { channel: 5, ancestors: vec![] }) };
+        let err = bound().move_to_channel(&tree, 5, 10_000).expect_err("expired");
+        assert_eq!(err.variant_name(), "CapabilityExpired");
+    }
+
+    #[test]
+    fn a_tree_that_does_not_have_the_channel_surfaces_its_own_error() {
+        let tree = Tree { answer: Err(DpError::CapabilityExpired) };
+        let err = bound().move_to_channel(&tree, 5, 0).expect_err("absent");
+        assert_eq!(err.variant_name(), "AggregateNotFound");
+    }
+
+    #[test]
+    fn moving_again_replaces_the_channel_rather_than_accumulating() {
+        let a = Tree { answer: Ok(ChannelResolution { channel: 5, ancestors: vec![1] }) };
+        let b = Tree { answer: Ok(ChannelResolution { channel: 8, ancestors: vec![2, 3] }) };
+        let moved = bound().move_to_channel(&a, 5, 0).expect("a").move_to_channel(&b, 8, 0).expect("b");
+
+        assert_eq!(moved.current_channel_id().map(ChannelId::get), Some(8));
+        assert_eq!(
+            moved.ancestor_channels().iter().map(|c| c.get()).collect::<Vec<_>>(),
+            vec![2, 3],
+            "the previous chain must not survive the second move"
+        );
     }
 
     /// The credential must not reach a log through a derive nobody looked at.

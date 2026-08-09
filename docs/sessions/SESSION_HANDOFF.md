@@ -4,8 +4,40 @@
 
 **HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
-> **▶ DO NEXT — `5D`, then `3E.2`, then the data-plane review.** Slices 3 and 4 are CLOSED.
-> Slice 5 is `5A` + `5-WIRE` + `5B` + `5C` in; `5D` remains.
+> **▶ DO NEXT — `3E.2`, then the data-plane review.** Slices 3, 4 and 5 are CLOSED
+> (`5A` · `5-WIRE` · `5B` · `5C` · `5D`).
+>
+> **`5D`'s Phase 0 found its own premise was wrong, which is the whole value of asking.** This
+> board said `5D` *"is what produces `ChannelId`"* and `DEFERRED_IDS` said *"nothing mints a
+> `ChannelId`"*. Something did: `crates/dp-kernel/src/channel.rs` had shipped a `ChannelId`, a
+> `WriterLease`, a `ChannelWriter`, two integration tests, and the `channels` table in
+> `0019_channels` — and its `ChannelId` was **`i64` where `DP-Ch1` says `Uuid`**, with the argument
+> for `i64` already written out and already right (the wire contract and `DP-Ch11`'s allocator both
+> say 64-bit; the migration says `BIGINT`).
+>
+> So `5D` was an **adoption**, not a construction. `dp::ChannelId` takes the `i64` decision;
+> `dp-kernel` re-exports it, so there is exactly one type rather than two with one name.
+> `SessionContext::move_to_channel` (via the `ChannelTree` seam) is the producer that was missing.
+>
+> **Three of the four registers are DELETED, not emptied** — each of their oracle tests asserted
+> `!is_empty()` with the instruction *"delete this test rather than leaving it green on nothing"*.
+> `DEFERRED_READ_FORMS` keeps two rows and survives. What replaced the cache-forms test is
+> stronger: it parses `DP-K7`'s channel-key shape out of the locked doc and compares it to a key
+> the code builds — **and caught a real bug on its first run.** `channel_key` had
+> `dp:{reality}:{scope}:{tier}:{typ}:{channel}:{id}`; the spec says
+> `dp:{reality}:c:{channel}:{tier}:{typ}:{id}`. Both read sensibly; only one is the contract, and
+> prefix invalidation truncates at those boundaries. The OLD test could not have caught it — its
+> shrink arm searched for `channel =` and the arm that shipped is spelled `channel:`.
+>
+> **`ChannelId::unverified` is ratcheted, not deleted** (22 sites,
+> `scripts/channel-id-adoption-gate.py`). Its doc comment had promised deletion "when `crates/dp`
+> lands"; `crates/dp` landed in slice 1 and nothing said otherwise, because a worklist in a comment
+> is a worklist nobody runs.
+>
+> **Evidence.** `dp` 58 lib + 10 compile-fail (a new mirror pins the scope bound in BOTH
+> directions) + 15 spec_oracle · `dp-kernel` 319 · `dp-slice5d-bite-gate` **8/8**, including a bite
+> that re-adds a stale DEFERRED row and shows the shrink arm still refuse it — because "we deleted
+> the check because it passed" needs evidence, not assertion.
 >
 > **`5C` put `DP-C3` on the wire, and its Phase 0 settled the `I1` question by reading the
 > invariant rather than assuming.** `I1` governs PUBLIC traffic and is enforced by security groups

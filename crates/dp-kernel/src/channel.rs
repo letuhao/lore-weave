@@ -26,73 +26,28 @@ use uuid::Uuid;
 
 use crate::envelope::EventEnvelope;
 
-/// Channel identity (BIGINT per DP-Ch11; `None` on an event = reality-scoped).
+/// Channel identity — **re-exported from `crates/dp`** (slice `5D`).
 ///
-/// # The field is private, and that is the whole point (REC-102a)
+/// # There was a second `ChannelId` here, and two types with one name is worse
+/// than either
 ///
-/// `DP-Ch1` specifies this newtype as *"module-private constructor — **cannot be
-/// forged by feature code**"*, a parallel shape to `RealityId`, whose entire
-/// justification (`DP-A12`) is that it *"gates cross-reality leakage at the type
-/// level"*. It shipped as `pub i64`, so any caller could write `ChannelId(7)` —
-/// which is the same defect `SEALED-SUBJECT` named on the proposal's `actor`
-/// field and `PID-D5` named on `event_category`: **a value whose supplier is
-/// also its judge.** Third occurrence, same tier, same week.
+/// This module defined its own `ChannelId(i64)` from before `crates/dp`
+/// existed, with the argument for `i64` over the spec's `Uuid` written out
+/// here: *"the build, the wire contract (`Uint64String`) and `DP-Ch11`'s
+/// allocator all say 64-bit, and two of three win."* That argument was right
+/// and `dp::ChannelId` adopts it — `contracts/migrations/per_reality/0019_channels`
+/// says `id BIGINT` too.
 ///
-/// The spec says `Uuid`; the build, the wire contract (`Uint64String`) and
-/// `DP-Ch11`'s allocator all say 64-bit, and two of three win — `i64` is
-/// adopted into the spec rather than the code being changed to `Uuid`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct ChannelId(pub(crate) i64);
-
-impl ChannelId {
-    // NOTE: `DP-Ch1`'s sanctioned mint — `pub(crate) fn new_verified`, called
-    // during SDK channel-tree resolution — is deliberately NOT declared here.
-    // It would have no caller, and an unused constructor for a model nothing
-    // produces is the orphan shape this repo has been burned by: seven `pc_*` /
-    // `npc_*` projection tables shipped with a projector, a rebuilder, a golden
-    // fixture, an independent oracle and a benchmark, and no producer at all.
-    // It arrives with `crates/dp`, together with the `channels` table it would
-    // resolve against.
-    //
-    // ⚠ AMENDED 2026-08-08 (`1b7gap-H2`): this cited
-    // `scripts/orphan-model-gate.py` as the mechanism that "exists to refuse"
-    // this shape. **It does not, and cannot.** That gate asks whether an EVENT a
-    // projector HANDLES has a PRODUCER — its roots are `crates/`+`services/`,
-    // its suffixes `.rs`/`.ts`/`.go`, and it never reads SQL. An unused
-    // constructor, an unread type and a table with no writer are all outside its
-    // subject, and it reports OK across 14k files while every one of them
-    // stands. Citing a green gate as coverage for something it cannot see is
-    // worse than citing nothing: it reports evidence and silences review. The
-    // reason above is a REASON, and it now says so instead of borrowing a
-    // mechanism's authority.
-
-    /// Read the raw BIGINT — needed to bind it as a query parameter.
-    pub fn get(self) -> i64 {
-        self.0
-    }
-
-    /// ⚠ **PRE-SDK SEAM — mint a `ChannelId` from a value nothing verified.**
-    ///
-    /// `DP-Ch1`'s only sanctioned mint is `new_verified`, called during SDK
-    /// channel-tree resolution against the `channels` table. **The resolver
-    /// still does not exist** — `crates/dp` is unbuilt (`FLOW-7`) — so every
-    /// caller here is asserting a subject it did not verify.
-    ///
-    /// ⚠ AMENDED 2026-08-08 (`1b7gap-M6`): this said `channels` has no
-    /// migration (`FLOW-9`). It has one — `0019_channels`, which cites THIS
-    /// file as its evidence that `ChannelId` is `i64`. The sibling doc
-    /// (`13_channel_ordering_and_writer.md`) was moved to past tense in the same
-    /// commit that shipped the migration and this line was not: `FLOW-2`, one
-    /// file over, inside the round whose subject is `FLOW-2`.
-    ///
-    /// This is deliberately a named, greppable function rather than a public
-    /// tuple field. It does not make the mint safe; it makes it **countable**,
-    /// and when `crates/dp` lands this function is deleted and the compiler
-    /// enumerates the migration. `rg 'ChannelId::unverified'` is the worklist.
-    pub fn unverified(raw: i64) -> Self {
-        Self(raw)
-    }
-}
+/// What could not stand is TWO of them. `crates/dp` is the contract crate and
+/// `SessionContext` now carries a channel, so a distinct `dp_kernel::ChannelId`
+/// would have meant every value crossing the seam needed a conversion — and a
+/// conversion between two "verified" newtypes is a hole with a cast in it.
+///
+/// The escape hatch moved with the type: `dp::ChannelId::unverified` is the
+/// same pre-SDK seam, now ratcheted by `scripts/channel-id-adoption-gate.py`
+/// rather than only counted by a grep in a doc comment. Every call site here is
+/// unchanged, because the name and signature did not change.
+pub use dp::ChannelId;
 
 /// A writer lease `(channel_id, epoch)` — DP-Ch12. Possession is necessary
 /// but NOT sufficient: every append re-proves it against the DB.

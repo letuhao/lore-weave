@@ -71,4 +71,9 @@ fn tier_and_scope_violations_do_not_compile() {
     // through the reality-scoped door has no correct value for the channel it
     // needs, so the call should not be expressible rather than rejected.
     t.compile_fail("tests/ui/read_wrong_scope.rs");
+    // …and the MIRROR (slice 5D). One direction alone leaves the other half of
+    // the scope claim untested, and the channel primitive also has a runtime
+    // check — which makes it easy to assume the runtime check is what does the
+    // work and let the type bound drift to something weaker.
+    t.compile_fail("tests/ui/channel_read_wrong_scope.rs");
 }

@@ -40,7 +40,10 @@ use crate::tier::Tier;
 
 /// `DP-K4` forms not built here, with what each waits on.
 pub const DEFERRED_READ_FORMS: &[(&str, &str)] = &[
-    ("read_projection_channel", "DP-Ch9 move_session_to_channel produces ChannelId (slice 5)"),
+    // `read_projection_channel` was here until slice `5D`. Its blocker —
+    // "DP-Ch9 move_session_to_channel produces ChannelId" — is now discharged,
+    // and the function is below. The register keeps two rows, so unlike its
+    // three sibling registers this one survives and its oracle test with it.
     ("wait_for", "DP-Ch38 CausalityToken, also deferred by DpError"),
     ("query_scoped_reality", "DP-K4 typed Predicate, unbuilt"),
 ];
@@ -134,6 +137,64 @@ where
     }
 }
 
+/// `DP-K4` — read a CHANNEL-scoped aggregate's projection (slice `5D`).
+///
+/// The sibling of [`read_projection_reality`], bounded to the other scope, and
+/// the two bounds are what make a wrong-scope read a compile error rather than
+/// a runtime surprise. `tests/ui/read_wrong_scope.rs` is that claim executed by
+/// rustc.
+///
+/// # Why the channel is not a parameter
+///
+/// It comes from the context, for the same reason [`crate::cache::channel_key`]
+/// takes it from there: a channel argument would let a caller read a channel its
+/// session was never moved into. `DP-A14` calls scope an ADDRESS, and the
+/// session is what holds the address.
+///
+/// A reality-scoped session reading a channel-scoped aggregate is a caller bug
+/// with no correct answer, so it is [`DpError::ChannelDissolved`]'s neighbour
+/// rather than an invented default — `SessionNotFound` names the session,
+/// because the session is what is missing a channel.
+pub fn read_projection_channel<A, B>(
+    backend: &B,
+    ctx: &SessionContext,
+    now_ms: Millis,
+    id: KeyId,
+    key: &str,
+) -> Result<A::Projection, DpError>
+where
+    A: DpAggregate<Scope = crate::scope::ChannelScope> + Decode,
+    B: ReadBackend,
+{
+    ctx.check_live(now_ms)?;
+
+    // Checked BEFORE the store is touched, so a session with no channel never
+    // produces a request the backend has to interpret.
+    if ctx.current_channel_id().is_none() {
+        return Err(DpError::SessionNotFound {
+            session_id: format!(
+                "{} is not in a channel, so it cannot read the channel-scoped {}",
+                ctx.session_id(),
+                A::TYPE_NAME
+            ),
+        });
+    }
+
+    let req = ReadRequest {
+        reality: ctx.reality_id(),
+        aggregate_type: A::TYPE_NAME,
+        aggregate_id: id,
+        cache_key: key,
+    };
+    match backend.fetch(&req)? {
+        Some(bytes) => A::decode(&bytes),
+        None => Err(DpError::AggregateNotFound {
+            aggregate: A::TYPE_NAME,
+            id: req.aggregate_id.as_str().to_string(),
+        }),
+    }
+}
+
 /// The tier a read is served under, for telemetry and for `DP-X1`'s coherency
 /// promise.
 ///
@@ -210,6 +271,76 @@ mod tests {
             0,
         )
         .expect("bind")
+    }
+
+    // ── 5D — the channel-scoped read ────────────────────────────────────────
+
+    struct Chatter;
+    impl DpAggregate for Chatter {
+        type Tier = T2;
+        type Scope = crate::scope::ChannelScope;
+        type Id = u64;
+        type Delta = ();
+        type Projection = u32;
+        const TYPE_NAME: &'static str = "read_channel_fixture";
+    }
+    impl Decode for Chatter {
+        fn decode(bytes: &[u8]) -> Result<u32, DpError> {
+            Ok(u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]))
+        }
+    }
+
+    struct Tree;
+    impl crate::session::ChannelTree for Tree {
+        fn resolve(
+            &self,
+            _r: &RealityId,
+            raw: i64,
+        ) -> Result<crate::session::ChannelResolution, DpError> {
+            Ok(crate::session::ChannelResolution { channel: raw, ancestors: vec![] })
+        }
+    }
+
+    #[test]
+    fn a_channel_scoped_read_works_once_the_session_is_in_a_channel() {
+        let ctx = ctx().move_to_channel(&Tree, 12, 0).expect("move");
+        let s = Store::new(Some(7u32.to_le_bytes().to_vec()));
+        assert_eq!(
+            read_projection_channel::<Chatter, _>(&s, &ctx, 0, KeyId::from(9u64), "k").unwrap(),
+            7
+        );
+        assert_eq!(s.asked.borrow().as_slice(), ["9"], "the id travels as a value");
+    }
+
+    #[test]
+    fn a_reality_scoped_session_cannot_read_a_channel_scoped_aggregate() {
+        // …and the store is never touched, so a backend never has to interpret
+        // a request with no channel in it.
+        let s = Store::new(Some(7u32.to_le_bytes().to_vec()));
+        let err = read_projection_channel::<Chatter, _>(&s, &ctx(), 0, KeyId::from(9u64), "k")
+            .expect_err("no channel");
+        assert_eq!(err.variant_name(), "SessionNotFound");
+        assert!(s.asked.borrow().is_empty(), "the store must not have been asked");
+    }
+
+    #[test]
+    fn an_expired_session_never_reaches_the_store_on_the_channel_path_either() {
+        let ctx = ctx().move_to_channel(&Tree, 12, 0).expect("move");
+        let s = Store::new(Some(7u32.to_le_bytes().to_vec()));
+        let err = read_projection_channel::<Chatter, _>(&s, &ctx, 10_000, KeyId::from(9u64), "k")
+            .expect_err("expired");
+        assert_eq!(err.variant_name(), "CapabilityExpired");
+        assert!(s.asked.borrow().is_empty());
+    }
+
+    #[test]
+    fn a_channel_miss_names_the_aggregate_id() {
+        let ctx = ctx().move_to_channel(&Tree, 12, 0).expect("move");
+        let s = Store::new(None);
+        let err = read_projection_channel::<Chatter, _>(&s, &ctx, 0, KeyId::from(9u64), "k")
+            .expect_err("miss");
+        assert_eq!(err.variant_name(), "AggregateNotFound");
+        assert!(err.to_string().contains('9'), "{err}");
     }
 
     #[test]

@@ -37,30 +37,39 @@
 //! `T2` aggregate is then an ordinary type mismatch, reported by rustc at the
 //! call site. `tests/ui/cache_key_wrong_tier.rs` pins that.
 //!
-//! # DEFERRED — the channel-scoped arm (`DP-K7`'s second form)
+//! # The channel-scoped arm (`DP-K7`'s second form) — BUILT in slice `5D`
 //!
-//! `dp:{reality}:c:{channel}:{tier}:{typ}:{id}` is specified and is NOT built,
-//! for the reason §0.6c seals: **nothing produces a `ChannelId`**. Its producer
-//! is `DP-Ch9`'s `move_session_to_channel`, which is slice 5, and
-//! `SessionContext` carries no channel fields for the same reason. An arm
-//! accepting *any* `Display` as a channel would take a forged value and put it
-//! in a key, which is worse than not having the arm.
+//! ```text
+//! dp:{reality}:c:{channel}:{tier}:{typ}:{id}[:{subkey}]
+//! ```
 //!
-//! Recorded in [`DEFERRED_CACHE_FORMS`], which `tests/spec_oracle.rs` reads.
+//! It was deferred while nothing produced a `ChannelId`; `DP-Ch9`'s
+//! `SessionContext::move_to_channel` now does, so [`channel_key`] exists and
+//! `DEFERRED_CACHE_FORMS` is gone.
+//!
+//! **The channel token comes from the SESSION, never from an argument.** An arm
+//! accepting any `Display` as a channel would take a forged value and put it in
+//! a key — worse than not having the arm — and the whole point of a verified
+//! `ChannelId` is that the session is what holds the address.
+//!
+//! **The segment ORDER is checked against the locked doc**, not against this
+//! comment: `tests/spec_oracle.rs` parses the shape out of
+//! `04c_subscribe_and_macros.md` and compares it to a key this code builds. The
+//! first draft put `{channel}` after `{typ}`, which reads just as sensibly and
+//! is wrong, and nothing but the doc could have said so.
 
 use crate::aggregate::DpAggregate;
 use crate::scope::{RealityScope, Scope};
 use crate::session::SessionContext;
 use crate::tier::Tier;
 
-/// Cache-key forms `DP-K7` specifies that are NOT built, with their blocker.
-///
-/// Same discipline as `DEFERRED_IDS` and `DEFERRED_VARIANTS`: a spec'd thing
-/// with no producer is recorded rather than shipped, and the oracle fails if a
-/// row outlives its reason.
-pub const DEFERRED_CACHE_FORMS: &[(&str, &str)] = &[
-    ("channel_scoped", "DP-Ch9 move_session_to_channel produces ChannelId (slice 5)"),
-];
+// `DEFERRED_CACHE_FORMS` IS GONE, AND ITS ORACLE TEST WITH IT (slice 5D).
+//
+// Its one row deferred the channel-scoped form on the grounds that nothing
+// produced a `ChannelId`. `SessionContext::move_to_channel` does, and
+// `channel_key` below is the form. Deleted rather than left empty: the oracle
+// test asserted the register was non-empty precisely so an emptied one could
+// not sit there as a check with nothing to check.
 
 /// The `{id}` token of a cache key.
 ///
@@ -145,18 +154,76 @@ where
     out
 }
 
+/// Build a channel-scoped cache key. **Call it through [`crate::cache_key!`].**
+///
+/// # The channel comes from the CONTEXT, never from an argument
+///
+/// A `channel:` parameter would let a caller key an entry under a channel its
+/// session is not in — which is the cross-channel leak `DP-A14`'s scope choice
+/// exists to prevent, arriving through the cache instead of through a read.
+/// The session already knows which channel it is in, because
+/// `SessionContext::move_to_channel` put it there, so taking it from anywhere
+/// else is strictly a way to be wrong.
+///
+/// Returns `None` when the session is reality-scoped: there is no correct key
+/// for a channel-scoped aggregate without a channel, and inventing one — a
+/// literal `0`, the reality id, an empty segment — would silently merge every
+/// channel's entries into one.
+pub fn channel_key<A, T>(
+    ctx: &SessionContext,
+    id: impl Into<KeyId>,
+    subkeys: &[&str],
+) -> Option<String>
+where
+    T: Tier,
+    A: DpAggregate<Tier = T, Scope = crate::scope::ChannelScope>,
+{
+    let channel = ctx.current_channel_id()?;
+    // ORDER IS THE SPEC'S, NOT A CHOICE. `DP-K7` writes
+    // `dp:{reality}:c:{channel}:{tier}:{typ}:{id}` — the channel sits directly
+    // after the scope token, BEFORE tier and type. The first draft put it after
+    // `{typ}`, which reads just as sensibly and is wrong: a key format is a
+    // cross-process contract, and `dp-kernel`'s invalidation prefixes are built
+    // by truncating at these boundaries, so a rearranged segment silently
+    // changes which entries a prefix invalidation reaches. `tests/spec_oracle.rs`
+    // now parses the shape out of the locked doc rather than trusting this line.
+    let mut out = format!(
+        "dp:{reality}:{scope}:{channel}:{tier}:{typ}:{id}",
+        reality = ctx.reality_id(),
+        scope = <A::Scope as Scope>::KIND.as_key(),
+        channel = channel,
+        tier = <A::Tier as Tier>::LEVEL.as_key(),
+        typ = A::TYPE_NAME,
+        id = id.into().as_str(),
+    );
+    for sk in subkeys {
+        out.push(':');
+        out.push_str(sk);
+    }
+    Some(out)
+}
+
 /// `DP-K7` — the only sanctioned way to build a cache key.
 ///
 /// ```ignore
 /// let k = dp::cache_key!(ctx, T2, PlayerInventory, player_id);
 /// let k = dp::cache_key!(ctx, T2, PlayerInventory, player_id, "equipped");
+/// // channel-scoped (slice 5D) — yields Option<String>:
+/// let k = dp::cache_key!(channel: ctx, T2, Chatter, msg_id);
 /// ```
 ///
-/// The channel-scoped form (`; channel = ...`) is NOT implemented — see
-/// [`DEFERRED_CACHE_FORMS`]. Writing it produces a "no rules expected" error,
-/// which is the correct outcome: there is no `ChannelId` to pass it.
+/// The two arms produce different TYPES on purpose — `String` and
+/// `Option<String>` — so a caller cannot use a channel-scoped key without
+/// deciding what to do about a session that is not in a channel.
 #[macro_export]
 macro_rules! cache_key {
+    (channel: $ctx:expr, $tier:ident, $aggregate:ty, $id:expr $(, $subkey:expr)* $(,)?) => {
+        $crate::cache::channel_key::<$aggregate, $crate::tier::$tier>(
+            $ctx,
+            $id,
+            &[$($subkey),*],
+        )
+    };
     ($ctx:expr, $tier:ident, $aggregate:ty, $id:expr $(, $subkey:expr)* $(,)?) => {
         $crate::cache::reality_key::<$aggregate, $crate::tier::$tier>(
             $ctx,
@@ -207,6 +274,64 @@ mod tests {
             0,
         )
         .expect("bind")
+    }
+
+    struct Chatter;
+    impl DpAggregate for Chatter {
+        type Tier = T2;
+        type Scope = crate::scope::ChannelScope;
+        type Id = u64;
+        type Delta = ();
+        type Projection = ();
+        const TYPE_NAME: &'static str = "cache_key_channel_fixture";
+    }
+
+    struct Tree(i64);
+    impl crate::session::ChannelTree for Tree {
+        fn resolve(
+            &self,
+            _r: &crate::RealityId,
+            _raw: i64,
+        ) -> Result<crate::session::ChannelResolution, DpError> {
+            Ok(crate::session::ChannelResolution { channel: self.0, ancestors: vec![] })
+        }
+    }
+
+    fn ctx_in_channel(channel: i64) -> SessionContext {
+        ctx().move_to_channel(&Tree(channel), channel, 0).expect("move")
+    }
+
+    #[test]
+    fn a_channel_scoped_key_carries_the_channel_between_type_and_id() {
+        let k = cache_key!(channel: &ctx_in_channel(77), T2, Chatter, 5u64).expect("in a channel");
+        assert_eq!(
+            k,
+            "dp:00000000-0000-0000-0000-000000000001:c:77:t2:cache_key_channel_fixture:5"
+        );
+    }
+
+    #[test]
+    fn two_channels_do_not_share_a_key_for_the_same_aggregate_id() {
+        // The whole reason the channel is IN the key. Without it, every
+        // channel's entry for id 5 would be the same cache entry — a
+        // cross-channel leak arriving through the cache rather than a read.
+        let a = cache_key!(channel: &ctx_in_channel(1), T2, Chatter, 5u64).expect("a");
+        let b = cache_key!(channel: &ctx_in_channel(2), T2, Chatter, 5u64).expect("b");
+        assert_ne!(a, b);
+    }
+
+    #[test]
+    fn a_session_with_no_channel_gets_no_channel_key() {
+        // `None`, not a key with an invented channel. A literal 0 or an empty
+        // segment would silently merge every channel's entries into one.
+        assert!(cache_key!(channel: &ctx(), T2, Chatter, 5u64).is_none());
+    }
+
+    #[test]
+    fn channel_subkeys_append_after_the_id_as_they_do_reality_scoped() {
+        let k = cache_key!(channel: &ctx_in_channel(9), T2, Chatter, 1u64, "seen")
+            .expect("in a channel");
+        assert!(k.ends_with(":c:9:t2:cache_key_channel_fixture:1:seen"), "{k}");
     }
 
     #[test]

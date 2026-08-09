@@ -1022,127 +1022,123 @@ fn crlf_free(path: &str) -> String {
         .replace('\r', "")
 }
 
+/// `DP-K7`'s CHANNEL-SCOPED KEY SHAPE, parsed out of the locked doc.
+///
+/// # This replaces three registers that retired in slice `5D`
+///
+/// `DEFERRED_IDS`, `DEFERRED_SESSION_FIELDS` and `DEFERRED_CACHE_FORMS` all
+/// existed for one reason — nothing produced a `ChannelId` — and
+/// `SessionContext::move_to_channel` now does. Each register emptied, and each
+/// of their oracle tests asserted `!is_empty()` with the instruction *"delete
+/// this test rather than leaving it green on nothing"*, so they are deleted.
+///
+/// What replaces them is stronger than what went away. The old cache-forms test
+/// checked that a form was ABSENT; this one checks that the form now present is
+/// the one the spec describes — and it caught a real defect on its first run.
+/// `channel_key`'s first draft built
+/// `dp:{reality}:{scope}:{tier}:{typ}:{channel}:{id}`, putting the channel after
+/// the type. `DP-K7` says `dp:{reality}:c:{channel}:{tier}:{typ}:{id}`. Both
+/// read sensibly; only one is the contract, and a cache key is a cross-process
+/// contract whose segment boundaries are where prefix invalidation truncates.
+///
+/// The old test could not have caught it: its shrink arm looked for the string
+/// `channel =` inside the `cache_key!` body, and the arm that shipped is spelled
+/// `channel:`. It would have stayed green through the whole slice. That is
+/// recorded here rather than quietly fixed, because a register test whose shrink
+/// arm cannot match the thing it guards is the vacuity shape, and it survived
+/// review by looking like coverage.
 #[test]
-fn deferred_ids_name_things_dp_k1_declares_and_this_build_lacks() {
-    let doc = dp_doc("04a_core_types_and_session.md");
-    let ids_src = crlf_free("src/ids.rs");
-    let mut problems: Vec<String> = Vec::new();
-
-    for (name, producer) in dp::ids::DEFERRED_IDS {
-        // The spec must actually declare it, or the row defers nothing.
-        if !doc.contains(&format!("pub struct {name}(")) {
-            problems.push(format!(
-                "DEFERRED_IDS names `{name}`, but DP-K1 declares no such type; \
-                 a row that defers something the spec never asked for is noise"
-            ));
-        }
-        if producer.trim().is_empty() {
-            problems.push(format!("deferred id `{name}` names no producer"));
-        }
-        // THE SHRINK RULE. If it has since been built, the row has outlived
-        // its deferral.
-        if ids_src.contains(&format!("\n    {name},\n")) {
-            problems.push(format!(
-                "`{name}` is listed in DEFERRED_IDS but IS built in ids.rs — delete the row"
-            ));
-        }
-    }
-
-    assert!(
-        !dp::ids::DEFERRED_IDS.is_empty(),
-        "DEFERRED_IDS is empty, so every arm above ran zero times. If every id \
-         really is built, delete this test rather than leaving it green on nothing."
-    );
-    assert!(problems.is_empty(), "DEFERRED_IDS is stale:\n  - {}", problems.join("\n  - "));
-}
-
-#[test]
-fn deferred_session_fields_name_fields_dp_k2_declares() {
-    let doc = dp_doc("04a_core_types_and_session.md");
-    let src = crlf_free("src/session.rs");
-    let mut problems: Vec<String> = Vec::new();
-
-    for (field, producer) in dp::session::DEFERRED_SESSION_FIELDS {
-        if !doc.contains(field) {
-            problems.push(format!(
-                "DEFERRED_SESSION_FIELDS names `{field}`, which DP-K2 does not declare"
-            ));
-        }
-        if producer.trim().is_empty() {
-            problems.push(format!("deferred field `{field}` names no producer"));
-        }
-        if src.contains(&format!("\n    {field}:")) {
-            problems.push(format!(
-                "`{field}` is listed as deferred but SessionContext HAS it — delete the row"
-            ));
-        }
-    }
-
-    assert!(
-        !dp::session::DEFERRED_SESSION_FIELDS.is_empty(),
-        "DEFERRED_SESSION_FIELDS is empty; delete this test rather than leaving \
-         it green on nothing."
-    );
-    let _ = &problems;
-    assert!(
-        problems.is_empty(),
-        "DEFERRED_SESSION_FIELDS is stale:\n  - {}",
-        problems.join("\n  - ")
-    );
-}
-
-/// `DP-K7`'s channel-scoped form is specified and not built. Same register
-/// discipline: the doc must actually specify it, the row must name a producer,
-/// and the row must disappear once the arm exists.
-#[test]
-fn deferred_cache_forms_name_a_dp_k7_form_this_build_lacks() {
+fn the_channel_scoped_key_shape_is_the_one_dp_k7_specifies() {
     let doc = dp_doc("04c_subscribe_and_macros.md");
-    let src = crlf_free("src/cache.rs");
-    let mut problems: Vec<String> = Vec::new();
 
-    for (form, producer) in dp::cache::DEFERRED_CACHE_FORMS {
-        if producer.trim().is_empty() {
-            problems.push(format!("deferred cache form `{form}` names no producer"));
+    // The spec line, taken from the doc rather than restated here.
+    let spec_shape = doc
+        .lines()
+        .map(str::trim)
+        .find(|l| l.starts_with("\"dp:{reality}:c:"))
+        .unwrap_or_else(|| {
+            panic!("DP-K7 no longer states a channel-scoped key shape in 04c")
+        })
+        .trim_matches(|c| c == '"' || c == ',')
+        .to_string();
+
+    // Turn `dp:{reality}:c:{channel}:{tier}:{typ}:{id}` into the ORDER of its
+    // placeholder names, which is the part that is a contract. The concrete
+    // values differ per call; their positions do not.
+    let want: Vec<&str> = spec_shape.split(':').collect();
+    assert_eq!(
+        want,
+        vec!["dp", "{reality}", "c", "{channel}", "{tier}", "{typ}", "{id}"],
+        "the doc's channel key shape changed; this oracle's expectation must follow it"
+    );
+
+    // …and the code's actual output, segment for segment. Built from the PUBLIC
+    // api rather than through a test-only helper: a `channel_key_for_oracle()`
+    // exported just for this would be a second construction path, and the whole
+    // claim is about the one feature code uses.
+    struct Chatter;
+    impl dp::DpAggregate for Chatter {
+        type Tier = dp::tier::T2;
+        type Scope = dp::scope::ChannelScope;
+        type Id = u64;
+        type Delta = ();
+        type Projection = ();
+        const TYPE_NAME: &'static str = "oracle_channel_fixture";
+    }
+
+    struct Cp;
+    impl dp::ControlPlane for Cp {
+        fn verify_bind(&self, req: &dp::BindRequest) -> Result<dp::VerifiedBind, dp::DpError> {
+            Ok(dp::VerifiedBind {
+                reality: req.reality,
+                session: uuid::Uuid::from_u128(7),
+                capability_secret: "s".into(),
+                expires_at_ms: 10_000,
+            })
         }
     }
 
-    // The doc must specify the channel-scoped key, or the row defers nothing.
-    if !doc.contains("dp:{reality}:c:{channel}") {
-        problems.push(
-            "DP-K7 no longer specifies the channel-scoped key shape; the \
-             DEFERRED_CACHE_FORMS row now defers nothing"
-                .to_string(),
-        );
-    }
-
-    // SHRINK RULE — if the macro grew a channel arm, the row has outlived it.
-    if src.contains("channel =") && src.contains("macro_rules! cache_key") {
-        let macro_body = src
-            .split("macro_rules! cache_key")
-            .nth(1)
-            .unwrap_or("")
-            .split("\n}")
-            .next()
-            .unwrap_or("");
-        if macro_body.contains("channel =") {
-            problems.push(
-                "cache_key! has a channel arm but DEFERRED_CACHE_FORMS still \
-                 lists channel_scoped — delete the row"
-                    .to_string(),
-            );
+    struct Tree;
+    impl dp::ChannelTree for Tree {
+        fn resolve(
+            &self,
+            _r: &dp::RealityId,
+            raw: i64,
+        ) -> Result<dp::ChannelResolution, dp::DpError> {
+            Ok(dp::ChannelResolution { channel: raw, ancestors: vec![] })
         }
     }
 
-    assert!(
-        !dp::cache::DEFERRED_CACHE_FORMS.is_empty(),
-        "DEFERRED_CACHE_FORMS is empty; delete this test rather than leaving it \
-         green on nothing."
+    let ctx = dp::SessionContext::bind(
+        &Cp,
+        dp::BindRequest {
+            reality: uuid::Uuid::from_u128(1),
+            node: "n".into(),
+            service: dp::ServiceIdentity::new("spec-oracle").expect("valid"),
+        },
+        0,
+    )
+    .expect("bind")
+    .move_to_channel(&Tree, 77, 0)
+    .expect("move");
+
+    let built = dp::cache::channel_key::<Chatter, dp::tier::T2>(&ctx, 5u64, &[])
+        .expect("the session is in a channel");
+    let got: Vec<&str> = built.split(':').collect();
+    assert_eq!(
+        got.len(),
+        want.len(),
+        "channel key has {} segments, DP-K7 specifies {}: {built}",
+        got.len(),
+        want.len()
     );
-    assert!(
-        problems.is_empty(),
-        "DEFERRED_CACHE_FORMS is stale:\n  - {}",
-        problems.join("\n  - ")
-    );
+    assert_eq!(got[0], "dp");
+    assert_eq!(got[2], "c", "the scope token must be at position 2, as DP-K7 writes it");
+    assert_eq!(got[3], "77", "the CHANNEL must be at position 3, before tier and type");
+    assert_eq!(got[4], "t2", "tier at position 4");
+    assert_eq!(got[5], "oracle_channel_fixture", "type at position 5");
+    assert_eq!(got[6], "5", "id last");
+
     check_deferred_write_forms();
 }
 
@@ -1213,7 +1209,10 @@ fn check_deferred_write_forms() {
     );
     assert!(
         problems.is_empty(),
-        "DEFERRED_CACHE_FORMS is stale:\n  - {}",
+        // The label said DEFERRED_CACHE_FORMS, which this function has never
+        // checked — it collects READ and WRITE form problems. A wrong label on a
+        // failure message sends the next reader to the wrong register.
+        "DEFERRED_READ_FORMS / DEFERRED_WRITE_FORMS are stale:\n  - {}",
         problems.join("\n  - ")
     );
 }
