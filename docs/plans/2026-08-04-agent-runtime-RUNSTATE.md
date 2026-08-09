@@ -4347,6 +4347,17 @@ full list came from the verdict JSON. 21 are now guarded; the 22nd was a **dead 
 **deleted rather than allowlisted**, on this repository's own precedent that an `except` which cannot
 fire is not a refusal.
 
+🔴 **AND THE FALSIFICATION RUNNER THEN CAUGHT A GUARD OF MINE GREEN UNDER ITS OWN FALSIFIER — CAUSED
+BY A SKIP I HAD ADDED AN HOUR EARLIER.** `test_EVERY_DERIVED_SOURCE_PATH_IS_A_REAL_DIRECTORY` needs
+the `services/` tree; the gates mirror only part of it, so I made it skip inside a mirror. That made
+it **vacuous in exactly the environment that measures it** while still passing in a full checkout —
+the shape *"a guard that stays green under its own falsifier"* names, arriving through a fix for a
+different gate. It is now recorded as **deliberately unfalsifiable with the reason**, because the
+obstacle is the environment rather than the guard: no source edit can red it where its subject does
+not exist. Its sibling `test_THE_CASE_A_PREFIX_GUESS_GETS_WRONG` is falsified by the same
+substitution and touches no filesystem, so the provider table's load-bearing claim stays proven
+inside the gate.
+
 **Two gate corrections, both found by a selftest rather than by a reader.** `MIRROR_PREFIXES` gained
 `services/ai-gateway/src` and — the interesting one — `sdks/python`: `pytest.ini` pins
 `pythonpath = ../../sdks/python` **relative**, so inside a mirror the import fell back to

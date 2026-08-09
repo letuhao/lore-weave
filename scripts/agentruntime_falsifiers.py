@@ -89,11 +89,6 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          '("settings", "provider-registry-service", ("settings_", "web_")),',
          '("settings", "settings-service", ("settings_", "web_")),'),
     ],
-    "test_EVERY_DERIVED_SOURCE_PATH_IS_A_REAL_DIRECTORY": [
-        (f"{PKG}/derive.py",
-         '("settings", "provider-registry-service", ("settings_", "web_")),',
-         '("settings", "settings-service", ("settings_", "web_")),'),
-    ],
     # 4.c — §0.14.1a rule 2: a missing ranking field is a REJECTION, never a fallback. Disabling
     # the clause lets a half-ranked row through, which is how arm E was arrived at by default.
     "test_ALL_THREE_OR_NONE_A_HALF_RANKED_ROW_IS_REFUSED": [
@@ -996,4 +991,22 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
 #: A row here is a claim that the guard cannot be falsified by an edit to the tree — not that nobody
 #: got round to it. That is what `contracts/agentruntime-falsification-unproven.txt` is for, and the
 #: difference between the two files is the difference between a decision and a backlog.
-UNFALSIFIED: dict[str, str] = {}
+UNFALSIFIED: dict[str, str] = {
+    # 🔴 **THE RUNNER CAUGHT THIS ONE GREEN UNDER ITS OWN FALSIFIER, WHICH IS THE FAILURE THIS
+    # INSTRUMENT EXISTS FOR — and the cause was a skip I added an hour earlier.**
+    #
+    # The guard asserts that every `source_path` derive.py produces names a real directory. Both
+    # gates run the suite inside a MIRROR that copies only `MIRROR_PREFIXES`, so
+    # `services/book-service` is absent there and the guard skips — which made it vacuous in exactly
+    # the environment that measures it, while still passing in a full checkout.
+    #
+    # It is recorded here rather than repaired because the obstacle is the ENVIRONMENT, not the
+    # guard: no source edit can make it red where its subject does not exist. Two things keep that
+    # honest. Its sibling `test_THE_CASE_A_PREFIX_GUESS_GETS_WRONG` IS falsified by the same
+    # substitution and does NOT touch the filesystem, so the provider table's load-bearing claim
+    # stays proven inside the gate. And a normal suite run and CI both execute this guard for real.
+    "test_EVERY_DERIVED_SOURCE_PATH_IS_A_REAL_DIRECTORY":
+        "its subject is the repository's services/ tree, which the gate mirrors only in part; the "
+        "guard skips inside a mirror, so no edit can red it there. Falsifiable claim covered by "
+        "test_THE_CASE_A_PREFIX_GUESS_GETS_WRONG, which is filesystem-free.",
+}
