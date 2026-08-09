@@ -156,9 +156,13 @@ nothing else compares `FakeGraphStore` to `Neo4jGraphStore`. Treat
 port yet (T17 has 15 files left), so no assembly path goes through one. The rendered-block diff is
 recorded as owed.
 
-**▶ Resume at T17's remaining 15 files**, then Phase 3. Two debts are open and written down:
-QC-2's rendered-block diff (after T17), and **283 Postgres-gated skips** in `tests/integration/db`
-— the same env-gated-skip problem one backend over.
+**▶ Resume at T17's remaining 12 files** (gate baseline 15 → 12 this session), then Phase 3.
+
+⚠️ **The bite harness has the bug it exists to catch.** `str.replace(old, new, 1)` takes the FIRST
+occurrence, and a Cypher line can appear in more than one template in the same file — so a bite can
+report "mutation applied" while mutating something else entirely, and the resulting green reads as
+"the guard is redundant". Target by line offset inside the named template when a pattern is not
+unique. Treat a silent bite as a FINDING, never as reassurance — that has now paid out four times.
 
 Live parity: `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
 then `TEST_NEO4J_URI=bolt://localhost:7999 pytest tests/integration/db`.
