@@ -1,6 +1,12 @@
 {
   "sites": {
-    "services/commit-service": 0,
-    "services/world-service": 73
+    "services/commit-service": {
+      "adoptable": 0,
+      "exempt": 0
+    },
+    "services/world-service": {
+      "adoptable": 0,
+      "exempt": 63
+    }
   }
 }

@@ -4,10 +4,30 @@
 
 **HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
-> **▶ DO NEXT — the `world-service` scope decision (a PO call, one sentence), then whatever it
-> unblocks.** Slices 3, 4 and 5 are CLOSED (`5A` · `5-WIRE` · `5B` · `5C` · `5D`), `3E.2` discharged
-> commit-service, the post-slice-5 review is done, and **the revocation window it found is now
-> closed.**
+> **▶ DO NEXT — nothing is blocked.** Slices 3, 4 and 5 are CLOSED
+> (`5A` · `5-WIRE` · `5B` · `5C` · `5D`), the post-slice-5 review is done, the revocation window it
+> found is closed, and **`3E` adoption is complete: 0 adoptable sites in both game-layer crates.**
+>
+> ### `3E` — the gate was measuring the wrong thing, and that was the defect
+>
+> It reported 73 bare `reality_id: Uuid` sites for `world-service` in a way that reads as debt.
+> All 73 were classified and **~62 could never be paid**: `dp::RealityId` asserts *"exists AND
+> accepts commands"*, and provisioning, seeding, rebuilding, orphan-scanning and deprovisioning are
+> precisely the code whose subject is a reality in none of those states. **A ratchet whose target is
+> unreachable is a ceiling wearing a ratchet's name.**
+>
+> The count is now split into **adoptable** (ratcheted to zero — and now AT zero) and
+> **structurally exempt**, each exemption carrying a length-checked reason. Exempt is not a hole:
+> those files are still counted, still baselined, and still fail on growth; a phantom exemption
+> matching no file is itself a failure. All three arms bite.
+>
+> `IN_SCOPE` was deliberately **not** narrowed — that would have made 62 sites vanish with nothing
+> left to read.
+>
+> **The embedding worker now binds.** Its 11 adoptable sites took `dp::RealityId` end to end, and
+> `bin/embedding_worker` verifies with the real `MetaControlPlane` before draining — using the meta
+> pool it already opened for audit. A worker pointed at a frozen or archived world refuses at
+> startup instead of backfilling into it.
 >
 > ### ✅ `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` — closed, and the review's own remedy was wrong
 >

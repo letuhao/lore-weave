@@ -837,12 +837,29 @@ which `commit-service`'s 3 are reachable first.
 > is right for DP-R3; the `RealityId` adoption question is a different one and
 > the database test does not answer it.
 >
-> **The open question is therefore a DESIGN decision, and it is the PO's:** does
-> the adoption gate's `IN_SCOPE` narrow to the paths that actually serve
-> gameplay — which shrinks what the guarantee claims to cover, and should be
-> said out loud rather than edited in — or does lifecycle code get a different,
-> honestly-named identity type? A plain `Uuid` is the truthful representation
-> for it today.
+> **RESOLVED 2026-08-09 — the gate was measuring the wrong thing, and that was
+> the defect to fix.** It reported 73 in a way that reads as debt, when ~62 of
+> those could never be paid. A ratchet whose target is unreachable is a CEILING
+> wearing a ratchet's name.
+>
+> * **The count is split**: `adoptable` (ratcheted toward zero) and
+>   `structurally exempt` (each entry carrying a REASON, length-checked, the
+>   same shape `dp-clippy-gate` uses for `plane = "platform"`). Exempt is **not
+>   a hole**: those files are still counted, still baselined, and still FAIL on
+>   growth. A phantom exemption — one matching no file — is itself a failure.
+> * **`world-service`: 11 adoptable → 0.** The embedding-queue runtime path now
+>   takes `dp::RealityId` end to end, and `bin/embedding_worker` BINDS through
+>   the real `MetaControlPlane` before draining, using the meta pool it already
+>   opened for its audit trail. A worker pointed at a frozen or archived world
+>   now refuses at startup.
+> * **`IN_SCOPE` was NOT narrowed.** That was the alternative on the table and
+>   it would have made 62 sites vanish with nothing left to read. The
+>   classification is visible, reasoned and reviewable instead.
+>
+> **The rejected alternative, recorded:** giving lifecycle code its own newtype
+> (`RealityRef`). A newtype over `Uuid` that verifies nothing is naming, not
+> safety — 62 sites of churn to document what the plain type already says. Its
+> trigger should be a real confusion bug, not tidiness.
 >
 > **Not decided here, and deliberately not:** narrowing a gate's scope is
 > exactly the move that needs a reason on the record rather than a quiet edit,

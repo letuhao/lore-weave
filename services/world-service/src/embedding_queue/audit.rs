@@ -72,7 +72,11 @@ impl AuditOutcome {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AuditEvent {
     /// Reality the embedding belongs to. Audit DB partitions on this.
-    pub reality_id: Uuid,
+    ///
+    /// `3E` — VERIFIED, and it matters more here than it looks: the audit DB
+    /// PARTITIONS on this value, so an unverified one files the record of a
+    /// write under a reality nobody checked.
+    pub reality_id: dp::RealityId,
     /// NPC the embedding belongs to.
     pub npc_id: Uuid,
     /// Session the embedding belongs to.
@@ -162,7 +166,7 @@ mod tests {
 
     fn evt(outcome: AuditOutcome, tokens: u32) -> AuditEvent {
         AuditEvent {
-            reality_id: Uuid::from_u128(1),
+            reality_id: crate::embedding_queue::test_reality(Uuid::from_u128(1)),
             npc_id: Uuid::from_u128(2),
             session_id: Uuid::from_u128(3),
             provider: "openai".into(),

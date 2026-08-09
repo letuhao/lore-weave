@@ -88,7 +88,11 @@ tracing = { workspace = true }
 uuid = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-meta-rs = { path = "../../crates/meta-rs" }
+# 3E — the data-plane SDK CONTRACT. The embedding worker writes into a
+# per-reality database, so the reality it drains should be one the control
+# plane confirmed is open. `dp` declares no I/O; it adds types, not a runtime.
+dp = { path = "../../crates/dp" }
+meta-rs = { path = "../../crates/meta-rs", features = ["sqlx-pg"] }
 
 # DEFERRED-059 embedding-queue live wiring — async DB + audit + ops surface.
 tokio = { workspace = true }
