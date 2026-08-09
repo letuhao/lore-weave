@@ -156,9 +156,16 @@ nothing else compares `FakeGraphStore` to `Neo4jGraphStore`. Treat
 port yet (T17 has 15 files left), so no assembly path goes through one. The rendered-block diff is
 recorded as owed.
 
-**▶ Resume at T17's remaining 8 files** (baseline 9 → 8), then Phase 3. What is left:
-6 `db/migrations/` backfills (admin one-shots — Phase 7 must port or retire them),
-`jobs/summary_processor.py` (7 clauses, graph traversal) and `routers/public/extraction.py` (3).
+**EVERY RUNTIME PATH IN knowledge-service IS NOW CYPHER-FREE** (gate baseline 8 → 6). The six
+files left are ALL `db/migrations/` backfills — admin one-shots reachable through
+`internal_backfill.py`. Deliberately last, and **Phase 7 must port or retire them**: they run
+against whatever engine is bound, so an engine swap breaks them silently.
+
+⚠️ **A guard that exists to be an injection barrier is precisely the guard nothing exercises**,
+because the happy path never touches it. Untested closed-set guards turned up in T17 batch 1 and
+again in batch 5, in different modules — worth checking for on sight rather than waiting for a bite.
+
+**▶ Resume at the 6 backfills** (or start Phase 3 — the backfills are not blocking).
 
 🔒 **Enrichment's safety properties were unasserted.** Its write-back can corrupt canon in five
 distinct ways and only a live graph ever exercised them; six guards now read the Cypher directly.
