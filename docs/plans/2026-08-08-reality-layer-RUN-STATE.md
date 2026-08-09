@@ -148,6 +148,122 @@ needs a new fact, not a new opinion.
 
 ---
 
+### 0.6d · THE EXECUTION CONTRACT — what "execute the run-state" actually obliges
+
+This section exists so a goal prompt can be three lines. Everything a long prompt
+used to carry lives here instead, where it is re-read at the start of every
+session and survives a compaction. **A rule that lives only in a prompt is a rule
+that evaporates.**
+
+#### The execution invariant
+
+At every moment there is exactly **one** authoritative next action: the next
+applicable row of this file.
+
+If the next action is defined here, **execute it.** Do not ask what to do next.
+Do not ask whether to continue. Do not ask for confirmation. Do not say *"ready
+for next"*, *"I can continue"*, or *"should I proceed"*. Do not return control
+while executable work remains, and do not substitute a plan, a summary, a
+recommendation or an explanation for the execution itself.
+
+After a row is completed **and verified**, advance to the next applicable row and
+execute it. Continue across turns. **A turn boundary is not permission to stop.**
+
+#### The source-of-truth rule
+
+Do not redesign, reorder, reinterpret, reopen or re-plan this file. Do not invent
+replacement work because a different approach looks preferable. If this file
+already says what to do, do not deliberate about what to do.
+
+Sealed forks (§0.6c) reopen only on **new factual evidence** — never on
+preference, doubt, or a wish to re-litigate.
+
+#### The row-completion contract
+
+A row is **not** done because code changed, because tests ran, or because it
+looks right. A row is done when every piece of acceptance evidence that row
+requires **is present in the transcript as pasted real command output.**
+
+For every new guard, validator or oracle check, all six steps, in order:
+
+1. run it normally, capture **GREEN**;
+2. mutate exactly **one side** of the guarded subject or pair;
+3. run it, capture genuine **RED** that names the violated relationship — and
+   both sides, where the check is about a relationship;
+4. restore the mutation;
+5. run it again, capture **GREEN**;
+6. only then mark the row done.
+
+Never substitute *"passed"*, *"verified"* or *"looks correct"* for output. And
+note what step 3 is really asking: a red for an unrelated reason — a build
+failure, a renamed test that no longer runs — is the failure mode that looks most
+like success (`BDR-50`, `BDR-56`).
+
+#### Non-negotiable hazards
+
+* **Never run two `gate-wiring-gate --run-all` sweeps concurrently**, and never
+  run one while a bite harness is running. `BDR-53`: the second harness's restore
+  makes the first one's mutation permanent, and the restore-by-digest guard
+  cannot see it. The `O_EXCL` lock now refuses this — and **a refusal is exit 2,
+  which is failure evidence, not a passing verification.**
+* **Heredocs eat backslashes** (§0.6). Use the Edit/Write tools for anything
+  containing one.
+* **Never run two suites against one throwaway database name** (§0.6).
+
+#### Blockers
+
+Park **only** on a blocker genuinely external to this repository (§0.3).
+
+*"I would have to build it"*, *"this is large"*, *"this may take many turns"*,
+uncertainty about implementation, and needing to read more code are **not**
+blockers. When genuinely blocked: name the exact external dependency, record it
+in the register, and **immediately continue with the next executable row.** One
+blocked row never stops the run while another executable row exists.
+
+#### The continuation check, before every turn boundary
+
+1. Which row is current?
+2. Is it complete against its acceptance criteria?
+3. If yes — which row is next?
+4. Is that action executable?
+5. If executable — **execute it now.**
+
+Never return a "next steps" list while executable work remains.
+
+#### The drift log is not optional
+
+Append to §5 as you go: real drift, newly discovered failure modes, assumptions
+that turned out wrong, lessons about execution. **An empty drift log is not
+evidence of a clean run** — it is evidence that nobody wrote down the near
+misses.
+
+#### Stop conditions — the complete list
+
+**A.** every applicable row is complete and carries its pasted evidence; or
+**B.** a destructive or irreversible action genuinely requires the PO's decision; or
+**C.** a sealed decision is proven wrong by new factual evidence and this file
+requires a decision to proceed; or
+**D.** execution is genuinely blocked externally (§0.3) **and** no other
+executable row exists.
+
+Otherwise: **continue executing.**
+
+### 0.6e · NEXT SESSION — the three targets, in this order
+
+Mandatory, and they do **not** replace the remaining rows of §4; execute them at
+the point this file's ordering dictates.
+
+| # | row | done = |
+|---|---|---|
+| 1 | **`G3-ORACLE-COVERAGE`** — `spec_oracle` opens **9 of 26** LOCKED `06_data_plane/` documents. Add a **monotonic coverage ratchet** (the count may only rise), then raise it: `05_control_plane_spec.md` first (`DP-C2`'s table list, `DP-C3`'s RPC set, `DP-C8`'s TTL), then `04d_capability_and_lifecycle`, `13_channel_ordering_and_writer`, `17_channel_lifecycle` | the ratchet exists and reds on a decrease; each new oracle rule is **bitten** per the six steps above — mutate one side of the doc/code pair, RED naming BOTH sides, restore, GREEN |
+| 2 | **`META-DOWN-UNCOVERED`** — `scripts/migration-idempotency-validator.sh` walks only `contracts/migrations/per_reality`. The meta tree is unexercised, which is the same `NV-3` shape this file has diagnosed twice | the validator walks both trees; the `036`/`037` down-migrations actually run, with pasted output |
+| 3 | **`3E-NAMING-INCONSISTENCY`** — `commit-service`'s `args.reality` escapes `reality-id-adoption-gate` by NAMING rather than by property | resolved by teaching the gate the input-boundary category, or by an explicit reasoned exemption. **NOT by renaming** — `BDR-55`: renaming moves the number, not the property |
+
+**Deliberately NOT in this list:** `D-META-ERASURE-COVERAGE`'s two undecided
+tables (`session_cost_summary`, `service_to_service_audit` declare no erasure
+method at all). That is a GDPR product decision, not engineering — it goes to the
+PO, not into an autonomous run.
+
 ## 1 · MEASURED STATE — 2026-08-08, each with the command that produced it
 
 Re-measure rather than trust this table if more than a session has passed.
