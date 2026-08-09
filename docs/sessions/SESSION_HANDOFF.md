@@ -156,7 +156,20 @@ nothing else compares `FakeGraphStore` to `Neo4jGraphStore`. Treat
 port yet (T17 has 15 files left), so no assembly path goes through one. The rendered-block diff is
 recorded as owed.
 
-**▶ Resume at T17's remaining 12 files** (gate baseline 15 → 12 this session), then Phase 3.
+**▶ Resume at T17's remaining 9 files** (baseline 12 → 9 this session), then Phase 3. What is
+left: 6 `db/migrations/` backfills (admin one-shots — Phase 7 must port or retire them),
+`jobs/summary_processor.py` (7 clauses, graph traversal), `routers/internal_enrichment.py` (5) and
+`routers/public/extraction.py` (3).
+
+⚠️ **A seam can change SHAPE, not just address.** `run_read` + `_records` collapsed into one repo
+call that returns rows, so tests patching `run_read` would have kept passing while their central
+assertion (the `limit+1` over-fetch) stopped being evaluated. Repointing a mock is not mechanical —
+check whether the thing being mocked still exists in the same form, then re-bite.
+
+⚠️ **The bite harness has a first-match bug.** `str.replace(old, new, 1)` takes the FIRST
+occurrence, and a Cypher line can appear in more than one template in a file — so a bite can report
+"mutation applied" while mutating something else. Target by line offset inside the named template
+when the pattern is not unique, and treat a silent bite as a FINDING.
 
 ⚠️ **The bite harness has the bug it exists to catch.** `str.replace(old, new, 1)` takes the FIRST
 occurrence, and a Cypher line can appear in more than one template in the same file — so a bite can
