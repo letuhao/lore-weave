@@ -1,11 +1,28 @@
 # The glossary↔KG entity-consistency refactor — tracking index
 
-**Status:** 🔴 **NO DESIGN EXISTS.** Three investigations are complete; none of them is a design,
-and each says so in its own header. This folder is the monitor surface until a design doc lands
-here as `<date>-entity-consistency-design.md`. A fourth document was added 2026-08-03 — it is
-**evidence, not a design**, and it states the bar that design has to clear.
-**Opened:** 2026-08-03 · **Evidence re-verified at:** `24dd7bdac`
+**Status:** 🔒 **DESIGN SEALED 2026-08-09.** Three investigations + one evidence doc were the inputs;
+none of them was a design and each said so. A six-document architecture now exists on branch
+`refactor/entity-lifecycle`, **red-teamed and sealed** — **all 30 opened questions closed, no code
+changed.** SEALED means the *reasoning* is closed and must not be re-litigated from memory — re-read it.
+Start at [**ARCHITECTURE-OVERVIEW**](2026-08-09-ARCHITECTURE-OVERVIEW.md); the decision register is its
+[§9](2026-08-09-ARCHITECTURE-OVERVIEW.md#9--sealed--decision-register).
+**Opened:** 2026-08-03 · **Evidence re-verified at:** `24dd7bdac` · **Proposal verified at:** `df18e9049`
 **Umbrella deferral:** `D-GLOSSARY-KG-REFACTOR-DESIGN` (see the register below)
+
+> ### 📐 The 2026-08-09 sealed design — read in this order
+>
+> | doc | what it is |
+> |---|---|
+> | [**ARCHITECTURE-OVERVIEW**](2026-08-09-ARCHITECTURE-OVERVIEW.md) | **entry point.** The whole system in one picture · four services / four sentences · the knowledge-service module decomposition · ports & adapters · symptom→cause→fix · order |
+> | [**knowledge-architecture-DIAGRAM**](2026-08-09-knowledge-architecture-DIAGRAM.md) | the two boundaries (**gateway-only KAL** + ports), write/read paths, transaction ownership, **five** failure modes, the command vocabulary, gates with bites |
+> | [**kg-storage-migration-PLAN**](2026-08-09-kg-storage-migration-PLAN.md) | port-first migration off Neo4j · why the vector layer moves first · **AGE eliminated by dialect audit** · Postgres-relational vs Kuzu · P-0.5 → P3 |
+> | [**lore-pipeline-architecture-PROPOSAL**](2026-08-09-lore-pipeline-architecture-PROPOSAL.md) | the **book layer**: physical lifecycle · story status · **world order as a partial order over events** · the two PO acceptance cases |
+> | [**current-architecture-blast-radius**](2026-08-09-current-architecture-blast-radius.md) | the survey the proposal is built on — every store, service and wire |
+> | 🔴 [**architecture-RED-TEAM**](2026-08-09-architecture-RED-TEAM.md) | **adversarial review, 8 perspectives, 14 findings — 5 survive, 3 changed the plan.** Read it before acting on any of the above: it moved the PO's acceptance cases to **first** instead of last, sliced the port work per-port, and promoted three open questions to blocking gates |
+>
+> **The PO framing this answers:** the platform lacks a reliable read/write pipeline from disk
+> through book → lore bible → manifest → reality; the KG access layer covers reads only; and the
+> data layer was never split behind a port, so the vendor cannot be changed.
 
 > 📒 **[`DEBT-REGISTER.md`](DEBT-REGISTER.md)** — date-numbered (`YYYY-MM-DD-NN`) register of every
 > open item across **three** pending refactors: this one, the
@@ -34,7 +51,13 @@ rows below all point at this refactor rather than at each other.
 
 ---
 
-## 2 · The inputs — three investigations, and one piece of evidence
+## 2 · The inputs — three investigations, one piece of evidence, and the map
+
+> **Added 2026-08-09:** [`2026-08-09-current-architecture-blast-radius.md`](2026-08-09-current-architecture-blast-radius.md),
+> the storage/service/dataflow survey. Read it **second**, right after lifecycle: the three
+> investigations each follow one bug deep, and none of them says how wide the ground is. Its §8
+> carries four things none of the other four documents contain — including a **rename/re-kind
+> leaving a stale `e.id` in Neo4j**, which the 2026-08-02 kind backfill fired 77 times.
 
 | doc | status | what it is | what it explicitly does NOT do |
 |---|---|---|---|
@@ -42,10 +65,12 @@ rows below all point at this refactor rather than at each other.
 | [**2026-08-02 · entity-kind resolution**](2026-08-02-entity-kind-resolution.md) | DESIGN · **M1–M3 SHIPPED**, M4 open | the one document here that is a design and that has landed: `entity_kind_votes`, hysteresis, hierarchy + refinement, the 173-row backfill (77 re-kinds applied on 封神演義, 399 entities carrying a facet, 33 a live conflict) | does not make `kind_id` nullable or multi-valued; does not re-open `BTG-A28`; does not touch the extraction prompt |
 | [**2026-08-02 · there is no entity lifecycle**](2026-08-02-entity-lifecycle-architecture-gap.md) | INVESTIGATION COMPLETE | per-call-site audit across 7 services; §5 is a list of six questions the refactor must answer; §7 re-derives every headline claim from a grep so the next session need not re-investigate | **deliberately stops short of a design** (§5, first line) |
 | [**2026-08-03 · dogfood entity-consistency evidence**](2026-08-03-dogfood-entity-consistency-evidence.md) | EVIDENCE · added 2026-08-03 | what the gap costs the READER. An end-to-end authoring run through the real frontend: a `rival` minted by the `cast` pass at 05:47 took the antagonist's defining act at 05:54, and the critic scored `canon_consistency = 5/5` on all three chapters. Also: a materialise preview that claimed 12 new glossary entries when all 12 existed, and 3-of-8 defensible relationship edges | not a design and not an investigation — it proposes nothing. It exists to be the **acceptance case** |
+| [**2026-08-09 · current architecture & blast radius**](2026-08-09-current-architecture-blast-radius.md) | SURVEY · added 2026-08-09 at `df18e9049` | **the map the other four do not draw.** Every store, service and wire that holds entity-shaped data: 27 of 47 services · 8 Postgres DBs · 10 Neo4j labels · 31 of 43 FE folders · the state × store table lifecycle §5.2 asked for · the 15-item ranked blast radius of one delete. Adds four findings the inputs miss (§8) | not a design — it decides nothing and proposes nothing. It is the input the design's §5.3 *"which states are load-bearing where"* question is answered **from** |
 
-**Read them in this order:** lifecycle (the widest map) → identity (the deepest root) → kind
-(the one worked example of a fix that landed) → **dogfood evidence** (what all three cost in
-finished prose — read last, because it only lands once the first three have named the mechanism).
+**Read them in this order:** lifecycle (the widest map) → **blast radius** (how wide the ground
+actually is, and every store that has to hear about a state change) → identity (the deepest root)
+→ kind (the one worked example of a fix that landed) → **dogfood evidence** (what all of it costs
+in finished prose — read last, because it only lands once the rest have named the mechanism).
 
 **The evidence doc is the bar.** The three investigations each end without a design, so there is no
 statement anywhere of what "fixed" would mean. §1 of the evidence is that statement, in the only
