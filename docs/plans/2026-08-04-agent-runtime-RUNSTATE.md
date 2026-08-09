@@ -4352,6 +4352,26 @@ will demand, which makes it a test of the *membrane* rather than of the declarat
 
 > Admitting `book_list` first closes the exact defect that founded this work.
 
+✅ **THE SUPERSESSION EDGE IS ESTABLISHED — 2026-08-09, `V-LIVE` on the wire.** Consequence 2 above
+said the matched pair *cannot be built* because zero of the 315 declare `superseded_by: book_list`.
+Confirmed independently against the frozen baseline: **all 54 pointers were `composition_*` →
+`composition_*`, and not one `book_*` tool carried one.** The edge existed only as an English
+sentence — a Go comment reading *"Supersedes book_list_chapters / book_list_revisions /
+book_scene_list"* plus a `DEPRECATED: use …` line in each tool's description. `WithSupersededBy` had
+been in the kit the whole time; composition used it 54 times and book-service never once.
+
+**The hand-typed fix would have covered 3 of 8.** `TestSupersessionProseAndDataAgree` derives its
+subject set from the descriptions the registry actually serves, and it immediately convicted five
+more: `book_get` · `book_get_chapter` · `book_scene_get` → `book_read`, and `book_chapter_set_part` ·
+`book_chapter_reorder` → `book_structure_edit`. Narrowing the guard to the three I had already fixed
+would have been scope reduction converting a FAIL to a PASS, so all eight are declared.
+
+**Measured through the rebuilt image and a re-federated gateway:** catalogue **315** (unchanged —
+deprecate, never delete), `superseded_by` **54 → 62**, and `book_list_chapters`,
+`book_list_revisions`, `book_scene_list` point at `book_list`. Tier histogram unchanged (R 102 / W 60
+/ A 153), so nothing else drifted. Both guards proven red by removing one wrapper. ✖ This establishes
+the **edge**; admitting the declaration is still open.
+
 **⬅️ INHERITED FROM CP-1.3, PO decision 2026-08-05:** the M3 leak test becomes a **measurement** here
 rather than a positive control. With an empty manifest its intersection is empty whatever the legacy
 list holds — a verifier substituted 315 fictional names and got an identical pass — so today it only
