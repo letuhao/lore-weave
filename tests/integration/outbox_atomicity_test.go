@@ -37,8 +37,21 @@ func TestOutboxAtomicity_RollbackOnPartialFail(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	// Apply cycle-9 events table + cycle-10 outbox migration. Idempotent.
-	mustApply(t, db, "contracts/migrations/per_reality/0001_initial.up.sql")
+	// Apply cycle-9 events table + cycle-10 outbox migration.
+	//
+	// `0001_initial` was applied here too, and the comment claimed the set was
+	// idempotent. It was not: 0001 creates a plain `outbox` whose FK references
+	// `events(event_id)`, and 0002 then DROPs `events` and recreates it PARTITIONED,
+	// where `event_id` alone carries no unique constraint. First run on a virgin DB
+	// passes because 0001 sees no `events` yet; every run after that dies in 0001 with
+	// `no unique constraint matching given keys for referenced table "events" (42830)`.
+	// Invisible in CI, which hands each run a fresh database, and immediate for anyone
+	// re-running against a persistent one.
+	//
+	// This test never touches the plain `outbox` table — every assertion is against
+	// `events_outbox` from 0005 — so 0001 was pure setup for a table nobody reads.
+	// Dropped rather than reordered: the two migrations disagree about what `events` is,
+	// and applying both was always going to be a coin toss on run order.
 	mustApply(t, db, "contracts/migrations/per_reality/0002_events_table.up.sql")
 	mustApply(t, db, "contracts/migrations/per_reality/0005_events_outbox_table.up.sql")
 

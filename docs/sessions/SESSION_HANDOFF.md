@@ -1,6 +1,6 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `282724c50` + PR #184 reconciled · **Branch:** `main` · 2026-08-08
+**HEAD:** `34810c12a` + DB-guard sweep · **Branch:** `main` · 2026-08-09
 
 ## 📦 2026-08-08 — PR #184 merged: contributed features in, contributed process out
 
@@ -58,34 +58,135 @@ Of the 80 the gate found, 70 carried their English at the call site and were lif
 **10 carried nothing and rendered their own key to the user** (six in `StepProfile`, three in
 pdf-import, one in `GapReportTab`). Those ten are authored copy, worth a reviewer's eye.
 
-### ⚠️ NEXT-1 — five test harnesses set up databases unguarded, from hand-picked lists
+### ✅ CLOSED (2026-08-09) — the unguarded migration harnesses, and the gate that could not see them
 
-`main` is fully green as of `28b65f9ff` — first time since at least 2026-08-03. Getting
-there exposed something worth a deliberate pass.
+Every harness that executes a `.sql` file now verifies the target database first, and the
+verification lives in the helpers rather than at the call sites.
 
-**Sixteen** per-reality migrations exist. **Seven** harnesses hand-pick a subset, and only
-**two** use `mustApplyEventSchema`, the globbing helper written for exactly this after the
-publisher smoke hit it. The other five carry both halves of the problem:
+**What was wrong.** `mustApplyEventSchema` called `testsafe.EnsureThrowawayDB` before its first
+destructive statement; the `mustApply` beside it did not, and four harnesses used `mustApply` —
+`outbox_atomicity`, `reality_lifecycle`, `archive_worker_live_smoke`,
+`retention_worker_live_smoke`. They apply `0002_events_table.up.sql`, which opens with
+`DROP TABLE IF EXISTS events`, and `0001_initial.down.sql`, which drops four tables. In
+`admin-cli` the same shape appeared as `applyDDL`, plus one test that had reimplemented
+`applyDDL` inline — read, deadlock-retry, execute — identical except for the check it lacked.
 
-- **default-uncovered (NV-3)** — a new migration is invisible until someone adds a line.
-  This kept the meta-worker smoke red from 2026-07-27: it applied 0002/0005/0009 while the
-  publisher's pending-select had moved on to `e.channel_id` (0014) and `e.ruleset_digest`
-  (0016). Each fix revealed the next gap, and every failure read as a publisher bug because
-  the error names a COLUMN, not a migration.
-- **unguarded against a bad DSN** — and this is the serious half. `mustApplyEventSchema`
-  calls `testsafe.EnsureThrowawayDB(current_database())` before its first destructive
-  statement; the hand-written `mustApply` does not. These harnesses apply
-  `0002_events_table.up.sql`, which opens with `DROP TABLE IF EXISTS events`. Point
-  `LW_INTEGRATION_DB` at a real per-reality database and it drops that reality's entire
-  event log — the `loreweave_book` shape exactly: *the statement is fine, the DSN is not.*
+Nobody decided to skip the guard. Calling a helper that quietly omits a safety check looks
+exactly like calling one that performs it, so **a check you have to remember is
+default-uncovered**, the same polarity as a hand-written migration list. The guard now sits
+inside `mustApply`, `mustApplyEventSchema` and `applyDDL`; the only way past it is to not use
+the helpers. It is unconditional rather than predicated on the SQL looking destructive: blast
+radius is a property of the file passed in, and a predicate would go quietly wrong the day a
+`DROP` is added to a migration already in someone's list.
 
-The lesson is where the guard lives. Vigilance is not the mechanism; the guard belongs in
-the helper everyone calls, so a caller cannot opt out by writing three lines itself.
+**Proven, against a decoy rather than a real database.** An empty DB named
+`loreweave_guardproof` — production-shaped name, nothing in it, so a failed guard damages only
+the decoy. Guard present: refused at the first `mustApply`, 0 tables touched. Guard removed:
+the same run created `events, snapshots, projection_meta, events_p_2026_08, events_outbox`,
+having executed `DROP TABLE IF EXISTS events` on the way. Against `lw_smoke_guardproof` the test
+passes, so the guard is not simply blocking everything. Both decoys dropped afterwards.
 
-**The work:** move the remaining five harnesses onto `mustApplyEventSchema` (with per-test
-filters where a DB genuinely lacks a table), and keep `requirePublisherColumns`-style
-preflights for what globbing cannot cover. Not done here deliberately — it is a change
-across seven files that set up databases, which is not a 2am change.
+**The gate had a matching blind spot.** `db-safety-gate.py` iterated
+`SEARCH_DIRS = (services, scripts, infra, sdks, contracts, crates)`. `tests/` was not in it, so
+the gate whose entire subject is destructive SQL in test code could not see the most destructive
+test code in the repo, and had reported PASS throughout. Verified: a bare `TRUNCATE events`
+injected into `tests/integration/` is invisible to the pre-change gate (exit 0) and red under the
+new one. Scanning is now the whole repo minus `EXCLUDE_DIRS` — a denylist, where a new tree is
+covered on the day it appears and every exclusion is a reviewable line. Third time this repo has
+shipped the allowlist version of this bug, after `hot-path-gate` and the migration lists.
+
+Widening surfaced nine findings, all previously unseen. Two were real and were fixed by renaming
+rather than exempting: `reality_lifecycle_test.go` dropped and recreated a database called
+`loreweave_meta_lifecycle` (now `lw_meta_lifecycle_test`), and the conformance metaprobe used
+`meta_lifecycle_check` (now `meta_lifecycle_probe_test`) — names that read as disposable to a
+human and as production to `testsafe`, which is the wrong way round for the audience that never
+gets tired. The remaining seven are exempted with the specific reason each is safe.
+
+**One consequence worth knowing.** Go's per-module layout means `testsafe` cannot cross module
+boundaries without a `replace`, so it is vendored — now **five** byte-identical copies. Five
+copies of a safety check is five chances for a fix to reach one and not the others, silently.
+`db-safety-gate` now hashes every `testsafe/testsafe.go` and fails on divergence. Proven by
+widening one copy's `throwawayMarker` to accept `loreweave` — i.e. reintroducing the original
+incident in a single service — and watching it name that copy. Consolidating into one shared
+module would retire the check; until then it is what keeps the copies honest.
+
+**Moving the guard into `mustApply` would have turned `foundation-ci` red**, and finding out why
+took a deliberate check rather than a CI run. `metaworker_live_smoke` hands
+`LW_INTEGRATION_META_DB` to `mustApply`, and that job's database is called
+`metaworker_meta` — disposable, created by the job itself, but carrying no marker, so the new
+guard would have refused it. `worldservice_meta` (embedding-worker) is the same shape. Both are
+renamed with a `_smoke` suffix.
+
+The gate could not see either. Its config check requires `TEST` in the variable name *and* a
+`loreweave_`-prefixed database; `LW_INTEGRATION_META_DB: …/metaworker_meta` satisfies neither.
+`db-safety-gate` now also requires that **any** Postgres DSN assigned in a
+`.github/workflows/` job name a marked database, whatever the variable is called — workflows
+only, since a compose file or service `.env` legitimately names a real database and a CI job
+never does. Proven by pointing a CI job at `loreweave_book`, the original incident verbatim: red
+under the new check, **exit 0 under the old one**.
+
+**Also fixed while verifying:** `outbox_atomicity` was not re-runnable. It applied
+`0001_initial` (plain `outbox`, FK → `events(event_id)`) *and* `0002_events_table` (DROPs
+`events`, recreates it partitioned, where `event_id` alone has no unique constraint). First run
+on a virgin DB passes; every run after dies in 0001 with SQLSTATE 42830. The comment above the
+two lines claimed the set was idempotent. CI never noticed because it hands each run a fresh
+database. The test only ever asserts against `events_outbox`, so `0001` was setup for a table
+nobody reads — removed. Three consecutive runs against one persistent DB now pass.
+
+**The proofs are permanent now, and finding a home for them found one more list.**
+`scripts/test_db_safety_gate.py` (14 tests) pins every case above — the `tests/` tree being
+walked, the CI-DSN check, copy divergence, and the pair to all of them: the gate staying quiet
+on the real repo, without which "goes red" is satisfied by a gate that reddens on everything.
+`gate-teeth-gate`'s ratchet moved 45 → 44.
+
+Wiring it revealed that `foundation-ci`'s pytest step was **fourteen hand-written filenames**,
+and it had already drifted: `test_i18n_key_resolution_gate.py`, written the day before, was
+never added, so the proof that the i18n gate can go red ran nowhere. That is the exact condition
+the step exists to prevent, reproduced inside the step itself. It globs `scripts/test_*.py` now,
+with a floor check so an empty expansion fails loudly rather than passing having run nothing.
+18 files, 277 tests, 59s.
+
+All gates green under `gate-wiring-gate.py --run-all`.
+
+### ⚠️ NEXT-1 — `infra/patroni/patroni.yml` declares a `pg_hba` that Postgres never receives
+
+Surfaced while trying to give the `reality_lifecycle` rename a runtime proof. The two tests in
+`tests/integration/reality_lifecycle_test.go` **cannot pass against the meta-HA stack as
+configured**, and never could — they are not merely skipped in CI, they are unrunnable anywhere.
+
+`patroni.yml` declares under `bootstrap.dcs.postgresql.pg_hba`:
+
+```
+- host  all all 0.0.0.0/0   md5
+```
+
+What Spilo actually renders into `$PGDATA/pg_hba.conf` is its own default set, ending:
+
+```
+hostnossl all  all  all  reject
+hostssl   all  all  all  md5
+```
+
+`rlConnect` hardcodes `sslmode=disable`, so every connection from outside the container hits
+`hostnossl … reject`:
+`pg_hba.conf rejects connection for host "172.20.0.1", user "postgres", database "postgres", no encryption (28000)`.
+
+Two separate problems, and the second is the one that matters beyond this test:
+
+1. **The declared config is inert.** `bootstrap.dcs` applies only at first cluster bootstrap, and
+   the mounted `/etc/patroni/patroni.yml` is not where Spilo reads from — it wants
+   `SPILO_CONFIGURATION`. A config file that looks authoritative, is version-controlled, is
+   reviewed, and reaches nothing.
+2. **`rlReachable` tests the wrong thing.** It opens a TCP connection and calls that reachable,
+   so the harness reports "meta primary not reachable; skipping" when the port is down and
+   *fails* when it is up. There is no configuration in which those tests pass, and the skip has
+   been reading as "environment absent" rather than "this never worked".
+
+**The work:** decide whether the stack should accept non-SSL local connections (set
+`SPILO_CONFIGURATION`, or drop `sslmode=disable` from `rlConnect`), then make `rlReachable`
+assert an actual authenticated query so a broken stack fails loudly instead of skipping. Left
+untouched here: it is infra configuration for a stack no CI job runs, and the guard sweep this
+session belongs to should not carry a Patroni change with it.
 
 ### ✅ CLOSED (mitigated, not root-caused) — two gates reported FALSE findings under CI load
 

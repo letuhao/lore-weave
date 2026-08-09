@@ -75,6 +75,9 @@ func TestRetentionWorkerLiveSmoke_OutboxAndAuditPrune(t *testing.T) {
 	mEnd := mStart.AddDate(0, 1, 0)
 	auditPart := fmt.Sprintf("event_audit_p_%04d_%02d", mStart.Year(), int(mStart.Month()))
 	t.Cleanup(func() {
+		// db-safety-gate: ok — `auditPart` is the dated partition this test creates a few
+		// lines below (`event_audit_p_YYYY_MM`, 45 days back), and the three `mustApply`
+		// calls above have already put this DSN through `testsafe.EnsureThrowawayDB`.
 		_, _ = db.Exec(`DROP TABLE IF EXISTS ` + auditPart)
 		_, _ = db.Exec(`DELETE FROM event_audit WHERE reality_id=$1`, realityID)
 		_, _ = db.Exec(`DELETE FROM events_outbox WHERE reality_id=$1`, realityID)

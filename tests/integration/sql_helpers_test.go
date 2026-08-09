@@ -41,31 +41,7 @@ import (
 // file name); pass nil to apply the whole set.
 func mustApplyEventSchema(t *testing.T, db *sql.DB, only func(name string) bool) {
 	t.Helper()
-
-	// GUARD BEFORE YOU DESTROY (CLAUDE.md › "Destructive DB ops in tests").
-	//
-	// db-safety-gate: ok — every SQL fragment in THIS comment block is prose
-	// describing the hazard; the guard below is the mitigation, and it runs
-	// before the first destructive statement.
-	//
-	// `db-safety-gate` caught this the moment the helper was written, and it was
-	// RIGHT — this is not a false positive. `0002_events_table.up.sql` opens with
-	// `DROP TABLE IF EXISTS events`, so widening the applied set from two
-	// hand-picked migrations to a globbed range made this helper strictly more
-	// destructive than the code it replaced. Point `LW_INTEGRATION_DB` at a real
-	// per-reality database and it drops that reality's entire event log.
-	//
-	// That is precisely how an unscoped `DELETE FROM books` once hard-deleted
-	// every user's books: the statement was fine, the DSN was not. So refuse any
-	// database whose name does not carry a throwaway marker, BEFORE the first
-	// destructive statement rather than after.
-	var dbName string
-	if err := db.QueryRow(`SELECT current_database()`).Scan(&dbName); err != nil {
-		t.Fatalf("resolve current_database() before destructive migrations: %v", err)
-	}
-	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
-		t.Fatalf("mustApplyEventSchema: %v", err)
-	}
+	requireThrowawayDB(t, db, "mustApplyEventSchema")
 
 	dir := filepath.Join(repoRoot(t), "contracts", "migrations", "per_reality")
 	paths, err := filepath.Glob(filepath.Join(dir, "*.up.sql"))
@@ -119,11 +95,48 @@ func eventTableMigrations(name string) bool {
 	return false
 }
 
+// requireThrowawayDB refuses to let the caller touch a database whose name does not
+// carry a throwaway marker. Call it BEFORE the first destructive statement.
+//
+// db-safety-gate: ok — every SQL fragment in THIS comment block is prose describing
+// the hazard; the code below is the mitigation, not an instance of it.
+//
+// WHY THIS LIVES IN THE HELPER AND NOT AT THE CALL SITES. It used to be three lines
+// inlined in `mustApplyEventSchema`, and exactly two of the seven harnesses in this
+// repo had them. The other five applied migrations by hand and were unguarded — not
+// because anyone decided to skip the guard, but because opting out looks exactly like
+// ordinary code: you call `mustApply` and nothing tells you a guard exists. A safety
+// check you have to REMEMBER to call is default-UNCOVERED, the same polarity bug as a
+// hand-written migration list. So the guard now sits inside every helper that can
+// execute a .sql file, and the only way to skip it is to not use the helpers.
+//
+// The hazard is real and not theoretical: `0002_events_table.up.sql` opens with
+// `DROP TABLE IF EXISTS events`, and `0001_initial.down.sql` drops four tables. Point
+// `LW_INTEGRATION_DB` at a live per-reality database and applying either one destroys
+// that reality's entire event log. That is precisely how an unscoped `DELETE FROM
+// books` once hard-deleted every user's books: the statement was fine, the DSN was not.
+func requireThrowawayDB(t *testing.T, db *sql.DB, caller string) {
+	t.Helper()
+	var dbName string
+	if err := db.QueryRow(`SELECT current_database()`).Scan(&dbName); err != nil {
+		t.Fatalf("%s: resolve current_database() before applying migrations: %v", caller, err)
+	}
+	if err := testsafe.EnsureThrowawayDB(dbName); err != nil {
+		t.Fatalf("%s: %v", caller, err)
+	}
+}
+
 // mustApply reads the given .sql file (path relative to the repo root)
 // and runs it against db. Fails the test if the file is missing or the
 // statements error out.
+//
+// Guarded unconditionally rather than only for files that LOOK destructive: whether a
+// migration drops a table is a property of its current contents, so a predicate over
+// the SQL would have to be right about every file forever, and would go quietly wrong
+// the day someone adds a DROP to a migration this helper already applies.
 func mustApply(t *testing.T, db *sql.DB, relPath string) {
 	t.Helper()
+	requireThrowawayDB(t, db, "mustApply")
 	root := repoRoot(t)
 	abs := filepath.Join(root, filepath.FromSlash(relPath))
 	b, err := os.ReadFile(abs)

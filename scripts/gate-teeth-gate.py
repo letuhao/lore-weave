@@ -43,7 +43,10 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: 2026-07-31: 54 CI-invoked gates, 7 proven (4 selftest + 3 test files) ⇒ 47.
 #: MEASURED, not estimated — the first value here was a guess of 43 and the gate rejected it
 #: on its own first run, which is the behaviour you want from a ratchet.
-NO_PROOF_BASELINE = 45
+#: 2026-08-09: 45 → 44, `scripts/test_db_safety_gate.py`. db-safety-gate had shipped two
+#: blind spots (an allowlist that omitted `tests/`, and a config check that required `TEST`
+#: in the variable name) and both were found by hand; the proofs are now permanent.
+NO_PROOF_BASELINE = 44
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

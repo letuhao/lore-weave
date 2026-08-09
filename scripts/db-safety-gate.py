@@ -19,6 +19,23 @@ and, in CI/compose/env config, a `*_TEST_*_URL` pointing at a BARE production DB
 (`loreweave_<svc>` with no test/smoke/audit/... marker) — the exact CI misconfig that
 armed the incident.
 
+Two further checks, both added 2026-08-09 after each caught something the others missed:
+  - in `.github/workflows/` ONLY, ANY Postgres DSN assigned to an env var must name a
+    database carrying a throwaway marker, whatever the variable is called. The
+    `*_TEST_*_URL` rule above needs `TEST` in the name AND a `loreweave_` database;
+    `LW_INTEGRATION_META_DB: …/metaworker_meta` satisfied neither, and that DSN was
+    handed straight to a helper that applies `DROP TABLE IF EXISTS events`. Restricted
+    to workflows because a compose file or service `.env` legitimately names a real
+    database, and a CI job never does.
+  - every vendored `testsafe/testsafe.go` must be byte-identical. Go's per-module layout
+    forces the runtime guard to be copied rather than imported (five copies as of
+    2026-08-09), and a fix that reaches four of them leaves the fifth silently accepting
+    a production DSN.
+
+Scanning is a DENYLIST over the whole repo (EXCLUDE_DIRS), not an allowlist of trees.
+The allowlist it replaced omitted `tests/` — where the cross-service live smokes live —
+so this gate reported PASS over the most destructive test code in the repo.
+
 Each finding must be FIXED (scope the statement with a WHERE; point the URL at a
 throwaway DB whose name carries a marker; guard the helper with
 `testsafe.EnsureThrowawayDB(current_database())`) OR consciously EXEMPTED with a pragma:
@@ -35,6 +52,7 @@ Exit 0 = clean (or all findings exempted). Exit 1 = an un-exempted finding.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import subprocess
@@ -42,7 +60,10 @@ import sys
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
-SEARCH_DIRS = ("services", "scripts", "infra", "sdks", "contracts", "crates")
+# Scanning is a DENYLIST — see iter_files_full() for why the allowlist that used to
+# live here (SEARCH_DIRS) let the whole `tests/` tree through unscanned. Anything added
+# to this set is an explicit, reviewable decision not to look; anything new in the repo
+# is scanned by default.
 EXCLUDE_DIRS = {
     "node_modules", "__pycache__", ".pytest_cache", ".venv", "venv",
     "dist", "build", ".next", ".git", "vendor", "coverage",
@@ -105,6 +126,13 @@ RE_NON_EXEC = re.compile(
 RE_TEST_URL = re.compile(r"(?i)\b[A-Z][A-Z0-9_]*TEST[A-Z0-9_]*(?:_URL|_DSN|_DB|_DATABASE_URL)\b")
 RE_DBNAME = re.compile(r"/(loreweave_[a-z0-9_]+)")
 RE_THROWAWAY = re.compile(r"(?i)(test|smoke|audit|scratch|throwaway|tmp|sandbox|ephemeral)")
+# A Postgres DSN assigned to an env var in a CI workflow: capture the var name and the
+# database name. Matches any `*_DB`/`*_DSN`/`*_DATABASE_URL`/`*_URL`, not only ones
+# carrying `TEST` — see scan_config_file() for the name that slipped through.
+RE_CI_DSN = re.compile(
+    r"""\b([A-Z][A-Z0-9_]*(?:_DB|_DSN|_DATABASE_URL|_URL))\s*:\s*["']?postgres(?:ql)?://"""
+    r"""[^/\s"']*/([A-Za-z0-9_]+)"""
+)
 CONFIG_EXT = (".yml", ".yaml", ".env", ".toml")
 
 # ── test code: a SCHEMA-RESETTING fixture reading a PRODUCTION DSN (K29) ───────
@@ -276,29 +304,60 @@ def scan_test_file(path: str) -> list[Finding]:
 
 def scan_config_file(path: str) -> list[Finding]:
     out: list[Finding] = []
+    in_workflow = "/.github/workflows/" in path.replace("\\", "/")
     for i, ln in enumerate(_lines(path)):
         if PRAGMA in ln:
             continue
-        if not RE_TEST_URL.search(ln):
-            continue
-        m = RE_DBNAME.search(ln)
-        if m and not RE_THROWAWAY.search(m.group(1)):
-            out.append(Finding(path, i + 1, "test-URL→production-DB", ln))
+        if RE_TEST_URL.search(ln):
+            m = RE_DBNAME.search(ln)
+            if m and not RE_THROWAWAY.search(m.group(1)):
+                out.append(Finding(path, i + 1, "test-URL→production-DB", ln))
+                continue
+        # A CI job's DSN must name a THROWAWAY database, whatever the variable is
+        # called. The check above needs `TEST` in the variable name AND a
+        # `loreweave_`-prefixed database; `LW_INTEGRATION_META_DB: …/metaworker_meta`
+        # satisfied neither, so it was invisible twice over — while
+        # `metaworker_live_smoke` handed that DSN straight to `mustApply`. The moment
+        # the runtime guard moved into `mustApply` (2026-08-09) that CI job would have
+        # gone red, and the gate would have had nothing to say about why.
+        #
+        # Workflows only: a compose file or a service `.env` legitimately names a real
+        # database, because that is the service's actual database. A GitHub Actions job
+        # has no production data to point at and nothing to gain from pretending
+        # otherwise, so here the throwaway marker is simply required.
+        if in_workflow:
+            m = RE_CI_DSN.search(ln)
+            if m and not RE_THROWAWAY.search(m.group(2)):
+                out.append(Finding(path, i + 1, "CI-DSN→unmarked-DB", ln))
     return out
 
 
 def iter_files_full():
-    for d in SEARCH_DIRS:
-        root = os.path.join(REPO_ROOT, d)
-        if not os.path.isdir(root):
-            continue
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [x for x in dirnames if x not in EXCLUDE_DIRS]
-            for fn in filenames:
-                yield os.path.join(dirpath, fn)
-    # top-level configs (.github handled via walk of repo root's .github)
-    gh = os.path.join(REPO_ROOT, ".github")
-    for dirpath, _, filenames in os.walk(gh):
+    """Walk the WHOLE repo minus EXCLUDE_DIRS — deliberately not an allowlist.
+
+    THE BLIND SPOT THIS CLOSES. This used to iterate SEARCH_DIRS = (services, scripts,
+    infra, sdks, contracts, crates) plus .github. `tests/` was not in it, and `tests/`
+    is where the cross-service live smokes live — four harnesses that apply
+    `contracts/migrations/per_reality/*.up.sql`, one of which opens with
+    `DROP TABLE IF EXISTS events`, against whatever `LW_INTEGRATION_DB` points at. The
+    gate whose entire purpose is destructive-SQL-in-test-code could not see the most
+    destructive test code in the repo, and reported PASS the whole time.
+
+    Nobody excluded `tests/`. It was never included — which is the point. An enumerated
+    allowlist is default-UNCOVERED (NV-3): a new top-level tree is invisible until
+    someone remembers to add it, and nothing anywhere fails to remind them. A denylist
+    is default-COVERED: a new tree is scanned on the day it appears, and the only way
+    out is an explicit entry in EXCLUDE_DIRS that a reviewer can see.
+
+    That is the same polarity bug as the hand-written migration lists this gate now
+    catches, and the same one `hot-path-gate.py` had. Third time in this repo.
+    """
+    skip_top = {".git"}
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [
+            x for x in dirnames
+            if x not in EXCLUDE_DIRS and not (dirpath == REPO_ROOT and x in skip_top)
+        ]
         for fn in filenames:
             yield os.path.join(dirpath, fn)
 
@@ -317,8 +376,61 @@ def iter_files_staged():
             yield os.path.join(REPO_ROOT, rel)
 
 
+def check_testsafe_copies() -> list[str]:
+    """Every `testsafe/testsafe.go` in the repo must be byte-identical.
+
+    Go's per-service go.mod layout means the runtime guard cannot be imported across
+    module boundaries without a `replace` line, so it is VENDORED — as of 2026-08-09
+    there are five copies (book-service, glossary-service, usage-billing-service,
+    integrity-checker, admin-cli). Five copies of a safety check is five chances for a
+    fix to land in one and not the others, and the failure would be silent: four
+    services keep refusing a production DSN while the fifth quietly accepts it.
+
+    `throwawayMarker` is the specific hazard. Adding a marker to one copy widens what
+    that service will happily wipe, and nothing else in the repo would notice. So
+    compare bytes and name every divergent copy. Consolidating into one shared module
+    would make this check unnecessary; until then it is what keeps the copies honest.
+    """
+    hits: list[tuple[str, str]] = []
+    for dirpath, dirnames, filenames in os.walk(REPO_ROOT):
+        dirnames[:] = [x for x in dirnames if x not in EXCLUDE_DIRS and x != ".git"]
+        if os.path.basename(dirpath) != "testsafe" or "testsafe.go" not in filenames:
+            continue
+        fp = os.path.join(dirpath, "testsafe.go")
+        try:
+            with open(fp, "rb") as f:
+                digest = hashlib.sha256(f.read()).hexdigest()
+        except OSError as e:
+            return [f"could not read {os.path.relpath(fp, REPO_ROOT)}: {e} — "
+                    "this is a READ failure, not a finding"]
+        hits.append((os.path.relpath(fp, REPO_ROOT).replace("\\", "/"), digest))
+
+    # Anti-vacuity: zero copies means the walk is wrong, not that the repo is clean.
+    # A comparison over an empty set passes trivially, which is exactly the failure
+    # mode this gate's own `|| true` bug had.
+    if not hits:
+        return ["found NO testsafe/testsafe.go anywhere — the guard package is how "
+                "destructive DB tests refuse a production DSN, so an empty scan means "
+                "this check is broken, not that there is nothing to check"]
+
+    by_digest: dict[str, list[str]] = {}
+    for path, digest in sorted(hits):
+        by_digest.setdefault(digest, []).append(path)
+    if len(by_digest) == 1:
+        return []
+
+    out = [f"the {len(hits)} vendored copies of testsafe.go have DIVERGED "
+           f"({len(by_digest)} distinct versions):"]
+    for digest, paths in sorted(by_digest.items(), key=lambda kv: -len(kv[1])):
+        out.append(f"  [{digest[:12]}] {len(paths)} copy(ies):")
+        out.extend(f"      {p}" for p in paths)
+    out.append("  → diff them and re-sync. A guard that differs per service is not a guard.")
+    return out
+
+
 def main() -> int:
     staged = "--staged" in sys.argv
+    copy_drift = check_testsafe_copies()
     files = iter_files_staged() if staged else iter_files_full()
     findings: list[Finding] = []
     for path in files:
@@ -329,8 +441,14 @@ def main() -> int:
         elif _is_config(path):
             findings.extend(scan_config_file(path))
 
+    if copy_drift:
+        print("✗ db-safety-gate: the runtime guard is not the same everywhere:\n", file=sys.stderr)
+        for ln in copy_drift:
+            print(ln, file=sys.stderr)
+        print("", file=sys.stderr)
+
     if not findings:
-        return 0
+        return 1 if copy_drift else 0
 
     print("✗ db-safety-gate: destructive DB operation(s) in test/config code:\n", file=sys.stderr)
     for f in findings:
