@@ -143,10 +143,25 @@ metric increment; an as-of clause in a template that never binds the parameter; 
 `relations_for(direction="outgoing", as_of=40)` returned a plausible answer that ignored the
 position. Lesson: I verified the mutation APPLIED, not that it applied ONLY where intended.
 
-**▶ Resume at QC-2** — adapter-parity live proof, then T17's remaining 15 files. QC-2 is now the
-load-bearing control for the phase: since repo tests deliberately were NOT repointed, diffing the
-fakes against the Neo4j adapter on a live stack is the fakes' only real check.
-Throwaway graph: `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
+**QC-2 landed — and found fake drift on its first run.** `FakeGraphStore` was returning a
+well-formed entity that was NOT the one the real store produces: `aliases` never seeded or
+accumulated, `version` stuck at 1, and the confidence high-water rule unasserted. Every unit test
+touching those had been agreeing with the fake.
+
+⚠️ **T20 made QC-2 the fakes' ONLY check.** Since the repo tests deliberately were not repointed,
+nothing else compares `FakeGraphStore` to `Neo4jGraphStore`. Treat
+`tests/integration/db/test_graph_adapter_parity.py` as load-bearing, not as a nice-to-have.
+
+⚠️ It is a PORT-LEVEL diff, not the rendered-block diff the task asked for — no consumer holds a
+port yet (T17 has 15 files left), so no assembly path goes through one. The rendered-block diff is
+recorded as owed.
+
+**▶ Resume at T17's remaining 15 files**, then Phase 3. Two debts are open and written down:
+QC-2's rendered-block diff (after T17), and **283 Postgres-gated skips** in `tests/integration/db`
+— the same env-gated-skip problem one backend over.
+
+Live parity: `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
+then `TEST_NEO4J_URI=bolt://localhost:7999 pytest tests/integration/db`.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

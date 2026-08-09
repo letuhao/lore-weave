@@ -48,10 +48,16 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: QC-2** — adapter-parity live proof, then T17's remaining 15 files. QC-2 is now the
-load-bearing control for the whole phase: T20 deliberately did NOT repoint repo tests at the fakes
-(that would be the fake grading itself), so the fakes' only real check is diffing them against the
-Neo4j adapter on a live stack.
+**RESUME: T17's remaining 15 files**, then Phase 3. Phase 2 is otherwise complete — four ports,
+four fakes, a gate, and the parity control that keeps the fakes honest.
+
+⚠️ **Two debts recorded rather than dropped:** (a) QC-2's *rendered-block* diff is owed once a
+consumer actually holds a port (T17); the port-level diff shipped in its place. (b) **283 Postgres
+skips** remain in `tests/integration/db` — the same "env-gated tests skip and the suite lies"
+problem one backend over, and its own slice.
+
+Live-parity recipe: `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
+then `TEST_NEO4J_URI=bolt://localhost:7999 pytest tests/integration/db`.
 
 A throwaway Neo4j for the live suite:
 `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
@@ -1198,11 +1204,55 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `both` template applies it to **each** UNION branch, and that the queries which never bind the
   parameter never reference it. All three defects would have failed it.
 
-- [ ] **QC-2** — Adapter-parity live proof
+- [x] **QC-2** — Adapter-parity live proof — **GREEN, and it found drift on its first run**
   `/aif-review +check`. Then run the **same** context-assembly request against the Neo4j adapter and
   the fake, on a live stack, and diff the rendered block byte-for-byte.
   **Why:** the fake is about to carry 561 tests. If it drifts from the real adapter, every one of
   those tests becomes a lie — the exact failure the skips were hiding.
+  ---
+  **② Live proof — `tests/integration/db/test_graph_adapter_parity.py`, 10 tests, all green**
+  against a throwaway Neo4j (`docker run … -p 7999:7687 neo4j:5-community`). Integration suite
+  **348 passed**, unit **4078 passed**.
+
+  ⚠️ **T20 changed this task's premise and made it MORE load-bearing, not less.** QC-2 assumed the
+  fakes would carry ~561 tests. T20 measured that and rejected it — the Neo4j-gated tests verify
+  Cypher, so repointing them at a fake is the fake grading itself. The consequence is that **this
+  file is now the fakes' only check.** Nothing else compares `FakeGraphStore` to `Neo4jGraphStore`.
+
+  **It is a port-level diff, not a rendered-block diff, and that is a deliberate downgrade.** The
+  task said "the same context-assembly request … diff the rendered block byte-for-byte", but no
+  consumer holds a port yet (T17 has 15 files left), so there is no assembly path that goes through
+  one. Diffing the port surface is what is available and what actually protects the fakes; the
+  rendered-block diff belongs after T17 finishes and is recorded as owed, not quietly dropped.
+
+  🐞 **Three real divergences, found on the first run.** `FakeGraphStore.resolve_or_merge_entity`
+  was returning a well-formed entity that simply **was not the one the real store produces**:
+
+  | field | real | fake (before) |
+  |---|---|---|
+  | `aliases` | seeded `[name]` on create, accumulates the name on match unless `user_edited` | `[]`, never accumulated |
+  | `version` | `coalesce(version,1) + 1` on every match | stuck at 1 |
+  | `confidence` | HIGH-WATER MARK (`WHEN $confidence > e.confidence`) | unasserted — see below |
+
+  Every unit test touching aliases or version had been agreeing with the fake. Fixed by copying the
+  `ON CREATE` / `ON MATCH` semantics from the real MERGE rather than guessing them.
+
+  ⚠️ **A fourth "divergence" was mine, not the fake's:** I mirrored `provenances`, which the Cypher
+  writes but the `Entity` **model does not carry** — so it never crosses the boundary. Mirroring it
+  would have been inventing state the real store's own RETURN cannot produce. Removed.
+
+  **Five bites, each verified to mutate the fake, each turning parity RED:** aliases no longer
+  seeded · version no longer bumped · confidence stops being a high-water mark · the as-of end
+  bound drifts to inclusive in the fake only · positionless edges leak in the fake only.
+
+  ⚠️ **The confidence bite did not bite at first** — no parity test re-resolved at a *lower*
+  confidence, so the high-water rule was unasserted on **both** sides. A test was added rather than
+  the guard accepted as redundant; that is now the third time in this plan that a failed bite found
+  a missing assertion instead of a redundant guard.
+
+  **Non-vacuity:** a sync guard test at the bottom of the file SKIPS WITH A LOUD REASON when
+  `TEST_NEO4J_URI` is unset — a parity suite that silently skips reports the same green as one that
+  passes, which is the exact failure QC-2 exists to prevent.
 
 <!-- Commit checkpoint: T18–T20 -->
 

@@ -87,14 +87,34 @@ class FakeGraphStore:
         )
         existing = self._entities.get(eid)
         if existing is not None:
-            # Idempotent: source types accumulate, the entity is not duplicated.
+            # Idempotent, and the ON MATCH semantics are copied from the real MERGE rather
+            # than guessed. QC-2's parity diff caught three of these missing on its FIRST
+            # run — the fake was returning a well-formed entity that simply was not the one
+            # the real store produces, and every unit test using it agreed with the fake.
             if source_type and source_type not in existing.source_types:
                 existing.source_types.append(source_type)
+            # aliases accumulate the name, UNLESS a human edited them — the extractor must
+            # not silently undo a user's edit.
+            if not getattr(existing, "user_edited", False) and name not in existing.aliases:
+                existing.aliases.append(name)
+            # confidence is a HIGH-WATER MARK: a lower-confidence re-observation never
+            # lowers it.
+            if confidence > existing.confidence:
+                existing.confidence = confidence
+            # NOTE: `provenances` is written by the Cypher but is NOT a field on the
+            # Entity model, so it never crosses this boundary. Mirroring it here would be
+            # inventing state the real store's RETURN cannot produce.
+            existing.version = (existing.version or 1) + 1
             return existing
         entity = Entity(
             id=eid, user_id=user_id, project_id=project_id, name=name,
             canonical_name=canonical, kind=kind, source_types=[source_type],
-            confidence=confidence, created_at=_now(), updated_at=_now(),
+            # ON CREATE seeds aliases with the name itself — an entity is always an alias
+            # of its own name, and a fake that started empty made every alias-resolution
+            # test agree with a graph that does not exist.
+            aliases=[name],
+            confidence=confidence, version=1, auto_created=auto_created,
+            created_at=_now(), updated_at=_now(),
         )
         self._entities[eid] = entity
         return entity
