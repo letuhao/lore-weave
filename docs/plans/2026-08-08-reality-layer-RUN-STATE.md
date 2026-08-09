@@ -127,6 +127,24 @@ needs a new fact, not a new opinion.
   notice."* (`BDR-44`)
 - **Do not run two suites against one throwaway DB name.** Contamination presents as a schema defect.
   Per-pid suffixes everywhere.
+- **Do not run two GATE SWEEPS at once — and now you cannot.** Measured 2026-08-09.
+  `gate-wiring-gate`'s `MUTATING` tuple serialises the bite harnesses *within one
+  sweep process*; two sweep processes defeat it entirely, and the damage is worse
+  than a false red:
+
+      harness A reads its baseline   <- already mutated by B
+      harness A mutates, then restores TO A'S BASELINE
+      = B's mutation is now PERMANENT, and A's digest check PASSES
+
+  The restore-by-digest guard (`V1-F8`) cannot see it: it proves the file came
+  back to what the harness read, and what it read was already wrong. Three files
+  were left mutated in `crates/dp` — including `tier.rs`'s `as_key` returning
+  `TIER_ZERO` — and all four bite gates reported red for a reason unrelated to
+  any guard. **Fixed with a lock** (`target/.bite-harness.lock`, `O_EXCL`) that
+  all four harnesses take; a second one refuses with exit 2 and says how to clear
+  a stale lock. Not a dirty-tree check: restoring to a dirty working tree is
+  correct, and refusing on ordinary uncommitted work would be refusing the wrong
+  thing.
 
 ---
 

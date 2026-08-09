@@ -471,7 +471,42 @@ UNBITEABLE = [
 ]
 
 
+def _harness_lock():
+    """The concurrency lock, imported from `dp-slice5b-bite-gate`.
+
+    THIS harness is the one that proved the lock necessary. Two sweeps
+    overlapped on 2026-08-09 and left `crates/dp/src/tier.rs` with `as_key`
+    returning `TIER_ZERO` — this file's own mutation, made permanent because a
+    second harness restored over it to a baseline that already contained it.
+
+    Imported rather than copied for the reason `5c` gives: a second
+    implementation of a safety mechanism is a second thing to get wrong.
+    """
+    import importlib.util
+
+    path = REPO / "scripts" / "dp-slice5b-bite-gate.py"
+    if not path.exists():
+        print("dp-slice1-bite-gate: MISUSE — dp-slice5b-bite-gate.py is missing; it holds "
+              "the shared harness lock", file=sys.stderr)
+        sys.exit(2)
+    spec = importlib.util.spec_from_file_location("dp_slice5b_bite_gate", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.HarnessLock()
+
+
 def main() -> int:
+    """Hold the shared harness lock for the whole run.
+
+    A wrapper rather than re-indenting `_run`'s body: the lock has to cover
+    EVERY leg, and a `with` around the call is harder to get subtly wrong than
+    a two-hundred-line re-indent.
+    """
+    with _harness_lock():
+        return _run()
+
+
+def _run() -> int:
     run("cargo", "build", "-p", "dp")
     results: list[bool] = []
 

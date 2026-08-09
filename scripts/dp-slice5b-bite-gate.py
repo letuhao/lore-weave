@@ -42,6 +42,7 @@ Exit 0 = every bite bit; 1 = one did not.
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -71,6 +72,74 @@ UNBITEABLE_HERE = [
         "scripts/meta-rs-pg-live-smoke.sh applies 039 and writes through it",
     ),
 ]
+
+
+LOCK = REPO / "target" / ".bite-harness.lock"
+
+
+class HarnessLock:
+    """Refuse to start while another bite harness is mutating the tree.
+
+    # The failure this exists to prevent, measured 2026-08-09
+
+    `gate-wiring-gate` runs the mutating harnesses SERIALLY — but that only
+    orders them inside ONE sweep process. Two sweeps overlapped, and the damage
+    was worse than a false red:
+
+      harness A reads its baseline  <- already mutated by B
+      harness A mutates, then restores TO A'S BASELINE
+      = B's mutation is now permanent, and A's digest check PASSES
+
+    The restore-by-digest guard (`V1-F8`) cannot see this. It proves the file
+    came back to what the harness read, and what it read was already wrong.
+    Three files were left mutated in `crates/dp` — including `tier.rs`'s
+    `as_key` returning `TIER_ZERO` — and every bite gate reported red for a
+    reason that had nothing to do with any guard.
+
+    # Why a lock and not a dirty-tree check
+
+    A dirty-tree check would refuse whenever a developer has ordinary
+    uncommitted work, which is most of the time — and it would be refusing the
+    wrong thing. Restoring to a dirty working state is CORRECT; these harnesses
+    restore byte-for-byte to whatever they read. The hazard is specifically a
+    SECOND mutator, and that is what this names.
+    """
+
+    def __enter__(self) -> "HarnessLock":
+        LOCK.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            # O_EXCL: the create fails if the file exists. Atomic, so two
+            # harnesses racing to create it cannot both win.
+            fd = os.open(LOCK, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            holder = ""
+            try:
+                holder = LOCK.read_text(encoding="utf-8").strip()
+            except OSError:
+                pass
+            print(
+                f"REFUSING TO START — another bite harness holds {LOCK.relative_to(REPO)}"
+                f"{f' ({holder})' if holder else ''}.\n"
+                "  Two harnesses mutating one tree do not merely race: the second one's\n"
+                "  restore writes back the FIRST one's mutation permanently, and the\n"
+                "  digest check cannot see it.\n"
+                "  If no harness is running, this is a stale lock from a killed run —\n"
+                f"  delete {LOCK.relative_to(REPO)} and re-run.",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        with os.fdopen(fd, "w") as f:
+            f.write(f"pid {os.getpid()} — {Path(sys.argv[0]).name}")
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        # Best-effort: a failure to remove leaves a stale lock, which the
+        # message above tells the next run how to clear. Losing the lock file is
+        # recoverable; leaving the TREE mutated is not.
+        try:
+            LOCK.unlink()
+        except OSError:
+            pass
 
 
 def read_txt(path: Path) -> str:
@@ -299,7 +368,10 @@ LEGS = [
 
 def main() -> int:
     print("dp-slice5b-bite-gate — the capability store's refusals, each one removed\n")
-    results = [bite(*leg) for leg in LEGS]
+    # Two mutators on one tree corrupt it — see `HarnessLock` for the measured
+    # failure and why the restore-by-digest guard cannot detect it.
+    with HarnessLock():
+        results = [bite(*leg) for leg in LEGS]
 
     print(f"\n{'=' * 74}")
     bitten = sum(1 for r in results if r)

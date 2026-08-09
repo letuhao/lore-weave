@@ -223,7 +223,11 @@ LEGS = [
 
 def main() -> int:
     print("dp-slice5d-bite-gate — the channel-identity guards, each one removed\n")
-    results = [bite(*leg) for leg in LEGS]
+    # The lock lives in the 5b harness this one already imports for its
+    # read/restore machinery. Two mutators on one tree corrupt it — see
+    # HarnessLock for the measured failure.
+    with B.HarnessLock():
+        results = [bite(*leg) for leg in LEGS]
 
     print(f"\n{'=' * 74}")
     bitten = sum(1 for r in results if r)
