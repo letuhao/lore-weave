@@ -1,6 +1,6 @@
 # CP-5 · the tool contract — the solid ground
 
-**Scale:** β · **Status:** SPEC v2, nothing built · 2026-08-09
+**Scale:** β · **Status:** SPEC **v3**, nothing built · 2026-08-09
 **Supersedes** SPEC v1 of the same day, which did not survive its own evaluation. The six findings
 that killed it are kept in `EVALUATION-v1.md` — **four were the spec committing the defect it was
 written to prevent**, and deleting them would destroy the record of why v2 looks like this.
@@ -15,7 +15,7 @@ into it.* **No v2 tool is built until CP-5 closes.**
 
 ---
 
-## 0.5 · EVALUATION of v2, same day — three findings, and one rewrites the top row
+## 0.5 · EVALUATION of v2 — three findings, and one rewrote the top row (v3 applies them)
 
 v2 survives better than v1. It does not survive intact, and the surviving defect is the **most
 expensive kind: a correctly-measured symptom with the wrong cure attached.**
@@ -86,7 +86,8 @@ Shares exceed 100% because one session can hit several members. Every figure is 
 
 | member | sessions | % of 358 | calls | required? |
 |---|---|---|---|---|
-| **typed inputs** | **101** | **28.2%** | 774 | **core** |
+| **identifier resolution** | **22+** | **≥6.1%** | **390** | **core** — *a NAME sent where an id is required; 99.5% of every UUID failure* |
+| ~~typed inputs~~ → **untyped properties** | 101 | 28.2% | 774 | conditional — the residue after resolution: **120 properties carry no `type` at all** |
 | **argument supplier** | **85** | **23.7%** | 401 | **core** |
 | **preconditions** | **67** | **18.7%** | 441 | conditional — if it needs scope/capability/prerequisite |
 | **repeat semantics** | 46 | 12.8% | **2039** | **core** (see §3) |
@@ -143,6 +144,52 @@ runs exactly as long, burns the same passes, and emits no signal.
 
 ---
 
+## 3a · Identifier resolution — the design, and why it never guesses
+
+**The failure.** 390 of 392 UUID failures (99.5%, 22 sessions) are a human **name** in an id field:
+`entity_id: "Ember Codex"`, `"Lâm Uyên"`, `"Count Dracula"`. A semantic type rejects these one layer
+earlier and fixes nothing — the model holds a name and still cannot proceed.
+
+**The resolver already exists and is better than assumed.** `glossary_search` returns
+`{entity_id, cached_name, tier, rank_score}` — and `tier: "exact"` is a **match-quality signal**.
+Measured: the model sent `"Lâm Uyên"`, the entity is `"Lâm Uyển"` (different diacritics), and search
+still returned `tier: exact`. It normalises.
+
+**The contract.** A ref field declares its resolver — *`entity_id` is an `EntityRef`, resolved by
+`glossary_search(query) → entities[].entity_id`, matched on `tier == "exact"`*. This is a statement
+about **how two existing tools relate**, so it needs **no other team** — unlike typed inputs, which
+needs four.
+
+**The runtime rule — two branches, no third:**
+
+| condition | action |
+|---|---|
+| exactly **one** `tier: exact` match | substitute, dispatch, and **record the substitution** |
+| zero, or **more than one** | **refuse**, and return the candidates as a structured error |
+
+🔴 **There is deliberately no "pick the best" arm.** Measured over 18 real searches: **11 exactly-one
+exact, 0 ambiguous, 7 no-exact.** But `0/18` bounds ambiguity only at **≤15.4%** (95%, rule of
+three) — *not* zero, so ambiguity is a **first-class branch**, not an edge case. A `rank_score`
+tiebreak is exactly the guess §0.14 forbids from deciding a correctness question.
+
+**Two constraints that are safety properties, not preferences:**
+
+1. 🔴 **A resolver MUST be `lane=read`.** Auto-resolution dispatches a tool the user never asked
+   for. `glossary_search` is `tier=R`, so it is auto-approved and harmless — but nothing structural
+   stops a `W` tool being declared as a resolver, and the runtime would then perform an unrequested
+   **write**. The contract must refuse a non-read resolver at registration.
+2. **The substitution is recorded like `plan_supplied`.** A resolved argument and a model-typed one
+   must not become the same row — the separation `plan_supplied.overrode` had to make on
+   2026-08-09, for the same reason.
+
+**Why the refusal branch is still an improvement.** Today a name yields `entity_id must be a UUID`
+— loud but **not actionable**. Under this contract the same input yields *"'Ember Codex' matched no
+entity exactly; did you mean … "* with candidates. Both are loud; only one can be acted on.
+
+**Cost.** ~44 extra read dispatches replace **390** failed calls. The trade is not close.
+
+---
+
 ## 4 · Where the contract lives — and it is not a Python base class
 
 **v1's fatal error.** The enforcement ladder was `ABC` + `__init_subclass__` + frozen dataclass +
@@ -175,7 +222,8 @@ consequence**. Rung 3 is a reference implementation, not the mechanism.
 |---|---|---|
 | **5.1** | the `_meta` contract schema — members as **versioned data**, core vs conditional, with the conditionality itself declared | a tool omitting a **core** member fails validation; a conditional member is required only when its trigger is present |
 | **5.2** | **rung 2** — admission refuses to promote an incomplete contract | injection: strip one core member ⇒ promotion refuses ⇒ the tool does not serve |
-| **5.3** | **typed inputs** (28.2%) — semantic types, not `string` | `entity_id: str` is refused; `EntityId` is not |
+| **5.3** | 🔴 **identifier resolution** — a ref field declares its RESOLVER; the runtime resolves at the dispatch chokepoint | a name in an id field is resolved and **recorded**, or refused with candidates. **Never guessed** — see §3a |
+| 5.3b | untyped properties — the 120 with no `type` at all | conditional; refused at registration when absent |
 | **5.4** | **argument supplier** (23.7%) — every input declares model \| context \| plan | a `plan`-supplied input the model sends is **discarded** — CP-3.10 already does this; the contract makes it *declarable* rather than plan-only |
 | **5.5** | **error contract** (8.1%) — every failure carries a C-7 class **and a message** | a failure with no message cannot be produced |
 | **5.6** | **output contract + completeness** | 🔴 an `emits` path is checked at **plan-build** time; a truncated result is a **declared field the runtime must surface** |
