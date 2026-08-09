@@ -48,10 +48,16 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T17** — migrate the 67 modules onto the two shipped ports, and **empty the
-`graph-port-gate` baseline as you go**: 21 files are listed there, the gate errors on a stale
-entry, so the list is the worklist and it cannot be gamed. Start with the cheapest group (the six
-`jobs/`), leave `routers/public/extraction.py` last (3 clauses, the biggest surface).
+**RESUME: T18** — define `GraphStore` + its fake. **T17 is deliberately parked at 6-of-21, not
+abandoned**: the remaining 15 files carry GRAPH and TRUTH queries, and they cannot move onto "the
+two shipped ports" because neither `VectorStore` nor `OntologyStore` covers a traversal. Defining
+`GraphStore` (T18) and `TruthStore` (T19) is the unblock; T17's leftovers then land with T20's
+test repoint, which is the same edit anyway. The gate's baseline is the worklist and it errors on
+a stale entry, so nothing here can be quietly skipped.
+
+⚠️ Two of those 15 need a decision rather than a move: the six `db/migrations/` backfills are
+admin one-shots reachable through `internal_backfill.py`, so **Phase 7's engine swap must either
+port or retire them** — they will silently break against a new engine otherwise.
 
 ⚠️ **Bite discipline, learned the hard way in T11:** several files in knowledge-service are
 **CRLF**, and a `perl -0pi` pattern containing `\n` silently no-matches — a bite that never applied
@@ -989,9 +995,51 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   the baseline · the docstring exclusion removed (prose reported as violation) · the adapter dirs
   stop counting as adapters.
 
-- [ ] **T17** — Migrate the 67 modules to the two shipped ports
+- [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: 6 of 21 cleared**
   **Logging:** `DEBUG` adapter selection at construction; `INFO` the bound adapter at startup.
   (depends on T16)
+  ---
+  **Evidence (batch 1).** Gate baseline **21 → 15**. Six runtime paths moved into adapter
+  territory; knowledge suite **4040 passed**; 5 bites, each red then green.
+
+  | file | query moved to |
+  |---|---|
+  | `jobs/orphan_extraction_source_cleanup.py` | new `neo4j_repos/maintenance.py` |
+  | `jobs/quarantine_cleanup.py` | ″ (keeping its deliberate `run_write` bypass — the one caller that legitimately passes `user_id=None`) |
+  | `jobs/stats_updater.py` | ″ (`count_nodes_by_label` + the closed label tuple) |
+  | `jobs/reconcile_evidence_count.py` | ″ (`reconcile_evidence_count_for_label`) |
+  | `routers/internal_admin.py` | ″ (`clear_embedding_model_tag`) |
+  | `jobs/regenerate_summaries.py` | `neo4j_repos/passages.py::recent_passage_texts` |
+
+  **The scheduling stayed in `jobs/`** — retry policy, metrics, loop-until-zero, *"do not run
+  concurrently with extraction"*. Those are operational decisions, not storage.
+
+  🐞 **One move was NOT just a move, and the test exists because of it.** `regenerate_summaries`
+  carried **two near-identical queries** differing only in the project predicate — and only one of
+  them had been updated when the source-type filter was added. They are one query now, with the
+  branch in Cypher. The naive collapse
+  (`$project_id IS NULL OR p.project_id = $project_id`) is true for **every** passage when the
+  scope is global, so a global summary would be built from every project's passages — the
+  cross-contamination KSA §7.6 rule 5 exists to prevent, and it would read as a slightly-too-good
+  summary rather than a bug. Asserted directly, and the naive form is asserted **absent**.
+
+  ⚠️ **I guessed a closed set wrong and checking caught it.** Moving the reconciler I wrote
+  `RECONCILE_LABELS = ("Entity", "Fact", "Event", "EntityStatus")` from memory; the real set is
+  `("Entity", "Event", "Fact")` — Relations and EntityStatus are excluded because they carry no
+  `evidence_count`. Reconciling a fourth label would have written a counter onto nodes that never
+  had one, and nothing would have failed loudly. Both closed sets are now pinned by a test.
+
+  ⚠️ **Three test files needed their seam repointed, and that is the honest cost of a move:**
+  `monkeypatch.setattr("app.jobs.….run_write")` patches nothing once the query lives in the repo.
+  Repointed to `app.db.neo4j_repos.maintenance.run_write` with the reason on the line.
+
+  **Still owed — 15 files, and most are NOT this task's to fix.** The remaining Cypher is
+  graph traversal and truth, which belong to **T18 (`GraphStore`)** and **T19 (`TruthStore`)**;
+  they cannot move onto "the two shipped ports" because neither port covers them. Concretely:
+  6 `db/migrations/` backfills (admin one-shots, reachable via `internal_backfill.py` — Phase 7
+  must port or retire them), `extraction/glossary_sync.py`, `extraction/hierarchy_writer.py`,
+  `jobs/summary_processor.py` (7 clauses, graph traversal), `routers/internal_enrichment.py` (5),
+  `routers/public/{entities,extraction,graph_views}.py`, `tools/kg_unify.py`, `benchmark/runner.py`.
 
 <!-- Commit checkpoint: T14–T17 -->
 

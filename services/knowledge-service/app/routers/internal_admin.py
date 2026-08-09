@@ -25,6 +25,7 @@ from uuid import UUID
 
 from app.config import settings
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos import maintenance
 from app.db.neo4j_repos.passages import (
     delete_all_kg_nodes_for_project,
     delete_all_passages_for_project,
@@ -113,12 +114,9 @@ async def model_deletion_cleanup(user_id: UUID = Query(...), model_id: UUID = Qu
     graph_nodes = 0
     try:
         async with neo4j_session() as session:
-            result = await session.run(
-                "MATCH (n) WHERE n.user_id=$user_id AND n.embedding_model=$model_id SET n.embedding_model = null RETURN count(n) AS count",
-                user_id=str(user_id), model_id=str(model_id),
+            graph_nodes = await maintenance.clear_embedding_model_tag(
+                session, user_id=str(user_id), model_id=str(model_id),
             )
-            record = await result.single()
-            graph_nodes = int(record["count"]) if record else 0
     except Exception:
         logger.warning("model deletion graph cleanup failed", exc_info=True)
     return {

@@ -73,10 +73,26 @@ people learn to skip.
 checks method NAMES only. Conformance is asserted by comparing **signatures** (names, kinds,
 defaults), with a positive control proving the comparison can fail.
 
-**▶ Resume at T17** — migrate the 67 modules onto the ports and **empty the `graph-port-gate`
-baseline as you go**. 21 files are listed there; the gate errors on a stale entry, so the list is
-the worklist and cannot be gamed. Cheapest group first (the six `jobs/`);
-`routers/public/extraction.py` last.
+**T17 is parked at 6-of-21, deliberately.** Six runtime paths moved into adapter territory
+(gate baseline **21 → 15**). The remaining 15 carry GRAPH and TRUTH queries and cannot move onto
+"the two shipped ports" — neither covers a traversal. `GraphStore` (T18) and `TruthStore` (T19)
+are the unblock.
+
+🐞 **One "just a move" was not.** `regenerate_summaries` had two near-identical queries differing
+only in the project predicate, and only one had been updated when the source-type filter was
+added. Collapsed into one — but the NAIVE collapse
+(`$project_id IS NULL OR p.project_id = $project_id`) matches every passage when the scope is
+global, so a global summary would be built from every project's passages. That is the
+cross-contamination KSA §7.6 rule 5 forbids, and it would read as a slightly-too-good summary
+rather than a bug. Pinned by a test that also asserts the naive form is absent.
+
+⚠️ A closed label set was guessed from memory and checking caught it: `RECONCILE_LABELS` is
+`("Entity", "Event", "Fact")`, not four — Relations and EntityStatus carry no `evidence_count`.
+
+**▶ Resume at T18** — `GraphStore` + its fake. The gate's baseline is the worklist and it errors
+on a stale entry, so nothing can be quietly skipped. Note for Phase 7: the six `db/migrations/`
+backfills are admin one-shots reachable via `internal_backfill.py` — the engine swap must port or
+retire them, or they break silently.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 __all__ = [
+    "recent_passage_texts",
     "get_passage_content_hash",
     "Passage",
     "PassageSearchHit",
@@ -948,3 +949,48 @@ def _node_to_passage(node: Any) -> Passage:
     for k in [f"embedding_{d}" for d in SUPPORTED_PASSAGE_DIMS]:
         data.pop(k, None)
     return Passage.model_validate(data)
+
+
+# ── recent passage texts (plan T17) ──────────────────────────────────
+#
+# Moved out of `app/jobs/regenerate_summaries.py`, which carried two near-identical
+# queries differing only in the project predicate. They are ONE query here: the
+# `$project_id IS NULL` branch is expressed in Cypher rather than in Python, so the two
+# scopes cannot drift — which is what nearly happened, since only one of them was ever
+# edited when the source-type filter was added.
+
+_RECENT_PASSAGE_TEXTS_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND ($project_id IS NULL AND p.project_id IS NULL
+       OR $project_id IS NOT NULL AND p.project_id = $project_id)
+  AND p.source_type IN $source_types
+RETURN p.text AS text
+ORDER BY p.created_at DESC
+LIMIT $limit
+"""
+
+
+async def recent_passage_texts(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    source_types: list[str],
+    limit: int,
+) -> list[str]:
+    """Newest-first passage texts for one scope, for summary regeneration.
+
+    `project_id=None` means the GLOBAL scope and matches only passages that are themselves
+    project-less — NOT "any project". KSA §7.6 rule 5: L0 and L1 must not
+    cross-contaminate, and a global summary built from a project's passages is exactly
+    that contamination.
+    """
+    if not source_types:
+        return []
+    result = await run_read(
+        session, _RECENT_PASSAGE_TEXTS_CYPHER,
+        user_id=user_id, project_id=project_id,
+        source_types=source_types, limit=limit,
+    )
+    return [record["text"] async for record in result if record.get("text")]

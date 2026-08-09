@@ -52,7 +52,8 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from app.db.neo4j_helpers import CypherSession, run_write
+from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos import maintenance
 from app.metrics import evidence_count_drift_fixed_total
 
 logger = logging.getLogger(__name__)
@@ -85,62 +86,6 @@ class ReconcileResult(BaseModel):
         return self.entities_fixed + self.events_fixed + self.facts_fixed
 
 
-# Label dispatch via f-string interpolation at module load time,
-# same pattern as K11.8 `add_evidence`. `label` comes exclusively
-# from RECONCILE_LABELS (closed Literal enum) so user input never
-# reaches the template. Cypher labels can't be parameterised in a
-# way that uses the label-scoped index, hence the dispatch.
-#
-# Query shape:
-#   - MATCH on label with user_id filter (satisfies K11.4 invariant)
-#   - Optional project_id narrowing for single-project reconciles
-#   - OPTIONAL MATCH + count(r) computes the true edge count;
-#     when a node has zero edges, OPTIONAL MATCH yields null and
-#     count() skips the null, returning 0 (not 1)
-#   - K11.9-R1/R1: the OPTIONAL MATCH filters the edge target's
-#     `user_id` too. K11.8 `add_evidence` only creates edges with
-#     matching user_ids on both endpoints, so this filter is a
-#     no-op in steady state — but the reconciler exists to catch
-#     write-path bugs, and a cross-user edge is exactly the kind
-#     of bug we should not count toward the user's drift. Being
-#     paranoid here costs nothing (src.user_id lookup uses the
-#     extraction_source_user_source index).
-#   - coalesce(n.evidence_count, 0) normalises legacy nodes that
-#     pre-date the counter field or had the property deleted
-#   - WHERE cached <> actual filters to drift cases only; nodes
-#     that match exactly are skipped without a SET
-#   - SET bumps updated_at so downstream read-caches invalidate
-#   - RETURN count(*) aggregates post-SET, so the return is one
-#     row with the fixed total
-def _build_reconcile_cypher(label: str) -> str:
-    # D-K11.9-01 + P-K11.9-01 (session 46): optional `$limit` caps
-    # the number of drifty nodes fixed per call. A NULL limit means
-    # "no cap" (the legacy hobby-scale path); a positive int yields
-    # a bounded fix set so the scheduler can loop until the result
-    # comes back with zero fixes without holding one long
-    # transaction across 100k-node tenants.
-    return f"""
-MATCH (n:{label})
-WHERE n.user_id = $user_id
-  AND ($project_id IS NULL OR n.project_id = $project_id)
-OPTIONAL MATCH (n)-[r:EVIDENCED_BY]->(src:ExtractionSource)
-  WHERE src.user_id = $user_id
-WITH n, count(r) AS actual_count
-WITH n, actual_count, coalesce(n.evidence_count, 0) AS cached
-WHERE cached <> actual_count
-WITH n, actual_count
-LIMIT COALESCE($limit, 2147483647)
-SET n.evidence_count = actual_count,
-    n.updated_at = datetime()
-RETURN count(*) AS fixed
-"""
-
-
-_RECONCILE_CYPHER: dict[str, str] = {
-    label: _build_reconcile_cypher(label) for label in RECONCILE_LABELS
-}
-
-
 async def _reconcile_label(
     session: CypherSession,
     *,
@@ -149,29 +94,12 @@ async def _reconcile_label(
     project_id: str | None,
     limit: int | None,
 ) -> int:
-    result = await run_write(
-        session,
-        _RECONCILE_CYPHER[label],
-        user_id=user_id,
-        project_id=project_id,
-        limit=limit,
+    """Fix one label's drifted counters. The query moved to
+    `neo4j_repos/maintenance.py` (plan T17); what stays here is the per-run ORCHESTRATION
+    — which labels, in what order, with what cap — because that is scheduling policy."""
+    return await maintenance.reconcile_evidence_count_for_label(
+        session, label=label, user_id=user_id, project_id=project_id, limit=limit,
     )
-    record = await result.single()
-    # K11.9-R2/I1: `RETURN count(*) AS fixed` always produces
-    # exactly one row, so `record is None` would indicate a driver
-    # or session anomaly — NOT a clean-run zero. A silent `return
-    # 0` here would hide the anomaly; raise instead. A reconciler
-    # whose whole purpose is to catch write-path bugs should fail
-    # loudly on its own impossible states.
-    if record is None:
-        raise RuntimeError(
-            f"K11.9: reconcile_evidence_count returned no row for "
-            f"label={label!r} — driver or session anomaly"
-        )
-    fixed = int(record["fixed"])
-    if fixed > 0:
-        evidence_count_drift_fixed_total.labels(node_label=label).inc(fixed)
-    return fixed
 
 
 async def reconcile_evidence_count(

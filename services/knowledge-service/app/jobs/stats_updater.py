@@ -18,6 +18,7 @@ import logging
 from uuid import UUID
 
 import asyncpg
+from app.db.neo4j_repos import maintenance
 
 __all__ = ["reconcile_project_stats", "increment_stats"]
 
@@ -67,21 +68,20 @@ async def reconcile_project_stats(
     # glossary-service (different DB), not Neo4j. Update it via
     # GlossaryClient.count_entities when glossary-service integration
     # is wired (K16.14-v2).
+    # The count query moved to `neo4j_repos/maintenance.py` (plan T17), and the label set
+    # moved with it: the label is INTERPOLATED (Cypher cannot parameterise one), so the
+    # closed tuple that constrains it is the injection barrier and belongs beside the query
+    # rather than in a caller that could quietly grow an entry.
+    _COLUMN_FOR = {
+        "Entity": "stat_entity_count",
+        "Fact": "stat_fact_count",
+        "Event": "stat_event_count",
+    }
     counts = {}
-    for label, col in [
-        ("Entity", "stat_entity_count"),
-        ("Fact", "stat_fact_count"),
-        ("Event", "stat_event_count"),
-    ]:
-        result = await neo4j_session.run(
-            f"MATCH (n:{label}) "
-            "WHERE n.user_id = $user_id AND n.project_id = $project_id "
-            "RETURN count(n) AS c",
-            user_id=str(user_id),
-            project_id=str(project_id),
+    for label in maintenance.COUNTABLE_LABELS:
+        counts[_COLUMN_FOR[label]] = await maintenance.count_nodes_by_label(
+            neo4j_session, user_id=str(user_id), project_id=str(project_id), label=label,
         )
-        record = await result.single()
-        counts[col] = record["c"] if record else 0
 
     await pool.execute(
         """
