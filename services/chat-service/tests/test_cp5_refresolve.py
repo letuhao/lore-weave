@@ -214,6 +214,77 @@ class TestTheMechanismIsREACHABLEFromProduction:
             "round-2 V-METRIC table became half theatre"
         )
 
+    def test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS(self):
+        """🔴 **THE GUARD BELOW READS THE CHECKOUT, AND THE CHECKOUT ALWAYS HAS THE FILES.**
+
+        Found while paying the deployment debt: the Dockerfile copied ONLY
+        `agent-runtime-manifest.json`, so both CP-5 registries would have been absent in the
+        image — and each fails SILENTLY, because a missing registry is a legitimate empty state at
+        load. Rung 2 would refuse every promotion and resolution would be inert, with nothing in
+        the repo able to notice. Fourth instance of the shape in three days.
+
+        This is the gate: a contract the runtime reads must have a `COPY` line, or the mechanism
+        has no deployment path.
+        """
+        dockerfile = ((pathlib.Path(__file__).resolve().parents[1] / "Dockerfile")
+                      .read_text(encoding="utf-8"))
+        contracts = pathlib.Path(__file__).resolve().parents[3] / "contracts"
+        needed = ["agent-runtime-manifest.json",
+                  "agent-runtime-tool-contracts.json",
+                  "agent-runtime-ref-resolvers.json"]
+        for name in needed:
+            assert (contracts / name).exists(), f"{name} is expected by the runtime but absent"
+            assert f"contracts/{name}" in dockerfile, (
+                f"{name} is read at runtime and has no COPY line in the Dockerfile — it would be "
+                f"absent in the image, and an absent registry is INDISTINGUISHABLE from an empty "
+                f"one, so the mechanism would be silently dead in production"
+            )
+
+    def test_THE_PRODUCTION_LOADER_ACTUALLY_LOADS_THE_REGISTRY(self):
+        """🔴 **THE GUARD THAT WOULD HAVE CAUGHT A MECHANISM THAT NEVER RAN ONCE.**
+
+        Every other test in this file calls `load_registry` with its own `lane_of`. Production
+        calls `stream_service._ref_registry`, and that function referenced `declared_lane` — a name
+        never imported into the module. A bare `except Exception` turned the `NameError` into one
+        warning line and left resolution inert **in every process**, with the whole suite green.
+
+        It was found only by a served turn that sent the failing shape and got
+        `entity_id must be a UUID` back with `resolution: null`. So this exercises the REAL loader
+        with the REAL lane function, which is the only version of this check that could have failed.
+        """
+        from app.services.stream_service import _REF_REGISTRY_CACHE, _ref_registry
+        from app.services.tool_discovery import declared_lane as production_lane
+
+        # WRAPPED defs, because that is the shape `_catalog_index` builds and therefore the shape
+        # `declared_lane` receives in production — it reads `td["function"]` and returns None for a
+        # flat def, so a flat fixture would fail this guard for a reason production does not have.
+        _REF_REGISTRY_CACHE.pop("value", None)
+        try:
+            cat = {t.get("function", t).get("name"): {"type": "function", "function": t}
+                   for t in catalogue()}
+            resolvers, bindings = _ref_registry(lambda n: production_lane(cat.get(n) or {}))
+        finally:
+            _REF_REGISTRY_CACHE.pop("value", None)
+        assert resolvers, "the production loader returned no ref types — resolution would be inert"
+        assert len(bindings) >= len(registry_doc()["bindings"]), (
+            "the production loader dropped bindings the registry declares"
+        )
+
+    def test_A_BROKEN_PROGRAM_IS_NOT_ABSORBED_AS_A_BAD_FILE(self):
+        """The degrade path may absorb an unreadable registry. It may NOT absorb a `NameError` —
+        the two are indistinguishable in a log line and could not be more different."""
+        from app.services.stream_service import _REF_REGISTRY_CACHE, _ref_registry
+
+        def exploding_lane(_n):
+            raise NameError("declared_lane is not defined")
+
+        _REF_REGISTRY_CACHE.pop("value", None)
+        try:
+            with pytest.raises(NameError):
+                _ref_registry(exploding_lane)
+        finally:
+            _REF_REGISTRY_CACHE.pop("value", None)
+
     def test_THE_REGISTRY_FILE_IS_WHERE_THE_LOADER_LOOKS(self):
         """`agentruntime_arm` was a flag with no deployment path. This is the same question asked
         of the registry: the loader resolves it beside the manifest, so it must BE there."""

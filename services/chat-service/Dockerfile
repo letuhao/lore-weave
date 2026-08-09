@@ -42,6 +42,20 @@ COPY services/chat-service/app/ ./app/
 # Copy it now, while the two states still agree and the mistake is cheap.
 COPY contracts/agent-runtime-manifest.json ./contracts/agent-runtime-manifest.json
 
+# 🔴 **CP-5 — AND THE SAME MISTAKE WAS ONE LINE AWAY FROM SHIPPING AGAIN.** The comment above
+# says an absent artifact is INDISTINGUISHABLE from a correctly-empty one. Both CP-5 registries
+# fail exactly that way: `promotion` treats a missing tool-contract registry as *no tool declares
+# a contract* (so nothing can ever be promoted), and `stream_service._ref_registry` treats a
+# missing ref registry as *no ref type is declared* (so resolution is silently inert) — each is a
+# legitimate empty state at load, and each is a dead mechanism in production.
+#
+# That is the `agentruntime_arm` shape a third time: a flag with no compose entry,
+# `sweep_expired_runs` with no caller, `resolve_arguments` with no production caller. The repo
+# tests could not see it — they read the checkout, and the checkout always has the files.
+# `test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS` is what makes this a gate.
+COPY contracts/agent-runtime-tool-contracts.json ./contracts/agent-runtime-tool-contracts.json
+COPY contracts/agent-runtime-ref-resolvers.json ./contracts/agent-runtime-ref-resolvers.json
+
 ENV PORT=8090
 EXPOSE 8090
 

@@ -1272,6 +1272,26 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/stream_service.py", "                    _pending = _ref_pending(",
                                                  "                    _pending = []  # falsifier\n                    _unused = ("),
     ],
+    "test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS": [
+        # Ship the code without the data — the shape that would have made rung 2 refuse every
+        # promotion and resolution inert, invisibly, because an absent registry is
+        # indistinguishable from an empty one.
+        (f"{CS}/Dockerfile",
+         "COPY contracts/agent-runtime-ref-resolvers.json ./contracts/agent-runtime-ref-resolvers.json",
+         "# COPY removed by falsifier"),
+    ],
+    "test_THE_PRODUCTION_LOADER_ACTUALLY_LOADS_THE_REGISTRY": [
+        # The loader runs, reports nothing, and resolution is inert — the state a served turn found
+        # and the whole green suite did not.
+        (f"{CS}/app/services/stream_service.py", "            loaded = (resolvers, bindings)",
+                                                 "            loaded = ({}, {})"),
+    ],
+    "test_A_BROKEN_PROGRAM_IS_NOT_ABSORBED_AS_A_BAD_FILE": [
+        # Restore the bare-except swallow that turned a NameError into one warning line and hid a
+        # mechanism that had never run once.
+        (f"{CS}/app/services/stream_service.py",
+         "    except (NameError, AttributeError, ImportError):", "    except ():"),
+    ],
     "test_THE_REGISTRY_FILE_IS_WHERE_THE_LOADER_LOOKS": [
         # Look for the registry somewhere it is not — `agentruntime_arm`'s missing compose entry,
         # in a different costume.

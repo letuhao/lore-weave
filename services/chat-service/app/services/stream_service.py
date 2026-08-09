@@ -86,6 +86,7 @@ from app.services.tool_discovery import (
     TOOL_LIST_TOOL,
     TOOL_LOAD_NAME,
     TOOL_LOAD_TOOL,
+    declared_lane,
     find_tools_result_async,
     group_directory_text,
     hot_tool_names,
@@ -1741,6 +1742,13 @@ def _ref_registry(lane_of) -> tuple[dict, dict]:
     if cached is not None:
         return cached
     loaded: tuple[dict, dict] = ({}, {})
+    #: 🔴 **A FAILED LOAD IS NOT CACHED, AND THE REASON IS THE LANE LOOKUP.** `lane_of` reads the
+    #: TURN's catalogue index, so a first turn whose discovery set happens not to contain
+    #: `glossary_search` cannot determine the resolver's lane — `check_resolver` then fails closed,
+    #: correctly. Caching that would make resolution inert for the whole PROCESS on the strength of
+    #: one unlucky turn. Only a settled answer is cached: a successful load, or a registry that is
+    #: genuinely absent.
+    cacheable = True
     try:
         from app.agentruntime.manifest import manifest_path
         from app.agentruntime.refresolve import REF_REGISTRY_FILENAME, load_registry
@@ -1755,13 +1763,27 @@ def _ref_registry(lane_of) -> tuple[dict, dict]:
             loaded = (resolvers, bindings)
         else:
             logger.info("CP-5.3: no ref registry beside the manifest — resolution is inert")
+    except (NameError, AttributeError, ImportError):
+        # 🔴 **THESE ARE BUGS, NOT MISCONFIGURATION, AND SWALLOWING THEM HID A MECHANISM THAT HAD
+        # NEVER RUN ONCE.** The first version caught bare `Exception`, and `declared_lane` was
+        # never imported into this module — so every process logged one warning and resolution was
+        # inert, with the whole suite green. It was found only by a served turn that sent the
+        # failing shape and got `entity_id must be a UUID` back with `resolution: null`.
+        #
+        # A degrade path may absorb a bad FILE. It may not absorb a broken PROGRAM: the two look
+        # identical in a log line and could not be more different.
+        raise
     except Exception as exc:
-        # A malformed registry is LOUD in the log and inert at runtime. It is never a silent
+        # A malformed or unreadable registry is LOUD in the log and inert at runtime — that is a
+        # deliberate posture: a resolution layer that could break tool calling by being
+        # misconfigured would be a worse defect than the one it fixes. It is never a silent
         # partial load: `load_registry` refuses the whole document rather than dropping a row,
         # because a dropped resolver leaves its binding in place and never resolving.
-        logger.warning("CP-5.3: ref registry not loaded (%s) — resolution is inert this process",
-                       exc)
-    _REF_REGISTRY_CACHE["value"] = loaded
+        cacheable = False
+        logger.warning("CP-5.3: ref registry not loaded (%s) — resolution is inert for THIS TURN; "
+                       "it will be retried on the next one", exc)
+    if cacheable:
+        _REF_REGISTRY_CACHE["value"] = loaded
     return loaded
 
 
