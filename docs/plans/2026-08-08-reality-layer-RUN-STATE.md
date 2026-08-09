@@ -846,6 +846,41 @@ to buy back a macro is the trade this repo exists not to make.**
 and the write surface now returns exactly that — so the lint has a subject the
 moment feature code calls it. Ordered after `4C` rather than parked.
 
+### Slice 5 — `DpControlPlane`. Board written at the slice's start (`BDR-26`).
+
+**Phase 0 measured two things that decide the shape:**
+
+- `DP-C3` specifies a **gRPC service with 13 RPCs** (session/capability lifecycle,
+  tier policy, reality registry, channel tree, writer leases — half of them
+  streaming).
+- **This repo has no gRPC anywhere.** `grep tonic|grpc` over every `Cargo.toml`
+  in `crates/` and `services/`: zero hits. There is also no capability store in
+  `migrations/meta`.
+
+That is gate #2 — *large/structural, write a plan* — **not** blocked. §0.3 also
+requires the decomposition, and it is the useful part here: **`3E` does not need
+the service. It needs ONE production `ControlPlane` implementor**, so that a
+crate can obtain a `RealityId` without forging one. The reality registry already
+exists and holds 7 rows.
+
+| # | row | done = |
+|---|---|---|
+| `5A` | **a real `ControlPlane`**, backed by the existing `reality_registry` — verify the reality exists and is in a state that accepts sessions, mint a capability with an expiry. **No gRPC.** | a live test binding against a real registry row, and a REFUSAL for a reality that is absent or not accepting commands |
+| `5B` | the capability STORE — `RefreshCapability` needs one; today a capability is minted and never recorded | a meta migration + the erasure/retention tags every meta table carries |
+| `5C` | the gRPC surface (`DP-C3`) — `tonic`, protos, the four non-channel RPC groups | contract-first: the proto is the contract, generated and checked |
+| `5D` | channel tree + writer leases (`DP-A16`, `DP-Ch9`) — **this is what produces `ChannelId`**, and therefore what retires four DEFERRED registers at once | `DEFERRED_IDS`, `DEFERRED_SESSION_FIELDS`, `DEFERRED_CACHE_FORMS` and `DEFERRED_READ_FORMS` each shrink, and their shrink arms red until the rows go |
+
+**`5A` is the whole unblock.** It closes `3E` (adoption becomes possible), which
+closes `4D` (the lint gains call sites). `5B`–`5D` are the rest of `DP-C3` and do
+not gate either.
+
+**Where `5A` lives — decided, not left open.** Not `crates/dp` (declares no I/O).
+`crates/meta-rs` is the natural home: it is the Meta Access Library, it already
+reads the registry and resolves routing, and it is the crate whose job is
+answering *"where does this reality live and may you reach it"*. It would take a
+new `dp` dependency — acceptable, since `dp` is a contract crate with no I/O of
+its own, so the platform-plane crate stays platform-plane.
+
 ---
 
 ## 5 · REGISTERS
