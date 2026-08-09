@@ -605,6 +605,7 @@ dependencies = [
  "actor-hub",
  "anyhow",
  "blake3",
+ "dp",
  "dp-kernel",
  "game-rules",
  "hmac",
