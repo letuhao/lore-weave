@@ -31,7 +31,9 @@
 //! [`DEFERRED_READ_FORMS`], which `tests/spec_oracle.rs` reads.
 
 use crate::aggregate::DpAggregate;
+use crate::cache::KeyId;
 use crate::error::DpError;
+use crate::ids::RealityId;
 use crate::scope::RealityScope;
 use crate::session::{Millis, SessionContext};
 use crate::tier::Tier;
@@ -48,13 +50,37 @@ pub const DEFERRED_READ_FORMS: &[(&str, &str)] = &[
 /// Returns raw bytes rather than `A::Projection` because a trait object cannot
 /// be generic: the backend finds and returns the stored form, and the caller —
 /// which knows `A` — decodes it. That split is also why `Decode` exists below.
+/// Everything a backend needs to locate a projection.
+///
+/// A STRUCT for the same reason [`crate::write::WriteRequest`] is one, and this
+/// side learned it the hard way. `fetch(aggregate, key)` gave the backend no
+/// `aggregate_id`, so `dp-kernel` recovered one by taking the last segment of
+/// the cache key — the precise anti-pattern the write seam's own documentation
+/// condemns two files away. It was also WRONG, not merely inelegant: a
+/// `DP-K7` key with a subkey ends `…:{id}:{subkey}`, so the last segment is the
+/// SUBKEY and every subkeyed read resolved the wrong aggregate.
+///
+/// The ids the caller already holds travel as values. Nothing re-derives them
+/// from formatted text.
+#[derive(Debug)]
+pub struct ReadRequest<'a> {
+    /// The verified reality. Only session bind can produce one.
+    pub reality: &'a RealityId,
+    /// `DP-Ch5` type token, from `A::TYPE_NAME`.
+    pub aggregate_type: &'static str,
+    /// The aggregate's own id, already validated as a key segment.
+    pub aggregate_id: KeyId,
+    /// The `DP-K7` cache key, for a cache-first backend to try before the store.
+    pub cache_key: &'a str,
+}
+
 pub trait ReadBackend {
-    /// Fetch the stored projection at `key`, or `None` if absent.
+    /// Fetch the stored projection, or `None` if absent.
     ///
     /// `None` is a MISS, not an error. `DpError::AggregateNotFound` is the
     /// caller's decision to make, because "absent" is legitimate for some
     /// aggregates and a fault for others.
-    fn fetch(&self, aggregate: &'static str, key: &str) -> Result<Option<Vec<u8>>, DpError>;
+    fn fetch(&self, req: &ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError>;
 }
 
 /// How an aggregate's projection is reconstructed from what the store holds.
@@ -80,6 +106,7 @@ pub fn read_projection_reality<A, B>(
     backend: &B,
     ctx: &SessionContext,
     now_ms: Millis,
+    id: KeyId,
     key: &str,
 ) -> Result<A::Projection, DpError>
 where
@@ -90,11 +117,19 @@ where
     // store is touched.
     ctx.check_live(now_ms)?;
 
-    match backend.fetch(A::TYPE_NAME, key)? {
+    let req = ReadRequest {
+        reality: ctx.reality_id(),
+        aggregate_type: A::TYPE_NAME,
+        aggregate_id: id,
+        cache_key: key,
+    };
+    match backend.fetch(&req)? {
         Some(bytes) => A::decode(&bytes),
+        // Names the AGGREGATE ID, not the cache key. The id is what a reader
+        // can look up; the key is an encoding of it.
         None => Err(DpError::AggregateNotFound {
             aggregate: A::TYPE_NAME,
-            id: key.to_string(),
+            id: req.aggregate_id.as_str().to_string(),
         }),
     }
 }
@@ -133,10 +168,22 @@ mod tests {
         }
     }
 
-    struct Store(Option<Vec<u8>>);
+    struct Store {
+        answer: Option<Vec<u8>>,
+        /// What the backend was actually ASKED for. The regression that
+        /// motivated `ReadRequest` was the backend deriving this wrongly, so
+        /// the test records it rather than trusting it.
+        asked: std::cell::RefCell<Vec<String>>,
+    }
+    impl Store {
+        fn new(answer: Option<Vec<u8>>) -> Self {
+            Self { answer, asked: std::cell::RefCell::new(Vec::new()) }
+        }
+    }
     impl ReadBackend for Store {
-        fn fetch(&self, _a: &'static str, _k: &str) -> Result<Option<Vec<u8>>, DpError> {
-            Ok(self.0.clone())
+        fn fetch(&self, req: &ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError> {
+            self.asked.borrow_mut().push(req.aggregate_id.as_str().to_string());
+            Ok(self.answer.clone())
         }
     }
 
@@ -163,16 +210,17 @@ mod tests {
 
     #[test]
     fn a_hit_decodes_through_the_aggregates_own_decoder() {
-        let s = Store(Some(7u32.to_le_bytes().to_vec()));
-        assert_eq!(read_projection_reality::<Prof, _>(&s, &ctx(), 0, "k").unwrap(), 7);
+        let s = Store::new(Some(7u32.to_le_bytes().to_vec()));
+        assert_eq!(read_projection_reality::<Prof, _>(&s, &ctx(), 0, KeyId::from(9u64), "k").unwrap(), 7);
     }
 
     #[test]
     fn a_miss_is_aggregate_not_found_naming_the_type() {
-        let s = Store(None);
-        let e = read_projection_reality::<Prof, _>(&s, &ctx(), 0, "k").expect_err("miss");
+        let s = Store::new(None);
+        let e = read_projection_reality::<Prof, _>(&s, &ctx(), 0, KeyId::from(9u64), "k").expect_err("miss");
         assert_eq!(e.variant_name(), "AggregateNotFound");
         assert!(e.to_string().contains("read_fixture"), "{e}");
+        assert!(e.to_string().contains("9"), "the miss names the aggregate ID: {e}");
     }
 
     #[test]
@@ -181,20 +229,37 @@ mod tests {
         // an assumption that the shared rule was applied.
         struct Exploding;
         impl ReadBackend for Exploding {
-            fn fetch(&self, _a: &'static str, _k: &str) -> Result<Option<Vec<u8>>, DpError> {
+            fn fetch(&self, _req: &ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError> {
                 panic!("the store was touched despite an expired session");
             }
         }
-        let e = read_projection_reality::<Prof, _>(&Exploding, &ctx(), 1_000, "k")
+        let e = read_projection_reality::<Prof, _>(&Exploding, &ctx(), 1_000, KeyId::from(9u64), "k")
             .expect_err("expired");
         assert_eq!(e.variant_name(), "CapabilityExpired");
     }
 
     #[test]
     fn a_short_record_surfaces_as_a_schema_mismatch_not_a_panic() {
-        let s = Store(Some(vec![1, 2]));
-        let e = read_projection_reality::<Prof, _>(&s, &ctx(), 0, "k").expect_err("short");
+        let s = Store::new(Some(vec![1, 2]));
+        let e = read_projection_reality::<Prof, _>(&s, &ctx(), 0, KeyId::from(9u64), "k").expect_err("short");
         assert_eq!(e.variant_name(), "SchemaVersionMismatch");
+    }
+
+    /// THE REGRESSION. `dp-kernel` used to recover the id with
+    /// `key.rsplit(':').next()`, which on a subkeyed `DP-K7` key returns the
+    /// SUBKEY. This asserts the backend is asked for the id the caller passed,
+    /// whatever the key looks like.
+    #[test]
+    fn a_subkeyed_key_does_not_change_which_aggregate_is_asked_for() {
+        let s = Store::new(Some(7u32.to_le_bytes().to_vec()));
+        let subkeyed = "dp:00000000-0000-0000-0000-000000000001:r:t2:read_fixture:42:equipped";
+        read_projection_reality::<Prof, _>(&s, &ctx(), 0, KeyId::from(42u64), subkeyed)
+            .expect("read");
+        assert_eq!(
+            s.asked.borrow().as_slice(),
+            &["42".to_string()],
+            "the backend must be asked for the aggregate id, not the trailing key segment"
+        );
     }
 
     #[test]

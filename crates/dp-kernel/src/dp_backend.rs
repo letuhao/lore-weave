@@ -164,11 +164,17 @@ impl<S: EventStore> KernelReadBackend<S> {
 }
 
 impl<S: EventStore> ReadBackend for KernelReadBackend<S> {
-    fn fetch(&self, aggregate: &'static str, key: &str) -> Result<Option<Vec<u8>>, DpError> {
-        let id = key.rsplit(':').next().unwrap_or(key).to_string();
+    fn fetch(&self, req: &dp::ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError> {
+        // The id arrives as a VALUE. It used to be recovered with
+        // `key.rsplit(':').next()` — which is the anti-pattern this file's own
+        // write-side doc condemns, and was wrong besides: a DP-K7 key with a
+        // subkey ends `…:{id}:{subkey}`, so that took the SUBKEY and every
+        // subkeyed read resolved the wrong aggregate.
         let found = tokio::task::block_in_place(|| {
             self.handle.block_on(async {
-                self.store.snapshot_read(self.reality, aggregate, &id).await
+                self.store
+                    .snapshot_read(self.reality, req.aggregate_type, req.aggregate_id.as_str())
+                    .await
             })
         })
         .map_err(|e| DpError::BackendIo(Box::new(e)))?;
@@ -288,6 +294,63 @@ mod tests {
         let meta = e.metadata.as_ref().expect("metadata");
         assert_eq!(meta["dp_tier"], "t2", "the tier came from the aggregate's TYPE");
         assert_eq!(meta["dp_cache_key"], key, "the DP-K7 key is recorded with the event");
+    }
+
+    /// THE REGRESSION, through the real backend.
+    ///
+    /// `fetch` used to take the last segment of the cache key as the aggregate
+    /// id. A subkeyed DP-K7 key ends `…:{id}:{subkey}`, so it asked the store
+    /// for the SUBKEY. This writes a snapshot under a known id and reads it
+    /// with a subkeyed key: before the fix the read missed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_subkeyed_key_still_reads_the_right_aggregate() {
+        use crate::event_store::shared_test_suite::InMemoryEventStore;
+        use dp::{KeyId, ReadBackend, ReadRequest};
+
+        let reality = Uuid::new_v4();
+        let store = Arc::new(InMemoryEventStore::default());
+        store
+            .snapshot_write(reality, "sub_fixture", "42", 1, serde_json::json!({"v": 7}), None)
+            .await
+            .expect("snapshot_write");
+
+        let backend = KernelReadBackend::new(store, reality).expect("multi-thread runtime");
+
+        // A verified RealityId, obtained the only way there is one.
+        struct Cp;
+        impl dp::ControlPlane for Cp {
+            fn verify_bind(&self, req: &dp::BindRequest) -> Result<dp::VerifiedBind, DpError> {
+                Ok(dp::VerifiedBind {
+                    reality: req.reality,
+                    session: Uuid::new_v4(),
+                    capability_secret: "s".into(),
+                    expires_at_ms: 10_000,
+                })
+            }
+        }
+        let ctx = dp::SessionContext::bind(
+            &Cp,
+            dp::BindRequest { reality, node: "n".into() },
+            0,
+        )
+        .expect("bind");
+
+        let found = backend
+            .fetch(&ReadRequest {
+                reality: ctx.reality_id(),
+                aggregate_type: "sub_fixture",
+                aggregate_id: KeyId::from(42u64),
+                // The trailing segment is a SUBKEY, not the id.
+                cache_key: "dp:r:r:t2:sub_fixture:42:equipped",
+            })
+            .expect("fetch");
+
+        let bytes = found.expect("the snapshot written under id 42 must be found");
+        assert!(
+            String::from_utf8_lossy(&bytes).contains("\"v\":7"),
+            "got {}",
+            String::from_utf8_lossy(&bytes)
+        );
     }
 
     #[test]

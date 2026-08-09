@@ -565,7 +565,7 @@ the two design contracts that are its only specification are in
 | `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
-= **328 passed, 0 failed** · `dp-kernel --lib` **318** passed (was 315; `5-WIRE` added three `dp_backend` tests), unchanged by the `GoneState`
+= **328 passed, 0 failed** · `dp-kernel --lib` **319** passed (was 315; `5-WIRE` + the subkey regression added four `dp_backend` tests), unchanged by the `GoneState`
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per

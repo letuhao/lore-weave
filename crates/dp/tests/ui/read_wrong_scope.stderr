@@ -4,15 +4,15 @@ warning: unreachable statement
 44 |     let ctx: &dp::SessionContext = todo!();
    |                                    ------- any code following this expression is unreachable
 45 |     // A channel-scoped aggregate through the reality-scoped door. Must not compile.
-46 |     let _ = dp::read_projection_reality::<Chatter, _>(&NoStore, ctx, 0, "k");
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
+46 |     let _ = dp::read_projection_reality::<Chatter, _>(&NoStore, ctx, 0, dp::KeyId::from(1u64), "k");
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ unreachable statement
    |
    = note: `#[warn(unreachable_code)]` on by default
 
 error[E0271]: type mismatch resolving `<Chatter as DpAggregate>::Scope == RealityScope`
   --> tests/ui/read_wrong_scope.rs:46:43
    |
-46 |     let _ = dp::read_projection_reality::<Chatter, _>(&NoStore, ctx, 0, "k");
+46 |     let _ = dp::read_projection_reality::<Chatter, _>(&NoStore, ctx, 0, dp::KeyId::from(1u64), "k");
    |                                           ^^^^^^^ type mismatch resolving `<Chatter as DpAggregate>::Scope == RealityScope`
    |
 note: expected this to be `RealityScope`

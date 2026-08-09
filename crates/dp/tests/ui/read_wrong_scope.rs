@@ -35,7 +35,7 @@ impl dp::Decode for Chatter {
 struct NoStore;
 
 impl dp::ReadBackend for NoStore {
-    fn fetch(&self, _a: &'static str, _k: &str) -> Result<Option<Vec<u8>>, DpError> {
+    fn fetch(&self, _req: &dp::ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError> {
         unimplemented!()
     }
 }
@@ -43,5 +43,5 @@ impl dp::ReadBackend for NoStore {
 fn main() {
     let ctx: &dp::SessionContext = todo!();
     // A channel-scoped aggregate through the reality-scoped door. Must not compile.
-    let _ = dp::read_projection_reality::<Chatter, _>(&NoStore, ctx, 0, "k");
+    let _ = dp::read_projection_reality::<Chatter, _>(&NoStore, ctx, 0, dp::KeyId::from(1u64), "k");
 }
