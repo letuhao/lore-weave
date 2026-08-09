@@ -143,6 +143,9 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/extraction-profile", s.internalExtractionProfile)
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)
 		r.Get("/books/{book_id}/known-entities", s.getKnownEntities)
+		// The book-wide as-of read (AC1/AC2). Unlike its per-entity sibling under
+		// /entities/{entity_id}/facts, `as_of` here is REQUIRED — see state_handler.go.
+		r.Get("/books/{book_id}/state", s.internalStateAsOf)
 		r.Post("/books/{book_id}/extract-entities", s.bulkExtractEntities)
 		// WS-4C Half A — chat's post-turn canon auto-capture. UNLIKE its siblings here,
 		// this route grant-checks the supplied owner_user_id (Edit) against the book: it

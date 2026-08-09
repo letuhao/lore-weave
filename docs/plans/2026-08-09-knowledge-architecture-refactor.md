@@ -20,24 +20,69 @@ Design (SEALED): [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-
 
 scope if full plan, not small slices, need full plan first before do anything else
 
-## Current state — read this before resuming *(2026-08-09 20:54)*
+## Current state — read this before resuming *(2026-08-09 22:16)*
 
-**Phase 0 is code-complete and green; nothing is committed.** The working tree is dirty. Resume at
-**QC-0**, then Commit 1 — no commit lands before its QC task is green (that is this plan's own rule,
-reaffirmed by the PO).
+**Phase 0 is LANDED (`6ee50af00`). Phase 1 is LANDED — T4·T5·T6·T7·T8·T53 + QC-1, all green.**
+The reported defect is fixed end to end: the drafting stack now reads the cast at the chapter being
+written. Next is T9, the covering index.
 
 | | |
 |---|---|
-| **Sized** | `workflow-gate size S 3 5 2 15` → **BLOCKED** (risk floor: 2 side effects require ≥ M). Re-ran at **M** → OK. |
-| **Uncommitted** | `entity_genres_handler.go` · `outbox.go` · `extraction_worker.py` · `glossary_client.py` · **new** `entity_lifecycle_guard_test.go` · **new** `tests/test_extraction_known_entities_refresh.py` |
-| **Test DB** | `loreweave_glossary_p0test` on `localhost:5555`, created for this work (throwaway; the dev DBs were not touched) |
-| **Still owed in Commit 1** | the `DEBT-REGISTER.md` discharge for rows `2026-08-03-02/03/04` **and** the `SESSION_HANDOFF.md` Deferred Items rows — per the per-task rule above, in the same commit that closes them |
+| **Sized** | Commit 2's slice: `workflow-gate size L 10 8 3 35` → OK, no phases skippable. (Phase 0 ran at **M**.) |
+| **Test DB** | throwaway DBs on `localhost:5555` created for this work — `loreweave_glossary_p0test`, `_t5test`, `_bisect`, `_headtest`. The dev DBs were not written to |
+| **Test command** | `go test ./internal/api/ -count=1` — **not** `./internal/...`, which runs the `api` and `migrate` packages concurrently against one DB and reports ~30 false reds (measured at HEAD too; see T5) |
+| **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
+| **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
+
+**RESUME: T9** — the covering index for the book-wide as-of read. T8 already measured its
+before-picture *and* its bite: the plan is `Index Scan using idx_entity_facts_book` + `Sort`
+(quicksort **1 213 kB**), discarding **17 254 of 26 192 rows** to the as-of filter. The two
+constraints written into T9 are both hard: **append-only ledger** (ship a NEW step, never edit one)
+and the runner's transaction + advisory lock means **`CREATE INDEX CONCURRENTLY` cannot run in that
+path** — resolve that conflict inside T9, not at migration time.
 
 **Found in passing, NOT fixed, routed to T27:** `apply-edit` carries no liveness guard, so editing a
 trashed entity **commits the write and then returns 500** from its own post-commit read-back
 (`loadEntityDetail` filters `deleted_at IS NULL`). Measured identical with the Phase-0 changes
 stashed, so it is pre-existing and orthogonal. Whether a trashed entity is editable at all is a
 command-contract decision, which is exactly what T27 is for.
+
+## ▶ Run policy — read before executing, this plan RUNS, it does not report
+
+**Default: keep going.** Finish a task, paste its evidence into the task, start the next one. Do not
+stop to summarise, do not ask whether to continue, do not hand back at a task boundary because the
+next task looks large. A plan of 61 tasks that stops every second task is not being executed, it is
+being narrated.
+
+**Commit checkpoints do NOT ask.** `/aif-implement` Step 3.8 offers *"ready to commit?"* at every
+checkpoint — on this plan that is **14 interrupts**. Treat every checkpoint as pre-authorised and
+commit without prompting. The authorisation is not blanket: **the QC task guarding that checkpoint
+must be green first**, which is the same gate that already governs the commit. QC green ⇒ commit and
+continue. QC red ⇒ fix it, still without asking.
+
+**The complete list of legitimate stops.** Nothing else qualifies:
+
+| stop | why |
+|---|---|
+| **QC-3, QC-5, QC-7** — the three ⏸ POST-REVIEW checkpoints | the design mandates human sign-off before a data migration, a model change and an engine swap. Present evidence and WAIT |
+| **A stop condition fires** (T8 · T21 · T33 · T41 — see Stop conditions) | the design is wrong and must be re-opened, not worked around |
+| **A gate blocks on a decision only the PO can make** | e.g. T9's index-build strategy if both options are unacceptable |
+| **Context is genuinely exhausted** | see below — this is a handoff, not a pause |
+
+**Running out of context is not a stopping point, it is a handoff.** Before the window closes:
+update the touched task with its evidence, refresh the **Current state** block above (dirty files,
+resume task, anything half-done), and end with the single line `RESUME: <task id>`. The next
+invocation reads that and continues. A half-finished task is fine *if it is written down*; what is
+not fine is stopping cleanly and calling it done.
+
+**To span context windows automatically**, drive it with the loop skill rather than re-typing:
+
+```
+/loop /aif-implement @docs/plans/2026-08-09-knowledge-architecture-refactor.md
+```
+
+Self-paced (no interval) — it re-enters after each window with the plan as the source of truth. The
+POST-REVIEW checkpoints still stop it, which is the point.
 
 ## PO decisions taken during execution *(2026-08-09)*
 
@@ -293,7 +338,7 @@ allowlist them.
 
 The substrate already works; nothing reads it. `composition-service` passes `as_of` **zero** times.
 
-- [ ] **T4** — Write AC1 + AC2 as failing conformance tests **first**
+- [x] **T4** — Write AC1 + AC2 as failing conformance tests **first** — **RED, as required**
   New: `services/glossary-service/internal/api/state_asof_test.go`
   **AC1:** character dies ch.40 → `as_of=41` reports dead; **`as_of=39` reports present and ALIVE**.
   The second half is what proves the mechanism is temporal — a `deleted_at`-style implementation
@@ -301,8 +346,32 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   **AC2:** an attribute changes at ch.10/25/60 → `as_of=30` returns **exactly the ch.25 value**, one
   value per attribute.
   **Both must be RED before T5.**
+  ---
+  **Evidence.** 4 test functions, **all RED** at `6ee50af00` — every assertion reports `404`, the
+  router having no such route:
+  ```
+  --- FAIL: TestStateAsOf_AC1_DeathIsTemporalNotAFlag        (3 subtests, all 404)
+  --- FAIL: TestStateAsOf_AC2_OneValuePerAttributeAtAPosition
+  --- FAIL: TestStateAsOf_MissingAsOfIsRejected              (missing / non-numeric / negative)
+  --- FAIL: TestStateAsOf_InvalidatedFactsAreExcluded
+  ```
+  **This file is also the contract T5 implements** — the response shape is asserted here, and
+  `facts` is a **list, not a map keyed by attribute**, deliberately: AC2's claim is *exactly one
+  value per attribute*, and a map satisfies that by construction.
+  ⚠️ **Corrected during T5:** the list shape is necessary but was **not sufficient** — AC2's three
+  intervals are disjoint, so `DISTINCT ON` could be deleted with the file still green. See T5's first
+  bite; a sixth test now seeds an unclosed chain, which is the condition that actually needs it.
+  Beyond the two acceptance cases it pins three things a later reader would otherwise have to guess:
+  the **half-open boundary** (`as_of=40` is the first *dead* chapter — an off-by-one here decides
+  whether the chapter someone dies in describes a living or a dead character), that the response
+  carries **which interval answered** (`valid_from_ordinal`), and that an **invalidated** fact is
+  excluded however well its story interval matches (story time and belief time are different axes).
+  ⚠️ **Two assertions were vacuous on first write and were fixed before this was called done** —
+  "expect nothing" checks pass against an endpoint that does not exist. Both now assert `200` first,
+  and the invalidated-fact test seeds a second, *live* fact as a control so its silence about the
+  invalidated one means something.
 
-- [ ] **T5** — `GET /internal/books/{book_id}/state?as_of=N` in glossary-service
+- [x] **T5** — `GET /internal/books/{book_id}/state?as_of=N` in glossary-service — **GREEN**
   New: `services/glossary-service/internal/api/state_handler.go`; register in `server.go`
   `DISTINCT ON (entity_id, attr_or_predicate)` over the half-open predicate, `cardinality='single'`,
   `invalidated_at IS NULL`. **`as_of` is REQUIRED** — a missing position is `400`, never a default
@@ -310,23 +379,146 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   **Logging:** `DEBUG` resolved `as_of`, row count pre/post `DISTINCT ON`, elapsed ms; `WARN` on a
   request without `as_of`.
   (depends on T4)
+  ---
+  **Evidence.** `internal/api/state_handler.go` + one route at `server.go:146`. All six tests pass on
+  a fresh throwaway DB (`loreweave_glossary_bisect`, created for this run):
+  ```
+  --- PASS: TestStateAsOf_AC1_DeathIsTemporalNotAFlag (3 subtests)
+  --- PASS: TestStateAsOf_AC2_OneValuePerAttributeAtAPosition
+  --- PASS: TestStateAsOf_AC2_OverlappingIntervalsCollapseToTheFreshest
+  --- PASS: TestStateAsOf_MissingAsOfIsRejected
+  --- PASS: TestStateAsOf_InvalidatedFactsAreExcluded
+  --- PASS: TestStateAsOf_TrashedEntityIsExcluded
+  ```
+  The pre-`DISTINCT ON` row count the logging spec asks for comes from `count(*) OVER ()` in the same
+  query — window functions are evaluated before `DISTINCT ON` in Postgres, so the log line costs no
+  second round trip. Nothing is ever truncated: past `stateSizeWarnFacts` the read `WARN`s and returns
+  everything, because a silently capped state read is precisely the confidently-wrong answer this
+  endpoint exists to remove (that ceiling is T8's measurement, not a cap).
 
-- [ ] **T6** — Expose `state@as_of` on the KAL
+  **Five bites, each reverted after measuring.** Every one names a real failure mode:
+
+  | remove | goes red as |
+  |---|---|
+  | `DISTINCT ON` | `as_of=30 returned 2 rank values, want exactly 1` |
+  | `DESC` → `ASC` on the tie-break | returns the ch.10 value where ch.25 is current |
+  | `invalidated_at IS NULL` | a superseded fact surfaces as canon |
+  | `valid_from <= N` → `<` | `as_of=40 life_status = []` — the death chapter loses every fact |
+  | `e.deleted_at IS NULL` | a trashed entity is handed to the drafting agent |
+
+  ⚠️ **T4's own DISTINCT-ON claim was wrong, and the first bite is what caught it.** Deleting
+  `DISTINCT ON` left the whole file **green**: AC2 seeds `[10,25) [25,60) [60,∞)`, three *disjoint*
+  intervals, so the `WHERE` clause alone already returns one row at position 30. The T4 evidence below
+  asserts that list-not-map shape made the assertion falsifiable — it did not, for that fixture.
+  The condition `DISTINCT ON` actually defends against is an **unclosed chain** (`maintain_chain`
+  fails to stamp `valid_to_ordinal`, so two values are simultaneously current), which is a substrate
+  bug the read must survive rather than forward. `TestStateAsOf_AC2_OverlappingIntervalsCollapseToTheFreshest`
+  seeds exactly that and now bites both ways — missing `DISTINCT ON` **and** a non-deterministic
+  tie-break.
+
+  ⚠️ **Scope note — a THIRD axis, beyond what T5 specified.** The task named story time and belief
+  time. `glossary_entities.deleted_at` is neither: it is the author's recycle bin, and it has no story
+  position at all. An entity in the bin is not canon at any ordinal, so it is excluded — filtered on
+  the **entity**, never on the fact, so it cannot be confused with the temporal death AC1 tests.
+  `permanently_deleted_at` too. This is T1's guard extended to the new read and the unit twin of
+  QC-4's *"absent from composition's cast read"*; stated because the plan did not ask for it.
+
+  **Found in passing, NOT caused by this change:** `go test ./internal/...` in glossary-service reports
+  ~30 failures that vanish under `-p 1`. Go runs packages concurrently and the `api` and `migrate`
+  suites share **one** `GLOSSARY_TEST_DB_URL` database, so they migrate each other mid-run. Measured
+  at HEAD with T5's files moved out: **31 failures**, same command, same fresh DB. CI is unaffected —
+  `domain-db-smoke.yml` runs `./internal/api/...` alone, which is **0 failures** with T5 in place.
+  Recorded rather than fixed: it is a test-harness defect in a package this plan does not otherwise
+  touch, and inventing a per-package DB here would be scope drift.
+
+- [x] **T6** — Expose `state@as_of` on the KAL — **GREEN**
   `contracts/api/knowledge-gateway/kal.v1.yaml` + `services/knowledge-gateway/src/kal/kal-read.controller.ts`
   **Gateway carries no logic** (decision B2): validate, authorize, forward. `temporal_capability`
   is reported by the service, not computed here.
   **Logging:** `DEBUG` inbound `as_of` + downstream latency.
   (depends on T5)
+  ---
+  **Evidence.** `GET /v1/kal/books/{book_id}/state?as_of=N` — one controller method, plus the path
+  and two schemas (`StateEntity`, `StateFact`) in the contract. Full gateway suite **22/22 PASS**,
+  `tsc --noEmit` clean, and both INV-KAL gates still green:
+  ```
+  [knowledge-access-gate] PASS — no direct EAV/Neo4j reads outside the owning services
+  [knowledge-http-surface-gate] PASS — no consumer hits the owning services' bi-temporal /internal endpoints
+  ```
+  **The required-`as_of` rule is NOT re-implemented here**, and that is the design decision worth
+  recording. The gateway forwards whatever arrived and lets glossary refuse; `downstream.ts` already
+  propagates a 4xx faithfully, so the caller still sees `400`. A TypeScript copy of the rule would be
+  a second owner of a domain constraint inside the layer B2 says carries none — and two owners drift.
+  The test proves the difference rather than assuming it: it asserts the 400 **and** that the request
+  actually reached the service (`fetchMock` called once), which a short-circuiting gateway would fail.
 
-- [ ] **T7** — Migrate composition's cast read off `roster`
+  **Three bites, each reverted:**
+
+  | change | goes red as |
+  |---|---|
+  | `Array.isArray(...) ? ... : []` → `?? []` | a downstream object keyed by entity id passes through as the bounded array |
+  | gateway throws its own `400` on a missing `as_of` | the request never reaches the service — the rule now has two owners |
+  | drop `temporal_capability` | a consumer cannot tell "no facts here" from "this source ignored `as_of`" |
+
+  ⚠️ **Note for T26:** this adds a **fourth** call site of `temporalCapability()` in the gateway.
+  T26 moves that function into the Python use-case layer; it now has one more site to move. Included
+  deliberately — every other temporal read on this contract carries the field, and a state read that
+  omitted it would be the odd one out for a reason no consumer could see.
+
+- [x] **T7** — Migrate composition's cast read off `roster` — **GREEN**
   `services/composition-service/app/clients/kal_client.py` · `app/deps.py:300` · the planner/packer
   call sites
   `roster` survives as what it honestly is — an untimed catalogue enumeration.
   **Logging:** `INFO` the story position each drafting run resolves; `WARN` if a caller reaches the
   cast read without one.
   (depends on T6)
+  ---
+  **Evidence.** `KalClient.state(book_id, as_of=…)` + `cast_from_state` (`engine/heal_canon.py`) +
+  `_canon_cast_at` (`routers/plan.py`), wired into the **two canon-bible reads**: self-heal-propose
+  and quality-report. 14 new tests, **3619 passing** across the composition suite.
 
-- [ ] **T53** — Migrate the *other* roster consumers *(added by `/aif-improve +check`)*
+  ⚠️ **The task said "the cast read"; there are 13, and they do not all want the same thing.**
+  Migrating them wholesale would have been wrong. The split, decided per call site and written into
+  `_cast_roster`'s docstring so the next reader inherits the reasoning rather than re-deriving it:
+
+  | callers | read | why |
+  |---|---|---|
+  | canon bible (self-heal, quality-report) | **`state@as_of`** | a bible is a claim about what is true AT the chapter being written |
+  | `present_entity` commit validation · motif-swap + role-rebind binding targets | `roster` | an entity introduced in ch.50 is a valid binding target while planning ch.10 — gating membership on a position rejects valid ids for not being born yet |
+  | bound-motif label resolution | `roster` | a display name, not a canon claim |
+  | `/decompose`'s cast | `roster` | the plan spans the book; no single position exists to read it at |
+
+  **The position is the chapter's `sort_order`**, resolved through `book.get_chapter_sort_orders` —
+  the same axis `valid_from_ordinal` is written on. Verified rather than assumed: the extractor
+  sources `chapter_ordinal` from book-service's `sort_order`
+  (`extraction_worker.py:1006`), after a job-relative index was measured colliding — *"index 0 named
+  SIX different chapters"*. Passing a list index here would have answered confidently about a
+  different chapter.
+
+  **A second defect surfaced and is fixed by the same change.** `render_canon` renders
+  `role` / `personality` / `relationships` / `description`, but `roster` is projection-restricted to
+  **id+name by contract** — so those branches were **dead code** and every canon bible ever rendered
+  was a bare list of names. `state@as_of` carries facts, so the bible now says what each character
+  *was* at that chapter. Asserted directly:
+  `assert "protagonist" not in render_canon([{"entity_id": …, "name": …}])` — the roster-shaped cast
+  the old path produced.
+
+  **Four bites, each reverted:**
+
+  | change | goes red as |
+  |---|---|
+  | canon path back to `_cast_roster` | `state` never called; the bible is untimed again |
+  | client drops `as_of` from the query | the position is not on the wire — the service would 400 in production while any response-only assertion still passed |
+  | flatten only `name` (the pre-T7 shape) | role/description vanish from the bible |
+  | accept a non-list `entities` | (first attempt did **not** bite — the per-row `isinstance` filter already returned `[]`, so the guard's only real contribution is the WARN. The test now asserts the log line, and it bites) |
+
+  **Degradation, stated:** an unresolvable position falls back to the untimed roster and `WARN`s
+  (`NO resolved story position`); a KAL outage returns `[]` and leaves the run ungrounded, as before.
+  A `400` is logged separately from an outage — it means composition asked wrongly, and burying it in
+  the outage bucket would hide a caller bug as an infrastructure blip.
+
+- [x] **T53** — Migrate the *other* roster consumers — **RESOLVED: both stay untimed, documented**
+  *(added by `/aif-improve +check`)*
   `services/lore-enrichment-service/app/clients/kal.py:131` (drained for the cast hint at
   `app/compose/compose_task.py:569`) · `frontend/src/features/knowledge-temporal/api.ts:82`
   T7 migrates composition only; these two keep reading **the union of every entity that ever
@@ -337,21 +529,110 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   **Logging:** `INFO` the resolved position per consumer; `WARN` where an untimed read is kept
   deliberately, naming the reason.
   (depends on T6)
+  ---
+  **Evidence.** Both consumers examined; **neither is migrated, and both now say why in code.**
+  The task allowed either answer but forbade silence, so this is the answer, not a skip.
 
-- [ ] **T8** — Measure `state@as_of` end-to-end, doc-21 style
-  New: `docs/measurements/2026-08-XX-state-asof-ceiling.md`
+  **`lore-enrichment-service`** drains the roster to hint an intent RESOLVER — the user typed free
+  text and we are deciding *which entity they meant*. An entity introduced in chapter 50 is a valid
+  enrichment target while the reader sits at chapter 10, so filtering candidates by position would
+  make the resolver fail to find things the user can see in their own glossary. It asks what
+  **exists**, not what is **true** — the opposite of the canon bible T7 moved.
+
+  ⚠️ **The frontend half's premise was wrong, and checking beat assuming.** T53 asserted
+  `features/knowledge-temporal/api.ts:82` *"keeps reading the union of every entity that ever
+  existed"*. It has **zero call sites** in `frontend/src` (`grep -rn "\.roster(" frontend/src` →
+  nothing): it is client surface mirroring the KAL contract, not a live read, so no user reaches the
+  defect through it. Documented in place; `state` is deliberately **not** added there until something
+  calls it — T51 owns the frontend migration, and an unused wrapper is how a client drifts from the
+  contract it claims to mirror.
+
+  Suites after the change: lore-enrichment **1263 passed**, frontend `tsc --noEmit` clean.
+
+- [x] **T8** — Measure `state@as_of` end-to-end, doc-21 style — **GREEN, no stop condition fires**
+  New: [`docs/measurements/2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md)
   Rig stated · durability stated · **ratios not absolutes** · with a bite. Compare in-process vs
   through-the-KAL and **publish the ratio** — this is the gate the design named as most likely to
   invalidate it. Baseline already measured: **8.7 ms flat** at 26k facts.
   (depends on T7)
+  ---
+  **Evidence.** Rebuilt images, real dev corpus (**48 492 facts / 11 books**; the book measured is
+  the largest at **26 192 facts over 1 673 entities**, chapters 0–97), 20 reads per surface.
 
-- [ ] **QC-1** — Contract review + consumer live smoke
+  | surface | p50 | p95 |
+  |---|---|---|
+  | in-process (`glossary /internal/.../state`) | 34.8 ms | 43.4 ms |
+  | through the KAL | 51.0 ms | 67.6 ms |
+  | **ratio** | **×1.47** | **×1.56** |
+
+  A second run measured ×1.62 / ×1.65 — **×1.5 ± 0.1** is this rig's resolution. **Stop condition 1
+  does not fire:** the cast resolves once per chapter, against LLM calls measured in seconds — 51 ms
+  is 0.25 % of a 20-second generation.
+
+  **The plan is `Index Scan + Sort`, which hands T9 its before-picture and its bite:** the book index
+  carries `book_id` only, so **17 254 of 26 192 rows are read and discarded** by the as-of filter, and
+  the `DISTINCT ON` sorts **1 213 kB** (quicksort) — a sort that grows with book length and spills
+  `work_mem` at T10's ceiling.
+  **And an honest reading of AC2 on real data:** 8 938 rows in → 8 914 out. Only **24** rows are
+  collapsed — so overlapping intervals are *rare but real*, and `DISTINCT ON` is what stands between
+  a caller and two contradictory values on 24 attributes. (T5's first bite already showed a synthetic
+  disjoint fixture cannot demonstrate this.)
+
+  ⚠️ **Finding, recorded not fixed:** the consumer receives **1 674 entities → 1 463 canon bible
+  rows** on the real book. T7 did not change that *count* (`roster` drained the same 1 674) but did
+  widen each row. **No cap was added deliberately** — truncating the cast to the first N is a silent
+  correctness change dressed as a perf fix, and *which* cast members matter for a chapter is a
+  salience question this task has no business answering. The context-budget law owns that ceiling.
+
+- [x] **QC-1** — Contract review + consumer live smoke — **`passed=9 failed=0`**
   New: `scripts/state-asof-live-smoke.sh`
   `/aif-review +check`. Then drive `state@as_of` **through the KAL from composition** against a real
   book — not through a test client. **A new cross-service contract is proven by its consumer**, and
   the gateway hop is exactly what a unit test omits.
   **Data:** capture p50/p95 and the resolved position for 20 consecutive chapter reads; paste into
   the plan.
+  ---
+  **② Live proof — `scripts/state-asof-live-smoke.sh`, `passed=9 failed=0`.** Images rebuilt from the
+  working tree first (glossary-service · knowledge-gateway · composition-service), against real
+  Postgres and the real gateway. Scratch entity minted and purged by the script's own trap; ordinals
+  9000+ so they cannot collide with real chapter positions in a shared dev book.
+
+  | leg | result |
+  |---|---|
+  | AC1 `as_of=9039` through the KAL | **alive** — present and living one chapter before the death |
+  | AC1 `as_of=9040` | **dead** — the half-open boundary holds end-to-end |
+  | AC2 `rank` at 9030 | exactly **one** value (`inner`) |
+  | AC2 **unclosed chain** (two open intervals on one attribute) | collapses to the freshest (`Ash`), not two contradictory values |
+  | REQ no `as_of` / negative `as_of` through the KAL | **400** both — the service's rule, forwarded, not re-implemented |
+  | CONS composition's own `KalClient.state()` in the composition container | saw the entity; `rank=inner` (the as-of value, **not** the head) |
+  | CONS `cast_from_state` on live data | **1 463** bible rows — the canon path is genuinely grounded, not silently empty |
+
+  **Why this is not vacuous:** every leg but one could pass against a stubbed read. The AC1 pair
+  cannot — an endpoint ignoring `as_of` returns the head value at *both* positions and fails the
+  first leg. That pair is what makes the rest mean something.
+
+  ⚠️ **The harness produced two false REDs on its first run and was fixed, not explained away.**
+  `life_status='alive', want 'alive'` — Windows Python writes CRLF, so the value compared as
+  `alive\r`. A harness that fails between two identical-looking strings is worse than one that fails
+  loudly: it reads as a product bug. `values_for` now strips `\r`, with the reason on the line.
+
+  **① Code review of the Commit-2 diff.** Performed at this checkpoint over the full diff
+  (11 modified + 6 new files). Findings, all fixed in the same slice rather than deferred:
+
+  | # | finding | disposition |
+  |---|---|---|
+  | 1 | **AC2's fixture could not exercise `DISTINCT ON`** — three disjoint intervals; deleting it left the file green | fixed: a sixth test seeds an unclosed chain (T5) |
+  | 2 | **The non-list `entities` guard had no bite** — the per-row `isinstance` filter already returned `[]`, so the guard's only contribution is its WARN | fixed: the test now asserts the log line (T7) |
+  | 3 | **`state` silently violated the KAL's own "bounded by construction" invariant** — the preamble carves out `roster` and `list_attr_values` explicitly; a third unbounded shape slipping in without a carve-out is how an invariant rots into a comment | fixed: the preamble now carves out `state`, states that it is bounded by the POSITION not a page, and says why paging it would be worse (a drained snapshot is torn) |
+  | 4 | **The smoke reported two false REDs** (Windows CRLF) | fixed with the reason on the line |
+  | 5 | **Completeness check on T7:** `grep -rn "render_canon" services/` → exactly 2 non-test call sites, both migrated. The worker path receives the canon in its payload, so it inherits the as-of bible rather than rebuilding one from `roster` | verified, no action |
+
+  Not found: no SQL built by concatenation (both new queries are parameterized), no new tenancy
+  surface (the route sits behind `requireInternalToken` like every sibling `/internal` read, and
+  user auth stays at the gateway's `KalAuthGuard`), no new secret in a tracked file.
+
+  **③ Real-run data:** the PERF block above *is* real-run data — 40 reads against a 26 192-fact book
+  on the deployed binaries, plus the query plan in the measurement doc.
 
 <!-- Commit checkpoint: T4–T8 — contract boundary -->
 

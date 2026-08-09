@@ -16,10 +16,29 @@ it, and the failing half is not theoretical — the pre-fix binary bought a paid
 call on author-deleted content and put two frames on `loreweave:events:glossary` re-anchoring a
 deleted entity in a consumer's index.
 
-**▶ Resume at Phase 1 (T4).** Write AC1 + AC2 as *failing* conformance tests first — both must be RED
-before T5 adds `GET /internal/books/{book_id}/state?as_of=N`. AC1's second half is the load-bearing
-one: `as_of=39` must report a character who dies in ch.40 as **present and alive**, because a
-`deleted_at`-style implementation passes the first half and fails that.
+**Phase 1 has landed (Commit 2) — the reported defect is fixed.** `state@as_of` exists end to end:
+the glossary read (T5), its KAL exposure (T6), and composition's canon bible reading it at the
+chapter being written instead of at the end of the book (T7). `scripts/state-asof-live-smoke.sh`
+runs **9/9** on rebuilt images, driven through the gateway by composition's own client. Two things
+worth knowing before touching this area:
+
+- **A second defect fell out of T7.** `render_canon` renders `role`/`description`/`relationships`,
+  but `roster` is projection-restricted to id+name *by contract* — so those branches were dead code
+  and every canon bible ever rendered was a bare list of names. It now carries what each character
+  *was* at that chapter.
+- **The KAL hop costs ×1.5** (p50 34.8 → 51.0 ms on a 26 192-fact book). No stop condition fires.
+  [`docs/measurements/2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md)
+
+**▶ Resume at T9** — the covering index for the book-wide as-of read. T8's query plan is its
+before-picture and its bite: the read is `Index Scan using idx_entity_facts_book` + `Sort`
+(quicksort, 1 213 kB), discarding **17 254 of 26 192 rows** to the as-of filter. Two constraints are
+already written into T9 and neither is optional: the glossary migration chain is an **append-only
+ledger** (ship a NEW step, never edit one), and the runner wraps every step in a transaction +
+advisory lock, so **`CREATE INDEX CONCURRENTLY` cannot run in that path at all**.
+
+⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
+`api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports
+~30 false reds (measured at HEAD too). CI runs the `api` form.
 
 **Carried forward, deliberately:**
 - `apply-edit` has no liveness guard — it commits an edit to a trashed entity, then 500s on its own

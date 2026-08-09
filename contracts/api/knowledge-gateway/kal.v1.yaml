@@ -27,6 +27,18 @@ info:
     `list_attr_values` are *bounded-per-page, complete-in-aggregate* (cursor-drained), never the monolith.
     This makes context bloat structurally impossible (§12.0 INV-FACTS corollary).
 
+    **`state` is the third carved-out shape, and it is bounded differently — say so out loud.**
+    It is neither paged nor projection-restricted: it returns one value per (entity, attribute) for
+    the whole book at one story position, in a single response. What bounds it is the POSITION —
+    only intervals covering N, one per attribute — not a page size. Paging it would be worse than
+    useless: a caller draining pages to assemble "the state at N" holds a torn snapshot, and the
+    single-response shape is what makes the answer atomic. Measured on the largest real book
+    (26 192 facts, 1 673 entities, 97 chapters) it returns ~8 900 facts in ~35 ms; see
+    `docs/measurements/2026-08-09-state-asof-ceiling.md`. Nothing is truncated — the service WARNs
+    past a threshold instead, because a silently capped state read is exactly the confidently-wrong
+    answer this endpoint exists to remove. Consumers that cannot afford the whole cast need a
+    SALIENCE filter, which is a different question and not this contract's to answer.
+
     ## Temporal model (v1 == current projection; temporal is additive)
     v1 semantics equal **today's current-projection** (latest-valid facts where `invalidated_at IS NULL`),
     so consumers migrate with NO behavior change. Temporal is an additive `as_of` (chapter ordinal) param.
@@ -222,6 +234,52 @@ paths:
                 properties:
                   items: { type: array, items: { $ref: '#/components/schemas/RosterEntry' } }
                   next_cursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/state:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - name: as_of
+        in: query
+        required: true
+        schema: { type: integer, format: int64, minimum: 0 }
+        description: "Story ordinal. REQUIRED — there is no default; a missing position is 400."
+    get:
+      tags: [reads]
+      summary: state — the whole cast's state AT a story position (AC1/AC2)
+      description: |
+        What was TRUE at story position N, for every entity in the book, one value per
+        (entity, attribute). This is the read `roster` cannot be: `roster` is an untimed
+        catalogue of every entity that ever existed, so a drafting agent using it at chapter 12
+        sees the end of the book.
+
+        `as_of` is REQUIRED and has no default. A defaulted position answers "what is true now"
+        while wearing the shape of "what was true then", and the caller has no way to notice —
+        that failure mode is what this read exists to remove. Enforced by the owning service,
+        not by the gateway (decision B2: no domain logic in TypeScript).
+
+        Three axes are involved and only the first is `as_of`:
+        STORY time (the half-open interval `[valid_from_ordinal, valid_to_ordinal)`) selects the
+        answer; BELIEF time (`invalidated_at`) excludes superseded facts at every position; and
+        the author's recycle bin (`deleted_at`) excludes trashed entities, which have no story
+        position at all.
+
+        Bounded by the position rather than by a projection: only intervals covering N, one per
+        attribute. Nothing is truncated — see the T8 ceiling measurement.
+      responses:
+        '200':
+          description: One value per (entity, attribute) at the requested position
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [book_id, as_of_ordinal, entities, temporal_capability]
+                properties:
+                  book_id: { type: string, format: uuid }
+                  as_of_ordinal: { type: integer, format: int64 }
+                  entities: { type: array, items: { $ref: '#/components/schemas/StateEntity' } }
+                  temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
+        '400': { description: "`as_of` missing, non-numeric or negative" }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
   /v1/kal/books/{book_id}/retrieve:
@@ -558,6 +616,28 @@ components:
         entity_id: { type: string, format: uuid }
         name: { type: string }
         kind: { type: string, nullable: true }
+    StateEntity:
+      type: object
+      required: [entity_id, facts]
+      properties:
+        entity_id: { type: string, format: uuid }
+        facts: { type: array, items: { $ref: '#/components/schemas/StateFact' } }
+    StateFact:
+      type: object
+      description: |
+        One attribute's value at the requested position. `facts` is a LIST, not a map keyed by
+        attribute — a map would satisfy "exactly one value per attribute" by construction, so a
+        consumer conformance test could not tell a correct read from one that returned every
+        matching interval and let the last write win.
+      required: [attr, value, fact_kind, valid_from_ordinal]
+      properties:
+        attr: { type: string }
+        value: { type: string }
+        fact_kind: { type: string, enum: [attribute, relation, event, name, alias] }
+        valid_from_ordinal:
+          type: integer
+          format: int64
+          description: "Which interval answered — how a caller tells fresh canon from ancient canon."
     RetrievedSegment:
       type: object
       required: [text, score]

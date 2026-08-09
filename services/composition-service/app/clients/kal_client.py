@@ -141,6 +141,62 @@ class KalClient:
         return _partial("page cap")
 
 
+    async def state(
+        self, book_id: UUID, *, as_of: int, user_id: UUID | str | None = None,
+    ) -> list[dict[str, Any]]:
+        """The whole cast AS OF story position ``as_of`` — ``[{entity_id, facts: [...]}, ...]``,
+        one value per (entity, attribute).
+
+        This is the read ``roster`` cannot be. ``roster`` enumerates every entity that ever
+        existed in the book, with no position, so a drafting run at chapter 12 grounds on the
+        END of the book: characters who die in chapter 40 are alive, ranks are the final ones,
+        and a betrayal three chapters ahead is already canon. ``state`` answers what was true
+        AT the position being written.
+
+        ``as_of`` is REQUIRED and is the chapter's ``sort_order`` — the book position, the same
+        axis ``valid_from_ordinal`` is written on (extraction sources it from book-service's
+        ``sort_order``, deliberately, after a job-relative index was found colliding). Passing a
+        job-relative or list index here would silently answer about a different chapter.
+
+        Degradation matches ``roster`` non-strict: any transport error / non-200 / bad JSON
+        yields ``[]`` and logs, never raises — a KAL outage leaves a drafting run ungrounded
+        (legacy behaviour) rather than 500-ing it. A 400 from the service means the position was
+        rejected, which is a CALLER bug and is logged as such.
+        """
+        url = f"{self._base_url}/v1/kal/books/{book_id}/state"
+        try:
+            resp = await self._http.get(
+                url, params={"as_of": int(as_of)}, headers=self._headers(user_id))
+        except httpx.HTTPError as exc:
+            logger.warning("kal state@%s unavailable for book %s: %s", as_of, book_id, exc)
+            return []
+        if resp.status_code == 400:
+            # The service owns the required-position rule; a 400 here is composition asking
+            # wrongly, not the service failing. Distinguished from a generic non-200 so it
+            # cannot hide in the outage bucket.
+            logger.warning(
+                "kal state → 400 for book %s at as_of=%r — the story position was REFUSED "
+                "(missing/negative); the run will be ungrounded", book_id, as_of)
+            return []
+        if resp.status_code != 200:
+            logger.warning("kal state@%s → %d for book %s", as_of, resp.status_code, book_id)
+            return []
+        try:
+            data = resp.json()
+        except (ValueError, AttributeError) as exc:
+            logger.warning("kal state@%s bad JSON for book %s: %s", as_of, book_id, exc)
+            return []
+        entities = data.get("entities", []) if isinstance(data, dict) else []
+        if not isinstance(entities, list):
+            # Same strictness the gateway applies downstream: an object keyed by id is not the
+            # bounded list the contract promises, and iterating it yields keys, not entities.
+            logger.warning("kal state@%s returned a non-list `entities` for book %s", as_of, book_id)
+            return []
+        logger.info(
+            "kal state resolved: book=%s as_of=%s entities=%d", book_id, as_of, len(entities))
+        return [e for e in entities if isinstance(e, dict) and e.get("entity_id")]
+
+
 def init_kal_client() -> KalClient:
     global _client
     if _client is None:

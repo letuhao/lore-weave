@@ -130,6 +130,41 @@ export class KalReadController {
     return { items, next_cursor: data?.next_cursor ?? null };
   }
 
+  // state — the book-wide as-of read (AC1/AC2). One value per (entity, attribute) at story
+  // position N, across the whole cast.
+  //
+  // `as_of` is REQUIRED and the gateway does NOT enforce that itself. It forwards whatever
+  // arrived and glossary answers 400 (downstream 4xx is propagated faithfully by
+  // `downstream.ts`). Deliberate: a second copy of the rule in TypeScript is a rule that can
+  // drift out of agreement with the one that owns it, and decision B2 says the gateway carries
+  // no domain logic. Forwarding an empty `as_of` reaches the same refusal as omitting it —
+  // glossary treats both as "no story position".
+  //
+  // Unlike `roster`, this read is NOT projection-restricted to id+name: its whole purpose is to
+  // answer what was TRUE at a position, and a name-only projection cannot. It stays bounded by
+  // the position instead — only intervals covering N, one per attribute.
+  @Get('state')
+  async state(
+    @Param('bookId') bookId: string,
+    @Query('as_of') asOf: string | undefined,
+    @Req() req: InboundReq,
+  ) {
+    const qs = new URLSearchParams();
+    if (asOf !== undefined) qs.set('as_of', asOf);
+    const data = (await glossary.get(
+      `/internal/books/${bookId}/state?${qs.toString()}`,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    // Strict array coercion, same as get_facts: a downstream object without `entities` must not
+    // pass through whole as the bounded list. Never `?? data`.
+    return {
+      book_id: data?.book_id ?? bookId,
+      as_of_ordinal: data?.as_of_ordinal ?? null,
+      entities: Array.isArray(data?.entities) ? data.entities : [],
+      temporal_capability: temporalCapability(),
+    };
+  }
+
   // search — bounded entity search (top-K).
   @Get('search')
   async search(
