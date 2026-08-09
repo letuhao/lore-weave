@@ -1023,6 +1023,84 @@ transport. Its trigger is the first out-of-process caller.
 >    the column now would be a column NULL in every row — the orphan shape with a
 >    schema. Its trigger is the channel RPC group.
 
+---
+
+## POST-SLICE-5 DATA-PLANE REVIEW — 2026-08-09
+
+Adversarial pass over everything slices 3–5 built. Three findings; one fixed
+here, two tracked with mechanisms. **Each mechanism is a thing that changes
+colour by itself** — the deferral rule this repo learned the hard way is that a
+row and a promise are not a mechanism.
+
+### 🔴 `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` — the largest finding
+
+`5B` built capability validation and `5C` exposed bind/refresh. **Nothing calls
+`validate_capability` outside tests**, and the data path cannot: neither
+`WriteRequest` nor `ReadRequest` carries a capability, so no backend has one to
+present.
+
+What `dp::SessionContext::check_live` actually does is the CLIENT checking **its
+own copy** of an expiry it was handed. That catches an honest expiry. It cannot
+catch a revocation — so `revoke_session`, which `5B` made immediate and
+single-session at the control plane, **has no effect on the data plane at all**.
+A revoked session keeps writing until its local expiry (default 15 minutes).
+
+*Why it is not fixed here:* the fix changes the `WriteBackend`/`ReadBackend`
+seam — the contract `4B`/`4C` sealed and `5-WIRE` implemented — and adds a
+control-plane round trip to every write. That is a design decision about the
+data path's hot loop, not a patch, and it interacts directly with the sealed
+bearer-capability deviation's cost.
+
+*Mechanism:* the `#[expect(dead_code)]` on `CapabilityToken::secret` and
+`SessionContext::capability` now names **this id** as its reason. Those items
+are dead precisely because no backend takes a capability; the day one does, the
+expectation goes unfulfilled and the build fails, carrying this id in the
+message. Verified by bite — adding a caller produced
+`this lint expectation is unfulfilled … D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH`.
+
+### 🟠 `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND`
+
+`MetaControlPlane::verify_bind` records the capability **before** returning —
+correctly, since handing out an unrecorded one is worse. But
+`SessionContext::bind` can still reject afterwards, on `now_ms >= expires_at_ms`.
+Since the control plane mints `now + ttl` on **its** clock and the caller checks
+against **its own**, a caller more than one TTL ahead rejects a capability that
+is already in the store. The row is live, its secret was dropped on the floor,
+and nothing will ever present it.
+
+Not a security hole — an unpresentable row — but rows accumulate, and the shape
+(a store write whose caller can still fail) is worth a name.
+
+*Mechanism:* `session_registry` carries `@retention_hot: 90d`, so these rows are
+already inside a retention regime rather than growing forever. The waking
+trigger is the first retention sweep that reports a non-trivial count of rows
+never validated — which needs a `last_validated_at` column, and that column
+arrives with the fix above.
+
+### ✅ FIXED IN THIS PASS — a pragma whose reason had already expired
+
+Both `#[expect(dead_code)]` attributes read *"slice 4's write surface presents
+it; unfulfilled the day it does."* Slice 4 shipped, slice 5 shipped, and both
+items are still dead. The **mechanism** was sound; the **reason** named an event
+that had already passed without producing the effect — the *escape hatch cannot
+reach its reason* shape from `non-vacuity.md`. Re-pointed at the real trigger,
+which is how they became the mechanism for the finding above rather than a note
+beside it.
+
+### What the review checked and found sound
+
+* `RealityId` / `SessionId` / `NodeId` / `ChannelId` — no forging path; the two
+  compile-fail fixtures still pin `E0603` + `E0624`.
+* Scope bounds pinned in BOTH directions after `5D`'s mirror.
+* The digest, not the secret, is what `session_registry` stores; the `Debug` impl
+  redacts; the gRPC layer collapses "never issued" and "revoked" into one status
+  so the endpoint is not an oracle.
+* `refresh` is CAS'd against the read expiry AND `revoked_at IS NULL`, proven
+  live.
+* Every `UNIMPLEMENTED` RPC is compared against the running server.
+
+---
+
 **Two findings `5B`'s Phase 0 handed to `5D`, recorded rather than silently fixed:**
 
 1. **`DP-Ch32`'s auto-dormant scan spans two databases.** Its SQL joins `channels`

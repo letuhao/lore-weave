@@ -4,8 +4,22 @@
 
 **HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
-> **▶ DO NEXT — `3E.2`, then the data-plane review.** Slices 3, 4 and 5 are CLOSED
-> (`5A` · `5-WIRE` · `5B` · `5C` · `5D`).
+> **▶ DO NEXT — `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH`.** Slices 3, 4 and 5 are CLOSED
+> (`5A` · `5-WIRE` · `5B` · `5C` · `5D`), `3E.2` discharged commit-service, and the post-slice-5
+> data-plane review is done. It found one thing big enough to be the next piece of work.
+>
+> ### Deferred, from the post-slice-5 data-plane review (2026-08-09)
+>
+> | ID | What | Gate | Mechanism (not a promise) |
+> |---|---|---|---|
+> | `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` | `5B` built capability validation; **nothing calls it outside tests, and the data path cannot** — neither `WriteRequest` nor `ReadRequest` carries a capability. `check_live` is the CLIENT checking its own copy of an expiry, so it catches an honest expiry and **cannot catch a revocation**. `revoke_session` is immediate at the control plane and invisible to the data plane: a revoked session keeps writing until its local expiry (15 min). | #2 large/structural — it changes the `WriteBackend`/`ReadBackend` seam `4B`/`4C` sealed, and puts a control-plane round trip in the hot loop | the `#[expect(dead_code)]` on `CapabilityToken::secret` + `SessionContext::capability` names **this id** as its reason. Those items are dead *because* no backend takes a capability; the day one does, the expectation goes unfulfilled and the build fails carrying this id. Bite-verified. |
+> | `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND` | The CP records before returning (correctly), but `SessionContext::bind` can still reject on `now_ms >= expires_at_ms` — CP clock vs caller clock. The row is live, its secret was dropped, nothing can present it. | #4 needs the column below | `session_registry` is already under `@retention_hot: 90d`. The waking trigger is a `last_validated_at` column, which arrives with the fix above. |
+>
+> **Also found and FIXED in the review:** both `#[expect(dead_code)]` reasons said *"slice 4's write
+> surface presents it; unfulfilled the day it does."* Slice 4 shipped, slice 5 shipped, and both
+> items are still dead — the mechanism was sound, the REASON named an event that had already passed
+> without producing the effect. That is the *escape hatch cannot reach its reason* shape, and
+> re-pointing it is what turned the pragma into the first row's mechanism.
 >
 > **`5D`'s Phase 0 found its own premise was wrong, which is the whole value of asking.** This
 > board said `5D` *"is what produces `ChannelId`"* and `DEFERRED_IDS` said *"nothing mints a

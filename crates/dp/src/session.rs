@@ -105,7 +105,27 @@ impl CapabilityToken {
     // pragma removes itself: slice 4 presents this secret, and on that day this
     // line becomes an unfulfilled expectation and must go. That is a mechanism
     // with a trigger, not an exemption.
-    #[expect(dead_code, reason = "slice 4's write surface presents it; this              expectation goes unfulfilled the day it does, which is the trigger")]
+    // THE REASON BELOW WAS WRONG, AND ITS BEING WRONG IS A FINDING (review, 5D).
+    //
+    // It said "slice 4's write surface presents it; unfulfilled the day it
+    // does". Slice 4 shipped. Slice 5 shipped. This is still dead — because the
+    // write surface does NOT present the capability, and `WriteRequest` has no
+    // field for one. The pragma's MECHANISM was fine (it fires the day the item
+    // becomes live); its REASON named an event that had already passed without
+    // producing the effect, which is the "escape hatch cannot reach its reason"
+    // shape `non-vacuity.md` names.
+    //
+    // Re-pointed at the real trigger: `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH`
+    // in the run-state. Nothing validates a capability server-side, so
+    // revocation is immediate at the control plane and invisible to the data
+    // plane. The day a backend is given the capability to present, this
+    // expectation goes unfulfilled and the build says so — which makes this
+    // pragma that deferral's mechanism rather than a note about it.
+    #[expect(
+        dead_code,
+        reason = "D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH — no backend takes a \
+                  capability yet; this expectation goes unfulfilled the day one does"
+    )]
     pub(crate) fn secret(&self) -> &str {
         &self.secret
     }
@@ -405,7 +425,12 @@ impl SessionContext {
     }
 
     /// The capability, for the transport. Never handed to feature code.
-    #[expect(dead_code, reason = "slice 4's write surface presents it;              unfulfilled the day it does")]
+    // Same correction as `CapabilityToken::secret` above, same trigger.
+    #[expect(
+        dead_code,
+        reason = "D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH — no backend takes a \
+                  capability yet; this expectation goes unfulfilled the day one does"
+    )]
     pub(crate) fn capability(&self) -> &CapabilityToken {
         &self.capability
     }
