@@ -15,6 +15,67 @@ into it.* **No v2 tool is built until CP-5 closes.**
 
 ---
 
+## 0.5 · EVALUATION of v2, same day — three findings, and one rewrites the top row
+
+v2 survives better than v1. It does not survive intact, and the surviving defect is the **most
+expensive kind: a correctly-measured symptom with the wrong cure attached.**
+
+### V1 · Typed inputs cannot be derived — row 5.3 needs four teams before one tool can ship
+
+Across the 315-tool catalogue: **1,313 properties, and ZERO carry a `format`.** Of **477 `*_id`
+properties**, every one is a bare `string` — and **120 have no `type` at all**.
+
+So `typed inputs` is not derivable from anything we hold. It requires composition (107 tools),
+glossary (54), book (35) and kg (31) each to annotate their schemas *before a single tool can be
+promoted*. v2 named rung 2 as *"needs no other team's cooperation"* and then made its top row
+entirely dependent on four of them.
+
+### V2 · 🔴 The top member is MISDIAGNOSED — and the frozen baseline already named it correctly
+
+What the model actually sends when `entity_id must be a UUID` fires:
+
+```
+glossary_list_chapter_links   {"book_id": "019f482c-…", "entity_id": "Ember Codex"}   ×197
+glossary_get_entity           {"book_id": "019f6531-…", "entity_id": "Lâm Uyên"}      ×106
+glossary_list_entity_revisions{"book_id": "019eef55-…", "entity_id": "Count Dracula"} × 24
+book_list_chapters            {"book_id": "all"}                                      ×  9
+```
+
+**390 of 392 (99.5%), across 22 sessions: a human NAME sent where an opaque id is required.**
+
+**A semantic type does not fix this.** Declaring `entity_id: EntityId` rejects `"Ember Codex"`
+*earlier* — the same failure, moved forward one layer. The model still holds a name and still cannot
+proceed. Neither does `argument supplier`: there is no context id for *"the entity the user just
+named."*
+
+The real member is **identifier resolution** — *how does a name become an id?* — and it is not a new
+discovery. **The frozen baseline named it in class 3: `IDENTIFIER RESOLUTION — 676 of 1,676 real
+errors, 40.3%`.** My audit re-derived the symptom from raw error text, filed it as *typed inputs*,
+and attached a cure that would not have worked. **The board already had the right answer and the
+audit walked past it.**
+
+### V3 · The correct member is buildable NOW, and composes with what already exists
+
+This is the constructive half. A **resolution contract** — *`entity_id` is an `EntityRef`, resolved
+by `glossary_search(name) → entity_id`* — is declarable **without any other team**, because it is a
+statement about how two existing tools relate, not a change to either one's schema.
+
+And the binding half is **already built and already measured**: CP-3.10's executor supplies a
+resolved identifier and discards what the model typed (10/10 vs 1/10, 22 wasted calls → 0). A
+resolution contract feeds exactly that mechanism. **The top member becomes a reuse, not a new
+build** — and unlike typed inputs it ships without a cross-team migration.
+
+### Verdict
+
+**Reorder.** `identifier resolution` is row 5.3 and is the checkpoint's first build. `typed inputs`
+demotes to a conditional member covering the residue — the 120 properties with **no type at all**,
+which is a real defect but a smaller and different one. Every remaining row keeps its v2 shape.
+
+**The lesson this evaluation is an instance of:** *measuring a failure correctly and naming its cure
+from the error text are two different acts, and the second one is where the audit failed.*
+
+---
+
 ## 1 · The evidence
 
 4,175 failed `tool_calls` across **358 sessions**, 480 turns. **The denominator is SESSIONS, not
