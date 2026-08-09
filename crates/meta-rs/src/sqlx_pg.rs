@@ -577,6 +577,307 @@ impl crate::routing::Connection for PgConnectionReader {
 }
 
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// The CAPABILITY STORE (`5B`).
+//
+// Every write here goes through `metawrite::meta_write`, which is the point
+// rather than a formality: that is what puts the `meta_write_audit` row in the
+// SAME TRANSACTION as the change. A hand-rolled `INSERT INTO session_registry`
+// would be faster to write, would pass its tests, and would silently opt this
+// table out of I8 — and `meta-write-discipline-lint.sh` would not catch it,
+// because `crates/meta-rs/` is on that lint's exclusion list. The exclusion
+// exists so this crate can BE the port, not so it can bypass it.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// [`crate::session_store::CapabilityStore`] over a live Postgres pool.
+///
+/// Reads go straight to the pool; writes go through
+/// [`crate::metawrite::meta_write`], so each one carries its audit row
+/// atomically.
+pub struct PgCapabilityStore {
+    pool: PgPool,
+    handle: Handle,
+    /// The writer is behind a mutex because [`ConnectionWriter::begin_tx`] takes
+    /// `&mut self` while [`crate::session_store::CapabilityStore`] takes
+    /// `&self` — the control plane that owns this holds it immutably.
+    /// Affordable for the reason `lib.rs` already gives about meta writes being
+    /// cold, and honest about the cost: binds serialise on this lock.
+    writer: Mutex<PgConnectionWriter>,
+    allowlist: crate::allowlist::Allowlist,
+    actor: crate::metawrite::Actor,
+}
+
+impl PgCapabilityStore {
+    /// Wrap a pool. Refuses a current-thread runtime for the same reason
+    /// [`PgConnectionWriter`] does — the sync/async bridge panics there.
+    pub fn new(
+        pool: PgPool,
+        allowlist: crate::allowlist::Allowlist,
+        actor: crate::metawrite::Actor,
+    ) -> Result<Self, MetaError> {
+        let handle = Handle::try_current().map_err(|_| {
+            MetaError::ConfigInvalid(
+                "PgCapabilityStore must be constructed inside a tokio runtime — it bridges \
+                 the synchronous CapabilityStore trait onto async sqlx"
+                    .into(),
+            )
+        })?;
+        if handle.runtime_flavor() != RuntimeFlavor::MultiThread {
+            return Err(MetaError::ConfigInvalid(
+                "PgCapabilityStore requires a MULTI-THREAD tokio runtime: CapabilityStore is \
+                 synchronous, so the adapter blocks with block_in_place, which panics on a \
+                 current-thread runtime."
+                    .into(),
+            ));
+        }
+        let writer = PgConnectionWriter::new(pool.clone())?;
+        Ok(Self {
+            pool,
+            handle,
+            writer: Mutex::new(writer),
+            allowlist,
+            actor,
+        })
+    }
+
+    /// Run one intent through [`crate::metawrite::meta_write`], mapping a CAS
+    /// miss to `false`.
+    ///
+    /// `meta_write` reports a zero-row CAS UPDATE as
+    /// `MetaError::ConcurrentStateTransition`, which for this store is not an
+    /// error at all: it is the answer *"the row was not in the state you
+    /// expected"*, which is exactly what `extend` and `revoke` return as
+    /// `Ok(false)`. Anything else stays an error.
+    fn write_cas(&self, intent: MetaWriteIntent) -> Result<bool, MetaError> {
+        let outbox = PgOutboxAppender::new(&self.allowlist);
+        let mut writer = self
+            .writer
+            .lock()
+            .map_err(|_| lock_poisoned("capability store writer"))?;
+        let mut cfg = crate::metawrite::MetaWriteConfig {
+            connection: &mut *writer,
+            allowlist: &self.allowlist,
+            query_builder: &PgQueryBuilder,
+            outbox: Some(&outbox),
+            clock: &crate::audit::SystemClock,
+            uuid_gen: &crate::audit::V4UuidGen,
+        };
+        match crate::metawrite::meta_write(&mut cfg, intent) {
+            Ok(_) => Ok(true),
+            Err(e) if crate::metawrite::is_concurrent(&e) => Ok(false),
+            Err(e) => Err(e),
+        }
+    }
+}
+
+/// Unix millis to the RFC-3339 string `jsonb_populate_record` casts into a
+/// `TIMESTAMPTZ`.
+///
+/// Always UTC and always with an explicit offset: a naive local timestamp would
+/// be interpreted in the SERVER's `TimeZone`, so the same capability would
+/// expire at different instants depending on where the database happened to be
+/// configured — a bug that shows up only across a deployment boundary.
+fn ms_to_rfc3339(ms: u64) -> Result<String, MetaError> {
+    let secs = (ms / 1000) as i64;
+    let nanos = ((ms % 1000) * 1_000_000) as u32;
+    chrono::DateTime::from_timestamp(secs, nanos)
+        .map(|dt| dt.to_rfc3339())
+        .ok_or_else(|| {
+            MetaError::BadIntent(format!("timestamp {ms} ms is outside the representable range"))
+        })
+}
+
+/// The reverse, for reads.
+///
+/// Clamped at zero rather than wrapped: a pre-epoch timestamp in this table is
+/// impossible by CHECK constraint, and `as u64` on a negative value would
+/// produce an enormous expiry — a capability that never dies.
+fn ts_to_ms(dt: chrono::DateTime<chrono::Utc>) -> u64 {
+    dt.timestamp_millis().max(0) as u64
+}
+
+/// Postgres renders `BYTEA` into JSON as the hex escape form and parses the same
+/// form back. Producing it by hand keeps the digest out of any base64 or utf-8
+/// round trip that could alter a byte.
+fn bytea_hex(bytes: &[u8]) -> String {
+    use core::fmt::Write as _;
+    let mut s = String::with_capacity(2 + bytes.len() * 2);
+    s.push('\\');
+    s.push('x');
+    for b in bytes {
+        // `write!` into a String cannot fail; the result is consumed to satisfy
+        // the lint rather than ignored.
+        let _ = write!(s, "{b:02x}");
+    }
+    s
+}
+
+impl crate::session_store::CapabilityStore for PgCapabilityStore {
+    fn record(&self, issued: &crate::session_store::IssuedCapability) -> Result<(), MetaError> {
+        let mut pk = ValueMap::new();
+        pk.insert(
+            "session_id".into(),
+            Value::String(issued.session_id.to_string()),
+        );
+
+        let mut new_values = ValueMap::new();
+        new_values.insert(
+            "reality_id".into(),
+            Value::String(issued.reality_id.to_string()),
+        );
+        new_values.insert("node_id".into(), Value::String(issued.node_id.clone()));
+        new_values.insert(
+            "service_identity".into(),
+            Value::String(issued.service_identity.clone()),
+        );
+        new_values.insert(
+            "capability_hash".into(),
+            Value::String(bytea_hex(&issued.capability_hash)),
+        );
+        new_values.insert(
+            "issued_at".into(),
+            Value::String(ms_to_rfc3339(issued.issued_at_ms)?),
+        );
+        new_values.insert(
+            "expires_at".into(),
+            Value::String(ms_to_rfc3339(issued.expires_at_ms)?),
+        );
+
+        let intent = MetaWriteIntent {
+            table: crate::session_store::SESSION_REGISTRY_TABLE.into(),
+            operation: MetaWriteOp::Insert,
+            pk,
+            expected_before: ValueMap::new(),
+            new_values,
+            actor: self.actor.clone(),
+            reason: format!("bind_session for {}", issued.service_identity),
+            request_context: Default::default(),
+        };
+        // An INSERT is not a CAS, so `write_cas`'s `false` cannot arise here; if
+        // it somehow did, treating it as success would report a capability
+        // recorded when it was not.
+        match self.write_cas(intent) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(MetaError::BadIntent(
+                "session_registry INSERT reported no rows — refusing to report the \
+                 capability as recorded"
+                    .into(),
+            )),
+            Err(e) => Err(e),
+        }
+    }
+
+    fn lookup(
+        &self,
+        digest: &crate::session_store::CapabilityDigest,
+    ) -> Result<Option<crate::session_store::SessionRecord>, MetaError> {
+        // Columns named explicitly, for the reason `fetch_reality_routing`
+        // gives: `SELECT *` binds by position and reshuffles on the next
+        // migration that adds a column in the middle.
+        const SQL: &str = "SELECT session_id, reality_id, node_id, service_identity, \
+                           expires_at, revoked_at FROM session_registry \
+                           WHERE capability_hash = $1";
+
+        type Row = (
+            uuid::Uuid,
+            uuid::Uuid,
+            String,
+            String,
+            chrono::DateTime<chrono::Utc>,
+            Option<chrono::DateTime<chrono::Utc>>,
+        );
+
+        let row: Option<Row> = tokio::task::block_in_place(|| {
+            self.handle.block_on(async {
+                sqlx::query_as(SQL)
+                    .bind(digest.as_slice())
+                    .fetch_optional(&self.pool)
+                    .await
+            })
+        })
+        .map_err(|e| MetaError::Backend(Box::new(e)))?;
+
+        Ok(row.map(
+            |(session_id, reality_id, node_id, service_identity, expires_at, revoked_at)| {
+                crate::session_store::SessionRecord {
+                    session_id,
+                    reality_id,
+                    node_id,
+                    service_identity,
+                    expires_at_ms: ts_to_ms(expires_at),
+                    revoked_at_ms: revoked_at.map(ts_to_ms),
+                }
+            },
+        ))
+    }
+
+    fn extend(
+        &self,
+        session_id: uuid::Uuid,
+        expected_expires_at_ms: u64,
+        new_expiry_ms: u64,
+    ) -> Result<bool, MetaError> {
+        let mut pk = ValueMap::new();
+        pk.insert("session_id".into(), Value::String(session_id.to_string()));
+
+        // BOTH halves of the guard. `expires_at` catches another writer having
+        // refreshed first; `revoked_at IS NULL` catches a revocation that landed
+        // between the caller's read and this write — and the builder renders a
+        // NULL expectation as `IS NULL`, which is why the null is expressed here
+        // rather than as an equality that could never be true.
+        let mut expected_before = ValueMap::new();
+        expected_before.insert(
+            "expires_at".into(),
+            Value::String(ms_to_rfc3339(expected_expires_at_ms)?),
+        );
+        expected_before.insert("revoked_at".into(), Value::Null);
+
+        let mut new_values = ValueMap::new();
+        new_values.insert(
+            "expires_at".into(),
+            Value::String(ms_to_rfc3339(new_expiry_ms)?),
+        );
+
+        self.write_cas(MetaWriteIntent {
+            table: crate::session_store::SESSION_REGISTRY_TABLE.into(),
+            operation: MetaWriteOp::Update,
+            pk,
+            expected_before,
+            new_values,
+            actor: self.actor.clone(),
+            reason: "refresh_capability".into(),
+            request_context: Default::default(),
+        })
+    }
+
+    fn revoke(&self, session_id: uuid::Uuid, at_ms: u64, reason: &str) -> Result<bool, MetaError> {
+        let mut pk = ValueMap::new();
+        pk.insert("session_id".into(), Value::String(session_id.to_string()));
+
+        // Only an unrevoked row revokes, so a second revocation reports `false`
+        // rather than overwriting the first one's timestamp — the moment of
+        // revocation is the fact an incident review wants, and the LAST attempt
+        // is not it.
+        let mut expected_before = ValueMap::new();
+        expected_before.insert("revoked_at".into(), Value::Null);
+
+        let mut new_values = ValueMap::new();
+        new_values.insert("revoked_at".into(), Value::String(ms_to_rfc3339(at_ms)?));
+
+        self.write_cas(MetaWriteIntent {
+            table: crate::session_store::SESSION_REGISTRY_TABLE.into(),
+            operation: MetaWriteOp::Update,
+            pk,
+            expected_before,
+            new_values,
+            actor: self.actor.clone(),
+            reason: reason.to_string(),
+            request_context: Default::default(),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

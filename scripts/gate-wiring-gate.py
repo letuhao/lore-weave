@@ -457,6 +457,12 @@ def run_all() -> int:
     # and a skipped bite harness proves nothing while still printing a line.
     MUTATING = (
         "scripts/dp-slice1-bite-gate.py",
+        # `5B`. Discovered by `is_gate()` (it ends in `-gate`), mutates
+        # `crates/dp` AND `crates/meta-rs`, and runs `cargo test` on both — so it
+        # collides with the pool's cargo-running gates in BOTH directions. Listed
+        # here on the day it was written rather than after a flaky sweep, which
+        # is the only cheap moment to do it.
+        "scripts/dp-slice5b-bite-gate.py",
         "scripts/gate-bite-harness.py",
         "scripts/reality-layer-bite-harness.py",
     )

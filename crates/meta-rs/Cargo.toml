@@ -41,16 +41,25 @@ dp = { path = "../dp" }
 thiserror = { workspace = true }
 serde_yaml = "0.9"
 
+# 5B — SHA-256 over the bearer secret. The capability store keeps only the
+# digest, so a dump of `session_registry` yields no usable capability. RustCrypto
+# rather than an openssl binding, which is the same reason `dp-kernel` picked it.
+sha2 = { workspace = true }
+
 # ── the `sqlx-pg` adapter (Q1 B2b) ──────────────────────────────────────────
 # Optional: the crate stays driver-agnostic by default, and a caller that wants
 # the concrete Postgres wiring opts in. `tokio` is needed for `block_in_place` —
 # the sync MetaWrite traits over async sqlx.
 sqlx = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
+# 5B — `session_registry` holds TIMESTAMPTZ like every other meta table, and the
+# store's API is Unix millis. The conversion lives only in the adapter, so the
+# dependency does too.
+chrono = { workspace = true, optional = true }
 
 [features]
 default = []
-sqlx-pg = ["dep:sqlx", "dep:tokio"]
+sqlx-pg = ["dep:sqlx", "dep:tokio", "dep:chrono"]
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }

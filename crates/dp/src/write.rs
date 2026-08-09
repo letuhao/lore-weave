@@ -341,7 +341,11 @@ mod tests {
     fn ctx() -> SessionContext {
         SessionContext::bind(
             &Cp,
-            BindRequest { reality: uuid::Uuid::from_u128(1), node: "n".into() },
+            BindRequest {
+                reality: uuid::Uuid::from_u128(1),
+                node: "n".into(),
+                service: crate::ServiceIdentity::new("test-harness").expect("valid"),
+            },
             0,
         )
         .expect("bind")

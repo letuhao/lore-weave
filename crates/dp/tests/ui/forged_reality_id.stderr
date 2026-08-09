@@ -18,7 +18,7 @@ error[E0603]: tuple struct constructor `RealityId` is private
 note: the tuple struct constructor `RealityId` is defined here
   --> src/lib.rs
    |
-   | pub use ids::{NodeId, RealityId, SessionId};
+   | pub use ids::{NodeId, RealityId, ServiceIdentity, SessionId};
    |                       ^^^^^^^^^
 
 error[E0624]: associated function `new_verified` is private

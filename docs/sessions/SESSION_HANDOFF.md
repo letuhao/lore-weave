@@ -1,10 +1,46 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the FOUNDATION track: `crates/dp` slice 1 + the `channels` table (2026-08-08, branch `feat/game-logic`)
+## ▶ GAME BUILD — the FOUNDATION track: slices 3, 4 and 5 of `crates/dp` (2026-08-09, branch `feat/game-logic`)
 
-**HEAD:** `8c4c13360`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules and §1 is the measured state.
+**HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
-> **▶ DO NEXT — `A::Delta`, then slice 5.** Slice 3 is CLOSED (`3A`–`3D` committed, `3E` parked) and
+> **▶ DO NEXT — `5C`, then `5D`, then `3E.2`.** Slices 3 and 4 are CLOSED. Slice 5 is `5A` +
+> `5-WIRE` + `5B` in; `5C` and `5D` remain.
+>
+> **`5B` shipped the capability STORE, and its Phase 0 found the table was never the problem —
+> the SCHEMA was missing while three locked sections already queried it.** `session_registry` is
+> named by `DP-C1`, by `DP-C8`'s revocation, and by `DP-Ch32`'s auto-dormant scan, and appears in
+> none of `DP-C2`'s enumerated CP tables. Migration `039` declares it. The control plane now
+> records every capability it issues (SHA-256 of the bearer secret, never the secret), validates by
+> digest lookup, refreshes by CAS, and revokes immediately — through `meta_write`, so the audit row
+> lands in the same transaction, asserted against a real server.
+>
+> **The PO sealed three forks (`50d9cf7f9`), and one is a deliberate divergence from a LOCKED
+> spec.** `05_control_plane_spec.md` specifies signed JWTs with quarterly key rotation; what ships
+> is an opaque bearer validated by lookup, because nothing validates a capability offline today and
+> `capability_signing_keys` would be a table nothing writes to. The `DP-C8` amendment block states
+> it, states its cost (a round trip per validation) and states its reversal trigger — deliberately
+> **conjunctive**, because `5C` makes the CP remote inside this same goal and a trigger that fires
+> on a scheduled fact is a countdown.
+>
+> **`bind` used to authenticate nothing.** `BindRequest { reality, node }` carried no caller, so the
+> control plane confirmed a reality existed and accepted commands but never that anyone in
+> particular was asking. `dp::ServiceIdentity` closes it — validated at construction, so the
+> anonymous case is unrepresentable rather than rejected. It is **attribution, not authorization**:
+> `DP-C4`'s `tier_capability` is the authorization table and has no producer in this repo.
+>
+> **Evidence.** `dp` 42 lib + 9 compile-fail · `meta-rs` 73 lib · live Postgres 15 + 7 (bind →
+> validate → revoke → re-validation refused, against a real `session_registry`) ·
+> `dp-slice5b-bite-gate` **7/7** · **2 live SQL bites** (the BYTEA hex escape, and the
+> `revoked_at IS NULL` CAS — neither reachable by any in-memory store) · gate sweep exit 0, 39 GREEN
+> with one pre-existing tracked red.
+>
+> **Two findings handed to `5D`, in the run-state rather than fixed silently:** `DP-Ch32`'s scan
+> joins `channels` (per-reality) against `session_registry` (meta) in one statement, which cannot
+> run across two databases; and `current_channel_id` is deliberately absent until something produces
+> a `ChannelId`.
+>
+> *(superseded — slice 3/4 history)* Slice 3 is CLOSED (`3A`–`3D` committed, `3E` parked) and
 > slice 4's `4A` is in. `4B`/`4C`/`4D` park on three named, buildable, in-repo pieces: `DpAggregate`
 > has no `Delta` (a change to the aggregate CONTRACT — `dp-aggregate-gate`, five trybuild pins, four
 > real impls — so it needs its own slice and its own refutation round); there is no backend seam

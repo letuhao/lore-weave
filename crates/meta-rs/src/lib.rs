@@ -49,6 +49,9 @@ pub mod errors;
 pub mod metawrite;
 pub mod routing;
 pub mod sensitive_paths;
+/// `5B` / `DP-C8` — the capability store: what the control plane issued, so it
+/// can be validated, refreshed and revoked rather than merely minted.
+pub mod session_store;
 /// Q1 B2b — the concrete sqlx/Postgres adapter. Feature-gated so a caller that
 /// does not want sqlx does not get it.
 #[cfg(feature = "sqlx-pg")]

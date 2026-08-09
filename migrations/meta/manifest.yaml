@@ -251,3 +251,9 @@ migrations:
     breaking: false
     dependencies: []
     description: "meta — orphan_scanner findings as state (W5-REMEDIATE)"
+
+  - id: "039_session_registry"
+    version: 39
+    breaking: false
+    dependencies: []
+    description: "meta — DP-C8 capability store: the session registry the specs referenced but never declared"

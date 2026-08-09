@@ -30,7 +30,7 @@
 use core::fmt;
 use core::time::Duration;
 
-use crate::ids::{NodeId, RealityId, SessionId};
+use crate::ids::{NodeId, RealityId, ServiceIdentity, SessionId};
 use crate::DpError;
 
 /// Milliseconds since the **Unix epoch**.
@@ -135,10 +135,26 @@ impl fmt::Debug for CapabilityToken {
 /// Raw values, because this is the UNVERIFIED side of the boundary — a
 /// `RealityId` cannot appear here, since possessing one is the very thing bind
 /// is supposed to establish.
+///
+/// # `service` is the field this struct spent slice 5A without
+///
+/// With only `{ reality, node }`, the control plane verified that a reality
+/// existed and accepted commands, and **never that anyone in particular was
+/// asking**. Every capability it issued was anonymous, while `DP-A12` described
+/// the result as *"session-context-gated access"* — a gate whose subject did
+/// not exist. `5B` closes that.
+///
+/// It is a [`ServiceIdentity`] rather than a `String` so the anonymous case is
+/// unrepresentable rather than rejected: there is no bind path that can carry a
+/// blank name, so there is no bind path on which someone forgets to check.
+/// What it is **not** is authentication — see [`ServiceIdentity`].
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct BindRequest {
     pub reality: uuid::Uuid,
     pub node: String,
+    /// Who is asking. See the caveat on [`ServiceIdentity`]: this is the
+    /// caller's assertion, made trustworthy by the transport, not by this type.
+    pub service: ServiceIdentity,
 }
 
 /// What the control plane returns once it has verified a [`BindRequest`].
@@ -300,7 +316,11 @@ mod tests {
     }
 
     fn req(reality: u128) -> BindRequest {
-        BindRequest { reality: uuid::Uuid::from_u128(reality), node: "pod-7".into() }
+        BindRequest {
+            reality: uuid::Uuid::from_u128(reality),
+            node: "pod-7".into(),
+            service: ServiceIdentity::new("commit-service").expect("valid"),
+        }
     }
 
     fn granted(reality: u128, expires_at_ms: Millis) -> VerifiedBind {

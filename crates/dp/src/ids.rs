@@ -143,6 +143,85 @@ impl fmt::Display for NodeId {
     }
 }
 
+/// WHO is binding — the caller's own service identity (`DP-C3`, `DP-C8`).
+///
+/// # The hole this closes
+///
+/// `BindRequest` used to be `{ reality, node }`, so the control plane could
+/// confirm that a reality existed and accepted commands but never that **anyone
+/// in particular was asking**. `DP-A12` calls the result *"session-context-gated
+/// access"*, which reads as though the gate had a subject; it did not. Every
+/// capability issued before this type was anonymous.
+///
+/// # Validated at construction, not checked at use
+///
+/// Same shape as [`crate::KeyId`], and for the same reason: a value that cannot
+/// be built wrong needs no downstream check that someone will forget. There is
+/// no `new_verified` here because — unlike [`RealityId`] — this is **not** an
+/// unforgeable capability. A caller asserting its own name proves nothing; what
+/// makes the name trustworthy is the transport (`DP-C3` specifies mTLS, and the
+/// peer certificate's subject is what `5C` will put here). This type's job is
+/// only to guarantee the name is *usable*: present, bounded, loggable.
+///
+/// Saying that plainly matters more than the code. An identity that validates
+/// its own shape and nothing else can be mistaken for authentication by the
+/// next reader, and then the gate has a subject that anyone may claim.
+#[derive(Clone, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
+pub struct ServiceIdentity(String);
+
+impl ServiceIdentity {
+    /// Longest accepted identity.
+    ///
+    /// A bound rather than none, because this string reaches a `TEXT` column, a
+    /// log line and (at `5C`) a gRPC metadata header. 128 is comfortably above
+    /// any real service name — the longest in `contracts/language-rule.yaml` is
+    /// well under 40 — and far below the point where an unbounded name becomes
+    /// a way to bloat every audit row a caller can provoke.
+    pub const MAX_LEN: usize = 128;
+
+    /// Build one, or `None` if the name is unusable.
+    ///
+    /// `Option` and not a panic, exactly as [`crate::KeyId::new`]: a malformed
+    /// identity arrives from a caller, and a panic on the bind path would turn
+    /// a bad request into a downed process.
+    ///
+    /// Rejects, each for its own reason:
+    ///
+    /// * **empty or whitespace-only** — the anonymous capability this type
+    ///   exists to abolish. `"   "` is the interesting case: it is non-empty,
+    ///   so a naive `is_empty()` admits it and stores a blank name.
+    /// * **longer than [`Self::MAX_LEN`]** — see the constant.
+    /// * **containing an ASCII control character** — a `\n` in a service name
+    ///   forges a second line in every structured log that renders it, which is
+    ///   log injection with the identity field as the vector.
+    ///
+    /// The stored value is TRIMMED, so `" commit-service "` and
+    /// `"commit-service"` are the same identity rather than two rows that look
+    /// identical in every report.
+    pub fn new(raw: impl Into<String>) -> Option<Self> {
+        let raw: String = raw.into();
+        let trimmed = raw.trim();
+        if trimmed.is_empty() || trimmed.len() > Self::MAX_LEN {
+            return None;
+        }
+        if trimmed.chars().any(|c| c.is_control()) {
+            return None;
+        }
+        Some(Self(trimmed.to_string()))
+    }
+
+    /// The name, for the registry row and the audit trail.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for ServiceIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -165,5 +244,47 @@ mod tests {
         let n = NodeId::new_verified("pod-7".to_string());
         assert_eq!(n.as_str(), "pod-7");
         assert_eq!(n.to_string(), "pod-7");
+    }
+
+    #[test]
+    fn a_service_identity_is_trimmed_so_two_spellings_are_one_identity() {
+        let a = ServiceIdentity::new(" commit-service ").expect("valid");
+        let b = ServiceIdentity::new("commit-service").expect("valid");
+        assert_eq!(a, b, "padding must not create a second identity");
+        assert_eq!(a.as_str(), "commit-service");
+        assert_eq!(a.to_string(), "commit-service");
+    }
+
+    #[test]
+    fn an_anonymous_service_identity_cannot_be_constructed() {
+        assert!(ServiceIdentity::new("").is_none(), "empty");
+        // The case a naive `is_empty()` admits — non-empty, but nameless.
+        assert!(ServiceIdentity::new("   ").is_none(), "whitespace-only");
+        assert!(ServiceIdentity::new("\t\n").is_none(), "whitespace-only, other forms");
+    }
+
+    #[test]
+    fn a_control_character_is_refused_because_it_forges_a_log_line() {
+        assert!(ServiceIdentity::new("commit\nservice").is_none(), "newline");
+        assert!(ServiceIdentity::new("commit\rservice").is_none(), "carriage return");
+        assert!(ServiceIdentity::new("commit\u{0}service").is_none(), "nul");
+        // And the boundary: a name made only of legitimate characters passes.
+        assert!(ServiceIdentity::new("commit-service").is_some());
+    }
+
+    #[test]
+    fn length_is_bounded_at_the_stated_constant() {
+        let ok = "s".repeat(ServiceIdentity::MAX_LEN);
+        let too_long = "s".repeat(ServiceIdentity::MAX_LEN + 1);
+        assert!(ServiceIdentity::new(ok).is_some(), "MAX_LEN itself must be accepted");
+        assert!(ServiceIdentity::new(too_long).is_none(), "one over must not");
+    }
+
+    #[test]
+    fn the_length_bound_is_applied_after_trimming() {
+        // Otherwise padding could push a legal name over the limit, and a
+        // caller would be refused for whitespace it did not know it sent.
+        let padded = format!("  {}  ", "s".repeat(ServiceIdentity::MAX_LEN));
+        assert!(ServiceIdentity::new(padded).is_some());
     }
 }

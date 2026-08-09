@@ -906,9 +906,31 @@ exists and holds 7 rows.
 |---|---|---|
 | `5A` | **a real `ControlPlane`** over `reality_registry` | ✅ `d82cf4671` — LIVE bind against the real registry; the run caught an `INT2`/`INT4` decode bug no mock could reach |
 | `5-WIRE` | **`dp-kernel` behind `WriteBackend` + `ReadBackend`** | ✅ `7f88dcd59` — end-to-end `t2_write` → `EventStore`, event read back and asserted |
-| `5B` | the capability STORE — `RefreshCapability` needs one; today a capability is minted and never recorded. **Bearer + lookup, sealed above**, and it carries a second obligation: **`BindRequest` gains the calling service identity**, because today `bind` authenticates nothing | a meta migration + the erasure/retention tags every meta table carries; the `DP-C3` amendment written; a bite proving the store is LOAD-BEARING (a capability absent from the store must be refused) and one proving an unauthorised caller is refused |
+| `5B` | the capability STORE — `RefreshCapability` needs one; today a capability is minted and never recorded. **Bearer + lookup, sealed above**, and it carries a second obligation: **`BindRequest` gains the calling service identity**, because today `bind` authenticates nothing | ✅ migration `039_session_registry` (5 annotations) · `session_store.rs` + `PgCapabilityStore` writing through `meta_write` (audit row same-TX, asserted live) · `ServiceIdentity` · the `DP-C8` amendment written · `dp-slice5b-bite-gate` **7/7** + **2 live SQL bites** · LIVE: bind → validate → revoke → re-validation refused, against real Postgres |
 | `5C` | the gRPC surface (`DP-C3`) — `tonic`, protos, the four non-channel RPC groups. **In scope**, sealed above | contract-first: the proto is the contract, generated and checked. Phase 0 first settles the `I1` question **with evidence**: is a cluster-only control plane an external entry point at all? |
 | `5D` | channel tree + writer leases (`DP-A16`, `DP-Ch9`) — **this is what produces `ChannelId`**, and therefore what retires four DEFERRED registers at once | `DEFERRED_IDS`, `DEFERRED_SESSION_FIELDS`, `DEFERRED_CACHE_FORMS` and `DEFERRED_READ_FORMS` each shrink, and their shrink arms red until the rows go |
+
+**Two findings `5B`'s Phase 0 handed to `5D`, recorded rather than silently fixed:**
+
+1. **`DP-Ch32`'s auto-dormant scan spans two databases.** Its SQL joins `channels`
+   (PER-REALITY) against `session_registry` (META) in one statement:
+   `AND id NOT IN (SELECT current_channel_id FROM session_registry WHERE active = true)`.
+   That cannot run once the two live in different databases, which `039` has now
+   made concrete rather than hypothetical. `5D` owns the resolution — most likely
+   the CP reads the live session set and passes it in, rather than the query
+   reaching across.
+2. **`session_registry.current_channel_id` is deliberately absent**, because
+   nothing produces a `ChannelId` (§0.6c). `5D` is its producer and therefore
+   owns adding the column. The migration header names it, and
+   `DEFERRED_SESSION_FIELDS` in `crates/dp/src/session.rs` already reds when the
+   producer lands.
+
+**And one `5B` handed to `DP-C4`:** `tier_capability` — the table that decides
+whether a service may touch an aggregate — has **no producer** in this repo. Its
+rows come from *"a deploy manifest calling CP's admin API"* (`DP-C4`), which does
+not exist. Until it does, `bind_session` records **who asked** and does not decide
+**whether they may**, and the `DP-C8` amendment says so in the spec. Its trigger
+is the admin API arriving; building the table before that is the orphan shape.
 
 **`5A` is the whole unblock.** It closes `3E` (adoption becomes possible), which
 closes `4D` (the lint gains call sites). `5B`–`5D` are the rest of `DP-C3` and do

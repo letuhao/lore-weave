@@ -243,3 +243,16 @@ entries:
     events:
       - op: INSERT
         event_name: scaling.event.recorded
+
+  # ── DP-C8 (slice 5B, 2026-08-09) — session_registry: the capability store
+  #
+  # `events: []` is a decision, not an omission. Bind/refresh/revoke have no
+  # subscriber anywhere in the tree, and an outbox event nobody consumes is the
+  # orphan shape with a topic name on it. The forensic record these writes owe
+  # is already discharged in-transaction by the `meta_write_audit` row every
+  # MetaWrite emits, which is what I8 requires and what an outbox event would
+  # merely duplicate. A subscriber arriving is what earns an event here.
+  - table: session_registry
+    owner: control-plane (crates/meta-rs MetaControlPlane; slice 5B)
+    notes: "DP-C8 — one row per issued capability: SHA-256 of the bearer secret, never the secret. INSERT = bind; UPDATE = refresh or revoke."
+    events: []

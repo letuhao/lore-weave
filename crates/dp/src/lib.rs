@@ -84,7 +84,7 @@ pub mod tier;
 pub use aggregate::{requires_channel, tier_row, DpAggregate, TierRow};
 pub use cache::KeyId;
 pub use error::DpError;
-pub use ids::{NodeId, RealityId, SessionId};
+pub use ids::{NodeId, RealityId, ServiceIdentity, SessionId};
 pub use session::{BindRequest, CapabilityToken, ControlPlane, SessionContext, VerifiedBind};
 pub use read::{read_projection_reality, read_tier, Decode, ReadBackend, ReadRequest};
 pub use write::{t0_write, t1_write, t2_write, t3_write, Encode, WriteAck, WriteBackend, WriteRequest};

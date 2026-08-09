@@ -15,7 +15,7 @@
 //! both predate this file. Nothing new is being learned about a reality here —
 //! it is being turned into a capability.
 //!
-//! `DP-C3` specifies a 13-RPC gRPC service. This is NOT that, and does not
+//! `DP-C3` specifies a 26-RPC gRPC service. This is NOT that, and does not
 //! pretend to be: it is the session/capability half, in-process, over the
 //! registry this repo already has. `5C` puts a gRPC surface in front.
 //!
@@ -32,12 +32,15 @@ use dp::{BindRequest, ControlPlane, DpError, VerifiedBind};
 use uuid::Uuid;
 
 use crate::routing::MetaRead;
+use crate::session_store::{capability_digest, CapabilityStore, IssuedCapability, SessionRecord};
 
 /// How long a freshly minted capability is good for.
 ///
 /// A default rather than a knob on every call: `DP-K2` binds once per session,
 /// and a caller that could choose its own expiry could choose "never".
-/// `RefreshCapability` (`5B`) is the sanctioned way to extend one.
+/// [`MetaControlPlane::refresh_capability`] is the sanctioned way to extend one,
+/// and it applies this same TTL from `now` rather than from the old expiry — so
+/// a chain of refreshes cannot accumulate a longer grant than a fresh bind.
 pub const DEFAULT_CAPABILITY_TTL_MS: u64 = 15 * 60 * 1000;
 
 /// Reads the wall clock. Injected so tests are deterministic without freezing
@@ -89,18 +92,25 @@ impl SecretSource for RandomSecret {
 }
 
 /// A [`dp::ControlPlane`] backed by the meta reality registry.
-pub struct MetaControlPlane<R, C = SystemClock, S = RandomSecret> {
+///
+/// `K` is the capability store (`5B`). It is a required parameter rather than an
+/// optional one: a control plane that issues capabilities it does not record can
+/// neither validate nor revoke them, and making that state constructible would
+/// leave the 5A behaviour reachable by omission.
+pub struct MetaControlPlane<R, K, C = SystemClock, S = RandomSecret> {
     meta: R,
+    store: K,
     clock: C,
     secrets: S,
     ttl_ms: u64,
 }
 
-impl<R: MetaRead> MetaControlPlane<R, SystemClock, RandomSecret> {
+impl<R: MetaRead, K: CapabilityStore> MetaControlPlane<R, K, SystemClock, RandomSecret> {
     /// The production constructor.
-    pub fn new(meta: R) -> Self {
+    pub fn new(meta: R, store: K) -> Self {
         Self {
             meta,
+            store,
             clock: SystemClock,
             secrets: RandomSecret,
             ttl_ms: DEFAULT_CAPABILITY_TTL_MS,
@@ -108,21 +118,127 @@ impl<R: MetaRead> MetaControlPlane<R, SystemClock, RandomSecret> {
     }
 }
 
-impl<R, C, S> MetaControlPlane<R, C, S>
+impl<R, K, C, S> MetaControlPlane<R, K, C, S>
 where
     R: MetaRead,
+    K: CapabilityStore,
     C: Clock,
     S: SecretSource,
 {
     /// Full control, for tests and for a deployment that needs a shorter TTL.
-    pub fn with_parts(meta: R, clock: C, secrets: S, ttl_ms: u64) -> Self {
-        Self { meta, clock, secrets, ttl_ms }
+    pub fn with_parts(meta: R, store: K, clock: C, secrets: S, ttl_ms: u64) -> Self {
+        Self { meta, store, clock, secrets, ttl_ms }
+    }
+
+    /// Is this presented secret a live capability, and whose?
+    ///
+    /// The server-side counterpart of `dp::SessionContext::check_live`. The SDK
+    /// side can only tell whether its own copy of the expiry has passed; only
+    /// this can tell whether the grant was REVOKED, which is the half that
+    /// matters during an incident.
+    ///
+    /// # Why the three outcomes are three different errors
+    ///
+    /// * a digest with no row — [`DpError::SessionNotFound`]. Includes a
+    ///   forged secret, a secret from a wiped store, and a typo.
+    /// * a row that exists but is dead — [`DpError::CapabilityExpired`], the
+    ///   same variant the SDK raises, so a caller sees one meaning for one fact
+    ///   regardless of which side noticed.
+    /// * a store that could not be read — [`DpError::ControlPlaneUnavailable`].
+    ///   **Never** collapsed into "invalid": a database blip would otherwise
+    ///   present as every capability in the system being forged at once, and
+    ///   the operator would go looking for an attacker.
+    pub fn validate_capability(
+        &self,
+        presented_secret: &str,
+        now_ms: u64,
+    ) -> Result<SessionRecord, DpError> {
+        let digest = capability_digest(presented_secret);
+        let found = self
+            .store
+            .lookup(&digest)
+            .map_err(|e| DpError::ControlPlaneUnavailable { reason: e.to_string() })?;
+
+        let Some(record) = found else {
+            // The digest, not the secret, and not even the digest in full: a
+            // validation failure is exactly when something is likely to be
+            // logged, and a message that echoes what was presented hands the
+            // log reader a credential. The session is unknown by construction,
+            // so there is nothing more specific to name.
+            return Err(DpError::SessionNotFound { session_id: "<unknown capability>".to_string() });
+        };
+
+        if !record.is_live(now_ms) {
+            return Err(DpError::CapabilityExpired);
+        }
+        Ok(record)
+    }
+
+    /// `RefreshCapability` (`DP-C3`) — extend a live grant without re-issuing.
+    ///
+    /// The secret does not change. Under a signed-JWT model a refresh must mint
+    /// a new token because the expiry is *inside* the signed payload; under
+    /// lookup validation the expiry lives in the row, so the refresh is an
+    /// UPDATE and the secret never travels a second time. That is a real
+    /// consequence of the sealed deviation, and it is the good direction: each
+    /// additional transmission of a bearer secret is another chance to leak it.
+    ///
+    /// # Resurrection is the failure this guards
+    ///
+    /// A refresh that did not first check liveness would revive an EXPIRED or
+    /// REVOKED session by moving its expiry forward — which would make
+    /// revocation a suggestion, since a revoked holder could simply refresh.
+    /// The liveness check therefore happens here AND in the store's `extend`
+    /// (`WHERE revoked_at IS NULL AND expires_at > now`), because this one is a
+    /// read followed by a write and the row can change in between.
+    pub fn refresh_capability(
+        &self,
+        presented_secret: &str,
+        now_ms: u64,
+    ) -> Result<VerifiedBind, DpError> {
+        let record = self.validate_capability(presented_secret, now_ms)?;
+        let new_expiry = now_ms.saturating_add(self.ttl_ms);
+
+        let extended = self
+            .store
+            .extend(record.session_id, record.expires_at_ms, new_expiry)
+            .map_err(|e| DpError::ControlPlaneUnavailable { reason: e.to_string() })?;
+
+        if !extended {
+            // Lost the race: revoked or expired between the read and the write.
+            // Reporting success here would hand back an expiry the row does not
+            // have, and the caller would trust it until its next call failed.
+            return Err(DpError::CapabilityExpired);
+        }
+
+        Ok(VerifiedBind {
+            reality: record.reality_id,
+            session: record.session_id,
+            capability_secret: presented_secret.to_string(),
+            expires_at_ms: new_expiry,
+        })
+    }
+
+    /// Revoke a session's capability. Returns `false` if there was nothing live
+    /// to revoke.
+    ///
+    /// This is `DP-C8`'s immediate revocation, and it is where the sealed
+    /// deviation pays for itself rather than costing: the spec reaches immediate
+    /// revocation only by ROTATING THE SIGNING KEY, which invalidates every
+    /// other capability in the system as collateral. A lookup-validated bearer
+    /// is revoked by one UPDATE, affecting one session.
+    pub fn revoke_session(&self, session_id: Uuid, reason: &str) -> Result<bool, DpError> {
+        let now = self.clock.now_unix_ms();
+        self.store
+            .revoke(session_id, now, reason)
+            .map_err(|e| DpError::ControlPlaneUnavailable { reason: e.to_string() })
     }
 }
 
-impl<R, C, S> ControlPlane for MetaControlPlane<R, C, S>
+impl<R, K, C, S> ControlPlane for MetaControlPlane<R, K, C, S>
 where
     R: MetaRead + Send + Sync,
+    K: CapabilityStore,
     C: Clock,
     S: SecretSource,
 {
@@ -150,11 +266,37 @@ where
         }
 
         let now = self.clock.now_unix_ms();
+        let session = Uuid::new_v4();
+        let secret = self.secrets.mint();
+        let expires_at_ms = now.saturating_add(self.ttl_ms);
+
+        // RECORD BEFORE RETURNING, and fail the bind if the record fails.
+        //
+        // The ordering is the whole point of 5B. A capability returned to a
+        // caller but absent from the store is a grant that looks valid to its
+        // holder and is unknown to every validator — so it cannot be revoked,
+        // cannot be refreshed, and will be rejected at its first use with an
+        // error naming the caller rather than the bug. Better to refuse the
+        // bind: a caller that did not get a capability knows it did not.
+        self.store
+            .record(&IssuedCapability {
+                session_id: session,
+                reality_id: req.reality,
+                node_id: req.node.clone(),
+                service_identity: req.service.as_str().to_string(),
+                capability_hash: capability_digest(&secret),
+                issued_at_ms: now,
+                expires_at_ms,
+            })
+            .map_err(|e| DpError::ControlPlaneUnavailable {
+                reason: format!("capability store refused the issuance: {e}"),
+            })?;
+
         Ok(VerifiedBind {
             reality: req.reality,
-            session: Uuid::new_v4(),
-            capability_secret: self.secrets.mint(),
-            expires_at_ms: now.saturating_add(self.ttl_ms),
+            session,
+            capability_secret: secret,
+            expires_at_ms,
         })
     }
 }
@@ -164,6 +306,8 @@ mod tests {
     use super::*;
     use crate::errors::MetaError;
     use crate::routing::{RealityRouting, RealityStatus};
+    use crate::session_store::CapabilityDigest;
+    use std::sync::Mutex;
 
     struct FixedClock(u64);
     impl Clock for FixedClock {
@@ -175,7 +319,7 @@ mod tests {
     struct FixedSecret;
     impl SecretSource for FixedSecret {
         fn mint(&self) -> String {
-            "fixed".to_string()
+            FIXED_SECRET.to_string()
         }
     }
 
@@ -205,12 +349,128 @@ mod tests {
         }
     }
 
-    fn cp(a: Answer) -> MetaControlPlane<Meta, FixedClock, FixedSecret> {
-        MetaControlPlane::with_parts(Meta(a), FixedClock(1_000), FixedSecret, 60_000)
+    /// An in-memory [`CapabilityStore`], `#[cfg(test)]` and staying that way.
+    ///
+    /// Deliberately NOT a public sibling of `cache::InMemoryCache`: a capability
+    /// store that forgets on restart is not a degraded production choice, it is
+    /// a wrong one, and exporting it would make it reachable by a deployment
+    /// that misread it as an option. The production implementor is
+    /// `sqlx_pg::PgCapabilityStore`, exercised against a real database in
+    /// `tests/capability_store_live.rs`.
+    #[derive(Default)]
+    struct MemStore {
+        /// `(digest, row)`. The digest is STORED, exactly as the `BYTEA` column
+        /// stores it — an earlier draft re-derived it from the fixed test
+        /// secret, which made every row answer to every digest and would have
+        /// hidden a lookup that returned the wrong session.
+        rows: Mutex<Vec<(CapabilityDigest, SessionRecord)>>,
+        /// Set to make `record` fail, for the bind-must-fail-on-store-failure
+        /// case. Nothing else can produce that outcome in memory.
+        refuse_writes: bool,
+        /// Set to make `lookup` fail, which must NOT read as "invalid".
+        refuse_reads: bool,
+    }
+
+    impl MemStore {
+        fn refusing_writes() -> Self {
+            Self { refuse_writes: true, ..Default::default() }
+        }
+        fn refusing_reads() -> Self {
+            Self { refuse_reads: true, ..Default::default() }
+        }
+        fn len(&self) -> usize {
+            self.rows.lock().expect("poisoned").len()
+        }
+    }
+
+    impl CapabilityStore for MemStore {
+        fn record(&self, issued: &IssuedCapability) -> Result<(), MetaError> {
+            if self.refuse_writes {
+                return Err(MetaError::Backend("simulated store failure".into()));
+            }
+            self.rows.lock().expect("poisoned").push((
+                issued.capability_hash,
+                SessionRecord {
+                    session_id: issued.session_id,
+                    reality_id: issued.reality_id,
+                    node_id: issued.node_id.clone(),
+                    service_identity: issued.service_identity.clone(),
+                    expires_at_ms: issued.expires_at_ms,
+                    revoked_at_ms: None,
+                },
+            ));
+            Ok(())
+        }
+
+        fn lookup(&self, digest: &CapabilityDigest) -> Result<Option<SessionRecord>, MetaError> {
+            if self.refuse_reads {
+                return Err(MetaError::Backend("simulated store failure".into()));
+            }
+            let rows = self.rows.lock().expect("poisoned");
+            Ok(rows.iter().find(|(d, _)| d == digest).map(|(_, r)| r.clone()))
+        }
+
+        fn extend(
+            &self,
+            session_id: Uuid,
+            expected_expires_at_ms: u64,
+            new_expiry_ms: u64,
+        ) -> Result<bool, MetaError> {
+            let mut rows = self.rows.lock().expect("poisoned");
+            match rows.iter_mut().find(|(_, r)| r.session_id == session_id) {
+                // The CAS the SQL performs: the row must still hold the expiry
+                // the caller read, and must still be unrevoked. Without the
+                // second half, a revocation landing between the read and the
+                // write would be undone by the refresh.
+                Some((_, r))
+                    if r.expires_at_ms == expected_expires_at_ms && r.revoked_at_ms.is_none() =>
+                {
+                    r.expires_at_ms = new_expiry_ms;
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        }
+
+        fn revoke(&self, session_id: Uuid, at_ms: u64, _reason: &str) -> Result<bool, MetaError> {
+            let mut rows = self.rows.lock().expect("poisoned");
+            match rows.iter_mut().find(|(_, r)| r.session_id == session_id) {
+                Some((_, r)) if r.revoked_at_ms.is_none() => {
+                    r.revoked_at_ms = Some(at_ms);
+                    Ok(true)
+                }
+                _ => Ok(false),
+            }
+        }
+    }
+
+    const FIXED_SECRET: &str = "fixed";
+
+    fn cp(a: Answer) -> MetaControlPlane<Meta, MemStore, FixedClock, FixedSecret> {
+        MetaControlPlane::with_parts(Meta(a), MemStore::default(), FixedClock(1_000), FixedSecret, 60_000)
+    }
+
+    fn cp_with(
+        a: Answer,
+        store: MemStore,
+    ) -> MetaControlPlane<Meta, MemStore, FixedClock, FixedSecret> {
+        MetaControlPlane::with_parts(Meta(a), store, FixedClock(1_000), FixedSecret, 60_000)
     }
 
     fn req() -> BindRequest {
-        BindRequest { reality: Uuid::from_u128(42), node: "pod-1".into() }
+        BindRequest {
+            reality: Uuid::from_u128(42),
+            node: "pod-1".into(),
+            service: dp::ServiceIdentity::new("commit-service").expect("valid"),
+        }
+    }
+
+    #[test]
+    fn the_fixed_secret_is_what_the_deterministic_tests_assert_on() {
+        // FIXED_SECRET has one spelling, used by the minter and by the
+        // assertions. Two spellings would let the minter drift while every
+        // test that hardcoded the old value kept passing.
+        assert_eq!(FixedSecret.mint(), FIXED_SECRET);
     }
 
     #[test]
@@ -262,11 +522,179 @@ mod tests {
 
     #[test]
     fn two_binds_get_different_sessions_and_different_secrets() {
-        let plane = MetaControlPlane::new(Meta(Answer::Row(RealityStatus::Active)));
+        let plane = MetaControlPlane::new(Meta(Answer::Row(RealityStatus::Active)), MemStore::default());
         let a = plane.verify_bind(&req()).expect("a");
         let b = plane.verify_bind(&req()).expect("b");
         assert_ne!(a.session, b.session, "session ids must not repeat");
         assert_ne!(a.capability_secret, b.capability_secret, "secrets must not repeat");
+    }
+
+    // ── 5B — the capability STORE ───────────────────────────────────────────
+
+    #[test]
+    fn a_bind_records_the_capability_it_issued() {
+        // The gap 5B closes: 5A minted a secret and kept no record of it.
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+
+        let found = plane
+            .validate_capability(&v.capability_secret, 1_000)
+            .expect("the capability it just issued must validate");
+        assert_eq!(found.session_id, v.session);
+        assert_eq!(found.reality_id, Uuid::from_u128(42));
+        assert_eq!(found.node_id, "pod-1");
+        assert_eq!(
+            found.service_identity, "commit-service",
+            "the caller identity must reach the row — an unattributable capability is the hole 5B closes"
+        );
+    }
+
+    #[test]
+    fn the_store_holds_the_digest_and_not_the_secret() {
+        // The property that makes a lookup-validated bearer safe to store.
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+
+        let rows = plane.store.rows.lock().expect("poisoned");
+        let (digest, _) = rows.first().expect("one row");
+        assert_eq!(*digest, capability_digest(&v.capability_secret));
+        assert_ne!(
+            digest.as_slice(),
+            v.capability_secret.as_bytes(),
+            "the secret itself must never be what is stored"
+        );
+    }
+
+    #[test]
+    fn a_bind_whose_record_fails_is_refused_rather_than_returned() {
+        // A capability handed out but not recorded cannot be revoked and will
+        // be rejected at its first use, blaming the caller for a control-plane
+        // bug. Refusing the bind is the only honest outcome.
+        let plane = cp_with(Answer::Row(RealityStatus::Active), MemStore::refusing_writes());
+        let e = plane.verify_bind(&req()).expect_err("must refuse");
+        assert_eq!(e.variant_name(), "ControlPlaneUnavailable");
+        assert!(e.to_string().contains("capability store refused"), "{e}");
+    }
+
+    #[test]
+    fn a_secret_that_was_never_issued_is_not_found() {
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        plane.verify_bind(&req()).expect("bind");
+        let e = plane
+            .validate_capability("a-secret-nobody-minted", 1_000)
+            .expect_err("must refuse");
+        assert_eq!(e.variant_name(), "SessionNotFound");
+        assert!(
+            !e.to_string().contains("a-secret-nobody-minted"),
+            "the rejected credential must not be echoed into the error: {e}"
+        );
+    }
+
+    #[test]
+    fn an_expired_capability_validates_as_expired_not_as_unknown() {
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+        assert!(plane.validate_capability(&v.capability_secret, 60_999).is_ok());
+        let e = plane
+            .validate_capability(&v.capability_secret, 61_000)
+            .expect_err("at expiry");
+        assert_eq!(e.variant_name(), "CapabilityExpired");
+    }
+
+    #[test]
+    fn a_store_outage_is_an_outage_and_not_an_invalid_capability() {
+        // Collapsing these would make a database blip look like every
+        // capability in the system being forged at once.
+        let plane = cp_with(Answer::Row(RealityStatus::Active), MemStore::refusing_reads());
+        let e = plane.validate_capability("anything", 1_000).expect_err("must fail");
+        assert_eq!(e.variant_name(), "ControlPlaneUnavailable");
+    }
+
+    #[test]
+    fn revocation_takes_effect_before_the_capability_would_have_expired() {
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+        assert!(plane.validate_capability(&v.capability_secret, 2_000).is_ok());
+
+        assert!(plane.revoke_session(v.session, "incident drill").expect("revoke"));
+        let e = plane
+            .validate_capability(&v.capability_secret, 2_000)
+            .expect_err("revoked");
+        assert_eq!(e.variant_name(), "CapabilityExpired");
+
+        // Revoking twice is not an error, but it is not a second revocation.
+        assert!(!plane.revoke_session(v.session, "again").expect("idempotent"));
+    }
+
+    #[test]
+    fn a_refresh_extends_the_grant_without_re_issuing_the_secret() {
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+        assert_eq!(v.expires_at_ms, 61_000, "now(1000) + ttl(60000)");
+
+        // now = 30_000, so the new expiry is now + TTL, not old + TTL.
+        let r = plane.refresh_capability(&v.capability_secret, 30_000).expect("refresh");
+        assert_eq!(r.expires_at_ms, 90_000);
+        assert_eq!(
+            r.capability_secret, v.capability_secret,
+            "the secret must not travel a second time"
+        );
+        assert_eq!(r.session, v.session);
+        assert!(plane.validate_capability(&v.capability_secret, 89_999).is_ok());
+    }
+
+    #[test]
+    fn a_revoked_capability_cannot_be_resurrected_by_refreshing_it() {
+        // If it could, revocation would be a suggestion: the revoked holder
+        // still has the secret, and refresh is the one call that writes.
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+        plane.revoke_session(v.session, "incident").expect("revoke");
+
+        let e = plane
+            .refresh_capability(&v.capability_secret, 2_000)
+            .expect_err("must not resurrect");
+        assert_eq!(e.variant_name(), "CapabilityExpired");
+    }
+
+    #[test]
+    fn an_expired_capability_cannot_be_refreshed_back_to_life() {
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+        let e = plane
+            .refresh_capability(&v.capability_secret, 61_000)
+            .expect_err("expired");
+        assert_eq!(e.variant_name(), "CapabilityExpired");
+    }
+
+    #[test]
+    fn the_refresh_cas_refuses_a_stale_expectation() {
+        // The read-modify-write race, driven directly at the store because that
+        // is the only way to be BETWEEN the read and the write. If this passed
+        // with a stale expectation, a revocation landing in that window would be
+        // silently undone by the refresh that followed it.
+        let plane = cp(Answer::Row(RealityStatus::Active));
+        let v = plane.verify_bind(&req()).expect("bind");
+
+        // Someone else refreshed first: the row no longer holds 61_000.
+        assert!(plane.store.extend(v.session, 61_000, 70_000).expect("first wins"));
+        assert!(
+            !plane.store.extend(v.session, 61_000, 99_000).expect("second"),
+            "a second writer holding the old expiry must not apply"
+        );
+
+        // …and a revoked row does not extend even with a correct expectation.
+        plane.revoke_session(v.session, "incident").expect("revoke");
+        assert!(!plane.store.extend(v.session, 70_000, 99_000).expect("revoked"));
+    }
+
+    #[test]
+    fn a_refused_bind_records_nothing() {
+        // A capability store that accumulated rows for binds that failed would
+        // be a slow leak of grants nobody holds.
+        let plane = cp(Answer::Row(RealityStatus::Frozen));
+        plane.verify_bind(&req()).expect_err("frozen");
+        assert_eq!(plane.store.len(), 0);
     }
 
     /// The end-to-end shape: a real ControlPlane produces a real `RealityId`.

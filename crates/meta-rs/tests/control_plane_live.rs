@@ -17,12 +17,68 @@
 //! Gated by `LOREWEAVE_TEST_META_URL`. Unset -> skipped, and the skip says so.
 //! Read-only: it SELECTs and binds; it writes nothing, so it is safe against a
 //! developer's real meta database.
+//!
+//! # Why the capability store here is in-memory, in a file about the live path
+//!
+//! `5B` gave `verify_bind` a WRITE: every issued capability is recorded in
+//! `session_registry`. Handing this test the real `PgCapabilityStore` would
+//! therefore start inserting rows into whatever `LOREWEAVE_TEST_META_URL`
+//! points at — and the paragraph above, which promises this file is safe
+//! against a developer's real meta database, would quietly become false. A
+//! comment that stops being true is worse than one that was never written.
+//!
+//! So the store here is in-memory and the READ path is what this file proves:
+//! the column list, the status decoding, and a production-obtained
+//! `dp::RealityId`. The STORE's live coverage is `tests/pg_live.rs`, which
+//! writes — and which refuses any DSN whose database name carries no throwaway
+//! marker, before its first statement.
 
 #![cfg(feature = "sqlx-pg")]
 
 use meta_rs::control_plane::MetaControlPlane;
 use meta_rs::routing::{DefaultMetaRead, MetaRead, RealityStatus};
+use meta_rs::session_store::{CapabilityDigest, CapabilityStore, IssuedCapability, SessionRecord};
 use meta_rs::sqlx_pg::PgConnectionReader;
+use std::sync::Mutex;
+
+/// Records in memory, so this file keeps its read-only promise. See the header.
+#[derive(Default)]
+struct EphemeralStore {
+    rows: Mutex<Vec<(CapabilityDigest, SessionRecord)>>,
+}
+
+impl CapabilityStore for EphemeralStore {
+    fn record(&self, issued: &IssuedCapability) -> Result<(), meta_rs::MetaError> {
+        self.rows.lock().expect("poisoned").push((
+            issued.capability_hash,
+            SessionRecord {
+                session_id: issued.session_id,
+                reality_id: issued.reality_id,
+                node_id: issued.node_id.clone(),
+                service_identity: issued.service_identity.clone(),
+                expires_at_ms: issued.expires_at_ms,
+                revoked_at_ms: None,
+            },
+        ));
+        Ok(())
+    }
+    fn lookup(&self, digest: &CapabilityDigest) -> Result<Option<SessionRecord>, meta_rs::MetaError> {
+        let rows = self.rows.lock().expect("poisoned");
+        Ok(rows.iter().find(|(d, _)| d == digest).map(|(_, r)| r.clone()))
+    }
+    fn extend(&self, _s: uuid::Uuid, _e: u64, _n: u64) -> Result<bool, meta_rs::MetaError> {
+        Ok(false)
+    }
+    fn revoke(&self, _s: uuid::Uuid, _a: u64, _r: &str) -> Result<bool, meta_rs::MetaError> {
+        Ok(false)
+    }
+}
+
+/// The caller identity this file binds as. A name that says what it is, so a
+/// stray row in a real registry would be traceable to this test.
+fn test_service() -> dp::ServiceIdentity {
+    dp::ServiceIdentity::new("meta-rs-control-plane-live-test").expect("valid")
+}
 
 fn meta_url() -> Option<String> {
     std::env::var("LOREWEAVE_TEST_META_URL").ok().filter(|s| !s.is_empty())
@@ -75,10 +131,14 @@ async fn a_real_registry_row_binds_and_yields_a_real_reality_id() {
 
     // THE THING THAT WAS IMPOSSIBLE BEFORE 5A: a production path producing a
     // `dp::RealityId`.
-    let plane = MetaControlPlane::new(meta);
+    let plane = MetaControlPlane::new(meta, EphemeralStore::default());
     let ctx = dp::SessionContext::bind(
         &plane,
-        dp::BindRequest { reality: reality_id, node: "live-test".into() },
+        dp::BindRequest {
+            reality: reality_id,
+            node: "live-test".into(),
+            service: test_service(),
+        },
         now_ms(),
     )
     .expect("bind against the live registry");
@@ -112,13 +172,17 @@ async fn an_absent_reality_is_refused_by_the_live_path() {
         .expect("connect to meta");
 
     let reader = PgConnectionReader::new(pool).expect("reader");
-    let plane = MetaControlPlane::new(DefaultMetaRead::new(reader));
+    let plane = MetaControlPlane::new(DefaultMetaRead::new(reader), EphemeralStore::default());
 
     // A uuid that cannot be in the registry. The refusal must come from the
     // real query returning no row, not from a mock deciding to.
     let err = dp::SessionContext::bind(
         &plane,
-        dp::BindRequest { reality: uuid::Uuid::nil(), node: "live-test".into() },
+        dp::BindRequest {
+            reality: uuid::Uuid::nil(),
+            node: "live-test".into(),
+            service: test_service(),
+        },
         now_ms(),
     )
     .expect_err("the nil uuid must not be bindable");
