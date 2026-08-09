@@ -506,6 +506,8 @@ not implement toward it.
 
 | id | what | trigger |
 |---|---|---|
+| `G3-ORACLE-COVERAGE` | **`spec_oracle` opens 9 of 26 LOCKED `06_data_plane/` documents.** Every slice from 3 to 5 cited `DP-K*`, `DP-C*`, `DP-A*` and `DP-Ch*` as authority, and nothing compares a `const` to most of those documents. Measured cost this session: the capability TTL was 15 min against a spec stating 5 in three places, and `channel_key`'s segment order disagreed with `DP-K7` — the first was caught by reading, the second only because a doc-comparing oracle happened to be added in the same commit | a coverage ratchet: the count of opened documents may only rise. Start with `05_control_plane_spec.md` (`DP-C2`'s table list, `DP-C3`'s RPC set, `DP-C8`'s TTL), then `04d_capability_and_lifecycle`, `13_channel_ordering_and_writer`, `17_channel_lifecycle` |
+| `3E-NAMING-INCONSISTENCY` | `reality-id-adoption-gate` matches `reality_id: Uuid`. `commit-service`'s CLI input is spelled `args.reality`, so it escapes the gate **by naming rather than by property** — the same input-boundary category `embedding_queue/live/config.rs` needed an explicit exemption for. Latent: both are honest raw inputs today | either the gate learns the input-boundary category directly, or `args.reality` gets the same explicit exemption. Do NOT resolve it by renaming — that moves the number, not the property (`BDR-55`) |
 | `FLOW-19` | `channel_writer_state` has no FK to `channels` | `flow19_trigger()` in `dp-channels-schema-gate` reds when `channels` gains a non-test writer. `W3` did NOT create one — it creates the *table*, per migration; the first row-writer is still ahead |
 | `W3-DEVKEY` | the dev stack's admin signing key is operator-env only, so `reality provision` reverts to unaudited-refused after a fresh clone | a second person needing to run an admin command here, or CI wanting one. Do **not** commit a key; a bootstrap script that generates one is the fix |
 | `W3-LOCKSPAN` | the advisory lock is held across the WHOLE 11-step provision (incl. migrations), not just through `register_pending` at step 3 | provisioning becoming frequent enough that per-shard serialisation hurts. Deliberate: correctness over throughput on an admin-gated action |
@@ -522,8 +524,8 @@ not implement toward it.
 | `1b7db-08` | `CREATE TABLE … INHERITS (channels)` bypasses constraints | conscious won't-fix; a non-SDK writer appearing |
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
 | `G-S3`/`G-S4` | lore bible has no schema; "pre-manifest stub" is not a named artifact | the BOOK_TO_GAME track |
-| slice 1 | `G3`/`G4`/`G6`–`G13` open; several need `dp-clippy` | `2026-08-06` run-state §6i |
-| slice 2 | Phase 0 done (`2F-1`..`2F-4`); board not written. `DP-R3` names a clippy lint with **no dylint/`clippy_utils`/`rustc_private` anywhere** | a DESIGN decision before BUILD |
+| slice 1 | `G3`/`G4`/`G6`–`G13` open. **`G3` RE-MEASURED 2026-08-09: 17 of 26 LOCKED docs unopened, not 22** — `spec_oracle` now opens nine. **The one that matters most is still not among them: `05_control_plane_spec.md`**, which governs everything `5B`/`5C` built and is where the capability TTL sat at 3× its specified value until someone read the file by hand (`BDR-52`). `G4`'s stated blocker — *no dylint anywhere* — was discharged by slice 2; the specific aggregate-contract lint is still unwritten | `2026-08-06` run-state §6i; and for `G3`, an oracle-coverage ratchet over `06_data_plane/` |
+| ~~slice 2~~ | **CLOSED 2026-08-09 (row was stale).** It said *"board not written"* and *"no dylint anywhere"*; the board IS written below and `2A`–`2G` are all ✅ — `lints/dp-clippy` ships two lints (`forbid_raw_kernel_client`, `forbid_swallowed_backpressure`) on a pinned nightly with a ratcheted CI gate. **The row outlived its subject by four slices**, which is the register rot this file keeps finding elsewhere | done |
 
 ## 4b · SLICE 2 — `DP-R3`'s lint. Board written at the slice's start (`BDR-26`).
 
@@ -1241,6 +1243,65 @@ The five that governed last run, so they are not re-learned:
 `BDR-44` a fix without a leg · `BDR-45` a fix's blast radius ≠ its subject · `BDR-46` knowing a rule
 does not transfer across a language boundary · `BDR-47` execute the path before verifying its parts ·
 `BDR-48` "blocked" is a label, and it was the only blocker.
+
+---
+
+**`BDR-56` (2026-08-09) — a bite mutation that changes nothing prints exactly what a vacuous guard
+prints.** Three legs of `dp-slice5d-bite-gate` scored `THE GUARD IS NOT LOAD-BEARING` and all three
+were wrong about the guard: one mutation added a no-op statement, one used a `{channel:.0}`
+precision spec that std's integer `Display` ignores, and one named a type that does not exist so the
+build failed. **The four-way verdict (`pass`/`fail`/`nobuild`/`missing`) caught the third; nothing
+but re-reading caught the first two.** `mutated != original` is necessary and not sufficient —
+`BDR-30` said so about a trimmed table cell, and it is just as true of a mutation that compiles,
+runs, and means nothing. A fourth leg turned out to have **no removable guard at all**: `&self ->
+Self` is enforced by rustc, so `DP-K2`'s "a move returns a NEW context" cannot be un-guarded. Stated
+in the harness and not counted, per `V1-F3`.
+
+**`BDR-55` (2026-08-09) — a ratchet whose target is unreachable is a CEILING wearing a ratchet's
+name.** `reality-id-adoption-gate` reported 73 sites as debt. Classified, **~62 of them could never
+be paid**: `dp::RealityId` asserts *"exists AND accepts commands"*, and provisioning, seeding,
+rebuilding, orphan-scanning and deprovisioning are precisely the code whose subject is a reality in
+none of those states. The number could not reach zero, so nobody could ever act on it — which
+`gate-wiring-gate`'s own preamble names as worse than no gate. **The defect was in the MEASUREMENT,
+not the code.** Two things worth keeping: the fix must not be narrowing `IN_SCOPE` (62 sites would
+vanish with nothing left to read — a gate quietly deciding it is done); and the honest last mile is
+a *third* category — the env input a bind CONSUMES cannot already be its output. Renaming that field
+so the regex stopped matching would have moved the number without moving the property.
+
+**`BDR-54` (2026-08-09) — a constructor that returns half of what the caller needs reads as
+complete.** `bind_reality` returned the `SessionContext` and **dropped the control plane**, leaving
+the process holding a capability it had no way to renew. Nothing was missing at the call site,
+nothing failed a test, and the shape of the bug is *the same defect as never refreshing at all,
+arrived at by accident*. Found only when the refresh work needed the plane an hour later. **When a
+function hands back a live thing, ask what keeps it alive.**
+
+**`BDR-53` (2026-08-09) — two mutating harnesses corrupt the tree PAST the guard built to prove they
+do not.** `gate-wiring-gate` serialises them inside one sweep; two sweeps defeat it. The damage is
+not a flaky verdict:
+
+    harness A reads its baseline   <- already mutated by B
+    harness A mutates, then restores TO A'S BASELINE
+    = B's mutation is now PERMANENT, and A's digest check PASSES
+
+`V1-F8`'s restore-by-digest proves the file came back to what the harness **read**, and what it read
+was already wrong. Three files were left mutated in `crates/dp` — including `tier.rs::as_key`
+returning `TIER_ZERO` — and all four bite gates reported red for a reason unrelated to any guard.
+**A safety mechanism scoped to one process is default-uncovered for two.** Fixed with an `O_EXCL`
+lock; deliberately not a dirty-tree check, which would refuse ordinary uncommitted work and refuse
+something that is actually safe.
+
+**`BDR-52` (2026-08-09) — a finding and its REMEDY are two separate claims, and only one of mine was
+checked.** The post-slice-5 review correctly found that nothing validated a capability on the data
+path, so revocation never reached a running writer. It then prescribed a `WriteBackend`/`ReadBackend`
+seam change — **which `DP-C3` rules out in one line**: the control plane is *"low-QPS (≤100/s
+global)"*, so per-write validation exceeds its own scale contract by orders of magnitude. `DP-C8`
+states the real design (*"Short expiry (5 min) bounds blast radius"*), and the actual fix was a
+constant and a refresh call. **The finding got evidence; the remedy got only plausibility.** The
+same read that produced the remedy would have produced the correct one — the spec was open on the
+screen. Corollary, and it is the reason this cost two hours rather than ten minutes: **our TTL was
+15 minutes against a spec that says 5 in three independent places, and that constant IS the
+revocation window.** Nothing compared a `const` to the document that governs it, and
+`05_control_plane_spec.md` is not one of the nine documents `spec_oracle` opens (`G3`).
 
 **`BDR-51` (2026-08-08) — I fixed a bug in the lookup and left the identical bug in the writer, one
 function later, in the same commit.** `V.1` round 2 found that `RealitiesForUser` ignored owned
