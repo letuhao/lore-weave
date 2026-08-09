@@ -382,6 +382,14 @@ func buildTranslationEventPayload(
 // consumer's glossary_sync MERGE is keyed on glossary_entity_id, so an
 // early empty-name event is still idempotently corrected by the later
 // PATCH-driven event.
+//
+// D-OUTBOX-PAYLOAD-TRASH: the WHERE clause carried no lifecycle filter, so a
+// trashed entity still yielded a payload — and editing a trashed entity
+// re-published `glossary.entity_updated`, which made knowledge-service re-embed
+// and re-anchor it. The deletion was silently reversed in the consumer's index.
+// ok=false is the "do not emit" signal every caller already honours (the three
+// best-effort emitters below return early on it); the transactional path is
+// guarded in emitEntityUpdatedTx, which discards ok by design.
 func loadEntityEventFields(
 	ctx context.Context, q pgxQuerier, entityID uuid.UUID,
 ) (name, kind string, aliases []string, shortDesc string, ok bool) {
@@ -395,7 +403,7 @@ func loadEntityEventFields(
 		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
 		FROM glossary_entities e
 		JOIN book_kinds k ON k.book_kind_id = e.kind_id
-		WHERE e.entity_id = $1`,
+		WHERE e.entity_id = $1 AND e.deleted_at IS NULL`,
 		entityID,
 	).Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)
 	if err != nil {
@@ -450,6 +458,31 @@ func insertEntityOutboxEvent(
 func emitEntityUpdatedTx(
 	ctx context.Context, tx pgx.Tx, entityID uuid.UUID, payload entityEventPayload,
 ) error {
+	// D-OUTBOX-PAYLOAD-TRASH — the transactional twin of the loadEntityEventFields
+	// filter. Every caller here reads the AFTER snapshot with `_` for ok (the entity
+	// is expected to exist, so the value was discarded), which means the lifecycle
+	// filter alone would emit an EMPTY payload for a trashed entity rather than no
+	// payload at all. Read liveness inside the SAME tx as the write and skip instead.
+	// Restore is unaffected: it clears deleted_at in its own tx before any emit.
+	var live bool
+	err := tx.QueryRow(ctx,
+		`SELECT deleted_at IS NULL FROM glossary_entities WHERE entity_id = $1`,
+		entityID).Scan(&live)
+	if isNoRows(err) {
+		slog.Warn("emitEntityUpdatedTx: entity absent — skipping emission",
+			"entity_id", entityID.String())
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("outbox liveness: %w", err)
+	}
+	if !live {
+		// WARN, not silence: a mutation landing on a trashed entity is worth seeing.
+		// The emission is what must not happen; the write itself is the caller's call.
+		slog.Warn("emitEntityUpdatedTx: entity is deleted — skipping emission",
+			"entity_id", entityID.String())
+		return nil
+	}
 	return insertEntityOutboxEvent(ctx, func(ctx context.Context, sql string, args ...any) error {
 		_, e := tx.Exec(ctx, sql, args...)
 		return e
@@ -472,7 +505,7 @@ func emitEntityUpdatedTx(
 func (s *Server) emitEntityUpdated(ctx context.Context, entityID uuid.UUID, op string) {
 	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("emitEntityUpdated: entity fields unavailable (non-fatal)",
+		slog.Warn("emitEntityUpdated: entity absent or deleted — skipping emission (non-fatal)",
 			"entity_id", entityID.String())
 		return
 	}
@@ -510,7 +543,7 @@ func (s *Server) emitTranslationChanged(
 ) {
 	name, kind, aliases, shortDesc, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("emitTranslationChanged: entity fields unavailable (non-fatal)",
+		slog.Warn("emitTranslationChanged: entity absent or deleted — skipping emission (non-fatal)",
 			"entity_id", entityID.String())
 		return
 	}
@@ -574,7 +607,7 @@ func (s *Server) emitNameConfirmed(
 ) {
 	name, kind, _, _, ok := loadEntityEventFields(ctx, s.pool, entityID)
 	if !ok {
-		slog.Warn("emitNameConfirmed: entity fields unavailable (non-fatal)",
+		slog.Warn("emitNameConfirmed: entity absent or deleted — skipping emission (non-fatal)",
 			"entity_id", entityID.String())
 		return
 	}

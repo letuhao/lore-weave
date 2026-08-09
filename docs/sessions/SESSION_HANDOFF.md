@@ -1,6 +1,32 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-**HEAD:** `34810c12a` + DB-guard sweep · **Branch:** `main` · 2026-08-09
+**Branch:** `refactor/entity-lifecycle` · 2026-08-09 — the knowledge-architecture refactor is
+**in flight**. Sealed design: [`ARCHITECTURE-OVERVIEW`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-ARCHITECTURE-OVERVIEW.md)
+§9 (31 decisions). Plan: [`2026-08-09-knowledge-architecture-refactor.md`](../plans/2026-08-09-knowledge-architecture-refactor.md)
+— 53 implementation + 8 QC tasks, 10 phases, 14 commit checkpoints.
+
+> ⚠️ **The plan is discovered by an explicit path, not by branch slug:**
+> `/aif-implement @docs/plans/2026-08-09-knowledge-architecture-refactor.md`
+
+**Phase 0 has landed (Commit 1).** The three lifecycle guards that the debt register recorded as
+closed and that were re-verified open. What makes this closure different from the last one is that
+each row cites a test that fails without the fix *and* a live smoke against a rebuilt binary:
+`scripts/entity-lifecycle-guards-live-smoke.sh` runs **11/11 green** with the fix and **7/11** without
+it, and the failing half is not theoretical — the pre-fix binary bought a paid machine-translation
+call on author-deleted content and put two frames on `loreweave:events:glossary` re-anchoring a
+deleted entity in a consumer's index.
+
+**▶ Resume at Phase 1 (T4).** Write AC1 + AC2 as *failing* conformance tests first — both must be RED
+before T5 adds `GET /internal/books/{book_id}/state?as_of=N`. AC1's second half is the load-bearing
+one: `as_of=39` must report a character who dies in ch.40 as **present and alive**, because a
+`deleted_at`-style implementation passes the first half and fails that.
+
+**Carried forward, deliberately:**
+- `apply-edit` has no liveness guard — it commits an edit to a trashed entity, then 500s on its own
+  post-commit read-back. Pre-existing (measured with Phase 0 stashed), routed to **T27**.
+- Two PO decisions taken mid-flight are recorded in the plan as **X1** (Phase 7 builds *both* graph
+  adapters; T6's tripwires reading zero is *not* grounds to pre-narrow) and **X2** (the four gate
+  measurements stay at their scheduled slices).
 
 ## 📦 2026-08-08 — PR #184 merged: contributed features in, contributed process out
 

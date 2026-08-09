@@ -20,6 +20,35 @@ Design (SEALED): [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-
 
 scope if full plan, not small slices, need full plan first before do anything else
 
+## Current state — read this before resuming *(2026-08-09 20:54)*
+
+**Phase 0 is code-complete and green; nothing is committed.** The working tree is dirty. Resume at
+**QC-0**, then Commit 1 — no commit lands before its QC task is green (that is this plan's own rule,
+reaffirmed by the PO).
+
+| | |
+|---|---|
+| **Sized** | `workflow-gate size S 3 5 2 15` → **BLOCKED** (risk floor: 2 side effects require ≥ M). Re-ran at **M** → OK. |
+| **Uncommitted** | `entity_genres_handler.go` · `outbox.go` · `extraction_worker.py` · `glossary_client.py` · **new** `entity_lifecycle_guard_test.go` · **new** `tests/test_extraction_known_entities_refresh.py` |
+| **Test DB** | `loreweave_glossary_p0test` on `localhost:5555`, created for this work (throwaway; the dev DBs were not touched) |
+| **Still owed in Commit 1** | the `DEBT-REGISTER.md` discharge for rows `2026-08-03-02/03/04` **and** the `SESSION_HANDOFF.md` Deferred Items rows — per the per-task rule above, in the same commit that closes them |
+
+**Found in passing, NOT fixed, routed to T27:** `apply-edit` carries no liveness guard, so editing a
+trashed entity **commits the write and then returns 500** from its own post-commit read-back
+(`loadEntityDetail` filters `deleted_at IS NULL`). Measured identical with the Phase-0 changes
+stashed, so it is pre-existing and orthogonal. Whether a trashed entity is editable at all is a
+command-contract decision, which is exactly what T27 is for.
+
+## PO decisions taken during execution *(2026-08-09)*
+
+Recorded here so they are not re-derived, and not "optimised" away by a later reader.
+
+| # | decision | why it is written down |
+|---|---|---|
+| **X1** | **Phase 7 builds BOTH graph adapters; the engine is chosen by P2 shadow comparison** — as sealed (T2). The fact that T6's re-open tripwires already measure **zero** (p50 entity degree 0, no query needing variable-length `RELATES_TO` past depth 2) is **not** grounds to pre-narrow to Postgres-relational and skip Kuzu | the shallow workload is shallow *because relationship extraction is immature* (3 of 8 edges defensible) — the sealed design says so itself. Choosing on that basis would decide the engine by an artefact of a known-weak extractor rather than by measurement. The plan's method is shadow comparison; a cheaper argument does not replace it |
+| **X2** | **The four gate measurements stay at their scheduled slices** — T8, T10, T21, T41 are **not** front-loaded | they are already sequenced immediately before the work they gate, and each carries a stop condition. Pulling T21 or a T41 spike forward buys earlier warning at the cost of context-switching out of a phase that is not finished |
+| **X3** | **QC-0 runs before Commit 1**, and the same rule holds at every later checkpoint | option 1 of the resume question; it is also what the QC spine already says |
+
 ## Settings
 
 - Testing: **yes** — AC1/AC2 are the deliverable, written red-before-green
@@ -146,35 +175,117 @@ Recorded as *"already closed"* and re-verified open at `df18e9049`. Each is sing
 root cause. They are first because they are cheap and because Phase 4's gate would otherwise have to
 allowlist them.
 
-- [ ] **T1** — Add `deleted_at IS NULL` to `entityExistsInBook`
+- [x] **T1** — Add `deleted_at IS NULL` to `entityExistsInBook` — **IMPLEMENTED, uncommitted**
   `services/glossary-service/internal/api/entity_genres_handler.go:37`
   Guards 6 paths; the canonical-translation one fires a **paid LLM call** on deleted content and
   caches the result. Mirror the correct twin at `pipeline_read_tools.go:104`.
   **Logging:** `DEBUG` the entity id + book id + resolved liveness on every guard call; `WARN` when
   a request is refused because the entity is deleted (that WARN is the regression detector).
   **Test:** delete an entity, call canonical-translation, assert 404 and **assert no LLM call**.
+  ---
+  **Evidence.** Liveness resolves through the existing `entityDeleteState`, so *absent / other book /
+  purged* and *in the recycle bin* stay distinguishable — only the second logs `WARN`, which is what
+  makes that line a detector rather than noise. The guard is shared by 8 HTTP call sites
+  (canonical-translation · entity-genres ×2 · facts ×2 · fold ×3) plus 2 MCP tool sites.
+  Test: `entity_lifecycle_guard_test.go::TestDeletedEntity_CanonicalTranslationRefusedAndSpendsNothing`
+  — asserts **404**, **0 claim rows** in `canonical_snapshot_translations` and **0 MT calls**. The
+  claim row is the single-flight ticket (exactly one row per launched fill), so zero rows proves no
+  fill was launched *without racing the background goroutine*. A restore-and-retry control in the
+  same test asserts the live path still reaches 200 + 1 claim row.
+  **Bite (run, not asserted):** fix reverted → the trashed entity returns
+  `200 {"status":"translating"}` — it claims the row and launches the paid fill on deleted content.
+  ```
+  WARN entity-in-book guard refused a deleted entity entity_id=019fe6c1-… liveness=deleted
+  --- PASS: TestDeletedEntity_CanonicalTranslationRefusedAndSpendsNothing (0.36s)
+  ```
 
-- [ ] **T2** — Re-fetch `known_entities` per chapter
+- [x] **T2** — Re-fetch `known_entities` per chapter — **IMPLEMENTED, uncommitted**
   `services/translation-service/app/workers/extraction_worker.py:474` (fetch) vs `:589` (loop)
   A book-wide job holds the list for its lifetime, so a mid-job delete is re-emitted for every
   remaining chapter.
   **Logging:** `DEBUG` the known-entity count at each chapter boundary; `INFO` when the count
   changes mid-job (that is the bug becoming visible).
   **Test:** delete an entity mid-job; assert it is absent from the next chapter's known set.
+  ---
+  **Evidence.** Two holes, not one. The refetch closes entities the *server* knows; it cannot close
+  entities **this run created**, which sit below the endpoint's `min_frequency` floor until a second
+  chapter mentions them and which the old code appended locally for prompt continuity. Those are now
+  held by `entity_id` and pruned on the same boundary by `POST /internal/books/{id}/entities/by-ids`,
+  which already drops soft-deleted ids ("soft-absent", DI3) — a batched liveness probe, **no new
+  contract**. It fails toward the old behaviour on a glossary hiccup, so an outage cannot silently
+  strip prompt context.
+  ⚠️ **Scope note:** this is 2 files, not 1 — `glossary_client.py` gains the thin
+  `fetch_live_entity_ids` helper. Stated because the plan called T2 single-file.
+  Test: `tests/test_extraction_known_entities_refresh.py` — 3 tests (the deletion; *one fetch per
+  chapter, not per job*; the session-created prune, with a still-live control).
+  **Bite (run):** restoring "fetch once per job" → the deleted entity survives into chapter 2
+  (`{'Ao Bing','Nezha'} == {'Nezha'}` fails) and the per-chapter fetch count falls **3 → 1**.
 
-- [ ] **T3** — Add a lifecycle filter to the outbox payload query
+- [x] **T3** — Add a lifecycle filter to the outbox payload query — **IMPLEMENTED, uncommitted**
   `services/glossary-service/internal/api/outbox.go:398` — `WHERE e.entity_id = $1` with no filter,
   so editing a trashed entity re-publishes it and knowledge-service re-embeds it. **The deletion is
   silently reversed in the consumer's index.**
   **Logging:** `WARN` when an outbox row is skipped because its subject is deleted.
   **Test:** soft-delete, then edit; assert no `entity_updated` is emitted.
+  ---
+  **Evidence.** The filter alone was **not sufficient**, and that is the interesting part: the three
+  best-effort emitters honour `ok=false` and return, but every *transactional* caller reads the AFTER
+  snapshot with `_` for `ok`, so a lifecycle-filtered read would have emitted an **empty payload**
+  rather than none at all. So `emitEntityUpdatedTx` gained a liveness check **inside the writing tx**
+  — the transactional twin of the filter. Restore is unaffected (it clears `deleted_at` in its own tx,
+  before any emit); merge's `entity_merged` is untouched, since that event is *about* a deletion.
+  Test: `entity_lifecycle_guard_test.go::TestDeletedEntity_EditEmitsNoOutboxEvent`, live-edit control
+  first (must emit exactly 1), then trash-and-edit (must still be 1).
+  **Bite (run):** fix reverted → `entity_updated` count goes **1 → 2**.
 
-- [ ] **QC-0** — Review + live proof for the three guards
+- [x] **QC-0** — Review + live proof for the three guards — **GREEN**
   `/aif-review +check` on the diff. Then **live**: on a running stack, soft-delete an entity and
   (a) call canonical-translation → assert 404 **and zero LLM spend** in `usage_logs`; (b) edit it →
   assert no `entity_updated` on `loreweave:events:glossary`.
   **Why live:** T1–T3 are all *bypass* bugs. A unit test with a mocked pool cannot prove the real
   guard is on the real path — that is the inject-at-the-chokepoint trap.
+  ---
+  **① Code review — `/aif-review +check`.** Validator: 4 keep, 1 modify (0 dropped, 0 reclassified).
+  **One CRITICAL found and fixed during the review:** `_refresh_known_entities` sat two lines *above*
+  the per-chapter `try:`, and `fetch_known_entities` returns `resp.json()` unvalidated — so a
+  malformed glossary response raised `AttributeError` out of the refresh, past the chapter-level
+  `except`, and killed the **whole job**. Strictly worse than the fetch-once code it replaced, which
+  could at most fail one chapter. Fixed by normalising the response; 4th test added; bite:
+  `AttributeError: 'str' object has no attribute 'get'` with the normalisation removed.
+  Five non-blocking suggestions recorded, none merge-blocking. Gate: `warn`, 0 blockers.
+
+  **② Live proof — `scripts/entity-lifecycle-guards-live-smoke.sh` (new).**
+  Images rebuilt first: `infra-glossary-service-1` was a **2026-08-01** build, so the stack as it
+  stood would have tested the old binary and passed for the wrong reason. Real Postgres, real Redis
+  stream, real relay, fixture book discovered at runtime (no UUID pinned in a tracked file), scratch
+  entity minted and purged by the script's own trap.
+
+  | | with the fix | on the pre-fix binary (rebuilt to check) |
+  |---|---|---|
+  | T1 canonical-translation on a trashed entity | **404**, **0** claim rows | **200 `translating`**, **1 claim row — a paid MT fill launched on deleted content** |
+  | T1 control, same call on a live entity | 200, exactly 1 claim row | 200, 1 claim row |
+  | T3 edit a trashed entity → outbox | **0** new `entity_updated` | **1** new `entity_updated` |
+  | T3 edit a trashed entity → `loreweave:events:glossary` | **0** frames | **2 frames — a consumer re-anchors a deleted entity** |
+  | T2 `entities/by-ids` drops a soft-deleted id | omitted (live control: returned) | same (never the broken half) |
+
+  **`passed=11 failed=0` GREEN** with the fix · **`passed=7 failed=4` RED** without it.
+
+  ⚠️ **The stream leg was vacuous on the first run and was fixed.** The relay *polls* (~33 s); the
+  first version asserted absence 3 s after the write, so "0 frames" would have held for an event that
+  simply had not shipped yet — and it did: the control frame was missing too. The smoke now waits for
+  the control frame to **actually arrive** and only then trusts the absence; if the control never
+  lands it says `SKIP` rather than claiming a pass. That is why the pre-fix run could report 2 frames.
+
+  **③ Real-run data:** the pre-fix numbers above *are* the real-run data — a paid machine-translation
+  call bought on author-deleted content, and two stream frames re-anchoring a deleted entity in a
+  consumer's index, both observed on the live stack rather than argued from the code.
+
+  **Stated gap, not silently skipped:** T2's *worker* half (the per-chapter refetch) is unit-covered
+  with a bite but is **not** live-smoked — proving it end-to-end means running a real extraction job
+  and deleting an entity mid-run, which spends LLM budget. What the smoke proves live is the
+  cross-service contract that half depends on (`entities/by-ids` drops a soft-deleted id). The
+  worker path gets its live exercise in **QC-4**, whose smoke already asserts the per-consumer effect
+  of a trash across translation.
 
 <!-- Commit checkpoint: T1–T3 -->
 
@@ -567,6 +678,14 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [ ] **T42** — Second `GraphStore` adapter (Postgres-relational recommended; Kuzu the alternative)
   AGE is eliminated. Kuzu: ✅ `MERGE … ON CREATE/ON MATCH SET` · ✅ `current_timestamp()` ·
   ❌ `CALL {}` (14 sites).
+  ⚠️ **Decision X1 (PO, 2026-08-09): build BOTH candidates and let T43's shadow comparison choose.**
+  Do **not** pre-narrow to Postgres-relational on the grounds that T6's re-open tripwires already
+  measure zero (p50 entity degree **0**; zero queries needing variable-length `RELATES_TO` past
+  depth 2). That workload is shallow *because relationship extraction is immature* — the design says
+  so itself, and T33 is in this plan precisely to change it. Deciding the engine from a
+  known-weak extractor's output would settle it on an artefact, which is the argument the sealed
+  design rejected. Cost accepted: ~14 `CALL {}` rewrites + 152 mechanical renames for an adapter
+  that may be discarded.
   (depends on T41)
 - [ ] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
   No cutover while any port operation has **zero shadow observations** — merge/split/restore/coref/
@@ -646,6 +765,12 @@ pressure:
 ---
 
 ## Stop conditions
+
+**Decision X2 (PO, 2026-08-09): all four gate measurements run at their scheduled slices.** T8, T10,
+T21 and T41 are already sequenced immediately before the work they gate, and each carries a stop
+condition below. Do not front-load them — the cost of context-switching out of an unfinished phase
+was judged higher than the value of earlier warning. T9's migration-runner conflict is resolved
+**inside T9**, as that task already states, not deferred to migration time.
 
 Any of these means **stop and re-open the design**, not work around it:
 

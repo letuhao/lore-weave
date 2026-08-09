@@ -14,6 +14,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -32,14 +33,38 @@ var (
 	errBookNoUniversal = errors.New("book has no universal genre — adopt standards first")
 )
 
-// entityExistsInBook reports whether the entity belongs to the book (the tenant guard
+// entityExistsInBook reports whether a LIVE entity belongs to the book (the tenant guard
 // core shared by HTTP entityInBook and the MCP entity tools).
+//
+// D-ENTITY-EXISTS-GUARD: this guard used to ask only "does the row exist", so every path
+// behind it treated a TRASHED entity as present — while both of its twins have always
+// filtered (`entityBelongsToBook` in pipeline_read_tools.go, the chapter-link guard in
+// chapter_link_handler.go). The expensive path is canonical-translation: it would spend a
+// PAID machine-translation call on author-deleted content and cache the result under the
+// deleted entity's id. Liveness is resolved through entityDeleteState so "never existed /
+// other book / purged" and "in the recycle bin" stay distinguishable — the second is the
+// regression detector below.
 func (s *Server) entityExistsInBook(ctx context.Context, entityID, bookID uuid.UUID) (bool, error) {
-	var exists bool
-	err := s.pool.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM glossary_entities WHERE entity_id=$1 AND book_id=$2)`,
-		entityID, bookID).Scan(&exists)
-	return exists, err
+	exists, deleted, err := s.entityDeleteState(ctx, bookID, entityID)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case !exists:
+		slog.Debug("entity-in-book guard",
+			"entity_id", entityID.String(), "book_id", bookID.String(), "liveness", "absent")
+		return false, nil
+	case deleted:
+		// WARN, not DEBUG: a request reaching a guarded path for a trashed entity is the
+		// symptom this guard exists to stop. If this line stops appearing after a caller
+		// change, the guard has been bypassed rather than satisfied.
+		slog.Warn("entity-in-book guard refused a deleted entity",
+			"entity_id", entityID.String(), "book_id", bookID.String(), "liveness", "deleted")
+		return false, nil
+	}
+	slog.Debug("entity-in-book guard",
+		"entity_id", entityID.String(), "book_id", bookID.String(), "liveness", "live")
+	return true, nil
 }
 
 // getEntityGenreIDs returns the entity's live genre-override ids (empty ⇒ book default).

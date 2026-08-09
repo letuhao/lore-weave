@@ -325,6 +325,49 @@ async def fetch_known_entities(
         return []
 
 
+async def fetch_live_entity_ids(book_id: str, entity_ids: list[str]) -> set[str]:
+    """Return the subset of ``entity_ids`` that is still LIVE in this book.
+
+    Calls: POST /internal/books/{book_id}/entities/by-ids
+
+    That endpoint drops missing, other-book and soft-deleted ids silently
+    ("soft-absent", DI3), so what comes back IS the live set — one batched call,
+    no new contract. Used by the extraction worker to prune the entities it
+    created during its own run, which the frequency-filtered known-entities read
+    cannot see yet (a once-mentioned newborn is below ``min_frequency``).
+
+    On ANY failure this returns the input set unchanged: a glossary hiccup must
+    not silently strip prompt context. That fails toward the OLD behaviour, which
+    is the conservative direction — the authoritative per-chapter refetch in the
+    worker still drops server-known deletions.
+    """
+    if not book_id or not entity_ids:
+        return set()
+    try:
+        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
+            resp = await client.post(
+                f"{settings.glossary_service_internal_url}"
+                f"/internal/books/{book_id}/entities/by-ids",
+                json={"entity_ids": list(entity_ids)},
+            )
+            if resp.status_code != 200:
+                log.warning(
+                    "entities/by-ids returned %d for book=%s — keeping %d session entities unpruned",
+                    resp.status_code, book_id, len(entity_ids),
+                )
+                return set(entity_ids)
+            payload = resp.json()
+    except Exception as exc:  # noqa: BLE001 — a liveness probe must not fail the run
+        log.warning("entities/by-ids failed for book=%s: %s", book_id, exc)
+        return set(entity_ids)
+
+    live: set[str] = set()
+    for item in payload.get("items", []):
+        if isinstance(item, dict) and item.get("entity_id"):
+            live.add(str(item["entity_id"]))
+    return live
+
+
 async def fetch_context_entities(
     book_id: str,
     user_id: str,
