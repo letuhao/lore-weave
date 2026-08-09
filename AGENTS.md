@@ -555,6 +555,21 @@ Run command → Read complete output → Confirm match → THEN claim. No "shoul
 
 `workflow-gate.py` autodetects cross-service via `git diff --name-only HEAD` matching ≥2 distinct `services/<name>/` prefixes. The warning is advisory; the agent decides whether to live-smoke now or defer it explicitly.
 
+**"CI is green" means every workflow's LATEST run, not the runs on your commit (2026-08-09).** Several workflows are **path-filtered** (`domain-db-smoke` → 4 `services/**` trees; `python-integration-tests` → its six Python services). A commit outside those paths does not trigger them, so `gh run list --limit N` returns only what ran and a red workflow **silently drops off the list**. A path-filtered workflow that did not run is **UNKNOWN, not passing** — and its last real answer may be months old.
+
+This was measured, not theorised: main was reported "all 7 workflows green" on 2026-08-08 while `domain-db-smoke` had been red since 2026-08-05 and `python-integration-tests` since 2026-08-08. Both were invisible because that day's commits touched `frontend/`, `scripts/`, `docs/` and `tests/`. Between them they were hiding a read path that silently undid a user's write, and entities whose names were stored correctly but unfindable downstream.
+
+So before claiming the repo is green, compare the **defined** workflows against the ones that ran, and check the last run of each that is missing:
+
+```bash
+ls .github/workflows/*.yml | sed 's#.*/##'                 # what EXISTS
+gh run list --limit 40 --json name,headSha \
+  --jq ".[] | select(.headSha==\"$(git rev-parse HEAD)\") | .name" | sort -u   # what RAN
+gh run list --workflow=<missing>.yml --limit 1 --json conclusion,headSha,createdAt
+```
+
+Ignore only the ones with no `push` trigger (`workflow_dispatch` / `schedule` / deploy). Anything push-triggered that did not run needs its last conclusion read out loud before the word "green" is used.
+
 ### Phase 7 REVIEW (2-Stage Code Review)
 
 | Stage | Focus |

@@ -193,6 +193,34 @@ run twice against one persistent DB. **Pre-existing and NOT fixed** —
 `internal/migrate/TestSystemAttrDescriptions_SeedsDescriptionsAndRefreshesHash` fails identically
 with these changes stashed (`empty descriptions = 3, want 93`); that package is in no workflow.
 
+### ✅ CLOSED (2026-08-09) — `python-integration-tests` was red too, and found the same way
+
+Checking the *other* path-filtered workflows after `domain-db-smoke` turned up a second one:
+9 of 13 workflows ran on the current commit; three of the four missing are
+`workflow_dispatch`/deploy-only, and the fourth — `python-integration-tests`, push-triggered
+and path-filtered to its six Python services — was **failing**.
+
+`knowledge-service` only. `test_kg_graph_schemas` asserted the literal pair
+`{"general": "insert", "xianxia-harem": "insert"}`, and the 2026-08-05 work added five graph
+schema templates (fantasy, romance, drama, historical, mystery). Nothing was wrong: the seeder
+did exactly the right thing with all seven. Unlike the glossary failures, **the test was the
+defect** — an enumeration restating the catalogue instead of asserting a property of the seeder.
+
+It was also default-uncovered in the direction that matters: it failed when the catalogue GREW,
+which is noise, and would have said nothing at all if a template were silently dropped from
+`_TEMPLATES`. Both assertions now derive from `_TEMPLATES` (with a floor check, so an empty
+catalogue cannot make them vacuously true): adding a template needs no edit, and a template that
+stops being seeded goes red. Verified 627 passed against live Postgres + Neo4j.
+
+That workflow's own header says it exists so these suites "can never rot unnoticed again". It is
+path-filtered, so it rotted unnoticed anyway — the guard was real, the trigger was the gap.
+
+**The rule this produced is now in [`AGENTS.md`](../../AGENTS.md) § Phase 6 VERIFY:** "CI is
+green" means every workflow's LATEST run, not the runs on your commit. `gh run list` returns only
+what ran, so a red path-filtered workflow silently drops off the list. Compare the workflows that
+EXIST against the ones that RAN, and read the last conclusion of every push-triggered one that is
+missing before using the word green.
+
 ### ⚠️ NEXT-1 — `infra/patroni/patroni.yml` declares a `pg_hba` that Postgres never receives
 
 Surfaced while trying to give the `reality_lifecycle` rename a runtime proof. The two tests in

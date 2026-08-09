@@ -12,7 +12,7 @@ from uuid import uuid4
 import pytest
 
 from app.db.repositories.graph_schemas import GraphSchemasRepo
-from app.db.seed_graph_schemas import seed_system_graph_schemas
+from app.db.seed_graph_schemas import _TEMPLATES, seed_system_graph_schemas
 
 pytestmark = pytest.mark.asyncio
 
@@ -24,12 +24,30 @@ async def _reset_kg(pool):
 
 
 async def test_seed_inserts_then_is_idempotent(pool):
+    """Every template in the catalogue inserts once, then skips.
+
+    This asserted the literal pair {"general", "xianxia-harem"}, which is a RESTATEMENT of
+    the catalogue rather than a property of the seeder. Five templates were added on
+    2026-08-05 (fantasy, romance, drama, historical, mystery) and the test went red having
+    found nothing wrong: the seeder did exactly what it should with all seven.
+
+    An enumeration in a test is default-uncovered in both directions — it fails when the
+    catalogue GROWS, which is noise, and it would say nothing at all if a template were
+    silently dropped from `_TEMPLATES`, which is the failure worth catching. Deriving the
+    expectation from `_TEMPLATES` inverts that: adding a template needs no edit here, and
+    a template that stops being seeded is a red.
+    """
     await _reset_kg(pool)
+    codes = {tpl["code"] for tpl in _TEMPLATES}
+    # Guard the derivation itself: an empty catalogue would make every assertion below
+    # vacuously true, so the test would pass having seeded nothing.
+    assert len(codes) >= 2, f"catalogue looks wrong: {codes}"
+
     first = await seed_system_graph_schemas(pool)
-    assert first == {"general": "insert", "xianxia-harem": "insert"}
+    assert first == dict.fromkeys(codes, "insert")
     # second run: hash unchanged → skip (no churn).
     second = await seed_system_graph_schemas(pool)
-    assert second == {"general": "skip", "xianxia-harem": "skip"}
+    assert second == dict.fromkeys(codes, "skip")
 
 
 async def test_concurrent_seed_is_race_safe(pool):
@@ -47,7 +65,9 @@ async def test_concurrent_seed_is_race_safe(pool):
         assert not isinstance(r, Exception), f"concurrent seed raised: {r!r}"
     async with pool.acquire() as conn:
         n = await conn.fetchval("SELECT count(*) FROM kg_graph_schemas WHERE scope = 'system'")
-    assert n == 2  # general + xianxia-harem, exactly once each
+    # Exactly one row per catalogue entry — the point is that racing seeders do not
+    # double-insert, not how many templates happen to exist today.
+    assert n == len({tpl["code"] for tpl in _TEMPLATES})
 
 
 async def test_seeded_xianxia_children_counts(pool):
