@@ -194,3 +194,98 @@ class TestTerminationIsQueryable:
         pid = await plan_db.save_spec(conn, sid, _spec())
         with pytest.raises(TypeError, match="not a Termination"):
             await plan_db.record_termination(conn, uuid.UUID(pid), {"scope": "done_when"})
+
+
+class TestTheSweeperNeverDeletesEvidenceAReaderStillNeeds:
+    """CP-3.6 · the guard that makes an ORDERING HAZARD unrepresentable.
+
+    `resolve_expired_suspends` moves a turn stuck at `awaiting_input` to `abandoned_by_user`, and the
+    only thing that justifies it is the suspended run's own row (`EXISTS (… expires_at <= now())`).
+    Sweep first and that turn advertises a success state forever with the repairing fact gone — the
+    silent exit restored, now permanently.
+
+    A convention ("always resolve before sweeping") would be a comment. This is a clause in the
+    DELETE, so no interleaving of the two can lose the record. **Only a real database can check it**:
+    the claim is about what the statement matches.
+    """
+
+    async def _run(self, conn, *, expires_hours_ago: int, outcome, finish_reason):
+        """One suspended run whose message carries the given pair. Returns (run_id, message_id)."""
+        import json
+        sid = await _session(conn)
+        mid = uuid.uuid4()
+        seq = await conn.fetchval(
+            "SELECT COALESCE(MAX(sequence_num), 0) + 1 FROM chat_messages WHERE session_id = $1",
+            sid)
+        await conn.execute(
+            "INSERT INTO chat_messages (message_id, session_id, owner_user_id, sequence_num, "
+            "  role, content, outcome, finish_reason) "
+            "VALUES ($1,$2,$3,$4,'assistant','x',$5,$6)",
+            mid, sid, uuid.uuid4(), seq, outcome, finish_reason)
+        rid = uuid.uuid4()
+        await conn.execute(
+            "INSERT INTO chat_suspended_runs (run_id, session_id, owner_user_id, message_id, "
+            "  working, pending_tool_call, input_tokens, output_tokens, model_source, model_ref, "
+            "  user_message_content, expires_at) "
+            "VALUES ($1,$2,$3,$4,'[]'::jsonb,'{}'::jsonb,0,0,'internal',$5,'u', "
+            f"        now() - interval '{int(expires_hours_ago)} hours')",
+            rid, sid, uuid.uuid4(), mid, str(uuid.uuid4()))
+        return rid, mid
+
+    async def _sweep(self, conn, days: int) -> int:
+        """`sweep_expired_runs` takes a Pool and calls `.execute`; a Connection answers the same."""
+        from app.db.suspended_runs import sweep_expired_runs
+        return await sweep_expired_runs(conn, retention_days=days)
+
+    async def _alive(self, conn, rid) -> bool:
+        return await conn.fetchval(
+            "SELECT count(*) FROM chat_suspended_runs WHERE run_id = $1", rid) == 1
+
+    async def test_AN_UNRESOLVED_TURN_KEEPS_ITS_RUN_HOWEVER_OLD(self, conn):
+        """🔴 The load-bearing guard. Long past retention, and it still must not go."""
+        rid, _ = await self._run(conn, expires_hours_ago=24 * 400, outcome=None,
+                                 finish_reason="awaiting_input")
+        assert await self._sweep(conn, 30) >= 0
+        assert await self._alive(conn, rid), (
+            "deleted the run whose turn still reads unresolved — `resolve_expired_suspends` can "
+            "now never stamp it, and the success label on a dead turn becomes permanent"
+        )
+
+    async def test_A_SELF_CONTRADICTING_ROW_COUNTS_AS_UNRESOLVED(self, conn):
+        """F-38, and it is not hypothetical: 33 live rows carry `abandoned_by_user` while
+        `finish_reason` still says `awaiting_input`. A row whose two columns disagree has not been
+        resolved — a reader cannot tell which half to believe — so its evidence stays."""
+        rid, _ = await self._run(conn, expires_hours_ago=24 * 400,
+                                 outcome="abandoned_by_user", finish_reason="awaiting_input")
+        await self._sweep(conn, 30)
+        assert await self._alive(conn, rid), (
+            "testing `outcome` alone would delete exactly the rows whose contradiction is still "
+            "unrepaired"
+        )
+
+    async def test_A_FULLY_RESOLVED_TURN_PAST_RETENTION_IS_RECLAIMED(self, conn):
+        """And the sweeper must actually sweep — a guard that holds back everything is a sweeper
+        with zero callers wearing a predicate."""
+        rid, _ = await self._run(conn, expires_hours_ago=24 * 400,
+                                 outcome="abandoned_by_user", finish_reason="abandoned_expired")
+        await self._sweep(conn, 30)
+        assert not await self._alive(conn, rid)
+
+    async def test_AN_ORPHANED_RUN_WITH_NO_MESSAGE_AT_ALL_IS_RECLAIMED(self, conn):
+        """137 of the 175 live rows are this shape. There is no turn to repair, so retention is the
+        only thing protecting them."""
+        rid, mid = await self._run(conn, expires_hours_ago=24 * 400,
+                                   outcome="completed", finish_reason="stop")
+        await conn.execute("DELETE FROM chat_messages WHERE message_id = $1", mid)
+        await self._sweep(conn, 30)
+        assert not await self._alive(conn, rid)
+
+    async def test_RETENTION_IS_MEASURED_FROM_EXPIRY_NOT_FROM_NOW(self, conn):
+        """Expired an hour ago is unresumable but freshly abandoned — the moment its evidence is
+        most wanted. It survives the window; the same row survives nothing once past it."""
+        rid, _ = await self._run(conn, expires_hours_ago=1,
+                                 outcome="abandoned_by_user", finish_reason="abandoned_expired")
+        await self._sweep(conn, 30)
+        assert await self._alive(conn, rid), "swept a row that expired one hour ago"
+        await self._sweep(conn, 0)
+        assert not await self._alive(conn, rid)

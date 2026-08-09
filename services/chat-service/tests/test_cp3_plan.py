@@ -483,3 +483,96 @@ class TestTheProjectionIsHonestAndLossless_WhereItMatters:
         st.append(Event(kind="effect_committed", step_index=0,
                         undo_hint="book_delete(019fafa2)", committed=True))
         assert "book_delete(019fafa2)" in project(spec, st)
+
+
+class TestSilentExit2HasAnOwnerThatKeepsRunning:
+    """CP-3.6 · *`needs-human` never answered*, the one silent exit still live at CP-3's close.
+
+    `sweep_expired_runs` sat in this repo with **zero callers** and a docstring saying it ran
+    periodically, and `resolve_expired_suspends` ran once per process start. Measured 2026-08-09:
+    175 of 175 suspended runs past their 6-hour TTL, oldest by 68 days.
+
+    These read `main.py` for an AWAITED call, never an import — the distinction that left four
+    earlier reconciler gates green while their caller was deleted.
+    """
+
+    @staticmethod
+    def _main() -> str:
+        from pathlib import Path
+        import app.main as _m
+        return Path(_m.__file__).read_text(encoding="utf-8")
+
+    def test_THE_SWEEPER_IS_AWAITED_SOMEWHERE_NOT_MERELY_IMPORTED(self):
+        """🔴 The state this rejects is the one it was in for the whole run: defined, documented as
+        periodic, called by nothing."""
+        import re
+        assert re.search(r"await\s+sweep_expired_runs\s*\(", self._main()), (
+            "an import is not a caller — `sweep_expired_runs` carried a docstring claiming it ran "
+            "'periodically from the lifespan' while nothing anywhere called it"
+        )
+
+    def test_THE_RESOLVER_RUNS_PERIODICALLY_AND_NOT_ONLY_AT_BOOT(self):
+        """A boot-only resolver makes the repair a restart artefact. A card that expires eight hours
+        into a fourteen-hour uptime keeps advertising `awaiting_input` — a SUCCESS state — until
+        somebody happens to redeploy."""
+        import re
+        src = self._main()
+        loop = re.search(
+            r"async def _suspended_run_maintenance_loop.*?(?=\n@|\nasync def |\ndef )", src, re.S)
+        assert loop, "no maintenance loop defined"
+        body = loop.group(0)
+        assert "while True" in body and "asyncio.sleep" in body, "not a periodic loop"
+        assert re.search(r"await\s+resolve_expired_suspends\s*\(", body), (
+            "the resolver must run inside the loop, not only in the lifespan preamble"
+        )
+        assert re.search(r"await\s+sweep_expired_runs\s*\(", body)
+
+    def test_THE_LOOP_IS_ACTUALLY_STARTED_AND_CANCELLED(self):
+        """A defined-but-never-scheduled coroutine is the same dead shape one layer up."""
+        import re
+        src = self._main()
+        assert re.search(r"create_task\(\s*_suspended_run_maintenance_loop\(\)\s*\)", src), (
+            "defining the loop without scheduling it re-creates the zero-caller state in a "
+            "function that merely looks livelier"
+        )
+        assert re.search(r"\w+\.cancel\(\)", src)
+
+    def test_IT_NEVER_TAKES_THE_SERVICE_DOWN_AND_NEVER_RUNS_SILENTLY(self):
+        import re
+        body = re.search(r"async def _suspended_run_maintenance_loop.*?(?=\n@|\nasync def |\ndef )",
+                         self._main(), re.S).group(0)
+        assert "except Exception" in body, "maintenance must never kill the process"
+        assert "logger.info" in body, (
+            "a maintenance task that runs silently is indistinguishable from one with no callers — "
+            "which is precisely the state being repaired"
+        )
+
+    def test_A_NEGATIVE_RETENTION_IS_REFUSED_RATHER_THAN_MEANING_THE_FUTURE(self):
+        """`now() - make_interval(days => -1)` is a moment in the FUTURE: every row qualifies. A
+        misconfiguration that silently widens a DELETE is not a value this accepts."""
+        import asyncio
+
+        from app.db.suspended_runs import sweep_expired_runs
+        with pytest.raises(ValueError, match="negative"):
+            asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+                sweep_expired_runs(object(), retention_days=-1))
+
+    def test_THE_RETENTION_WINDOW_IS_A_SETTING_NOT_A_LITERAL(self):
+        from app.config import settings
+        assert settings.suspended_run_retention_days > 0
+        assert settings.suspended_run_maintenance_interval_seconds > 0
+
+    def test_THE_INTERVAL_CAN_BE_TURNED_DOWN_FAR_ENOUGH_TO_WATCH_IT_RUN(self):
+        """🔴 An hours-only knob with a 1-hour floor cannot be observed firing inside any test
+        window — and an unobservable mechanism is exactly how `sweep_expired_runs` stayed dead
+        behind a docstring. The floor stays, so a zero cannot become a busy loop."""
+        import re
+        body = re.search(r"async def _suspended_run_maintenance_loop.*?(?=\n@|\nasync def |\ndef )",
+                         self._main(), re.S).group(0)
+        m = re.search(r"interval\s*=\s*max\((\d+),\s*settings\.(\w+)\)", body)
+        assert m, "the interval must carry an explicit floor rather than trusting the setting"
+        floor, name = int(m.group(1)), m.group(2)
+        assert name.endswith("_seconds"), (
+            f"`{name}` cannot be turned down below its own unit — the loop becomes unwatchable"
+        )
+        assert 0 < floor <= 60, f"a floor of {floor}s is too coarse to observe, or absent"
