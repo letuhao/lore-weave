@@ -26,6 +26,7 @@ from typing import Literal as _Literal
 from app.db.neo4j_helpers import CypherSession
 
 __all__ = [
+    "query_summary_index",
     "ensure_summary_indexes",
     "drop_summary_index",
     "list_summary_vector_indexes",
@@ -166,3 +167,58 @@ async def ensure_summary_indexes(
         await session.run(cypher, dim=embedding_dimension)
         names[level] = idx_name
     return names
+
+# ── querying a summary index (plan T16) ──────────────────────────────────────
+#
+# Moved out of `app/context/selectors/summary_blend.py`, which the T16 gate caught on its
+# first run. T11 said "pull Cypher out of the selectors" and cleared `salience.py` only,
+# because the search that found it grepped for MATCH/MERGE/CREATE — and this query opens
+# with `CALL db.index.vector.queryNodes`. A hand-written search decided the scope of a
+# task; the gate decided it correctly.
+#
+# NOT routed through `run_read`: a vector index query has no `$user_id` to filter on. The
+# index NAME is the tenant boundary — it embeds the project and embedding-model UUIDs, and
+# it is built here by `summary_index_name` rather than accepted from a caller.
+
+_SUMMARY_QUERY_CYPHER = (
+    "CALL db.index.vector.queryNodes($idx_name, $top_k, $emb) "
+    "YIELD node, score "
+    "WHERE node:{node_label} "
+    "RETURN node.path AS path, "
+    "       coalesce(node.{level}_id, node.book_id) AS node_id, "
+    "       coalesce(node.summary_text, '') AS summary_text, "
+    "       score"
+)
+
+
+async def query_summary_index(
+    session: CypherSession,
+    *,
+    project_id: str,
+    embedding_model_uuid: str,
+    level: _Literal["chapter", "part", "book"],
+    query_embedding: list[float],
+    top_k: int,
+) -> list[dict]:
+    """Vector-query one level's summary index. Returns at most `top_k` raw rows
+    (`path`, `node_id`, `summary_text`, `score`), unscored — the level weighting is the
+    caller's policy, not this store's.
+
+    `level` is validated by `summary_index_name` before it reaches the label/property
+    interpolation below, which is what makes that interpolation safe: Cypher cannot
+    parameterise a node label or a property name.
+    """
+    idx_name = summary_index_name(project_id, embedding_model_uuid, level)
+    cypher = _SUMMARY_QUERY_CYPHER.format(node_label=level.capitalize(), level=level)
+    result = await session.run(
+        cypher, idx_name=idx_name, top_k=top_k, emb=query_embedding
+    )
+    rows: list[dict] = []
+    async for record in result:
+        rows.append({
+            "path": record["path"],
+            "node_id": record["node_id"],
+            "summary_text": record["summary_text"],
+            "score": record["score"],
+        })
+    return rows

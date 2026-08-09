@@ -19,7 +19,7 @@ from typing import Literal
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.vector_indexes import summary_index_name
+from app.db.neo4j_repos.vector_indexes import query_summary_index
 
 logger = logging.getLogger(__name__)
 
@@ -119,29 +119,22 @@ async def _query_one_level(
     top_k: int,
 ) -> list[LevelSummaryHit]:
     """Vector-query one level's index. Returns at most top_k hits."""
-    idx_name = summary_index_name(project_id, embedding_model_uuid, level)
-    node_label = level.capitalize()  # Chapter / Part / Book
     weight = _LEVEL_WEIGHTS[level]
 
-    # Cypher CALL db.index.vector.queryNodes is the canonical Neo4j 5.x +
-    # 2026.x vector-index query. Returns (node, score) tuples.
-    cypher = (
-        f"CALL db.index.vector.queryNodes($idx_name, $top_k, $emb) "
-        "YIELD node, score "
-        f"WHERE node:{node_label} "
-        "RETURN node.path AS path, "
-        f"       coalesce(node.{level}_id, node.book_id) AS node_id, "
-        "       coalesce(node.summary_text, '') AS summary_text, "
-        "       score"
-    )
-    rows = await session.run(
-        cypher,
-        idx_name=idx_name,
+    # The query itself lives in the vector-index repo (plan T16). What stays here is the
+    # SCORING: `weighted_score = raw_score * _LEVEL_WEIGHTS[level]` is this selector's
+    # blending policy, and pushing it into the store would make every backend reproduce a
+    # ranking formula in order to be swappable.
+    rows = await query_summary_index(
+        session,
+        project_id=project_id,
+        embedding_model_uuid=embedding_model_uuid,
+        level=level,
+        query_embedding=query_embedding,
         top_k=top_k,
-        emb=query_embedding,
     )
     hits: list[LevelSummaryHit] = []
-    async for record in rows:
+    for record in rows:
         text = record["summary_text"]
         if not text:
             continue

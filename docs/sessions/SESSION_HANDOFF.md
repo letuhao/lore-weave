@@ -58,8 +58,25 @@ layer in knowledge-service, and the moves found two real defects, both fixed wit
 containing `\n` silently no-matches. A bite that never applied looks exactly like a guard with no
 teeth. Verify the mutation landed before trusting a green run.
 
-**▶ Resume at T14** — the `VectorStore` port + its fake. T13 already isolated the surface it wraps
-(`neo4j_repos/vector_indexes.py`), so the adapter should be a byte-for-byte lift.
+**Phase 2 slice 2 landed too — T14·T15·T16.** Two ports (`VectorStore` over Neo4j, `OntologyStore`
+over Postgres — different backends on purpose, so "the pattern works" is a claim about the pattern),
+two fakes that enforce the RULES rather than the signatures, and `scripts/graph-port-gate.py`.
+
+🐞 **The gate caught a selector T11 missed** on its first run: `summary_blend.py` runs
+`CALL db.index.vector.queryNodes`, and T11's scope came from a grep for `MATCH`/`MERGE`/`CREATE`.
+A hand-written search decided a task's scope; the gate decided it correctly.
+⚠️ Its other first finding was a **false positive** — `CREATE INDEX` is SQL too, so it reported the
+Postgres DDL runner. Both ambiguous tokens removed. A gate whose first finding is wrong is one
+people learn to skip.
+
+**Note on fakes:** `isinstance(x, SomePort)` proves almost nothing — a `runtime_checkable` Protocol
+checks method NAMES only. Conformance is asserted by comparing **signatures** (names, kinds,
+defaults), with a positive control proving the comparison can fail.
+
+**▶ Resume at T17** — migrate the 67 modules onto the ports and **empty the `graph-port-gate`
+baseline as you go**. 21 files are listed there; the gate errors on a stale entry, so the list is
+the worklist and cannot be gamed. Cheapest group first (the six `jobs/`);
+`routers/public/extraction.py` last.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

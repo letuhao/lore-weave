@@ -201,6 +201,9 @@ jobs:
       # stays untranslated in every locale while parity reports green.
       - run: python scripts/i18n-key-resolution-gate.py
       - run: python scripts/knowledge-access-gate.py
+      # T16 — Cypher outside an adapter. Repo-wide in CI (the hook is staged-scoped):
+      # a stale baseline entry is only detectable against the whole tree.
+      - run: python scripts/graph-port-gate.py
       - run: python scripts/knowledge-http-surface-gate.py
       - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh

@@ -23,7 +23,12 @@ scope if full plan, not small slices, need full plan first before do anything el
 ## Current state — read this before resuming *(2026-08-09 22:16)*
 
 **Phase 0 LANDED (`6ee50af00`). Phase 1 LANDED (`cfbcea8b5` + `3fbf79afb`) — T4–T10, T53, QC-1.
-Phase 2 slice 1 LANDED (Commit 4) — T11·T12·T13. Next: T14, the `VectorStore` port.**
+Phase 2 slice 1 LANDED (`b042380b5`) — T11·T12·T13. Slice 2 (T14·T15·T16) done. Next: T17.**
+
+⚠️ **Commit 5's checkpoint was re-cut, deliberately.** The plan grouped T14–T17; T14–T16 are
+ADDITIVE (new ports, new fakes, a new gate — no consumer changed) while T17 rewrites 67 modules.
+Those are two different risk boundaries, and the sizing gate's own rule is to checkpoint at a risk
+boundary rather than a task-count. So T14–T16 commit together and T17 commits on its own.
 The reported defect is fixed end to end and the read is index-served. Phase 2 is pulling Cypher
 back behind the repository layer so it can go behind a port at all — and it is finding things:
 T11 uncovered a **tenancy bypass**, T12 a **chapter delete that did not retract its own canon**.
@@ -43,13 +48,10 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T14** — define the `VectorStore` port + its fake
-(`app/ports/vector_store.py`, `app/adapters/neo4j_vector_store.py`, `app/adapters/fake_vector_store.py`).
-T13 already isolated the surface it wraps: `neo4j_repos/vector_indexes.py` holds
-`ensure_summary_indexes` / `drop_summary_index` / `list_summary_vector_indexes` and the naming
-that pairs them, so the adapter is a **byte-for-byte lift** rather than a rewrite. The `search`
-half lives in `neo4j_repos/passages.py::find_passages_by_vector` and
-`entities.py::find_entities_by_vector`.
+**RESUME: T17** — migrate the 67 modules onto the two shipped ports, and **empty the
+`graph-port-gate` baseline as you go**: 21 files are listed there, the gate errors on a stale
+entry, so the list is the worklist and it cannot be gamed. Start with the cheapest group (the six
+`jobs/`), leave `routers/public/extraction.py` last (3 clauses, the biggest surface).
 
 ⚠️ **Bite discipline, learned the hard way in T11:** several files in knowledge-service are
 **CRLF**, and a `perl -0pi` pattern containing `\n` silently no-matches — a bite that never applied
@@ -856,21 +858,136 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 <!-- Commit checkpoint: T11–T13 -->
 
-- [ ] **T14** — Define `VectorStore` + its fake
+- [x] **T14** — Define `VectorStore` + its fake — **GREEN**
   New: `app/ports/vector_store.py`, `app/adapters/neo4j_vector_store.py`, `app/adapters/fake_vector_store.py`
   `search(scope, embedding, k, filter)` · `upsert` · `ensure_index` · `drop_index`. Adapter is
   existing code lifted **byte-for-byte**.
   **Logging:** `DEBUG` scope, dim, k, filter cardinality, elapsed.
+  ---
+  **Evidence.** Port + two implementations + 13 contract tests; knowledge suite **4021 passed**.
 
-- [ ] **T15** — Define `OntologyStore` + its fake *(smallest — proves the pattern)*
+  **"Lifted byte-for-byte" read as DELEGATION, not duplication.** The adapter calls the existing
+  `neo4j_repos` functions rather than copying their Cypher — a byte-for-byte copy would be two
+  places to fix a tenant filter, which is precisely the failure `neo4j_repos` and its
+  `run_read`/`run_write` guards exist to prevent.
+  ⚠️ **That has a consequence T16 must absorb:** `app/db/neo4j_repos/` **is** adapter territory,
+  so the `no-cypher-outside-adapters` gate must allow it as well as `app/adapters/`, or T17 must
+  move the repos under `app/adapters/neo4j/`. Written into `app/adapters/__init__.py` — a gate
+  that quietly allowlists a directory nobody remembers deciding on is how an invariant becomes a
+  formality.
+
+  **Three deliberate deviations from the sketched signature, each because the sketch would have
+  made the port lie:**
+  - **`upsert` takes a typed union, not one common shape.** Passages (18 fields, chunked,
+    canon-flagged) and entity embeddings (a write onto an existing node) are genuinely different;
+    their intersection is `(id, embedding, dim, model)`, which drops `canon`, `chunk_index`,
+    `source_lang`, `content_hash`. Those come back as kwargs the moment the adapter needs them,
+    and the abstraction leaks on day one.
+  - **`weighted_score` is not returned.** `find_entities_by_vector` computes
+    `raw_score * anchor_score`; that weighting is domain policy. The port returns `raw_score` plus
+    the anchor value and lets the caller decide — a backend that had to reproduce a scoring
+    formula to be swappable is not swappable.
+  - **`oversample_factor` is not on the port.** Over-fetch-then-filter compensates for Neo4j's
+    index being unable to filter by tenant. pgvector filters in the planner (T23) and would have
+    to accept a meaningless parameter. It lives in the adapter.
+
+  **The fake computes real cosine similarity and enforces the rules, not the signatures.** It is
+  about to carry the ~561 tests that skip without a live Neo4j (T20), and a fake that has drifted
+  is *worse* than the skip it replaces — a skip is visible in the output. So it enforces tenant
+  scoping, the dim/index-family split, `False`-on-missing-entity, replace-on-re-embed, and
+  index-name validation on drop. It reuses the **real** name builder, so a name it mints survives
+  the real parser.
+
+  **Six bites, each verified to mutate the file first, each red then green:** cosine replaced by a
+  constant (insertion order wins) · the fake ignores `user_id` · it ignores the dim family · drafts
+  stop being excluded by default · `drop_index` accepts any name · the Neo4j adapter renames `k`
+  to `top_k`.
+
+  ⚠️ **`isinstance(x, VectorStore)` proves almost nothing** and both implementations pass it
+  trivially: a `runtime_checkable` Protocol checks method **names** only. An adapter whose `search`
+  took `top_k` would satisfy it and fail at the call site. So conformance is asserted by comparing
+  **signatures** — names, kinds and defaults — for both implementations, with a positive control
+  proving that comparison can fail.
+
+- [x] **T15** — Define `OntologyStore` + its fake *(smallest — proves the pattern)* — **GREEN**
   New: `app/ports/ontology_store.py` + adapters. 2.5k LOC, low blast radius.
   (depends on T14)
+  ---
+  **Evidence.** Port + `PostgresOntologyStore` + `FakeOntologyStore` + 14 contract tests;
+  knowledge suite **4035 passed**.
 
-- [ ] **T16** — The `no-cypher-outside-adapters` gate
+  **It proves the pattern on a DIFFERENT backend, which is the point.** `VectorStore` fronts
+  Neo4j; this fronts Postgres (`kg_graph_schemas`). Had both fronted Neo4j, "the pattern works"
+  would have been a claim about Neo4j rather than about the pattern.
+
+  ⚠️ **Scope: READS only, and that is not a half-measure.** Ontology writes are effects
+  (`adopt_effect` · `schema_edit_effect` · `sync_effect` · `triage_schema_write_effect`), each
+  with its own transaction, confirm-token and optimistic-concurrency semantics — KM6 compares
+  `(schema_id, schema_version)` at confirm time to detect drift since mint. Porting those means
+  porting the transaction model, and the port would have to expose a connection to keep them
+  atomic, which is the abstraction failing out loud. The reads are what every consumer outside
+  `app/ontology/` uses — resolver, routers, MCP server, extraction — and none of them needs a
+  database after this.
+
+  **The rules under test are VISIBILITY rules,** because a store that returned another user's
+  `user`-tier template satisfies every signature and still leaks across tenants. Two behaviours
+  the fake copies deliberately: *not-visible and not-found both return `None`* (if invisible
+  raised, a caller could enumerate another tenant's schema ids by watching which ones raise), and
+  *`resolve_for_project` never returns `None`* (a project with no ontology still has to extract
+  something — the fallback is contract, not convenience).
+
+  **Seven bites, each red then green:** every user's templates become visible · a project schema
+  leaks without naming the project · invisible raises instead of reading as absent · deprecated
+  templates appear in the picker · another user's template becomes adoptable · the
+  empty-resolution `WARN` goes silent · the Postgres adapter drops a keyword.
+
+  ⚠️ **A test of mine was wrong and the fake was right:** `ORDER BY scope, code` is **alphabetical
+  by scope**, so `project` sorts before `system` — it looks like a tier order at a glance and is
+  not. Now asserted explicitly, so a consumer reading position 0 as "most specific" finds out
+  here rather than in a prompt.
+
+- [x] **T16** — The `no-cypher-outside-adapters` gate — **GREEN, and it found what T11 missed**
   New: `scripts/graph-port-gate.py`; wire into pre-commit + `foundation-ci.yml`
   No `MATCH (` / `MERGE (` / `CREATE (` outside `app/adapters/`.
   **Bite:** delete the adapter package → gate must go red.
   (depends on T15)
+  ---
+  **Evidence.** `[graph-port-gate] PASS — 289 file(s) scanned outside adapter dirs; 21 baselined`.
+  Wired staged-scoped into `.githooks/pre-commit` and repo-wide into `foundation-ci.yml` (a stale
+  baseline entry is only detectable against the whole tree).
+
+  🐞 **On its first run the gate caught a selector T11 missed.**
+  `context/selectors/summary_blend.py` runs `CALL db.index.vector.queryNodes` through a direct
+  `session.run`. T11's brief was *"pull Cypher out of the selectors"* and I cleared `salience.py`
+  alone — because the search that scoped the task grepped for `MATCH`/`MERGE`/`CREATE`, and this
+  query opens with none of them. **A hand-written search decided the scope of a task; the gate
+  decided it correctly.** Moved to `neo4j_repos/vector_indexes.py::query_summary_index`, with the
+  level weighting left in the selector (that is blending policy, not storage).
+
+  ⚠️ **Its first finding was also a FALSE POSITIVE, and that mattered more than the true one.**
+  `CREATE INDEX` and `CREATE CONSTRAINT` are SQL as well as Cypher, so the gate reported
+  `app/db/migrate.py` — the **Postgres** DDL blob — as a graph violation. Both tokens are gone;
+  `CREATE VECTOR INDEX` stays because only Cypher has it. A gate whose first finding is wrong is a
+  gate people learn to skip.
+
+  **It parses, it does not grep.** Only string CONSTANTS are examined, with docstrings excluded —
+  prose about Cypher is not Cypher, and that false positive has already bitten this refactor twice
+  (T9's `CONCURRENTLY` guard matched its own comment; T13's guard matched a docstring
+  demonstrating injection).
+
+  **The baseline is a ratchet, not a hiding place.** 21 files still carry Cypher, so "clean or
+  fail" would have meant not shipping the gate. It ships with an **explicit per-FILE** baseline —
+  a new file in a listed directory fails — and **a baseline entry with nothing left to excuse is
+  itself an error**, so a cleaned file cannot keep standing permission and silently re-grant it
+  later. T17's job is to delete entries.
+
+  **Adapter territory is `app/adapters/` AND `app/db/neo4j_repos/`**, decided in T14 and written
+  in three places (the gate, `app/adapters/__init__.py`, this plan): the repos package *is* the
+  Neo4j implementation, and the adapters delegate to it rather than copying its Cypher.
+
+  **Four bites, each red then green:** new Cypher in a non-adapter file · a cleaned file left on
+  the baseline · the docstring exclusion removed (prose reported as violation) · the adapter dirs
+  stop counting as adapters.
 
 - [ ] **T17** — Migrate the 67 modules to the two shipped ports
   **Logging:** `DEBUG` adapter selection at construction; `INFO` the bound adapter at startup.
