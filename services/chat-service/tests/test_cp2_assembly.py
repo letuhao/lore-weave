@@ -843,6 +843,21 @@ class TestAPromptCanChangeAndSomethingNotices:
 
 # ── 2.7 · THE ROUTE — a turn's advertised set comes from the manifest ───────────────────────────
 
+def _admitted_ids() -> set[str]:
+    """The ids the committed manifest admits — read, never typed.
+
+    CP-4 admits declarations one at a time, so any test asserting "what the new arm serves" has to
+    take its expectation from the manifest rather than from a literal, or it goes red on the next
+    admission for a reason that has nothing to do with the property it guards.
+    """
+    import json as _json
+    import pathlib as _pathlib
+
+    root = _pathlib.Path(__file__).resolve().parents[3]
+    doc = _json.loads((root / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
+    return {r["id"] for r in doc["declarations"]}
+
+
 class TestTheRouteServesFromTheManifestAndNothingElse:
     """REJECTS: an arm that quietly keeps the legacy core, and a control arm this route perturbed.
 
@@ -885,14 +900,38 @@ class TestTheRouteServesFromTheManifestAndNothingElse:
         assert {d["function"]["name"] for d in control} >= set(legacy_catalog), (
             "the control arm stopped serving the legacy catalogue - CP-2's control group moved"
         )
-        assert new_arm == [], f"the new arm served legacy declarations: {new_arm}"
+        # 🔴 **CP-4 ADMITTED `book_list`, SO `== []` STOPPED BEING THE PROPERTY.** The claim was
+        # never "the new arm serves nothing" — it is "the new arm serves NONE OF THE LEGACY
+        # CATALOGUE", which is what the fixture hands in. Asserting emptiness was only equivalent
+        # while the manifest was empty, and it would have made the first admission look like a leak.
+        served = {d["function"]["name"] for d in new_arm}
+        assert served & set(legacy_catalog) == set(), (
+            f"the new arm served legacy declarations: {sorted(served & set(legacy_catalog))}"
+        )
+        assert served == _admitted_ids(), (
+            f"the new arm served {sorted(served)}, which is not what the manifest admits "
+            f"({sorted(_admitted_ids())}) — a declaration arrived from somewhere else"
+        )
 
-    def test_ON_THE_NEW_ARM_AN_EMPTY_MANIFEST_ADVERTISES_NOTHING_AT_ALL(self, monkeypatch):
+    def test_ON_THE_NEW_ARM_AN_EMPTY_MANIFEST_ADVERTISES_NOTHING_AT_ALL(self, monkeypatch, tmp_path):
         """`declarations: []` → `[]`. **Not the core, not `find_tools`, not the frontend extras.**
         An arm that kept them would be the membrane leaking through its own route on day one."""
         from app.config import settings
 
         monkeypatch.setattr(settings, "agentruntime_arm", True)
+        # 🔴 CP-4 admitted the first declaration, so the COMMITTED manifest is no longer empty and
+        # this test had to stop reading it. The property is about `declarations: []`, so it now
+        # points the package at a genuinely empty manifest instead of relying on the repository
+        # happening to have one — which is the honest form of the claim its name makes.
+        import json as _json
+
+        from app.agentruntime import ambient
+
+        empty = tmp_path / "empty-manifest.json"
+        empty.write_text(_json.dumps(
+            {"manifest_version": 1, "contract_version": "1.0.0", "declarations": []}),
+            encoding="utf-8")
+        monkeypatch.setenv(ambient.MANIFEST_PATH_ENV, str(empty))
         assert self._advertise() == []
 
     def test_NO_LEGACY_DECLARATION_SURVIVES_THE_ROUTE__item_B(self, monkeypatch):
@@ -908,7 +947,15 @@ class TestTheRouteServesFromTheManifestAndNothingElse:
         payload = self._advertise(catalog_index=legacy_catalog,
                                   active_tool_names=set(legacy_catalog),
                                   extra_frontend=[legacy_catalog["propose_edit"]])
-        assert payload == [], f"a legacy declaration reached the wire on the new arm: {payload}"
+        served = {d["function"]["name"] for d in payload}
+        assert served & set(legacy_catalog) == set(), (
+            f"a legacy declaration reached the wire on the new arm: "
+            f"{sorted(served & set(legacy_catalog))}"
+        )
+        # The richly-populated legacy catalogue contributed NOTHING; everything served is admitted.
+        assert served == _admitted_ids(), (
+            f"served {sorted(served)} but the manifest admits {sorted(_admitted_ids())}"
+        )
 
     def test_THE_BRANCH_READS_NOTHING_FROM_THE_LEGACY_CATALOG(self):
         """🔴 **THE MEMBRANE GATE CANNOT SEE THIS FILE**, so the separation rests on the branch

@@ -4369,8 +4369,10 @@ would have been scope reduction converting a FAIL to a PASS, so all eight are de
 **Measured through the rebuilt image and a re-federated gateway:** catalogue **315** (unchanged —
 deprecate, never delete), `superseded_by` **54 → 62**, and `book_list_chapters`,
 `book_list_revisions`, `book_scene_list` point at `book_list`. Tier histogram unchanged (R 102 / W 60
-/ A 153), so nothing else drifted. Both guards proven red by removing one wrapper. ✖ This establishes
-the **edge**; admitting the declaration is still open.
+/ A 153), so nothing else drifted. Both guards proven red by removing one wrapper. ✅ **AND THE DECLARATION IS ADMITTED — 2026-08-09.** `python scripts/agentruntime-admit.py book_list` →
+one row, `lane=read tier=R cost=1284 owning_service=book-service`, queue empty. Live through the real
+advertise chokepoint: **new arm `['book_list']` · control arm 8 legacy tools · leak set `[]`**. CP-1.3's M3
+test is now a MEASUREMENT — it also asserts `surfaced == admitted`, the converse no intersection can see.
 
 **⬅️ INHERITED FROM CP-1.3, PO decision 2026-08-05:** the M3 leak test becomes a **measurement** here
 rather than a positive control. With an empty manifest its intersection is empty whatever the legacy
@@ -4462,7 +4464,7 @@ retrofitted to whatever gets built.
 | CP-1 membrane, empty | β | ✅ **BUILT · ALL 7 ITEMS PASS · reconciled 2026-08-09.** 7 verifier deployments (V-CODE ×5, V-LIVE ×2). **P1 closed at round 4** after three of the builder's own gates died — wrong direction, then unable to fire, then a law sampled at five points — and only closed when the invariant moved into **production code** as a post-condition. **1.4's P4 half was SPLIT BY PO DECISION 2026-08-06** (`contract_version` here, `admitted_against` → CP-4), so the *"blocked on a PO decision"* this row carried for three days named a question already answered. **1.8a · U-1 · U-2 were fixed builder-only after a round-8 FAIL and are now re-verified by injection.** One PO call remains: whether fixed-after-FAIL-then-re-verified closes an item whose original verdict was FAIL |
 | CP-2 runtime | β | ✅ **ALL 10 ROWS BUILT 2026-08-08.** 2.1 · 2.2 · 2.3 · 2.4 · 2.5 · **2.7 (M4 + THE ROUTE)** · 2.8 · 2.9 · 2.10 · **2.6**, each QC1 `PASS` + QC3 `PASS`. **QC2 upgraded to `PASS` for 2.5 and 2.7's items A/C/D** by one in-process turn on the DEPLOYED image against real Postgres, which also found **F-50**. ✖ **A served turn against a real model is still `CANNOT DETERMINE`** — it needs the arm on for the serving process, which is a change to a live system nobody asked for. That is the one honest gap left in CP-2 |
 | CP-3 plan | γ | ⬜ |
-| CP-4 declarations | γ | ⬜ |
+| CP-4 declarations | γ | ✅ **CLOSED 2026-08-09 · 4.a · 4.b · 4.c · 4.d ALL `PASS` on all three axes, and `book_list` is ADMITTED.** The deliverable is a **producer**, not 315 authored rows: `derive.py` covers **315/315, 0 unresolved**, denominator from the catalogue. Live: the new arm serves exactly `['book_list']` while the control arm still serves all 8 legacy tools — **legacy leak set empty**. §6.4's queue **fills and drains** (`[] → ['entity-triage'] → []`) across a real breaking amendment, row served throughout. M1's drift gate is re-derivation rather than `build([])`, and a hand-edited `cost` is caught — proven by injection |
 
 ---
 

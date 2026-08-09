@@ -430,7 +430,32 @@ def _manifest_drift() -> int:
     except Exception as exc:
         print(f"FAIL: manifest row failed the contract: {exc}", file=sys.stderr)
         return 1
-    expected = build([])
+    # 🔴 **M1's DRIFT GATE WAS `build([])`, AND THAT HELD ONLY WHILE THE MANIFEST WAS EMPTY.**
+    # §0.14.1c predicted it: *"byte-equality holds only while the manifest is empty; it reds
+    # unconditionally the moment CP-4 admits anything."* It did, on the first admitted declaration.
+    #
+    # The replacement is stronger rather than looser: the committed file is compared against what
+    # the generator produces when every declaration the file NAMES is **re-derived from the frozen
+    # catalogue**. An empty manifest still reduces to `build([])`, so the original property is a
+    # special case of this one — and a non-empty manifest is now checked field by field against its
+    # own producer, which is what makes a hand-edited row detectable. Editing `cost` by hand, or
+    # adding a row nobody derived, no longer survives this gate.
+    from app.agentruntime.admission import admit as _admit
+    from app.agentruntime.derive import derive_one as _derive_one
+
+    _baseline = REPO / "contracts" / "agent-runtime-baseline" / "tools-list.snapshot.json"
+    _cat = {t["name"]: t for t in _json.loads(_baseline.read_text(encoding="utf-8"))["tools"]}
+    _ids = [r["id"] for r in doc.get("declarations", [])]
+    _absent = [i for i in _ids if i not in _cat]
+    if _absent:
+        print(f"FAIL: manifest names {_absent}, which the frozen catalogue does not contain",
+              file=sys.stderr)
+        print("     every admitted declaration is DERIVED from a catalogue entry; a row naming "
+              "nothing derivable was hand-written, which is the one thing the generator being the "
+              "sole writer is supposed to make impossible", file=sys.stderr)
+        return 1
+    expected = build([_admit(_derive_one(_cat[i]).declaration) for i in _ids],
+                     definitions={i: _cat[i] for i in _ids})
     if doc != expected:
         print("FAIL: manifest drift - the committed file is not what the generator produces",
               file=sys.stderr)

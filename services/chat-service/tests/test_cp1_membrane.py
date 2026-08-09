@@ -217,11 +217,42 @@ class TestTheManifestStartsEmpty:
     the committed artifact rather than on what the generator would produce.
     """
 
-    def test_the_committed_manifest_is_empty(self):
+    def test_EVERY_COMMITTED_ROW_IS_ONE_THE_PRODUCER_DERIVES(self):
+        """🔴 **THIS WAS `test_the_committed_manifest_is_empty`, AND CP-4 IS WHERE IT STOPS BEING
+        TRUE — by design, not by drift.**
+
+        Its reason was exact and worth restating: *"the membrane's only provable state is empty; a
+        seeded row cannot be told from a leak."* That is why M1 starts empty — with 315 legacy
+        declarations one directory away, any non-empty result on day one is indistinguishable from a
+        leak. **The emptiness was never the property; attributability was**, and emptiness was the
+        only way to have it until a producer existed.
+
+        A producer exists now (`derive.py`, 315/315), so the stronger form is available: every
+        committed row must be **byte-identical to what the producer derives for its id**. A leaked
+        row is not merely absent from that set — it cannot be produced at all, because the only
+        input is the frozen catalogue. That is a sharper test than `== []`, and unlike `== []` it
+        keeps working for the next 314 admissions.
+
+        The byte-comparison itself lives in `agentruntime-membrane-gate.py` (M1's drift gate), and
+        `test_the_package_imports_only_stdlib_and_itself` runs it. This asserts the half a gate
+        cannot: that the ids in the file are a subset of the catalogue, checked here so a row naming
+        nothing derivable fails in the suite too.
+        """
+        import json as _json
+
         doc = json.loads((_REPO / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
-        assert doc["declarations"] == [], (
-            "the membrane's only provable state is empty; a seeded row cannot be told from a leak"
+        baseline = _json.loads(
+            (_REPO / "contracts" / "agent-runtime-baseline" / "tools-list.snapshot.json")
+            .read_text("utf-8"))
+        catalogue = {t["name"] for t in baseline["tools"]}
+        ids = [r["id"] for r in doc["declarations"]]
+        assert set(ids) <= catalogue, (
+            f"{sorted(set(ids) - catalogue)} are in the manifest and not in the frozen catalogue. "
+            f"A declaration is DERIVED from a catalogue entry; a row naming nothing derivable was "
+            f"hand-written, and a hand-written row cannot be told from a leak — which is the exact "
+            f"reason this file started empty."
         )
+        assert len(set(ids)) == len(ids), f"a declaration id appears twice: {ids}"
 
     def test_a_missing_manifest_reads_as_EMPTY_not_as_fall_back(self, tmp_path):
         """REJECTS the fail-open direction. A missing catalog must mean *no declarations*, never
@@ -405,6 +436,14 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
     def test_a_real_legacy_tool_name_is_not_discoverable(self, legacy_id):
         """These three exist in the legacy catalog today. Not hidden — absent."""
         doc = json.loads((_REPO / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
+        # CP-4: a name that has been ADMITTED is legitimately on the new surface — `book_list` is
+        # the first declaration, and it appears in this list because it is also a legacy tool. The
+        # property was never "these three names never appear"; it is "a name the membrane did not
+        # admit cannot appear", which is what the subtraction expresses.
+        admitted_ids = {r["id"] for r in doc["declarations"]}
+        if legacy_id in admitted_ids:
+            pytest.skip(f"{legacy_id} is admitted; the leak claim is asserted over the "
+                        f"un-admitted remainder by the sibling test")
         assert legacy_id not in {r["id"] for r in discover(doc)}
 
     def test_REAL_legacy_declarations_of_all_three_kinds_return_zero_rows(self):
@@ -441,14 +480,39 @@ class TestDiscoveryReturnsNothingForLegacyDeclarations:
         doc = json.loads((_REPO / "contracts" / "agent-runtime-manifest.json").read_text("utf-8"))
         surfaced = {r["id"] for r in discover(doc)}
 
+        # 🔴 **CP-4, 2026-08-09 — THIS BECAME A MEASUREMENT, WHICH IS WHY CP-1.3 WAS TRANSFERRED
+        # HERE.** The board: *"with an empty manifest its intersection is empty whatever the legacy
+        # list holds — a verifier substituted 315 fictional names and got an identical pass — so
+        # today it only proves a planted leak WOULD be caught. The first admitted row gives it a
+        # subject, and the same assertion then measures something: that no legacy tool, skill or
+        # workflow rode in beside it."*
+        #
+        # `book_list` is admitted, so it is legitimately on the new surface AND legitimately in the
+        # legacy tool list — the two sets now genuinely overlap, and the claim is about the
+        # difference. A leak is a legacy name that surfaced **and was never admitted**.
+        admitted_ids = {r["id"] for r in doc["declarations"]}
+        assert admitted_ids, (
+            "the manifest is empty again, so `surfaced` is empty and every intersection below is "
+            "vacuous — this test would be a positive control wearing a measurement's name"
+        )
+
         def leaks(names: list[str]) -> list[str]:
-            return sorted(surfaced & set(names))
+            return sorted((surfaced & set(names)) - admitted_ids)
 
         for kind, names in (("tool", legacy_tools), ("skill", legacy_skills),
                             ("workflow", legacy_workflows)):
             assert not leaks(names), (
                 f"legacy {kind}(s) reachable through the new discovery: {leaks(names)}"
             )
+
+        # And the other direction, which only exists once something is admitted: everything on the
+        # surface must be something this build admitted. `surfaced - admitted` is the leak set
+        # stated positively, and it catches a row that arrived from somewhere other than the
+        # manifest — which no intersection over the legacy registries can see.
+        assert surfaced == admitted_ids, (
+            f"the new surface carries {sorted(surfaced - admitted_ids)} beyond what the manifest "
+            f"admits, and is missing {sorted(admitted_ids - surfaced)} of what it does"
+        )
 
         # 🔴 POSITIVE CONTROL, and round 3's finding is why it is here. With an empty manifest
         # `surfaced` is empty, so `∅ ∩ X = ∅` for ANY X — a verifier substituted 315 fictional

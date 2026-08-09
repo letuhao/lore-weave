@@ -1,5 +1,18 @@
 {
   "manifest_version": 1,
   "contract_version": "1.0.0",
-  "declarations": []
+  "declarations": [
+    {
+      "id": "book_list",
+      "kind": "tool",
+      "owning_service": "book-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 1284
+    }
+  ]
 }
