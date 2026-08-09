@@ -454,8 +454,44 @@ def _manifest_drift() -> int:
               "nothing derivable was hand-written, which is the one thing the generator being the "
               "sole writer is supposed to make impossible", file=sys.stderr)
         return 1
-    expected = build([_admit(_derive_one(_cat[i]).declaration) for i in _ids],
-                     definitions={i: _cat[i] for i in _ids})
+    # 🔴 **AND RE-DERIVATION ALONE STOPPED REPRODUCING THE FILE THE MOMENT DERIVATION STOPPED
+    # SELF-RELEASING (CP-5.2).** `derive_one` yields `draft`; a released row says `admitted`; so
+    # this compared a registration against a registration-plus-a-decision and reported drift on
+    # every serving row. It was red from that change until this one.
+    #
+    # The fix is not to exempt `lifecycle` — that would let a hand-typed `admitted` through, which
+    # is the entire class this check exists for. It is to reproduce the **whole** pipeline:
+    # re-derive, then re-run the release decision the file records. `promote()` refuses a tool
+    # whose contract is incomplete, so an `admitted` row that no longer satisfies rung 2 fails
+    # HERE, at the file, and not only at the command that wrote it. That is §6.1's layer 3 applied
+    # to the release decision: **a type may express an invariant; it may not be the only thing
+    # enforcing one across a persistence boundary.**
+    from app.agentruntime.contract import Declaration as _Declaration
+    from app.agentruntime.promotion import promote as _promote
+    from app.agentruntime.toolcontract import ToolContractViolation as _TCV
+
+    _registry_path = REPO / "contracts" / "agent-runtime-tool-contracts.json"
+    _registry = (_json.loads(_registry_path.read_text(encoding="utf-8"))
+                 if _registry_path.exists() else {})
+    _recorded = {r["id"]: r["lifecycle"] for r in doc.get("declarations", [])}
+    _reproduced = []
+    for i in _ids:
+        _decl = _derive_one(_cat[i]).declaration
+        if _recorded.get(i) == "admitted":
+            try:
+                _decl = _promote(_decl, _cat[i], registry=_registry)
+            except _TCV as exc:
+                print(f"FAIL: {i} is recorded `admitted` but rung 2 refuses it: {exc}",
+                      file=sys.stderr)
+                print("     a released row must satisfy the tool contract every time the file is "
+                      "read, not only when it was written", file=sys.stderr)
+                return 1
+        elif _recorded.get(i) not in (None, _decl.lifecycle):
+            # deprecated / retired are recorded decisions this gate does not re-take.
+            _decl = _Declaration(id=_decl.id, kind=_decl.kind, source_path=_decl.source_path,
+                                 lifecycle=_recorded[i], members=_decl.members)
+        _reproduced.append(_admit(_decl))
+    expected = build(_reproduced, definitions={i: _cat[i] for i in _ids})
     if doc != expected:
         print("FAIL: manifest drift - the committed file is not what the generator produces",
               file=sys.stderr)

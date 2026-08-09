@@ -79,6 +79,12 @@ SUITES = (
     # "append-only" is a PRIMARY KEY, so a mock would assert my model of the database
     # instead of the database.
     "tests/test_cp3_plan_db.py",
+    # CP-5.1/5.2's tool contract + rung 2. Added in the same change as the suite, per the note
+    # above — and this suite is where §7's *every member needs a subject* is enforced, so leaving
+    # it unregistered would have made the checkpoint's own gate 100% declared by arithmetic.
+    "tests/test_cp5_toolcontract.py",
+    # CP-5.3's resolver. Registered in the same change as the suite, per the note above.
+    "tests/test_cp5_refresolve.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

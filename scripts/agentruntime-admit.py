@@ -2,7 +2,23 @@
 """CP-4 · admit declarations into the manifest, **one at a time**, through the producer.
 
     python scripts/agentruntime-admit.py book_list [more ids...]
-    python scripts/agentruntime-admit.py --list        # what is admissible, and what is admitted
+    python scripts/agentruntime-admit.py --list             # admissible vs admitted
+    python scripts/agentruntime-admit.py --promote book_list  # CP-5.2 rung 2: draft -> admitted
+
+🔴 **CP-5.2 — REGISTERING AND RELEASING ARE NOW DIFFERENT COMMANDS, AND BEFORE THIS THEY WERE THE
+SAME ACCIDENT.** `derive_one` yields `draft` (derivation registers; it does not release), so every
+run of this script rewrote `lifecycle` to `draft` — measured 2026-08-09 against a copy of the live
+manifest: admitting a third declaration **silently demoted `book_list` and `book_read` off the
+wire**, because `SERVED_LIFECYCLES` is `{admitted, deprecated}`. The two rows that served were
+residue from before derivation stopped self-releasing, and nothing could have promoted them back:
+`check_transition` documented the move and had **zero production callers**.
+
+So this script now does two separable things:
+
+* plain admission **carries each row's existing lifecycle forward** — re-deriving re-runs every
+  contract clause without changing a release decision nobody made;
+* `--promote` is the ONLY path to `admitted`, and it goes through `promotion.promote`, which
+  refuses a tool whose `_meta.contract` is incomplete (rung 2).
 
 The catalogue read here is the FROZEN baseline (`contracts/agent-runtime-baseline/`), not a live
 gateway. That is deliberate and it is the same reason the baseline exists at all: a declaration
@@ -25,13 +41,18 @@ ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "services" / "chat-service"))
 
 from app.agentruntime.admission import admit  # noqa: E402
+from app.agentruntime.contract import Declaration  # noqa: E402
 from app.agentruntime.derive import derive_one  # noqa: E402
+from app.agentruntime.promotion import check_tool_contract, promote  # noqa: E402
+from app.agentruntime.toolcontract import ToolContractViolation  # noqa: E402
 from app.agentruntime.manifest import (  # noqa: E402
     load, manifest_path, readmission_queue,
 )
 from app.agentruntime import manifest as _manifest  # noqa: E402
 
 BASELINE = ROOT / "contracts" / "agent-runtime-baseline" / "tools-list.snapshot.json"
+#: CP-5.2 — the interim home for a tool contract, until the owning service publishes it in `_meta`.
+CONTRACT_REGISTRY = ROOT / "contracts" / "agent-runtime-tool-contracts.json"
 
 
 def catalogue() -> dict[str, dict]:
@@ -39,25 +60,50 @@ def catalogue() -> dict[str, dict]:
     return {t["name"]: t for t in doc["tools"]}
 
 
+def contract_registry() -> dict:
+    """Absent is a legitimate empty state: it simply means nothing can be promoted yet."""
+    if not CONTRACT_REGISTRY.exists():
+        return {}
+    return json.loads(CONTRACT_REGISTRY.read_text(encoding="utf-8"))
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("ids", nargs="*", help="declaration ids to admit")
     ap.add_argument("--list", action="store_true", help="show admitted vs admissible")
+    ap.add_argument("--promote", action="append", default=[], metavar="ID",
+                    help="CP-5.2 rung 2: move a registered declaration draft -> admitted. Refused "
+                         "unless the tool's _meta.contract covers every member that applies to it")
     args = ap.parse_args(argv)
 
     cat = catalogue()
+    registry = contract_registry()
     path = manifest_path()
     current = load(path=path) if path and path.exists() else None
-    admitted_ids = [r["id"] for r in (current or {}).get("declarations", [])]
+    rows = (current or {}).get("declarations", [])
+    registered_ids = [r["id"] for r in rows]
+    #: The release decision already on disk. Carried forward rather than re-derived, because
+    #: derivation registers and does not release — re-deriving a served row into `draft` is the
+    #: demotion this script used to perform silently.
+    lifecycle_now = {r["id"]: r["lifecycle"] for r in rows}
 
-    if args.list or not args.ids:
+    if args.list or not (args.ids or args.promote):
+        served = [i for i, lc in lifecycle_now.items() if lc in ("admitted", "deprecated")]
         print(f"catalogue     {len(cat)} tools (frozen baseline)")
-        print(f"manifest      {len(admitted_ids)} admitted: {admitted_ids}")
+        print(f"manifest      {len(registered_ids)} registered: "
+              f"{[(i, lifecycle_now[i]) for i in registered_ids]}")
+        print(f"serving       {len(served)}: {served}")
         if current:
             print(f"queue         {readmission_queue(current)}")
+        # Rung 2, as a report: what each registered row would need before it could be promoted.
+        for i in registered_ids:
+            if i in cat:
+                rep = check_tool_contract(cat[i], registry=registry)
+                state = "COMPLETE" if rep.is_complete else f"missing {list(rep.missing)}"
+                print(f"  contract    {i:<24} {state}")
         return 0
 
-    unknown = [i for i in args.ids if i not in cat]
+    unknown = [i for i in (args.ids + args.promote) if i not in cat]
     if unknown:
         print(f"not in the catalogue: {unknown}")
         return 1
@@ -65,7 +111,7 @@ def main(argv: list[str] | None = None) -> int:
     # Re-admit everything already in the manifest ALONGSIDE the new ids: a declaration does not
     # leave the runtime, and `build` refuses to lose one. Re-deriving rather than copying the old
     # row is the point — it re-runs every clause against the current contract.
-    want = sorted(set(admitted_ids) | set(args.ids))
+    want = sorted(set(registered_ids) | set(args.ids) | set(args.promote))
     missing = [i for i in want if i not in cat]
     if missing:
         print(f"already admitted but no longer in the catalogue: {missing}. That is a RETIREMENT, "
@@ -74,7 +120,36 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     derived = [derive_one(cat[i]) for i in want]
-    doc = _manifest.generate([admit(d.declaration) for d in derived],
+    declarations = []
+    for d in derived:
+        decl = d.declaration
+        # Carry the release decision already recorded. A row that serves keeps serving; a row that
+        # was never released stays `draft`. Neither is decided by re-running derivation.
+        carried = lifecycle_now.get(decl.id, decl.lifecycle)
+        if carried != decl.lifecycle:
+            decl = Declaration(id=decl.id, kind=decl.kind, source_path=decl.source_path,
+                               lifecycle=carried, members=decl.members)
+        if decl.id in args.promote:
+            try:
+                decl = promote(decl, cat[decl.id], registry=registry)
+            except ToolContractViolation as exc:
+                rep = check_tool_contract(cat[decl.id], registry=registry)
+                print(f"REFUSED  {decl.id}: rung 2 will not promote an incomplete contract.")
+                print(f"  applies  {list(rep.applicable)}")
+                print(f"  missing  {list(rep.missing)}")
+                if rep.unknown:
+                    print(f"  unknown  {list(rep.unknown)}")
+                print(f"  {exc}")
+                print("\nThe tool stays registered `draft` and does not reach the wire. Declare "
+                      "the members in the owning service's `_meta.contract` and re-run "
+                      "(CP-5 §4 rung 2).")
+                return 1
+            rep = check_tool_contract(cat[decl.id], registry=registry)
+            print(f"PROMOTED {decl.id}: draft -> admitted, contract complete "
+                  f"({len(rep.applicable)} members, declared in {rep.source})")
+        declarations.append(decl)
+
+    doc = _manifest.generate([admit(d) for d in declarations],
                              path=path, bootstrap=current is None,
                              definitions={i: cat[i] for i in want})
     print(f"manifest      {len(doc['declarations'])} declaration(s) at contract "

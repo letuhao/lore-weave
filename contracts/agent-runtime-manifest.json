@@ -12,7 +12,7 @@
       "members": [],
       "lane": "read",
       "tier": "R",
-      "cost": 1284
+      "cost": 1112
     },
     {
       "id": "book_read",
@@ -24,7 +24,7 @@
       "members": [],
       "lane": "read",
       "tier": "R",
-      "cost": 1407
+      "cost": 1210
     }
   ]
 }

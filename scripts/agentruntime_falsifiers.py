@@ -1064,6 +1064,264 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/surface.py", '_plain(self.cost_field, str, "cost_field")',
                               'pass  # unbound'),
     ],
+
+    # -- CP-5.1/5.2: the tool contract, and rung 2 --------------------------------------------
+    #
+    # 🔴 Each of these re-injects the defect the guard was written against, rather than breaking
+    # something adjacent. The checkpoint exists because C-3…C-17 sat unenforced behind a docstring,
+    # so a guard here that cannot be reddened would be the failure repeating one level up.
+    "test_EVERY_MEMBER_APPLIES_TO_AT_LEAST_ONE_REAL_TOOL": [
+        # Give a member a trigger that selects nothing — a clause with no subject, which is
+        # precisely how C-3…C-17 became permanent.
+        (f"{PKG}/toolcontract.py", "        trigger=is_batch,",
+                                   "        trigger=lambda _td: False,"),
+    ],
+    "test_A_CONDITIONAL_MEMBER_IS_REQUIRED_ONLY_WHERE_ITS_TRIGGER_FIRES": [
+        # Require every member of every tool — v1's rule, which made migration impossible.
+        (f"{PKG}/toolcontract.py", "return True if self.trigger is None else bool(self.trigger(tool_def))",
+                                   "return True"),
+    ],
+    "test_STRIPPING_ANY_ONE_CORE_MEMBER_REFUSES_THE_PROMOTION": [
+        # Rung 2 stops refusing: an incomplete contract reaches `admitted` and therefore the wire.
+        (f"{PKG}/promotion.py", "    if not report.is_complete:", "    if False:"),
+    ],
+    "test_A_TOOL_DECLARING_NO_CONTRACT_CANNOT_BE_PROMOTED": [
+        (f"{PKG}/promotion.py", "    if not report.is_complete:", "    if False:"),
+    ],
+    "test_AN_EMPTY_MEMBER_IS_NOT_A_DECLARATION": [
+        # A member satisfiable by typing its key — the "documented in a docstring" failure.
+        (f"{PKG}/promotion.py", '        return "is declared as null"', "        return None"),
+    ],
+    "test_AN_UNKNOWN_MEMBER_IS_REFUSED_RATHER_THAN_IGNORED": [
+        # A typo silently satisfies nothing while the producer believes it declared the member.
+        (f"{PKG}/promotion.py", "    unknown = tuple(sorted(k for k in block if k not in known))",
+                                "    unknown = ()"),
+    ],
+    "test_THE_CATALOGUE_HAS_NO_UNTYPED_PROPERTY_SO_5_3b_HAS_NO_SUBJECT": [
+        # Restore the `.get("type")` artifact that invented 5.3b's 120 untyped properties: read a
+        # union type as no type, and 129 correctly-typed `Optional[str]` id properties become
+        # "untyped" again.
+        (f"{PKG}/toolcontract.py", '        if k in prop and prop[k] is not None and prop[k] != "" and prop[k] != []:',
+                                   '        if k in prop and prop[k] is not None and k != "anyOf":'),
+    ],
+    "test_THERE_IS_NO_ESCAPE_HATCH_ON_PROMOTE": [
+        # The hatch `admit()` deliberately does not have, which would make every guarantee advisory.
+        (f"{PKG}/promotion.py", "            version: str | None = None, registry: dict | None = None) -> Declaration:",
+                                "            version: str | None = None, registry: dict | None = None, force: bool = False) -> Declaration:"),
+    ],
+    "test_PROMOTION_STILL_OBEYS_THE_LIFECYCLE_STATE_MACHINE": [
+        # Rung 2 replacing the state machine rather than adding to it — resurrection by status edit.
+        (f"{PKG}/promotion.py", '    check_transition(declaration.id, declaration.lifecycle, "admitted")',
+                                "    pass  # transition unchecked"),
+    ],
+    "test_PROMOTABLE_PLUS_BLOCKED_EQUALS_THE_CATALOGUE": [
+        # A tool reaching neither count — the self-derived denominator this run has been burned by.
+        (f"{PKG}/promotion.py", "    total = len(catalogue)", "    total = len(catalogue) + 1"),
+    ],
+    "test_AN_UNKNOWN_GENERATION_IS_REFUSED_NOT_SILENTLY_CURRENT": [
+        # Falling back to the current generation validates a tool against clauses it never met.
+        (f"{PKG}/toolcontract.py", "    got = TOOL_CONTRACTS.get(version)",
+                                   "    got = TOOL_CONTRACTS.get(version) or TOOL_CONTRACTS['1.0.0']"),
+    ],
+    "test_EVERY_MEMBER_NAMES_ITS_SUBJECT_AND_ITS_EVIDENCE": [
+        # A member with no stated subject is the C-3…C-17 shape re-entering through the registry.
+        (f"{PKG}/toolcontract.py",
+         '        subject="every input: is it supplied by the model, by context, or by the plan?",',
+         '        subject="",'),
+    ],
+    "test_A_CONDITIONAL_MEMBER_NAMES_THE_TRIGGER_THAT_MAKES_IT_APPLY": [
+        # A refusal that cannot say WHICH property of the tool pulled the member in.
+        (f"{PKG}/toolcontract.py", '        trigger_name="the tool takes a list of work items",',
+                                   '        trigger_name="",'),
+    ],
+    "test_A_CORE_MEMBER_APPLIES_TO_EVERY_TOOL": [
+        # Quietly make a core member conditional — every failure carrying no message stops being
+        # a contract violation for 312 of the 315 tools.
+        (f"{PKG}/toolcontract.py", '        subject="every failure: a C-7 class AND a message",',
+                                   '        subject="every failure: a C-7 class AND a message",\n'
+                                   '        trigger=is_batch,'),
+    ],
+    "test_THE_REPORT_EXPLAINS_WHY_EACH_MEMBER_APPLIED": [
+        # A report that lists WHICH members applied but not WHY. Kept structurally valid on
+        # purpose: the first version of this falsifier removed the field and broke `Completeness`
+        # construction, so it reddened every test that calls `check_tool_contract` and the runner
+        # correctly refused it as *"a bystander"*.
+        (f"{PKG}/promotion.py", '(m.name, m.trigger_name or "core — applies to every tool")',
+                                '(m.name, "")'),
+    ],
+    "test_A_COMPLETE_CONTRACT_PROMOTES_AND_THE_RESULT_IS_ADMITTED": [
+        # Promotion that checks the contract and then does not actually release — rung 2 as theatre.
+        (f"{PKG}/promotion.py", '        lifecycle="admitted",', '        lifecycle="draft",'),
+    ],
+    "test_STRIPPING_A_CONDITIONAL_MEMBER_THE_TOOL_TRIGGERS_ALSO_REFUSES": [
+        # Enforce only the core members, so a triggered conditional member is advisory.
+        (f"{PKG}/promotion.py", "    applicable = contract.required_for(tool_def)",
+                                "    applicable = tuple(m for m in contract.members if m.is_core)"),
+    ],
+    "test_THE_CURRENT_VERSION_IS_A_GENERATION_THIS_RUNTIME_HOLDS": [
+        # The current version naming a generation the runtime cannot load — every promotion raises.
+        (f"{PKG}/toolcontract.py", 'TOOL_CONTRACT_VERSION = "1.0.0"',
+                                   'TOOL_CONTRACT_VERSION = "1.0.1"'),
+    ],
+    "test_COST_IGNORES_META_BECAUSE_THE_WIRE_DOES": [
+        # Restore the defect: count `_meta`, which `strip_tool_meta` removes before the wire. 9.6%
+        # of the ranking key becomes bytes the model never receives, and any future `_meta`
+        # addition perturbs CP-2's control group again.
+        (f"{PKG}/derive.py", "json.dumps(wire_form(tool_def), ensure_ascii=False)",
+                             "json.dumps(tool_def, ensure_ascii=False)"),
+    ],
+    "test_THE_TWO_STRIPS_AGREE_ON_THE_SHAPE_THE_WIRE_USES": [
+        # Drift the copy away from `strip_tool_meta`, so `cost` measures a form nothing sends.
+        (f"{PKG}/derive.py", '        out["function"] = {k: v for k, v in fn.items() if k != "_meta"}',
+                             '        out["function"] = dict(fn)'),
+    ],
+    "test_WIRE_FORM_ALSO_HANDLES_THE_FLAT_CATALOGUE_SHAPE": [
+        # Handle only the wrapped shape, like `strip_tool_meta` does — the flat catalogue is the
+        # shape `token_cost` actually runs over, so this silently restores the inflation.
+        (f"{PKG}/derive.py", '    if type(tool_def) is dict and "_meta" in tool_def:',
+                             "    if False:"),
+    ],
+    "test_A_REGISTRY_CONTRACT_PROMOTES_AND_THE_SOURCE_IS_RECORDED": [
+        # The registry stops being consulted, so a contract can only come from another team.
+        (f"{PKG}/toolcontract.py", "    if type(row) is dict and row:", "    if False:"),
+    ],
+    "test_META_WINS_OVER_THE_REGISTRY_SO_AN_OWNER_CAN_TAKE_IT_BACK": [
+        # The interim registry outranks the owning service's own declaration, so a published
+        # contract could never take over and the registry row would be permanent.
+        (f"{PKG}/toolcontract.py", '    if from_meta:\n        return from_meta, "_meta"',
+                                   "    if False:\n        pass"),
+    ],
+    # -- CP-5.3: identifier resolution ---------------------------------------------------------
+    "test_A_NON_READ_RESOLVER_IS_REFUSED_AT_REGISTRATION": [
+        # Drop the safety property: auto-resolution could then dispatch a WRITE the user never
+        # asked for, on the way to answering a read.
+        (f"{PKG}/refresolve.py", '    if lane != "read":', "    if False:"),
+    ],
+    "test_AN_UNKNOWN_LANE_FAILS_CLOSED": [
+        # Treat "cannot be shown to be a read" as permission.
+        (f"{PKG}/refresolve.py", "    if lane is None:", "    if False:"),
+    ],
+    "test_MORE_THAN_ONE_EXACT_MATCH_REFUSES_AND_NEVER_PICKS": [
+        # 🔴 Add the "pick the best" arm §3a forbids. The pilot measured four candidates tied at
+        # 0.9, so this guesses on 37.5% of contested calls and cannot be right by construction.
+        (f"{PKG}/refresolve.py", "    if len(matched) == 1:", "    if len(matched) >= 1:"),
+    ],
+    "test_A_LOWER_QUALITY_MATCH_IS_NOT_A_MATCH": [
+        # Accept any search hit as an identity, turning a ranked guess into a substitution.
+        (f"{PKG}/refresolve.py", "               and r.get(resolver.match_field) == resolver.match_value]",
+                                 "               ]"),
+    ],
+    "test_A_VALUE_THAT_IS_ALREADY_AN_ID_IS_LEFT_ALONE": [
+        # Re-resolve values that are already ids — a search outranking an id the caller supplied.
+        (f"{PKG}/refresolve.py", "        if ref_type is None or looks_like_an_id(value):",
+                                 "        if ref_type is None:"),
+    ],
+    "test_THE_RESOLVER_CALL_IS_SCOPED_LIKE_THE_ORIGINAL": [
+        # Drop the scope: an entity name is only unique within its book, so an unscoped resolution
+        # answers from the wrong book or not at all.
+        (f"{PKG}/refresolve.py", "        for p in self.scope_params:", "        for p in ():"),
+    ],
+    "test_THE_RECORD_KEEPS_THE_NAME_THE_MODEL_SENT": [
+        # Record only the final id, making a resolved argument and a model-typed one the same row.
+        (f"{PKG}/refresolve.py", '        "model_sent": {r.param: r.sent for r in resolved},',
+                                 '        "model_sent": {},'),
+    ],
+    "test_A_REFUSED_PARAMETER_IS_NOT_SUBSTITUTED_AND_IS_RECORDED": [
+        # Substitute on a refusal — the silent wrong answer this member exists to prevent.
+        (f"{PKG}/refresolve.py", "    resolved = [r for r in resolutions if r.ok]",
+                                 "    resolved = [r for r in resolutions if r.candidates or r.ok]"),
+    ],
+    "test_A_RESOLVER_THAT_FAILS_IS_RECORDED_NOT_SILENTLY_IGNORED": [
+        (f"{PKG}/refresolve.py", '                                  outcome="resolver_failed"))',
+                                 '                                  outcome="resolved"))'),
+    ],
+    "test_A_BINDING_NAMING_AN_UNDECLARED_REF_TYPE_IS_REFUSED": [
+        (f"{PKG}/refresolve.py", "            if ref_type not in resolvers:", "            if False:"),
+    ],
+    "test_THE_DECLARED_RESOLVER_IS_LANE_READ": [
+        # Point the declared ref type at a WRITE tool — the exact thing the safety property exists
+        # to stop, injected in the DATA where the declaration actually lives.
+        ("contracts/agent-runtime-ref-resolvers.json", '"resolver_tool": "glossary_search",',
+         '"resolver_tool": "glossary_entity_delete",'),
+    ],
+    "test_EXACTLY_ONE_MATCH_SUBSTITUTES": [
+        # Resolve, then hand back nothing — the branch reports success and changes no argument.
+        (f"{PKG}/refresolve.py", "                          resolved=str(matched[0].get(resolver.id_field) or \"\"),",
+                                 '                          resolved=None,'),
+    ],
+    "test_ZERO_EXACT_MATCHES_REFUSES_WITH_THE_NEAR_MISSES": [
+        # Drop the near misses, so "no match" carries nothing the model can act on.
+        (f"{PKG}/refresolve.py", "        for r in rows if isinstance(r, dict)\n    )",
+                                 "        for r in [] if isinstance(r, dict)\n    )"),
+    ],
+    "test_LOOKS_LIKE_AN_ID_ACCEPTS_A_UUID": [
+        # Treat a real id as a name: every already-correct call would be re-resolved.
+        (f"{PKG}/refresolve.py", "    if _UUID_RE.match(value):", "    if False:"),
+    ],
+    "test_LOOKS_LIKE_AN_ID_REJECTS_EVERYTHING_ELSE": [
+        # Accept every STRING as an id, so nothing is ever resolved and the member is inert.
+        # 🔴 The first version of this flipped the non-string branch — and every value the guard
+        # feeds it IS a string, so the falsifier changed nothing and the runner correctly reported
+        # *"GREEN — the guard requires nothing"*. A falsifier has to touch the path under test.
+        (f"{PKG}/refresolve.py", "    if _UUID_RE.match(value):\n        return True\n    return False",
+                                 "    if _UUID_RE.match(value):\n        return True\n    return True"),
+    ],
+    "test_THE_DISPATCH_CHOKEPOINT_ACTUALLY_CALLS_THE_RESOLVER": [
+        # Un-wire the mechanism at the one place it runs — the zero-caller shape this run has
+        # found four times in two days.
+        (f"{CS}/app/services/stream_service.py", "                    _pending = _ref_pending(",
+                                                 "                    _pending = []  # falsifier\n                    _unused = ("),
+    ],
+    "test_THE_REGISTRY_FILE_IS_WHERE_THE_LOADER_LOOKS": [
+        # Look for the registry somewhere it is not — `agentruntime_arm`'s missing compose entry,
+        # in a different costume.
+        (f"{PKG}/refresolve.py", 'REF_REGISTRY_FILENAME = "agent-runtime-ref-resolvers.json"',
+                                 'REF_REGISTRY_FILENAME = "agent-runtime-ref-resolvers-elsewhere.json"'),
+    ],
+    "test_EVERY_TOOL_PARAM_THAT_ACTUALLY_FAILED_IS_BOUND": [
+        # Unbind the single largest real failure (201 calls) — the member stops serving the
+        # population it was built for while every other test stays green.
+        ("contracts/agent-runtime-ref-resolvers.json",
+         '    "glossary_list_chapter_links": {\n      "entity_id": "EntityRef"\n    },', "    "),
+    ],
+    "test_THE_UNBOUND_ENTITY_REF_PARAMS_ARE_STATED": [
+        # Claim coverage that does not exist by binding a differently-scoped tool.
+        ("contracts/agent-runtime-ref-resolvers.json", '  "bindings": {',
+         '  "bindings": {\n    "lore_entity": {\n      "entity_id": "EntityRef"\n    },'),
+    ],
+    "test_AN_UNBOUND_TOOL_IS_NOT_TOUCHED": [
+        # Resolve any ref-shaped param regardless of binding — a book-scoped resolver would then be
+        # applied to composition/kg/world tools that are scoped differently.
+        (f"{PKG}/refresolve.py", "        ref_type = bindings.get((tool, param))",
+                                 "        ref_type = bindings.get((tool, param)) or next(iter(resolvers), None)"),
+    ],
+    # These two falsify the REGISTRY DATA rather than the code, because that is where the claim
+    # lives: a binding is a statement about a tool that must exist and must carry the scope.
+    "test_EVERY_BINDING_NAMES_A_REAL_PARAMETER_OF_A_REAL_TOOL": [
+        ("contracts/agent-runtime-ref-resolvers.json", '  "bindings": {',
+         '  "bindings": {\n    "no_such_tool": {\n      "entity_id": "EntityRef"\n    },'),
+    ],
+    "test_EVERY_BOUND_TOOL_CARRIES_THE_RESOLVERS_SCOPE": [
+        # Declare a scope the bound tools do not carry: every resolution would then be unscoped or
+        # scoped to something the call cannot supply.
+        ("contracts/agent-runtime-ref-resolvers.json", '"scope_params": [\n        "book_id"\n      ],',
+         '"scope_params": [\n        "book_id",\n        "project_id"\n      ],'),
+    ],
+    "test_THE_REFUSAL_IS_ACTIONABLE_WHERE_TODAYS_ERROR_IS_NOT": [
+        # Back to `entity_id must be a UUID`: loud, and impossible to act on.
+        (f"{PKG}/refresolve.py", '                f"{r.param}: {r.sent!r} matched MORE THAN ONE entry exactly — {names}. "',
+                                 '                f"{r.param}: invalid. "  # falsifier\n                f"'"'"''"'"' "'),
+    ],
+    "test_NO_CONTRACT_ANYWHERE_IS_SOURCE_NONE_NOT_A_SILENT_EMPTY_PASS": [
+        # Report a source for a contract that does not exist — the empty pass that would make
+        # "which side declared this" unanswerable.
+        (f"{PKG}/toolcontract.py", '    return {}, "none"', '    return {}, "registry"'),
+    ],
+    "test_NOTHING_IN_THE_CATALOGUE_IS_PROMOTABLE_TODAY_AND_THAT_IS_THE_POINT": [
+        # Completeness that is always true — rung 2 admitting all 315 unmigrated tools to the wire.
+        (f"{PKG}/promotion.py", "        return not self.missing and not self.unknown",
+                                "        return True"),
+    ],
 }
 
 #: Guards whose falsifier is a DECISION not to write one, each with a stated reason.

@@ -1711,6 +1711,60 @@ def _is_uuid(v: str) -> bool:
     return True
 
 
+#: CP-5.3 — the ref/resolver map, loaded once from its registry row.
+#:
+#: The loader lives HERE rather than in `app.agentruntime.refresolve` because that package may
+#: import only stdlib and itself (the membrane gate), and reading a repo path is a boundary
+#: concern. `refresolve` stays a pure decision module; this side does the I/O.
+#: 🔴 **A DICT RATHER THAN TWO MODULE GLOBALS, AND CP-0'S F-50 GUARD IS WHY.** The first version
+#: declared `global _REF_REGISTRY, _REF_REGISTRY_LOADED` and then read the flag in an early-return
+#: branch ABOVE the assignment. Python is fine with that — they are module-level — but the guard
+#: reads the SHAPE, and the shape is the one that produced F-50: a value read on a path that
+#: returns before it is bound. Mutating a dict needs no `global`, so the early read is a plain
+#: lookup and the shape is gone rather than argued with.
+_REF_REGISTRY_CACHE: dict[str, tuple[dict, dict]] = {}
+
+
+def _ref_registry(lane_of) -> tuple[dict, dict]:
+    """`(resolvers, bindings)`, or two empty dicts.
+
+    `lane_of` maps a TOOL NAME to its lane and is supplied by the turn, because the catalogue is
+    per-request — and the lane is not decoration here: `check_resolver` refuses a resolver that is
+    not `lane=read`, since resolution dispatches it **without the user asking**.
+
+    **An absent or unloadable registry is a legitimate empty state, not a failure**: it means no
+    ref type is declared, so nothing resolves and every call behaves exactly as it does today. A
+    resolution layer that could break tool calling by being misconfigured would be a worse defect
+    than the one it fixes.
+    """
+    cached = _REF_REGISTRY_CACHE.get("value")
+    if cached is not None:
+        return cached
+    loaded: tuple[dict, dict] = ({}, {})
+    try:
+        from app.agentruntime.manifest import manifest_path
+        from app.agentruntime.refresolve import REF_REGISTRY_FILENAME, load_registry
+
+        mpath = manifest_path()
+        path = (mpath.parent / REF_REGISTRY_FILENAME) if mpath is not None else None
+        if path is not None and path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            resolvers, bindings = load_registry(doc, lane_of)
+            logger.info("CP-5.3: %d ref type(s), %d bound parameter(s)",
+                        len(resolvers), len(bindings))
+            loaded = (resolvers, bindings)
+        else:
+            logger.info("CP-5.3: no ref registry beside the manifest — resolution is inert")
+    except Exception as exc:
+        # A malformed registry is LOUD in the log and inert at runtime. It is never a silent
+        # partial load: `load_registry` refuses the whole document rather than dropping a row,
+        # because a dropped resolver leaves its binding in place and never resolving.
+        logger.warning("CP-5.3: ref registry not loaded (%s) — resolution is inert this process",
+                       exc)
+    _REF_REGISTRY_CACHE["value"] = loaded
+    return loaded
+
+
 def _missing_required_names(args_obj: dict, tool_def: dict | None) -> list[str]:
     """The REQUIRED arg names this call is still missing (post context-id injection).
     Unknown tool_def → [] (can't classify → never block a call we can't judge)."""
@@ -3917,6 +3971,103 @@ async def _stream_with_tools(
                         )
                         args_obj.update(_bound)
 
+                # ── CP-5.3 · IDENTIFIER RESOLUTION — a NAME in an id field ──────────────────
+                # 🔴 **THE MEASURED FAILURE: 338 calls across 11 sessions sent a human name into an
+                # id field** (`entity_id: "Ember Codex"`, `"Lâm Uyên"`, `"Count Dracula"`) — 99.5%
+                # of every UUID-type failure. The tool answered `entity_id must be a UUID`: loud,
+                # and not actionable.
+                #
+                # ORDER: context-ids -> PLAN -> RESOLUTION -> blank-check -> dispatch. **After the
+                # plan on purpose** — a plan-bound argument is authoritative and already proven to
+                # travel byte-exact, so re-resolving it would let a search outrank the executor.
+                # Before dispatch, because the tool is where the failure currently happens.
+                #
+                # TWO BRANCHES, NO THIRD (§3a). Exactly one match at the declared quality
+                # substitutes; zero or many REFUSE with candidates. The pilot measured ambiguity as
+                # real rather than hypothetical — `Dracula` returns four exact matches tied at 0.9,
+                # 37.5% of contested calls — so a "pick the best" arm would be a guess deciding a
+                # correctness question on more than a third of the traffic.
+                _resolution: dict | None = None
+                _resolution_refusal: str | None = None
+                try:
+                    _rslv, _bind = _ref_registry(
+                        lambda _n: declared_lane(cat_index.get(_n) or plain_index.get(_n) or {})
+                    )
+                except Exception:
+                    _rslv, _bind = {}, {}
+                if _bind:
+                    from app.agentruntime.refresolve import (
+                        Resolution as _Resolution, apply_resolutions as _apply_res,
+                        decide as _ref_decide, pending_for as _ref_pending,
+                        refusal_message as _ref_refusal,
+                    )
+                    _pending = _ref_pending(c["name"], args_obj, _bind, _rslv)
+                    _res: list = []
+                    for _p in _pending:
+                        _rt0 = _time.monotonic()
+                        try:
+                            _renv = await knowledge_client.mcp_execute_tool(
+                                user_id=user_id, session_id=session_id, project_id=project_id,
+                                book_id=(context_ids or {}).get("book_id"),
+                                tool_name=_p.resolver.tool, tool_args=_p.args,
+                                admin_token=admin_token,
+                            )
+                        except Exception:
+                            _renv = None
+                        # 🔴 **A RESOLVER DISPATCH IS A REAL EXECUTION AND IS RECORDED AS ONE.**
+                        # CP-0.3's positional gate caught this unstamped, and it was right: the
+                        # tool genuinely runs. §3a's cost claim is *"~44 extra read dispatches
+                        # replace 390 failed calls"* — a trade nobody can check if the numerator
+                        # is invisible. It is NOT appended to `working`: the model never asked for
+                        # this call and should not have to read it. `resolver_for` keeps the two
+                        # populations apart, exactly as `plan_supplied` had to.
+                        _rchunk = {
+                            "id": f"{c['id']}:resolve:{_p.param}", "iteration": iteration,
+                            "tool": _p.resolver.tool, "args": _p.args,
+                            "ok": bool(_renv and _renv.get("success")),
+                            "result": None, "error": None if _renv else "resolver dispatch failed",
+                            "resolver_for": {"tool": c["name"], "param": _p.param,
+                                             "sent": _p.name},
+                        }
+                        instrument.stamp_tool_call(
+                            _rchunk, source=instrument.SOURCE_TOOL,
+                            latency_ms=int((_time.monotonic() - _rt0) * 1000))
+                        yield {"tool_call": _rchunk}
+                        if not _renv or not _renv.get("success"):
+                            # A resolver that fails is not a licence to guess and not a silent
+                            # pass: the argument is left exactly as the model sent it and the
+                            # outcome is recorded, so the call fails the way it does today rather
+                            # than in a new way nobody can see.
+                            _res.append(_Resolution(param=_p.param, ref_type=_p.resolver.ref_type,
+                                                    sent=_p.name, outcome="resolver_failed"))
+                        else:
+                            _res.append(_ref_decide(_p.resolver, _p.param, _p.name,
+                                                    _renv.get("result") or {}))
+                    if _res:
+                        # 🔴 WHAT THE MODEL SENT IS CAPTURED BEFORE THE OVERWRITE, for the reason
+                        # `plan_supplied` had to: without it a resolved argument and a model-typed
+                        # one are THE SAME ROW and no measurement can tell them apart.
+                        _resolution = _apply_res(args_obj, _res)
+                        if any(not r.ok for r in _res):
+                            _resolution_refusal = _ref_refusal(_res)
+                        logger.info("CP-5.3 resolution on %s: %s", c["name"], _resolution)
+
+                if _resolution_refusal:
+                    # The REFUSE branch. Still loud — the contract may remove a failure's COST, never
+                    # its SIGNAL (§3) — but now actionable: it names what was sent, what happened,
+                    # and the candidates, where today the model gets `entity_id must be a UUID`.
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "unresolved_reference", "message": _resolution_refusal}),
+                    })
+                    yield {"tool_call": {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None,
+                        "error": _resolution_refusal, "resolution": _resolution,
+                    }}
+                    continue
+
                 # The chat agent's arc-plan wants a SYNCHRONOUS plan (mode="rules"): a mid-tier
                 # model cannot reliably watch a background llm-plan job, so it fires the async
                 # job and leaves it unpolled (a §4 "async left unpolled" failure) and the
@@ -4795,6 +4946,12 @@ async def _stream_with_tools(
                 # only place the plan changed an outcome rather than filling a blank.
                 if _plan_supplied is not None:
                     tool_chunk["plan_supplied"] = _plan_supplied
+                # CP-5.3 — the same separation for a RESOLVED argument. Without it a call whose id
+                # the runtime looked up and one the model typed correctly are indistinguishable,
+                # and the member cannot be measured at all: `model_sent` keeps the NAME, which is
+                # the only evidence that resolution changed the outcome rather than filling a blank.
+                if _resolution is not None:
+                    tool_chunk["resolution"] = _resolution
                 # C-ACTIVITY (H16) — a successful Tier-A auto-write emits a visible
                 # "agent did X · Undo" activity event. The op summary + undo come
                 # from the tool RESULT's `_meta` (undo_hint is NET-NEW per provider;

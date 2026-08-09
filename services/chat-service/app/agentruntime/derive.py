@@ -146,6 +146,27 @@ def _meta(tool_def: dict) -> dict:
     return m if type(m) is dict else {}
 
 
+def wire_form(tool_def: dict) -> dict:
+    """The definition as the PROVIDER receives it — `_meta` removed.
+
+    🔴 **This mirrors `app.services.tool_discovery.strip_tool_meta` rather than importing it**, for
+    the same reason `LANE_BY_TIER` is duplicated: this package importing `app.services` would couple
+    the membrane to the legacy surface, and the import gate refuses it. The copy is what
+    `test_THE_TWO_STRIPS_AGREE` exists to keep honest — a drift here would make `cost` measure a
+    form nothing sends.
+    """
+    fn = tool_def.get("function") if type(tool_def) is dict else None
+    if type(fn) is dict:
+        if "_meta" not in fn:
+            return tool_def
+        out = dict(tool_def)
+        out["function"] = {k: v for k, v in fn.items() if k != "_meta"}
+        return out
+    if type(tool_def) is dict and "_meta" in tool_def:
+        return {k: v for k, v in tool_def.items() if k != "_meta"}
+    return tool_def
+
+
 def token_cost(tool_def: dict) -> int:
     """`cost` as a pure function of the definition — never a value the definition may state.
 
@@ -174,8 +195,28 @@ def token_cost(tool_def: dict) -> int:
     been to make this look like a canonicaliser. NFC stays, and it is load-bearing rather than
     tidy: the counter weights per codepoint, so the same text costs ~1.44x decomposed, and this
     number is a sort key against a budget that ends in a hard `break` (U-1).
+
+    🔴 **AND IT COUNTED BYTES THE MODEL NEVER RECEIVES — CORRECTED 2026-08-09 (PO decision).**
+    `_meta` is consumer-side only: `tool_discovery.strip_tool_meta` removes it **before the wire
+    request**, so every character in it costs the model exactly nothing. This function serialised
+    it anyway. Measured over the frozen catalogue: **9.6% of the entire ranking key was bytes that
+    are never sent, all 315 tools were inflated** (median 132 characters, max 366), and correcting
+    it moves a tool's cost rank by a median of 6 places and up to 38 (`book_update_details`). A
+    sort key against a budget ending in a hard `break` was cutting declarations on the size of
+    metadata the model cannot read.
+
+    It surfaced from the opposite direction. This module's own header refused to add `_meta.
+    served_by` because *"one extra key changes every tool's cost, which changes the rank, which
+    changes what the budget cuts"* — true, and the reason CP-5 §4's placement of the tool contract
+    in `_meta` collided with it. Both problems are the same defect: **the cost of a definition is
+    the cost of what is SENT.** Measuring that removes the perturbation instead of budgeting for it.
+
+    ✖ **The legacy `tool_surface._tool_tokens` is deliberately NOT changed.** That arm is CP-2's
+    control group (§7); correcting the control to match the treatment is how a comparison stops
+    measuring anything. It carries the same inflation, and that is now a recorded row rather than
+    an unknown.
     """
-    return len(unicodedata.normalize("NFC", json.dumps(tool_def, ensure_ascii=False)))
+    return len(unicodedata.normalize("NFC", json.dumps(wire_form(tool_def), ensure_ascii=False)))
 
 
 def resolve_service(name: str) -> str | None:

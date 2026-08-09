@@ -1,0 +1,85 @@
+{
+  "registry_version": 1,
+  "tool_contract_version": "1.0.0",
+  "_why": "CP-5.2 rung 2. The contract's END state is the tool's own `_meta`, published by the owning service (CP-5.md §4). This file is the INTERIM home so a contract is authorable without waiting on another team — the same correction §3a/W1 already took for the ref/resolver map: 'a registry row, authored once and later pushed upstream into _meta when the owning service catches up'. `_meta` WINS wherever a service supplies it, and `Completeness.source` records which one answered so an owner-published contract and one we wrote never merge into one indistinguishable row.",
+  "contracts": {
+    "book_list": {
+      "identifier_resolution": {
+        "book_id": "an opaque id; resolve a book NAME with book_search before calling. No resolver is declared for it yet — 5.3 builds the ref/resolver map, and until it does a name here is refused rather than guessed.",
+        "chapter_id": "an opaque id obtained from this same tool with kind=chapters."
+      },
+      "argument_supplier": {
+        "kind": "model — the caller chooses what to list",
+        "book_id": "context | plan — the ambient book when the surface is book-bound (`_meta.scope: book`), otherwise a plan-bound value",
+        "chapter_id": "plan — emitted by a prior kind=chapters listing",
+        "limit": "model",
+        "offset": "plan — the runtime advances it while paging"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "A repeat MAY be served from cache to remove its cost. It is still COUNTED and the breaker still escalates — removing a repeat's signal is what turned a 393-call loop into 393 silent successes (§3)."
+      },
+      "error_contract": {
+        "classes": ["invalid_argument", "not_found", "permission_denied"],
+        "message": "required on every failure; a failure carrying no message is unrepresentable",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ items: [...], page: { total, returned, is_complete, guidance } }",
+        "emit_paths": ["items[].id"],
+        "note": "Declared so a CP-3 `emits` path is checkable at PLAN-BUILD time rather than failing at execution (§2)."
+      },
+      "result_completeness": {
+        "fields": ["page.total", "page.returned", "page.is_complete"],
+        "surface": "The runtime must surface is_complete=false to the model. A truncated page read as the whole answer is the quiet failure this member exists for — it appears in no error bucket."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "not advertised; the withholding is recorded",
+        "note": "kind=chapters|revisions|scenes additionally require book_id; kind=revisions requires chapter_id."
+      },
+      "closed_vocabulary": {
+        "kind": ["books", "chapters", "revisions", "scenes"]
+      }
+    },
+    "book_read": {
+      "identifier_resolution": {
+        "book_id": "an opaque id; resolve a book NAME with book_search before calling.",
+        "chapter_id": "an opaque id from book_list kind=chapters.",
+        "scene_id": "an opaque id from book_list kind=scenes."
+      },
+      "argument_supplier": {
+        "book_id": "context | plan — the ambient book when the surface is book-bound, otherwise plan-bound",
+        "chapter_id": "plan — emitted by a prior listing",
+        "scene_id": "plan — emitted by a prior listing",
+        "offset": "plan — the runtime advances it while paging a chapter body",
+        "limit": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "Cached repeats are still counted and still escalate the breaker."
+      },
+      "error_contract": {
+        "classes": ["invalid_argument", "not_found", "permission_denied"],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ book | chapter | scene, page: { total, returned, is_complete, guidance } }",
+        "emit_paths": ["book.id"],
+        "note": "The DEEPEST id present decides which branch of the shape is returned."
+      },
+      "result_completeness": {
+        "fields": ["page.total", "page.returned", "page.is_complete"],
+        "surface": "A chapter body is block-paged; a partially read chapter must not read as the whole chapter."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "not advertised; the withholding is recorded",
+        "note": "book_id is required; chapter_id/scene_id are optional and select a deeper read."
+      }
+    }
+  }
+}

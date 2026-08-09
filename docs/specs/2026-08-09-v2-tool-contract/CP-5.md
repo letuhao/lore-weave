@@ -1,7 +1,9 @@
 # CP-5 · the tool contract — the solid ground
 
-**Scale:** β · **Status:** 🔒 **SEALED v3** — three evaluation rounds applied, nothing built · 2026-08-09
-**Next action:** `5.3-pilot`. Do not write code before it returns.
+**Scale:** β · **Status:** 🔒 **SEALED v3** — three evaluation rounds applied · 2026-08-09
+**Next action:** ~~`5.3-pilot`~~ ✅ **RAN 2026-08-09 — §3b. Verdict: BUILD 5.3.** Next is **5.1 / 5.2**.
+*The pilot is the only edit made to a sealed spec: it is the measurement this spec ordered before
+code, and §3b records what it returned. No design was re-opened.*
 **Supersedes** SPEC v1 of the same day, which did not survive its own evaluation. The six findings
 that killed it are kept in `EVALUATION-v1.md` — **four were the spec committing the defect it was
 written to prevent**, and deleting them would destroy the record of why v2 looks like this.
@@ -227,10 +229,13 @@ into `_meta` when the owning service catches up.
 | exactly **one** `tier: exact` match | substitute, dispatch, and **record the substitution** |
 | zero, or **more than one** | **refuse**, and return the candidates as a structured error |
 
-🔴 **There is deliberately no "pick the best" arm.** Measured over 18 real searches: **11 exactly-one
-exact, 0 ambiguous, 7 no-exact.** But `0/18` bounds ambiguity only at **≤15.4%** (95%, rule of
-three) — *not* zero, so ambiguity is a **first-class branch**, not an edge case. A `rank_score`
-tiebreak is exactly the guess §0.14 forbids from deciding a correctness question.
+🔴 **There is deliberately no "pick the best" arm.** v3 argued this from a bound: 18 real searches
+gave **0 ambiguous**, and `0/18` bounds ambiguity only at **≤15.4%** (95%, rule of three) — *not*
+zero. **The pilot replaced that bound with a measurement, and ambiguity is real: 16.7% of contested
+pairs, 37.5% of contested calls** (§3b). A `rank_score` tiebreak is exactly the guess §0.14 forbids
+from deciding a correctness question — and it is now known to be a guess the runtime would have had
+to make on more than a third of the calls in the stratum that matters, over **four candidates that
+tie at 0.9**.
 
 **Two constraints that are safety properties, not preferences:**
 
@@ -247,6 +252,59 @@ tiebreak is exactly the guess §0.14 forbids from deciding a correctness questio
 entity exactly; did you mean … "* with candidates. Both are loud; only one can be acted on.
 
 **Cost.** ~44 extra read dispatches replace **390** failed calls. The trade is not close.
+
+---
+
+## 3b · 5.3-pilot — RAN 2026-08-09, and the aggregate would have been the W2 error again
+
+**Verdict: BUILD 5.3.** But the number that justifies it is not the number the aggregate reports.
+
+**The population, derived from live data and not from this document.** 485 failed `tool_calls` carry a
+UUID-type error across 34 sessions. Classifying the offending argument's VALUE separates what a
+resolver can serve from what it cannot: **a NAME — 338 calls / 11 sessions / 13 distinct (book, name)
+pairs**; a placeholder the model invented (`placeholder_id`, `current_book_id`) — 123 / 13; a
+quantifier (`"all"`, W3) — 33 / 3; a MANGLED uuid (a dropped nibble, a colon for a dash) — 8 / 5;
+a system symbol — 6 / 3; a garbled decode — 1. **Only the first is this member's subject**, and the
+pilot's overlap with the failing population is 100% *by construction* — it IS that population.
+
+**Re-runnable:** `python scripts/cp5-resolution-pilot.py` — read-only, every denominator a query
+result. A spec-changing number that exists only in a document cannot be re-derived or refuted.
+
+**The instrument.** `POST /internal/books/{id}/select-for-context` invokes `selectGlossaryForContext`
+— the same core `glossary_search` calls (`mcp_server.go:454`), same bounds, `max_entities` 20 = the
+tool's own default. It differs only in the grant check, which is not what this measures: **the books
+were deleted from `loreweave_book`, so the grant-checked MCP path cannot run at all.**
+
+| stratum | pairs | calls | exactly one | ambiguous | zero exact |
+|---|---|---|---|---|---|
+| single-entity book | 6 | 109 | **6 (100%)** | 0 | 0 |
+| **contested book (7–27 entities)** | **6** | **32** | **5 (83.3%) · 20 calls (62.5%)** | **1 (16.7%) · 12 calls (37.5%)** | **0** |
+| aggregate (misleading) | 12 | 141 | 11 (91.7%) · 129 (91.5%) | 1 | 0 |
+
+🔴 **The aggregate is 91.5% and it is not the answer.** 109 of 141 measurable calls (77%) come from
+books holding **exactly one entity**, where resolving a name to an id cannot fail. Reporting 91.5%
+would have measured the cases that were never hard — W2's error, one level down, inside the very
+pilot written to prevent it. **The informative rate is the contested stratum: 83.3% / 62.5%.**
+
+✅ **`ZERO_EXACT` = 0 in every stratum.** The resolver never came up empty on a name that failed.
+The premise — *a name the model sent can be turned into an id* — holds.
+
+🔴 **Ambiguity is measured, not bounded.** Query `Dracula` in one book returns **4 `tier: exact`
+matches — THREE separate live entities literally named `Dracula`, plus `Count Dracula` carrying
+`Dracula` as an alias — all tied at `rank_score` 0.9**, separable only by `updated_at`. §3a's
+refusal branch is no longer an argument from a rule-of-three; it is the branch that carries 37.5% of
+the contested calls. (`tier: exact` means `lower(cached_name) = lower(q)` OR an alias equals `q`,
+so this is genuine exact-match ambiguity, not fuzzy drift.) **The duplicate entities themselves are
+a separate defect — dedup, not resolution — and go to the debt register, not into 5.3.**
+
+✖ **The bound this pilot cannot pass, stated rather than implied: 197 of 338 calls (58.3%) are
+UNMEASURABLE.** They are one pair — `entity_id: "Ember Codex"`, called 197 times in a single
+session — whose book was deleted and whose glossary rows are gone. The surviving trace argues it
+would have been a **refusal, not a resolution**: that book's only successful glossary writes propose
+`Corvin Ashe`, and **no recorded result in any session ever mentions `Ember Codex`**. So the
+whole-population resolution rate is bounded **between 38.2% and 91.5%**, and no single figure for it
+is published. Both endpoints are useful: even at 38.2% the remainder is not a failure but the
+refusal branch, which §3a already argues is the improvement — *both are loud; only one is actionable*.
 
 ---
 
@@ -269,6 +327,35 @@ CP-4's producer already derives from it for 315/315 tools.
 | 3 | `ABC` + `__init_subclass__` + frozen + token | the 9 Python tools | import |
 | 4 | CI gate counting registration sites | the 9 | build |
 
+### 4a · Where the contract lives on DAY ONE — a registry row (PO decision, 2026-08-09)
+
+**Found by attempting the first migration, which is the only way this was ever going to surface.**
+`_meta` is the right END state — it is the owning service's own statement about its own tool. It
+cannot be the START, for two reasons the attempt made concrete:
+
+1. **It needs another team.** `_meta` for the overwhelming majority of the catalogue is emitted by
+   Go and Python services chat-service does not own — **the same objection W1 already raised
+   against §3a's original placement of the ref/resolver map**, and it gets the same answer:
+   *a registry row, authored once, pushed upstream into `_meta` when the owning service catches
+   up.* §4's placement inherits the correction §3a already took. The destination is unchanged.
+2. 🔴 **And it perturbed CP-2's control group.** `derive.py` had refused to add even ONE `_meta`
+   key, for a measured reason: *"`_tool_tokens` serialises the whole definition including `_meta`,
+   so one extra key changes every tool's cost, which changes the rank, which changes what the
+   budget cuts."* Measured here: a **minimal** contract block took `book_list` from **1284 → 1998
+   (+56%), rank 191 → 262 of 315**, against a budget that ends in a hard `break` (U-1).
+
+⭐ **The second reason turned out to be a defect in `cost`, not a cost of the contract.**
+`strip_tool_meta` removes `_meta` **before the wire request**, so `_meta` costs the model nothing —
+while `token_cost` counted it anyway. **9.6% of the entire ranking key was bytes the model never
+receives, all 315 tools inflated** (median 132 characters), and correcting it moves a tool's cost
+rank by a median of 6 and up to 38. `token_cost` now measures the wire form. The legacy
+`_tool_tokens` is deliberately left alone — that arm is CP-2's control group, and correcting the
+control to match the treatment is how a comparison stops measuring anything.
+
+`Completeness.source` records **which side supplied the contract** (`_meta` | `registry` | `none`),
+so an owner-published contract and one we authored in the interim never merge into one
+indistinguishable row — the separation `plan_supplied.overrode` had to make on 2026-08-09.
+
 🔴 **Rung 2 is the whole enforcement, and it needs no other team's cooperation.** chat-service
 cannot rewrite Go services. It can refuse to promote a declaration whose contract is incomplete — so
 an unmigrated tool registers `draft`, never serves, and the pattern becomes mandatory **by
@@ -280,17 +367,17 @@ consequence**. Rung 3 is a reference implementation, not the mechanism.
 
 | row | claim | exit |
 |---|---|---|
-| **5.1** | the `_meta` contract schema — members as **versioned data**, core vs conditional, with the conditionality itself declared | a tool omitting a **core** member fails validation; a conditional member is required only when its trigger is present |
-| **5.2** | **rung 2** — admission refuses to promote an incomplete contract | injection: strip one core member ⇒ promotion refuses ⇒ the tool does not serve |
-| **5.3-pilot** | 🔴 **FIRST TASK, BEFORE ANY CODE.** Run the ACTUAL failing names (`"Ember Codex"`, `"Lâm Uyên"`, `"Count Dracula"`) against **their own books** and measure what fraction resolve to exactly one exact match | a rate measured on the population the member SERVES. **W2: the 11/18 figure came from 9 sessions whose overlap with the 24 failing sessions is ONE** — the model searched precisely where it did not send a bare name, so the rate was measured on the cases that already went right. If the pilot rate is low, 5.3 is redirected, not built |
-| **5.3** | 🔴 **identifier resolution** — a ref field declares its RESOLVER (a registry row); the runtime resolves at the dispatch chokepoint | a name in an id field is resolved and **recorded**, or refused with candidates. **Never guessed** — see §3a. **Gated on 5.3-pilot** |
-| 5.3b | untyped properties — the 120 with no `type` at all | conditional; refused at registration when absent |
+| **5.1** | ✅ **BUILT** — `toolcontract.py`: members as **versioned data**, each with a `trigger`, a **subject** and its **evidence**. Core 4 apply to 315/315; conditionals select real subsets (`preconditions` 292 · `identifier_resolution` 283 · `effect_and_undo` 213 · `closed_vocabulary` 96 · `consent` 60 · `result_completeness` 36 · `partial_outcome` 3). 🔴 **`untyped_properties` (5.3b) NOT shipped — §7: its subject does not exist** (see below) | a tool omitting a **core** member fails validation; a conditional member is required only when its trigger is present |
+| **5.2** | ✅ **BUILT + PROVEN BY INJECTION** — `promotion.promote()` is the only path to `admitted`. `book_list` (8 members) and `book_read` (7) are the **first tools admitted THROUGH the contract**. 🔴 It had to build the PROMOTER too: `check_transition` had **zero production callers**, and re-running the admit script **demoted both serving rows to `draft`** | injection: strip one core member ⇒ promotion refuses ⇒ the tool does not serve. **Done:** removing `error_contract` from `book_list` makes `agentruntime-membrane-gate` exit 1 naming the member; restoring it returns green |
+| **5.3-pilot** | ✅ **RAN 2026-08-09 — see §3b. VERDICT: BUILD 5.3.** The informative rate is **83.3% by pair / 62.5% by call**, not the 91.5% aggregate, and **`ZERO_EXACT` is 0 in every stratum** | a rate measured on the population the member SERVES. **W2: the 11/18 figure came from 9 sessions whose overlap with the 24 failing sessions is ONE** — the model searched precisely where it did not send a bare name, so the rate was measured on the cases that already went right. If the pilot rate is low, 5.3 is redirected, not built |
+| **5.3** | ✅ **BUILT 2026-08-09/10** — `refresolve.py` + `contracts/agent-runtime-ref-resolvers.json` (1 ref type, **19 bound (tool, param) pairs**), wired at the dispatch chokepoint in `stream_service` with the order **context-ids → PLAN → RESOLUTION → blank-check → dispatch**. Replayed over the REAL failing calls: **152 calls substituted · 209 refused ACTIONABLY · 0 silent · 0 resolver failures — 361/361 reach a branch** where today every one gets `entity_id must be a UUID` | a name in an id field is resolved and **recorded**, or refused with candidates. **Never guessed** — see §3a. **Gated on 5.3-pilot** ✅ |
+| 5.3b | 🔴 **WITHDRAWN — THE 120 DO NOT EXIST.** Over the frozen catalogue there are **1,389 properties and ZERO untyped**, at any depth. The figure is a `.get("type")` artifact: it returns `None` for `anyOf: [{"type":"string"},{"type":"null"}]` — Pydantic's `Optional[str]` — which **129 of the 498 `*_id` properties use**. I reproduced the same error before catching it | the member is **not in the registry**, because §7 forbids a clause whose subject does not exist — *that* is how C-3…C-17 became permanent. `test_THE_CATALOGUE_HAS_NO_UNTYPED_PROPERTY` keeps the absence honest: if a provider ever ships one, the subject appears and the test says so |
 | **5.4** | **argument supplier** (23.7%) — every input declares model \| context \| plan | a `plan`-supplied input the model sends is **discarded** — CP-3.10 already does this; the contract makes it *declarable* rather than plan-only |
 | **5.5** | **error contract** (8.1%) — every failure carries a C-7 class **and a message** | a failure with no message cannot be produced |
 | **5.6** | **output contract + completeness** | 🔴 an `emits` path is checked at **plan-build** time; a truncated result is a **declared field the runtime must surface** |
 | **5.7** | **repeat semantics** per §3 — cost removed, signal retained | a cached repeat is still counted and still escalates |
 | **5.8** | **preconditions** (18.7%) — checked pre-dispatch **and** used to gate advertisement (§4.3), withholding recorded | a tool whose precondition is unmet is not advertised |
-| **5.9** | the conditional members, each required only on its trigger | absent-when-triggered is refused |
+| **5.9** | ✅ **CLOSED BY 5.1/5.2 — CONFIRMED, NOT REBUILT.** Its exit is precisely what rung 2 does, and two falsified guards already prove both halves: `test_A_CONDITIONAL_MEMBER_IS_REQUIRED_ONLY_WHERE_ITS_TRIGGER_FIRES` and `test_STRIPPING_A_CONDITIONAL_MEMBER_THE_TOOL_TRIGGERS_ALSO_REFUSES` | absent-when-triggered is refused |
 | **5.10** | **registry is the only name source** (10.1%) | `glossary_propose_entity_edit` — 101 calls, 0% success, not in the catalogue — cannot be dispatched |
 
 ---
