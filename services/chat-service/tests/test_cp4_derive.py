@@ -146,6 +146,115 @@ class TestTheFacetsAreDerivedNotDeclared:
         )
 
 
+class TestTheRankingFacetsReachTheRow:
+    """4.c — `OrderBy` and `TakeWhileBudget` rejected **every** real row because none carried
+    `lane`/`tier`/`cost`. The ranking had no subject; these give it one."""
+
+    def _admitted(self, td: dict):
+        from app.agentruntime.admission import admit
+        from app.agentruntime.derive import derive_one
+
+        return admit(derive_one(td).declaration)
+
+    def _def(self, name="book_list", tier="R", desc="x"):
+        return {"name": name, "description": desc, "_meta": {"tier": tier},
+                "inputSchema": {"type": "object", "properties": {}}}
+
+    def test_A_ROW_BUILT_FROM_A_DEFINITION_CARRIES_ALL_THREE(self):
+        from app.agentruntime.manifest import _row
+
+        td = self._def()
+        row = _row(self._admitted(td), tool_def=td)
+        assert row["lane"] == "read" and row["tier"] == "R"
+        assert row["cost"] > 0
+        # And the value is the derivation's, not something a caller chose.
+        from app.agentruntime.derive import facets_for
+
+        assert {k: row[k] for k in ("lane", "tier", "cost")} == facets_for(td)
+
+    def test_THERE_IS_NO_PARAMETER_FOR_A_CALLER_TO_STATE_A_RANK(self):
+        """🔴 The construction, and the reason the first attempt was thrown away.
+
+        A token-locked `Facets` type made a forged rank *hard to build*; the membrane gate refused
+        it (a private token and `object.__setattr__` belong to `admission.py`). Removing the type
+        was stronger: there is no facets argument at all, so the value cannot be **supplied**.
+        """
+        import inspect
+
+        from app.agentruntime.manifest import _row
+
+        params = set(inspect.signature(_row).parameters)
+        assert "tool_def" in params
+        for forbidden in ("facets", "lane", "tier", "cost"):
+            assert forbidden not in params, (
+                f"_row takes a `{forbidden}` argument — a caller that can pass one can state its "
+                f"own rank, and a hand-typed cost of 1000000000 was measured steering "
+                f"TakeWhileBudget"
+            )
+
+    def test_A_ROW_WITHOUT_A_DEFINITION_CARRIES_NONE_OF_THEM(self):
+        """Optional, so every row already on disk still loads — the migration CP-1 kept
+        `ROW_REQUIRED` separate from `ROW_FIELDS` to make possible."""
+        from app.agentruntime.contract import FACET_FIELDS
+        from app.agentruntime.manifest import _row
+
+        row = _row(self._admitted(self._def()))
+        assert not (FACET_FIELDS & row.keys())
+
+    def test_ALL_THREE_OR_NONE_A_HALF_RANKED_ROW_IS_REFUSED(self):
+        """§0.14.1a rule 2 — a missing ranking field is a REJECTION, never a fallback, because
+        falling back reorders the whole surface and cuts different declarations (arm E)."""
+        from app.agentruntime.contract import ContractViolation, check_row
+
+        base = {"id": "book_list", "kind": "tool", "owning_service": "book-service",
+                "lifecycle": "admitted", "contract_version": "1.0.0",
+                "admitted_against": "1.0.0", "members": []}
+        check_row({**base, "lane": "read", "tier": "R", "cost": 10}, "row")  # complete: fine
+        for partial in ({"cost": 10}, {"lane": "read"}, {"lane": "read", "tier": "R"}):
+            with pytest.raises(ContractViolation, match="or none of them"):
+                check_row({**base, **partial}, "row")
+
+    def test_THE_ENUMS_ARE_BOUNDED_AND_A_NEGATIVE_COST_IS_NOT_A_COUNT(self):
+        from app.agentruntime.contract import ContractViolation, check_row
+
+        base = {"id": "book_list", "kind": "tool", "owning_service": "book-service",
+                "lifecycle": "admitted", "contract_version": "1.0.0",
+                "admitted_against": "1.0.0", "members": [], "lane": "read", "tier": "R", "cost": 10}
+        with pytest.raises(ContractViolation, match="unknown lane"):
+            check_row({**base, "lane": "readonly"}, "row")
+        with pytest.raises(ContractViolation, match="unknown tier"):
+            check_row({**base, "tier": "X"}, "row")
+        with pytest.raises(ContractViolation, match="non-negative"):
+            check_row({**base, "cost": -1}, "row")
+        # `bool` is an `int` subclass, so `True` would be a cost of 1 — the cheapest declaration on
+        # the surface. The exact-type bound already excludes it; this pins that it does.
+        with pytest.raises(ContractViolation, match="exactly int"):
+            check_row({**base, "cost": True}, "row")
+
+    def test_THE_RESIDUAL_THIS_ROW_OPENS_IS_STATED_NOT_HIDDEN(self):
+        """🔴 **4.c GENUINELY WEAKENS THE DISK-READ PATH, AND THAT IS RECORDED RATHER THAN DENIED.**
+
+        Before CP-4.c these three keys were undefined, so a hand-edited manifest carrying
+        `cost: 1000000000` was refused by the schema itself. Now the field exists and a well-typed
+        forged value **passes `check_row`** — this test asserts that it does, so nobody later reads
+        the guard above and believes the file is protected.
+
+        Why this is not a regression being waved through: §0.14.1c required the field to arrive with
+        its producer, and the producer now exists. The threat model is unchanged — §6.4.2 names the
+        document digest as the answer to a hand-edited manifest and records that it was
+        **deliberately not taken**, adding that *"pretending a value bound closes it would be worse
+        than leaving it open, because it would look closed."* What IS closed is the writer: no
+        caller can supply a rank. What is open is the file, exactly as before for every other field.
+        """
+        from app.agentruntime.contract import check_row
+
+        forged = {"id": "book_list", "kind": "tool", "owning_service": "book-service",
+                  "lifecycle": "admitted", "contract_version": "1.0.0",
+                  "admitted_against": "1.0.0", "members": [],
+                  "lane": "read", "tier": "R", "cost": 1_000_000_000}
+        check_row(forged, "row")  # passes — and this assertion is the honest record of that
+
+
 class TestTheProviderTableIsAClaimAboutAnotherService:
     def test_NO_TWO_PROVIDERS_CLAIM_THE_SAME_NAMESPACE(self):
         seen: dict[str, str] = {}

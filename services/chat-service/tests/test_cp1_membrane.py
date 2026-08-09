@@ -1173,9 +1173,14 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
 
         src = (pathlib.Path(__file__).resolve().parents[1]
                / "app" / "agentruntime" / "contract.py").read_text("utf-8")
-        anchor = '    "members": (list, tuple),\n})'
+        # 🔴 **RE-ANCHORED 2026-08-09 WHEN CP-4.c ADDED `lane`/`tier`/`cost`.** The probe was pinned
+        # to `members` being the last entry, and it said so itself — *"the schema literal moved;
+        # this probe is stale"* — rather than passing over a literal it no longer described. That is
+        # the anchor discipline working: the guard failed loudly on a real edit instead of quietly
+        # testing the wrong text. The property is unchanged and is now the one CP-4 depends on.
+        anchor = '    "cost": (int,),\n})'
         assert src.count(anchor) == 1, "the schema literal moved; this probe is stale"
-        injected = src.replace(anchor, '    "members": (list, tuple),\n    "salience": (int,),\n})')
+        injected = src.replace(anchor, '    "cost": (int,),\n    "salience": (int,),\n})')
 
         def _exec(text):
             # Executed under the package's own name so `from . import canon` resolves — the module
@@ -2172,10 +2177,20 @@ class TestStageKindsAreDataNotClosures:
                 TakeWhileBudget("token_budget", "over budget", budget=6),
                 pass_number=1, ordered_by=(("id", "asc"),),
             )
-        # ...and the door's is asserted on the door, with ONE class and the door's OWN reason. It no
-        # longer refuses this row for its type at all: `cost` is not a field a row may carry, so the
-        # refusal is the schema's and the message says so.
-        with pytest.raises(ContractViolation, match="does not define"):
+        # ...and the door's is asserted on the door, with ONE class and the door's OWN reason.
+        #
+        # 🔴 **THE DOOR'S REASON CHANGED AT CP-4.c, AND IT CHANGED TO A STRONGER ONE.** Until then
+        # `cost` was not a field a row could carry, so this forgery was refused by the *schema*
+        # ("does not define") — a refusal that would have evaporated the moment CP-4 defined the
+        # field, which is exactly what just happened. It is now refused by the **exact-type bound**:
+        # `check_row_shape` compares `type(val) is int`, and `SneakyCost` is an int SUBCLASS, so the
+        # very thing that makes the forgery work is what the door catches it on.
+        #
+        # This is the assertion this test has twice been caught weakening, so it is worth being
+        # explicit that the criterion did not move: still ONE exception class, still ONE reason,
+        # still no alternation. A different reason for a defined field is not a looser test than an
+        # absent field's reason — `isinstance` here would make it green again, which is the check.
+        with pytest.raises(ContractViolation, match="exactly int"):
             rows_of(_doc([{**_VALID_ROW, "cost": SneakyCost(9)}]))
 
     def test_the_identity_check_reaches_EVERY_site_not_just_the_one_reviewed(self):

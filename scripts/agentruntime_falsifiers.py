@@ -55,6 +55,19 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          '("settings", "provider-registry-service", ("settings_", "web_")),',
          '("settings", "settings-service", ("settings_", "web_")),'),
     ],
+    # 4.c — §0.14.1a rule 2: a missing ranking field is a REJECTION, never a fallback. Disabling
+    # the clause lets a half-ranked row through, which is how arm E was arrived at by default.
+    "test_ALL_THREE_OR_NONE_A_HALF_RANKED_ROW_IS_REFUSED": [
+        (f"{PKG}/contract.py",
+         "    if present and present != FACET_FIELDS:",
+         "    if False and present != FACET_FIELDS:"),
+    ],
+    # The writer must COMPUTE the rank. Dropping the merge leaves rows the ranking cannot order.
+    "test_A_ROW_BUILT_FROM_A_DEFINITION_CARRIES_ALL_THREE": [
+        (f"{PKG}/manifest.py",
+         "        row.update(facets_for(tool_def))",
+         "        pass  # facets dropped"),
+    ],
     # ── the membrane ────────────────────────────────────────────────────────────────────────
     "test_THE_ALPHABET_ADMITS_EVERY_ID_THIS_REPOSITORY_ALREADY_DECLARES": [
         (f"{PKG}/contract.py",

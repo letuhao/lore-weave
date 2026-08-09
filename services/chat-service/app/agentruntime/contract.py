@@ -229,6 +229,21 @@ def derive_owning_service(source_path: str) -> str:
 #: them today, so nothing legitimate is refused. When a producer is built, the field arrives **with
 #: it**, in the same change — which is what "a record and the place that consumes it are ONE change"
 #: means, applied to a schema.
+#: 🔴 **CP-4.c ADDS THE THREE RANKING FACETS, AND THE COMMENT ABOVE IS THE REASON THEY ARE SAFE NOW
+#: AND WERE NOT BEFORE.** The argument for removing them was never *"these fields are wrong"* — it
+#: was *"nothing writes them, so nothing legitimate is refused, and a row carrying one came from a
+#: hand edit."* §0.14.1c said the field arrives **with its producer, in the same change**. That
+#: producer now exists (`derive.py`, measured 315/315), so the condition is met and this is the
+#: change it was waiting for.
+#:
+#: What keeps a forged `cost: 1000000000` out is **not** a value bound — `1000000000` is a well-typed
+#: integer and no predicate tells it from a real one. It is that the writer will not accept one: the
+#: facets reach `_row` only inside a `Facets`, whose constructor is token-locked to `derive.derive_one`
+#: exactly as `Admitted`'s is to `admit()`. There is no parameter for a caller to fill.
+#:
+#: `relevance` is still ABSENT and still deliberate — §0.14.1b puts its producer (a scoring stage
+#: that calls a model) at CP-2, and CP-2 closed without one. A row cannot carry it, so a pipeline
+#: ordering by it is still rejected, which is the correct fail-closed direction.
 ROW_FIELDS = MappingProxyType({
     "id": (str,),
     "kind": (str,),
@@ -237,7 +252,25 @@ ROW_FIELDS = MappingProxyType({
     "contract_version": (str,),
     "admitted_against": (str,),
     "members": (list, tuple),
+    # CP-4.c — optional, so every row already on disk still loads. `ROW_REQUIRED` is unchanged, and
+    # that separation is exactly what CP-1 built it for.
+    "lane": (str,),
+    "tier": (str,),
+    "cost": (int,),
 })
+
+#: The lanes a row may declare — C-1's *"data at registration"*, mirrored from the tier enum the
+#: providers actually publish. `derive.LANE_BY_TIER` maps one to the other and
+#: `test_THE_TWO_LANE_MAPS_AGREE` keeps the three spellings in step.
+LANES: frozenset[str] = frozenset({"read", "action", "write", "system"})
+TIERS: frozenset[str] = frozenset({"R", "A", "W", "S"})
+
+#: 🔴 **ALL THREE OR NONE.** A row carrying `cost` but not `lane` is a row the ranking can order by
+#: one key and not the other — and §0.14.1a rule 2 says a missing field is a REJECTION rather than a
+#: fallback, precisely so a half-ranked surface cannot arise by default. Enforcing the set here
+#: means the partial state is unrepresentable rather than caught later by whichever stage looked
+#: first.
+FACET_FIELDS: frozenset[str] = frozenset({"lane", "tier", "cost"})
 #: The fields every row must carry — the seven `_row` writes today.
 #:
 #: 🔴 **THIS WAS A FIVE-ELEMENT SUBSET AND THAT SUBSET WAS ITSELF A HOLE.** `validate_document`
@@ -318,6 +351,33 @@ def check_row_shape(row, where: str) -> None:
             raise ContractViolation(
                 rid or "", f"{where}.members", f"contains {m!r}",
                 "non-empty declaration ids; each member is a foreign key (C-11 / M5)")
+    # ── CP-4.c · the ranking facets ────────────────────────────────────────────────────────────
+    present = FACET_FIELDS & row.keys()
+    if present and present != FACET_FIELDS:
+        raise ContractViolation(
+            rid or "", f"{where}.{sorted(FACET_FIELDS - present)[0]}",
+            f"is missing while {sorted(present)} are present",
+            f"all of {sorted(FACET_FIELDS)} or none of them — a row the ranking can order by one "
+            f"key and not another is the half-ranked surface §0.14.1a rule 2 exists to refuse")
+    if present:
+        if row["lane"] not in LANES:
+            raise ContractViolation(
+                rid or "", f"{where}.lane", f"unknown lane {row['lane']!r}",
+                f"one of {sorted(LANES)} (C-1: declared at registration, never inferred)")
+        if row["tier"] not in TIERS:
+            raise ContractViolation(
+                rid or "", f"{where}.tier", f"unknown tier {row['tier']!r}", f"one of {sorted(TIERS)}")
+        # `type(...) is int` already ran above, and it excluded `bool` there for the reason `bool`
+        # is excluded everywhere in this file: it is an `int` subclass, so `True` would be a cost
+        # of 1 — the cheapest declaration on the surface.
+        if row["cost"] < 0:
+            raise ContractViolation(
+                rid or "", f"{where}.cost", f"is {row['cost']}",
+                "a non-negative token count. 🔴 This bound is NOT what keeps a forged cost out — "
+                "1000000000 is a well-typed non-negative integer and was measured steering "
+                "TakeWhileBudget. What keeps it out is that `_row` accepts facets only inside a "
+                "token-locked `Facets`, so there is no field to fill; this clause only catches a "
+                "value that is not a count at all")
 
 
 def check_row(row, where: str) -> None:

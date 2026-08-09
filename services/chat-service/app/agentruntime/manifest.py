@@ -77,7 +77,8 @@ def manifest_path() -> Path | None:
     return None
 
 
-def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = None) -> dict:
+def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = None,
+         tool_def: dict | None = None) -> dict:
     # §6.1 layer 3, the WRITE end. `isinstance` first — the type is an accident boundary, so this
     # rejects the duck type — and then the contract is re-run, because holding an `Admitted` is
     # evidence about the past and this row is a claim about now.
@@ -148,6 +149,17 @@ def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = Non
     # It also makes the closed schema self-enforcing at the only place that can violate it: adding a
     # key here without adding it to `ROW_FIELDS` now fails in the same change rather than in the next
     # one.
+    # 🔴 **CP-4.c — THE WRITER TAKES THE DEFINITION AND COMPUTES THE RANK ITSELF.** There is no
+    # facets argument, because a caller that could pass one could state its own rank: two rounds of
+    # bounding row VALUES failed, since a hand-typed `"cost": 1000000000` is a well-typed integer
+    # and was measured steering `TakeWhileBudget`. An earlier attempt here made the facets a
+    # token-locked type; the membrane gate rejected it (private token + `object.__setattr__` belong
+    # to `admission.py`), and removing the type proved stronger than exempting it — a value that
+    # cannot be SUPPLIED needs no forgery check.
+    if tool_def is not None:
+        from .derive import facets_for
+
+        row.update(facets_for(tool_def))
     check_row(row, "row")
     return row
 

@@ -94,6 +94,32 @@ class Underivable(Exception):
         super().__init__(f"{tool}.{field_name}: {reason}")
 
 
+def facets_for(tool_def: dict) -> dict:
+    """The three ranking keys `_row` merges — **recomputed from the definition, at the writer**.
+
+    🔴 **THIS REPLACED A TOKEN-LOCKED `Facets` TYPE, AND THE GATE THAT KILLED IT WAS RIGHT.**
+
+    The first design mirrored `Admitted`: a frozen class whose constructor demanded a private token,
+    so only `derive_one` could state a rank. `agentruntime-membrane-gate` failed it on six lines —
+    the private-token *name* and `object.__setattr__`, both of which it confines to `admission.py`,
+    because *"a deliberate bypass must be visible in the diff that introduces it"*. Adding an
+    exemption for my own new class would have been narrowing a gate to admit the code it was
+    pointed at.
+
+    Removing the type turned out to be **stronger than exempting it**. There is now no facets value
+    anywhere for a caller to hand in — `_row` takes the tool DEFINITION and computes the rank
+    itself. Two rounds of bounding row *values* failed because the vehicle was always a plain
+    well-typed scalar (a hand-typed `"cost": 1000000000` was measured steering `TakeWhileBudget`);
+    a token made the value hard to forge, and this makes it impossible to *supply*. The forgery is
+    not refused, it is unsayable — and the whole apparatus is one function.
+
+    Raises `Underivable` exactly as `derive_one` does, so a definition that cannot be ranked cannot
+    quietly produce a row that is ranked wrongly.
+    """
+    d = derive_one(tool_def)
+    return {"lane": d.lane, "tier": d.tier, "cost": d.cost}
+
+
 @dataclass(frozen=True, slots=True)
 class Derived:
     """One catalogue entry turned into an admissible declaration plus its ranking facets.
