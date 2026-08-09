@@ -1054,7 +1054,43 @@ here, two tracked with mechanisms. **Each mechanism is a thing that changes
 colour by itself** — the deferral rule this repo learned the hard way is that a
 row and a promise are not a mechanism.
 
-### 🔴 `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` — the largest finding
+### ✅ `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` — CLOSED 2026-08-09, and the review had the remedy wrong
+
+**The finding was right; the proposed fix was not.** The text below says it needs
+a change to the `WriteBackend`/`ReadBackend` seam. It does not, and `DP-C3` says
+why in one line: the control plane is *"low-QPS (≤100/s global)"*. Validating
+every write would exceed its own budget by orders of magnitude, so per-write
+validation was never the design. `DP-C8` states what is: *"Short expiry (5 min)
+bounds blast radius — no explicit revocation list needed in the normal case."*
+
+So the revocation window is closed by **TTL + refresh**, not by a seam change:
+
+* **`DEFAULT_CAPABILITY_TTL_MS` 15 min → 5 min.** It had shipped at three times
+  the spec, which states 5 in three independent places. That constant IS the
+  revocation window — the upper bound on how long a revoked session keeps
+  writing — so the drift was the finding's actual magnitude.
+* **`dp::CapabilityRefresh` + `SessionContext::refresh_if_due`**, with
+  `REFRESH_LEAD_MS = 60_000` (`DP-K10` step 4: *"refresh 60s before exp"*).
+  Implemented by `MetaControlPlane` and `GrpcControlPlane`.
+* **`spine` calls it every drain iteration and FAILS CLOSED** — the `?` is the
+  mechanism. An operator who revokes a session gets a writer that stops.
+* A `const` assertion in `meta-rs` ties the two numbers together, because
+  `crates/dp` sets the lead and never sees a TTL: a lead at or above the TTL
+  makes every capability due the instant it is issued.
+
+*Evidence:* 4 new bites (11/11 on the capability gate) · live Postgres —
+*"session … refreshed while live, refused after revocation"* · and the
+`#[expect(dead_code)]` that carried this id **fired**, exactly as designed:
+`refresh_if_due` presents the secret, the build reported the expectation
+unfulfilled, and the pragma came out. A mechanism that removed itself when the
+debt was paid.
+
+*What remains genuinely out of scope, and is not a deferral:* per-write
+validation. It is not unbuilt — it is ruled out by `DP-C3`'s own scale contract.
+
+<details><summary>the original finding, kept for the record</summary>
+
+#### `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` — as first written
 
 `5B` built capability validation and `5C` exposed bind/refresh. **Nothing calls
 `validate_capability` outside tests**, and the data path cannot: neither
@@ -1079,6 +1115,8 @@ are dead precisely because no backend takes a capability; the day one does, the
 expectation goes unfulfilled and the build fails, carrying this id in the
 message. Verified by bite — adding a caller produced
 `this lint expectation is unfulfilled … D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH`.
+
+</details>
 
 ### 🟠 `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND`
 

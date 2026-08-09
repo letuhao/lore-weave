@@ -57,6 +57,26 @@ use crate::DpError;
 /// stop the two sides disagreeing about which zero they are counting from.
 pub type Millis = u64;
 
+/// How long before expiry a capability should be refreshed.
+///
+/// `DP-K10` step 4 states the number: *"refresh 60s before `exp`."*
+///
+/// # Why a lead at all, and why this one is load-bearing
+///
+/// Refreshing exactly at expiry means every refresh races the expiry it is
+/// trying to prevent — one slow round trip and the session is dead mid-request.
+/// The lead is the margin, and it must be comfortably larger than a
+/// control-plane round trip and comfortably smaller than the TTL. With the
+/// specified 5-minute TTL this leaves four minutes of ordinary operation
+/// between refreshes.
+///
+/// **A lead greater than or equal to the TTL makes every capability due the
+/// instant it is issued**, which turns a refresh policy into a request
+/// amplifier. `crates/dp` cannot check that — it never sees the TTL, which is
+/// the control plane's to choose — so `meta-rs` asserts the relationship where
+/// both numbers are visible.
+pub const REFRESH_LEAD_MS: Millis = 60_000;
+
 /// Proof that the control plane granted this session its access.
 ///
 /// Opaque on purpose. Feature code can ask whether it is live; it cannot read
@@ -95,6 +115,24 @@ impl CapabilityToken {
             .map(Duration::from_millis)
     }
 
+    /// When the grant stops being valid.
+    pub fn expires_at_ms(&self) -> Millis {
+        self.expires_at_ms
+    }
+
+    /// Is it time to refresh?
+    ///
+    /// `DP-K10` step 4: *"Game service caches JWT in `SessionContext`; refresh
+    /// 60s before `exp`."* [`REFRESH_LEAD_MS`] is that 60 seconds.
+    ///
+    /// Deliberately `true` for an ALREADY-EXPIRED token as well as one nearing
+    /// expiry. The alternative — `false` once expired, on the reasoning that it
+    /// is too late — would mean the one state most in need of a control-plane
+    /// answer is the one state that never asks for one.
+    pub fn needs_refresh(&self, now_ms: Millis) -> bool {
+        now_ms.saturating_add(REFRESH_LEAD_MS) >= self.expires_at_ms
+    }
+
     /// The bearer secret, for the transport that must present it.
     ///
     /// `pub(crate)`: it leaves this crate only inside an SDK request, never to
@@ -105,27 +143,20 @@ impl CapabilityToken {
     // pragma removes itself: slice 4 presents this secret, and on that day this
     // line becomes an unfulfilled expectation and must go. That is a mechanism
     // with a trigger, not an exemption.
-    // THE REASON BELOW WAS WRONG, AND ITS BEING WRONG IS A FINDING (review, 5D).
-    //
-    // It said "slice 4's write surface presents it; unfulfilled the day it
-    // does". Slice 4 shipped. Slice 5 shipped. This is still dead — because the
-    // write surface does NOT present the capability, and `WriteRequest` has no
-    // field for one. The pragma's MECHANISM was fine (it fires the day the item
-    // becomes live); its REASON named an event that had already passed without
-    // producing the effect, which is the "escape hatch cannot reach its reason"
-    // shape `non-vacuity.md` names.
-    //
-    // Re-pointed at the real trigger: `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH`
-    // in the run-state. Nothing validates a capability server-side, so
-    // revocation is immediate at the control plane and invisible to the data
-    // plane. The day a backend is given the capability to present, this
-    // expectation goes unfulfilled and the build says so — which makes this
-    // pragma that deferral's mechanism rather than a note about it.
-    #[expect(
-        dead_code,
-        reason = "D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH — no backend takes a \
-                  capability yet; this expectation goes unfulfilled the day one does"
-    )]
+    /// The bearer secret, for the transport that must present it.
+    ///
+    /// # The `#[expect(dead_code)]` that used to be here did its job
+    ///
+    /// It carried the id `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` as its
+    /// reason, on the stated trigger *"this expectation goes unfulfilled the day
+    /// a backend takes a capability."* [`SessionContext::refresh_if_due`] is
+    /// that day: it presents this secret to a [`CapabilityRefresh`], the build
+    /// reported the expectation unfulfilled, and the pragma came out. A
+    /// mechanism that removes itself when the debt is paid, which is the whole
+    /// difference between an `expect` and an `allow`.
+    ///
+    /// Still `pub(crate)`: it leaves this crate only inside a refresh request,
+    /// never to feature code.
     pub(crate) fn secret(&self) -> &str {
         &self.secret
     }
@@ -184,6 +215,22 @@ pub struct VerifiedBind {
     pub session: uuid::Uuid,
     pub capability_secret: String,
     pub expires_at_ms: Millis,
+}
+
+/// Extends a live capability — the seam behind [`SessionContext::refresh_if_due`].
+///
+/// Separate from [`ControlPlane`] on purpose. Binding and refreshing are done by
+/// the same service but they are not the same capability to hold: a component
+/// that only needs to keep an existing session alive should not, by having the
+/// type it needs, also be able to mint new sessions for arbitrary realities.
+pub trait CapabilityRefresh {
+    /// Present the bearer secret, get back the NEW expiry in Unix epoch ms.
+    ///
+    /// [`DpError::CapabilityExpired`] is the expected shape for a grant that is
+    /// gone — which under `DP-C8`'s model covers both an expiry that has passed
+    /// and a REVOCATION. The caller cannot distinguish them and does not need
+    /// to: both mean stop.
+    fn refresh(&self, capability_secret: &str) -> Result<Millis, DpError>;
 }
 
 /// The seam `crates/dp` declares and slice 5 satisfies.
@@ -424,15 +471,81 @@ impl SessionContext {
         }
     }
 
-    /// The capability, for the transport. Never handed to feature code.
-    // Same correction as `CapabilityToken::secret` above, same trigger.
-    #[expect(
-        dead_code,
-        reason = "D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH — no backend takes a \
-                  capability yet; this expectation goes unfulfilled the day one does"
-    )]
-    pub(crate) fn capability(&self) -> &CapabilityToken {
-        &self.capability
+    // `capability()` IS GONE (revocation-window fix). It was a `pub(crate)`
+    // accessor with no caller, carried on an `#[expect(dead_code)]`. The two
+    // in-crate users of the capability — `check_live` and `refresh_if_due` —
+    // both reach `self.capability` directly, so the accessor was never anything
+    // but a pragma with a function attached. Deleted rather than re-justified:
+    // the honest response to "this has no caller" is usually removal, and a
+    // pragma is what makes it easy to answer some other way.
+
+    /// Is it time to refresh this session's capability? See [`REFRESH_LEAD_MS`].
+    pub fn needs_refresh(&self, now_ms: Millis) -> bool {
+        self.capability.needs_refresh(now_ms)
+    }
+
+    /// When this session's capability expires.
+    pub fn expires_at_ms(&self) -> Millis {
+        self.capability.expires_at_ms()
+    }
+
+    /// `DP-K10` step 4 — refresh if due, returning a context with the new
+    /// expiry, or `None` if it was not yet time.
+    ///
+    /// # This is what makes revocation reach the data plane
+    ///
+    /// `check_live` compares the caller's own copy of an expiry against the
+    /// caller's own clock. It catches an honest expiry and **cannot** catch a
+    /// revocation — so before this existed, `revoke_session` was immediate at
+    /// the control plane and invisible to every writer already running.
+    ///
+    /// `DP-C8` is explicit that this, and not per-write validation, is the
+    /// design: *"Short expiry (5 min) bounds blast radius — no explicit
+    /// revocation list needed in the normal case."* `DP-C3` puts the control
+    /// plane at ≤100 requests/second globally, so validating every write was
+    /// never on the table — it would exceed that budget by orders of magnitude.
+    /// The blast radius is therefore **bounded by the TTL**, and the TTL is the
+    /// number that matters.
+    ///
+    /// # FAIL CLOSED is the caller's obligation, and it is the whole point
+    ///
+    /// An `Err` here means the control plane refused — most consequentially
+    /// [`DpError::CapabilityExpired`], which is what a REVOKED session gets. A
+    /// caller that logs it and keeps working has reimplemented the bug: the
+    /// session must stop. That cannot be enforced from inside this function,
+    /// which is exactly why it returns a `Result` the caller has to handle
+    /// rather than silently keeping the old context alive.
+    pub fn refresh_if_due<R: CapabilityRefresh>(
+        &self,
+        refresher: &R,
+        now_ms: Millis,
+    ) -> Result<Option<Self>, DpError> {
+        if !self.needs_refresh(now_ms) {
+            return Ok(None);
+        }
+        let new_expiry = refresher.refresh(self.capability.secret())?;
+
+        // A refresh that moves the expiry BACKWARDS is not a refresh. It would
+        // shorten a live grant on the strength of an answer that was supposed to
+        // extend it, and the caller would have no way to tell that from a
+        // legitimate short TTL.
+        if new_expiry <= self.capability.expires_at_ms() {
+            return Err(DpError::ControlPlaneUnavailable {
+                reason: format!(
+                    "refresh returned expiry {new_expiry}, which is not later than the \
+                     current {}",
+                    self.capability.expires_at_ms()
+                ),
+            });
+        }
+
+        Ok(Some(Self {
+            capability: CapabilityToken::new_verified(
+                self.capability.secret().to_string(),
+                new_expiry,
+            ),
+            ..self.clone()
+        }))
     }
 }
 
@@ -534,6 +647,116 @@ mod tests {
         let ctx = SessionContext::bind(&cp, req(1), 0).expect("bind");
         let err = ctx.check_live(1_000).expect_err("expired");
         assert_eq!(err.variant_name(), "CapabilityExpired");
+    }
+
+    // ── the revocation window — DP-K10 step 4 ───────────────────────────────
+
+    struct Refresher {
+        answer: Result<Millis, DpError>,
+        calls: std::cell::Cell<usize>,
+    }
+
+    impl Refresher {
+        fn ok(new_expiry: Millis) -> Self {
+            Self { answer: Ok(new_expiry), calls: std::cell::Cell::new(0) }
+        }
+        fn refusing() -> Self {
+            Self { answer: Err(DpError::CapabilityExpired), calls: std::cell::Cell::new(0) }
+        }
+    }
+
+    impl CapabilityRefresh for Refresher {
+        fn refresh(&self, secret: &str) -> Result<Millis, DpError> {
+            self.calls.set(self.calls.get() + 1);
+            // The secret must actually be PRESENTED — a refresher that receives
+            // nothing could not identify the session, and a test that did not
+            // assert this would pass against a refresh that sent an empty
+            // string.
+            assert_eq!(secret, "s3cret", "the bearer secret must reach the refresher");
+            match &self.answer {
+                Ok(v) => Ok(*v),
+                Err(_) => Err(DpError::CapabilityExpired),
+            }
+        }
+    }
+
+    /// A session bound at 0 with a 5-minute grant — the specified TTL.
+    fn ctx_5min() -> SessionContext {
+        let cp = Double { answer: Ok(granted(1, 300_000)) };
+        SessionContext::bind(&cp, req(1), 0).expect("bind")
+    }
+
+    #[test]
+    fn a_fresh_capability_is_not_due_and_the_refresher_is_not_called() {
+        let ctx = ctx_5min();
+        let r = Refresher::ok(999_999);
+        // 60s lead against a 300s grant: nothing is due for the first 240s.
+        assert!(ctx.refresh_if_due(&r, 0).expect("not due").is_none());
+        assert!(ctx.refresh_if_due(&r, 239_999).expect("not due").is_none());
+        assert_eq!(r.calls.get(), 0, "an undue refresh must not reach the control plane");
+    }
+
+    #[test]
+    fn the_refresh_lead_boundary_is_where_dp_k10_puts_it() {
+        let ctx = ctx_5min();
+        // expiry 300_000, lead 60_000 -> due from exactly 240_000.
+        assert!(!ctx.needs_refresh(239_999));
+        assert!(ctx.needs_refresh(240_000), "due AT the lead, not one ms after");
+        assert!(ctx.needs_refresh(300_000), "and still due once expired");
+        assert!(
+            ctx.needs_refresh(999_999),
+            "an ALREADY-EXPIRED capability must still ask — it is the state most in \
+             need of a control-plane answer"
+        );
+    }
+
+    #[test]
+    fn a_due_refresh_returns_a_context_carrying_the_new_expiry() {
+        let ctx = ctx_5min();
+        let r = Refresher::ok(600_000);
+        let refreshed = ctx.refresh_if_due(&r, 250_000).expect("due").expect("some");
+
+        assert_eq!(r.calls.get(), 1);
+        assert_eq!(refreshed.expires_at_ms(), 600_000);
+        assert!(refreshed.check_live(599_999).is_ok());
+        // The ORIGINAL is untouched, same as move_to_channel: a context handed
+        // to in-flight work must not change under it.
+        assert_eq!(ctx.expires_at_ms(), 300_000);
+        // …and everything else survives.
+        assert_eq!(refreshed.session_id().as_uuid(), ctx.session_id().as_uuid());
+        assert_eq!(refreshed.reality_id().as_uuid(), ctx.reality_id().as_uuid());
+    }
+
+    #[test]
+    fn a_revoked_session_surfaces_the_refusal_rather_than_keeping_its_old_grant() {
+        // THE POINT OF THE WHOLE MECHANISM. Under DP-C8 a revoked capability is
+        // indistinguishable from an expired one, and both mean stop. The caller
+        // gets an Err and no context — there is no path here that returns the
+        // old one and lets the writer carry on.
+        let ctx = ctx_5min();
+        let r = Refresher::refusing();
+        let err = ctx.refresh_if_due(&r, 250_000).expect_err("revoked");
+        assert_eq!(err.variant_name(), "CapabilityExpired");
+        assert_eq!(r.calls.get(), 1);
+    }
+
+    #[test]
+    fn a_refresh_that_moves_the_expiry_backwards_is_refused() {
+        // Not a refresh. It would shorten a live grant on the strength of an
+        // answer that was supposed to extend it, and a caller could not tell
+        // that from a legitimately short TTL.
+        let ctx = ctx_5min();
+        for regressive in [300_000, 299_999, 0] {
+            let r = Refresher::ok(regressive);
+            let err = ctx.refresh_if_due(&r, 250_000).expect_err("must refuse");
+            assert_eq!(err.variant_name(), "ControlPlaneUnavailable");
+            assert!(err.to_string().contains("not later than"), "{err}");
+        }
+    }
+
+    #[test]
+    fn the_refresh_lead_is_the_number_dp_k10_states() {
+        assert_eq!(REFRESH_LEAD_MS, 60_000, "DP-K10 step 4: refresh 60s before exp");
     }
 
     // ── 5D — `DP-Ch9`, the ChannelId producer ───────────────────────────────

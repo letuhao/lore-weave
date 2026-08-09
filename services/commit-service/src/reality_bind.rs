@@ -55,6 +55,27 @@ fn node_id() -> String {
 /// issued capability is attributed to — see `session_registry.service_identity`.
 pub const SERVICE_IDENTITY: &str = "commit-service";
 
+/// The concrete control plane this service binds against.
+///
+/// Named because [`Bound`] has to hold one: the refresher must OUTLIVE the bind,
+/// and the first version of this module dropped it at the end of `bind_reality`.
+/// That left the process holding a capability it had no way to renew — which is
+/// the same defect as not refreshing at all, arrived at by accident.
+pub type CommitControlPlane = MetaControlPlane<DefaultMetaRead<PgConnectionReader>, PgCapabilityStore>;
+
+/// What a successful bind hands back.
+///
+/// Both halves, because a caller needs both: the session to act with, and the
+/// plane to keep it alive. Returning only the `SessionContext` — as this
+/// function first did — reads complete and quietly makes `refresh_if_due`
+/// uncallable.
+pub struct Bound {
+    /// The verified session. `mut` in the caller: a refresh replaces it.
+    pub session: SessionContext,
+    /// The refresher. Implements `dp::CapabilityRefresh`.
+    pub plane: CommitControlPlane,
+}
+
 /// Bind a session and return the verified reality with its capability.
 ///
 /// The whole [`SessionContext`] is returned rather than just the `RealityId`,
@@ -64,7 +85,7 @@ pub async fn bind_reality(
     meta_url: Option<&str>,
     meta_allowlist_path: &str,
     reality: Uuid,
-) -> Result<SessionContext, Box<dyn std::error::Error>> {
+) -> Result<Bound, Box<dyn std::error::Error>> {
     let meta_url = meta_url.ok_or(
         "--meta-url is required: a writer node must verify with the control plane that its \
          reality exists and still accepts commands before appending to it. Without the meta \
@@ -93,16 +114,49 @@ pub async fn bind_reality(
     // `bind` needs `now` in the SAME timebase the control plane stamps its
     // expiry in — Unix epoch milliseconds. Reading a different clock here is how
     // two components end up disagreeing about whether a capability is live.
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)?
-        .as_millis() as u64;
+    let now_ms = now_ms()?;
 
-    let ctx = SessionContext::bind(
+    let session = SessionContext::bind(
         &plane,
         BindRequest { reality, node: node_id(), service },
         now_ms,
     )?;
-    Ok(ctx)
+    Ok(Bound { session, plane })
+}
+
+/// `DP-K10` step 4 — keep the capability alive, and FAIL CLOSED.
+///
+/// Returns the refreshed session when one was due, `None` when it was not, and
+/// an **error the caller must not swallow** when the control plane refused.
+///
+/// # Why the refusal is the product
+///
+/// `check_live` compares this process's own copy of an expiry against its own
+/// clock, so it catches an honest expiry and cannot catch a REVOCATION. This is
+/// the only thing that can: the refresh asks the control plane, and a revoked
+/// grant comes back refused. An operator who revokes this session gets a writer
+/// that stops — within one TTL (5 minutes, `DP-C8`) at the outside, and at the
+/// next refresh in practice.
+///
+/// It lives here rather than in `spine` for the same reason `node_id` does: it
+/// is this service's relationship with the control plane, and a second binary
+/// implementing it slightly differently would be a second revocation policy.
+pub fn refresh_if_due(
+    session: &SessionContext,
+    plane: &CommitControlPlane,
+) -> Result<Option<SessionContext>, Box<dyn std::error::Error>> {
+    Ok(session.refresh_if_due(plane, now_ms()?)?)
+}
+
+/// Unix EPOCH milliseconds — the timebase `dp::Millis` specifies.
+///
+/// One spelling, used by the bind and by every refresh check. Two readings of
+/// "now" from two places is how a caller and a control plane end up disagreeing
+/// about whether a capability is live.
+pub fn now_ms() -> Result<u64, Box<dyn std::error::Error>> {
+    Ok(std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_millis() as u64)
 }
 
 #[cfg(test)]
@@ -113,7 +167,7 @@ mod tests {
     async fn a_missing_meta_url_is_refused_with_a_reason_not_a_default() {
         // The failure this module exists to make loud. Without it, a writer with
         // no registry silently proceeds against an unverified world.
-        let err = bind_reality(None, "unused", Uuid::nil()).await.expect_err("must refuse");
+        let err = bind_reality(None, "unused", Uuid::nil()).await.err().expect("must refuse");
         let msg = err.to_string();
         assert!(msg.contains("--meta-url is required"), "{msg}");
         assert!(

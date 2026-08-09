@@ -938,6 +938,80 @@ async fn the_control_plane_end_to_end_against_a_real_store() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn revoking_a_session_stops_its_refresh_against_a_real_store() {
+    // THE REVOCATION WINDOW, end to end and with no double in the path.
+    //
+    // Before `refresh_if_due` existed, revocation was immediate at the control
+    // plane and invisible to a writer already running: `check_live` compares the
+    // holder's own copy of an expiry against the holder's own clock. This is the
+    // test that the loop actually closes — and it closes through the real
+    // `session_registry`, so it also proves the CAS on `revoked_at` is what
+    // refuses.
+    let Some(dsn) = dsn() else {
+        eprintln!("SKIP: {DSN_VAR} unset — run scripts/meta-rs-pg-live-smoke.sh");
+        return;
+    };
+    let pool = pool(&dsn).await;
+
+    let reality = Uuid::new_v4();
+    sqlx::query(
+        "INSERT INTO reality_registry \
+         (reality_id, db_host, db_name, status, locale, \
+          session_max_pcs, session_max_npcs, session_max_total, deploy_cohort) \
+         VALUES ($1, 'pg-shard-0.internal', 'lw_reality_pg_live', 'active', 'en', 8, 24, 32, 0)",
+    )
+    .bind(reality)
+    .execute(&pool)
+    .await
+    .expect("seed reality");
+
+    let reader = PgConnectionReader::new(pool.clone()).expect("reader");
+    let plane = MetaControlPlane::new(DefaultMetaRead::new(reader), capability_store(&pool));
+
+    let ctx = dp::SessionContext::bind(
+        &plane,
+        dp::BindRequest {
+            reality,
+            node: "pg-live-node".into(),
+            service: dp::ServiceIdentity::new("meta-rs-pg-live-test").expect("valid"),
+        },
+        now_ms(),
+    )
+    .expect("bind");
+
+    // Not yet due: the default TTL is 5 minutes and the lead is 60s, so a
+    // freshly bound session has four minutes before it asks anything.
+    assert!(
+        ctx.refresh_if_due(&plane, now_ms()).expect("not due").is_none(),
+        "a fresh capability must not refresh — that would be a request amplifier"
+    );
+
+    // Due, and it succeeds while the grant is live. `now` is pushed past the
+    // lead rather than sleeping four minutes.
+    let due_at = ctx.expires_at_ms() - dp::REFRESH_LEAD_MS;
+    let refreshed = ctx
+        .refresh_if_due(&plane, due_at)
+        .expect("refresh")
+        .expect("due");
+    assert!(
+        refreshed.expires_at_ms() > ctx.expires_at_ms(),
+        "a refresh must move the expiry forward"
+    );
+
+    // NOW REVOKE, and the same call refuses.
+    assert!(plane.revoke_session(ctx.session_id().as_uuid(), "pg-live revocation drill").expect("revoke"));
+    let err = refreshed
+        .refresh_if_due(&plane, refreshed.expires_at_ms() - dp::REFRESH_LEAD_MS)
+        .expect_err("a revoked session must not refresh");
+    assert_eq!(err.variant_name(), "CapabilityExpired", "got {err}");
+
+    println!(
+        "LIVE: session {} refreshed while live, refused after revocation",
+        ctx.session_id()
+    );
+}
+
 /// Unix-epoch milliseconds — the timebase `dp::Millis` specifies.
 fn now_ms() -> u64 {
     std::time::SystemTime::now()

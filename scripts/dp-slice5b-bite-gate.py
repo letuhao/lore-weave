@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""dp-slice5b-bite-gate — every guard `5B` installs, removed and shown to leak.
+"""dp-slice5b-bite-gate — every guard the CAPABILITY LIFECYCLE installs, removed.
 
 `5B` is the capability STORE: the control plane records what it issues, so a
 capability can be validated, refreshed and revoked instead of merely minted.
@@ -50,6 +50,7 @@ REPO = Path(__file__).resolve().parents[1]
 IDS = REPO / "crates" / "dp" / "src" / "ids.rs"
 CONTROL_PLANE = REPO / "crates" / "meta-rs" / "src" / "control_plane.rs"
 SESSION_STORE = REPO / "crates" / "meta-rs" / "src" / "session_store.rs"
+DP_SESSION = REPO / "crates" / "dp" / "src" / "session.rs"
 
 # Guards that exist and are proven elsewhere, listed so the count cannot read as
 # "this is all of them".
@@ -240,6 +241,50 @@ LEGS = [
         "service_identity: String::new(),",
         "meta-rs",
         "control_plane::tests::a_bind_records_the_capability_it_issued",
+    ),
+    # ── the REVOCATION WINDOW (2026-08-09) ──────────────────────────────────
+    #
+    # `5B` built the store and nothing consulted it: `check_live` compares the
+    # holder's own copy of an expiry against the holder's own clock, so
+    # revocation was immediate at the control plane and invisible to a writer
+    # already running. These four are the guards that close it.
+    (
+        "[refresh] the 60s lead exists, so a refresh does not race the expiry it prevents",
+        DP_SESSION,
+        "now_ms.saturating_add(REFRESH_LEAD_MS) >= self.expires_at_ms",
+        "now_ms >= self.expires_at_ms",
+        "dp",
+        "session::tests::the_refresh_lead_boundary_is_where_dp_k10_puts_it",
+    ),
+    (
+        "[refresh] a refused refresh FAILS CLOSED rather than keeping the old grant",
+        DP_SESSION,
+        "let new_expiry = refresher.refresh(self.capability.secret())?;",
+        # A ONE-LINE mutation. A multi-line replacement was written first and a
+        # heredoc turned its `\n` into a real newline, breaking this file's own
+        # syntax — the §0.6 hazard, hit while writing a harness about rigour.
+        # `unwrap_or(0)` is also the more honest mutation: it is what a hurried
+        # edit reaches for, and it swallows the refusal exactly the way the guard
+        # exists to prevent.
+        "let new_expiry = refresher.refresh(self.capability.secret()).unwrap_or(0);",
+        "dp",
+        "session::tests::a_revoked_session_surfaces_the_refusal_rather_than_keeping_its_old_grant",
+    ),
+    (
+        "[refresh] an expiry moving BACKWARDS is not a refresh",
+        DP_SESSION,
+        "if new_expiry <= self.capability.expires_at_ms() {",
+        "if false {",
+        "dp",
+        "session::tests::a_refresh_that_moves_the_expiry_backwards_is_refused",
+    ),
+    (
+        "[ttl] the default TTL is the revocation window DP-C8 specifies",
+        CONTROL_PLANE,
+        "pub const DEFAULT_CAPABILITY_TTL_MS: u64 = 5 * 60 * 1000;",
+        "pub const DEFAULT_CAPABILITY_TTL_MS: u64 = 15 * 60 * 1000;",
+        "meta-rs",
+        "control_plane::tests::the_default_ttl_is_the_revocation_window_dp_c8_specifies",
     ),
     (
         "[store] the digest is SHA-256 and not something cheaper",

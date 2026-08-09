@@ -4,15 +4,33 @@
 
 **HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
-> **▶ DO NEXT — `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH`.** Slices 3, 4 and 5 are CLOSED
-> (`5A` · `5-WIRE` · `5B` · `5C` · `5D`), `3E.2` discharged commit-service, and the post-slice-5
-> data-plane review is done. It found one thing big enough to be the next piece of work.
+> **▶ DO NEXT — the `world-service` scope decision (a PO call, one sentence), then whatever it
+> unblocks.** Slices 3, 4 and 5 are CLOSED (`5A` · `5-WIRE` · `5B` · `5C` · `5D`), `3E.2` discharged
+> commit-service, the post-slice-5 review is done, and **the revocation window it found is now
+> closed.**
 >
-> ### Deferred, from the post-slice-5 data-plane review (2026-08-09)
+> ### ✅ `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` — closed, and the review's own remedy was wrong
+>
+> The finding was right: `5B` built the capability store and nothing consulted it, so
+> `revoke_session` was immediate at the control plane and invisible to a writer already running.
+> **The proposed fix was wrong.** The review called for a `WriteBackend`/`ReadBackend` seam change;
+> `DP-C3` budgets the control plane at *"≤100/s global"*, so per-write validation would blow its own
+> scale contract by orders of magnitude and was never the design. `DP-C8` states the real one:
+> *"Short expiry (5 min) bounds blast radius — no explicit revocation list needed."*
+>
+> So: **TTL 15 min → 5 min** (it had shipped at 3× the spec, which says 5 in three independent
+> places — and that constant IS the revocation window), `dp::CapabilityRefresh` +
+> `SessionContext::refresh_if_due` with `REFRESH_LEAD_MS = 60s` per `DP-K10`, implemented by both
+> control planes, and **`spine` refreshes every drain iteration and fails closed** — the `?` is the
+> mechanism. Live-proven: *"session … refreshed while live, refused after revocation."*
+>
+> The `#[expect(dead_code)]` carrying that id **fired** when `refresh_if_due` began presenting the
+> secret, and came out. A mechanism that removed itself when the debt was paid.
+>
+> ### Still deferred, from the same review
 >
 > | ID | What | Gate | Mechanism (not a promise) |
 > |---|---|---|---|
-> | `D-DP-CAPABILITY-NOT-VALIDATED-ON-DATA-PATH` | `5B` built capability validation; **nothing calls it outside tests, and the data path cannot** — neither `WriteRequest` nor `ReadRequest` carries a capability. `check_live` is the CLIENT checking its own copy of an expiry, so it catches an honest expiry and **cannot catch a revocation**. `revoke_session` is immediate at the control plane and invisible to the data plane: a revoked session keeps writing until its local expiry (15 min). | #2 large/structural — it changes the `WriteBackend`/`ReadBackend` seam `4B`/`4C` sealed, and puts a control-plane round trip in the hot loop | the `#[expect(dead_code)]` on `CapabilityToken::secret` + `SessionContext::capability` names **this id** as its reason. Those items are dead *because* no backend takes a capability; the day one does, the expectation goes unfulfilled and the build fails carrying this id. Bite-verified. |
 > | `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND` | The CP records before returning (correctly), but `SessionContext::bind` can still reject on `now_ms >= expires_at_ms` — CP clock vs caller clock. The row is live, its secret was dropped, nothing can present it. | #4 needs the column below | `session_registry` is already under `@retention_hot: 90d`. The waking trigger is a `last_validated_at` column, which arrives with the fix above. |
 >
 > **Also found and FIXED in the review:** both `#[expect(dead_code)]` reasons said *"slice 4's write

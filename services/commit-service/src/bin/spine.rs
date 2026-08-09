@@ -44,11 +44,12 @@ async fn main() -> anyhow::Result<()> {
     // ── 3E: VERIFY the reality FIRST — before the pool, before the lease.
     // There is no point acquiring a writer lease on a world we may not write.
     // See `reality_bind` for what a raw `--reality <uuid>` did not check.
-    let session =
+    let commit_service::reality_bind::Bound { mut session, plane } =
         commit_service::reality_bind::bind_reality(args.meta_url.as_deref(), &args.meta_allowlist, args.reality)
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;
-    println!("bound reality {} as session {}", session.reality_id(), session.session_id());
+    let (r, sid, exp) = (session.reality_id(), session.session_id(), session.expires_at_ms());
+    println!("bound reality {r} as session {sid} (capability expires at {exp})");
 
     // ── durability side: lease + fenced writer (dp-kernel SDK) ──
     let pool = Arc::new(PgPoolOptions::new().max_connections(4).connect(&args.pg_url).await?);
@@ -168,6 +169,15 @@ async fn main() -> anyhow::Result<()> {
     let mut turn_number: u64 = 0;
 
     loop {
+        // DP-K10 step 4. The `?` is the mechanism: a REVOKED session comes
+        // back refused and this writer stops. See `reality_bind::refresh_if_due`.
+        if let Some(r) = commit_service::reality_bind::refresh_if_due(&session, &plane)
+            .map_err(|e| anyhow::anyhow!("{e}"))?
+        {
+            println!("capability refreshed, now expires at {}", r.expires_at_ms());
+            session = r;
+        }
+
         // BEFORE the proposals, every iteration including the first. Ahead of
         // them because an epoch switch changes the rules the batch about to be
         // stepped will be validated against, and running the reconcile on the

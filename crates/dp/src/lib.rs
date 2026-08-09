@@ -86,8 +86,8 @@ pub use cache::KeyId;
 pub use error::DpError;
 pub use ids::{ChannelId, NodeId, RealityId, ServiceIdentity, SessionId};
 pub use session::{
-    BindRequest, CapabilityToken, ChannelResolution, ChannelTree, ControlPlane, SessionContext,
-    VerifiedBind,
+    BindRequest, CapabilityRefresh, CapabilityToken, ChannelResolution, ChannelTree, ControlPlane,
+    SessionContext, VerifiedBind, REFRESH_LEAD_MS,
 };
 pub use read::{
     read_projection_channel, read_projection_reality, read_tier, Decode, ReadBackend, ReadRequest,

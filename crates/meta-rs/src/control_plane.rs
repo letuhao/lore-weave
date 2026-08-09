@@ -41,7 +41,35 @@ use crate::session_store::{capability_digest, CapabilityStore, IssuedCapability,
 /// [`MetaControlPlane::refresh_capability`] is the sanctioned way to extend one,
 /// and it applies this same TTL from `now` rather than from the old expiry — so
 /// a chain of refreshes cannot accumulate a longer grant than a fresh bind.
-pub const DEFAULT_CAPABILITY_TTL_MS: u64 = 15 * 60 * 1000;
+///
+/// # This number IS the revocation window, and it was 3× the spec
+///
+/// It shipped at 15 minutes. `05_control_plane_spec.md` says 5, three times and
+/// consistently: *"Short expiry (5 min) bounds blast radius"* · *"Continues
+/// existing session operations until capabilities expire (5 min)"* · and
+/// `DP-C8`'s signing-key rule, *"2× the max capability lifetime (10 minutes)"*,
+/// which only resolves if the maximum is 5.
+///
+/// The drift mattered because of what this number MEANS. `DP-C8` reaches
+/// revocation through expiry rather than through a revocation list — `DP-C3`
+/// budgets the control plane at ≤100 req/s globally, so validating every write
+/// was never the design. **So the TTL is the upper bound on how long a REVOKED
+/// session keeps writing**, and at 15 minutes it was three times the bound the
+/// spec chose.
+pub const DEFAULT_CAPABILITY_TTL_MS: u64 = 5 * 60 * 1000;
+
+/// The refresh lead must be comfortably SHORTER than the TTL.
+///
+/// `crates/dp` sets the lead and never sees a TTL; this crate chooses the TTL
+/// and can see both, so the relationship is asserted where it is checkable.
+/// A lead at or above the TTL makes every capability due the instant it is
+/// issued — a refresh policy that is really a request amplifier, and one that
+/// would look like a control-plane load problem rather than a constant.
+const _: () = assert!(
+    dp::REFRESH_LEAD_MS * 2 <= DEFAULT_CAPABILITY_TTL_MS,
+    "the refresh lead must leave at least as much time again before it is due; \
+     raise DEFAULT_CAPABILITY_TTL_MS or lower dp::REFRESH_LEAD_MS"
+);
 
 /// Reads the wall clock. Injected so tests are deterministic without freezing
 /// global time, and so the one place this crate touches a clock is visible.
@@ -268,6 +296,28 @@ where
         self.store
             .revoke(session_id, now, reason)
             .map_err(|e| DpError::ControlPlaneUnavailable { reason: e.to_string() })
+    }
+}
+
+/// `DP-K10` step 4's server side — the seam `dp::SessionContext::refresh_if_due`
+/// calls.
+///
+/// Thin on purpose: it is [`MetaControlPlane::refresh_capability`] with the
+/// clock read here rather than passed in, because a caller that supplied `now`
+/// to a REFRESH could hold a dead grant open by supplying a stale one. The bind
+/// path takes `now` from the caller for a different reason — `crates/dp` has no
+/// clock and the comparison is the caller's — but nothing about liveness on this
+/// side should be the caller's to assert.
+impl<R, K, C, S> dp::CapabilityRefresh for MetaControlPlane<R, K, C, S>
+where
+    R: MetaRead + Send + Sync,
+    K: CapabilityStore,
+    C: Clock,
+    S: SecretSource,
+{
+    fn refresh(&self, capability_secret: &str) -> Result<dp::session::Millis, DpError> {
+        let now = self.clock.now_unix_ms();
+        Ok(self.refresh_capability(capability_secret, now)?.expires_at_ms)
     }
 }
 
@@ -510,6 +560,26 @@ mod tests {
             node: "pod-1".into(),
             service: dp::ServiceIdentity::new("commit-service").expect("valid"),
         }
+    }
+
+    #[test]
+    fn the_default_ttl_is_the_revocation_window_dp_c8_specifies() {
+        // This constant IS the upper bound on how long a REVOKED session keeps
+        // writing, because DP-C8 reaches revocation through expiry rather than
+        // through a revocation list. It shipped at 15 minutes against a spec
+        // that says 5 in three places; pinning it here means the next drift is
+        // a failing test rather than a number nobody re-reads.
+        assert_eq!(
+            DEFAULT_CAPABILITY_TTL_MS,
+            5 * 60 * 1000,
+            "DP-C8: \"Short expiry (5 min) bounds blast radius\""
+        );
+        // …and the relationship the const-assert above enforces, restated where
+        // a reader of the tests will see it.
+        assert!(
+            dp::REFRESH_LEAD_MS < DEFAULT_CAPABILITY_TTL_MS,
+            "a lead at or above the TTL makes every capability due the instant it is issued"
+        );
     }
 
     #[test]

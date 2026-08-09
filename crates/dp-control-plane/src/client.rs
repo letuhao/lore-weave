@@ -134,6 +134,18 @@ impl GrpcControlPlane {
     }
 }
 
+/// `DP-K10` step 4 over the wire.
+///
+/// This is where the sealed bearer deviation's cost is actually paid: a refresh
+/// is a network round trip. It happens once per `REFRESH_LEAD_MS` before expiry
+/// rather than per write, which is what keeps it inside `DP-C3`'s ≤100 req/s
+/// budget for the whole control plane.
+impl dp::CapabilityRefresh for GrpcControlPlane {
+    fn refresh(&self, capability_secret: &str) -> Result<dp::session::Millis, DpError> {
+        Ok(self.refresh_capability(capability_secret)?.expires_at_ms)
+    }
+}
+
 impl ControlPlane for GrpcControlPlane {
     fn verify_bind(&self, req: &BindRequest) -> Result<VerifiedBind, DpError> {
         let mut client = self.inner.clone();

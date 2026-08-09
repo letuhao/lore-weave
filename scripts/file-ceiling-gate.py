@@ -100,7 +100,7 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
         610, "a measurement binary — one long table of scenarios, which is the "
              "shape that file is FOR"),
     "services/commit-service/src/bin/spine.rs": (
-        370, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
+        375, "the S3a spine wiring binary: bus -> admission -> island -> commit, "
              "one linear sequence that reads worse cut in half. RETIGHTENED "
              "445 -> 425 after Q1 B2b moved the RLS-A3 startup path into "
              "src/ruleset_boot.rs, then 425 -> 370 after 3E moved the argument "
@@ -111,7 +111,16 @@ ALLOWLIST: dict[str, tuple[int, str]] = {
              "asking for since it was written. Same rule as digest.rs: a cap left "
              "at its old value after a split is a silent licence to regrow into "
              "it. The parser gained its first three tests on the way out; nothing "
-             "in a `bin` is reachable from a test"),
+             "in a `bin` is reachable from a test. "
+             "LOOSENED 370 -> 375, and the honest reason is that 370 was measured "
+             "one commit too early: the file was 363 when it was set, and the "
+             "capability-refresh loop (DP-K10 step 4) legitimately needs nine "
+             "lines in `main`'s loop. The refresh POLICY moved to "
+             "src/reality_bind.rs; what stays is the call and the `?` that makes "
+             "a revoked session stop, which cannot live anywhere but the loop. "
+             "A cap raised to fit real work is not the failure this row warns "
+             "about — a cap raised INSTEAD of moving work is, and that is what "
+             "the 425 -> 370 step refused"),
     "crates/ruleset-core/tests/digest.rs": (
         455, "the digest verification suite; the per-field mutation tables are "
              "long by design (v2_every_*_field_reaches_the_digest). RETIGHTENED "
