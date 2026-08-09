@@ -1761,9 +1761,13 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
 
     seen = {}
 
-    async def _fake_run_read(session, cypher, **kw):
+    # The read moved to `neo4j_repos/graph_views.py` (plan T17), and the seam collapsed
+    # with it: one repo call RETURNS the rows, where before it was run_read + _records.
+    # Patching run_read here would patch nothing, and the over-fetch assertion — the whole
+    # point of this test — would silently stop being checked.
+    async def _fake_read(session, **kw):
         seen["limit"] = kw.get("limit")
-        return object()
+        return [_rec(i) for i in range(4)]
 
     # `_records` yields limit+1 (=4) valid edge rows → the cap bites at limit=3.
     def _rec(i):
@@ -1773,15 +1777,11 @@ async def test_kg_graph_query_overfetches_and_signals_truncation(monkeypatch):
             "obj": {"id": f"o{i}", "kind": "character"},
         }
 
-    async def _fake_records(result):
-        return [_rec(i) for i in range(4)]
-
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
-    monkeypatch.setattr(gst, "run_read", _fake_run_read)
-    monkeypatch.setattr(gst, "_records", _fake_records)
+    monkeypatch.setattr(gst, "read_project_graph_edges", _fake_read)
     monkeypatch.setattr(gst, "neo4j_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))
 
@@ -1803,15 +1803,14 @@ async def test_kg_graph_query_not_truncated_when_within_limit(monkeypatch):
                 "subj": {"id": f"s{i}", "kind": "character"},
                 "obj": {"id": f"o{i}", "kind": "character"}}
 
-    async def _fake_records(result):
+    async def _fake_read(session, **kw):
         return [_rec(i) for i in range(2)]  # < limit
 
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
-    monkeypatch.setattr(gst, "run_read", AsyncMock(return_value=object()))
-    monkeypatch.setattr(gst, "_records", _fake_records)
+    monkeypatch.setattr(gst, "read_project_graph_edges", _fake_read)
     monkeypatch.setattr(gst, "neo4j_session", _fake_session)
     monkeypatch.setattr(gst, "_deprecated_edge_codes", AsyncMock(return_value=[]))
 
@@ -1830,22 +1829,22 @@ async def test_kg_entity_edge_timeline_overfetches_and_signals_truncation(monkey
 
     seen = {}
 
-    async def _fake_run_read(session, cypher, **kw):
+    # The read moved to `neo4j_repos/graph_views.py` (plan T17), and the seam collapsed
+    # with it: one repo call RETURNS the rows, where before it was run_read + _records.
+    # Patching run_read here would patch nothing, and the over-fetch assertion — the whole
+    # point of this test — would silently stop being checked.
+    async def _fake_read(session, **kw):
         seen["limit"] = kw.get("limit")
-        return object()
+        return [_rec(i) for i in range(4)]
 
     def _rec(i):
         return {"rel": {"predicate": "allies", "valid_from": i}, "obj": {"id": f"o{i}", "name": f"O{i}"}}
-
-    async def _fake_records(result):
-        return [_rec(i) for i in range(4)]  # limit+1 → cap bites at limit=3
 
     @asynccontextmanager
     async def _fake_session(*a, **k):
         yield object()
 
-    monkeypatch.setattr(gst, "run_read", _fake_run_read)
-    monkeypatch.setattr(gst, "_records", _fake_records)
+    monkeypatch.setattr(gst, "read_entity_edge_timeline", _fake_read)
     monkeypatch.setattr(gst, "neo4j_session", _fake_session)
     monkeypatch.setattr(gst, "_resolve_entity_project_grant", AsyncMock())
 

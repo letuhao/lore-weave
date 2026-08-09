@@ -1064,7 +1064,33 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `test_real_passage_count_cypher_has_safety_clauses` pinned the `IN`-not-`=` typo on a literal that
   no other test reads. It follows the query into `passages.py` and still bites.
 
-  **Still owed — 12 files, and most are NOT this task's to fix.** The remaining Cypher is
+  **Batch 3 (2026-08-10).** Gate baseline **12 → 9**: `extraction/hierarchy_writer.py` (the
+  Book→Part→Chapter→Scene MERGE → new `neo4j_repos/hierarchy.py`),
+  `extraction/glossary_sync.py` (the glossary→KG anchor MERGE → entities repo),
+  `routers/public/graph_views.py` (both graph-browse reads → new `neo4j_repos/graph_views.py`).
+  Unit suite **4079**.
+
+  ⚠️ **`graph_views.py` had a SECOND consumer** — `tools/graph_schema_tools.py` imported both
+  Cypher templates from the *router*, which is the coupling the port work exists to remove: an MCP
+  tool reaching into an HTTP router for a query string. Both now call the repo.
+
+  **Three decisions preserved rather than tidied away**, each recorded where it now lives:
+  - the graph-view **as-of filter stays in PYTHON** (`edge_visible_at`), not in the Cypher — it is
+    pure and unit-testable there, and pushing it down would trade a tested predicate for an
+    untestable one;
+  - `hierarchy.py`'s MERGE **carries no `$user_id` and must not** — it merges on `path`, the key
+    the schema constraint enforces, and adding a filter would make the MERGE key disagree with the
+    uniqueness constraint and start minting duplicates;
+  - it also **must not open a transaction** (D2a: the caller runs it in the same tx as the pass-2
+    writer, so a repo function that helpfully wrapped itself would silently break atomicity).
+
+  ⚠️ **A seam CHANGED SHAPE, not just address.** `run_read` + `_records` collapsed into one repo
+  call that returns rows. The over-fetch tests (`limit+1` sentinel → `meta.truncated`) patched
+  `run_read`; left alone they would have patched nothing and the over-fetch assertion — their whole
+  point — would have silently stopped being checked. Repointed, and re-bitten to prove the
+  assertion still fires through the new seam.
+
+  **Still owed — 9 files, and most are NOT this task's to fix.** The remaining Cypher is
   graph traversal and truth, which belong to **T18 (`GraphStore`)** and **T19 (`TruthStore`)**;
   they cannot move onto "the two shipped ports" because neither port covers them. Concretely:
   6 `db/migrations/` backfills (admin one-shots, reachable via `internal_backfill.py` — Phase 7

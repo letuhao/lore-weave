@@ -65,13 +65,15 @@ from app.ontology.confirm import (
     mint_action_token,
 )
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos.graph_views import (
+    read_entity_edge_timeline,
+    read_project_graph_edges,
+)
 from app.db.neo4j_helpers import run_read
 from app.db.ontology_models import GraphView
 from app.extraction.injection_defense import neutralize_injection
 from app.ontology.validation import validate_edge
 from app.routers.public.graph_views import (
-    _GRAPH_READ_CYPHER,
-    _TIMELINE_CYPHER,
     _deprecated_edge_codes,
     _records,
     _resolve_entity_project_grant,
@@ -1528,17 +1530,15 @@ async def _handle_kg_graph_query(ctx: "ToolContext", args: KgGraphQueryArgs) -> 
             raise ToolExecutionError(f"view not found: {args.view!r}")
 
     async with neo4j_session() as session:
-        result = await run_read(
+        records = await read_project_graph_edges(
             session,
-            _GRAPH_READ_CYPHER,
             user_id=str(owner),
             project_id=project_str,
             # OUT-5 (K37): over-fetch ONE edge past the cap so we can tell the agent the
             # graph had MORE (the Cypher LIMIT was a silent cap before). Isolated to this
-            # MCP handler — the shared _GRAPH_READ_CYPHER + the REST caller are untouched.
+            # MCP handler — the shared read and the REST caller are untouched.
             limit=args.limit + 1,
         )
-        records = await _records(result)
 
     edges_truncated = len(records) > args.limit
     records = records[: args.limit]  # drop the sentinel over-fetch row
@@ -1760,9 +1760,8 @@ async def _handle_kg_entity_edge_timeline(
         raise ToolExecutionError(str(exc.detail))
 
     async with neo4j_session() as session:
-        result = await run_read(
+        records = await read_entity_edge_timeline(
             session,
-            _TIMELINE_CYPHER,
             user_id=str(ctx.user_id),
             entity_id=args.entity_id,
             edge_type=args.edge_type,
@@ -1770,7 +1769,6 @@ async def _handle_kg_entity_edge_timeline(
             # MORE (the Cypher LIMIT was a silent cap). Mirrors kg_graph_query.
             limit=args.limit + 1,
         )
-        records = await _records(result)
     truncated = len(records) > args.limit
     records = records[: args.limit]  # drop the sentinel over-fetch row
     out = build_timeline(args.entity_id, args.edge_type, records).model_dump(mode="json")

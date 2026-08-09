@@ -28,6 +28,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.hierarchy import upsert_hierarchy_chain
 
 logger = logging.getLogger(__name__)
 
@@ -55,35 +56,6 @@ class HierarchyPaths:
     scenes: list[tuple[str, str, int]]  # (scene_id, scene_path, scene_index)
 
 
-# Single Cypher statement that idempotently MERGEs the full chain for ONE
-# chapter. MERGE on `path` is the natural unique key (P1 deterministic);
-# constraints in neo4j_schema.py enforce uniqueness.
-_UPSERT_CYPHER = """
-MERGE (b:Book {path: $book_path})
-  ON CREATE SET b.book_id = $book_id, b.created_at = datetime()
-  SET b.book_title = $book_title, b.updated_at = datetime()
-MERGE (p:Part {path: $part_path})
-  ON CREATE SET p.part_id = $part_id, p.book_id = $book_id,
-                p.part_index = $part_index, p.created_at = datetime()
-  SET p.part_title = $part_title, p.updated_at = datetime()
-MERGE (b)-[:HAS_CHILD]->(p)
-MERGE (c:Chapter {path: $chapter_path})
-  ON CREATE SET c.chapter_id = $chapter_id, c.book_id = $book_id,
-                c.chapter_index = $chapter_index, c.created_at = datetime()
-  SET c.chapter_title = $chapter_title, c.updated_at = datetime()
-MERGE (p)-[:HAS_CHILD]->(c)
-WITH c
-UNWIND $scenes AS sc
-  MERGE (s:Scene {path: sc.path})
-    ON CREATE SET s.scene_id = sc.scene_id, s.book_id = $book_id,
-                  s.chapter_id = $chapter_id, s.scene_index = sc.scene_index,
-                  s.created_at = datetime()
-    SET s.updated_at = datetime()
-  MERGE (c)-[:HAS_CHILD]->(s)
-RETURN c.path AS chapter_path
-"""
-
-
 async def upsert_for_chapter(
     session: CypherSession,
     paths: HierarchyPaths,
@@ -95,13 +67,12 @@ async def upsert_for_chapter(
 
     Per D2a: caller MUST run this inside the same Tx as pass2_writer so
     partial failure is atomic. This function does NOT open a Tx itself.
+
+    The MERGE moved to `neo4j_repos/hierarchy.py` (plan T17); what stays here is the path
+    construction and the source-label decision, which are extraction's business.
     """
-    scenes_param = [
-        {"scene_id": sid, "path": spath, "scene_index": sidx}
-        for sid, spath, sidx in paths.scenes
-    ]
-    await session.run(
-        _UPSERT_CYPHER,
+    await upsert_hierarchy_chain(
+        session,
         book_path=paths.book_path,
         book_id=paths.book_id,
         book_title=paths.book_title,
@@ -113,7 +84,10 @@ async def upsert_for_chapter(
         chapter_id=paths.chapter_id,
         chapter_index=paths.chapter_index,
         chapter_title=paths.chapter_title,
-        scenes=scenes_param,
+        scenes=[
+            {"scene_id": sid, "path": spath, "scene_index": sidx}
+            for sid, spath, sidx in paths.scenes
+        ],
     )
     source_label = "Scene" if paths.scenes else "Chapter"
     return {

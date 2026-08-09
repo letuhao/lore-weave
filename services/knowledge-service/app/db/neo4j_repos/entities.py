@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Entity",
+    "sync_glossary_entity_node",
     "load_entity_details_by_ids",
     "find_alias_collision",
     "PromotionSignals",
@@ -3269,3 +3270,81 @@ async def load_entity_details_by_ids(
         }
         async for r in result
     ]
+
+
+# ── glossary → KG anchor sync (K15.11, moved in plan T17) ────────────
+#
+# ⚠️ NOT routed through `run_write`: the MERGE key is (user_id, project_id,
+# glossary_entity_id), so `$user_id` is a MERGE PROPERTY rather than a filter, and
+# `assert_user_id_param` would pass on it for the wrong reason. The tenancy here is
+# structural — a node keyed on the caller's user_id cannot be another tenant's.
+#
+# D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: `project_id` is part of that key. It used to be
+# (user_id, glossary_entity_id) alone, which meant a user's SECOND knowledge project over
+# the same book re-used and MUTATED the first project's node — which is why `project_id`
+# was overwritten ON MATCH ("latest-sync wins") and therefore meaningless on any shared
+# node. Keyed per (user, project, entity) it matches `Entity.id`'s own hash and is never
+# overwritten.
+
+_GLOSSARY_ANCHOR_SYNC_CYPHER = """
+MERGE (e:Entity {user_id: $user_id, project_id: $project_id, glossary_entity_id: $glossary_entity_id})
+ON CREATE SET
+  e.id = $canonical_id,
+  e.name = $name,
+  e.canonical_name = $canonical_name,
+  e.kind = $kind,
+  e.aliases = $aliases,
+  e.short_description = $short_description,
+  e.confidence = 1.0,
+  e.source_type = 'glossary',
+  e.source_types = ['glossary'],
+  e.canonical_version = 1,
+  e.anchor_score = 1.0,
+  e.evidence_count = 0,
+  e.mention_count = 0,
+  e.archived_at = NULL,
+  e.created_at = datetime(),
+  e.updated_at = datetime()
+ON MATCH SET
+  e.name = $name,
+  e.canonical_name = $canonical_name,
+  e.kind = $kind,
+  e.aliases = $aliases,
+  e.short_description = $short_description,
+  e.confidence = 1.0,
+  e.updated_at = datetime()
+RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
+"""
+
+
+async def sync_glossary_entity_node(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    glossary_entity_id: str,
+    canonical_id: str,
+    name: str,
+    canonical_name: str,
+    kind: str,
+    aliases: list[str],
+    short_description: str,
+) -> bool:
+    """Mirror one authored glossary entity into the KG. Returns True when CREATED.
+
+    `project_id` must NOT be None — the caller coalesces to the "global" sentinel, because
+    Cypher rejects a MERGE pattern with a null property and would fail at runtime rather
+    than at review.
+
+    Glossary entities are user-curated: `confidence=1.0` and they bypass the quarantine
+    pipeline entirely.
+    """
+    result = await session.run(
+        _GLOSSARY_ANCHOR_SYNC_CYPHER,
+        user_id=user_id, project_id=project_id,
+        glossary_entity_id=glossary_entity_id, canonical_id=canonical_id,
+        name=name, canonical_name=canonical_name, kind=kind,
+        aliases=aliases, short_description=short_description,
+    )
+    record = await result.single()
+    return bool(record["created"]) if record else False
