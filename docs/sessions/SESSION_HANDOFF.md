@@ -29,12 +29,17 @@ worth knowing before touching this area:
 - **The KAL hop costs ×1.5** (p50 34.8 → 51.0 ms on a 26 192-fact book). No stop condition fires.
   [`docs/measurements/2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md)
 
-**▶ Resume at T9** — the covering index for the book-wide as-of read. T8's query plan is its
-before-picture and its bite: the read is `Index Scan using idx_entity_facts_book` + `Sort`
-(quicksort, 1 213 kB), discarding **17 254 of 26 192 rows** to the as-of filter. Two constraints are
-already written into T9 and neither is optional: the glossary migration chain is an **append-only
-ledger** (ship a NEW step, never edit one), and the runner wraps every step in a transaction +
-advisory lock, so **`CREATE INDEX CONCURRENTLY` cannot run in that path at all**.
+**T9/T10 landed too — and T9 shipped a different index than the plan asked for, on evidence.**
+Ledger step `0062_entity_facts_asof_index`. The plan's rationale was wrong in both halves: the sort
+does **not** grow with book length (2 175 kB at 108 k facts *and* at 1.08 M), and the key-only index
+does not remove it (the `glossary_entities` join destroys the ordering). The real cost is ~558 k
+random heap fetches, so the shipped index `INCLUDE`s `value`/`fact_kind` and the scan is index-only:
+**16.2 ms vs 50.2 ms (×3.1)** for a normal book in a large table. `state@as_of` survives a
+4 000-chapter book at 65–87 ms either way — book length grows the rows *scanned*, never the rows
+*returned*. Measurements: [`2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md) §R-4/R-5.
+
+**▶ Resume at T11** — pull Cypher out of `knowledge-service/app/context/selectors/salience.py`.
+Phase 2 slices on purpose: nothing can go behind a port while Cypher lives in a selector.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

@@ -124,9 +124,107 @@ A measurement with no bite reports whatever the rig felt like reporting. Two her
 
 ---
 
-## Verdict
+## Verdict (T8)
 
 **No stop condition fires.** The KAL hop is ×1.5 on a per-chapter read costing tens of
 milliseconds; §12's read model stands as sealed. T9's covering index is confirmed as
 necessary rather than speculative — the plan reads 2.9× the rows it returns and sorts 1.2 MB
 to do it, on a book of 97 chapters.
+
+---
+
+# T9/T10 — the covering index and the 4 000-chapter ceiling *(2026-08-10)*
+
+> **Rig:** `scripts/perf/state-asof-ceiling.sh` — builds its own throwaway database, applies
+> the real migration chain (so the index under test is the SHIPPED one), seeds
+> 1 500 entities × 12 attributes × 60 revisions on one book (**1.08 M facts, ordinals
+> 0–3 960**) plus 9 decoy books, and drops the database on exit.
+
+## R-4 — the plan's stated rationale for T9 was wrong in both halves
+
+T9 asked for `(book_id, entity_id, attr_or_predicate, valid_from_ordinal DESC)` to *"remove
+the sort … which grows linearly with book length and spills work_mem."* Measured:
+
+- **The sort does not grow with book length.** At one position, exactly one interval per
+  (entity, attribute) can match, so the sort input is *cast size × attributes* — not chapter
+  count. **2 175 kB at 108 k facts and 2 175 kB at 1.08 M facts.** (It can still spill, on a
+  book with a very large *cast*. Different axis, different fix.)
+- **The key-only index does not remove the sort either.** The read joins `glossary_entities`
+  for the recycle-bin filter, and a join above the scan destroys the index ordering — the
+  `Sort` node survives whichever index is chosen. Forcing an ordered path (`enable_sort=off`)
+  produces one, at **12× the buffers**, which is why the planner declines it.
+
+What actually costs time is the **heap**: ~558 k random fetches for `value` and `fact_kind`.
+`INCLUDE (valid_to_eff, value, fact_kind)` makes the scan **index-only** (`Heap Fetches: 0`).
+Five runs, median, at the ceiling:
+
+| index | median | size | plan |
+|---|---|---|---|
+| none | 281.1 ms | — | `Index Scan` on the book index + `Sort` |
+| **the plan's literal definition** (key columns only) | 197.6 ms | 140 MB | `Index Scan` + `Sort` — the sort it was meant to remove |
+| **shipped** (+ `INCLUDE`) | **74.1 ms** | 216 MB | `Index Only Scan`, `Heap Fetches: 0` |
+
+The deviation is recorded in `entity_facts_asof_index.go` and guarded by a test that fails if
+the `INCLUDE` list is trimmed.
+
+## R-5 — the index pays where books are one of many, and that is the normal shape
+
+The ceiling rig has one pathology worth naming: its target book is **53 % of the whole
+table**, so scanning everything costs only ~2× the necessary work. Real databases hold every
+book on the deployment. Both shapes, measured on the same rig:
+
+| shape | with the index | without | verdict |
+|---|---|---|---|
+| **a normal book — 108 k facts, 5 % of a 2.05 M-row table** | **16.2 ms** (`Index Only Scan`) | 50.2 ms (`Bitmap Heap Scan`) | **index wins ×3.1** |
+| one 4 000-chapter book at 53 % of the table | 87.3 ms (`Index Only Scan`) | 64.8 ms (parallel `Seq Scan`) | seq scan wins ×1.35 |
+
+**Ship it.** The second row is the rig's artifact, not a deployment shape — and even there the
+cost is 22 ms, against a 34 ms win in the first row that *grows* with the number of books on
+the deployment. A database that contains essentially one enormous book is precisely the case
+where a sequential scan is near-optimal anyway, and both plans finish under 90 ms.
+
+## R-6 — the ceiling itself is not a ceiling
+
+The question T10 exists to answer is whether `state@as_of` survives a 4 000-chapter book.
+**It does, either way: 65–87 ms.** The read returns ~18 000 facts at any position regardless
+of book length, because only one interval per (entity, attribute) can cover a given ordinal.
+Book length grows the rows *scanned*, never the rows *returned* — which is why this is a scan
+problem, and why the index that fixes it is a covering index rather than a sort-avoiding one.
+
+## Build window (the `CONCURRENTLY` conflict, resolved inside T9)
+
+`CREATE INDEX CONCURRENTLY` **cannot run in the chain runner at all** — `execGuarded` wraps
+every step in a transaction with `pg_advisory_xact_lock`, and CONCURRENTLY is forbidden
+inside one. So the step takes the write-blocking build, with the window measured:
+
+| build | duration at 2.16 M facts |
+|---|---|
+| plain `CREATE INDEX` (what the step runs; blocks writes) | **2.4 s / 2.8 s** (two runs) |
+| `CREATE INDEX CONCURRENTLY` (for comparison) | 3.2 s |
+
+Reads are unaffected throughout; only writes to `entity_facts` queue, for under three seconds
+at ~45× the current corpus. An operator who cannot accept even that builds the index
+CONCURRENTLY out of band **before** upgrading — `IF NOT EXISTS` then makes the step a no-op.
+That route is deliberately not the default: a migration that depends on someone remembering a
+manual step is a migration that silently does not exist wherever they forgot.
+
+## Bite
+
+The rig drops the index and re-measures in the same run, and refuses to publish a ratio unless
+the planner actually chose the index — a "ratio" between one plan and itself is host noise
+wearing a decimal point.
+
+Three harness defects were found and fixed rather than worked around, all of which produced
+*plausible* numbers:
+
+1. **The scan-node regex could not match an index name** (`[a-z ]*` excludes `_` and digits),
+   so the result table reported the wrong plan for both runs.
+2. **`VACUUM` was missing after the bulk seed**, leaving the visibility map unset — an
+   `Index Only Scan` is then unavailable and the rig concludes the index does not help.
+3. **The index was 40 % bloated** (301 MB vs 205 MB rebuilt) because the chain creates it on
+   an empty table and the rig then grows it through a 2 M-row insert landing in seconds. The
+   rig now `REINDEX`es and says why: a real deployment writes those facts over months with
+   autovacuum running, so that bloat is an artifact of how the rig loads, not of the workload.
+
+Also `python3 -c` exits silently with no output on this Windows host, which printed a bare
+`ratio : x`. The script uses a heredoc instead.

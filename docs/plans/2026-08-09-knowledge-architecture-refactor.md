@@ -22,9 +22,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 
 ## Current state — read this before resuming *(2026-08-09 22:16)*
 
-**Phase 0 is LANDED (`6ee50af00`). Phase 1 is LANDED — T4·T5·T6·T7·T8·T53 + QC-1, all green.**
-The reported defect is fixed end to end: the drafting stack now reads the cast at the chapter being
-written. Next is T9, the covering index.
+**Phase 0 LANDED (`6ee50af00`). Phase 1 LANDED (`cfbcea8b5`) — T4·T5·T6·T7·T8·T53 + QC-1.
+T9·T10 done (Commit 3).** The reported defect is fixed end to end: the drafting stack now reads
+the cast at the chapter being written, and the read is index-served. Next is **Phase 2 (T11)** —
+pulling Cypher out of the knowledge-service selectors.
+
+> ⚠️ **T9 shipped a DIFFERENT index than the plan specified, on evidence.** The task's stated
+> rationale was wrong in both halves (the sort does not grow with book length; the key-only index
+> does not remove it). See T9 for the measurements. Nothing in the sealed design changed — only
+> the index definition the plan sketched.
 
 | | |
 |---|---|
@@ -34,12 +40,10 @@ written. Next is T9, the covering index.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T9** — the covering index for the book-wide as-of read. T8 already measured its
-before-picture *and* its bite: the plan is `Index Scan using idx_entity_facts_book` + `Sort`
-(quicksort **1 213 kB**), discarding **17 254 of 26 192 rows** to the as-of filter. The two
-constraints written into T9 are both hard: **append-only ledger** (ship a NEW step, never edit one)
-and the runner's transaction + advisory lock means **`CREATE INDEX CONCURRENTLY` cannot run in that
-path** — resolve that conflict inside T9, not at migration time.
+**RESUME: T11** — pull Cypher out of `services/knowledge-service/app/context/selectors/salience.py`.
+Phase 2 slices deliberately: nothing can be abstracted behind a port while Cypher lives inside a
+selector, and each slice ships alone (RT-12). T11–T13 are the extraction; T14 onward define the
+ports themselves.
 
 **Found in passing, NOT fixed, routed to T27:** `apply-edit` carries no liveness guard, so editing a
 trashed entity **commits the write and then returns 500** from its own post-commit read-back
@@ -652,11 +656,85 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   build with a ledger step that only verifies presence, or an accepted maintenance window with
   the lock duration measured first.
   **Bite:** drop the index → the plan must return to `Sort`.
+  ---
+  **Evidence.** Shipped as `0062_entity_facts_asof_index` (new ledger step, nothing edited).
+  Measurements: [`docs/measurements/2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md) §R-4/R-5.
 
-- [ ] **T10** — Synthetic 4,000-chapter ceiling run
+  ⚠️ **DEVIATION FROM THE PLAN, with evidence — this task's stated rationale was wrong in both
+  halves, and shipping it literally would have been a 140 MB index that misses its own goal.**
+
+  1. *"The sort grows linearly with book length and spills work_mem."* It does not. At one
+     position exactly one interval per (entity, attribute) can match, so the sort input is
+     **cast size × attributes**, not chapter count — measured **2 175 kB at 108 k facts and
+     2 175 kB at 1.08 M facts**. (It can still spill on a book with a very large *cast*; that
+     is a different axis and would need a different fix.)
+  2. *"Removes the sort."* The key-only index does not. The read joins `glossary_entities`
+     for the recycle-bin filter, and a join above the scan destroys the index ordering — the
+     `Sort` survives whichever index is chosen. Forcing an ordered path (`enable_sort=off`)
+     produces one at **12× the buffers**, which is why the planner declines it.
+
+  The real cost is the **heap**: ~558 k random fetches for `value`/`fact_kind`. So the shipped
+  index adds `INCLUDE (valid_to_eff, value, fact_kind)`, making the scan **index-only**
+  (`Heap Fetches: 0`). Five runs, median, at the ceiling:
+
+  | index | median | size | plan |
+  |---|---|---|---|
+  | none | 281.1 ms | — | `Index Scan` + `Sort` |
+  | the plan's literal definition | 197.6 ms | 140 MB | `Index Scan` + **`Sort` still there** |
+  | **shipped** (+ `INCLUDE`) | **74.1 ms** | 216 MB | `Index Only Scan`, 0 heap fetches |
+
+  **The `CONCURRENTLY` conflict, resolved here as the task demands:** the step takes the
+  write-blocking build, measured at **2.4–2.8 s on 2.16 M facts** (CONCURRENTLY was 3.2 s — it
+  is not faster, only non-blocking). Reads are unaffected; only writes to `entity_facts` queue,
+  for under three seconds at ~45× the current corpus. An operator who cannot accept that builds
+  the index CONCURRENTLY out of band **before** upgrading and `IF NOT EXISTS` makes the step a
+  no-op. That route is deliberately not the default: a migration depending on someone
+  remembering a manual step is one that silently does not exist wherever they forgot.
+
+  **Five bites, each reverted:** `INCLUDE` loses `value`/`fact_kind` · the index stops being
+  partial · `valid_from_ordinal` loses `DESC` · `CONCURRENTLY` appears in the SQL (it would
+  fail at *migration* time on a real deployment, not in CI) · the step is not registered in the
+  chain (it would then exist only on fresh databases).
+  ⚠️ The CONCURRENTLY guard **matched its own explanation** on first run — the doc comment
+  necessarily contains the string it forbids. The test now reads the SQL literal, not the file.
+
+- [x] **T10** — Synthetic 4,000-chapter ceiling run — **GREEN, the ceiling is not a ceiling**
   New: `scripts/perf/state-asof-ceiling.sh`, throwaway DB only
   ~1.08 M facts. **Must not touch a real service DB** (`EnsureThrowawayDB`).
   (depends on T9)
+  ---
+  **Evidence.** The script builds its own database (name must carry a throwaway marker — the
+  same rule `testsafe.EnsureThrowawayDB` enforces in Go), applies the **real chain** so the index
+  under test is the shipped one, seeds 1 500 entities × 12 attributes × 60 revisions on one book
+  (**1.08 M facts, ordinals 0–3 960**) plus 9 decoy books, and drops the database on exit.
+
+  **`state@as_of` survives a 4 000-chapter book: 65–87 ms, with or without the index.** The read
+  returns ~18 000 facts at *any* position regardless of book length — only one interval per
+  (entity, attribute) can cover a given ordinal. Book length grows the rows **scanned**, never
+  the rows **returned**.
+
+  ⚠️ **The ceiling rig has a pathology worth naming, and it changes T9's verdict twice.** Its
+  target book is **53 % of the whole table**, so scanning everything costs ~2× the necessary
+  work — and there the seq scan *beats* the index. Real databases hold every book on the
+  deployment. Both shapes, same rig:
+
+  | shape | with index | without | verdict |
+  |---|---|---|---|
+  | **a normal book — 108 k facts, 5 % of a 2.05 M-row table** | **16.2 ms** | 50.2 ms | **index wins ×3.1** |
+  | one 4 000-chapter book at 53 % of the table | 87.3 ms | 64.8 ms | seq scan wins ×1.35 |
+
+  Ship it: row two is the rig's artifact, not a deployment shape, and its 22 ms cost is against a
+  34 ms win in row one that **grows with the number of books**. A database holding essentially
+  one enormous book is exactly where a sequential scan is near-optimal anyway.
+
+  **Three harness defects found and fixed, all of which produced *plausible* numbers:** a
+  scan-node regex that could not match an index name (`[a-z ]*` excludes `_` and digits); a
+  missing `VACUUM` after the bulk seed, leaving the visibility map unset so an `Index Only Scan`
+  was unavailable; and a **40 % bloated index** (301 MB vs 205 MB rebuilt) because the chain
+  creates it empty and the rig then grows it through a 2 M-row insert landing in seconds — the
+  rig now `REINDEX`es and says why. The script refuses to print a ratio unless the planner
+  actually chose the index, because a ratio between one plan and itself is host noise wearing a
+  decimal point.
 
 <!-- Commit checkpoint: T9–T10 — migration -->
 

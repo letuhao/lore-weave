@@ -170,6 +170,13 @@ var chain = []Step{
 	// apply after either history: the migration itself is CREATE INDEX IF NOT
 	// EXISTS, so an existing index is a no-op.
 	{"0061_attr_lookup_index", UpAttrLookupIndex},
+	// D9 / plan T9 — the covering index behind the book-wide `state@as_of` read. Partial on
+	// the slice that read wants (current belief, single-valued) and INCLUDEs value+fact_kind
+	// so the scan is index-ONLY: 281 ms → 79 ms at the 4 000-chapter ceiling. The build is
+	// write-blocking for ~2.8 s at 2.16 M facts because CREATE INDEX CONCURRENTLY cannot run
+	// inside execGuarded's transaction; see entity_facts_asof_index.go for the measurements
+	// and the operator escape hatch.
+	{"0062_entity_facts_asof_index", UpEntityFactsAsOfIndex},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run
