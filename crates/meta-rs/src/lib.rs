@@ -44,6 +44,7 @@
 pub mod allowlist;
 pub mod audit;
 pub mod cache;
+pub mod control_plane;
 pub mod errors;
 pub mod metawrite;
 pub mod routing;

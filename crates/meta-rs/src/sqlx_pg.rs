@@ -468,6 +468,115 @@ pub fn bind_ruleset_intent(
     }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// The READ side (`5A`).
+//
+// `Connection`/`MetaRead` have existed since cycle 2 with the note "concrete
+// pgx/sqlx implementations follow in the Rust-services cycle that adopts this
+// crate". That cycle is this one: `MetaControlPlane` needs to ask a REAL
+// registry whether a reality exists and accepts commands, and until this type
+// the only implementor was a test mock — so the read path had exactly the
+// orphan shape this repo keeps finding on the write side.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// `Connection` over a live Postgres pool.
+///
+/// Mirrors [`PgConnectionWriter`]'s guardrails deliberately rather than
+/// inventing new ones: the trait it implements is synchronous, sqlx is async,
+/// and the bridge is `block_in_place`, which PANICS on a current-thread
+/// runtime. Refusing at construction turns that panic — which would land in the
+/// middle of a session bind — into an error before one starts.
+pub struct PgConnectionReader {
+    pool: PgPool,
+    handle: Handle,
+}
+
+impl PgConnectionReader {
+    /// Wrap a pool. Refuses a current-thread runtime, for the reason above.
+    pub fn new(pool: PgPool) -> Result<Self, MetaError> {
+        let handle = Handle::try_current().map_err(|_| {
+            MetaError::ConfigInvalid(
+                "PgConnectionReader must be constructed inside a tokio runtime — it bridges \
+                 the synchronous MetaRead traits onto async sqlx"
+                    .into(),
+            )
+        })?;
+        if handle.runtime_flavor() != RuntimeFlavor::MultiThread {
+            return Err(MetaError::ConfigInvalid(
+                "PgConnectionReader requires a MULTI-THREAD tokio runtime: MetaRead is \
+                 synchronous, so the adapter blocks with block_in_place, which panics on a \
+                 current-thread runtime."
+                    .into(),
+            ));
+        }
+        Ok(Self { pool, handle })
+    }
+}
+
+impl crate::routing::Connection for PgConnectionReader {
+    fn fetch_reality_routing(
+        &self,
+        reality_id: uuid::Uuid,
+    ) -> Result<Option<crate::routing::RealityRouting>, MetaError> {
+        use std::str::FromStr;
+
+        // Columns named explicitly rather than `SELECT *`: the row this maps
+        // into has six fields and the table has seventeen, so a `*` would bind
+        // by position and silently reshuffle the moment a migration adds a
+        // column in the middle.
+        const SQL: &str = "SELECT reality_id, db_host, db_name, status, locale, deploy_cohort \
+                           FROM reality_registry WHERE reality_id = $1";
+
+        // `deploy_cohort` is INT4, not INT2. Written as i16 first, and the LIVE
+        // run is what said otherwise:
+        //   ColumnDecode { index: "5", source: "mismatched types; Rust type
+        //   `i16` (as SQL type `INT2`) is not compatible with SQL type `INT4`" }
+        // No mock could have produced that: the decision logic was already
+        // green against a hand-built RealityRouting. This is the LIVE RUN axis
+        // paying for itself on its first execution.
+        let row: Option<(uuid::Uuid, String, String, String, String, i32)> =
+            tokio::task::block_in_place(|| {
+                self.handle.block_on(async {
+                    sqlx::query_as(SQL)
+                        .bind(reality_id)
+                        .fetch_optional(&self.pool)
+                        .await
+                })
+            })
+            .map_err(|e| MetaError::Backend(Box::new(e)))?;
+
+        match row {
+            None => Ok(None),
+            Some((reality_id, db_host, db_name, status, locale, deploy_cohort)) => {
+                Ok(Some(crate::routing::RealityRouting {
+                    reality_id,
+                    db_host,
+                    db_name,
+                    // An UNRECOGNISED status is an error, not a default. The
+                    // enum mirrors a CHECK constraint, so a value outside it
+                    // means the constraint changed and this build has not
+                    // caught up — treating that as "some other status" is how a
+                    // closed reality would read as bindable.
+                    status: crate::routing::RealityStatus::from_str(&status)?,
+                    locale,
+                    // RANGE-CHECKED, not cast. `deploy_cohort` is a canary
+                    // cohort 0..=99 (SR05 §12AH.4) held in an INT4, and
+                    // `as u8` on an out-of-range value WRAPS silently — 256
+                    // would arrive as 0, i.e. the cohort that receives every
+                    // canary first. A value outside the contract is a fact
+                    // about the row, and the caller should hear about it.
+                    deploy_cohort: u8::try_from(deploy_cohort).map_err(|_| {
+                        MetaError::PreconditionFailed(format!(
+                            "reality_registry.deploy_cohort = {deploy_cohort} for {reality_id},                              outside the 0..=99 canary range"
+                        ))
+                    })?,
+                }))
+            }
+        }
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

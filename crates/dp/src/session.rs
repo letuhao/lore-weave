@@ -33,13 +33,28 @@ use core::time::Duration;
 use crate::ids::{NodeId, RealityId, SessionId};
 use crate::DpError;
 
-/// Monotonic milliseconds since an arbitrary epoch, supplied by the caller.
+/// Milliseconds since the **Unix epoch**.
 ///
 /// `crates/dp` has no clock — reading one is I/O, and `S2.3` says this crate
 /// does none. So expiry is evaluated against a time the CALLER passes in, which
 /// also makes every test deterministic without a mock clock. The unit is fixed
 /// at milliseconds rather than left to a `Duration` so that two callers cannot
 /// disagree about the scale of the same number.
+///
+/// # The epoch is part of the contract, and it was not until slice 5A
+///
+/// This said *"monotonic milliseconds since an arbitrary epoch"*, which is
+/// fine while one process both stamps and compares. It stops being fine the
+/// moment a CONTROL PLANE mints the expiry and a CALLER checks it: two
+/// processes cannot compare readings from an arbitrary epoch at all, so
+/// `check_live` would have been comparing unrelated numbers and calling the
+/// result a capability check. Found by writing the first real
+/// [`ControlPlane`], which is the kind of thing only an implementor finds.
+///
+/// **Unix epoch, so both sides mean the same instant.** Clock skew between the
+/// two hosts remains real and is bounded by ordinary NTP discipline; that is a
+/// deployment property, not something this type can fix. What it CAN do is
+/// stop the two sides disagreeing about which zero they are counting from.
 pub type Millis = u64;
 
 /// Proof that the control plane granted this session its access.

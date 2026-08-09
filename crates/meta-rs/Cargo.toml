@@ -30,6 +30,14 @@ path = "src/lib.rs"
 serde = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
+
+# 5A — the data-plane CONTRACT crate, so this crate can implement
+# `dp::ControlPlane`. `dp` declares no I/O and holds only types and traits, so
+# taking it does not move `meta-rs` off the platform plane (see the
+# `[package.metadata.dp]` block above): the dependency arrow points from the
+# I/O-bearing crate to the contract, which is the direction that keeps the
+# contract clean.
+dp = { path = "../dp" }
 thiserror = { workspace = true }
 serde_yaml = "0.9"
 
@@ -45,4 +53,9 @@ default = []
 sqlx-pg = ["dep:sqlx", "dep:tokio"]
 
 [dev-dependencies]
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+# 5A's LIVE test drives PgConnectionReader against a real meta database. The
+# adapter itself is behind `sqlx-pg`; the test needs sqlx to build the pool and
+# to pick a bindable reality out of live data rather than seeding one.
+sqlx = { workspace = true }
+uuid = { workspace = true }

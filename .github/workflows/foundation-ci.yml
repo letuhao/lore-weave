@@ -565,6 +565,34 @@ jobs:
       # pg16 is sufficient here, checked rather than assumed: `contracts/migrations/
       # per_reality/*.sql` uses no `uuidv7()`, which is the PG18 dependency that
       # pins `domain-db-smoke` to `postgres:18-alpine`.
+      # 5A — the first REAL dp::ControlPlane, against a real reality_registry.
+      #
+      # Armed on the way in rather than after test-dsn-coverage-gate finds it,
+      # which is what happened to provisioner_reentry_live below. Its LIVE run
+      # already earned its place: the adapter decoded deploy_cohort as INT2 and
+      # the database stores INT4, a ColumnDecode failure no mock could reach,
+      # because the decision logic was green against a hand-built row.
+      - name: create meta smoke DB
+        shell: bash
+        run: |
+          set -euo pipefail
+          psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
+          exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='meta_cp_smoke'" || true)
+          if [ "$exists" != "1" ]; then
+            psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE meta_cp_smoke;"
+          fi
+          for f in migrations/meta/*.up.sql; do
+            psql -d meta_cp_smoke -v ON_ERROR_STOP=1 -f "$f"
+          done
+          psql -d meta_cp_smoke -v ON_ERROR_STOP=1 -c \
+            "INSERT INTO reality_registry (reality_id, db_host, db_name, status, locale, deploy_cohort) \
+             VALUES ('1ec91442-100c-45f5-85e1-34865d7daeaf','pg-shard-0.internal','lw_reality_ci','active','en',0) \
+             ON CONFLICT (reality_id) DO NOTHING;"
+      - name: cargo test dp ControlPlane live-smoke
+        env:
+          LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/meta_cp_smoke?sslmode=disable
+        run: cargo test -p meta-rs --features sqlx-pg --test control_plane_live -- --nocapture
+
       - name: cargo test provisioner re-entry live-smoke
         env:
           LOREWEAVE_TEST_PG_ADMIN_URL: postgres://foundation:foundation@localhost:5432/postgres?sslmode=disable

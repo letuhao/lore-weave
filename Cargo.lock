@@ -1970,6 +1970,7 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 name = "meta-rs"
 version = "0.1.0"
 dependencies = [
+ "dp",
  "serde",
  "serde_json",
  "serde_yaml",
