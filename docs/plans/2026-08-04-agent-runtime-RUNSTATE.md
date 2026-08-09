@@ -4522,6 +4522,95 @@ retrofitted to whatever gets built.
 
 ---
 
+## ▶ NEXT RUN — clear the opens, and measure on a real model
+
+*The `/goal` for the next session points here. If the prompt and this section ever disagree, **this
+section wins** — a goal typed into a chat box is a copy, and this run has thirteen recorded instances
+of a pair fixed at one end.*
+
+### Scope, frozen at entry
+
+| # | item | why now |
+|---|---|---|
+| 1 | **the request path** — a chat turn creates or resumes a plan | S3-M4: a second message during a live plan **routes into it**; a hard reject is a ceiling |
+| 2 | **`V-METRIC` on a real model** | CP-3's stated exit criterion, unrun. The storage that landed 2026-08-09 was its prerequisite |
+| 3 | **CP-2's last QC2 residual** | the same served turn closes it; *"a served turn against a real model is still `CANNOT DETERMINE`"* |
+| 4 | **`sweep_expired_runs` has ZERO callers** | silent exit #2, still live. CP-3.6 built the `Termination` record and **not** the out-of-process owner that calls it. Take this first — it is small, and it is the one thing 3.6 left open |
+| 5 | **a SECOND declaration admitted** | *"the pooled gate cannot open until ≥2 are admitted; one declaration pooled with itself is the per-declaration bound wearing a different name"* |
+| 6 | **the open PO call** | does *fixed-after-a-FAIL, then re-verified by injection* close an item whose original verdict was FAIL? CP-1's last open — answer it or record it as a decision |
+
+**Not in scope:** the third-party sunset window (blocked on a `Sunset` header, a versioned `/mcp`, and
+**114 tools with no `deprecated_at`** — its own job), and bulk admission of the remaining 313. Anything
+else discovered goes to the DEBT REGISTER as one line, never into a row being verified.
+
+### The model — RESOLVED, never hardcoded
+
+`docs/dev/LOCAL_TEST_ENV.example.md` is explicit: **never hardcode a `user_model_id`.** Resolve it
+every run — `python scripts/dev-model.py --list`.
+
+* account **`claude-test@loreweave.dev`**
+* model **Gemma-4 26B-A4B QAT**, provider `lm_studio`
+* capabilities **must include `tool_calling`** — a chat-only entry cannot exercise a declaration and
+  would measure nothing
+* verified 2026-08-09: LM Studio reachable at `host.docker.internal:1234`, serving
+  `google/gemma-4-26b-a4b-qat`
+
+**If the model is not loaded, that is `CANNOT DETERMINE`.** Substituting a different model and
+reporting the number as if it were this one is the failure this whole board exists to prevent.
+
+### The measurement — where this run is most likely to lie to itself
+
+`V-METRIC`'s question is not *did it work*. It is:
+
+> **is the reduction real, or did we convert LOUD failures into QUIET ones?**
+
+Both this design and every rival do that, **and this repository counts only loud ones.**
+
+1. **Count quiet failures explicitly.** A turn that ends without the goal met and without an error is
+   the case that decides this. A measurement that cannot see it is not an answer.
+2. **The comparison unit is the DECLARATION, not the runtime** (PO, 2026-08-04). Session-level
+   assignment is impossible or biased; matched per-declaration pairs against the frozen baseline are
+   neither.
+3. **`runtime_variant` must be stamped on every terminal path**, or the comparison cannot be computed
+   at all (CP-0.7).
+4. 🔴 **STATE THE BOUND THE `n` ACTUALLY SUPPORTS.** *"3/3 is never evidence"* — it bounds a failure
+   rate only at **≤63.2%** against a **54.2%** baseline, and §6.3's bar needs **377 solo turns/week**.
+   **If the achievable `n` cannot separate the arms, THAT IS THE FINDING**: report `CANNOT DETERMINE`
+   with the `n` and the bound, and publish no reduction. A run that reports a number it cannot support
+   is worse than one that reports nothing, because it looks like a result.
+5. **Throughput is an observation, never a target.** `≈13 admissions/week` is withdrawn.
+
+### QC — all three to close a row
+
+**CODE** tests + a targeted falsifier, RED on the original defect · **LIVE** real service, real
+boundary, `docker ps` before claiming unexercisable · **DATA** DB/event/API state with an explicit
+falsifier; logs and exit codes are not measurements.
+
+**Never relabel `FAIL` or `CANNOT DETERMINE` as `PASS`** by rewording, narrowing scope, or
+substituting a mock.
+
+### Rules this run has already paid for
+
+* 🔴 **Never truncate a gate's own output.** The census was piped through `| tail -6`; 5 of **22**
+  newly-silent sites were read and the rest reasoned away. Read the verdict file, not the tail.
+* 🔴 **A skip added to make one gate pass can make a guard vacuous in the environment that measures
+  it.** That happened on 2026-08-09 and the falsification runner caught it.
+* An in-transaction `except` on a constraint violation **poisons the whole asyncpg transaction** —
+  every later statement fails with `InFailedSQLTransactionError`. Use a savepoint.
+* The gates go **STALE on any mirrored edit** and cost ~15 min each. Batch the work, run `--check`
+  continuously, run the full gates once at a batch edge, and **do not edit a mirrored file while one
+  is in flight**.
+* Every denominator comes from the SSOT or from live data. Never typed.
+
+### Working mode
+
+State lives in files. Read the row, not the board. Each RUNSTATE record ≤15 lines. No new files under
+`docs/specs/**/verification/`. **STOP AND ASK** on a product decision, a second failed verification
+pass, or a hit budget — evidence and a recommendation, in one paragraph.
+
+**Objective:** CP-3 closes on its own criterion, **or** the run states precisely why it cannot and
+what `n` would be needed. Execution and proof, not planning.
+
 ## Open, and each is honestly one of three kinds
 
 | | kind | blocks? |
