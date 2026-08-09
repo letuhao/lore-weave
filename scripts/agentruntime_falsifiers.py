@@ -1065,6 +1065,61 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- LIFECYCLE (landed 2026-08-09, unguarded until 2026-08-10) -----------------------------
+    #
+    # 🔴 These eight guards shipped with NO falsifier, which blocked `agentruntime-census` for
+    # everyone: it refuses to start unless the suite is green, and the same change left eight
+    # narrowing fixtures stale. CP-5.2 is the FIRST consumer of this state machine, so it was
+    # standing on unproven floor. Written now, with the row they guard.
+    "test_A_DRAFT_DECLARATION_IS_REGISTERED_AND_NOT_SERVED": [
+        # Serve every lifecycle: "registered but not released" stops being an expressible state,
+        # which is exactly what `lifecycle` was before it gated the wire.
+        (f"{PKG}/surface.py", '        self._rows = [r for r in all_rows if r["lifecycle"] in SERVED_LIFECYCLES]',
+                              "        self._rows = list(all_rows)"),
+    ],
+    "test_A_RETIRED_DECLARATION_IS_NOT_SERVED": [
+        (f"{PKG}/surface.py", '        self._rows = [r for r in all_rows if r["lifecycle"] in SERVED_LIFECYCLES]',
+                              "        self._rows = list(all_rows)"),
+    ],
+    "test_A_DEPRECATED_DECLARATION_IS_STILL_SERVED": [
+        # Deprecation as removal rather than "prefer the successor" — the sunset window slamming
+        # instead of closing, on a caller mid-migration.
+        (f"{PKG}/contract.py", 'SERVED_LIFECYCLES: frozenset[str] = frozenset({"admitted", "deprecated"})',
+                               'SERVED_LIFECYCLES: frozenset[str] = frozenset({"admitted"})'),
+    ],
+    "test_AN_UNRELEASED_DECLARATION_IS_RECORDED_NOT_SILENTLY_DROPPED": [
+        # Withhold without recording — a narrowing the caller cannot see, which is the property
+        # CP-1's whole membrane exists to make impossible.
+        (f"{PKG}/surface.py", '            if r["lifecycle"] not in SERVED_LIFECYCLES:',
+                              "            if False:"),
+    ],
+    "test_THE_UNRELEASED_ONES_ARE_NOT_COUNTED_AS_WITHHELD_ADMITTED_DECLARATIONS": [
+        # Count unreleased rows in the admitted total, so the model is told a tool that never
+        # passed QC is available-but-withheld — a promise the runtime cannot keep.
+        (f"{PKG}/surface.py", '        self._rows = [r for r in all_rows if r["lifecycle"] in SERVED_LIFECYCLES]',
+                              "        self._rows = list(all_rows)"),
+    ],
+    "test_DERIVATION_REGISTERS_AND_NEVER_RELEASES": [
+        # Self-releasing derivation: a tool goes from "present in the catalogue" to "served to a
+        # model" in one mechanical step, with no gate between them.
+        (f"{PKG}/derive.py", '            lifecycle="draft",', '            lifecycle="admitted",'),
+    ],
+    # 🔴 These two were written CROSSED — each falsifier widened the row the OTHER guard tests, so
+    # both came back *"GREEN — the guard requires nothing"*. `RESURRECTION` exercises
+    # `deprecated -> admitted`; `THE_LEGAL_MOVES` exercises `retired -> admitted`. A falsifier has
+    # to touch the path its own guard walks, and the runner is what says so.
+    "test_RESURRECTION_IS_REFUSED_BECAUSE_IT_WOULD_SKIP_THE_READMISSION_QUEUE": [
+        # A deprecated declaration returning by a STATUS EDIT carries a row admitted under an older
+        # contract straight back onto the wire, skipping §6.4's re-admission queue.
+        (f"{PKG}/contract.py", '    "deprecated": frozenset({"retired"}),',
+                               '    "deprecated": frozenset({"retired", "admitted"}),'),
+    ],
+    "test_THE_LEGAL_MOVES_ARE_A_TABLE_NOT_A_FULL_MESH": [
+        # Make the terminal state non-terminal — the full mesh the table exists to refuse.
+        (f"{PKG}/contract.py", '    "retired": frozenset(),                            # terminal',
+                               '    "retired": frozenset({"admitted"}),'),
+    ],
+
     # -- CP-5.1/5.2: the tool contract, and rung 2 --------------------------------------------
     #
     # 🔴 Each of these re-injects the defect the guard was written against, rather than breaking
@@ -1308,6 +1363,28 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # Claim coverage that does not exist by binding a differently-scoped tool.
         ("contracts/agent-runtime-ref-resolvers.json", '  "bindings": {',
          '  "bindings": {\n    "lore_entity": {\n      "entity_id": "EntityRef"\n    },'),
+    ],
+    # -- the five refusals the CENSUS found NEWLY SILENT on its first run ----------------------
+    "test_A_RESOLVER_MISSING_ANY_REQUIRED_FIELD_IS_REFUSED": [
+        # Accept a resolver declaration that names no tool, no query param, no id field — it would
+        # dispatch nothing and match nothing, silently.
+        (f"{PKG}/refresolve.py", "        if not value or not isinstance(value, str):",
+                                 "        if False:"),
+    ],
+    "test_A_REF_TYPE_THAT_IS_NOT_AN_OBJECT_IS_REFUSED": [
+        (f"{PKG}/refresolve.py", "        if not isinstance(row, dict):\n            raise RefContractViolation(str(ref_type), \"is not an object\", \"a resolver declaration\")",
+                                 "        if not isinstance(row, dict):\n            row = {}"),
+    ],
+    "test_A_BINDING_BLOCK_THAT_IS_NOT_AN_OBJECT_IS_REFUSED": [
+        (f"{PKG}/refresolve.py", "        if not isinstance(params, dict):",
+                                 "        if False:"),
+    ],
+    "test_AN_UNKNOWN_CURRENT_LIFECYCLE_IS_REFUSED": [
+        # A row whose lifecycle is not a lifecycle walks into the move table.
+        (f"{PKG}/contract.py", "    if before not in LIFECYCLES:", "    if False:"),
+    ],
+    "test_AN_UNKNOWN_TARGET_LIFECYCLE_IS_REFUSED": [
+        (f"{PKG}/contract.py", "    if after not in LIFECYCLES:", "    if False:"),
     ],
     "test_AN_UNBOUND_TOOL_IS_NOT_TOUCHED": [
         # Resolve any ref-shaped param regardless of binding — a book-scoped resolver would then be

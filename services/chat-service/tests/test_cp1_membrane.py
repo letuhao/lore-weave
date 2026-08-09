@@ -100,9 +100,9 @@ def _tool(id_: str = "book_list", **kw) -> Declaration:
     return Declaration(id=id_, kind="tool", **kw)
 
 
-def _skill(id_: str = "world_setup", members=("book_list",)) -> Declaration:
-    return Declaration(id=id_, kind="skill", members=tuple(members),
-                       source_path="services/chat-service/app/skills/world.py")
+def _skill(id_: str = "world_setup", members=("book_list",), **kw) -> Declaration:
+    kw.setdefault("source_path", "services/chat-service/app/skills/world.py")
+    return Declaration(id=id_, kind="skill", members=tuple(members), **kw)
 
 
 
@@ -1500,7 +1500,17 @@ class TestANarrowingCannotHappenSilently:
     """
 
     def _assembler(self, n=3):
-        doc = build([admit(_tool(f"tool_{i}")) for i in range(n)])
+        # 🔴 **`admitted`, EXPLICITLY — and these fixtures went stale the moment `lifecycle` began
+        # gating the wire (2026-08-09).** `_tool()` defaults to `draft` because derivation
+        # REGISTERS and does not release, so every tool here was withheld at the `lifecycle_draft`
+        # stage and the log carried three extra records. Eight guards in this file failed on that,
+        # which blocked `agentruntime-census` for everyone: it refuses to start unless the suite is
+        # green before any injection.
+        #
+        # The fixtures, not the mechanism, were wrong. These tests are about what the NARROWING
+        # stages record; they need tools that reach the surface at all, and *"registered but not
+        # released"* is a different claim with its own guards elsewhere in this file.
+        doc = build([admit(_tool(f"tool_{i}", lifecycle="admitted")) for i in range(n)])
         return SurfaceAssembler(doc)
 
     def test_a_dropped_declaration_produces_a_full_record(self):
@@ -1578,8 +1588,9 @@ class TestANarrowingCannotHappenSilently:
         contribution**, or it fails the honest caller and passes the careless one.
         """
         log = NarrowingLog()
-        doc = build([admit(_tool("book_list")), admit(_tool("book_get")),
-                     admit(_skill("world_setup", ("book_list",)))])
+        doc = build([admit(_tool("book_list", lifecycle="admitted")),
+                     admit(_tool("book_get", lifecycle="admitted")),
+                     admit(_skill("world_setup", ("book_list",), lifecycle="admitted"))])
         discover(doc, kind="skill", log=log, pass_number=1)      # records 2 at pass 1
         s = SurfaceAssembler(doc, log=log).assemble(pass_number=1)
         assert s.count == 3 and s.withheld == ()
@@ -1716,7 +1727,7 @@ class TestAnEmptySurfaceIsAStatementNotAGap:
     def test_an_empty_surface_is_not_the_same_object_as_a_narrowed_one(self):
         """`is_empty` must mean 'nothing was admitted', which a caller can tell apart from
         'everything was withheld' by reading `withheld` — one is silence, the other is a decision."""
-        doc = build([admit(_tool("book_list"))])
+        doc = build([admit(_tool("book_list", lifecycle="admitted"))])
         s = SurfaceAssembler(doc).assemble(pass_number=1, pipeline=[
             Filter("token_budget", "over budget", field="id", op="in", value=()),
         ])
@@ -1811,7 +1822,7 @@ class TestTheLogIsIndependentOfTheAssembler:
 
     def test_a_shared_log_accumulates_across_assemblers(self):
         log = NarrowingLog()
-        doc = build([admit(_tool("book_list"))])
+        doc = build([admit(_tool("book_list", lifecycle="admitted"))])
         for p in (1, 2):
             SurfaceAssembler(doc, log=log).assemble(pass_number=p, pipeline=[
                 Filter("token_budget", "over budget", field="id", op="in", value=()),

@@ -213,6 +213,25 @@ class TestRung2RefusesToPromoteAnIncompleteContract:
         with pytest.raises(UntrustedRow, match="terminal"):
             promote(retired, _satisfying(tool("book_list")))
 
+    #: 🔴 **FOUND BY THE CENSUS: `check_transition`'s two UNKNOWN-LIFECYCLE refusals had never been
+    #: exercised.** They were written at CP-1 and had **zero production callers** until `promote()`
+    #: became the first one — so a refusal guarding the state machine CP-5.2 stands on could have
+    #: been deleted with the whole suite green. `Lifecycle` is a `Literal`, which Python does not
+    #: enforce at runtime, so a bogus value genuinely reaches here.
+    def test_AN_UNKNOWN_CURRENT_LIFECYCLE_IS_REFUSED(self):
+        bogus = Declaration(id="book_list", kind="tool", source_path="services/book-service/",
+                            lifecycle="banana")
+        with pytest.raises(UntrustedRow, match="unknown current lifecycle"):
+            promote(bogus, _satisfying(tool("book_list")))
+
+    def test_AN_UNKNOWN_TARGET_LIFECYCLE_IS_REFUSED(self):
+        """`promote` always targets `admitted`, so this refusal is unreachable through it — the
+        other movers (a store edit, a migration, an admission script) are why `check_transition`
+        lives in `contract.py` rather than at the writer."""
+        from app.agentruntime.contract import check_transition
+        with pytest.raises(UntrustedRow, match="unknown target lifecycle"):
+            check_transition("book_list", "draft", "banana")
+
     def test_THERE_IS_NO_ESCAPE_HATCH_ON_PROMOTE(self):
         """`admit()` deliberately has no `force=`/`skip_checks=`; a hatch here would make every
         guarantee above advisory."""

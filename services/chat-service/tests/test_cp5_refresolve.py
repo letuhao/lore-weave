@@ -74,6 +74,30 @@ class TestAResolverMustBeARead:
         with pytest.raises(RefContractViolation, match="cannot determine"):
             load_registry(registry_doc(), lambda _t: None)
 
+    #: 🔴 **THE NEXT THREE WERE FOUND BY `agentruntime-census` ON ITS FIRST RUN AFTER THE SUITE
+    #: WENT GREEN — refusals this file INTRODUCED and nothing exercised.** Each could have been
+    #: deleted or inverted with every other test still passing, which is the whole reason a census
+    #: over raise sites exists and why unblocking it was worth doing before writing more rows.
+    @pytest.mark.parametrize("field", ["resolver_tool", "query_param", "result_path",
+                                       "id_field", "match_field", "match_value"])
+    def test_A_RESOLVER_MISSING_ANY_REQUIRED_FIELD_IS_REFUSED(self, field):
+        doc = registry_doc()
+        doc["ref_types"]["EntityRef"][field] = ""
+        with pytest.raises(RefContractViolation, match="declares no"):
+            load_registry(doc, lane_of)
+
+    def test_A_REF_TYPE_THAT_IS_NOT_AN_OBJECT_IS_REFUSED(self):
+        doc = registry_doc()
+        doc["ref_types"]["Bogus"] = "not an object"
+        with pytest.raises(RefContractViolation, match="not an object"):
+            load_registry(doc, lane_of)
+
+    def test_A_BINDING_BLOCK_THAT_IS_NOT_AN_OBJECT_IS_REFUSED(self):
+        doc = registry_doc()
+        doc["bindings"]["glossary_get_entity"] = ["entity_id"]
+        with pytest.raises(RefContractViolation, match="not an object"):
+            load_registry(doc, lane_of)
+
     def test_A_BINDING_NAMING_AN_UNDECLARED_REF_TYPE_IS_REFUSED(self):
         doc = registry_doc()
         doc["bindings"]["glossary_get_entity"] = {"entity_id": "NoSuchRef"}
