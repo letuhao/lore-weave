@@ -1296,6 +1296,20 @@ def _project_ambient_book_schema(td: dict) -> dict:
     return {**td, "function": {**fn, "parameters": new_params}}
 
 
+def _agentruntime_wire_surface(*, pass_number: int) -> list[dict]:
+    """CP-2.7 · the new arm's advertised set for one pass. **The only implementation.**
+
+    Two call sites need it — the first-pass `tool_defs` (whose emptiness decides `use_tools`) and
+    the per-pass wire value — and they must not be two copies of the same decision. This repository
+    has recorded a hand-written second copy drifting from the first *inside a single commit*.
+    """
+    from app.agentruntime.manifest import load as _agentruntime_load
+    from app.agentruntime.serve import advertise as _agentruntime_advertise
+
+    payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=pass_number)
+    return payload
+
+
 def _advertise_discovery_tools(
     catalog_index: dict[str, dict],
     active_tool_names: set[str],
@@ -1340,11 +1354,7 @@ def _advertise_discovery_tools(
     # something — is the code path §3 forbids. The membrane gate cannot see this file, so the
     # separation rests on this `return` being first.
     if settings.agentruntime_arm:
-        from app.agentruntime.manifest import load as _agentruntime_load
-        from app.agentruntime.serve import advertise as _agentruntime_advertise
-
-        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)
-        return payload
+        return _agentruntime_wire_surface(pass_number=1)
 
     plan = permission_mode == "plan"
     out: list[dict] = []
@@ -2194,6 +2204,27 @@ async def _stream_with_tools(
                 # every mode (the nested run is clamped read-only, so it's safe).
                 if subagent_tool is not None and subagent_depth == 0:
                     advertised = list(advertised) + [subagent_tool]
+                # ── CP-2.7 · THE ARM, AT THE POINT WHERE EVERY PATH HAS ALREADY CONVERGED ──────
+                # 🔴 **MEASURED FAILURE, 2026-08-09, ON A REAL TURN AGAINST A REAL MODEL.** The
+                # branch used to live only inside `_advertise_discovery_tools`, documented as *"the
+                # single ADVERTISE chokepoint … one edit covers every path a turn can take to the
+                # wire"*. It was not. A plain tool-calling client takes the `else` arm — a bare
+                # `tool_defs = catalog` that never calls the function — and the first served turn on
+                # the new arm advertised **318 legacy declarations** while the row was stamped
+                # `runtime_variant='agentruntime'`. That is worse than either fault alone: it
+                # attributes the legacy surface's behaviour to the new runtime, so the comparison
+                # would have been computed over a mislabelled arm.
+                #
+                # It also had to move BELOW the appends. `conversation_search`,
+                # `chat_search_sessions` and `run_subagent` are legacy declarations added after the
+                # fork, so a branch placed above them leaks three tools no manifest admitted —
+                # CP-2.7 item B (*no legacy declaration is reachable, by ANY route*) fails on a
+                # technicality that is not a technicality.
+                #
+                # `advertised` is final here: every producer and every append is upstream, and the
+                # instrument below records exactly what goes to the wire.
+                if settings.agentruntime_arm:
+                    advertised = _agentruntime_wire_surface(pass_number=iteration + 1)
                 # ── CP-0.1 / CP-0.2 · THE INSTRUMENT, at the one chokepoint every pass goes through ──
                 # Emitted on EVERY pass, deliberately unlike the `schema_tokens` chunk above, which
                 # reports once per turn (`schema_tokens_reported`). Once-per-turn is precisely the
@@ -6255,7 +6286,11 @@ async def _persist_terminal_assistant(
     outcome: str | None = None,
     advertised_tools: list[dict] | None = None,
     withheld_tools: list[dict] | None = None,
-    runtime_variant: str = instrument.RUNTIME_LEGACY,
+    # CP-0.7 — **`runtime_variant` IS NOT A PARAMETER.** It was one, defaulting to `legacy`, and no
+    # caller ever passed it: this path handles error, interrupt and abandoned-suspend, which are
+    # exactly the terminal shapes a hand-passed label misses. `current_runtime_variant` argues the
+    # asymmetry — a missing label protects the new arm from false CREDIT but not from a missing
+    # FAILURE, so the arm measures safer than it is, by construction. Derived below.
 ) -> bool:
     """DBT-CHAT-PERSIST — persist an assistant reply that ended WITHOUT a clean
     finish (an error mid-stream, a user interrupt, or an abandoned/expired
@@ -6431,7 +6466,8 @@ async def _persist_terminal_assistant(
                     msg_id, session_id, user_id, content, content_parts, seq,
                     model_ref, parent_message_id, tool_calls_json,
                     is_error, error_detail, finish_reason,
-                    _outcome, _advertised_json, _withheld_json, runtime_variant,
+                    _outcome, _advertised_json, _withheld_json,
+                    instrument.current_runtime_variant(),
                 )
                 # Only bump the session counter on a genuine INSERT (xmax=0), never
                 # when ON CONFLICT took the UPDATE branch (already counted).
@@ -6444,7 +6480,8 @@ async def _persist_terminal_assistant(
         logger.info(
             "terminal-persist: saved %s assistant reply for session %s (msg %s, %d chars, "
             "outcome=%s, runtime=%s)",
-            finish_reason, session_id, msg_id, len(content), _outcome, runtime_variant,
+            finish_reason, session_id, msg_id, len(content), _outcome,
+            instrument.current_runtime_variant(),
         )
         return True
     except Exception:  # noqa: BLE001 — best-effort; runs on error/cancel paths
@@ -6896,6 +6933,29 @@ async def _emit_chat_turn(
                     logger.warning("stateful chain decision skipped — stateless", exc_info=True)
                     _stateful, _prev_rid, _delta_msgs, _chain_reason = False, None, None, "stateless"
 
+            # ── CP-3 · THE REQUEST PATH · resume half ──────────────────────────────────────
+            # 🔴 **ARM-GATED, AND THE OFF BRANCH TOUCHES NOTHING.** The legacy arm is CP-2's
+            # control group (§7), and CP-1.9 established that a control moved by a change nobody
+            # decided invalidates the comparison before it starts. With the flag off, `messages` is
+            # the same object it was.
+            #
+            # S3-M4: a second message during a live plan ROUTES INTO IT. The plan is prepended as a
+            # system message so the identifiers it carries are in front of the model BEFORE it
+            # chooses a call — which is the whole claim: the conversation evicts them, the plan does
+            # not.
+            _plan_turn = None
+            if settings.agentruntime_arm:
+                from app.services.plan_turn import live_plan_for_turn, plan_message
+                _plan_turn = await live_plan_for_turn(pool, session_id)
+                if _plan_turn is not None:
+                    messages = [plan_message(_plan_turn), *messages]
+                    logger.info(
+                        "CP-3 request path: session %s routed into live plan %s (%d step(s), "
+                        "%d event(s), resume=%s)",
+                        session_id, _plan_turn.plan_id, len(_plan_turn.spec.steps),
+                        len(_plan_turn.state.events), _plan_turn.is_resume,
+                    )
+
             chunk_stream = _stream_with_tools(
                 model_source=model_source,
                 model_ref=model_ref,
@@ -7211,6 +7271,34 @@ async def _emit_chat_turn(
         final_text = "".join(full_content)
         final_reasoning = "".join(full_reasoning)
 
+        # ── CP-3 · THE REQUEST PATH · create half ──────────────────────────────────────────
+        # A fenced ```plan block in the reply creates the session's plan, or revises it as a new
+        # VERSION when one is live. Arm-gated, and outside the persist transaction below: adopting a
+        # plan must never be able to lose the assistant message that proposed it.
+        #
+        # 🔴 **A REJECTION IS LOGGED WITH ITS LOCUS, NEVER SWALLOWED.** The worst outcome available
+        # here is a model that believes it has a plan while the service has none — every later turn
+        # then binds against a plan that does not exist, and the failure surfaces at a step nobody
+        # can trace back to the parse.
+        _plan_adoption = None
+        if settings.agentruntime_arm:
+            from app.services.plan_turn import adopt_plan_from_reply
+            try:
+                _plan_adoption = await adopt_plan_from_reply(pool, session_id, final_text)
+            except Exception:  # noqa: BLE001 — a plan must never cost the user their reply
+                logger.warning("CP-3 plan adoption failed", exc_info=True)
+            else:
+                if _plan_adoption.rejected_with:
+                    logger.warning(
+                        "CP-3 request path: session %s proposed a plan that was REJECTED — %s",
+                        session_id, _plan_adoption.rejected_with,
+                    )
+                elif _plan_adoption.adopted:
+                    logger.info(
+                        "CP-3 request path: session %s adopted plan %s v%d",
+                        session_id, _plan_adoption.plan_id, _plan_adoption.version,
+                    )
+
         # ── Persist assistant message ───────────────────────────────────────
         # K13.2: wrap the three INSERTs + outbox event in one transaction
         # so chat.turn_completed is only emitted when the message persists
@@ -7466,7 +7554,11 @@ async def _emit_chat_turn(
                     instrument.outcome_for_finish_reason(_loop_finish_reason or "stop"),
                     json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
                     json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
-                    instrument.RUNTIME_LEGACY,
+                    # CP-0.7 — DERIVED, never the constant. This is the CLEAN-FINISH path: the
+                    # largest population by far, and while it wrote a literal the column could not
+                    # record an agentruntime turn at all. Measured 2026-08-09: 5,975 rows, every one
+                    # `legacy`, on a column whose whole premise is that the arms are separable.
+                    instrument.current_runtime_variant(),
                     # F-19 — `finish_reason` and `outcome` now derive from THE SAME signal. Pinning
                     # 'stop' here while the outcome varied made the row contradict itself, which is
                     # worse than either value alone being wrong: a reader cannot tell which half to

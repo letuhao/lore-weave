@@ -569,10 +569,222 @@ class TestSilentExit2HasAnOwnerThatKeepsRunning:
         import re
         body = re.search(r"async def _suspended_run_maintenance_loop.*?(?=\n@|\nasync def |\ndef )",
                          self._main(), re.S).group(0)
-        m = re.search(r"interval\s*=\s*max\((\d+),\s*settings\.(\w+)\)", body)
-        assert m, "the interval must carry an explicit floor rather than trusting the setting"
+        # 🔴 ANCHORED TO END-OF-LINE. Without `$` this matched the PREFIX of
+        # `max(1, settings.…_seconds) * 3600`, so a units multiplier — the very thing that makes
+        # the knob unwatchable — passed the guard. The falsification runner found that hole in
+        # this guard, not in the code, which is the whole reason the runner exists.
+        m = re.search(r"^\s*interval\s*=\s*max\((\d+),\s*settings\.(\w+)\)\s*$", body, re.M)
+        assert m, (
+            "the interval must be `max(<floor>, settings.<name>)` and NOTHING else — a trailing "
+            "`* 3600` silently restores an hours-scale knob that cannot be observed firing"
+        )
         floor, name = int(m.group(1)), m.group(2)
         assert name.endswith("_seconds"), (
             f"`{name}` cannot be turned down below its own unit — the loop becomes unwatchable"
         )
         assert 0 < floor <= 60, f"a floor of {floor}s is too coarse to observe, or absent"
+
+
+class TestTheRequestPathReachesThePlan:
+    """CP-3 · **the route**. Every V-LIVE round at CP-1, CP-2 and CP-3 returned `CANNOT DETERMINE`
+    for one mechanical reason: no request path reached the package. These guards are about the
+    branch itself — that it exists, that it is arm-gated, and that the OFF branch is inert.
+    """
+
+    @staticmethod
+    def _turn_src() -> str:
+        from pathlib import Path
+        import app.services.stream_service as _s
+        return Path(_s.__file__).read_text(encoding="utf-8")
+
+    def test_THE_LIVE_PLAN_IS_PREPENDED_BEFORE_THE_MODEL_CHOOSES_A_CALL(self):
+        """The claim is that the plan carries identifiers the conversation evicts. Injecting it
+        AFTER the model has already picked a call would carry nothing."""
+        src = self._turn_src()
+        i_inject = src.find("live_plan_for_turn(pool, session_id)")
+        i_call = src.find("chunk_stream = _stream_with_tools(")
+        assert 0 < i_inject < i_call, (
+            "the plan must be bound before the model call, not after it"
+        )
+
+    def test_BOTH_HALVES_ARE_ARM_GATED(self):
+        """🔴 The legacy arm is CP-2's CONTROL GROUP (§7). A control moved by a change nobody
+        decided invalidates the comparison before it starts."""
+        import re
+        src = self._turn_src()
+        for symbol in ("live_plan_for_turn", "adopt_plan_from_reply"):
+            i = src.find(f"from app.services.plan_turn import {symbol}")
+            assert i > 0, f"{symbol} is not imported on the request path"
+            before = src[max(0, i - 1200):i]
+            assert re.search(r"if settings\.agentruntime_arm:", before), (
+                f"{symbol} is reached without an arm gate — the control arm would move"
+            )
+
+    def test_ADOPTION_CANNOT_COST_THE_USER_THEIR_REPLY(self):
+        import re
+        src = self._turn_src()
+        i = src.find("adopt_plan_from_reply(pool, session_id, final_text)")
+        assert i > 0
+        assert re.search(r"except Exception:", src[i:i + 400]), (
+            "a plan failure must never take down the turn that proposed it"
+        )
+
+    def test_A_REJECTION_IS_LOGGED_AND_NOT_SWALLOWED(self):
+        src = self._turn_src()
+        i = src.find("adopt_plan_from_reply(pool, session_id, final_text)")
+        window = src[i:i + 1400]
+        assert "rejected_with" in window and "REJECTED" in window, (
+            "a model that believes it has a plan while the service has none is the worst outcome "
+            "available here — every later turn binds against a plan that does not exist"
+        )
+
+
+class TestPlanAdoptionFromAReply:
+    """CP-3 · the CREATE half, driven directly. A fence, not a heuristic."""
+
+    PLAN = ("```plan\n"
+            "# goal: list the books and read the newest\n"
+            "\n"
+            "## step: book_list\n"
+            "- contract_version: 1.0.0\n"
+            "- emits: book_id\n"
+            "\n"
+            "## step: book_read\n"
+            "- contract_version: 1.0.0\n"
+            "- accepts:\n"
+            "  - book_id from step 0.book_id\n"
+            "```\n")
+
+    def test_A_FENCE_IS_REQUIRED_SO_QUOTING_A_PLAN_DOES_NOT_AUTHOR_ONE(self):
+        """🔴 Scanning for `# goal:` anywhere in a reply is the backtick prose scraper CP-2.2
+        deleted, in a new costume: a model explaining a plan would have silently written one."""
+        from app.services.plan_turn import extract_plan_block
+        quoted = "Here is what a plan looks like:\n\n# goal: do the thing\n\n## step: book_list\n"
+        assert extract_plan_block(quoted) is None
+        assert extract_plan_block(self.PLAN) is not None
+
+    def test_TWO_BLOCKS_IS_AMBIGUITY_NOT_A_PICK_BY_POSITION(self):
+        from app.services.plan_turn import extract_plan_block
+        assert extract_plan_block(self.PLAN + self.PLAN) is None, (
+            "taking the first picks by position; taking the last picks by position differently. "
+            "Neither is a decision the model made"
+        )
+
+    def test_NO_BLOCK_IS_NOT_THE_SAME_FACT_AS_A_FAILED_ONE(self):
+        """NULL versus `[]`, one layer up — CP-2.7 item C had to separate these once already."""
+        from app.services.plan_turn import NOT_ATTEMPTED
+        assert NOT_ATTEMPTED.attempted is False
+        assert NOT_ATTEMPTED.rejected_with is None
+        assert NOT_ATTEMPTED.adopted is False
+
+    def test_AN_UNPARSEABLE_BLOCK_REJECTS_WITH_A_LINE_NUMBER(self):
+        """C-12 — a rejection names the locus. Only one of a plan's three authors can read a
+        stack trace, and it is not the model."""
+        import asyncio
+
+        from app.services.plan_turn import adopt_plan_from_reply
+
+        class _Conn:
+            async def fetchrow(self, *a, **k): return None
+            async def fetchval(self, *a, **k): return None
+
+        class _Pool:
+            def acquire(self):
+                class _A:
+                    async def __aenter__(_s): return _Conn()
+                    async def __aexit__(_s, *a): return False
+                return _A()
+
+        bad = "```plan\n# goal: g\n\n## step: book_list\n- contract_version: 1.0.0\n- wat: 3\n```"
+        out = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+            adopt_plan_from_reply(_Pool(), "s", bad))
+        assert out.attempted and not out.adopted
+        assert "line " in out.rejected_with, (
+            f"no locus in {out.rejected_with!r} — 'invalid' is not actionable"
+        )
+
+    def test_A_BINDING_NOBODY_EMITS_IS_REFUSED_AT_CONSTRUCTION_NOT_AT_THE_STEP(self):
+        """§6.2 — the check is at generation time, so the plan cannot be BUILT. Discovering it at
+        the step that needed the value is the failure mode the plan exists to remove."""
+        import asyncio
+
+        from app.services.plan_turn import adopt_plan_from_reply
+
+        class _Conn:
+            async def fetchrow(self, *a, **k): return None
+            async def fetchval(self, *a, **k): return None
+
+        class _Pool:
+            def acquire(self):
+                class _A:
+                    async def __aenter__(_s): return _Conn()
+                    async def __aexit__(_s, *a): return False
+                return _A()
+
+        bad = ("```plan\n# goal: g\n\n## step: book_list\n- contract_version: 1.0.0\n\n"
+               "## step: book_read\n- contract_version: 1.0.0\n- accepts:\n"
+               "  - book_id from step 0.book_id\n```")
+        out = asyncio.get_event_loop_policy().new_event_loop().run_until_complete(
+            adopt_plan_from_reply(_Pool(), "s", bad))
+        assert out.attempted and not out.adopted and out.rejected_with
+
+
+class TestTheArmGovernsTheWireAndNotOneProducer:
+    """CP-2.7 item B · **found by a real turn against a real model, 2026-08-09.**
+
+    The branch lived inside `_advertise_discovery_tools`, whose docstring called it *"the single
+    ADVERTISE chokepoint … one edit covers every path a turn can take to the wire."* It was not: a
+    plain tool-calling client takes an `else` arm that assigns `tool_defs = catalog` and never calls
+    the function. The first served turn on the new arm advertised **318 legacy declarations** with
+    the row stamped `runtime_variant='agentruntime'`.
+
+    These guards are anchored to `request_kwargs["tools"]` — the actual wire assignment — so a
+    future producer path cannot reopen this without going red.
+    """
+
+    @staticmethod
+    def _src() -> str:
+        from pathlib import Path
+        import app.services.stream_service as _s
+        return Path(_s.__file__).read_text(encoding="utf-8")
+
+    def test_THE_ARM_IS_APPLIED_TO_THE_VARIABLE_THAT_REACHES_THE_WIRE(self):
+        src = self._src()
+        i_wire = src.find('request_kwargs["tools"] = advertised')
+        assert i_wire > 0, "the wire assignment moved; this guard is now anchored to nothing"
+        i_arm = src.rfind("advertised = _agentruntime_wire_surface(", 0, i_wire)
+        assert i_arm > 0, (
+            "no arm branch governs `advertised` before it becomes the request's tools — a producer "
+            "path that never calls the advertise helper reaches the model unfiltered"
+        )
+
+    def test_IT_IS_BELOW_THE_APPENDS_THAT_ADD_LEGACY_TOOLS(self):
+        """🔴 `conversation_search`, `chat_search_sessions` and `run_subagent` are appended AFTER
+        the discovery fork. A branch above them leaks three declarations no manifest admitted, and
+        item B says *by ANY route*."""
+        src = self._src()
+        i_arm = src.find("advertised = _agentruntime_wire_surface(")
+        for tool in ("CONVERSATION_SEARCH_TOOL", "CHAT_SEARCH_SESSIONS_TOOL"):
+            i_append = src.find(f"advertised = list(advertised) + [{tool}]")
+            assert 0 < i_append < i_arm, (
+                f"{tool} is appended after the arm branch, so it reaches the wire on the new arm"
+            )
+
+    def test_THE_NON_DISCOVERY_PRODUCER_STILL_EXISTS_SO_THIS_IS_NOT_HYPOTHETICAL(self):
+        """The bypass this was found through. If it ever disappears, say so deliberately rather
+        than letting the guard above quietly become decorative."""
+        src = self._src()
+        assert "\n                tool_defs = catalog\n" in src, (
+            "the bare-catalog producer is gone; re-read whether the wire-level branch is still "
+            "load-bearing instead of assuming it is"
+        )
+
+    def test_THERE_IS_EXACTLY_ONE_IMPLEMENTATION_OF_THE_ARM_SURFACE(self):
+        """Two call sites need it. Two hand-written copies of one decision drifted inside a single
+        commit in this repository already."""
+        src = self._src()
+        assert src.count("def _agentruntime_wire_surface(") == 1
+        assert src.count("_agentruntime_advertise(") == 1, (
+            "a second inline call to serve.advertise is a second copy of the decision"
+        )
+        assert src.count("_agentruntime_wire_surface(pass_number=") == 2

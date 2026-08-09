@@ -4195,7 +4195,9 @@ class TestTheOrphanStampActuallyRuns:
             finish_reason="error", is_error=True, error_detail=None,
             outcome=None, advertised_tools=None,
             withheld_tools=[{"scope": "catalogue", "reason": "outage", "pass": 1}],
-            runtime_variant="legacy",
+            # CP-0.7 — `runtime_variant` is deliberately NOT passable here any more. It used to be a
+            # keyword with a `legacy` default that no production caller ever supplied, which at
+            # every call site is indistinguishable from a hardcoded constant.
         )
         assert wrote is False, "an orphan stamp creates no assistant row, so it returns False"
         assert len(seen) == 1, (
@@ -4296,3 +4298,85 @@ class TestExcludedOnlyExistsInAnUpsert:
             "the two forms have drifted apart; F-48's three properties are why this helper exists "
             "and they must hold identically in both statement shapes"
         )
+
+
+class TestTheRuntimeVariantColumnIsNotAConstant:
+    """CP-0.7 · **the column that decides whether the comparison is computable at all.**
+
+    `current_runtime_variant()` was built as the chokepoint and then used for the per-call stamp
+    inside `tool_calls` only. Every writer of the `chat_messages.runtime_variant` COLUMN bound the
+    literal `RUNTIME_LEGACY`. Measured 2026-08-09: **5,975 rows, every one `legacy`, none
+    `agentruntime`** — a column whose entire premise is that the arms are separable, which no
+    amount of traffic on the new arm could ever have moved.
+
+    The denominator is DERIVED: every module that writes the column is found by scanning, so a
+    fifth terminal path added later is covered without anyone remembering this gate exists.
+    """
+
+    @staticmethod
+    def _writers() -> dict:
+        """{path: source} for every module whose SQL names `runtime_variant` in an INSERT column
+        list. Not a typed list — a typed list is how the voice pipeline stayed invisible."""
+        out = {}
+        for p in sorted(_APP.rglob("*.py")):
+            if "__pycache__" in p.parts:
+                continue
+            src = p.read_text(encoding="utf-8")
+            if "runtime_variant" in src and "INSERT INTO chat_messages" in src:
+                out[str(p.relative_to(_APP))] = src
+        return out
+
+    def test_THE_SCAN_FINDS_THE_TERMINAL_PATHS_AT_ALL(self):
+        """A gate whose denominator collapses to zero passes vacuously — the failure this run
+        already recorded once."""
+        writers = self._writers()
+        assert len(writers) >= 3, (
+            f"only {sorted(writers)} found; the scan has stopped matching and every assertion "
+            f"below it is now vacuous"
+        )
+
+    def test_NO_TERMINAL_PATH_BINDS_THE_LITERAL(self):
+        """🔴 A literal here is not a MISSING label, it is a WRONG one: in a process running the
+        new arm it credits the control group with the new runtime's turns, and `current_runtime_
+        variant`'s own argument is that label-omission correlates with crash and cancel — so the
+        new arm would measure as safer than it is, by construction."""
+        import re
+        offenders = {
+            path: [ln for ln in src.splitlines()
+                   if re.search(r"instrument\.RUNTIME_(LEGACY|AGENTRUNTIME)\s*,", ln)]
+            for path, src in self._writers().items()
+        }
+        offenders = {k: v for k, v in offenders.items() if v}
+        assert not offenders, (
+            f"{offenders} — bind `instrument.current_runtime_variant()`, which reads the same "
+            f"setting the route reads, instead of asserting an arm"
+        )
+
+    def test_EVERY_WRITER_CALLS_THE_DERIVING_CHOKEPOINT(self):
+        for path, src in self._writers().items():
+            assert "current_runtime_variant()" in src, (
+                f"{path} writes the column without deriving it — the arm is a property of the "
+                f"process, and a value nobody derived is a value nobody checked"
+            )
+
+    def test_IT_IS_NOT_A_PARAMETER_A_CALLER_CAN_FORGET(self):
+        """It WAS one, defaulting to `legacy`, and no caller ever passed it. A keyword default is
+        indistinguishable from a hardcoded constant at every call site that omits it."""
+        import re
+        for path, src in self._writers().items():
+            assert not re.search(r"^\s*runtime_variant:\s*str\s*=", src, re.M), (
+                f"{path} takes the label as a parameter; the label must not be passable"
+            )
+
+    def test_THE_CHOKEPOINT_ACTUALLY_TRACKS_THE_ARM(self):
+        """And it must MOVE. A chokepoint that returns `legacy` under both settings is the literal
+        with more steps."""
+        from app.config import settings
+        was = settings.agentruntime_arm
+        try:
+            settings.agentruntime_arm = False
+            assert instrument.current_runtime_variant() == instrument.RUNTIME_LEGACY
+            settings.agentruntime_arm = True
+            assert instrument.current_runtime_variant() == instrument.RUNTIME_AGENTRUNTIME
+        finally:
+            settings.agentruntime_arm = was

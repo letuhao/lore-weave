@@ -991,6 +991,14 @@ services:
       ONESHOT_DEADVERTISE_MODE: "${ONESHOT_DEADVERTISE_MODE:-session}"
       RAIL_ACTION_GATE_MODE: "${RAIL_ACTION_GATE_MODE:-done_suppress}"
       T5_INTENT_GATE_ENABLED: "${T5_INTENT_GATE_ENABLED:-false}"
+      # CP-2.7 / CP-3 — which runtime serves a turn. `false` is the LEGACY arm, which is this
+      # effort's CONTROL GROUP (spec §7): with it off the advertise chokepoint returns before it
+      # reads anything new, and every row is byte-identical to before the arm existed.
+      #
+      # 🔴 It had no compose entry at all until 2026-08-09, which means the new arm had **no
+      # deployment path** — the flag existed in `config.py` and nothing could set it. A switch
+      # nobody can reach is the same shape as a function nobody calls.
+      AGENTRUNTIME_ARM: "${AGENTRUNTIME_ARM:-false}"
       # Context Budget Law T4 (story_state Core Memory Block) + T6/D13a (reversible
       # dup-read collapse). Default OFF; flip on (with T5) for the compaction A/B —
       # T4's degraded-safety-net only fires when T5 gates grounding to empty, D13a only

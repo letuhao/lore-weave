@@ -13,6 +13,18 @@
       "lane": "read",
       "tier": "R",
       "cost": 1284
+    },
+    {
+      "id": "book_read",
+      "kind": "tool",
+      "owning_service": "book-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 1407
     }
   ]
 }

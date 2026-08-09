@@ -550,28 +550,90 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/observation.py", "    * **`code_revision`**", "    * **`code-revision`**"),
     ],
 
+    # ── CP-3.6a · THE OWNER THE SWEEPER NEVER HAD ─────────────────────────────────────────────
+    # Each of these was applied by hand on 2026-08-09 and observed to red the named guard BEFORE
+    # being recorded here — the file's own rule: a reversion that does not restore the defect
+    # proves nothing.
+    "test_THE_SWEEPER_IS_AWAITED_SOMEWHERE_NOT_MERELY_IMPORTED": [
+        # The exact state this repository was in for months: defined, documented as periodic,
+        # called by nothing. It reds WITH the docstring still naming the function, which is the
+        # point — prose cannot satisfy a caller check.
+        (f"{CS}/app/main.py",
+         "            swept = await sweep_expired_runs(\n"
+         "                pool, retention_days=settings.suspended_run_retention_days\n"
+         "            )",
+         "            swept = 0"),
+    ],
+    "test_THE_LOOP_IS_ACTUALLY_STARTED_AND_CANCELLED": [
+        # A defined-but-never-scheduled coroutine is the zero-caller shape one layer up.
+        (f"{CS}/app/main.py",
+         "    suspend_task = asyncio.create_task(_suspended_run_maintenance_loop())\n", ""),
+    ],
+    "test_THE_INTERVAL_CAN_BE_TURNED_DOWN_FAR_ENOUGH_TO_WATCH_IT_RUN": [
+        # An hours-only knob with a 1-hour floor cannot be observed firing in any test window,
+        # and unobservability is how the original stayed dead.
+        (f"{CS}/app/main.py",
+         "    interval = max(60, settings.suspended_run_maintenance_interval_seconds)",
+         "    interval = max(1, settings.suspended_run_maintenance_interval_seconds) * 3600"),
+    ],
+
+    # ── CP-0.7 · THE COLUMN THAT WAS A CONSTANT ───────────────────────────────────────────────
+    "test_NO_TERMINAL_PATH_BINDS_THE_LITERAL": [
+        # Measured: 5,975 rows, every one `legacy`, on the column the whole comparison rests on.
+        (f"{CS}/app/services/voice_stream_service.py",
+         "                instrument.current_runtime_variant(),",
+         "                instrument.RUNTIME_LEGACY,"),
+    ],
+
+    # ── CP-3 · THE REQUEST PATH ───────────────────────────────────────────────────────────────
+    "test_BOTH_HALVES_ARE_ARM_GATED": [
+        # The control arm moved by a change nobody decided — CP-1.9's argument, applied to the
+        # plan route rather than the surface route.
+        (f"{CS}/app/services/stream_service.py",
+         "            if settings.agentruntime_arm:\n"
+         "                from app.services.plan_turn import live_plan_for_turn, plan_message",
+         "            if True:\n"
+         "                from app.services.plan_turn import live_plan_for_turn, plan_message"),
+    ],
+    "test_THE_ARM_IS_APPLIED_TO_THE_VARIABLE_THAT_REACHES_THE_WIRE": [
+        # 🔴 The defect a REAL TURN found: the branch governed one producer, and a plain
+        # tool-calling client took an `else` arm straight to 318 legacy declarations.
+        (f"{CS}/app/services/stream_service.py",
+         "                if settings.agentruntime_arm:\n"
+         "                    advertised = _agentruntime_wire_surface(pass_number=iteration + 1)\n",
+         ""),
+    ],
+
     # ── CP-2.7 · THE ROUTE ────────────────────────────────────────────────────────────────────
     "test_THE_CONTROL_ARM_IS_UNTOUCHED_WHEN_THE_FLAG_IS_OFF": [
         # The route taken unconditionally: CP-2's control group stops serving the legacy
         # catalogue, and the comparison is invalid before it starts (CP-1.9's argument).
+        #
+        # 🔴 THE ANCHOR IS THE BRANCH *BODY*, not the `if`. CP-3's request path added three more
+        # `if settings.agentruntime_arm:` sites at deeper indentation, and the 4-space form is a
+        # SUBSTRING of every one of them — `stale_anchors()` caught it as "4 occurrences (want 1)".
+        # An ambiguous anchor mutates whichever site it hits first, which is a falsifier that
+        # measures a bystander.
         (f"{CS}/app/services/stream_service.py",
-         "    if settings.agentruntime_arm:", "    if True:"),
+         "    if settings.agentruntime_arm:\n        return _agentruntime_wire_surface(",
+         "    if True:\n        return _agentruntime_wire_surface("),
     ],
     "test_ON_THE_NEW_ARM_AN_EMPTY_MANIFEST_ADVERTISES_NOTHING_AT_ALL": [
         (f"{CS}/app/services/stream_service.py",
-         "    if settings.agentruntime_arm:", "    if False:"),
+         "    if settings.agentruntime_arm:\n        return _agentruntime_wire_surface(",
+         "    if False:\n        return _agentruntime_wire_surface("),
     ],
     "test_NO_LEGACY_DECLARATION_SURVIVES_THE_ROUTE__item_B": [
         (f"{CS}/app/services/stream_service.py",
-         "    if settings.agentruntime_arm:", "    if False:"),
+         "    if settings.agentruntime_arm:\n        return _agentruntime_wire_surface(",
+         "    if False:\n        return _agentruntime_wire_surface("),
     ],
     "test_THE_BRANCH_READS_NOTHING_FROM_THE_LEGACY_CATALOG": [
         # The merge that would make item B unmeasurable: one legacy read inside the branch.
+        # The two call sites now share `_agentruntime_wire_surface`, so the mutation follows it.
         (f"{CS}/app/services/stream_service.py",
-         "        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)\n"
-         "        return payload",
-         "        payload, _surface = _agentruntime_advertise(_agentruntime_load(), pass_number=1)\n"
-         "        return payload or list(extra_frontend)"),
+         "        return _agentruntime_wire_surface(pass_number=1)",
+         "        return _agentruntime_wire_surface(pass_number=1) or list(extra_frontend)"),
     ],
     "test_THE_MODEL_IS_TOLD_WHICH_EMPTINESS_THIS_IS__item_A": [
         # Collapse the two emptinesses - §0.14.3's failure, at the one place they are separated.

@@ -289,3 +289,89 @@ class TestTheSweeperNeverDeletesEvidenceAReaderStillNeeds:
         assert await self._alive(conn, rid), "swept a row that expired one hour ago"
         await self._sweep(conn, 0)
         assert not await self._alive(conn, rid)
+
+
+class TestTheRequestPathDrivesARealPool:
+    """CP-3 · **the shape the fixture could not see.**
+
+    `adopt_plan_from_reply` is handed `pool` on the request path. `save_spec` opens a transaction,
+    and `asyncpg.Pool` has no `.transaction()` — so the FIRST real turn on which the model authored
+    a valid plan raised `AttributeError` while every test stayed green, because the `conn` fixture
+    above hands out a Connection.
+
+    🔴 **These take a real `asyncpg.Pool`, deliberately.** A fixture that supplies the convenient
+    type cannot check the type production supplies, and no amount of stubbing fixes that.
+    """
+
+    @pytest.fixture
+    async def pool(self):
+        try:
+            p = await asyncpg.create_pool(DSN, min_size=1, max_size=2, timeout=5)
+        except Exception as exc:  # noqa: BLE001
+            pytest.skip(f"no Postgres at {DSN}: {type(exc).__name__} — this claim is about the "
+                        f"POOL type and cannot be checked without one")
+        try:
+            yield p
+        finally:
+            await p.close()
+
+    async def _session(self, pool) -> str:
+        async with pool.acquire() as c:
+            return await c.fetchval(
+                "INSERT INTO chat_sessions (owner_user_id, model_source, model_ref) "
+                "VALUES ($1, 'internal', $2) RETURNING session_id", uuid.uuid4(), uuid.uuid4())
+
+    async def _cleanup(self, pool, sid):
+        async with pool.acquire() as c:
+            await c.execute("DELETE FROM chat_sessions WHERE session_id = $1", sid)
+
+    PLAN = ("```plan\n# goal: read the newest book\n\n"
+            "## step: book_list\n- contract_version: 1.0.0\n- emits: book_id\n\n"
+            "## step: book_read\n- contract_version: 1.0.0\n- accepts:\n"
+            "  - book_id from step 0.book_id\n```")
+
+    async def test_ADOPTION_WORKS_WHEN_HANDED_A_POOL(self, pool):
+        from app.services.plan_turn import adopt_plan_from_reply
+        sid = await self._session(pool)
+        try:
+            out = await adopt_plan_from_reply(pool, sid, f"Here you go:\n{self.PLAN}")
+            assert out.adopted, f"rejected: {out.rejected_with}"
+            assert out.version == 1
+        finally:
+            await self._cleanup(pool, sid)
+
+    async def test_THE_RESUME_HALF_WORKS_WHEN_HANDED_A_POOL_TOO(self, pool):
+        """And it carries the bound identifier — the whole point of the round trip."""
+        from app.services.plan_turn import live_plan_for_turn
+        from app.db import plans as pdb
+        sid = await self._session(pool)
+        try:
+            async with pool.acquire() as c:
+                pid = await pdb.save_spec(c, sid, _spec())
+                await pdb.append_event(c, uuid.UUID(pid), Event(
+                    kind="step_emitted", step_index=0, values=M({"book_id": UUID_VALUE})))
+            turn = await live_plan_for_turn(pool, sid)
+            assert turn is not None and turn.plan_id == pid
+            assert UUID_VALUE in turn.projection
+            assert turn.is_resume is True
+        finally:
+            await self._cleanup(pool, sid)
+
+    async def test_A_SECOND_BLOCK_REVISES_RATHER_THAN_COLLIDING_WITH_THE_LIVE_PLAN(self, pool):
+        """S3-M4 one level down: the model replanned, and refusing would leave the service holding
+        the plan it replanned away from. The partial unique index stays a BACKSTOP, not the error
+        path — if this collided, the second call would raise instead of returning v2."""
+        from app.services.plan_turn import adopt_plan_from_reply
+        sid = await self._session(pool)
+        try:
+            first = await adopt_plan_from_reply(pool, sid, self.PLAN)
+            second = await adopt_plan_from_reply(pool, sid, self.PLAN)
+            assert first.version == 1 and second.version == 2
+            assert first.plan_id != second.plan_id
+            async with pool.acquire() as c:
+                statuses = dict(await c.fetch(
+                    "SELECT plan_id, status FROM chat_plans WHERE session_id = $1", sid))
+            assert statuses[uuid.UUID(first.plan_id)] == "superseded"
+            assert statuses[uuid.UUID(second.plan_id)] == "live"
+        finally:
+            await self._cleanup(pool, sid)

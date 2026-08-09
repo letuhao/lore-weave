@@ -657,7 +657,10 @@ async def voice_stream_response(
                 # very file — a confident value for something never checked.
                 (instrument.OUTCOME_AWAITING_INPUT if _voice_suspended
                  else instrument.outcome_for_finish_reason(_voice_finish_reason or "stop")),
-                instrument.RUNTIME_LEGACY,
+                # CP-0.7 — DERIVED, for the same reason the outcome above is. A literal here says
+                # `legacy` in a process running the new arm, which is not a missing label but a
+                # WRONG one: it credits the control group with the new runtime's turns.
+                instrument.current_runtime_variant(),
                 # CP-0.1 — NULL, deliberately, and this is a RETRACTION.
                 #
                 # I previously bound a hand-typed `[{"pass":1,"names":[],"count":0,

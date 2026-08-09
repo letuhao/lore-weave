@@ -934,7 +934,9 @@ async def proactive_turn(body: ProactiveTurnTrigger, db: asyncpg.Pool = Depends(
                    VALUES ($1, $2, 'assistant', $3, 0, 'assistant_proactive', $6, $4, $5)
                    RETURNING message_id""",
                 session_id, str(body.user_id), content,
-                instrument.OUTCOME_COMPLETED, instrument.RUNTIME_LEGACY,
+                # CP-0.7 — DERIVED. The proactive check-in is the fourth terminal path, and the
+                # arm is a property of the PROCESS, not of who started the turn.
+                instrument.OUTCOME_COMPLETED, instrument.current_runtime_variant(),
                 # 🔴 NOT 'stop'. My claim that this INSERT is single-condition was FALSE:
                 # `_generate_proactive_content` swallows every exception and returns None, and
                 # `_clean_proactive_text` rejects junk, so the path degrades to _PROACTIVE_STATIC —

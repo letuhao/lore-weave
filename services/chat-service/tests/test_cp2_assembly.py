@@ -858,6 +858,24 @@ def _admitted_ids() -> set[str]:
     return {r["id"] for r in doc["declarations"]}
 
 
+
+def _legacy_names(*candidates: str) -> dict:
+    """A legacy catalogue fixture that CANNOT accidentally name an admitted declaration.
+
+    🔴 `book_read` was typed in here as an obviously-legacy name, and admitting it at CP-4 turned
+    two of item B's guards red for a reason that had nothing to do with the route. "Legacy" is not
+    a property of a name — it is *not in the manifest* — so the fixture derives it. The assertion
+    that the result is non-empty is what stops a future manifest from emptying the fixture and
+    making the guard vacuous.
+    """
+    names = [n for n in candidates if n not in _admitted_ids()]
+    assert names, (
+        f"every candidate {candidates} is now admitted, so this fixture holds nothing and the "
+        f"guard below would pass without checking anything"
+    )
+    return {n: {"type": "function", "function": {"name": n, "parameters": {}}} for n in names}
+
+
 class TestTheRouteServesFromTheManifestAndNothingElse:
     """REJECTS: an arm that quietly keeps the legacy core, and a control arm this route perturbed.
 
@@ -879,10 +897,7 @@ class TestTheRouteServesFromTheManifestAndNothingElse:
         payload with the flag off, against the legacy catalogue's real core."""
         from app.config import settings
 
-        legacy_catalog = {
-            n: {"type": "function", "function": {"name": n, "parameters": {}}}
-            for n in ("glossary_search", "book_read")
-        }
+        legacy_catalog = _legacy_names("glossary_search", "book_read", "kg_build")
         args = dict(catalog_index=legacy_catalog, active_tool_names=set(legacy_catalog),
                     extra_frontend=[])
 
@@ -939,14 +954,12 @@ class TestTheRouteServesFromTheManifestAndNothingElse:
         handed in, richly populated, and **nothing from it reaches the wire**."""
         from app.config import settings
 
-        legacy_catalog = {
-            n: {"type": "function", "function": {"name": n, "parameters": {}}}
-            for n in ("glossary_search", "book_read", "kg_build", "propose_edit")
-        }
+        legacy_catalog = _legacy_names(
+            "glossary_search", "book_read", "kg_build", "propose_edit")
         monkeypatch.setattr(settings, "agentruntime_arm", True)
         payload = self._advertise(catalog_index=legacy_catalog,
                                   active_tool_names=set(legacy_catalog),
-                                  extra_frontend=[legacy_catalog["propose_edit"]])
+                                  extra_frontend=[next(iter(legacy_catalog.values()))])
         served = {d["function"]["name"] for d in payload}
         assert served & set(legacy_catalog) == set(), (
             f"a legacy declaration reached the wire on the new arm: "
