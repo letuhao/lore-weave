@@ -74,6 +74,11 @@ SUITES = (
     # were counted as declared by arithmetic while the partition printed clean.
     "tests/test_cp4_derive.py",
     "tests/test_cp3_plan.py",
+    # 3.1's storage half. DB-gated: it skips without Postgres, and the skip says so rather
+    # than passing quietly — "one live plan per session" is a partial unique INDEX and
+    # "append-only" is a PRIMARY KEY, so a mock would assert my model of the database
+    # instead of the database.
+    "tests/test_cp3_plan_db.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

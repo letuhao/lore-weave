@@ -768,6 +768,67 @@ CREATE INDEX IF NOT EXISTS idx_reflection_patterns_owner_week
 -- authoritative dimension set the Scorecard coerces against (coerce_scorecard's safe-when-wrong
 -- guarantee is anchored to THIS, not the model's output). A coach session with NO resolvable
 -- rubric REFUSES to score (P5-D5). `tier` carries the quarantine state until Gate 4 clears.
+-- ── CP-3.1 · the plan, made durable ────────────────────────────────────────────────────────────
+-- ARCHITECTURE.md §0.11: "one `plans` table in `loreweave_chat`, one live plan per session."
+-- Session-scoped so suspend/resume reaches it, durable so process death is recoverable, and **a ROW
+-- rather than a column so versions are rows** — a revision writes a new SPEC version and the old one
+-- stays readable, which is what makes §0.8's approval-invalidation inspectable after the fact.
+--
+-- 🔴 S3-M6, and it is the reason this table is worth having at all: turns already checkpoint per
+-- tool call at `finish_reason='streaming'` and **nothing ever reads a `'streaming'` row back**. The
+-- write half of recovery has existed the whole time and been discarded. This is the read half.
+CREATE TABLE IF NOT EXISTS chat_plans (
+  plan_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id      UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  version         INT NOT NULL,
+  -- Both hashes are STORED rather than recomputed on read. They are what an approval bound to, and
+  -- recomputing would silently re-bind it to whatever the code says today — §0.8's laundering with
+  -- an extra step. A mismatch between these and a fresh hash is a finding, not a repair.
+  spec_hash       TEXT NOT NULL,
+  gated_hash      TEXT NOT NULL,
+  spec            JSONB NOT NULL,
+  status          VARCHAR(16) NOT NULL DEFAULT 'live'
+                  CHECK (status IN ('live', 'superseded', 'terminated')),
+  -- Set only when status='terminated'. §3: a plan that ends anywhere but done_when names what is
+  -- live and hands it to a human, so the scope and the hand-off are columns, not log lines.
+  terminal_scope  VARCHAR(32),
+  hand_to_human   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (session_id, version)
+);
+
+-- 🔴 **"ONE LIVE PLAN PER SESSION" AS AN INDEX, NOT AS A CONVENTION.** A partial unique index makes
+-- the second live plan unrepresentable; enforcing it in application code would make it a race, and
+-- two live plans in one session is the state where "which plan does this message route into?" has
+-- no answer. S3-M4's rule attaches here: a second message during a live plan ROUTES INTO IT, and a
+-- hard reject would be a ceiling.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_plans_one_live_per_session
+  ON chat_plans (session_id) WHERE status = 'live';
+
+-- STATE, event-sourced. §0.11's second adjustment: "replay to reconstruct, resume at the failed step
+-- without re-running completed work" — an event history answers §0.5's *what has already committed*
+-- natively, where a snapshot has to be kept correct by whoever writes it.
+CREATE TABLE IF NOT EXISTS chat_plan_events (
+  plan_id     UUID NOT NULL REFERENCES chat_plans(plan_id) ON DELETE CASCADE,
+  -- 🔴 **APPEND-ONLY IS THE PRIMARY KEY, NOT A PROMISE.** `(plan_id, seq)` makes re-writing an
+  -- existing position a constraint violation rather than an UPDATE nobody notices. STATE is the
+  -- record recovery replays; a history that can be edited after the fact is a history that cannot
+  -- be trusted to say what committed.
+  seq         BIGINT NOT NULL,
+  kind        VARCHAR(24) NOT NULL,
+  step_index  INT NOT NULL CHECK (step_index >= 0),
+  -- The ACTUAL emitted values. `payload` and not `values`, which is reserved.
+  payload     JSONB NOT NULL DEFAULT '{}',
+  error_class VARCHAR(32),
+  undo_hint   TEXT NOT NULL DEFAULT '',
+  committed   BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (plan_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_plans_session_live
+  ON chat_plans (session_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS coaching_rubrics (
   rubric_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code            TEXT NOT NULL,
