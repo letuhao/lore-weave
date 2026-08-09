@@ -76,6 +76,7 @@ pub mod cache;
 pub mod error;
 pub mod ids;
 pub mod session;
+pub mod write;
 pub mod scope;
 pub mod tier;
 
@@ -84,5 +85,6 @@ pub use cache::KeyId;
 pub use error::DpError;
 pub use ids::{NodeId, RealityId, SessionId};
 pub use session::{BindRequest, CapabilityToken, ControlPlane, SessionContext, VerifiedBind};
+pub use write::{t0_write, t1_write, t2_write, t3_write, WriteAck, WriteBackend};
 pub use scope::{ChannelScope, RealityScope, Scope, ScopeKind};
 pub use tier::{Coherency, Tier, TierLevel, T0, T1, T2, T3};

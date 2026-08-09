@@ -33,6 +33,8 @@ impl DpAggregate for LoadAdaptive {
     type Tier = if under_load() { T1 } else { T2 };
     type Scope = RealityScope;
     type Id = u64;
+    type Delta = ();
+    type Projection = ();
     const TYPE_NAME: &'static str = "load_adaptive";
 }
 

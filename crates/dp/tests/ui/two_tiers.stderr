@@ -13,11 +13,11 @@ error[E0201]: duplicate definitions with name `Tier`:
    |     --------------- item in trait
 
 error[E0201]: duplicate definitions with name `Scope`:
-  --> tests/ui/two_tiers.rs:27:5
+  --> tests/ui/two_tiers.rs:29:5
    |
-26 |     type Scope = RealityScope;
+28 |     type Scope = RealityScope;
    |     -------------------------- previous definition here
-27 |     type Scope = ChannelScope;
+29 |     type Scope = ChannelScope;
    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^ duplicate definition
    |
   ::: src/aggregate.rs

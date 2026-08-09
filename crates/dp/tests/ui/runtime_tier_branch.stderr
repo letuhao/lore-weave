@@ -6,7 +6,7 @@ error: expected type, found keyword `if`
 33 |     type Tier = if under_load() { T1 } else { T2 };
    |                 ^^ expected type
 ...
-37 | }
+39 | }
    | - the item list ends here
 
 warning: unused imports: `RealityScope`, `T1`, and `T2`
@@ -17,13 +17,15 @@ warning: unused imports: `RealityScope`, `T1`, and `T2`
    |
    = note: `#[warn(unused_imports)]` on by default
 
-error[E0046]: not all trait items implemented, missing: `Tier`, `Scope`, `Id`, `TYPE_NAME`
+error[E0046]: not all trait items implemented, missing: `Tier`, `Scope`, `Id`, `Delta`, `Projection`, `TYPE_NAME`
   --> tests/ui/runtime_tier_branch.rs:32:1
    |
 32 | impl DpAggregate for LoadAdaptive {
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `Tier`, `Scope`, `Id`, `TYPE_NAME` in implementation
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ missing `Tier`, `Scope`, `Id`, `Delta`, `Projection`, `TYPE_NAME` in implementation
    |
    = help: implement the missing item: `type Tier = /* Type */;`
    = help: implement the missing item: `type Scope = /* Type */;`
    = help: implement the missing item: `type Id = /* Type */;`
+   = help: implement the missing item: `type Delta = /* Type */;`
+   = help: implement the missing item: `type Projection = /* Type */;`
    = help: implement the missing item: `const TYPE_NAME: &'static str = "";`

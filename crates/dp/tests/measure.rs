@@ -20,6 +20,8 @@ impl DpAggregate for MeasuredInventory {
     type Tier = T2;
     type Scope = RealityScope;
     type Id = u64;
+    type Delta = ();
+    type Projection = ();
     const TYPE_NAME: &'static str = "measured_inventory";
 }
 

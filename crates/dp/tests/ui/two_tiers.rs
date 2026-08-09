@@ -16,6 +16,8 @@ impl DpAggregate for Ambivalent {
     type Tier = T3;
     type Scope = RealityScope;
     type Id = u64;
+    type Delta = ();
+    type Projection = ();
     const TYPE_NAME: &'static str = "ambivalent";
 }
 
@@ -26,6 +28,8 @@ impl DpAggregate for AlsoAmbivalent {
     type Scope = RealityScope;
     type Scope = ChannelScope;
     type Id = u64;
+    type Delta = ();
+    type Projection = ();
     const TYPE_NAME: &'static str = "also_ambivalent";
 }
 

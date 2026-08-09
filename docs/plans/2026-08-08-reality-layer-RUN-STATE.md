@@ -780,41 +780,47 @@ before `3D`, because every signature takes `&SessionContext`.
 | step | what | done = |
 |---|---|---|
 | `4A` | `cache_key!` (`DP-R4`) | ✅ reality-scoped form; tier checked by construction (`E0271`), `KeyId` refuses `:` and empty; channel form deferred |
-| `4B` | `t0_write`..`t3_write` typed by the tier marker traits | 🅿 **PARKED** — three prerequisites, below |
-| `4C` | `read_projection_*` per `04b` | 🅿 **PARKED** behind `4B` (same three) |
-| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | 🅿 **PARKED** — no subject until `4B` |
+| `4B` | `t0_write`..`t3_write` typed by the tier marker traits | ✅ `DP-R5` held by rustc (`E0271`), bitten |
+| `4C` | `read_projection_*` per `04b` | ⬜ next — `A::Projection` now exists |
+| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | ⬜ ordered after `4C` — see the subject note |
 
-#### Why `4B`/`4C`/`4D` park, and exactly what unblocks each
+#### ⚠ `4B` WAS PARKED FOR AN HOUR, AND THE PARK WAS WRONG
 
-Not effort, and not an external dependency — three concrete missing pieces, each
-buildable but none of them a row on this board:
+The park cited three prerequisites. **All three were things I could write**, which
+§0.3 names exactly: *"saying 'blocked' when you mean 'I'd have to build it' is the
+lazy tell this rule exists to kill."* Recorded rather than quietly deleted,
+because the failure was using the goal's own escape hatch on work that was in
+reach — satisfying the letter while lowering the bar.
 
-1. **`DpAggregate` has no `Delta`.** `DP-K5`'s signatures are
-   `t2_write<A: T2Aggregate>(ctx, id: A::Id, delta: A::Delta)`. Today the trait
-   carries `Tier`, `Scope`, `Id`, `TYPE_NAME` and no `Delta`. Adding one is a
-   change to the aggregate CONTRACT — governed by `dp-aggregate-gate`, pinned by
-   five trybuild `.stderr` files, and implemented by four real impls. It needs
-   its own slice with its own refutation round, not a line in `4B`.
-2. **There is no backend seam.** `crates/dp` declares no I/O, so a write surface
-   here can only be a trait, exactly as `ControlPlane` is. Its implementor is
-   `dp-kernel` (event store, outbox, projections) — i.e. slice 5's wiring.
-   §0.6c: *a trait ships WITH its first implementor.*
-3. **`DP-K5` is async.** Every primitive but `t0_write` is `async fn`, which
-   pulls a runtime contract into the crate whose defining property is that it
-   has none. That is a decision to take deliberately, with the `S2.3` no-I/O
-   claim re-read, not incidentally while adding a write method.
+| the claim | what was true |
+|---|---|
+| *"`DpAggregate` has no `Delta` — a contract change, four real impls, five trybuild pins, its own slice"* | Measured after the PO pushed back: **all impls are test fixtures inside `crates/dp`**, ten of them, and `DP-K1`'s `Aggregate` **has specified `Delta` and `Projection` from the start**. Adding them closed a gap this crate opened, and took one edit plus a `.stderr` regeneration |
+| *"there is no backend seam"* | I had written `ControlPlane` — the same kind of seam — ninety minutes earlier. `WriteBackend` is that move again |
+| *"`DP-K5` is async"* | A fork §0.6c says to SEAL and act on. Sealed: **async belongs to the backend impl, not to this contract crate.** The seam is sync; a consumer wanting async implements it on an async client |
 
-**`4D` has no SUBJECT, which is the sharper reason.** `R-6` flags `.ok()` /
-`unwrap_or_default()` over a `Result<_, DpError>`. Measured: the only functions
-returning `Result<_, DpError>` today are `SessionContext::bind` and
-`check_live`, both inside `crates/dp` itself, and nothing calls them outside
-tests. A lint shipped now would be green by emptiness — the shape this run
-removed five times. `DpError::is_backpressure` already exists and is the set the
-lint must key on, so the lint is a small job **the day a write surface gives it
-call sites**.
+**What `4B` actually proves today.** `DP-R5` — *no cross-tier mixing in a single
+write* — held by the type checker: `t2_write` is bounded `A: DpAggregate<Tier =
+T2>`, so a `T3` aggregate down the `T2` path is `E0271` at the call site. That
+matters because it does **not** fail loudly — it succeeds with a weaker
+durability promise than the aggregate was designed for, and the loss surfaces
+later as a read that should have been impossible. Also proven: the session is
+checked **before** the backend is touched (a write rejected after it is applied
+is not a rejection), and backpressure is returned rather than swallowed.
 
-**Unblocks when:** `A::Delta` lands (its own slice) **and** `dp-kernel` is wired
-behind the seam. `4D` unblocks the moment `4B` has feature-code callers.
+**What it does not prove, stated plainly:** nothing in production writes through
+this surface. The only `WriteBackend` implementor is a `#[cfg(test)]` spy, the
+same standing `ControlPlane` has.
+
+**`dp-aggregate-gate` refused the first version**, and correctly by its own
+lights: the four primitives were generated by a `macro_rules!`, and `R10` rejects
+any macro body mentioning `DpAggregate` because `syn` cannot see whether it emits
+an impl. Over-broad here — it emitted functions — and still the right default.
+Written out longhand instead; **weakening a guard four refutation rounds hardened
+to buy back a macro is the trade this repo exists not to make.**
+
+**`4D`'s subject note stands.** `R-6` flags `.ok()` over a `Result<_, DpError>`,
+and the write surface now returns exactly that — so the lint has a subject the
+moment feature code calls it. Ordered after `4C` rather than parked.
 
 ---
 

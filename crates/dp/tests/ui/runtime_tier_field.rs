@@ -19,6 +19,8 @@ impl DpAggregate for FieldTiered {
     type Tier = TierLevel;
     type Scope = RealityScope;
     type Id = u64;
+    type Delta = ();
+    type Projection = ();
     const TYPE_NAME: &'static str = "field_tiered";
 }
 

@@ -46,6 +46,8 @@ impl DpAggregate for Halfway {
     type Tier = T1Point5;
     type Scope = RealityScope;
     type Id = u64;
+    type Delta = ();
+    type Projection = ();
     const TYPE_NAME: &'static str = "halfway";
 }
 

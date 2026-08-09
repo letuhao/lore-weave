@@ -1143,4 +1143,56 @@ fn deferred_cache_forms_name_a_dp_k7_form_this_build_lacks() {
         "DEFERRED_CACHE_FORMS is stale:\n  - {}",
         problems.join("\n  - ")
     );
+    check_deferred_write_forms();
+}
+
+/// `DP-K5` forms this build does not ship. Same three arms as every other
+/// register: the doc must specify it, the row must name a blocker, and the row
+/// must vanish once the thing exists.
+fn check_deferred_write_forms() {
+    let doc = dp_doc("04b_read_write.md");
+    let src = crlf_free("src/write.rs");
+    let mut problems: Vec<String> = Vec::new();
+
+    for (form, blocker) in dp::write::DEFERRED_WRITE_FORMS {
+        if blocker.trim().is_empty() {
+            problems.push(format!("deferred write form `{form}` names no blocker"));
+        }
+    }
+
+    // `t3_write_multi` must still be a thing DP-K5 asks for, or the row defers
+    // nothing; and it must not already exist here, or the row has outlived it.
+    if !doc.contains("t3_write_multi") {
+        problems.push(
+            "DP-K5 no longer specifies t3_write_multi; its DEFERRED_WRITE_FORMS \
+             row now defers nothing"
+                .to_string(),
+        );
+    }
+    if src.contains("pub fn t3_write_multi") {
+        problems.push(
+            "t3_write_multi is implemented but still listed in \
+             DEFERRED_WRITE_FORMS — delete the row"
+                .to_string(),
+        );
+    }
+    // The async deviation is only honest while the signatures really are sync.
+    if src.contains("pub async fn") {
+        problems.push(
+            "write.rs has an `async fn` but DEFERRED_WRITE_FORMS still records \
+             the sync deviation — delete the row"
+                .to_string(),
+        );
+    }
+
+    assert!(
+        !dp::write::DEFERRED_WRITE_FORMS.is_empty(),
+        "DEFERRED_WRITE_FORMS is empty; delete this check rather than leaving it \
+         green on nothing."
+    );
+    assert!(
+        problems.is_empty(),
+        "DEFERRED_CACHE_FORMS is stale:\n  - {}",
+        problems.join("\n  - ")
+    );
 }

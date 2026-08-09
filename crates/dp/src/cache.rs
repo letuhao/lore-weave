@@ -179,6 +179,8 @@ mod tests {
         type Tier = T2;
         type Scope = RealityScope;
         type Id = uuid::Uuid;
+        type Delta = ();
+        type Projection = ();
         const TYPE_NAME: &'static str = "cache_key_fixture";
     }
 

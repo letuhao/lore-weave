@@ -68,6 +68,28 @@ pub trait DpAggregate: Send + Sync + 'static {
     /// This aggregate's own id type — typically a newtype over `Uuid` or `i64`.
     type Id: Clone + Eq + Hash + Debug + Send + Sync + 'static;
 
+    /// What a WRITE carries (`DP-K5`).
+    ///
+    /// `t0_write`..`t3_write` are all
+    /// `fn(ctx, id: A::Id, delta: A::Delta)`, so the write surface cannot be
+    /// typed at all without this. It was missing from this trait until slice 4
+    /// — `DP-K1`'s `Aggregate` has specified it from the start, alongside
+    /// [`Projection`](DpAggregate::Projection); the omission was this crate's,
+    /// not the spec's.
+    ///
+    /// A delta rather than a whole value because that is what an event-sourced
+    /// write appends. Nothing here constrains its shape: the SDK moves it,
+    /// the aggregate interprets it.
+    type Delta: Send + Sync + 'static;
+
+    /// What a READ returns (`DP-K4`).
+    ///
+    /// `read_projection_*` returns `A::Projection`, so the read surface needs
+    /// it for the same reason the write surface needs `Delta`. Added in the
+    /// same change so the ten impls in this crate are edited once rather than
+    /// twice.
+    type Projection: Send + Sync + 'static;
+
     /// Stable name used in cache keys and telemetry labels (`DP-Ch5`,
     /// `DP-K8`). Must be `snake_case` and stable across releases: it is part of
     /// a cache key, so changing it silently orphans every cached entry.
@@ -179,6 +201,8 @@ mod tests {
         type Tier = T2;
         type Scope = RealityScope;
         type Id = u64;
+        type Delta = ();
+        type Projection = ();
         const TYPE_NAME: &'static str = "player_inventory";
     }
 
@@ -187,6 +211,8 @@ mod tests {
         type Tier = T1;
         type Scope = ChannelScope;
         type Id = u64;
+        type Delta = ();
+        type Projection = ();
         const TYPE_NAME: &'static str = "channel_presence";
     }
 
@@ -195,6 +221,8 @@ mod tests {
         type Tier = T3;
         type Scope = RealityScope;
         type Id = u64;
+        type Delta = ();
+        type Projection = ();
         const TYPE_NAME: &'static str = "reputation_score";
     }
 

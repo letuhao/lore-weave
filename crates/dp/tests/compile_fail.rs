@@ -60,4 +60,10 @@ fn tier_and_scope_violations_do_not_compile() {
     // it succeeds at building a key nobody reads: DP-R4's stated violation
     // mode, "the write lands at one key, the read misses elsewhere".
     t.compile_fail("tests/ui/cache_key_wrong_tier.rs");
+
+    // (g) DP-R5 — no cross-tier mixing in a write. A T3 aggregate down the T2
+    // path does not FAIL, it succeeds with a weaker durability promise than the
+    // aggregate was designed for, and the loss surfaces later as a read that
+    // should have been impossible.
+    t.compile_fail("tests/ui/write_wrong_tier.rs");
 }
