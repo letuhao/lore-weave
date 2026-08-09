@@ -22,7 +22,8 @@ cascade), §5.0 (canonical_id).
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Literal, get_args
 
 from pydantic import BaseModel, Field, computed_field
@@ -39,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Entity",
+    "PromotionSignals",
+    "load_promotion_signals",
     "EntityDetail",
     "VectorSearchHit",
     "SUPPORTED_VECTOR_DIMS",
@@ -701,6 +704,96 @@ async def resolve_kg_entity_id_by_glossary_id(
     async for record in result:
         return record["id"]
     return None
+
+
+# ── load_promotion_signals (Track 4 P3a salience) ─────────────────────
+#
+# Moved here from `app/context/selectors/salience.py` (plan T11). It is not only a
+# tidy-up: the selector called `session.run(...)` DIRECTLY, so it never passed through
+# `run_read` and never carried `$user_id` — the exact bypass this package's docstring
+# calls "the single highest-severity bug class in this service". It matched on
+# `project_id` alone.
+#
+# Routing it through `run_read` adds the owner filter every sibling read already has,
+# and `archived_at IS NULL` with it: an archived entity must not receive a promotion
+# boost that ranks it above a live one. Both are TIGHTENING — an entity missing from
+# the result simply gets no boost, so the worst case is a signal that was never
+# load-bearing (both salience weights default to 0.0) going quiet.
+
+
+@dataclass(frozen=True)
+class PromotionSignals:
+    """Graph-native per-entity promotion inputs (P3a): evidence + mentions + edit
+    recency, as stored on the `:Entity` node. Scoring lives in the selector; this
+    module only reads."""
+    evidence_count: int
+    mention_count: int
+    updated_at: datetime | None
+
+
+_PROMOTION_SIGNALS_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
+  AND e.glossary_entity_id IN $glossary_entity_ids
+  AND e.archived_at IS NULL
+RETURN e.glossary_entity_id AS gid,
+       coalesce(e.evidence_count, 0) AS ev,
+       coalesce(e.mention_count, 0) AS mn,
+       e.updated_at AS up
+"""
+
+
+def _to_aware_datetime(value: Any) -> datetime | None:
+    """Neo4j temporal → aware datetime, tolerating the string/None shapes legacy
+    writes left behind. Anything unparseable becomes None, which costs the entity
+    its recency term and nothing else."""
+    if value is not None and hasattr(value, "to_native"):
+        value = value.to_native()
+    if isinstance(value, str):
+        try:
+            value = datetime.fromisoformat(value)
+        except ValueError:
+            return None
+    if not isinstance(value, datetime):
+        return None
+    return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+
+async def load_promotion_signals(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    glossary_entity_ids: list[str],
+) -> dict[str, PromotionSignals]:
+    """Batch-fetch P3a promotion signals for glossary-anchored candidates, keyed by
+    `glossary_entity_id` (the id the context block surfaces).
+
+    Returns `{}` on empty input — the caller guards the weight flag, so the default
+    configuration costs no I/O at all.
+    """
+    if not glossary_entity_ids:
+        return {}
+    result = await run_read(
+        session,
+        _PROMOTION_SIGNALS_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        glossary_entity_ids=list(glossary_entity_ids),
+    )
+    out: dict[str, PromotionSignals] = {}
+    async for record in result:
+        out[record["gid"]] = PromotionSignals(
+            evidence_count=int(record["ev"]),
+            mention_count=int(record["mn"]),
+            updated_at=_to_aware_datetime(record["up"]),
+        )
+    logger.debug(
+        "load_promotion_signals: project=%s requested=%d matched=%d",
+        project_id, len(glossary_entity_ids), len(out),
+    )
+    return out
 
 
 # ── get_entity ────────────────────────────────────────────────────────

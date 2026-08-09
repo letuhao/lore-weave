@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
-from app.db.neo4j_helpers import (
+from app.db.neo4j_repos.vector_indexes import (
     drop_summary_index,
     parse_summary_index_name,
     summary_index_name,

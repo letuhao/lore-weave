@@ -33,7 +33,11 @@ from typing import Any
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS, upsert_passage
+from app.db.neo4j_repos.passages import (
+    SUPPORTED_PASSAGE_DIMS,
+    get_passage_content_hash,
+    upsert_passage,
+)
 
 __all__ = ["render_glossary_passage", "sync_glossary_entity_passage"]
 
@@ -119,19 +123,18 @@ async def _current_hash(
 ) -> str | None:
     """The stored content hash, so a re-delivered event or a full backfill doesn't
     re-embed unchanged lore. glossary.entity_updated is at-least-once and a backfill
-    walks every entity — without this, both pay a provider call per entity per run."""
-    result = await session.run(
-        """
-        MATCH (p:Passage {user_id: $user_id, project_id: $project_id,
-                          source_type: 'glossary', source_id: $source_id,
-                          chunk_index: $chunk})
-        RETURN p.content_hash AS h
-        """,
-        user_id=user_id, project_id=project_id, source_id=source_id,
-        chunk=GLOSSARY_PASSAGE_CHUNK,
+    walks every entity — without this, both pay a provider call per entity per run.
+
+    The Cypher moved into the passages repo (plan T12); this stays as the thin
+    binding that knows THIS module's source_type and chunk index."""
+    return await get_passage_content_hash(
+        session,
+        user_id=user_id,
+        project_id=project_id,
+        source_type="glossary",
+        source_id=source_id,
+        chunk_index=GLOSSARY_PASSAGE_CHUNK,
     )
-    record = await result.single()
-    return record["h"] if record else None
 
 
 async def sync_glossary_entity_passage(

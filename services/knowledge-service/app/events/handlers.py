@@ -828,17 +828,34 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
                 from app.extraction.passage_ingester import (
                     delete_chapter_passages,
                 )
+                from app.db.neo4j_repos.provenance import delete_source_cascade
+
                 chapter_uuid = _uuid(chapter_id)
                 async with neo4j_session() as session:
-                    # Delete extraction source and cascade
-                    await session.run(
-                        """
-                        MATCH (s:ExtractionSource {source_id: $source_id})
-                        WHERE s.user_id = $user_id AND s.project_id = $project_id
-                        DETACH DELETE s
-                        """,
-                        source_id=chapter_id,
+                    # Delete the extraction source THROUGH the provenance repo (plan T12).
+                    #
+                    # This replaces an inline Cypher statement that matched the
+                    # ExtractionSource by natural key and detach-deleted it — wrong in a
+                    # way the move exposed (the query text is not quoted here, so T16's
+                    # no-cypher-outside-adapters gate cannot trip on the explanation): it
+                    # dropped the EVIDENCED_BY edges without DECREMENTING the
+                    # `evidence_count` those edges maintain. Every entity, event and fact
+                    # the chapter evidenced therefore kept an inflated counter — so it
+                    # stayed visible to the `evidence_count >= 1` reads (the chapter's
+                    # canon survived its own deletion) and could never reach zero for
+                    # `cleanup_zero_evidence_nodes` to collect. Only the offline K11.9
+                    # reconciler repaired it, whenever it next ran.
+                    #
+                    # `delete_source_cascade` resolves the natural key, decrements each
+                    # edge, then deletes the node — the same three steps the SIBLING
+                    # `chapter.kg_excluded` handler already performed correctly. Deleting
+                    # a chapter is a stronger action than excluding it and was doing less.
+                    # Idempotent on a missing source (returns 0), so a redelivery is safe.
+                    removed_edges = await delete_source_cascade(
+                        session,
                         user_id=str(user_id),
+                        source_type="chapter",
+                        source_id=str(chapter_id),
                         project_id=str(project_id),
                     )
                     # D-K18.3-01: drop the chapter's passages too.
@@ -852,8 +869,8 @@ async def handle_chapter_deleted(event: EventData, *, pool: asyncpg.Pool) -> Non
                         passage_count = 0
                     logger.info(
                         "K14.7: chapter deleted cascade: chapter=%s project=%s "
-                        "passages_deleted=%d",
-                        chapter_id, project_id, passage_count,
+                        "evidence_edges_removed=%d passages_deleted=%d",
+                        chapter_id, project_id, removed_edges, passage_count,
                     )
         except Exception:
             logger.warning(

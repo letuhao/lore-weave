@@ -22,10 +22,13 @@ scope if full plan, not small slices, need full plan first before do anything el
 
 ## Current state — read this before resuming *(2026-08-09 22:16)*
 
-**Phase 0 LANDED (`6ee50af00`). Phase 1 LANDED (`cfbcea8b5`) — T4·T5·T6·T7·T8·T53 + QC-1.
-T9·T10 done (Commit 3).** The reported defect is fixed end to end: the drafting stack now reads
-the cast at the chapter being written, and the read is index-served. Next is **Phase 2 (T11)** —
-pulling Cypher out of the knowledge-service selectors.
+**Phase 0 LANDED (`6ee50af00`). Phase 1 LANDED (`cfbcea8b5` + `3fbf79afb`) — T4–T10, T53, QC-1.
+Phase 2 slice 1 LANDED (Commit 4) — T11·T12·T13. Next: T14, the `VectorStore` port.**
+The reported defect is fixed end to end and the read is index-served. Phase 2 is pulling Cypher
+back behind the repository layer so it can go behind a port at all — and it is finding things:
+T11 uncovered a **tenancy bypass**, T12 a **chapter delete that did not retract its own canon**.
+⚠️ Commit 4 did **not** make the service Cypher-free — **16 files outside `app/db/` still carry
+it** (T16 gates, T17 sweeps). See T13.
 
 > ⚠️ **T9 shipped a DIFFERENT index than the plan specified, on evidence.** The task's stated
 > rationale was wrong in both halves (the sort does not grow with book length; the key-only index
@@ -40,10 +43,19 @@ pulling Cypher out of the knowledge-service selectors.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T11** — pull Cypher out of `services/knowledge-service/app/context/selectors/salience.py`.
-Phase 2 slices deliberately: nothing can be abstracted behind a port while Cypher lives inside a
-selector, and each slice ships alone (RT-12). T11–T13 are the extraction; T14 onward define the
-ports themselves.
+**RESUME: T14** — define the `VectorStore` port + its fake
+(`app/ports/vector_store.py`, `app/adapters/neo4j_vector_store.py`, `app/adapters/fake_vector_store.py`).
+T13 already isolated the surface it wraps: `neo4j_repos/vector_indexes.py` holds
+`ensure_summary_indexes` / `drop_summary_index` / `list_summary_vector_indexes` and the naming
+that pairs them, so the adapter is a **byte-for-byte lift** rather than a rewrite. The `search`
+half lives in `neo4j_repos/passages.py::find_passages_by_vector` and
+`entities.py::find_entities_by_vector`.
+
+⚠️ **Bite discipline, learned the hard way in T11:** several files in knowledge-service are
+**CRLF**, and a `perl -0pi` pattern containing `\n` silently no-matches — a bite that never applied
+reads exactly like a guard with no teeth. Use `/tmp/bite.py` (normalises line endings and **exits
+non-zero if the pattern is absent**) or an equivalent, and never conclude "redundant guard" from a
+green run you did not verify mutated the file.
 
 **Found in passing, NOT fixed, routed to T27:** `apply-edit` carries no liveness guard, so editing a
 trashed entity **commits the write and then returns 500** from its own post-commit read-back
@@ -740,18 +752,107 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 ### Phase 2 · The ports *(sliced — each ships alone, per RT-12)*
 
-- [ ] **T11** — Pull Cypher out of the selectors
+- [x] **T11** — Pull Cypher out of the selectors — **GREEN, and it was hiding a tenancy bypass**
   `services/knowledge-service/app/context/selectors/salience.py`
   Nothing can be abstracted while Cypher lives in a selector.
   **Logging:** `DEBUG` the repo call replacing each inline query.
+  ---
+  **Evidence.** One Cypher block, moved to `app/db/neo4j_repos/entities.py`
+  (`load_promotion_signals` + `PromotionSignals`); the selector is now scoring only.
+  Knowledge unit suite **4005 passed**.
 
-- [ ] **T12** — Pull Cypher out of event handlers and extraction
+  ⚠️ **Not a tidy-up.** The selector called `session.run(...)` **directly**, so it never passed
+  through `run_read` and its Cypher **never carried `$user_id`** — the bypass
+  `neo4j_repos/__init__.py` calls *"the single highest-severity bug class in this service."* It
+  matched on `project_id` alone. Routing it through `run_read` adds the owner filter every
+  sibling read already has, plus `archived_at IS NULL` — an archived entity must not receive a
+  promotion boost, because the boost is a **re-ranking** and ranking it above a live entity is
+  exactly what budget-trim then protects. Both are tightening: an entity missing from the result
+  just gets no boost, and both salience weights default to `0.0`.
+
+  **Four bites, each verified to actually apply** (see the warning below), each red then green:
+  the tenant filter is dropped (the original query) · archived entities are promoted again ·
+  empty input still hits the driver · naive timestamps are no longer made aware.
+
+  ⚠️ **Three bites silently did NOT apply on the first attempt, and read as "the guard is
+  redundant".** `perl -0pi` patterns containing `\n` no-match against this file's **CRLF** line
+  endings. That is the worst possible failure for a bite — a no-op mutation looks exactly like a
+  guard with no teeth, and the honest-looking conclusion is to delete the guard. The bites now run
+  through a helper that **exits non-zero if the pattern is absent**, so "the test still passes"
+  can only mean what it says.
+
+- [x] **T12** — Pull Cypher out of event handlers and extraction — **GREEN, and it found a bug**
   `app/events/handlers.py` · `app/extraction/coref_detect.py` · `app/extraction/glossary_passage.py`
   (depends on T11)
+  ---
+  **Evidence.** All three files are now Cypher-free. Knowledge unit suite **4005 passed**.
 
-- [ ] **T13** — Pull Cypher out of `db/neo4j_helpers.py`
+  | site | moved to | what it was |
+  |---|---|---|
+  | `handlers.py` chapter-delete cascade | `neo4j_repos/provenance.delete_source_cascade` | direct `session.run` **write** — and wrong (below) |
+  | `glossary_passage.py::_current_hash` | `neo4j_repos/passages.get_passage_content_hash` | direct `session.run` read; had `$user_id`, so a relocation |
+  | `coref_detect.py` two loaders | new `neo4j_repos/coref.py` | already via `run_read`; pure relocation |
+
+  🐞 **The handler's inline Cypher was a real defect, and moving it is what exposed it.** It ran a
+  bare detach-delete on the `ExtractionSource`, which drops the `EVIDENCED_BY` edges **without
+  decrementing the `evidence_count` those edges maintain**. So every entity, event and fact the
+  chapter evidenced kept an inflated counter: it stayed visible to the `evidence_count >= 1`
+  reads — **the chapter's canon survived its own deletion** — and could never reach zero for
+  `cleanup_zero_evidence_nodes` to collect. Only the offline K11.9 reconciler repaired it,
+  whenever it next ran. The **sibling `chapter.kg_excluded` handler already retracted properly**,
+  so deleting a chapter (the stronger action) was doing strictly less than excluding it. Fixed by
+  calling `delete_source_cascade`, which resolves the natural key, decrements each edge, then
+  deletes the node.
+  **Test + bite:** `test_chapter_deleted_decrements_evidence_instead_of_bare_detach_delete` — it
+  asserts the repo call's arguments **and** that the handler ran no Cypher of its own (a handler
+  keeping its own query alongside the repo call would satisfy every other assertion while leaving
+  the counters wrong). Reverting to the bare delete goes red.
+
+  ⚠️ **A comment nearly armed a future gate against itself:** the explanation of what was replaced
+  originally quoted the Cypher it removed, which T16's `no-cypher-outside-adapters` gate would
+  match. Reworded to describe rather than quote.
+
+- [x] **T13** — Pull Cypher out of `db/neo4j_helpers.py` — **GREEN, the guard module is clean**
   Index creation and schema helpers move behind the port that will own them.
   (depends on T12)
+  ---
+  **Evidence.** `neo4j_helpers.py` went **356 → 181 lines** and now contains **zero** Cypher.
+  It is the multi-tenant *guard* — `assert_user_id_param`, `run_read`, `run_write` — and holding
+  index DDL made the one module whose job is to police queries also the one place a query was
+  expected. Two new repo modules, seven importers repointed, knowledge unit suite **4008 passed**.
+
+  | moved | to | why there |
+  |---|---|---|
+  | `summary_index_name` · `parse_summary_index_name` · `list_summary_vector_indexes` · `drop_summary_index` · `ensure_summary_indexes` | `neo4j_repos/vector_indexes.py` | this is **T14's `VectorStore` surface** (`ensure_index` / `drop_index` + the naming that pairs them) — isolating it now makes T14 a wrapping, not a rewrite |
+  | `purge_project` | `neo4j_repos/project_graph.py` | not an index concern and not a passage concern; it is the whole-project teardown a project delete owes the graph |
+
+  **Two `$user_id`-free surfaces, each documented rather than "fixed":**
+  - The index ops are **admin DDL** — `SHOW`/`CREATE`/`DROP INDEX` have no rows, so no tenant to
+    filter, and `run_read`/`run_write` would rightly reject them. Tenancy is **structural**: the
+    name embeds the project + model UUIDs, and every name reaching `DROP` is validated by
+    `parse_summary_index_name` first. Cypher has no parameter form for index names, so that
+    validation is also the injection barrier.
+  - `purge_project` matches on `project_id` alone, and **must**. Its only caller is gated by
+    `require_project_grant(OWNER)` and has already completed the authoritative Postgres delete.
+    Adding a user filter would be actively wrong: a node written under a different owner id in a
+    shared project would survive the purge and orphan the graph — the exact defect
+    (`D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`) the function exists to close.
+
+  **Guard + bite.** `test_neo4j_helpers_contains_no_cypher` walks the module's AST and inspects
+  **string constants with docstrings excluded** — this module's prose necessarily quotes Cypher
+  (`assert_user_id_param`'s docstring demonstrates literal-injection on purpose), so a plain grep
+  reports the explanation as the violation. Both halves bite: putting a query constant back goes
+  red, and **dropping the docstring exclusion also goes red**.
+  ⚠️ That second bite did **not** fire at first — the verb list omitted `CREATE (`, the very verb
+  the docstring uses, so the exclusion was decorative. Adding it made the guard broader *and* the
+  exclusion load-bearing. A positive-control test pins the AST walk itself, so a filter that
+  silently swallowed everything cannot report "no Cypher" forever.
+
+  ⚠️ **Stated gap — this slice did NOT make the service Cypher-free.** T11–T13 named five files
+  and cleared them. **16 files outside `app/db/` still carry Cypher**: `extraction/glossary_sync.py`
+  · `extraction/hierarchy_writer.py` · 6 under `jobs/` · 5 under `routers/` · `tools/kg_unify.py` ·
+  `benchmark/runner.py`. That is **T17's** sweep ("migrate the 67 modules"), gated by **T16**'s
+  `no-cypher-outside-adapters` check. Recorded here so nobody reads Commit 4 as the end of the job.
 
 <!-- Commit checkpoint: T11–T13 -->
 

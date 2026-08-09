@@ -36,7 +36,7 @@ from app.db.models import (
     ProjectUpdate,
 )
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_helpers import purge_project
+from app.db.neo4j_repos.project_graph import purge_project
 from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
 from app.db.pool import get_knowledge_pool
 from app.db.repositories import VersionMismatchError

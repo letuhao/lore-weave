@@ -14,11 +14,15 @@ import pytest
 from app.db.neo4j_helpers import (
     CypherSafetyError,
     assert_user_id_param,
-    purge_project,
     run_read,
     run_read_any_owner,
     run_write,
 )
+
+# purge_project moved to the project-graph repo (plan T13): neo4j_helpers is the
+# multi-tenant Cypher GUARD and now holds no Cypher of its own. Its tests stay here
+# because they are about the purge's contract, not about where the import lives.
+from app.db.neo4j_repos.project_graph import purge_project
 
 
 # ── assert_user_id_param ──────────────────────────────────────────────
@@ -360,3 +364,68 @@ async def test_get_entity_by_id_any_owner_no_longer_raises_typeerror():
     assert await entities_repo.get_entity_by_id_any_owner(session, "eid-1") is None
     cypher, params = session.calls[0]
     assert "$user_id" not in cypher and params == {"id": "eid-1"}
+
+
+# ── plan T13: the guard module holds no Cypher of its own ─────────────
+
+
+def test_neo4j_helpers_contains_no_cypher():
+    """`neo4j_helpers` is the multi-tenant Cypher GUARD — `assert_user_id_param`,
+    `run_read`, `run_write`. Index DDL and the project purge used to live here too, which
+    made the one module whose job is to police queries also the one place a query was
+    expected. They moved to `neo4j_repos/vector_indexes.py` and `neo4j_repos/project_graph.py`
+    (plan T13); this keeps them from drifting back.
+
+    The check reads STRING CONSTANTS ONLY, with docstrings excluded, because this module's
+    prose necessarily quotes Cypher: `assert_user_id_param`'s docstring shows
+    a literal-injection example on purpose. A naive grep over the file reports that
+    explanation as the violation it explains — the same trap that made T9's CONCURRENTLY
+    guard match its own comment.
+    """
+    import ast
+    import pathlib
+
+    source = pathlib.Path("app/db/neo4j_helpers.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    docstrings = set()
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
+            body = getattr(node, "body", None)
+            if body and isinstance(body[0], ast.Expr) and isinstance(body[0].value, ast.Constant) \
+                    and isinstance(body[0].value.value, str):
+                docstrings.add(id(body[0].value))
+
+    # "CREATE (" is in this list for two reasons: it is real Cypher, and it is the verb
+    # this module's own docstring uses in its literal-injection example — which is what makes
+    # the docstring exclusion above load-bearing rather than decorative. Removing either one
+    # must break something, and both were checked.
+    verbs = ("MATCH (", "MERGE (", "CREATE (", "DETACH DELETE", "CREATE VECTOR INDEX",
+             "DROP INDEX", "SHOW VECTOR INDEXES")
+    offenders = [
+        (verb, node.value[:60])
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant) and isinstance(node.value, str)
+        and id(node) not in docstrings
+        for verb in verbs
+        if verb in node.value
+    ]
+    assert not offenders, (
+        "neo4j_helpers.py has Cypher back in it: "
+        f"{offenders}. Put it in a neo4j_repos module — the guard module must not be "
+        "the place queries live, or the rule it enforces reads as optional."
+    )
+
+
+def test_the_cypher_guard_test_can_actually_see_cypher():
+    """Positive control for the test above. An AST walk that silently matched nothing —
+    a renamed file, a parse that returned an empty body, a docstring filter that swallowed
+    everything — would report 'no Cypher' forever and pass for the wrong reason."""
+    import ast
+
+    tree = ast.parse('X = "MATCH (n) RETURN n"\ndef f():\n    """MATCH (n) in prose."""\n')
+    consts = [
+        n.value for n in ast.walk(tree)
+        if isinstance(n, ast.Constant) and isinstance(n.value, str) and "MATCH (" in n.value
+    ]
+    assert len(consts) == 2, "the walk must see both the assignment and the docstring"

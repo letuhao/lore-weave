@@ -18,7 +18,8 @@ from dataclasses import dataclass
 from typing import Literal
 from uuid import UUID
 
-from app.db.neo4j_helpers import CypherSession, summary_index_name
+from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.vector_indexes import summary_index_name
 
 logger = logging.getLogger(__name__)
 

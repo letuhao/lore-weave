@@ -32,8 +32,8 @@ from uuid import UUID
 
 import asyncpg
 
-from app.db.neo4j_helpers import (
-    CypherSession,
+from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.vector_indexes import (
     ensure_summary_indexes,
     summary_index_name,
 )

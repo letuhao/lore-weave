@@ -38,8 +38,28 @@ random heap fetches, so the shipped index `INCLUDE`s `value`/`fact_kind` and the
 4 000-chapter book at 65–87 ms either way — book length grows the rows *scanned*, never the rows
 *returned*. Measurements: [`2026-08-09-state-asof-ceiling.md`](../measurements/2026-08-09-state-asof-ceiling.md) §R-4/R-5.
 
-**▶ Resume at T11** — pull Cypher out of `knowledge-service/app/context/selectors/salience.py`.
-Phase 2 slices on purpose: nothing can go behind a port while Cypher lives in a selector.
+**Phase 2 slice 1 landed (Commit 4) — T11·T12·T13.** Cypher moved back behind the repository
+layer in knowledge-service, and the moves found two real defects, both fixed with bites:
+
+- **A tenancy bypass.** `selectors/salience.py` called `session.run(...)` directly, so its Cypher
+  never carried `$user_id` — the bypass `neo4j_repos/__init__.py` calls *"the single
+  highest-severity bug class in this service."* It matched on `project_id` alone.
+- **A deleted chapter did not retract its own canon.** `handle_chapter_deleted` detach-deleted the
+  `ExtractionSource` without decrementing the `evidence_count` its `EVIDENCED_BY` edges maintain,
+  so every entity/event/fact it evidenced stayed visible to the `evidence_count >= 1` reads and
+  could never reach zero for the sweeper. The sibling `chapter.kg_excluded` handler already did it
+  right — **deleting was doing strictly less than excluding.**
+
+⚠️ **Commit 4 did NOT make the service Cypher-free.** 16 files outside `app/db/` still carry it
+(`extraction/glossary_sync.py`, `extraction/hierarchy_writer.py`, 6 jobs, 5 routers, `tools/kg_unify.py`,
+`benchmark/runner.py`). T16 builds the gate, T17 sweeps.
+
+⚠️ **Bite discipline:** several knowledge-service files are **CRLF**, and a `perl -0pi` pattern
+containing `\n` silently no-matches. A bite that never applied looks exactly like a guard with no
+teeth. Verify the mutation landed before trusting a green run.
+
+**▶ Resume at T14** — the `VectorStore` port + its fake. T13 already isolated the surface it wraps
+(`neo4j_repos/vector_indexes.py`), so the adapter should be a byte-for-byte lift.
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

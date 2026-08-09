@@ -1127,3 +1127,58 @@ async def test_glossary_updated_missing_ids_skips():
         _glossary_event(payload=payload, aggregate_id=""), pool=pool
     )
     pool.fetchrow.assert_not_called()
+
+
+# ── plan T12: the chapter-delete cascade goes through the provenance repo ──────
+
+
+@pytest.mark.asyncio
+async def test_chapter_deleted_decrements_evidence_instead_of_bare_detach_delete(monkeypatch):
+    """Deleting a chapter must RETRACT its canon, not merely unlink it.
+
+    The handler used to run an inline `DETACH DELETE` on the ExtractionSource. That
+    removed the EVIDENCED_BY edges without decrementing the `evidence_count` those edges
+    maintain — so every entity, event and fact the chapter evidenced kept an inflated
+    counter, stayed visible to the `evidence_count >= 1` reads, and could never reach
+    zero for `cleanup_zero_evidence_nodes` to collect. The chapter's canon survived its
+    own deletion until the offline reconciler next ran.
+
+    The sibling `chapter.kg_excluded` handler already retracted properly. Deleting is the
+    stronger action and was doing less, which is the asymmetry this test pins.
+    """
+    pool, conn = _mock_pool()
+    pool.fetchrow = AsyncMock(return_value={"project_id": _PROJECT, "user_id": _USER})
+
+    cascade = AsyncMock(return_value=3)
+    monkeypatch.setattr(
+        "app.db.neo4j_repos.provenance.delete_source_cascade", cascade
+    )
+    monkeypatch.setattr(
+        "app.extraction.passage_ingester.delete_chapter_passages",
+        AsyncMock(return_value=2),
+    )
+
+    session = MagicMock()
+    session.run = AsyncMock()
+    ctx = MagicMock()
+    ctx.__aenter__ = AsyncMock(return_value=session)
+    ctx.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr("app.db.neo4j.neo4j_session", lambda: ctx)
+
+    event = _event(
+        "chapter.deleted", aggregate_id=str(_CHAPTER), payload={"book_id": str(_BOOK)},
+    )
+    with patch("app.config.settings") as ms:
+        ms.neo4j_uri = "bolt://x"
+        await handle_chapter_deleted(event, pool=pool)
+
+    cascade.assert_awaited_once()
+    kwargs = cascade.await_args.kwargs
+    assert kwargs["source_type"] == "chapter"
+    assert kwargs["source_id"] == str(_CHAPTER)
+    assert kwargs["user_id"] == str(_USER)
+    assert kwargs["project_id"] == str(_PROJECT)
+
+    # And NOT by hand. A handler that kept its own Cypher alongside the repo call would
+    # satisfy every assertion above while still leaving the counters wrong.
+    session.run.assert_not_called()

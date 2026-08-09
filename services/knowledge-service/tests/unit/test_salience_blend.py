@@ -193,7 +193,12 @@ async def test_apply_salience_promotion_only_loads_neo4j_not_repo(monkeypatch):
     monkeypatch.setattr(settings, "salience_access_weight", 0.0)
     monkeypatch.setattr(settings, "salience_promote_weight", 0.3)
 
-    async def fake_load(session, project_id, ids):
+    # Keyword-only now: the read moved into the neo4j entities repo (plan T11) and
+    # gained the `user_id` tenant filter it was missing. A fake that still accepted
+    # positional (session, project_id, ids) would pass while the real call site had
+    # drifted, so the signature is asserted here rather than shrugged at.
+    async def fake_load(session, *, user_id, project_id, glossary_entity_ids):
+        assert user_id and project_id and glossary_entity_ids
         return {"b": mod.PromotionSignals(50, 20, NOW)}
 
     monkeypatch.setattr(mod, "load_promotion_signals", fake_load)
@@ -212,7 +217,7 @@ async def test_apply_salience_promotion_neo4j_failure_degrades(monkeypatch):
     monkeypatch.setattr(settings, "salience_access_weight", 0.0)
     monkeypatch.setattr(settings, "salience_promote_weight", 0.3)
 
-    async def boom(session, project_id, ids):
+    async def boom(session, *, user_id, project_id, glossary_entity_ids):
         raise RuntimeError("neo4j down")
 
     monkeypatch.setattr(mod, "load_promotion_signals", boom)

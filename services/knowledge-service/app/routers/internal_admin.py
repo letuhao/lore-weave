@@ -30,7 +30,7 @@ from app.db.neo4j_repos.passages import (
     delete_all_passages_for_project,
 )
 from app.db.repositories.projects import ProjectsRepo
-from app.db.neo4j_helpers import (
+from app.db.neo4j_repos.vector_indexes import (
     drop_summary_index,
     list_summary_vector_indexes,
 )

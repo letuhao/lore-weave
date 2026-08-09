@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 __all__ = [
+    "get_passage_content_hash",
     "Passage",
     "PassageSearchHit",
     "SUPPORTED_PASSAGE_DIMS",
@@ -301,6 +302,51 @@ async def upsert_passage(
     if record is None:
         raise RuntimeError(f"upsert_passage returned no row for id={canonical_id!r}")
     return _node_to_passage(record["p"])
+
+
+# ── content-hash probe (plan T12) ─────────────────────────────────────
+#
+# Moved out of `app/extraction/glossary_passage.py`, which called `session.run(...)`
+# directly and so never passed through `run_read`. The query DID carry `$user_id`, so
+# this is a relocation rather than a tenancy fix — but a direct `session.run` is exactly
+# the call shape the package docstring forbids, and one that reads correctly today is
+# how the next one gets written without a filter.
+
+_PASSAGE_CONTENT_HASH_CYPHER = """
+MATCH (p:Passage {user_id: $user_id, project_id: $project_id,
+                  source_type: $source_type, source_id: $source_id,
+                  chunk_index: $chunk_index})
+RETURN p.content_hash AS h
+"""
+
+
+async def get_passage_content_hash(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str,
+    source_type: str,
+    source_id: str,
+    chunk_index: int,
+) -> str | None:
+    """The stored content hash for one passage chunk, or None when it has never been
+    written.
+
+    This is the re-embed guard: `glossary.entity_updated` is at-least-once and a
+    backfill walks every entity, so without it both pay a PROVIDER CALL per entity per
+    run. Returning None on a miss is the safe direction — an unknown hash re-embeds.
+    """
+    result = await run_read(
+        session,
+        _PASSAGE_CONTENT_HASH_CYPHER,
+        user_id=user_id,
+        project_id=project_id,
+        source_type=source_type,
+        source_id=source_id,
+        chunk_index=chunk_index,
+    )
+    record = await result.single()
+    return record["h"] if record else None
 
 
 _DELETE_BY_SOURCE_CYPHER = """
