@@ -156,10 +156,16 @@ nothing else compares `FakeGraphStore` to `Neo4jGraphStore`. Treat
 port yet (T17 has 15 files left), so no assembly path goes through one. The rendered-block diff is
 recorded as owed.
 
-**▶ Resume at T17's remaining 9 files** (baseline 12 → 9 this session), then Phase 3. What is
-left: 6 `db/migrations/` backfills (admin one-shots — Phase 7 must port or retire them),
-`jobs/summary_processor.py` (7 clauses, graph traversal), `routers/internal_enrichment.py` (5) and
-`routers/public/extraction.py` (3).
+**▶ Resume at T17's remaining 8 files** (baseline 9 → 8), then Phase 3. What is left:
+6 `db/migrations/` backfills (admin one-shots — Phase 7 must port or retire them),
+`jobs/summary_processor.py` (7 clauses, graph traversal) and `routers/public/extraction.py` (3).
+
+🔒 **Enrichment's safety properties were unasserted.** Its write-back can corrupt canon in five
+distinct ways and only a live graph ever exercised them; six guards now read the Cypher directly.
+Note WHY they had to be hand-written: none of those statements go through `run_write` — the anchor
+MERGE keys on `id`, so `$user_id` is a MERGE PROPERTY rather than a filter and
+`assert_user_id_param` would pass for the wrong reason. Where the standard check is structurally
+unable to help, the assertion gets written by hand or does not exist.
 
 ⚠️ **A seam can change SHAPE, not just address.** `run_read` + `_records` collapsed into one repo
 call that returns rows, so tests patching `run_read` would have kept passing while their central
