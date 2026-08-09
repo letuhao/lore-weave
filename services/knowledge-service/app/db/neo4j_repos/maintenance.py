@@ -25,6 +25,9 @@ from app.db.neo4j_helpers import CypherSession, assert_user_id_param, run_write
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "PROJECT_GRAPH_LABELS",
+    "delete_project_nodes_by_label",
+    "project_graph_stats",
     "RECONCILE_LABELS",
     "clear_embedding_model_tag",
     "reconcile_evidence_count_for_label",
@@ -250,3 +253,86 @@ async def clear_embedding_model_tag(
     )
     record = await result.single()
     return int(record["count"]) if record else 0
+
+
+# ── project graph delete + stats (moved in plan T17) ─────────────────
+
+# The labels a project delete removes. `:Passage` is DELIBERATELY absent — it holds chat-
+# and glossary-sourced chunks extraction cannot rebuild, so a plain delete/rebuild (which
+# does not change the vector space) must leave them alone; their vectors stay valid.
+#
+# A model CHANGE is the opposite case and must delete them too, via
+# `passages.delete_all_passages_for_project`. Every passage is embedded in the OLD model's
+# space, and leaving them behind makes them permanently unreachable from the new index —
+# silent zero-recall. Both change-model paths DOCUMENTED themselves as already doing this
+# and neither did; proven live on 2026-07-23, when a `:Passage` node was the only survivor
+# of this exact loop.
+PROJECT_GRAPH_LABELS: tuple[str, ...] = ("Entity", "Event", "Fact", "ExtractionSource")
+
+_DELETE_BY_LABEL_CYPHER = (
+    "MATCH (n:{label}) "
+    "WHERE n.user_id = $user_id AND n.project_id = $project_id "
+    "DETACH DELETE n "
+    "RETURN count(n) AS deleted"
+)
+
+
+async def delete_project_nodes_by_label(
+    session: CypherSession, *, user_id: str, project_id: str, label: str,
+) -> int:
+    """Delete one label's nodes for a project. `label` MUST come from
+    `PROJECT_GRAPH_LABELS` — it is interpolated, so that tuple is the injection barrier.
+
+    Unbatched `DETACH DELETE` (D-K11.9-01): fine at current scale, and the debt row says
+    what to do when it is not.
+    """
+    if label not in PROJECT_GRAPH_LABELS:
+        raise ValueError(f"label must be one of {PROJECT_GRAPH_LABELS}, got {label!r}")
+    result = await session.run(
+        _DELETE_BY_LABEL_CYPHER.format(label=label),
+        user_id=user_id, project_id=project_id,
+    )
+    record = await result.single()
+    return int(record["deleted"]) if record else 0
+
+
+# One round trip for four counts. The UNION ALL shape looks odd but is deliberate: four
+# separate `count()` queries would be four round trips for a stats card, and a single
+# `MATCH (n) WHERE n:Entity OR n:Fact …` cannot use the label indexes.
+_GRAPH_STATS_CYPHER = """
+CALL {
+  MATCH (e:Entity {user_id: $user_id, project_id: $project_id})
+  RETURN count(e) AS entity_count, 0 AS fact_count,
+         0 AS event_count, 0 AS passage_count
+  UNION ALL
+  MATCH (f:Fact {user_id: $user_id, project_id: $project_id})
+  RETURN 0 AS entity_count, count(f) AS fact_count,
+         0 AS event_count, 0 AS passage_count
+  UNION ALL
+  MATCH (ev:Event {user_id: $user_id, project_id: $project_id})
+  RETURN 0 AS entity_count, 0 AS fact_count,
+         count(ev) AS event_count, 0 AS passage_count
+  UNION ALL
+  MATCH (p:Passage {user_id: $user_id, project_id: $project_id})
+  RETURN 0 AS entity_count, 0 AS fact_count,
+         0 AS event_count, count(p) AS passage_count
+}
+RETURN sum(entity_count) AS entity_count, sum(fact_count) AS fact_count,
+       sum(event_count) AS event_count, sum(passage_count) AS passage_count
+"""
+
+
+async def project_graph_stats(
+    session: CypherSession, *, user_id: str, project_id: str,
+) -> dict[str, int]:
+    """Node counts for a project's stats card. Returns zeros for an empty graph — which is
+    a legitimate state (a project with extraction enabled but nothing run yet), not an
+    error, so the caller renders "Ready" rather than a failure."""
+    result = await session.run(
+        _GRAPH_STATS_CYPHER, user_id=user_id, project_id=project_id,
+    )
+    record = await result.single()
+    if record is None:
+        return {"entity_count": 0, "fact_count": 0, "event_count": 0, "passage_count": 0}
+    return {k: int(record[k] or 0) for k in
+            ("entity_count", "fact_count", "event_count", "passage_count")}

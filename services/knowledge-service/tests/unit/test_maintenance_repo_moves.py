@@ -102,3 +102,38 @@ async def test_a_none_row_is_an_anomaly_not_an_empty_result():
         await maintenance.delete_orphan_extraction_sources(
             _FakeSession(rows=[]), user_id="u",
         )
+
+
+# ── the closed sets added in later T17 batches ───────────────────────
+
+
+@pytest.mark.asyncio
+async def test_project_delete_rejects_a_label_outside_the_closed_set():
+    """`delete_project_nodes_by_label` interpolates the label — Cypher cannot parameterise
+    one — so the tuple is the injection barrier, and this is a DETACH DELETE.
+
+    Added after a bite showed the guard had no test: removing it left the suite green."""
+    with pytest.raises(ValueError):
+        await maintenance.delete_project_nodes_by_label(
+            _FakeSession(), user_id="u", project_id="p", label="Entity) DETACH DELETE (n",
+        )
+
+
+def test_passage_is_not_a_project_delete_label():
+    """The 2026-07-23 finding, pinned where the list now lives. `:Passage` holds chat- and
+    glossary-sourced chunks extraction CANNOT rebuild, so a plain delete/rebuild must leave
+    them alone; a model change purges them through a separate flag."""
+    assert "Passage" not in maintenance.PROJECT_GRAPH_LABELS
+
+
+@pytest.mark.asyncio
+async def test_summary_write_rejects_a_level_outside_the_closed_set():
+    """`write_summary_to_node` interpolates the node LABEL from the level. Same barrier,
+    same reason it needed its own test."""
+    from app.db.neo4j_repos import hierarchy
+
+    with pytest.raises(ValueError):
+        await hierarchy.write_summary_to_node(
+            _FakeSession(), level="Chapter) DETACH DELETE (n", node_path="p",
+            summary_text="t", embedding=[0.0], embedding_model_uuid="m",
+        )

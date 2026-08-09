@@ -85,10 +85,14 @@ class TestGraphDeletePassageScope:
 
     def test_passage_is_not_in_the_label_list(self):
         # Pins the shape the fix relies on: :Passage is purged through the flag, NOT by
-        # being added to _GRAPH_LABELS (which would make the plain delete destructive).
-        from app.routers.public.extraction import _GRAPH_LABELS
+        # being added to the label list (which would make the plain delete destructive).
+        # The list moved to the maintenance repo with its query (plan T17); the GUARD
+        # follows it, because what it protects — a delete/rebuild silently destroying
+        # chat- and glossary-sourced chunks extraction cannot rebuild — is unchanged by
+        # the move, and was proven live on 2026-07-23.
+        from app.db.neo4j_repos.maintenance import PROJECT_GRAPH_LABELS
 
-        assert "Passage" not in _GRAPH_LABELS
+        assert "Passage" not in PROJECT_GRAPH_LABELS
 
 
 # ── B. the guard must ask Neo4j, not extraction_status ────────────────────────

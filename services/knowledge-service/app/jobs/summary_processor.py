@@ -33,6 +33,7 @@ from uuid import UUID
 import asyncpg
 
 from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos import hierarchy as hierarchy_repo
 from app.db.neo4j_repos.vector_indexes import (
     ensure_summary_indexes,
     summary_index_name,
@@ -450,100 +451,46 @@ async def _load_scene_leaf_texts(book_id: UUID, chapter_id: UUID) -> list[str]:
 async def _load_top_entities_for_chapter(
     session: CypherSession, chapter_id: UUID, limit: int = 30,
 ) -> list[str]:
-    rows = await session.run(
-        """
-        MATCH (c:Chapter {chapter_id: $chapter_id})<-[:MENTIONED_IN]-(e:Entity)
-        RETURN e.name AS name
-        ORDER BY e.confidence DESC
-        LIMIT $limit
-        """,
-        chapter_id=str(chapter_id),
-        limit=limit,
+    return await hierarchy_repo.top_entity_names_for_chapter(
+        session, chapter_id=str(chapter_id), limit=limit,
     )
-    names = []
-    async for record in rows:
-        names.append(record["name"])
-    return names
 
 
 async def _load_top_entities_for_part(
     session: CypherSession, part_id: UUID, limit: int = 30,
 ) -> list[str]:
-    rows = await session.run(
-        """
-        MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
-        WITH e, count(*) AS mentions
-        ORDER BY mentions DESC
-        LIMIT $limit
-        RETURN e.name AS name
-        """,
-        part_id=str(part_id),
-        limit=limit,
+    return await hierarchy_repo.top_entity_names_for_part(
+        session, part_id=str(part_id), limit=limit,
     )
-    names = []
-    async for record in rows:
-        names.append(record["name"])
-    return names
 
 
 async def _load_top_entities_for_book(
     session: CypherSession, book_id: UUID, limit: int = 50,
 ) -> list[str]:
-    rows = await session.run(
-        """
-        MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD*..3]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
-        WITH e, count(*) AS mentions
-        ORDER BY mentions DESC
-        LIMIT $limit
-        RETURN e.name AS name
-        """,
-        book_id=str(book_id),
-        limit=limit,
+    return await hierarchy_repo.top_entity_names_for_book(
+        session, book_id=str(book_id), limit=limit,
     )
-    names = []
-    async for record in rows:
-        names.append(record["name"])
-    return names
 
 
 async def _count_expected_chapter_children(
     session: CypherSession, part_id: UUID,
 ) -> int:
-    rows = await session.run(
-        "MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter) RETURN count(c) AS n",
-        part_id=str(part_id),
-    )
-    async for record in rows:
-        return int(record["n"])
-    return 0
+    return await hierarchy_repo.count_child_chapters(session, part_id=str(part_id))
 
 
 async def _count_expected_part_children(
     session: CypherSession, book_id: UUID,
 ) -> int:
-    rows = await session.run(
-        "MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD]->(p:Part) RETURN count(p) AS n",
-        book_id=str(book_id),
-    )
-    async for record in rows:
-        return int(record["n"])
-    return 0
+    return await hierarchy_repo.count_child_parts(session, book_id=str(book_id))
 
 
 async def _filter_summaries_under_part(
     session: CypherSession, summaries: list, part_id: UUID,
 ):
     """Filter the book's chapter summaries to ONLY those under this part."""
-    rows = await session.run(
-        """
-        MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter)
-        RETURN c.chapter_id AS chapter_id
-        """,
-        part_id=str(part_id),
+    part_chapter_ids = await hierarchy_repo.list_chapter_ids_under_part(
+        session, part_id=str(part_id),
     )
-    part_chapter_ids: set[str] = set()
-    async for record in rows:
-        part_chapter_ids.add(str(record["chapter_id"]))
     return [s for s in summaries if str(s.level_id) in part_chapter_ids]
 
 
@@ -561,7 +508,9 @@ async def _write_neo4j_summary(
     """Write summary_text + summary_embedding to the hierarchy node.
 
     Ensures the per-(project, embedding_model) vector index exists first
-    (H1+M7+SR-2 fix).
+    (H1+M7+SR-2 fix). The index lifecycle stays HERE rather than moving into the write:
+    it belongs to the vector store, and a node write that silently created indexes would
+    make the two impossible to reason about separately.
     """
     # H1: ensure index family exists for this project + embedding_model.
     if project_id:
@@ -571,17 +520,11 @@ async def _write_neo4j_summary(
             embedding_model_uuid=embedding_model_uuid,
             embedding_dimension=embedding_dimension,
         )
-    node_label = level.capitalize()
-    await neo4j_session.run(
-        f"""
-        MATCH (n:{node_label} {{path: $path}})
-        SET n.summary_text = $text,
-            n.summary_embedding = $embedding,
-            n.summary_model_uuid = $model_uuid,
-            n.summary_updated_at = datetime()
-        """,
-        path=node_path,
-        text=summary_text,
+    await hierarchy_repo.write_summary_to_node(
+        neo4j_session,
+        level=level,
+        node_path=node_path,
+        summary_text=summary_text,
         embedding=embedding,
-        model_uuid=embedding_model_uuid,
+        embedding_model_uuid=embedding_model_uuid,
     )

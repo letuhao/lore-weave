@@ -18,9 +18,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from typing import Literal
+
 from app.db.neo4j_helpers import CypherSession
 
-__all__ = ["upsert_hierarchy_chain"]
+__all__ = [
+    "count_child_chapters",
+    "count_child_parts",
+    "list_chapter_ids_under_part",
+    "top_entity_names_for_book",
+    "top_entity_names_for_chapter",
+    "top_entity_names_for_part",
+    "upsert_hierarchy_chain",
+    "write_summary_to_node",
+]
 
 
 # Single Cypher statement that idempotently MERGEs the full chain for ONE
@@ -80,4 +91,148 @@ async def upsert_hierarchy_chain(
         chapter_path=chapter_path, chapter_id=chapter_id,
         chapter_index=chapter_index, chapter_title=chapter_title,
         scenes=scenes,
+    )
+
+
+# ── hierarchy traversals for the summary pipeline (plan T17) ─────────
+#
+# ⚠️ Like the MERGE above, these carry NO `$user_id`. They match on `chapter_id` /
+# `part_id` / `book_id` / `path`, which are globally-unique ids the caller has already
+# resolved through a tenant-scoped path. That is the same justification `run_read_any_owner`
+# is documented under, and adding a filter would not help: the hierarchy nodes do not carry
+# `user_id` at all, so the clause would match nothing and every summary would come back
+# empty.
+
+_TOP_ENTITIES_FOR_CHAPTER_CYPHER = """
+MATCH (c:Chapter {chapter_id: $chapter_id})<-[:MENTIONED_IN]-(e:Entity)
+RETURN e.name AS name
+ORDER BY e.confidence DESC
+LIMIT $limit
+"""
+
+_TOP_ENTITIES_FOR_PART_CYPHER = """
+MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
+WITH e, count(*) AS mentions
+ORDER BY mentions DESC
+LIMIT $limit
+RETURN e.name AS name
+"""
+
+_TOP_ENTITIES_FOR_BOOK_CYPHER = """
+MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD*..3]->(:Chapter)<-[:MENTIONED_IN]-(e:Entity)
+WITH e, count(*) AS mentions
+ORDER BY mentions DESC
+LIMIT $limit
+RETURN e.name AS name
+"""
+
+_COUNT_CHILD_CHAPTERS_CYPHER = (
+    "MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter) RETURN count(c) AS n"
+)
+
+_COUNT_CHILD_PARTS_CYPHER = (
+    "MATCH (b:Book {book_id: $book_id})-[:HAS_CHILD]->(p:Part) RETURN count(p) AS n"
+)
+
+_CHAPTER_IDS_UNDER_PART_CYPHER = """
+MATCH (p:Part {part_id: $part_id})-[:HAS_CHILD]->(c:Chapter)
+RETURN c.chapter_id AS chapter_id
+"""
+
+
+async def _names(session: CypherSession, cypher: str, **params) -> list[str]:
+    result = await session.run(cypher, **params)
+    return [r["name"] async for r in result if r["name"]]
+
+
+async def top_entity_names_for_chapter(
+    session: CypherSession, *, chapter_id: str, limit: int = 30,
+) -> list[str]:
+    """Entity names mentioned in one chapter, most-confident first — the summary prompt's
+    cast hint. Ordered by CONFIDENCE (not mentions) because a chapter is small enough that
+    a single confident mention beats several uncertain ones."""
+    return await _names(
+        session, _TOP_ENTITIES_FOR_CHAPTER_CYPHER, chapter_id=chapter_id, limit=limit,
+    )
+
+
+async def top_entity_names_for_part(
+    session: CypherSession, *, part_id: str, limit: int = 30,
+) -> list[str]:
+    """Entity names across a part's chapters, most-MENTIONED first. The axis flips from
+    confidence to frequency here on purpose: across many chapters, recurrence is the better
+    signal of who the part is about."""
+    return await _names(
+        session, _TOP_ENTITIES_FOR_PART_CYPHER, part_id=part_id, limit=limit,
+    )
+
+
+async def top_entity_names_for_book(
+    session: CypherSession, *, book_id: str, limit: int = 50,
+) -> list[str]:
+    """Same, book-wide. The `*..3` bound is what stops a deep hierarchy turning this into
+    an unbounded traversal."""
+    return await _names(
+        session, _TOP_ENTITIES_FOR_BOOK_CYPHER, book_id=book_id, limit=limit,
+    )
+
+
+async def count_child_chapters(session: CypherSession, *, part_id: str) -> int:
+    """How many chapters a part HAS — the denominator for "are all children summarised
+    yet?". Counting the graph rather than the summaries is the point: it is what makes a
+    missing child detectable instead of invisible."""
+    result = await session.run(_COUNT_CHILD_CHAPTERS_CYPHER, part_id=part_id)
+    async for record in result:
+        return int(record["n"])
+    return 0
+
+
+async def count_child_parts(session: CypherSession, *, book_id: str) -> int:
+    """How many parts a book HAS. Same role, one level up."""
+    result = await session.run(_COUNT_CHILD_PARTS_CYPHER, book_id=book_id)
+    async for record in result:
+        return int(record["n"])
+    return 0
+
+
+async def list_chapter_ids_under_part(session: CypherSession, *, part_id: str) -> set[str]:
+    """The chapter ids under one part, for filtering a book-wide summary list down to it."""
+    result = await session.run(_CHAPTER_IDS_UNDER_PART_CYPHER, part_id=part_id)
+    return {str(r["chapter_id"]) async for r in result}
+
+
+# The node label is INTERPOLATED — Cypher cannot parameterise one — so `Level` being a
+# closed Literal is the injection barrier, and it is re-checked here rather than trusted
+# from the caller's type annotation.
+_SUMMARY_LEVELS: tuple[str, ...] = ("chapter", "part", "book")
+
+_WRITE_SUMMARY_CYPHER = """
+MATCH (n:{label} {{path: $path}})
+SET n.summary_text = $text,
+    n.summary_embedding = $embedding,
+    n.summary_model_uuid = $model_uuid,
+    n.summary_updated_at = datetime()
+"""
+
+
+async def write_summary_to_node(
+    session: CypherSession,
+    *,
+    level: Literal["chapter", "part", "book"],
+    node_path: str,
+    summary_text: str,
+    embedding: list[float],
+    embedding_model_uuid: str,
+) -> None:
+    """Write a summary and its embedding onto one hierarchy node.
+
+    The CALLER ensures the per-(project, embedding_model) vector index exists first
+    (H1+M7+SR-2) — that is index lifecycle, which belongs to the vector store, not here.
+    """
+    if level not in _SUMMARY_LEVELS:
+        raise ValueError(f"level must be one of {_SUMMARY_LEVELS}, got {level!r}")
+    await session.run(
+        _WRITE_SUMMARY_CYPHER.format(label=level.capitalize()),
+        path=node_path, text=summary_text, embedding=embedding,
+        model_uuid=embedding_model_uuid,
     )

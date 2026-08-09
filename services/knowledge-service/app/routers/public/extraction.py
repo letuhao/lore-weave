@@ -41,6 +41,7 @@ from app.clients.model_name import resolve_model_name
 from app.config import settings as app_settings
 from app.pricing import cost_per_token
 from app.db.neo4j import neo4j_session
+from app.db.neo4j_repos import maintenance
 from app.db.neo4j_repos.flywheel import get_flywheel_delta
 from app.db.pool import get_knowledge_pool
 from app.db.repositories.benchmark_runs import BenchmarkRunsRepo
@@ -1205,9 +1206,9 @@ async def cancel_extraction_job(
 
 # ── K16.8 — Delete graph ──────────────────────────────────────────────
 
-# Neo4j labels to delete per project. Relationships attached to these
-# nodes are auto-deleted by Neo4j's DETACH DELETE.
-_GRAPH_LABELS = ["Entity", "Event", "Fact", "ExtractionSource"]
+# The label list moved to `neo4j_repos/maintenance.PROJECT_GRAPH_LABELS` (plan T17), and
+# the reason `:Passage` is absent from it moved too — that reason is about what the QUERY
+# does, and it was proven live on 2026-07-23 rather than assumed.
 
 
 async def _delete_project_graph(
@@ -1220,7 +1221,7 @@ async def _delete_project_graph(
     NOTE: unbatched DETACH DELETE — see D-K11.9-01.
 
     ``include_passages`` — D-EMB-MODEL-REF-04. `:Passage` is deliberately NOT in
-    `_GRAPH_LABELS`: it holds chat- and glossary-sourced chunks that extraction cannot
+    `maintenance.PROJECT_GRAPH_LABELS`: it holds chat- and glossary-sourced chunks that extraction cannot
     rebuild, so a plain delete-graph/rebuild (which does NOT change the vector space)
     must leave them alone — their vectors stay valid.
 
@@ -1234,17 +1235,10 @@ async def _delete_project_graph(
     """
     deleted_total = 0
     async with neo4j_session() as session:
-        for label in _GRAPH_LABELS:
-            result = await session.run(
-                f"MATCH (n:{label}) "
-                "WHERE n.user_id = $user_id AND n.project_id = $project_id "
-                "DETACH DELETE n "
-                "RETURN count(n) AS deleted",
-                user_id=str(user_id),
-                project_id=str(project_id),
+        for label in maintenance.PROJECT_GRAPH_LABELS:
+            deleted_total += await maintenance.delete_project_nodes_by_label(
+                session, user_id=str(user_id), project_id=str(project_id), label=label,
             )
-            record = await result.single()
-            deleted_total += record["deleted"] if record else 0
         if include_passages:
             from app.db.neo4j_repos.passages import delete_all_passages_for_project
 
@@ -1495,18 +1489,19 @@ async def rebuild_extraction(
         # change_embedding_model). Defense-in-depth: holds even if a caller bypasses
         # the FE confirm dialog.
         if not confirm:
-            _params = {"user_id": str(user_id), "project_id": str(project_id)}
             async with neo4j_session() as session:
-                _rec = await (await session.run(_GRAPH_STATS_CYPHER, _params)).single()
+                _rec = await maintenance.project_graph_stats(
+                    session, user_id=str(user_id), project_id=str(project_id),
+                )
             return {
                 "warning": (
                     "Rebuilding permanently DELETES this project's entire knowledge "
                     "graph and rebuilds it from scratch. This cannot be undone. "
                     "Pass ?confirm=true to proceed."
                 ),
-                "entity_count": int(_rec["entity_count"] or 0) if _rec else 0,
-                "fact_count": int(_rec["fact_count"] or 0) if _rec else 0,
-                "event_count": int(_rec["event_count"] or 0) if _rec else 0,
+                "entity_count": _rec["entity_count"],
+                "fact_count": _rec["fact_count"],
+                "event_count": _rec["event_count"],
                 "action_required": "confirm",
             }
 
@@ -2277,27 +2272,6 @@ class GraphStatsResponse(BaseModel):
     last_extracted_at: Any = None  # datetime | None; serialises to ISO-8601
 
 
-_GRAPH_STATS_CYPHER = """
-CALL {
-  MATCH (e:Entity {user_id: $user_id, project_id: $project_id})
-  RETURN count(e) AS entity_count, 0 AS fact_count,
-         0 AS event_count, 0 AS passage_count
-  UNION ALL
-  MATCH (f:Fact {user_id: $user_id, project_id: $project_id})
-  RETURN 0 AS entity_count, count(f) AS fact_count,
-         0 AS event_count, 0 AS passage_count
-  UNION ALL
-  MATCH (ev:Event {user_id: $user_id, project_id: $project_id})
-  RETURN 0 AS entity_count, 0 AS fact_count,
-         count(ev) AS event_count, 0 AS passage_count
-  UNION ALL
-  MATCH (p:Passage {user_id: $user_id, project_id: $project_id})
-  RETURN 0 AS entity_count, 0 AS fact_count,
-         0 AS event_count, count(p) AS passage_count
-}
-RETURN sum(entity_count) AS entity_count, sum(fact_count) AS fact_count,
-       sum(event_count) AS event_count, sum(passage_count) AS passage_count
-"""
 
 
 @router.get(
@@ -2323,20 +2297,17 @@ async def get_project_graph_stats(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="project not found",
         )
-    params = {"user_id": str(user_id), "project_id": str(project_id)}
     async with neo4j_session() as session:
-        result = await session.run(_GRAPH_STATS_CYPHER, params)
-        record = await result.single()
-    if record is None:
-        return GraphStatsResponse(
-            project_id=project_id,
-            last_extracted_at=project.last_extracted_at,
+        counts = await maintenance.project_graph_stats(
+            session, user_id=str(user_id), project_id=str(project_id),
         )
+    # An empty graph returns zeros rather than None now — the repo makes "no rows" and
+    # "all zero" the same answer, because for a stats card they always were.
     return GraphStatsResponse(
         project_id=project_id,
-        entity_count=int(record["entity_count"] or 0),
-        fact_count=int(record["fact_count"] or 0),
-        event_count=int(record["event_count"] or 0),
-        passage_count=int(record["passage_count"] or 0),
+        entity_count=counts["entity_count"],
+        fact_count=counts["fact_count"],
+        event_count=counts["event_count"],
+        passage_count=counts["passage_count"],
         last_extracted_at=project.last_extracted_at,
     )

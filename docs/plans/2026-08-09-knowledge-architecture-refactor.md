@@ -1111,7 +1111,32 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   That last row is why the guard exists at all: the usual tenancy check is structurally unable to
   help here, so the assertion had to be written by hand or not exist.
 
-  **Still owed — 8 files, and most are NOT this task's to fix.** The remaining Cypher is
+  **Batch 5 (2026-08-10).** Gate baseline **8 → 6**: `jobs/summary_processor.py` (seven
+  Book/Part/Chapter traversals + the summary write → `neo4j_repos/hierarchy.py`) and
+  `routers/public/extraction.py` (the project-delete-by-label loop and the graph-stats read →
+  `neo4j_repos/maintenance.py`). Unit suite **4088**.
+
+  **Every runtime path is now Cypher-free. The 6 files left are ALL `db/migrations/` backfills** —
+  admin one-shots reachable through `internal_backfill.py`. They are deliberately last, and Phase 7
+  must **port or retire** them: they run against whatever engine is bound, so an engine swap breaks
+  them silently.
+
+  🔒 **Two reasons-for-a-shape moved with their code rather than being left behind**, both of which
+  are the kind that get lost in a refactor:
+  - `PROJECT_GRAPH_LABELS` excludes `:Passage` **on purpose** — it holds chat- and glossary-sourced
+    chunks extraction cannot rebuild, so a plain delete/rebuild must leave them alone while a model
+    CHANGE must purge them through a separate flag. Both change-model paths once *documented*
+    themselves as already doing this and **neither did**; proven live on 2026-07-23 when a
+    `:Passage` node was the only survivor of that loop. The guard followed the constant.
+  - `write_summary_to_node` interpolates the node label from the level, so the closed `Level`
+    literal is the injection barrier — re-checked in the repo rather than trusted from a caller's
+    type annotation.
+
+  ⚠️ **Two closed-set guards had no test, again** — removing them left 4085 tests green. Same
+  finding as batch 1, in two new places: a guard that is the *injection barrier* is exactly the kind
+  nothing exercises, because the happy path never touches it. Both now bitten.
+
+  **Still owed — 6 backfill files, and they are NOT this task's to fix.** The remaining Cypher is
   graph traversal and truth, which belong to **T18 (`GraphStore`)** and **T19 (`TruthStore`)**;
   they cannot move onto "the two shipped ports" because neither port covers them. Concretely:
   6 `db/migrations/` backfills (admin one-shots, reachable via `internal_backfill.py` — Phase 7
