@@ -79,11 +79,11 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_A_STR_SUBCLASS_KEY_OR_MEMBER_IS_NOT_A_STR": [
         (f"{PKG}/contract.py",
-         'if type(d.id) is not str or not _ID.match(d.id or ""):',
-         'if not isinstance(d.id, str) or not _ID.match(d.id or ""):'),
+         'if type(d.id) is not str or not _ID_RE.match(d.id or ""):',
+         'if not isinstance(d.id, str) or not _ID_RE.match(d.id or ""):'),
         (f"{PKG}/contract.py",
-         'if type(m) is not str or not _ID.match(m or ""):',
-         'if not isinstance(m, str) or not _ID.match(m or ""):'),
+         'if type(m) is not str or not _ID_RE.match(m or ""):',
+         'if not isinstance(m, str) or not _ID_RE.match(m or ""):'),
     ],
     "test_A_KEY_IS_BOUNDED_ON_BOTH_SIDES_OF_THE_COMPARISON": [
         (f"{PKG}/surface.py",

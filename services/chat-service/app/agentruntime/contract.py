@@ -26,6 +26,50 @@ from typing import Literal
 
 CONTRACT_VERSION = "1.0.0"
 
+
+@dataclass(frozen=True, slots=True)
+class Contract:
+    """CP-4 · **the contract as versioned DATA, which is what §6.4 has been blocked on.**
+
+    §6.4.1 states the problem exactly: for `admitted_against` to differ from the document's version
+    the manifest must hold a row **this build did not admit** — a grandfathered one — and *"a
+    grandfathered row is by definition one the CURRENT contract may reject, so `load()` cannot
+    re-check it against the current contract; it would have to be checked against the contract it
+    was admitted under. This code has only the current contract, as code."*
+
+    That last sentence is the whole blocker, and it is a sentence about a *representation*. A
+    function cannot be indexed by version; a record can. So the clause PARAMETERS move out of the
+    function body and into one of these, `check_contract_against(d, version)` becomes expressible,
+    and a grandfathered row is **genuinely re-validated** rather than exempted — which is the hole
+    §6.4.1 says exempting would open (*"a hand-typed row and a grandfathered row are
+    indistinguishable from the file alone"*).
+
+    🔴 **WHAT THIS DOES AND DOES NOT CLOSE.** A grandfathered row is now checked against a real,
+    named contract instead of being skipped — so *"skips the current check"* no longer implies
+    *"unchecked"*. It does **not** make a hand-typed row detectable: one that claims an older
+    version and satisfies that version's clauses is a validly-shaped declaration, and telling it
+    from a genuine one needs the document digest §6.4.2 records as **deliberately not taken**.
+    Option A was rejected there for trading re-validation for tamper-evidence; this adds the
+    re-validation and leaves the tamper question exactly where the PO left it.
+
+    `breaking_from` is what makes an amendment's KIND data rather than a judgement: a
+    backward-compatible amendment leaves prior admissions standing, a breaking one puts them in the
+    re-admission queue. Recording it on the contract means nobody has to remember which kind they
+    just shipped.
+    """
+
+    version: str
+    #: The predecessor this version BREAKS compatibility with, or None for a compatible amendment
+    #: (and for the first contract, which breaks nothing).
+    breaking_from: str | None
+    kinds: frozenset[str]
+    lifecycles: frozenset[str]
+    id_max_len: int
+    id_pattern: str
+
+    def id_re(self) -> re.Pattern:
+        return re.compile(self.id_pattern)
+
 Kind = Literal["tool", "skill", "workflow"]
 KINDS: frozenset[str] = frozenset({"tool", "skill", "workflow"})
 
@@ -398,7 +442,14 @@ def check_row(row, where: str) -> None:
     """
     check_row_shape(row, where)
     try:
-        check_contract(Declaration(
+        # 🔴 **CP-4 — A ROW'S CLAUSES COME FROM THE ROW'S OWN GENERATION, NOT FROM THE
+        # RUNNING ONE.** This called `check_contract`, which is the CURRENT contract, and
+        # that made §6.4's grandfathering unreachable one layer below where the blocker was
+        # diagnosed: `build(previous=)` re-validates the prior document, so a row admitted
+        # under 1.0.0 was refused here by 2.0.0's clauses **before** the grandfathering code
+        # could carry it. §6.4.1 says a grandfathered row *"would have to be checked against
+        # the contract it was admitted under"* — this is that sentence, at the row door.
+        check_contract_against(Declaration(
             id=row["id"],
             kind=row["kind"],
             # The row stores the DERIVED owner; the contract derives it from a path. Feed the stored
@@ -417,7 +468,7 @@ def check_row(row, where: str) -> None:
             source_path=f"services/{row['owning_service']}/",
             lifecycle=row["lifecycle"],
             members=tuple(row["members"]),
-        ))
+        ), row["admitted_against"])
     except ContractViolation as exc:
         raise ContractViolation(row["id"], f"{where}.{exc.field_path}", exc.reason,
                                 exc.accepted) from exc
@@ -510,15 +561,64 @@ def check_document_rows(rows, where: str) -> None:
                 raise UnresolvedReference(r["id"], m)
 
 
+#: Every contract generation this runtime can validate against, newest last.
+#:
+#: 🔴 **A VERSION IS NEVER REMOVED FROM HERE.** The manifest may hold a row admitted under any of
+#: them, and dropping a generation would make that row unvalidatable — which is the state §6.4.1
+#: describes as the blocker, reintroduced by tidying.
+CONTRACTS: MappingProxyType = MappingProxyType({
+    "1.0.0": Contract(
+        version="1.0.0",
+        breaking_from=None,
+        kinds=KINDS,
+        lifecycles=LIFECYCLES,
+        id_max_len=ID_MAX_LEN,
+        id_pattern=_ID.pattern,
+    ),
+})
+
+
+def contract_for(version: str) -> Contract:
+    """The named generation, or a `ContractViolation` naming what is available.
+
+    An unknown version is a **rejection**, never a fallback to the current contract: falling back
+    would validate a grandfathered row against clauses it was never checked against and then report
+    success, which is precisely the silent-pass §6.4 exists to prevent.
+    """
+    got = CONTRACTS.get(version)
+    if got is None:
+        raise ContractViolation(
+            "", "admitted_against", f"names contract {version!r}, which this runtime does not have",
+            f"one of {sorted(CONTRACTS)} — a row admitted under a generation this code cannot load "
+            f"is a row nothing can re-validate, so it is refused rather than waved through")
+    return got
+
+
+def check_contract_against(declaration: Declaration, version: str) -> str:
+    """Run one generation's clauses. **The single implementation**; `check_contract` is this at the
+    current version, so a grandfathered row and a fresh admission cannot diverge in their checking.
+    """
+    d = declaration
+    contract = contract_for(version)
+    _ID_RE = contract.id_re()
+    KINDS_ = contract.kinds
+    LIFECYCLES_ = contract.lifecycles
+    ID_MAX_LEN_ = contract.id_max_len
+    return _run_clauses(d, _ID_RE, KINDS_, LIFECYCLES_, ID_MAX_LEN_, contract.version)
+
+
 def check_contract(declaration: Declaration) -> str:
-    """Run every clause CP-1 owns. Returns the contract version on success; raises on the first
-    failing clause with its field path.
+    """Run every clause CP-1 owns, at the CURRENT generation. Returns the contract version on
+    success; raises on the first failing clause with its field path.
 
     Called ONLY from `admission.admit`. It is not exported for direct use: a caller that can run
     the check separately from construction is a caller that can skip it, which is exactly the
     14-of-58 shape M4 replaces.
     """
-    d = declaration
+    return check_contract_against(declaration, CONTRACT_VERSION)
+
+
+def _run_clauses(d: Declaration, _ID_RE, KINDS_, LIFECYCLES_, ID_MAX_LEN_, version: str) -> str:
 
     # 🔴 `type(...) is str`, not `isinstance`. **THE TWIN OF `check_row_shape`'s TWO PINS, LEFT
     # UNFIXED WHILE THEY WERE CLOSED.** A verifier executed it: `admit(Declaration(id=SubStr(...)))`
@@ -526,22 +626,22 @@ def check_contract(declaration: Declaration) -> str:
     # is to be the boundary accepted the exact forgery the row-shape check had just been guarded
     # against, two functions away. `in`, `[]` and `==` all dispatch to user code; `type(x) is str` is
     # the only comparison Python does not dispatch, and it belongs at every pin of one claim.
-    if type(d.id) is not str or not _ID.match(d.id or ""):
+    if type(d.id) is not str or not _ID_RE.match(d.id or ""):
         raise ContractViolation(
             getattr(d, "id", ""), "id",
             "not a stable identifier",
             f"lowercase letters, digits, underscores and hyphens, starting with a letter, at most "
-            f"{ID_MAX_LEN} characters, and a plain `str` — an id is the membership key of every "
+            f"{ID_MAX_LEN_} characters, and a plain `str` — an id is the membership key of every "
             f"allow-list and the ranking's final tie-break, so an unbounded or self-answering one "
             f"is an unbounded or self-answering key",
         )
-    if d.kind not in KINDS:
+    if d.kind not in KINDS_:
         raise ContractViolation(
-            d.id, "kind", f"unknown kind {d.kind!r}", f"one of {sorted(KINDS)}",
+            d.id, "kind", f"unknown kind {d.kind!r}", f"one of {sorted(KINDS_)}",
         )
-    if d.lifecycle not in LIFECYCLES:
+    if d.lifecycle not in LIFECYCLES_:
         raise ContractViolation(
-            d.id, "lifecycle", f"unknown lifecycle {d.lifecycle!r}", f"one of {sorted(LIFECYCLES)}",
+            d.id, "lifecycle", f"unknown lifecycle {d.lifecycle!r}", f"one of {sorted(LIFECYCLES_)}",
         )
     owner = derive_owning_service(d.source_path)
     if not owner:
@@ -565,13 +665,13 @@ def check_contract(declaration: Declaration) -> str:
     for i, m in enumerate(d.members):
         # `type(...) is str` here for the same reason as the id above — the second half of the same
         # unfixed twin, and a member is M5's foreign key.
-        if type(m) is not str or not _ID.match(m or ""):
+        if type(m) is not str or not _ID_RE.match(m or ""):
             raise ContractViolation(
                 d.id, f"members[{i}]", f"not a declaration id: {m!r}",
-                f"the id of another declaration (a plain `str`, at most {ID_MAX_LEN} characters), "
+                f"the id of another declaration (a plain `str`, at most {ID_MAX_LEN_} characters), "
                 f"resolved against the manifest at generation",
             )
-    return CONTRACT_VERSION
+    return version
 
 
 def identity_of(declaration: Declaration) -> Identity:

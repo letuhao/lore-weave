@@ -571,6 +571,26 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         managed to measure a mechanism that could not actually run."""
         import app.agentruntime.contract as _contract
         import app.agentruntime.manifest as _manifest
+
+        # 🔴 **CP-4 MADE AN AMENDMENT A THING YOU REGISTER, NOT A STRING YOU REBIND**, and this
+        # helper had to learn that. Rebinding `CONTRACT_VERSION` alone now produces rows stamped
+        # with a generation `CONTRACTS` does not hold, and `check_row` refuses those — correctly:
+        # a row admitted under a contract this code cannot load is a row nothing can re-validate.
+        # That refusal is the whole of §6.4.1's blocker being closed, so the fixture models a real
+        # amendment (register the generation, then move the pointer) rather than a half of one.
+        #
+        # `breaking_from=None` keeps this a BACKWARD-COMPATIBLE amendment, which is what these P4
+        # tests are about: prior admissions stand and the clauses are unchanged. The breaking case
+        # — where a declaration fails the new contract and enters the re-admission queue — is
+        # driven in `TestTheReadmissionQueueFillsAndDrains`.
+        amended = _contract.Contract(
+            version=version, breaking_from=None,
+            kinds=_contract.KINDS, lifecycles=_contract.LIFECYCLES,
+            id_max_len=_contract.ID_MAX_LEN, id_pattern=_contract._ID.pattern,
+        )
+        monkeypatch.setattr(
+            _contract, "CONTRACTS",
+            type(_contract.CONTRACTS)({**dict(_contract.CONTRACTS), version: amended}))
         monkeypatch.setattr(_contract, "CONTRACT_VERSION", version)
         monkeypatch.setattr(_manifest, "CONTRACT_VERSION", version)
 
@@ -596,7 +616,7 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
             f"the ORIGIN generation was not preserved across the amendment: {origins}"
         )
 
-    def test_THE_QUEUE_IS_EMPTY_BY_CONSTRUCTION__P4_IS_NOT_SATISFIED_HERE(self, monkeypatch, tmp_path):
+    def test_THE_READMISSION_QUEUE_FILLS_ON_A_GRANDFATHER_AND_DRAINS_ON_RE_ADMISSION(self, monkeypatch, tmp_path):
         """🔴 **THE TEST THAT RECORDS A FAILURE INSTEAD OF HIDING IT.**
 
         `admitted_against` ← `Admitted.contract_version` ← `check_contract()`, whose only success
@@ -673,17 +693,36 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         # predates the document's. My first version amended first, so both files were written at one
         # version — and the test passed with a working mechanism underneath it, which is the same
         # vacuity it was being repaired for. Measured before it was believed.
+        # 🔴 **CP-4, 2026-08-09 — THIS ASSERTION IS INVERTED, ON THIS TEST'S OWN INSTRUCTIONS.**
+        # It used to red if the queue was ever non-empty, and its failure message said: *"the
+        # grandfathering mechanism has LANDED ... replace them with a drain test (fills on a
+        # breaking amendment, empties as each declaration is re-admitted). This test asserts a
+        # defect, and the defect is gone."* The mechanism landed, so this is that drain test.
+        #
+        # The partial re-admission is still driven through BOTH producers, because four consecutive
+        # rounds found this test blind to whichever one the mechanism was built in.
         queue_gen = self._partial_via_generate(monkeypatch, tmp_path)   # amends to 3.0.0 inside
         queue_build = self._partial_via_build(after)                    # contract is 3.0.0 now
-        for route, queue in (("generate()", queue_gen), ("build()", queue_build)):
-            if queue:
-                raise AssertionError(
-                    f"§6.4's re-admission queue is NON-EMPTY via {route} ({queue}) — the "
-                    f"grandfathering mechanism has LANDED. §6.4.1's FAIL record, §0.14.1c's row and "
-                    f"this test are all stale now: replace them with a drain test (fills on a "
-                    f"breaking amendment, empties as each declaration is re-admitted). This test "
-                    f"asserts a defect, and the defect is gone."
-                )
+        assert queue_build == ["book_get"], (
+            f"build() gave {queue_build!r}; grandfathering a declaration this build did not admit "
+            f"must leave it in §6.4's queue — that is the ONLY way `admitted_against` differs from "
+            f"the document version, and it stood at 0 non-empty queues in 500 randomised builds"
+        )
+        assert queue_gen == ["book_get"], (
+            f"generate() gave {queue_gen!r}; §6.4.1's own argument puts the mechanism at this "
+            f"writer, so a queue that only exists in `build` is a queue no file ever carries"
+        )
+
+        # ...and it DRAINS. A queue that fills and never empties is the second of the two opposite
+        # failures this field has already had: it named work already done, permanently.
+        drained = build([admit(_tool("book_list")), admit(_tool("book_get"))],
+                        previous=build([admit(_tool("book_list"))], previous=after,
+                                       grandfather={"book_get"}))
+        assert self._queue_of(drained) == [], (
+            f"the queue is {self._queue_of(drained)!r} after every declaration was re-admitted "
+            f"under the current contract — it names work already done, which is what made the "
+            f"frozen-stamp version of this field useless in the opposite direction"
+        )
 
     @staticmethod
     def _queue_of(doc) -> list[str]:
@@ -691,11 +730,15 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
                       if r["admitted_against"] != doc["contract_version"])
 
     def _partial_via_build(self, previous):
-        """`None` means the mechanism is absent: `build` refuses to lose the row. Today's state."""
-        try:
-            return self._queue_of(build([admit(_tool("book_list"))], previous=previous))
-        except UntrustedRow:
-            return None
+        """The partial re-admission, grandfathering the declaration this build did not admit.
+
+        🔴 It used to swallow `UntrustedRow` and return `None`, because the mechanism was absent and
+        `build` simply refused to lose the row. The refusal still exists for a row nobody named —
+        `test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST` owns that — and naming one here is
+        now the supported way to keep it served while it is re-admitted (§6.4).
+        """
+        return self._queue_of(build([admit(_tool("book_list"))], previous=previous,
+                                    grandfather={"book_get"}))
 
     def _partial_via_generate(self, monkeypatch, tmp_path):
         """The same partial re-admission through **`generate()`**, reading the queue off the FILE.
@@ -712,10 +755,10 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
         # ...then the breaking amendment, and only then the partial re-admission. Written this way
         # round because amending FIRST leaves both stamps equal, and a queue cannot form.
         self._amend(monkeypatch, "3.0.0")
-        try:
-            generate([admit(_tool("book_list"))], path=path)
-        except UntrustedRow:
-            return None                      # the row cannot be lost: the mechanism is absent
+        # 🔴 The `except UntrustedRow: return None` that stood here meant "the mechanism is
+        # absent". It is present now, and it reaches this writer — which is the landing site
+        # §6.4.1's own argument names, and the one four rounds of this test were blind to.
+        generate([admit(_tool("book_list"))], path=path, grandfather={"book_get"})
         return self._queue_of(json.loads(path.read_text("utf-8")))
 
     def test_A_DECLARATION_CANNOT_SILENTLY_LEAVE_THE_MANIFEST(self, monkeypatch):
@@ -726,7 +769,10 @@ class TestP4NoColumnIsBoundToAConstantAtTheWriteBoundary:
 
         The missing mechanism now fails loudly at the moment it is needed."""
         first = build([admit(_tool("book_list")), admit(_tool("book_get"))], previous=None)
-        with pytest.raises(UntrustedRow, match="IS NOT BUILT"):
+        # 🔴 The message moved at CP-4 and the property did not. It used to say the re-admission
+        # queue "IS NOT BUILT"; the queue now exists, so the guard points at it — dropping a row is
+        # a decision you state with `grandfather=`, never a silence that erases its origin.
+        with pytest.raises(UntrustedRow, match="does not leave the runtime"):
             build([admit(_tool("book_list"))], previous=first)
 
     def test_generate_CARRIES_THE_ORIGIN_ACROSS_A_REAL_WRITE(self, tmp_path, monkeypatch):

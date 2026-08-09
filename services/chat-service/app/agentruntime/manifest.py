@@ -30,7 +30,8 @@ from . import ambient
 from .admission import Admitted
 from .contract import (
     CONTRACT_VERSION, MANIFEST_VERSION, ContractViolation, Declaration, UnresolvedReference,
-    UntrustedRow, check_contract, check_document, check_document_rows, check_row, identity_of,
+    UntrustedRow, check_contract, check_contract_against, check_document, check_document_rows,
+    check_row, identity_of,
 )
 
 # 🔴 `UntrustedRow` and `UnresolvedReference` are DEFINED IN `contract.py` now and re-exported here
@@ -166,6 +167,7 @@ def _row(admitted: Admitted[Declaration], *, origin: dict[str, str] | None = Non
 
 def build(
     admitted: Iterable[Admitted[Declaration]], *, previous: dict | None = None,
+    grandfather: frozenset[str] | set[str] | tuple[str, ...] = (),
 ) -> dict:
     """The manifest document for a set of admitted declarations. Pure; writes nothing.
 
@@ -278,12 +280,53 @@ def build(
     # runtime*. That mechanism does not exist (see §6.4.1), and the honest response to a missing
     # mechanism is to make its absence LOUD rather than to let the row fall out in silence.
     lost = sorted(set(origin) - {r["id"] for r in rows})
+    # 🔴 **CP-4 · §6.4's *"without leaving the runtime"*, WHICH IS NOW BUILT.** A caller naming an id
+    # here says *"this declaration failed the current contract; keep serving it while it is
+    # re-admitted."* That is the ONLY way a manifest comes to hold a row this build did not admit,
+    # and therefore the only way `admitted_against` can differ from the document's version — the
+    # measurement that stood at **0 non-empty queues in 500 randomised builds**.
+    #
+    # It is not an exemption. A grandfathered row is re-validated against **the contract it was
+    # admitted under**, which is expressible now that `CONTRACTS` exists: §6.4.1's blocker was that
+    # this code had the current contract only *as code*, so the row could be skipped but not
+    # checked. Skipping is what would make a hand-typed row and a grandfathered row
+    # indistinguishable; checking is what CP-4 owed.
+    carried: list[dict] = []
+    if grandfather:
+        by_id = {r["id"]: r for r in _prev_rows}
+        for gid in sorted(set(grandfather)):
+            if gid not in by_id:
+                raise UntrustedRow(
+                    f"{gid!r} is named for grandfathering but is not in the previous manifest. "
+                    f"Grandfathering carries an EXISTING admission forward; it cannot introduce a "
+                    f"declaration that was never admitted, which would be a hand-typed row wearing "
+                    f"the mechanism's name."
+                )
+            if gid not in lost:
+                raise UntrustedRow(
+                    f"{gid!r} is named for grandfathering but this build admitted it. A row that "
+                    f"passed the current contract must carry the current stamp — freezing it would "
+                    f"leave §6.4's queue naming work already done, which is the second of the two "
+                    f"opposite failures this field has already had."
+                )
+            row = dict(by_id[gid])
+            # Genuinely re-checked, against ITS generation. `owning_service` was derived from the
+            # source path, so this round-trips it rather than inventing one.
+            check_contract_against(
+                Declaration(id=row["id"], kind=row["kind"],
+                            source_path=f"services/{row['owning_service']}/",
+                            lifecycle=row["lifecycle"], members=tuple(row["members"])),
+                row["admitted_against"])
+            check_row(row, f"grandfathered[{gid}]")
+            carried.append(row)
+        lost = sorted(set(lost) - set(grandfather))
+    rows = rows + carried
     if lost:
         raise UntrustedRow(
             f"{lost} are in the previous manifest and not in this build. A declaration does not "
-            f"leave the runtime (§1), and §6.4's re-admission queue — the mechanism that would let "
-            f"one stay while it is re-admitted — IS NOT BUILT (§6.4.1). Dropping the row silently "
-            f"erases the generation it originated in."
+            f"leave the runtime (§1). §6.4's re-admission queue now exists — pass the id in "
+            f"`grandfather=` to keep it served while it is re-admitted — so dropping the row is a "
+            f"decision that must be stated, never a silence that erases its origin generation."
         )
     # M5 and the duplicate check are properties of the SET, and they now live beside the row clauses
     # in `contract.py` so the read side and the write side cannot disagree about them — which they
@@ -296,9 +339,33 @@ def build(
     }
 
 
+def readmission_queue(doc: dict) -> list[str]:
+    """§6.4's work list: **rows whose `admitted_against` is not the document's contract version.**
+
+    🔴 **THIS PREDICATE WAS UNSATISFIABLE FOR THE WHOLE OF CP-1, AND SAYING SO IS THE POINT.** The
+    chain was three links and every link was the same literal — `row.admitted_against` ←
+    `Admitted.contract_version` ← `check_contract()`, whose only success return was the module
+    constant, compared against a document version that imported that same constant by name. A
+    verifier measured **0 non-empty queues in 500 randomised builds**, value set `{'1.0.0'}`. The
+    field was not wrong; it had no way to differ.
+
+    What makes it satisfiable is `build(grandfather=)`: a row carried forward without re-admission
+    keeps its own stamp while the document moves on. So the queue is non-empty exactly while some
+    declaration has not yet been re-checked against the current contract, and it empties exactly
+    when the migration is done — which is the only behaviour that makes it a work list rather than a
+    field that is permanently empty or permanently full. Both of those were shipped, in that order,
+    before anyone noticed §6.4's table said **two** fields.
+
+    Returns ids, sorted. An empty list is a real answer here, not an absence.
+    """
+    version = doc["contract_version"]
+    return sorted(r["id"] for r in doc["declarations"] if r["admitted_against"] != version)
+
+
 def generate(
     admitted: Iterable[Admitted[Declaration]], *, path: Path | None = None,
     bootstrap: bool = False,
+    grandfather: frozenset[str] | set[str] | tuple[str, ...] = (),
 ) -> dict:
     """Build and write. **The generator is the only writer** — a hand-edited manifest is a row that
     passed no contract check, which is the whole mechanism defeated by a text editor.
@@ -341,7 +408,7 @@ def generate(
             f"emptying §6.4's re-admission queue. Pass `bootstrap=True` if this really is the "
             f"first manifest."
         )
-    doc = build(admitted, previous=previous)
+    doc = build(admitted, previous=previous, grandfather=grandfather)
     ambient.write_text(target, json.dumps(doc, indent=2, ensure_ascii=False) + "\n")
     return doc
 
