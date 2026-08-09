@@ -66,4 +66,9 @@ fn tier_and_scope_violations_do_not_compile() {
     // aggregate was designed for, and the loss surfaces later as a read that
     // should have been impossible.
     t.compile_fail("tests/ui/write_wrong_tier.rs");
+
+    // (h) DP-K4/DP-A14 — scope is an ADDRESS. A channel-scoped aggregate read
+    // through the reality-scoped door has no correct value for the channel it
+    // needs, so the call should not be expressible rather than rejected.
+    t.compile_fail("tests/ui/read_wrong_scope.rs");
 }

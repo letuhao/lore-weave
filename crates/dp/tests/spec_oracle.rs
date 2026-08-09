@@ -1185,6 +1185,27 @@ fn check_deferred_write_forms() {
         );
     }
 
+    // DP-K4's deferred reads, same three arms.
+    let read_src = crlf_free("src/read.rs");
+    for (form, blocker) in dp::read::DEFERRED_READ_FORMS {
+        if blocker.trim().is_empty() {
+            problems.push(format!("deferred read form `{form}` names no blocker"));
+        }
+        if !doc.contains(form) {
+            problems.push(format!("DP-K4 does not specify `{form}`; its row defers nothing"));
+        }
+        if read_src.contains(&format!("pub fn {form}")) {
+            problems.push(format!(
+                "`{form}` is implemented but still in DEFERRED_READ_FORMS — delete the row"
+            ));
+        }
+    }
+    assert!(
+        !dp::read::DEFERRED_READ_FORMS.is_empty(),
+        "DEFERRED_READ_FORMS is empty; delete this check rather than leaving it \
+         green on nothing."
+    );
+
     assert!(
         !dp::write::DEFERRED_WRITE_FORMS.is_empty(),
         "DEFERRED_WRITE_FORMS is empty; delete this check rather than leaving it \
