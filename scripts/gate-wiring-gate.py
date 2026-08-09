@@ -92,7 +92,19 @@ WORKFLOWS = REPO / ".github" / "workflows"
 
 
 def is_gate(name: str) -> bool:
-    """Filename shape, so tomorrow's gate is in scope the day it is written."""
+    """Filename shape, so tomorrow's gate is in scope the day it is written.
+
+    KNOWN HOLE: `-harness` is not matched. `gate-bite-harness.py` and
+    `reality-layer-bite-harness.py` are both real, both wired (each has its own
+    job in `gates.yml`), and both invisible to this predicate — so a harness
+    written tomorrow and wired NOWHERE would not be reported. Found while
+    fixing the mutating-gate race, by noticing this runner said "1
+    tree-mutating gate" where the fix assumed three.
+
+    Not widened in the same change that found it: pulling them in means they
+    join `--run-all`, and they are the slowest things in the repo (one is
+    ~120s). That is a scheduling decision, not a rename.
+    """
     if not name.endswith((".py", ".sh")):
         return False
     stem = name.rsplit(".", 1)[0]
@@ -417,10 +429,18 @@ def run_all() -> int:
 
     # MUTATING gates run SERIALLY, and after everything else.
     #
-    # These three edit the working tree — they break a guard, assert the harness
-    # goes RED, and restore it. That is the only evidence a guard is
-    # load-bearing, and it is only valid if nothing else is reading or building
-    # the tree at the same time.
+    # These edit the working tree — break a guard, assert RED, restore. That is
+    # the only evidence a guard is load-bearing, and it is only valid if nothing
+    # else is building the tree at the same time.
+    #
+    # CORRECTION, measured after the first version of this comment: only
+    # `dp-slice1-bite-gate` is actually DISCOVERED here. The other two end in
+    # `-harness`, which `is_gate()` does not match, so they never entered the
+    # pool and could not have collided with anything. They are listed anyway
+    # because they are the same hazard the day `is_gate()` learns that suffix —
+    # see the note there. The real collision was with the pool's other
+    # CARGO-RUNNING gates: `dp-aggregate-gate` builds `crates/dp`, which is
+    # precisely the crate `dp-slice1-bite-gate` mutates.
     #
     # They were in the pool with everyone else, and the result was a gate whose
     # verdict depended on SCHEDULING. Measured: `dp-slice1-bite-gate` passes
