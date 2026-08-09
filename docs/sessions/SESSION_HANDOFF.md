@@ -172,10 +172,28 @@ failed at 2560/3072 with the exact documented message at the exact documented bo
 [`2026-08-10-pgvectorscale-dimension-ceiling.md`](../measurements/2026-08-10-pgvectorscale-dimension-ceiling.md)
 ⚠️ Measured on PG17 (the available image); the design targets PG18 — T22 is where that becomes a build.
 
-**▶ Resume at T22** — build/publish the Postgres image. It is the task the design flagged as the
-place the migration's founding argument can INVERT (M4): a self-hoster's `docker compose up` becomes
-an image with pinned compiled extensions, and **you own a Postgres distribution and its CVE
-cadence.** That cost is accepted; build it deliberately.
+**T22 landed — `loreweave/postgres-knowledge:18`** (PG **18.4** + pgvector **0.8.6** +
+pgvectorscale **0.9.0**), `scripts/postgres-knowledge-image-smoke.sh` 5/5.
+
+🎯 **The M4 operability risk is much smaller than feared: pgvectorscale ships PREBUILT pg18
+packages** (amd64 + arm64), so there is no Rust toolchain in the build and no compiler in the
+shipped layer — **631 MB vs a 629 MB base, +2 MB.** A self-hoster's `docker compose up` does not
+become a compile. The CVE obligation is real and unchanged, and is stated at the top of the
+Dockerfile.
+
+✅ **T21's PG17 caveat is discharged** — all five supported dims index on PG18, on the shipped image.
+
+🐞 The build-time verification caught a real failure on its first run: the release ZIP holds
+**`.deb` packages**, not loose `.so`/`.control` files, so the install matched nothing — and the
+`test -f` guards turned that into a failed build instead of an image that breaks at
+`CREATE EXTENSION` in production.
+
+⚠️ `infra/docker-compose.knowledge-pg.yml` is a **layer, not part of the default stack**. It joins
+at T25 with the Neo4j vector indexes dropped in the same change.
+
+**▶ Resume at T23** — the `PgVectorStore` adapter: per-dim partitioned tables over the closed
+`SUPPORTED_PASSAGE_DIMS`, with the tenant filter **in the planner** (the thing Neo4j cannot do, and
+why `oversample_factor` was kept off the port in T14).
 
 🔒 **Enrichment's safety properties were unasserted.** Its write-back can corrupt canon in five
 distinct ways and only a live graph ever exercised them; six guards now read the Cypher directly.

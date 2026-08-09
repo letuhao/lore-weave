@@ -1,0 +1,53 @@
+# The knowledge vector Postgres (plan T22). A LAYER, not part of the default stack.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
+#
+# WHY IT IS NOT IN docker-compose.yml YET
+# ---------------------------------------
+# Phase 3 ships in order: T22 builds the image, T23 writes the adapter, T24 dual-writes and
+# measures recall, T25 cuts over. Adding a second Postgres to everyone's default `up` before
+# anything reads from it costs ~600 MB and a port for no benefit, and — worse — it would look
+# like the cutover had happened. It joins the default stack at T25, with the Neo4j vector
+# indexes dropped in the same change.
+#
+# WHY IT IS A SEPARATE INSTANCE AND NOT THE EXISTING `postgres` SERVICE
+# --------------------------------------------------------------------
+# The dev stack's `postgres` is `postgres:18-alpine` and hosts every service's database.
+# This image is bookworm (glibc) because pgvectorscale ships glibc binaries — see the
+# Dockerfile. Swapping the shared instance for this one would put every service's data on an
+# image whose CVE cadence we now own, to serve one service's vectors. Whether production
+# consolidates them is a deployment decision, deliberately not forced by the dev compose.
+
+services:
+  knowledge-pg:
+    build:
+      context: ./postgres-knowledge
+      # Pins live in the Dockerfile as ARGs with defaults; override here for a security bump
+      # and re-run scripts/postgres-knowledge-image-smoke.sh before trusting it.
+      args:
+        PG_MAJOR: "18"
+    image: loreweave/postgres-knowledge:18
+    container_name: infra-knowledge-pg-1
+    environment:
+      POSTGRES_USER: loreweave
+      POSTGRES_PASSWORD: loreweave_dev
+      POSTGRES_DB: loreweave_knowledge_vectors
+    ports:
+      # NOT 5432: the shared dev postgres already owns it, and a collision here would be
+      # silently "the other database" rather than a failure to start.
+      - "5556:5432"
+    volumes:
+      - knowledge_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      # `pg_isready` alone answers "is the server up", which is not the question. The
+      # extensions are the reason this image exists, so the check asks for them — an image
+      # that starts without pgvectorscale is not healthy for this purpose.
+      test: ["CMD-SHELL", "pg_isready -U loreweave -d loreweave_knowledge_vectors && psql -U loreweave -d loreweave_knowledge_vectors -tAc \"SELECT 1 FROM pg_available_extensions WHERE name='vectorscale'\" | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+volumes:
+  knowledge_pg_data:

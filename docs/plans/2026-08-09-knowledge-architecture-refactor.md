@@ -48,15 +48,15 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T22** — build and publish the Postgres image (PG18 + pgvector + pgvectorscale). T21
-cleared its gate: StreamingDiskANN has **no dimension ceiling of its own**, so nothing about the
-vector plan changes.
+**RESUME: T23** — the `PgVectorStore` adapter. The image is built and proven
+(`loreweave/postgres-knowledge:18`), so this is now a code task: per-dim partitioned tables using
+the closed `SUPPORTED_PASSAGE_DIMS` set, with the tenant filter **in the planner** — the thing
+Neo4j cannot do, and the reason `oversample_factor` was deliberately kept OFF the `VectorStore`
+port in T14. It implements the port that already exists, against a database that already works.
 
-⚠️ **T22 is the task the sealed design flagged as the place the migration's founding argument can
-INVERT** (M4): today a self-hoster runs `docker compose up` and gets a working Neo4j; after this
-they need an image with pinned compiled extensions. The decision to publish a prebuilt image is
-made — and the cost is accepted and stated: **you own a Postgres distribution and its CVE cadence.**
-Build it that way deliberately.
+**Still open elsewhere:** 6 `db/migrations/` backfills carry Cypher (Phase 7 must port or retire),
+QC-2's rendered-block diff is owed once a consumer holds a port, and 283 Postgres-gated integration
+skips remain.
 
 ⚠️ **Verify the extension matrix on PG18.** T21 measured on PG17 (the readily available image);
 the design records pgvectorscale supports PG18 via `--pg18 pg_config`, and T22 is where that stops
@@ -1405,11 +1405,54 @@ vectors and validity intervals live in different stores.
   to be measured, not a workaround for a cap — so T24 is free to reject it, rather than owing its
   recall cost as the price of indexing 3072 at all.
 
-- [ ] **T22** — Build and publish the Postgres image (**decision T5**)
+- [x] **T22** — Build and publish the Postgres image (**decision T5**) — **GREEN, +2 MB**
   New: `infra/postgres-knowledge/Dockerfile` — PG18 + pgvector + pgvectorscale
   Self-hosters must not compile extensions; that would destroy the operability argument for leaving
   Neo4j. **You own this distribution's CVE cadence.**
   (depends on T21)
+  ---
+  **Evidence.** `loreweave/postgres-knowledge:18` — **PostgreSQL 18.4**, pgvector **0.8.6**,
+  pgvectorscale **0.9.0**. `scripts/postgres-knowledge-image-smoke.sh` **passed=5 failed=0**.
+
+  🎯 **The operability cost is far lower than the design feared, because pgvectorscale ships
+  PREBUILT PG18 packages.** Checked before committing to a route: 0.9.0 publishes `pg18` assets for
+  **both amd64 and arm64**. So there is no Rust/pgrx toolchain in the build and no compiler in the
+  shipped layer — the image is **631 MB against a 629 MB base: +2 MB**. The M4 risk was that a
+  self-hoster's `docker compose up` becomes a compile; it does not.
+  **The CVE obligation is real and unchanged**, and is stated at the top of the Dockerfile: three
+  version-pinned parts that must be re-pinned and re-tested on every advisory touching any of them.
+
+  ⚠️ **Bookworm, not Alpine — a deliberate divergence from the dev stack's `postgres:18-alpine`.**
+  pgvectorscale ships glibc binaries; musl would mean compiling the very thing this image exists to
+  spare people.
+
+  ✅ **T21's PG17 caveat is discharged here.** That gate was measured on PG17 (the only readily
+  available image bundling pgvectorscale). All five `SUPPORTED_PASSAGE_DIMS` now index on **PG18**,
+  on the image we actually ship — the citation became a build, exactly as T21 said it must.
+
+  🐞 **The build-time verification caught a real failure on its FIRST run.** The Dockerfile assumed
+  the release ZIP held loose `.so`/`.control` files; it holds **`.deb` packages**. The `find`
+  matched nothing, installed nothing, and — because the `test -f` guards were there — the build
+  FAILED instead of shipping an image that looks fine until someone runs `CREATE EXTENSION`. That
+  is the exact silent failure the guards were written for.
+
+  **The smoke does not check that files exist — it USES the image:** extensions load · all five
+  dims index (incl. the 2560/3072 HNSW refuses) · a 3072-dim index over 500 real rows · the planner
+  **chooses** it · the nearest neighbour of row 42 **is** row 42. That last one matters most: an
+  index that builds and is chosen but returns wrong neighbours is worse than one that fails, because
+  nothing complains.
+
+  **Bitten with a genuinely broken image** (pgvector only, no pgvectorscale — the shape the first
+  build produced): `passed=1 failed=9`, **exit 1**; the good image exits 0. Note the one PASS —
+  "nearest neighbour is row 42" holds without any index at all, via a sequential scan. That is
+  correct and is why the planner assertion is a separate check: correctness and index-usage are
+  different questions and a single test cannot answer both.
+
+  **`infra/docker-compose.knowledge-pg.yml` is a LAYER, not part of the default stack.** It joins
+  at T25 with the Neo4j vector indexes dropped in the same change — adding a second Postgres to
+  everyone's `up` before anything reads from it costs 600 MB for nothing and, worse, would look
+  like the cutover had happened. Its healthcheck asks for the **extension**, not just `pg_isready`:
+  an image that starts without pgvectorscale is not healthy for this purpose.
 
 - [ ] **T23** — `PgVectorStore` adapter
   Per-dim partitioned tables using the **closed dim set already in the code**; tenant filtered in
