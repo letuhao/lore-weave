@@ -465,10 +465,37 @@ def test_real_passage_count_cypher_has_safety_clauses():
     the guard a no-op. Pin the three clauses that matter: tenant
     filter, project scope, and the source-type IN list.
     """
-    cypher = runner_module._REAL_PASSAGE_COUNT_CYPHER
-    assert "p.user_id = $user_id" in cypher, \
-        "tenant filter missing from _REAL_PASSAGE_COUNT_CYPHER"
-    assert "p.project_id = $project_id" in cypher, \
-        "project scope missing from _REAL_PASSAGE_COUNT_CYPHER"
-    assert "p.source_type IN $real_types" in cypher, \
-        "source_type IN list missing from _REAL_PASSAGE_COUNT_CYPHER"
+    # The query moved to `neo4j_repos/passages.py` (plan T17) and its parameter was renamed
+    # `$real_types` -> `$source_types` to match the repo's vocabulary. The GUARD follows the
+    # query rather than being deleted with it: the `IN` vs `=` typo it protects against is
+    # just as silent in the new home, and this is still the only test that reads the literal.
+    from app.db.neo4j_repos.passages import _COUNT_BY_SOURCE_TYPES_CYPHER as cypher
+
+    assert "p.user_id = $user_id" in cypher, "tenant filter missing"
+    assert "p.project_id = $project_id" in cypher, "project scope missing"
+    assert "p.source_type IN $source_types" in cypher, (
+        "source_type IN list missing -- `=` instead of `IN` returns no rows and turns the "
+        "benchmark's does-this-project-hold-real-content guard into a no-op"
+    )
+
+
+def test_alias_collision_precheck_excludes_the_two_merge_participants():
+    """C17's pre-check asks "does a THIRD live entity already claim this alias?".
+
+    Both merge participants must be excluded by id — they are ALLOWED to collide with each
+    other, since that is precisely what merging them means. Without those two clauses the
+    pre-check finds the source colliding with the target and refuses every merge with 409
+    `alias_collision`: the feature stops working entirely, and the message blames a
+    non-existent third entity.
+
+    Added in T17 after a bite showed the clause had NO test at all — the query was only
+    ever exercised against a live graph.
+    """
+    from app.db.neo4j_repos.entities import _ALIAS_COLLISION_CYPHER as cypher
+
+    assert "e.id <> $source_id" in cypher, "the merge SOURCE is not excluded"
+    assert "e.id <> $target_id" in cypher, "the merge TARGET is not excluded"
+    assert "e.archived_at IS NULL" in cypher, (
+        "an archived entity must not block a merge — it is not a live claimant"
+    )
+    assert "e.user_id = $user_id" in cypher, "tenant filter missing"

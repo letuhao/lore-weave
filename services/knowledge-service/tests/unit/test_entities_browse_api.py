@@ -721,7 +721,7 @@ def _source_stub_with_aliases(aliases: list[str], canonical_name: str = "kai") -
 
 
 @patch(
-    "app.routers.public.entities.run_read",
+    "app.routers.public.entities.find_alias_collision",
     new_callable=AsyncMock,
 )
 @patch(
@@ -734,7 +734,7 @@ def _source_stub_with_aliases(aliases: list[str], canonical_name: str = "kai") -
 )
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_merge_entity_writes_alias_map_rows_post_merge(
-    mock_merge, mock_get_entity, mock_run_read,
+    mock_merge, mock_get_entity, mock_collision,
 ):
     """C17 happy path: source entity has aliases ["Kai", "Master Kai"];
     after surgery, alias-map should record entries for the canonical
@@ -746,10 +746,10 @@ def test_merge_entity_writes_alias_map_rows_post_merge(
     mock_get_entity.return_value = _source_stub_with_aliases(
         aliases=["Kai", "Master Kai"], canonical_name="kai",
     )
-    # Collision precheck Cypher returns no row.
-    collision_result_mock = MagicMock()
-    collision_result_mock.single = AsyncMock(return_value=None)
-    mock_run_read.return_value = collision_result_mock
+    # The collision pre-check moved into the entities repo (plan T17), so the seam moved
+    # with it: it now RETURNS the colliding row (or None) rather than a Result the caller
+    # has to .single(). Patching run_read here would patch nothing.
+    mock_collision.return_value = None
 
     mock_merge.return_value = _entity_stub(name="Kai (merged)")
 
@@ -781,7 +781,7 @@ def test_merge_entity_writes_alias_map_rows_post_merge(
 
 
 @patch(
-    "app.routers.public.entities.run_read",
+    "app.routers.public.entities.find_alias_collision",
     new_callable=AsyncMock,
 )
 @patch(
@@ -794,7 +794,7 @@ def test_merge_entity_writes_alias_map_rows_post_merge(
 )
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_merge_entity_collision_precheck_returns_409(
-    mock_merge, mock_get_entity, mock_run_read,
+    mock_merge, mock_get_entity, mock_collision,
 ):
     """C17: if a source alias names a third live entity in the same
     scope+kind, the router returns 409 alias_collision and does NOT
@@ -809,9 +809,7 @@ def test_merge_entity_collision_precheck_returns_409(
         "name": "Alice (other)",
         "conflicting_alias": "alice",
     }[k]
-    collision_result_mock = MagicMock()
-    collision_result_mock.single = AsyncMock(return_value=collision_row)
-    mock_run_read.return_value = collision_result_mock
+    mock_collision.return_value = collision_row
 
     client = _make_client()
     resp = client.post(
@@ -827,7 +825,7 @@ def test_merge_entity_collision_precheck_returns_409(
 
 
 @patch(
-    "app.routers.public.entities.run_read",
+    "app.routers.public.entities.find_alias_collision",
     new_callable=AsyncMock,
 )
 @patch(
@@ -840,7 +838,7 @@ def test_merge_entity_collision_precheck_returns_409(
 )
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_merge_entity_forwards_alias_map_repo_dep(
-    mock_merge, mock_get_entity, mock_run_read,
+    mock_merge, mock_get_entity, mock_collision,
 ):
     """C17 audit-all-callsites lesson: regression-lock that the merge
     endpoint actually receives a SummaryAliasMapRepo via DI. Without
@@ -855,9 +853,7 @@ def test_merge_entity_forwards_alias_map_repo_dep(
     mock_get_entity.return_value = _source_stub_with_aliases(
         aliases=["Alice"], canonical_name="alice",
     )
-    collision_result_mock = MagicMock()
-    collision_result_mock.single = AsyncMock(return_value=None)
-    mock_run_read.return_value = collision_result_mock
+    mock_collision.return_value = None
     mock_merge.return_value = _entity_stub(name="Captain Brave")
 
     client = _make_client()
@@ -892,7 +888,7 @@ def test_merge_entity_self_merge_returns_400_same_entity_pre_precheck():
 
 
 @patch(
-    "app.routers.public.entities.run_read",
+    "app.routers.public.entities.find_alias_collision",
     new_callable=AsyncMock,
 )
 @patch(
@@ -905,7 +901,7 @@ def test_merge_entity_self_merge_returns_400_same_entity_pre_precheck():
 )
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_merge_entity_postgres_writes_failure_returns_200_with_partial_count(
-    mock_merge, mock_get_entity, mock_run_read,
+    mock_merge, mock_get_entity, mock_collision,
 ):
     """C17 review-impl HIGH-2: a transient Postgres failure during
     alias-map writes must NOT surface as 500 — the Neo4j merge is
@@ -919,9 +915,7 @@ def test_merge_entity_postgres_writes_failure_returns_200_with_partial_count(
     mock_get_entity.return_value = _source_stub_with_aliases(
         aliases=["Alice", "Lex"], canonical_name="alice",
     )
-    collision_result_mock = MagicMock()
-    collision_result_mock.single = AsyncMock(return_value=None)
-    mock_run_read.return_value = collision_result_mock
+    mock_collision.return_value = None
     mock_merge.return_value = _entity_stub(name="Captain Brave")
 
     failing_repo = AsyncMock()
@@ -944,7 +938,7 @@ def test_merge_entity_postgres_writes_failure_returns_200_with_partial_count(
 
 
 @patch(
-    "app.routers.public.entities.run_read",
+    "app.routers.public.entities.find_alias_collision",
     new_callable=AsyncMock,
 )
 @patch(
@@ -957,7 +951,7 @@ def test_merge_entity_postgres_writes_failure_returns_200_with_partial_count(
 )
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_merge_entity_repoint_target_failure_swallowed(
-    mock_merge, mock_get_entity, mock_run_read,
+    mock_merge, mock_get_entity, mock_collision,
 ):
     """C17 review-impl HIGH-2 sibling: repoint_target failure is
     also best-effort — chain consistency is recoverable via backfill,
@@ -968,9 +962,7 @@ def test_merge_entity_repoint_target_failure_swallowed(
     mock_get_entity.return_value = _source_stub_with_aliases(
         aliases=["Alice"], canonical_name="alice",
     )
-    collision_result_mock = MagicMock()
-    collision_result_mock.single = AsyncMock(return_value=None)
-    mock_run_read.return_value = collision_result_mock
+    mock_collision.return_value = None
     mock_merge.return_value = _entity_stub(name="Captain Brave")
 
     repo = AsyncMock()

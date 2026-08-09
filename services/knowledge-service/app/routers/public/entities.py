@@ -28,6 +28,7 @@ from app.db.neo4j_helpers import run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
     AUTHORABLE_KINDS,
+    find_alias_collision,
     ENTITIES_MAX_LIMIT,
     ENTITY_SORT_KEYS,
     ENTITY_STATUSES,
@@ -1623,26 +1624,6 @@ _MERGE_ERROR_HTTP_STATUS: dict[str, int] = {
 }
 
 
-# C17 — collision pre-check. For each alias on source, verify NO other
-# live entity in the same scope+kind already claims that canonical_name.
-# If hit, the merge is ambiguous (a third entity already exists with
-# that identity); refuse with 409 alias_collision so the user resolves
-# the third entity first.
-_C17_COLLISION_PRECHECK_CYPHER = """
-UNWIND $candidate_canonicals AS ca
-MATCH (e:Entity)
-WHERE e.user_id = $user_id
-  AND coalesce(e.project_id, '') = coalesce($project_id, '')
-  AND e.kind = $kind
-  AND e.canonical_name = ca
-  AND e.id <> $source_id
-  AND e.id <> $target_id
-  AND e.archived_at IS NULL
-RETURN e.id AS id, e.name AS name, ca AS conflicting_alias
-LIMIT 1
-"""
-
-
 @entities_router.post(
     "/entities/{entity_id}/merge-into/{other_id}",
     response_model=EntityMergeResponse,
@@ -1721,9 +1702,11 @@ async def merge_entity_into(
             if source.canonical_name and source.canonical_name not in candidate_canonicals:
                 candidate_canonicals.append(source.canonical_name)
             if candidate_canonicals:
-                collision_result = await run_read(
+                # The query moved to `neo4j_repos/entities.py` (plan T17); the 409 and its
+                # message stay here, because "what the API says when a merge is ambiguous"
+                # is a routing decision, not a storage one.
+                collision_row = await find_alias_collision(
                     session,
-                    _C17_COLLISION_PRECHECK_CYPHER,
                     user_id=user_id_str,
                     project_id=source.project_id,
                     kind=source.kind,
@@ -1731,7 +1714,6 @@ async def merge_entity_into(
                     source_id=entity_id,
                     target_id=other_id,
                 )
-                collision_row = await collision_result.single()
                 if collision_row is not None:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,

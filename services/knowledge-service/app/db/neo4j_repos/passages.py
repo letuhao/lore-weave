@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 
 __all__ = [
+    "count_passages_by_source_types",
     "recent_passage_texts",
     "get_passage_content_hash",
     "Passage",
@@ -994,3 +995,31 @@ async def recent_passage_texts(
         source_types=source_types, limit=limit,
     )
     return [record["text"] async for record in result if record.get("text")]
+
+
+# ── count by source type (plan T17) ──────────────────────────────────
+
+_COUNT_BY_SOURCE_TYPES_CYPHER = """
+MATCH (p:Passage)
+WHERE p.user_id = $user_id
+  AND p.project_id = $project_id
+  AND p.source_type IN $source_types
+RETURN count(p) AS n
+"""
+
+
+async def count_passages_by_source_types(
+    session: CypherSession, *, user_id: str, project_id: str, source_types: list[str],
+) -> int:
+    """How many of a project's passages come from any of `source_types`.
+
+    Moved out of `app/benchmark/runner.py`, whose only use is the "does this project
+    already hold REAL content?" guard — a benchmark must not run against a project with
+    authored passages in it, and must not self-block on its own synthetic ones.
+    """
+    result = await run_read(
+        session, _COUNT_BY_SOURCE_TYPES_CYPHER,
+        user_id=user_id, project_id=project_id, source_types=sorted(source_types),
+    )
+    record = await result.single()
+    return int(record["n"]) if record else 0

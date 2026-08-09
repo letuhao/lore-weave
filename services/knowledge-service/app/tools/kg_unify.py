@@ -36,7 +36,8 @@ from dataclasses import dataclass, replace
 
 from loreweave_extraction.canonical import canonicalize_entity_name
 
-from app.db.neo4j_helpers import CypherSession, run_read
+from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.entities import load_entity_details_by_ids
 from app.db.neo4j_repos.relations import Subgraph
 
 __all__ = [
@@ -130,24 +131,6 @@ class UnifySeed:
 
 
 # ── supplementary per-partition seed fetch (aliases/canonical_name) ────
-# Binds BOTH $user_id AND $project_id (EC-M4 tenancy) + restricts to the seed ids
-# the subgraph already surfaced. Never a cross-partition read.
-_SEED_DETAIL_CYPHER = """
-MATCH (n:Entity)
-WHERE n.user_id = $user_id
-  AND n.project_id = $project_id
-  AND n.id IN $entity_ids
-RETURN n.id AS id,
-       n.name AS name,
-       n.kind AS kind,
-       coalesce(n.canonical_name, '') AS canonical_name,
-       coalesce(n.aliases, []) AS aliases,
-       n.embedding_model AS embedding_model,
-       coalesce(n.embedding_384, n.embedding_1024,
-                n.embedding_1536, n.embedding_3072) AS embedding
-"""
-
-
 async def load_seed_details(
     session: CypherSession,
     *,
@@ -160,15 +143,14 @@ async def load_seed_details(
     cross-partition Cypher (EC-M4)."""
     if not entity_ids:
         return []
-    result = await run_read(
-        session,
-        _SEED_DETAIL_CYPHER,
-        user_id=user_id,
-        project_id=project_id,
-        entity_ids=entity_ids,
+    # The query moved to `neo4j_repos/entities.py` (plan T17). What stays here is the
+    # mapping into `UnifySeed` — the unifier's domain type, which the repo must not know
+    # about or `app.db` would import `app.tools` and the dependency would run backwards.
+    rows = await load_entity_details_by_ids(
+        session, user_id=user_id, project_id=project_id, entity_ids=entity_ids,
     )
     seeds: list[UnifySeed] = []
-    async for record in result:
+    for record in rows:
         aliases = record["aliases"] or []
         raw_vec = record["embedding"]
         embedding = (

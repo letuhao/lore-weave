@@ -1045,7 +1045,26 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `monkeypatch.setattr("app.jobs.….run_write")` patches nothing once the query lives in the repo.
   Repointed to `app.db.neo4j_repos.maintenance.run_write` with the reason on the line.
 
-  **Still owed — 15 files, and most are NOT this task's to fix.** The remaining Cypher is
+  **Batch 2 (2026-08-10).** Gate baseline **15 → 12**: `tools/kg_unify.py` (bulk entity detail by
+  id → entities repo), `routers/public/entities.py` (the C17 alias-collision pre-check → entities
+  repo), `benchmark/runner.py` (passage count by source type → passages repo). Unit suite **4079**.
+
+  ⚠️ **Two bites failed to fire, for two DIFFERENT reasons, and both mattered.**
+  - The `IN` → `=` bite on the moved passage count reported "mutation applied" and the suite stayed
+    green — because `passages.py` now contains **two** queries with that exact line, and the bite
+    replaced the first, which was a different query. Same first-match trap as T18's as-of clause,
+    caught this time because the bite was expected to bite. Redone by line offset inside the named
+    template.
+  - The alias-collision bite found **no test at all**: the exclusion of the two merge participants
+    was only ever exercised against a live graph. Without those clauses the pre-check finds the
+    source colliding with the target and refuses **every** merge with a 409 blaming a non-existent
+    third entity. Now guarded.
+
+  **A pre-existing regression lock moved WITH its query rather than being deleted with it:**
+  `test_real_passage_count_cypher_has_safety_clauses` pinned the `IN`-not-`=` typo on a literal that
+  no other test reads. It follows the query into `passages.py` and still bites.
+
+  **Still owed — 12 files, and most are NOT this task's to fix.** The remaining Cypher is
   graph traversal and truth, which belong to **T18 (`GraphStore`)** and **T19 (`TruthStore`)**;
   they cannot move onto "the two shipped ports" because neither port covers them. Concretely:
   6 `db/migrations/` backfills (admin one-shots, reachable via `internal_backfill.py` — Phase 7

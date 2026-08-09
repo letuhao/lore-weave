@@ -40,6 +40,8 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Entity",
+    "load_entity_details_by_ids",
+    "find_alias_collision",
     "PromotionSignals",
     "load_promotion_signals",
     "EntityDetail",
@@ -3169,3 +3171,101 @@ async def erase_entity_subgraph(
     if record is None:
         return {"entities_deleted": 0, "facts_deleted": 0}
     return {"entities_deleted": 1, "facts_deleted": int(record["facts_deleted"])}
+
+
+# ── alias-collision pre-check (C17, moved in plan T17) ───────────────
+
+_ALIAS_COLLISION_CYPHER = """
+UNWIND $candidate_canonicals AS ca
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND coalesce(e.project_id, '') = coalesce($project_id, '')
+  AND e.kind = $kind
+  AND e.canonical_name = ca
+  AND e.id <> $source_id
+  AND e.id <> $target_id
+  AND e.archived_at IS NULL
+RETURN e.id AS id, e.name AS name, ca AS conflicting_alias
+LIMIT 1
+"""
+
+
+async def find_alias_collision(
+    session: CypherSession,
+    *,
+    user_id: str,
+    project_id: str | None,
+    kind: str,
+    candidate_canonicals: list[str],
+    source_id: str,
+    target_id: str,
+) -> dict | None:
+    """The C17 merge pre-check: does a THIRD live entity already claim one of the aliases
+    the merge would move? Returns the first collision (`id`, `name`, `conflicting_alias`)
+    or `None`.
+
+    A hit makes the merge ambiguous — two entities would end up asserting the same
+    identity — so the caller refuses with `409 alias_collision` and the user resolves the
+    third entity first. Both merge participants are excluded by id: they are allowed to
+    collide with each other, that is what merging them means.
+    """
+    if not candidate_canonicals:
+        return None
+    result = await run_read(
+        session, _ALIAS_COLLISION_CYPHER,
+        user_id=user_id, project_id=project_id, kind=kind,
+        candidate_canonicals=candidate_canonicals,
+        source_id=source_id, target_id=target_id,
+    )
+    async for record in result:
+        return {
+            "id": record["id"],
+            "name": record["name"],
+            "conflicting_alias": record["conflicting_alias"],
+        }
+    return None
+
+
+# ── bulk entity detail by id, one partition (moved in plan T17) ──────
+
+_ENTITY_DETAILS_BY_IDS_CYPHER = """
+MATCH (n:Entity)
+WHERE n.user_id = $user_id
+  AND n.project_id = $project_id
+  AND n.id IN $entity_ids
+RETURN n.id AS id,
+       n.name AS name,
+       n.kind AS kind,
+       coalesce(n.canonical_name, '') AS canonical_name,
+       coalesce(n.aliases, []) AS aliases,
+       n.embedding_model AS embedding_model,
+       coalesce(n.embedding_384, n.embedding_1024,
+                n.embedding_1536, n.embedding_3072) AS embedding
+"""
+
+
+async def load_entity_details_by_ids(
+    session: CypherSession, *, user_id: str, project_id: str, entity_ids: list[str],
+) -> list[dict]:
+    """Name / canonical_name / aliases / kind / embedding for a bounded set of ids inside
+    ONE partition. Returns raw rows; the caller builds its own domain object.
+
+    Binds BOTH `user_id` AND `project_id` and restricts to ids the caller already holds —
+    never a cross-partition read (EC-M4). The embedding `coalesce` picks whichever
+    dimension column this entity was written with, so a caller does not have to know the
+    project's embedding model to read a vector back.
+    """
+    if not entity_ids:
+        return []
+    result = await run_read(
+        session, _ENTITY_DETAILS_BY_IDS_CYPHER,
+        user_id=user_id, project_id=project_id, entity_ids=entity_ids,
+    )
+    return [
+        {
+            "id": r["id"], "name": r["name"], "kind": r["kind"],
+            "canonical_name": r["canonical_name"], "aliases": r["aliases"],
+            "embedding_model": r["embedding_model"], "embedding": r["embedding"],
+        }
+        async for r in result
+    ]

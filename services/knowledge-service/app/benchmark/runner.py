@@ -146,32 +146,19 @@ def _mark_done(key: tuple[str, str]) -> None:
     _running.discard(key)
 
 
-_REAL_PASSAGE_COUNT_CYPHER = """
-MATCH (p:Passage)
-WHERE p.user_id = $user_id
-  AND p.project_id = $project_id
-  AND p.source_type IN $real_types
-RETURN count(p) AS n
-"""
-
-
 async def _has_real_passages(user_id: str, project_id: str) -> bool:
     """True if the project already holds any passage whose source_type
     is in ``KNOWN_SOURCE_TYPES``. ``benchmark_entity`` is excluded so
     re-runs don't self-block.
     """
-    from app.db.neo4j_helpers import run_read
+    from app.db.neo4j_repos.passages import count_passages_by_source_types
 
     async with neo4j_session() as session:
-        result = await run_read(
-            session,
-            _REAL_PASSAGE_COUNT_CYPHER,
-            user_id=user_id,
-            project_id=project_id,
-            real_types=sorted(KNOWN_SOURCE_TYPES),
+        n = await count_passages_by_source_types(
+            session, user_id=user_id, project_id=project_id,
+            source_types=sorted(KNOWN_SOURCE_TYPES),
         )
-        record = await result.single()
-    return bool(record) and int(record["n"]) > 0
+    return n > 0
 
 
 async def run_project_benchmark(

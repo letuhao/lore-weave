@@ -90,7 +90,6 @@ EXEMPT_FILES = {
 # Files that still carry Cypher when this gate shipped (2026-08-10). T17 empties this.
 # PER-FILE on purpose: a new file in any of these directories fails immediately.
 BASELINE = {
-    os.path.join(SCAN_ROOT, "benchmark", "runner.py"),
     os.path.join(SCAN_ROOT, "db", "migrations", "backfill_entity_alias_map.py"),
     os.path.join(SCAN_ROOT, "db", "migrations", "backfill_event_date.py"),
     os.path.join(SCAN_ROOT, "db", "migrations", "backfill_orders.py"),
@@ -101,10 +100,8 @@ BASELINE = {
     os.path.join(SCAN_ROOT, "extraction", "hierarchy_writer.py"),
     os.path.join(SCAN_ROOT, "jobs", "summary_processor.py"),
     os.path.join(SCAN_ROOT, "routers", "internal_enrichment.py"),
-    os.path.join(SCAN_ROOT, "routers", "public", "entities.py"),
     os.path.join(SCAN_ROOT, "routers", "public", "extraction.py"),
     os.path.join(SCAN_ROOT, "routers", "public", "graph_views.py"),
-    os.path.join(SCAN_ROOT, "tools", "kg_unify.py"),
 }
 
 
