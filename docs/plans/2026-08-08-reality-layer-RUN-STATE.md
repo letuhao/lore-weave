@@ -798,11 +798,33 @@ which `commit-service`'s 3 are reachable first.
 > unverified `RealityId` (breaking the one property `forged_reality_id.rs`
 > pins).
 >
-> **So the open question is a DESIGN one, not a migration one:** what identity
-> should lifecycle code carry? A plain `Uuid` is honest for it — the value is
-> genuinely unverified at that point — which would mean the gate's `IN_SCOPE`
-> is wrong to count those files at all, and the real remaining figure is the
-> ~40 sites in the read/serve paths.
+> **ALL 73 CLASSIFIED (2026-08-09), because a sample is not a measurement:**
+>
+> | class | ≈sites | why it cannot hold a verified `RealityId` |
+> |---|---|---|
+> | **lifecycle** — `provisioner*`, `reality_seeder/*`, `deprovisioner`, `bin/provision` | ~50 | the reality is `provisioning`, being seeded, or being dropped. `provisioner.rs` *"INSERT into reality_registry with status=provisioning"* — a status the control plane refuses |
+> | **ops / maintenance** — `rebuild/*`, `orphan_scan`, `bin/replay-aggregate` | ~13 | runs against realities in ANY state, deliberately. `rebuild/mod.rs`: *"the reality MUST stay frozen and an operator inspects the dead letter."* `orphan_scan` lists `"frozen"` among what it handles |
+> | **embedding queue** — `embedding_queue/*` | ~10 | the only plausible live-serve candidate |
+>
+> **So roughly ten of seventy-three could hold one.** The other ~63 are code
+> whose subject is precisely a reality that is NOT accepting commands — which is
+> the exact fact a `RealityId` asserts. This is not effort and it is not
+> "unbuilt infrastructure" (§0.3's gate #4, which this project treats as the lazy
+> tell): it is a type asserting something false about its subject.
+>
+> **The real finding is about `world-service` itself.** `DPA-SCOPE` names it
+> game-layer because it touches per-reality databases. But what it DOES —
+> provision, seed, rebuild, scan, deprovision — is lifecycle and operations, not
+> gameplay. `01_scope_and_boundary.md` §4 scopes DP-R3 by the DATABASE, and that
+> is right for DP-R3; the `RealityId` adoption question is a different one and
+> the database test does not answer it.
+>
+> **The open question is therefore a DESIGN decision, and it is the PO's:** does
+> the adoption gate's `IN_SCOPE` narrow to the paths that actually serve
+> gameplay — which shrinks what the guarantee claims to cover, and should be
+> said out loud rather than edited in — or does lifecycle code get a different,
+> honestly-named identity type? A plain `Uuid` is the truthful representation
+> for it today.
 >
 > **Not decided here, and deliberately not:** narrowing a gate's scope is
 > exactly the move that needs a reason on the record rather than a quiet edit,
