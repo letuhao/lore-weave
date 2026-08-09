@@ -7,6 +7,15 @@ API + DB + migration + cross-service contract set the floor)
 Design (SEALED): [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-ARCHITECTURE-OVERVIEW.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-ARCHITECTURE-OVERVIEW.md)
 · decision register §9 (31 decisions) · red team discharged
 
+> ⚠️ **Invoke consumer commands with an explicit path override:**
+> `/aif-implement @docs/plans/2026-08-09-knowledge-architecture-refactor.md`
+> This filename follows the repo convention (`docs/plans/YYYY-MM-DD-<feature>.md`, per
+> `.ai-factory/skill-context/aif-plan/SKILL.md`), but aif consumers discover plans by
+> **branch-slug** under `paths.plans` -> `docs/plans/refactor-entity-lifecycle.md`, which does
+> not exist. The single-plan fallback cannot rescue it either: that resolver branch only fires
+> when git mode is off or `create_branches` is false, and this repo sets both true.
+> `/aif-implement`, `/aif-verify` and `/aif-rules-check` will otherwise fail to auto-discover it.
+
 ## Original Request
 
 scope if full plan, not small slices, need full plan first before do anything else
@@ -113,16 +122,16 @@ by a `QC-n` task carrying code review + live proof; three of them are **stop-and
 checkpoints.
 
 - **Commit 1** (T1–T3): `fix(glossary,translation): close the three lifecycle guards recorded as closed`
-- **Commit 2** (T4–T8): `feat(kal,glossary): state@as_of read + AC1/AC2 conformance`
+- **Commit 2** (T4–T8, **T53**): `feat(kal,glossary): state@as_of read + AC1/AC2 conformance`
 - **Commit 3** (T9–T10): `perf(glossary): covering index for the book-wide as-of read`
 - **Commit 4** (T11–T13): `refactor(knowledge): pull Cypher out of selectors, events and extraction`
 - **Commit 5** (T14–T17): `refactor(knowledge): VectorStore + OntologyStore ports with fakes`
 - **Commit 6** (T18–T20): `refactor(knowledge): GraphStore + TruthStore ports`
 - **Commit 7** (T21–T25): `feat(knowledge): pgvector adapter, dual-write, cutover`
-- **Commit 8** (T26–T29): `feat(kal,glossary): command surface with outbox-in-transaction`
-- **Commit 9** (T30–T34): `feat(glossary): lifecycle, story status, world order`
-- **Commit 10** (T35–T37): `refactor(glossary,knowledge): opaque identity + mentions`
-- **Commit 11** (T38–T40): `refactor: migrate consumers onto the KAL`
+- **Commit 8** (T26–T29, **T50**): `feat(kal,glossary): command surface with outbox-in-transaction + MCP parity`
+- **Commit 9** (T30–T34, **T52**): `feat(glossary): lifecycle, story status, world order`
+- **Commit 10** (T35–T37, **QC-5**): `refactor(glossary,knowledge): opaque identity + mentions`
+- **Commit 11** (T38–T40, **T51**): `refactor: migrate consumers onto the KAL + frontend`
 - **Commit 12** (T41–T43): `feat(knowledge): second graph adapter + shadow comparison`
 - **Commit 13** (T44–T46): `refactor: consolidate TruthStore`
 - **Commit 14** (T47–T49): `docs: document the new contract, verify the plan, discharge the register`
@@ -206,6 +215,18 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   cast read without one.
   (depends on T6)
 
+- [ ] **T53** — Migrate the *other* roster consumers *(added by `/aif-improve +check`)*
+  `services/lore-enrichment-service/app/clients/kal.py:131` (drained for the cast hint at
+  `app/compose/compose_task.py:569`) · `frontend/src/features/knowledge-temporal/api.ts:82`
+  T7 migrates composition only; these two keep reading **the union of every entity that ever
+  existed, with no story position** — so the defect this plan exists to fix survives on the
+  enrichment and knowledge-temporal surfaces.
+  **Either** migrate them onto `state@as_of`, **or** document per consumer why it legitimately
+  wants the untimed catalogue. Silence is not an answer here.
+  **Logging:** `INFO` the resolved position per consumer; `WARN` where an untimed read is kept
+  deliberately, naming the reason.
+  (depends on T6)
+
 - [ ] **T8** — Measure `state@as_of` end-to-end, doc-21 style
   New: `docs/measurements/2026-08-XX-state-asof-ceiling.md`
   Rig stated · durability stated · **ratios not absolutes** · with a bite. Compare in-process vs
@@ -228,6 +249,16 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `(book_id, entity_id, attr_or_predicate, valid_from_ordinal DESC) WHERE invalidated_at IS NULL AND cardinality='single'`
   Removes the sort. Today's plan is `idx_entity_facts_book` (**128 lifetime scans**) + quicksort,
   which grows linearly with book length and spills `work_mem`.
+  ⚠️ **Two constraints, both concrete** *(added by `/aif-improve +check`)*:
+  **(a)** Ship as a **NEW ledger chain step** — never an edit to an existing one.
+  `migrate.go:231`: *"shipped as a NEW ledger step (0052) — NOT edited"*; editing one breaks
+  already-migrated databases.
+  **(b)** The runner wraps every step in `pool.Begin` + `pg_advisory_xact_lock`
+  (`migrate.go:303,308`), so **`CREATE INDEX CONCURRENTLY` cannot run in that path at all** —
+  and a plain build takes a write lock on a table this plan projects to ~1.08 M rows per book.
+  **Resolve the conflict in this task, not at migration time:** either an out-of-band concurrent
+  build with a ledger step that only verifies presence, or an accepted maintenance window with
+  the lock duration measured first.
   **Bite:** drop the index → the plan must return to `Sort`.
 
 - [ ] **T10** — Synthetic 4,000-chapter ceiling run
@@ -387,6 +418,22 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   emit/consume gaps.
   **Bite:** revert one `*Core`'s outbox write → the smoke must go red.
 
+- [ ] **T50** — Bring the entity-lifecycle **MCP tools** onto the new command contract
+  *(added by `/aif-improve +check`)*
+  `entity_delete_tools.go:59,68` · `entity_attribute_edit_tools.go:56,85` —
+  `glossary_entity_delete` · `glossary_entity_restore` · `glossary_entity_rename` ·
+  `glossary_entity_set_attributes`
+  The `*Core` surface T27–T29 changes is **explicitly shared**: `entity_handler.go:1488` calls
+  it *"the single source of truth for the REST DELETE route AND the `glossary_entity_delete`
+  Tier-W confirm effect"*, and `effectEntityDelete` routes straight into
+  `softDeleteEntityCore`. If the command gains a required story position or new emissions and
+  only the HTTP schema is updated, **the MCP contract drifts silently** — a class this repo has
+  already recorded twice (FastMCP strips undeclared fields; the REST mirror drops fields the
+  MCP tool accepts).
+  **Logging:** `DEBUG` the transport (HTTP vs MCP) on every command dispatch.
+  **Test:** for each transition, assert HTTP and MCP produce **identical outbox emissions**.
+  (depends on T29)
+
 <!-- Commit checkpoint: T26–T29 — cross-service seam -->
 
 ### Phase 5 · The model
@@ -405,7 +452,30 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [ ] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
   parameter; migrate the spoiler window onto *"read at reveal position P"* (decision Q8).
   Also: `invalidated_reason='episode_superseded'` for chapter revisions (decision Q6).
+  ⚠️ **State `glossary_entities.alive`'s disposition explicitly**
+  *(added by `/aif-improve +check`)* — it still has live readers (`canon_at_chapter_handler`,
+  `extraction_handler`, `entities_by_ids_handler`, `entity_search`, `entity_revisions_handler`,
+  `entity_handler`). Introducing liveness-as-a-fact **while leaving the column read** recreates
+  the exact two-sources-of-truth condition the design diagnosed (`alive` 7290 true / 0 false
+  alongside `:EntityStatus` 0-of-21 reachable). **Deprecate it, migrate every reader to the
+  as-of liveness fact, then drop the column or document why it survives.**
   (depends on T31)
+
+- [ ] **T52** — Fix `canon_at_chapter_handler` — the design's own worked example
+  *(added by `/aif-improve +check`)*
+  `services/glossary-service/internal/api/canon_at_chapter_handler.go:124`
+  A **live public route** (`GET /v1/glossary/books/{book_id}/known-entities`, View-gated,
+  feeding the composition canon-at-chapter panel) whose **entire purpose is "canon as of
+  chapter N"** — and which bounds `chapter_entity_links` by chapter, then filters the
+  **timeless** `e.alive = true` and joins the **current** name, aliases and kind.
+  T5 adds a *new* as-of endpoint and never touches this one, so **the defect survives on a live
+  path after the refactor claims to have fixed it.** The sealed design cites this exact line as
+  its worked example.
+  **Rewrite** to resolve name, kind and liveness **as-of the requested chapter**.
+  **Logging:** `DEBUG` the resolved position and the per-field as-of source; `WARN` if any field
+  falls back to a current value.
+  **Test:** an entity renamed at ch.30 must render under its **ch.10 name** when queried at ch.10.
+  (depends on T32)
 
 - [ ] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
   Widen `app/extraction/causal_edges.py` from `causes/enables` to `causes | precedes`; copy the
@@ -421,19 +491,6 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   93.2 %), and that grows with chapter count.
   **Bite:** re-extract a processed chapter — fact count must not grow, evidence count must.
   (depends on T33)
-
-- [ ] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
-  `docs/specs/.../README.md`: *"Its shape is the design's own test: fix the design, then **re-run
-  this book**."*
-  Re-run the Mị Đế authoring flow **end-to-end through the real frontend**, same plan, same cast <!-- doc-language-gate: ok -- the book title is the cited corpus subject of the acceptance case -->
-  pass, same three chapters.
-  **Assert the failure now surfaces:** the trap must be attributed to the cast-designated antagonist,
-  **or** the canon check must FAIL — `canon_consistency` scoring 5/5 on a misattributed betrayal is
-  the defect, and a pass here with 5/5 means the refactor has not landed.
-  **Data to capture:** the plan artifact, the drafted chapters, the critic's per-chapter scores, and
-  the glossary delta (entity count before/after the cast pass). Paste into the plan.
-  ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
-  (depends on T34)
 
 <!-- Commit checkpoint: T30–T34 — migration + event contract -->
 
@@ -458,13 +515,40 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   known-stale nodes from the 2026-08-02 backfill are reconciled.
   **Data:** a Cypher count of nodes whose `e.id` disagrees with a recomputed hash — **must be 0**.
 
-<!-- Commit checkpoint: T35–T37 -->
+- [ ] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
+  `docs/specs/.../README.md`: *"Its shape is the design's own test: fix the design, then **re-run
+  this book**."*
+  Re-run the Mị Đế authoring flow **end-to-end through the real frontend**, same plan, same cast <!-- doc-language-gate: ok -- the book title is the cited corpus subject of the acceptance case -->
+  pass, same three chapters.
+  **Assert the failure now surfaces:** the trap must be attributed to the cast-designated antagonist,
+  **or** the canon check must FAIL — `canon_consistency` scoring 5/5 on a misattributed betrayal is
+  the defect, and a pass here with 5/5 means the refactor has not landed.
+  **Data to capture:** the plan artifact, the drafted chapters, the critic's per-chapter scores, and
+  the glossary delta (entity count before/after the cast pass). Paste into the plan.
+  ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
+  (depends on **T36** — it is T36 that closes the case this test proves)
+  *(moved here from Phase 5 by `/aif-improve +check`: the acceptance test was scheduled to run
+  one commit BEFORE the task that makes it pass, so it would have failed and read as a regression.)*
+
+<!-- Commit checkpoint: T35–T37 + QC-5 -->
 
 ### Phase 6 · Consumers migrate onto the KAL *(S3)*
 
 - [ ] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
+- [ ] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
+  31 files across nine feature folders consume these contracts — `glossary`, `trash`,
+  `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
+  Concretely: `frontend/src/features/glossary/api.ts` · `features/trash/useTrashItems.ts` ·
+  `features/knowledge-temporal/api.ts` (which calls KAL `roster` directly at `:82`).
+  T7 changes the cast read and T32 moves the spoiler window onto a reveal position — **both
+  change contracts the FE renders against.** Shipping the backend alone leaves those surfaces
+  reading a contract that no longer exists, and the recycle-bin view is the one a user hits
+  *right after deleting*.
+  **Test:** the recycle-bin and spoiler surfaces still render after the reveal-axis change.
+  (depends on T38, T32)
+
 - [ ] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
