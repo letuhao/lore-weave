@@ -4240,3 +4240,96 @@ class TestAGateVerdictIsAboutOneTree:
             "the key covers the whole repository again, so every unrelated commit invalidates "
             "every verdict and the cache stops removing any work"
         )
+
+
+class TestRegistrationIsAStateMachineAndGatesTheWire:
+    """V2-R1 · **`lifecycle` was a validated enum that nothing consulted.**
+
+    Measured 2026-08-09 by flipping two rows in a loaded manifest: a `retired` declaration and a
+    `draft` declaration were BOTH advertised, unchanged. So *"register a tool but do not release it
+    until it passes QC"* was not an expressible state — there was no unreleased state, only an
+    unread field. These guards are the state machine and the gate it drives.
+    """
+
+    @staticmethod
+    def _doc_with(*lifecycles: str) -> dict:
+        rows = _rows(len(lifecycles))
+        for r, lc in zip(rows, lifecycles):
+            r["lifecycle"] = lc
+        return _doc(rows)
+
+    def test_A_DRAFT_DECLARATION_IS_REGISTERED_AND_NOT_SERVED(self):
+        """🔴 The state the QC gate needs. Without it, *release* and *register* are one act."""
+        from app.agentruntime.surface import SurfaceAssembler
+        s = SurfaceAssembler(self._doc_with("admitted", "draft")).assemble(pass_number=1)
+        assert s.names == ("t0",), f"a draft declaration reached the wire: {s.names}"
+
+    def test_A_RETIRED_DECLARATION_IS_NOT_SERVED(self):
+        from app.agentruntime.surface import SurfaceAssembler
+        s = SurfaceAssembler(self._doc_with("admitted", "retired")).assemble(pass_number=1)
+        assert s.names == ("t0",)
+
+    def test_A_DEPRECATED_DECLARATION_IS_STILL_SERVED(self):
+        """Deprecation is *prefer the successor*, not *this no longer works*. A caller mid-migration
+        whose tool vanished would be the sunset window slamming rather than closing."""
+        from app.agentruntime.surface import SurfaceAssembler
+        s = SurfaceAssembler(self._doc_with("admitted", "deprecated")).assemble(pass_number=1)
+        assert set(s.names) == {"t0", "t1"}
+
+    def test_AN_UNRELEASED_DECLARATION_IS_RECORDED_NOT_SILENTLY_DROPPED(self):
+        """§0.1 — the runtime may not narrow silently, and *"we did not offer the thing you
+        registered"* is exactly what gets reported as absence instead of as a decision."""
+        from app.agentruntime.narrowing import NarrowingLog
+        from app.agentruntime.surface import SurfaceAssembler
+        log = NarrowingLog()
+        SurfaceAssembler(self._doc_with("admitted", "draft", "retired"),
+                         log=log).assemble(pass_number=1)
+        stages = log.stages()
+        assert "lifecycle_draft" in stages and "lifecycle_retired" in stages, stages
+        for rec in log.records():
+            assert rec["reason"], "a record with no reason is not a record"
+
+    def test_THE_UNRELEASED_ONES_ARE_NOT_COUNTED_AS_WITHHELD_ADMITTED_DECLARATIONS(self):
+        """🔴 §0.14.3 keeps its promise only if the N the model is told about is releasable. A tool
+        that has not passed QC must not be announced as available-but-withheld."""
+        from app.agentruntime.surface import SurfaceAssembler
+        a = SurfaceAssembler(self._doc_with("admitted", "draft", "draft"))
+        assert a.admitted_count == 1, "an unreleased row counted toward the admitted total"
+        assert a.assemble(pass_number=1).withheld == ()
+
+    def test_THE_LEGAL_MOVES_ARE_A_TABLE_NOT_A_FULL_MESH(self):
+        from app.agentruntime.contract import LIFECYCLE_MOVES, UntrustedRow, check_transition
+        check_transition("t0", "draft", "admitted")
+        check_transition("t0", "admitted", "deprecated")
+        check_transition("t0", "deprecated", "retired")
+        check_transition("t0", "admitted", "admitted")          # a no-op move is not a violation
+        assert LIFECYCLE_MOVES["retired"] == frozenset()
+        with pytest.raises(UntrustedRow, match="terminal"):
+            check_transition("t0", "retired", "admitted")
+
+    def test_RESURRECTION_IS_REFUSED_BECAUSE_IT_WOULD_SKIP_THE_READMISSION_QUEUE(self):
+        """§6.4 — a declaration that comes back is a NEW admission against the CURRENT contract.
+        Letting it return by a status edit carries a row admitted under an older contract straight
+        back onto the wire."""
+        from app.agentruntime.contract import UntrustedRow, check_transition
+        with pytest.raises(UntrustedRow, match="not a legal registration move"):
+            check_transition("t0", "deprecated", "admitted")
+
+    def test_DERIVATION_REGISTERS_AND_NEVER_RELEASES(self):
+        """🔴 **THE HOLE THIS CLOSED.** `derive_one` read `deprecated if legacy else admitted`, so a
+        tool went from *present in the catalogue* to *served to a model* in one mechanical step.
+        Once lifecycle gated the surface, derivation would have been SELF-RELEASING."""
+        import json
+        import pathlib
+
+        from app.agentruntime.derive import derive_all
+        root = pathlib.Path(__file__).resolve().parents[3]
+        cat = json.loads((root / "contracts" / "agent-runtime-baseline" /
+                          "tools-list.snapshot.json").read_text(encoding="utf-8"))["tools"]
+        derived, unresolved = derive_all(cat)
+        assert derived, "the producer derived nothing; this guard would be vacuous"
+        lifecycles = {d.declaration.lifecycle for d in derived}
+        assert lifecycles == {"draft"}, (
+            f"derivation produced {lifecycles} — a released row cannot come out of a producer, "
+            f"because no property of the source can carry QC evidence"
+        )

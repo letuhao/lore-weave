@@ -22,8 +22,8 @@ from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
 from .contract import (
-    ID_MAX_LEN, RequirementNotAdmitted, UntrustedRow, _ID, check_document, check_document_rows,
-    check_row,
+    ID_MAX_LEN, SERVED_LIFECYCLES, RequirementNotAdmitted, UntrustedRow, _ID, check_document,
+    check_document_rows, check_row,
 )
 from .narrowing import NarrowingLog
 
@@ -622,8 +622,40 @@ class SurfaceAssembler:
     __slots__ = ("_rows", "_log")
 
     def __init__(self, manifest_doc: dict, *, log: NarrowingLog | None = None) -> None:
-        self._rows: list[dict] = rows_of(manifest_doc)
+        all_rows: list[dict] = rows_of(manifest_doc)
         self._log = log if log is not None else NarrowingLog()
+        # ── V2-R1 · REGISTRATION GATES SERVING ────────────────────────────────────────────────
+        # 🔴 **`lifecycle` WAS A VALIDATED ENUM THAT NOTHING CONSULTED.** Measured 2026-08-09 by
+        # flipping two rows: a `retired` declaration and a `draft` declaration were BOTH advertised,
+        # unchanged. So *"register a tool but do not release it until it passes QC"* was not a state
+        # this runtime could hold — there was no unreleased state, only an unread field.
+        #
+        # The unreleased rows are RECORDED, not dropped. §0.1: the runtime may not narrow silently,
+        # and *"we did not offer the thing you registered"* is exactly the kind of decision that
+        # gets reported as absence when it should be reported as a decision. `stage` carries the
+        # lifecycle itself, so the record answers *which* unreleased state, not merely *unreleased*.
+        #
+        # 🔴 **THEY LAND IN THE `NarrowingLog`, NOT IN `Surface.withheld`, AND THAT IS THE POINT OF
+        # THE SPLIT THIS CLASS ALREADY DRAWS.** `withheld` is *what this assembly kept from the
+        # model* — a per-PASS fact about declarations that were candidates. A `draft` row was never
+        # a candidate: it is not registered for serving, its exclusion is identical on every pass,
+        # and repeating it per-pass would both fill `withheld_tools` with a constant and break what
+        # the conservation law below means (`offered + withheld == registered-for-serving`).
+        # The log is where this class's own docstring sends a caller for anything wider, and a
+        # registration decision is wider than one assembly.
+        #
+        # It also keeps §0.14.3 honest: the model is told *"N admitted declarations exist and were
+        # withheld"*, and an UNRELEASED tool must not be counted in that N — announcing something
+        # that has not passed QC as available-but-withheld is a promise the runtime cannot keep.
+        self._rows = [r for r in all_rows if r["lifecycle"] in SERVED_LIFECYCLES]
+        for r in all_rows:
+            if r["lifecycle"] not in SERVED_LIFECYCLES:
+                self._log.record(
+                    r["id"], stage=f"lifecycle_{r['lifecycle']}",
+                    reason=(f"registered as {r['lifecycle']!r}, which is not served "
+                            f"(served: {sorted(SERVED_LIFECYCLES)})"),
+                    pass_number=1,
+                )
 
     @property
     def log(self) -> NarrowingLog:

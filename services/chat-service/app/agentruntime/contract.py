@@ -76,40 +76,31 @@ KINDS: frozenset[str] = frozenset({"tool", "skill", "workflow"})
 Lifecycle = Literal["draft", "admitted", "deprecated", "retired"]
 LIFECYCLES: frozenset[str] = frozenset({"draft", "admitted", "deprecated", "retired"})
 
-#: A declaration id is a **key**, and an unbounded key is not one.
+#: 🔴 **WHICH LIFECYCLES REACH A MODEL — AND UNTIL 2026-08-09 THE ANSWER WAS "ALL OF THEM".**
 #:
-#: 🔴 **SIX ROUNDS OPEN, AND THE VEHICLE IS PLAIN JSON.** `^[a-z][a-z0-9_]*$` bounded the alphabet
-#: and not the length, so a 300-character id was measured travelling through `check_row`, `rows_of`
-#: and `validate_document` end to end. It is the `AllowList`/`DenyList` membership key, it is the
-#: `OrderBy` tie-break, it is the M5 foreign key, and it is rendered into the prompt the model reads
-#: — so an id longer than the surface it names is a budget the ranking spends on one row.
+#: `lifecycle` was a validated enum that **nothing consulted**. Measured directly: a row flipped to
+#: `retired` and a row flipped to `draft` were both advertised, unchanged. So *"register a tool but
+#: do not release it until it passes QC"* was **not an expressible state** — there was no unreleased
+#: state, only an unread field.
 #:
-#: The bound is **stated rather than assumed**: 64 characters. 🔴 **AND IT IS NOW MEASURED RATHER
-#: THAN ASSERTED** — a verifier read the three registries this checkpoint's declarations will come
-#: from (`tools-list.snapshot.json`, `LOADABLE_SKILL_CODES`, `intent_workflows._COMPILED`, **334
-#: ids**) and found max length **38**, p99 37, and **0 over 64**. The docstring used to claim
-#: *"longer than every identifier this repository declares"* with nobody having run it.
-ID_MAX_LEN = 64
+#: `draft` is registered-and-not-released; `retired` is gone. `deprecated` still SERVES, because
+#: deprecation is *"prefer the successor"*, not *"this no longer works"* — a caller mid-migration
+#: whose tool vanished on a deprecation would be the sunset window slamming rather than closing.
+SERVED_LIFECYCLES: frozenset[str] = frozenset({"admitted", "deprecated"})
 
-#: 🔴 **AND THE ALPHABET REFUSED 9 OF 9 REAL WORKFLOW IDS, WHICH SIX ROUNDS ABOUT THE *LENGTH* NEVER
-#: ASKED.** `^[a-z][a-z0-9_]*$` was a builder choice; `ARCHITECTURE.md` C-0 says *"id"* and specifies
-#: no alphabet. Every workflow this repository actually declares is hyphenated — `entity-triage`,
-#: `canon-check`, `kg-build`, `build-a-book`, `translation-pass`, `autonomous-drafting`,
-#: `chapter-compose`, `draw-a-map`, `lore-so-far` — so at CP-4 `check_contract` would have refused
-#: **100% of one declaration kind**, and the message it printed would have led with the length.
+#: The registration STATE MACHINE — legal moves only, and deliberately not a full mesh.
 #:
-#: One command over the same corpus that justified `ID_MAX_LEN` would have found it, and the
-#: measurement made was *"is the length bounded"* rather than *"what does this regex do to the real
-#: data"*. `-` is admitted, because these ids are **persisted** and renaming nine of them is a
-#: migration this checkpoint has no mechanism for (§6.4's re-admission queue is not built). A hyphen
-#: is safe in every place an id is used here: a dict key, an allow-list member, a sort key, and
-#: prompt text — none of them require a Python identifier.
-#:
-#: `test_THE_ALPHABET_ADMITS_EVERY_ID_THIS_REPOSITORY_ALREADY_DECLARES` runs the regex over all three
-#: live registries, so the next kind that arrives with a new spelling is refused at **CP-1**, where
-#: the answer is a decision, rather than at CP-4, inside the admission of the first declaration.
-_ID = re.compile(r"^[a-z][a-z0-9_-]{0,%d}$" % (ID_MAX_LEN - 1))
-_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
+#: **Resurrection is absent on purpose.** `retired -> admitted` and `deprecated -> admitted` are not
+#: here: a declaration that comes back is a NEW admission against the CURRENT contract, and letting
+#: it return by a status edit would carry a row admitted under an older contract straight back onto
+#: the wire — §6.4's re-admission queue with the queue skipped. Widen this table deliberately if the
+#: product ever wants un-deprecation; do not widen it by accident.
+LIFECYCLE_MOVES: dict[str, frozenset[str]] = {
+    "draft": frozenset({"admitted", "retired"}),      # QC passes, or the candidate is abandoned
+    "admitted": frozenset({"deprecated", "retired"}),
+    "deprecated": frozenset({"retired"}),
+    "retired": frozenset(),                            # terminal
+}
 
 
 class UntrustedRow(ValueError):
@@ -188,6 +179,66 @@ class ContractViolation(UntrustedRow):
         self.reason = reason
         self.accepted = accepted
         super().__init__(f"{declaration_id or '<no id>'}.{field_path}: {reason}. Accepted: {accepted}")
+
+
+def check_transition(declaration_id: str, before: str, after: str) -> None:
+    """Refuse an illegal registration move. **C-12: the rejection names what WOULD be legal.**
+
+    Defined here rather than at the writer because the writer is not the only mover: a row edited in
+    the store, a migration, and an admission script are three hands on the same field, and a rule
+    enforced at one of them is a rule the other two do not have.
+    """
+    if before not in LIFECYCLES:
+        raise UntrustedRow(declaration_id, "lifecycle", f"unknown current lifecycle {before!r}",
+                           f"one of {sorted(LIFECYCLES)}")
+    if after not in LIFECYCLES:
+        raise UntrustedRow(declaration_id, "lifecycle", f"unknown target lifecycle {after!r}",
+                           f"one of {sorted(LIFECYCLES)}")
+    if before == after:
+        return
+    legal = LIFECYCLE_MOVES[before]
+    if after not in legal:
+        raise UntrustedRow(
+            declaration_id, "lifecycle", f"{before} -> {after} is not a legal registration move",
+            (f"one of {sorted(legal)}" if legal else
+             f"nothing — {before!r} is terminal. A declaration that comes back is a NEW admission "
+             f"against the CURRENT contract, not a status edit"),
+        )
+
+#: A declaration id is a **key**, and an unbounded key is not one.
+#:
+#: 🔴 **SIX ROUNDS OPEN, AND THE VEHICLE IS PLAIN JSON.** `^[a-z][a-z0-9_]*$` bounded the alphabet
+#: and not the length, so a 300-character id was measured travelling through `check_row`, `rows_of`
+#: and `validate_document` end to end. It is the `AllowList`/`DenyList` membership key, it is the
+#: `OrderBy` tie-break, it is the M5 foreign key, and it is rendered into the prompt the model reads
+#: — so an id longer than the surface it names is a budget the ranking spends on one row.
+#:
+#: The bound is **stated rather than assumed**: 64 characters. 🔴 **AND IT IS NOW MEASURED RATHER
+#: THAN ASSERTED** — a verifier read the three registries this checkpoint's declarations will come
+#: from (`tools-list.snapshot.json`, `LOADABLE_SKILL_CODES`, `intent_workflows._COMPILED`, **334
+#: ids**) and found max length **38**, p99 37, and **0 over 64**. The docstring used to claim
+#: *"longer than every identifier this repository declares"* with nobody having run it.
+ID_MAX_LEN = 64
+
+#: 🔴 **AND THE ALPHABET REFUSED 9 OF 9 REAL WORKFLOW IDS, WHICH SIX ROUNDS ABOUT THE *LENGTH* NEVER
+#: ASKED.** `^[a-z][a-z0-9_]*$` was a builder choice; `ARCHITECTURE.md` C-0 says *"id"* and specifies
+#: no alphabet. Every workflow this repository actually declares is hyphenated — `entity-triage`,
+#: `canon-check`, `kg-build`, `build-a-book`, `translation-pass`, `autonomous-drafting`,
+#: `chapter-compose`, `draw-a-map`, `lore-so-far` — so at CP-4 `check_contract` would have refused
+#: **100% of one declaration kind**, and the message it printed would have led with the length.
+#:
+#: One command over the same corpus that justified `ID_MAX_LEN` would have found it, and the
+#: measurement made was *"is the length bounded"* rather than *"what does this regex do to the real
+#: data"*. `-` is admitted, because these ids are **persisted** and renaming nine of them is a
+#: migration this checkpoint has no mechanism for (§6.4's re-admission queue is not built). A hyphen
+#: is safe in every place an id is used here: a dict key, an allow-list member, a sort key, and
+#: prompt text — none of them require a Python identifier.
+#:
+#: `test_THE_ALPHABET_ADMITS_EVERY_ID_THIS_REPOSITORY_ALREADY_DECLARES` runs the regex over all three
+#: live registries, so the next kind that arrives with a new spelling is refused at **CP-1**, where
+#: the answer is a decision, rather than at CP-4, inside the admission of the first declaration.
+_ID = re.compile(r"^[a-z][a-z0-9_-]{0,%d}$" % (ID_MAX_LEN - 1))
+_VERSION = re.compile(r"^\d+\.\d+\.\d+$")
 
 
 @dataclass(frozen=True, slots=True)

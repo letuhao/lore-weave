@@ -16,7 +16,7 @@ is **reported** rather than defaulted — `unresolved` is a return value, not a 
 |---|---|---|
 | `id` | the tool name on the wire | 315/315 |
 | `kind` | `"tool"` — this producer's whole input is the tool catalogue | 315/315 |
-| `lifecycle` | `_meta.visibility == "legacy"` → `deprecated`, else `admitted` | 315/315 |
+| `lifecycle` | **always `draft`** — derivation REGISTERS, release is a separate decision | 315/315 |
 | `owning_service` | C-0, derived from `source_path` below | see `PROVIDERS` |
 | `lane` / `tier` | `_meta.tier`, set by the provider at registration (C-1) | 315/315 |
 | `cost` | `token_cost()` — a pure function of the definition | 315/315 |
@@ -223,10 +223,25 @@ def derive_one(tool_def: dict) -> Derived:
             # C-0 reads the OWNER out of this path. A trailing marker keeps it a path rather than a
             # bare directory name, matching every other `source_path` the contract sees.
             source_path=f"services/{service}/",
-            # `visibility: legacy` is how this platform says "superseded but still served" — the
-            # deprecate-never-delete rule (CAT-4). That is exactly `deprecated`, not `retired`: a
-            # retired declaration is one the runtime no longer serves, and these are all still live.
-            lifecycle="deprecated" if meta.get("visibility") == "legacy" else "admitted",
+            # 🔴 **ALWAYS `draft`. DERIVATION REGISTERS; IT DOES NOT RELEASE.**
+            #
+            # This read `deprecated if visibility == "legacy" else "admitted"` — so a tool went from
+            # *present in the catalogue* to *served to a model* in one mechanical step, with no gate
+            # anywhere between them. Once `lifecycle` began gating the surface that became the whole
+            # ballgame: derivation would have been self-releasing, and *"only release a tool that
+            # passed QC"* would be unenforceable by construction rather than merely unenforced.
+            #
+            # The two facts were conflated. **What the catalogue knows** is mechanical and derivable
+            # (owner, lane, cost, and that a tool is legacy). **Whether we serve it** is a decision
+            # with evidence behind it, and no property of the source can supply that. So every
+            # derived row lands `draft` — registered, contract-checked, not on the wire — and
+            # reaching `admitted` is a deliberate move through `check_transition`.
+            #
+            # `visibility: legacy` is not lost, it is just not a release: a legacy tool derives to
+            # `draft` like everything else and is simply never promoted. That also closes the door
+            # it used to open — `deprecated` IS served, so the old mapping put legacy tools on the
+            # wire without anyone deciding to.
+            lifecycle="draft",
             members=(),
         ),
         lane=lane,
