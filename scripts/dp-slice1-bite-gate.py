@@ -283,6 +283,10 @@ def bite_gate() -> bool:
         "    type Tier = T;\n"
         "    type Scope = S;\n"
         "    type Id = u64;\n"
+        # `Delta`/`Projection` joined DpAggregate in slice 4. Without them this
+        # probe fails to COMPILE, and its whole point is that rustc ACCEPTS
+        # the escape -- a probe that does not build shows the opposite.
+        "    type Delta = (); type Projection = ();\n"
         "    const TYPE_NAME: &'static str = \"player_wallet\";\n"
         "}\n",
     )

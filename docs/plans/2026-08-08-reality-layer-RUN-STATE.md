@@ -901,7 +901,8 @@ exists and holds 7 rows.
 
 | # | row | done = |
 |---|---|---|
-| `5A` | **a real `ControlPlane`**, backed by the existing `reality_registry` — verify the reality exists and is in a state that accepts sessions, mint a capability with an expiry. **No gRPC.** | a live test binding against a real registry row, and a REFUSAL for a reality that is absent or not accepting commands |
+| `5A` | **a real `ControlPlane`** over `reality_registry` | ✅ `d82cf4671` — LIVE bind against the real registry; the run caught an `INT2`/`INT4` decode bug no mock could reach |
+| `5-WIRE` | **`dp-kernel` behind `WriteBackend` + `ReadBackend`** | ✅ `7f88dcd59` — end-to-end `t2_write` → `EventStore`, event read back and asserted |
 | `5B` | the capability STORE — `RefreshCapability` needs one; today a capability is minted and never recorded | a meta migration + the erasure/retention tags every meta table carries |
 | `5C` | the gRPC surface (`DP-C3`) — `tonic`, protos, the four non-channel RPC groups | contract-first: the proto is the contract, generated and checked |
 | `5D` | channel tree + writer leases (`DP-A16`, `DP-Ch9`) — **this is what produces `ChannelId`**, and therefore what retires four DEFERRED registers at once | `DEFERRED_IDS`, `DEFERRED_SESSION_FIELDS`, `DEFERRED_CACHE_FORMS` and `DEFERRED_READ_FORMS` each shrink, and their shrink arms red until the rows go |

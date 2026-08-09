@@ -14,7 +14,7 @@
 >
 > **Evidence, every number re-derived at the moment of writing** — because the previous two versions of
 > this block were stale by the commit that contained them (`D-343`, `D-350`): **328 Rust tests** green
-> across the touched crates · `dp-kernel --lib` **315**, unchanged by the `GoneState` move · the Go mirror
+> across the touched crates · `dp-kernel --lib` **318** (was 315; `5-WIRE` added three `dp_backend` tests), unchanged by the `GoneState` move · the Go mirror
 > `contracts/entity_status` **ok** · clippy and `cargo doc` counts deliberately not stated, because
 > nothing here measures them and a figure with no measurement rule goes stale by construction — a
 > round-12 verifier measured the flat claim FALSE, and the handoff was corrected while this document
@@ -1558,7 +1558,7 @@ recorded as OPEN in the previous commit and discharged in this one.
 (cold-start agent that did not write the code) · this row filled in.
 
 > **ALL ELEVEN SLICES CLOSED.** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules
-> -p ruleset-loader` = **328 passed, 0 failed** · `dp-kernel --lib` **315 passed** (unchanged by the
+> -p ruleset-loader` = **328 passed, 0 failed** · `dp-kernel --lib` **318 passed** (was 315; `5-WIRE` added three `dp_backend` tests; otherwise unchanged by the
 > `GoneState` move) · the Go mirror `contracts/entity_status` **ok** · clippy and `cargo doc` counts
 > deliberately not stated: nothing here measures them, so the figure goes stale by construction — a
 > round-12 verifier measured the flat claim FALSE, the header block was corrected, and this copy of the
