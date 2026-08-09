@@ -4599,7 +4599,7 @@ summary.
 | ~~5.3b~~ | 🔴 **WITHDRAWN** | its subject does not exist — 0 untyped properties in 1,389 |
 | **5.3** | ✅ **BUILT** | identifier resolution, wired at the chokepoint. 361/361 real failing calls reach a branch. ✖ not deployed |
 | **5.4** | ❌ | argument supplier (23.7%) |
-| **5.5** | ❌ | error contract (8.1%) — a failure with no message cannot be produced |
+| **5.5** | ▶ **NEXT — population MEASURED 2026-08-10, and it is 36% smaller than §1 says** | **26 calls / 17 sessions (4.7%), not 41 / 29 (8.1%).** 🔴 **15 of the 41 are SUSPENSIONS, not failures** — `task: {status: "input_required"}` awaiting a human, recorded `ok:false` with no message because they are *waiting*. **`ok:false` is carrying two vocabularies and nothing downstream separates them.** Fixing only the message would hand a suspension a plausible error string and make the conflation permanent — so 5.5 must split the outcome first. See the spec row |
 | **5.6** | ❌ | output contract + completeness — `emits` checked at PLAN-BUILD time |
 | **5.7** | ❌ | repeat semantics — cost removed, **signal retained** |
 | **5.8** | ❌ | preconditions (18.7%) — pre-dispatch **and** gating advertisement |
