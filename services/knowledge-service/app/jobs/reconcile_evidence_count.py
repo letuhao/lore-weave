@@ -96,10 +96,22 @@ async def _reconcile_label(
 ) -> int:
     """Fix one label's drifted counters. The query moved to
     `neo4j_repos/maintenance.py` (plan T17); what stays here is the per-run ORCHESTRATION
-    — which labels, in what order, with what cap — because that is scheduling policy."""
-    return await maintenance.reconcile_evidence_count_for_label(
+    — which labels, in what order, with what cap — because that is scheduling policy.
+
+    The metric increment stays here for the same reason: how much drift a sweeper repaired
+    is an OPERATIONAL fact about the run, not something the storage layer should know.
+
+    ⚠️ It was dropped by the T17 move and restored in T20, after a live repo test caught
+    it. Nothing unit-tested the counter, so the whole unit suite stayed green while
+    `knowledge_evidence_count_drift_fixed_total` silently stopped moving — the one signal
+    that says whether this sweeper is finding anything.
+    """
+    fixed = await maintenance.reconcile_evidence_count_for_label(
         session, label=label, user_id=user_id, project_id=project_id, limit=limit,
     )
+    if fixed:
+        evidence_count_drift_fixed_total.labels(node_label=label).inc(fixed)
+    return fixed
 
 
 async def reconcile_evidence_count(

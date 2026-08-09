@@ -122,10 +122,31 @@ free-text fact search, and an empty list is indistinguishable from "this book ha
 knowledge-service — a cycle), the HTTP-surface gate already exempts this service, and the hop
 disappears in Phase 8. Stated in the adapter rather than left implicit.
 
-**▶ Resume at T20** — repoint the ~561 live-Neo4j skips onto the three fakes. The phase's payoff,
-and the same edit that lands T17's remaining 15 files: a test that stops needing a session stops
-needing the module that opened one. Expect the fakes to be found wrong along the way — that is the
-mechanism working, and QC-2 is the backstop.
+**T20 landed — the integration suite went 67 passing → 338.** But not the way the task assumed,
+and both corrections mattered:
+
+⚠️ **They were not all Neo4j.** Measured: 272 Neo4j skips, **282 Postgres** skips. Those 282 are
+still skipping — a separate `TEST_KNOWLEDGE_DB_URL` slice, same "env-gated tests skip and the suite
+lies" problem one backend over.
+
+⚠️ **"Repoint at the fakes" would have destroyed coverage.** All 24 Neo4j-gated files are
+REPOSITORY tests — they verify the Cypher. Pointing them at `FakeGraphStore` makes the fake grade
+itself and deletes the ground truth QC-2 compares against. They were made to RUN instead.
+
+🔒 **The Neo4j fixture had no throwaway guard** (the Postgres one has had since the
+truncate-the-dev-DB incident). Anyone setting `TEST_NEO4J_URI` to the dev graph would have had 272
+tests writing into real books. It now refuses ports 7687/7688 unless `TEST_NEO4J_ALLOW_SHARED=1`.
+
+🐞 **Three defects, all from my own T17/T18 work, none caught by 4000+ unit tests:** a dropped
+metric increment; an as-of clause in a template that never binds the parameter; and — the quiet one
+— the same clause MISSING from two templates and from one UNION branch, so
+`relations_for(direction="outgoing", as_of=40)` returned a plausible answer that ignored the
+position. Lesson: I verified the mutation APPLIED, not that it applied ONLY where intended.
+
+**▶ Resume at QC-2** — adapter-parity live proof, then T17's remaining 15 files. QC-2 is now the
+load-bearing control for the phase: since repo tests deliberately were NOT repointed, diffing the
+fakes against the Neo4j adapter on a live stack is the fakes' only real check.
+Throwaway graph: `docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
 
 ⚠️ **Run `go test ./internal/api/` in glossary-service, not `./internal/...`** — the latter runs the
 `api` and `migrate` packages concurrently against one `GLOSSARY_TEST_DB_URL` database and reports

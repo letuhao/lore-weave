@@ -48,11 +48,18 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T20** — retire the ~561 tests that skip without a live Neo4j by repointing them at the
-three fakes (`FakeGraphStore`, `FakeVectorStore`, `FakeTruthStore`). This is the phase's payoff and
-**the same edit that lands T17's remaining 15 files** — a test that stops needing a session stops
-needing the module that opened one. Expect the fakes to be found wrong in the process; that is the
-mechanism working, and QC-2 (adapter-parity live proof) is the backstop that keeps them honest.
+**RESUME: QC-2** — adapter-parity live proof, then T17's remaining 15 files. QC-2 is now the
+load-bearing control for the whole phase: T20 deliberately did NOT repoint repo tests at the fakes
+(that would be the fake grading itself), so the fakes' only real check is diffing them against the
+Neo4j adapter on a live stack.
+
+A throwaway Neo4j for the live suite:
+`docker run -d --name lw-neo4j-scratch -p 7999:7687 -e NEO4J_AUTH=neo4j/loreweave_dev_neo4j neo4j:5-community`
+then `TEST_NEO4J_URI=bolt://localhost:7999`. The fixture now REFUSES ports 7687/7688 (the dev
+graph) unless `TEST_NEO4J_ALLOW_SHARED=1`.
+
+⚠️ **283 skips remain and they are POSTGRES** (`TEST_KNOWLEDGE_DB_URL`), not Neo4j — the same
+"env-gated tests skip and the suite lies" problem, one backend over. Worth its own slice.
 
 ⚠️ Two of those 15 need a decision rather than a move: the six `db/migrations/` backfills are
 admin one-shots reachable through `internal_backfill.py`, so **Phase 7's engine swap must either
@@ -1141,10 +1148,55 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   leaking into an as-of read · the axis guard removed · the router inferring the store from
   `book_id` · glossary search returning `[]` instead of raising.
 
-- [ ] **T20** — Retire the 561 skips that needed a live Neo4j
+- [x] **T20** — Retire the 561 skips that needed a live Neo4j — **GREEN: 67 → 338 passing**
   `services/knowledge-service/tests/` — repoint at the fakes; make `-n auto` safe.
   **This is the port's first user-visible win.**
   (depends on T19)
+  ---
+  **Evidence.** `tests/integration/db`: **67 passed / 554 skipped → 338 passed / 283 skipped,
+  0 failed.** Unit suite **4078 passed**. Three real defects found, all mine, all fixed.
+
+  ⚠️ **The task's premise was wrong in two ways, and both had to be checked before acting.**
+
+  **(1) They are not all Neo4j.** Measured: **272 Neo4j skips, 282 POSTGRES skips.** Repointing
+  the Postgres half at a graph fake would have done nothing at all. The remaining 283 skips are
+  that Postgres half — a separate `TEST_KNOWLEDGE_DB_URL` job, not this one.
+
+  **(2) "Repoint at the fakes" would have DESTROYED coverage, not won it.** All 24 Neo4j-gated
+  files are **repository tests** — `test_relations_repo`, `test_entities_repo`, `test_facts_repo`,
+  `test_provenance_repo`, `test_neo4j_schema`… They verify the CYPHER against a real database.
+  Pointing them at `FakeGraphStore` replaces *"does this query do what we think"* with *"does our
+  fake do what we wrote it to do"* — the fake grading itself — and it would delete the ground
+  truth **QC-2's adapter-parity proof compares against**. So the fakes stay where they belong
+  (unit tests, and the consumer paths T17 is migrating), and these tests were made to **RUN**.
+
+  That is the real win, and it is this repo's own lore: *env-gated tests skip and the green suite
+  lies.* 554 tests silently skipping is the defect; 338 running is the fix.
+
+  🔒 **The Neo4j fixture had NO throwaway guard** — the Postgres one has refused a non-throwaway
+  DSN since the `kg-integration-tests-truncate-shared-dev-db` incident. Anyone setting
+  `TEST_NEO4J_URI` to the dev graph would have had 272 tests creating and `DETACH DELETE`-ing
+  nodes in real books. Closed: Neo4j Community has no multi-database, so "throwaway" cannot be a
+  database *name* here — the equivalent is a dedicated instance, so the fixture refuses the dev
+  stack's published ports (7687/7688) with an explicit `TEST_NEO4J_ALLOW_SHARED=1` escape hatch
+  for CI. Verified by pointing it at 7688 and watching it refuse.
+
+  🐞 **Three defects, all introduced by my own T17/T18 work, none caught by the unit suite:**
+
+  | # | defect | how it hid |
+  |---|---|---|
+  | 1 | **T17 dropped `evidence_count_drift_fixed_total.inc(fixed)`** when the reconciler query moved | nothing unit-tested the metric, so the suite stayed green while the only signal saying whether the sweeper finds anything silently stopped moving |
+  | 2 | **T18's as-of clause landed in `_EGO_HOP_STEP`**, which never binds `$as_of_ordinal` | loud (`ParameterMissing`) — but only against a live Neo4j, which nothing was running |
+  | 3 | **T18's clause MISSED the outgoing/incoming templates, and covered only one UNION branch of `both`** | not loud at all: `relations_for(direction="outgoing", as_of=40)` returned a plausible answer that **ignored the position entirely**, and `both` filtered half its edges |
+
+  Defect 3 is the one worth remembering. I verified the mutation *applied* — the lesson from T11 —
+  but not that it applied **only where intended**. "The pattern exists" and "the pattern exists in
+  exactly these three places" are different claims, and a blanket `str.replace` proves the first.
+
+  **The guard is source-level and needs no database:** `test_relations_as_of_templates.py` asserts
+  each 1-hop template applies the clause (so a read cannot accept `as_of` and ignore it), that the
+  `both` template applies it to **each** UNION branch, and that the queries which never bind the
+  parameter never reference it. All three defects would have failed it.
 
 - [ ] **QC-2** — Adapter-parity live proof
   `/aif-review +check`. Then run the **same** context-assembly request against the Neo4j adapter and

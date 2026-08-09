@@ -530,6 +530,9 @@ WHERE anchor.user_id = $user_id
   AND ($project_id IS NULL OR peer.project_id = $project_id)
   AND r.confidence >= $min_confidence
   AND r.valid_until IS NULL
+  AND ($as_of_ordinal IS NULL
+       OR (r.valid_from_ordinal <= $as_of_ordinal
+           AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
   AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
   AND ($include_archived_peer OR peer.archived_at IS NULL)
 RETURN properties(r) AS rel,
@@ -547,6 +550,9 @@ WHERE anchor.user_id = $user_id
   AND ($project_id IS NULL OR peer.project_id = $project_id)
   AND r.confidence >= $min_confidence
   AND r.valid_until IS NULL
+  AND ($as_of_ordinal IS NULL
+       OR (r.valid_from_ordinal <= $as_of_ordinal
+           AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
   AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
   AND ($include_archived_peer OR peer.archived_at IS NULL)
 RETURN properties(r) AS rel,
@@ -973,9 +979,6 @@ _EGO_HOP_STEP = """
     AND NOT nbr.id IN $visited_ids
     AND r.user_id = $user_id
     AND r.valid_until IS NULL
-    AND ($as_of_ordinal IS NULL
-         OR (r.valid_from_ordinal <= $as_of_ordinal
-             AND (r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal)))
     AND coalesce(r.confidence, 0.0) >= $min_confidence
     AND (NOT $exclude_pending OR coalesce(r.pending_validation, false) = false)
   WITH DISTINCT nbr

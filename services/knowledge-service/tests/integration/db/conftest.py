@@ -87,10 +87,37 @@ async def pool():
         await p.close()
 
 
+# The dev graph runs on 7687 inside the compose network and 7688 on the host, and it holds
+# REAL data. These tests create and DETACH DELETE nodes, so pointing TEST_NEO4J_URI at it
+# would write into somebody's book. The Postgres fixture above has refused a non-throwaway
+# DSN since the kg-integration-tests-truncate-shared-dev-db incident; this one never did —
+# closed in plan T20.
+#
+# Neo4j Community has no multi-database, so "throwaway" cannot be a database NAME here the
+# way it is for Postgres. The equivalent is a DEDICATED INSTANCE: an explicit opt-in, plus a
+# refusal of the ports the dev stack publishes.
+_DEV_NEO4J_PORTS = ("7687", "7688")
+
+
+def _guard_throwaway_neo4j(uri: str) -> None:
+    if os.environ.get("TEST_NEO4J_ALLOW_SHARED") == "1":
+        # Escape hatch for CI, where the graph IS disposable and its port is whatever the
+        # service container published. Explicit, so nobody reaches it by accident.
+        return
+    if any(f":{port}" in uri for port in _DEV_NEO4J_PORTS):
+        raise RuntimeError(
+            f"REFUSING: TEST_NEO4J_URI {uri!r} looks like the shared DEV graph "
+            f"(ports {'/'.join(_DEV_NEO4J_PORTS)}). These tests CREATE and DETACH DELETE "
+            "nodes — point them at a disposable Neo4j instance of their own, or set "
+            "TEST_NEO4J_ALLOW_SHARED=1 if the target really is disposable."
+        )
+
+
 def _neo4j_dsn() -> tuple[str, str, str] | None:
     uri = os.environ.get("TEST_NEO4J_URI")
     if not uri:
         return None
+    _guard_throwaway_neo4j(uri)
     user = os.environ.get("TEST_NEO4J_USER", "neo4j")
     password = os.environ.get("TEST_NEO4J_PASSWORD", "loreweave_dev_neo4j")
     return uri, user, password
