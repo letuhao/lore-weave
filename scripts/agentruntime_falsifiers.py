@@ -41,6 +41,45 @@ REQS = f"{CS}/requirements.txt"
 
 #: `{test name: [(file, old, new), ...]}` — apply every mutation, then that test must RED.
 FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
+    # ── CP-3 · the plan ─────────────────────────────────────────────────────────────────────
+    # The load-bearing one. Degrading to "ask the model for it" reintroduces the 61.8% failure --
+    # silently, and only where the carrier has already failed.
+    "test_A_MISSING_VALUE_IS_A_REFUSAL_NOT_A_FALLBACK_TO_ASKING_THE_MODEL": [
+        (f"{PKG}/plan.py",
+         "        if b.from_emit not in produced:",
+         "        if False and b.from_emit not in produced:"),
+    ],
+    # 0.8: hashing the whole spec instead of the gated steps invalidates an approval on ANY edit,
+    # which trains a user to re-approve reflexively.
+    "test_AN_UNGATED_EDIT_DOES_NOT_INVALIDATE_AN_APPROVAL": [
+        (f"{PKG}/plan.py",
+         "            [i, _step_payload(s)] for i, s in enumerate(self.steps) if s.gated",
+         "            [i, _step_payload(s)] for i, s in enumerate(self.steps)"),
+    ],
+    # 6.2: a binding checked at runtime has a failure mode of ALLOW.
+    "test_A_BINDING_NOBODY_EMITS_IS_A_GENERATION_ERROR_NOT_A_RUNTIME_ONE": [
+        (f"{PKG}/plan.py",
+         "        check_bindings(self.steps)",
+         "        pass  # bindings unchecked"),
+    ],
+    # 3.6: an end that names nobody is exits #2 and #4 restored.
+    "test_AN_END_THAT_IS_NOT_DONE_WHEN_MUST_NAME_SOMEONE": [
+        (f"{PKG}/plan.py",
+         '        if self.scope != "done_when" and not self.hand_to_human:',
+         '        if False and not self.hand_to_human:'),
+    ],
+    # C-13: re-running a step that committed an effect duplicates it.
+    "test_A_STEP_THAT_COMMITTED_AN_EFFECT_IS_NOT_AUTO_RE_RUNNABLE": [
+        (f"{PKG}/plan.py",
+         "    return not any(e.step_index == step_index for e in state.committed_effects())",
+         "    return True"),
+    ],
+    # 3.3 obligation 4: an identifier that gets abridged is the 61.8% failure one step earlier.
+    "test_AN_IDENTIFIER_IS_NEVER_COMPRESSED": [
+        (f"{PKG}/planproject.py",
+         '            lines.append(f"      {name} = {value!r}")',
+         '            lines.append(f"      {name} = {str(value)[:8]!r}")'),
+    ],
     # ── CP-4 · the declaration producer ─────────────────────────────────────────────────────
     # One edit, two guards. `settings_*` is served by provider-registry-service, and the obvious
     # derivation — service = f"{prefix}-service" — is wrong exactly there. Both were driven red by

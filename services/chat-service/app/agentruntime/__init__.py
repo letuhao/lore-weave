@@ -87,8 +87,36 @@ from .surface import (
     validate_pipeline,
 )
 
+from .plan import (
+    EVENT_KINDS,
+    RECOVERY_SCOPES,
+    STEP_STATUSES,
+    Binding,
+    BindingError,
+    Event,
+    PlanError,
+    Spec,
+    State,
+    Step,
+    Termination,
+    check_bindings,
+    preflight_gates,
+    re_runnable,
+    resolve_arguments,
+    terminate,
+)
+from .planparse import PlanParseError, parse as parse_plan
+from .planproject import project as project_plan
+
 __all__ = [
     "Admitted", "admit", "try_admit",
+    # CP-3 · the plan. Exported because §0.11's whole point is that the plan is DATA a caller
+    # inspects, revises and re-presents — a mechanism reachable only through private imports would
+    # be the plan-as-gate this design splits apart.
+    "EVENT_KINDS", "RECOVERY_SCOPES", "STEP_STATUSES",
+    "Binding", "BindingError", "Event", "PlanError", "Spec", "State", "Step", "Termination",
+    "check_bindings", "preflight_gates", "re_runnable", "resolve_arguments", "terminate",
+    "PlanParseError", "parse_plan", "project_plan",
     "WillNotBoot", "boot",
     "TOOLSET_ID", "AssemblyMismatch", "DeclarationToolset", "advertised_names", "deferred_names",
     "excluded_by", "toolset_for", "withholding_notice",

@@ -84,7 +84,19 @@ class TestTheOwnerIsDerivedAndNotGuessedFromTheName:
 
     def test_EVERY_DERIVED_SOURCE_PATH_IS_A_REAL_DIRECTORY(self, baseline):
         """The strongest available check on the table: C-0 reads the owner out of this path, and a
-        path naming a directory that does not exist is an owner nobody can be held to."""
+        path naming a directory that does not exist is an owner nobody can be held to.
+
+        🔴 **THIS GUARD NEEDS THE WHOLE `services/` TREE, AND THE CENSUS MIRROR IS A SUBSET.** Both
+        gates copy only `MIRROR_PREFIXES` — 1,333 of 13,599 tracked files — so `services/book-service`
+        is simply not there, and the guard failed the census selftest rather than finding a defect.
+        The skip is conditioned on detecting that subset exactly (chat-service present, the others
+        absent) rather than on a bare `exists()`, because a blanket skip would also fire on a real
+        deletion, which is the one thing this guard exists to catch.
+        """
+        if not (_REPO / "services" / "book-service").is_dir() \
+                and (_REPO / "services" / "chat-service").is_dir():
+            pytest.skip("running inside a gate mirror, which copies only services/chat-service; "
+                        "this guard runs in full in a normal suite run and in CI")
         derived, _ = derive_all(baseline)
         missing = sorted({d.declaration.source_path for d in derived
                           if not (_REPO / d.declaration.source_path).is_dir()})
@@ -253,6 +265,59 @@ class TestTheRankingFacetsReachTheRow:
                   "admitted_against": "1.0.0", "members": [],
                   "lane": "read", "tier": "R", "cost": 1_000_000_000}
         check_row(forged, "row")  # passes — and this assertion is the honest record of that
+
+
+class TestTheRemainingRefusalsAreChecked:
+    """The census found these unguarded in the same sweep that found CP-3's. Each is a refusal a
+    caller can reach with ordinary input."""
+
+    def test_A_CATALOGUE_ENTRY_WITH_NO_NAME_IS_REPORTED(self):
+        with pytest.raises(Underivable) as exc:
+            derive_one({"description": "x", "_meta": {"tier": "R"}})
+        assert exc.value.field_name == "id"
+
+    def test_COVERAGE_REFUSES_TO_REPORT_A_PARTITION_IT_DID_NOT_GET(self):
+        """🔴 The anti-vacuity check on the producer's own arithmetic. If `derived + unresolved`
+        ever stopped equalling the input, the fraction would describe a set the caller did not hand
+        in — which is the self-derived denominator this run has been burned by repeatedly. The guard
+        drives it by handing `coverage` an input `derive_all` cannot round-trip.
+        """
+        import app.agentruntime.derive as D
+
+        real = D.derive_all
+        try:
+            D.derive_all = lambda cat: (list(real(cat)[0])[:1], [])   # silently drops the rest
+            with pytest.raises(AssertionError, match="reached neither list"):
+                D.coverage([{"name": "book_list", "description": "x", "_meta": {"tier": "R"}},
+                            {"name": "book_read", "description": "x", "_meta": {"tier": "R"}}])
+        finally:
+            D.derive_all = real
+
+    def test_GRANDFATHERING_A_DECLARATION_THAT_WAS_NEVER_ADMITTED_IS_REFUSED(self):
+        """It would be a hand-typed row wearing the mechanism's name — §6.4 carries an EXISTING
+        admission forward, it does not introduce one."""
+        from app.agentruntime.admission import admit
+        from app.agentruntime.contract import Declaration
+        from app.agentruntime.manifest import UntrustedRow, build
+
+        prev = build([admit(Declaration(id="book_list", kind="tool",
+                                        source_path="services/book-service/"))])
+        with pytest.raises(UntrustedRow, match="not in the previous manifest"):
+            build([admit(Declaration(id="book_list", kind="tool",
+                                     source_path="services/book-service/"))],
+                  previous=prev, grandfather={"never_admitted"})
+
+    def test_GRANDFATHERING_A_DECLARATION_THIS_BUILD_ADMITTED_IS_REFUSED(self):
+        """Freezing a row that just passed the current contract would leave §6.4's queue naming work
+        already done — the second of the two opposite failures this field has had."""
+        from app.agentruntime.admission import admit
+        from app.agentruntime.contract import Declaration
+        from app.agentruntime.manifest import UntrustedRow, build
+
+        d = Declaration(id="book_list", kind="tool", source_path="services/book-service/")
+        prev = build([admit(d)])
+        with pytest.raises(UntrustedRow, match="already done"):
+            build([admit(d)], previous=prev, grandfather={"book_list"})
 
 
 class TestTheProviderTableIsAClaimAboutAnotherService:

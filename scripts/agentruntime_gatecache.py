@@ -63,6 +63,22 @@ MIRROR_PREFIXES: tuple[pathlib.Path, ...] = (
     pathlib.Path("contracts"),                                                  # baseline, allowlists
     pathlib.Path(".github"),                                                    # a guard reads CI
     pathlib.Path("docs") / "specs" / "2026-08-03-agent-runtime-unification",    # guards parse it
+    # 🔴 **ADDED 2026-08-09 BY THE SELFTEST, WHICH IS THE SECOND TIME THIS LIST HAS BEEN CORRECTED
+    # THAT WAY.** `test_ts_source_is_present` asserts ai-gateway's `propose-edit-tool.ts` exists —
+    # it is the drift-lock for a description this service advertises and the gateway owns — so a
+    # mirror without it fails before any injection. Same shape as `.github/workflows/` earlier: the
+    # prefix list is a CLAIM about what a measurement must see, and its falsifier runs on every
+    # invocation rather than being written down.
+    pathlib.Path("services") / "ai-gateway" / "src",
+    # 🔴 **AND THIS ONE IS A FINDING ABOUT THE INSTRUMENT, NOT JUST A MISSING PATH.**
+    # `services/chat-service/pytest.ini` pins `pythonpath = ../../sdks/python` — RELATIVE — so inside
+    # a mirror that directory does not exist and the import silently falls back to whatever
+    # `site-packages` holds. The gate was therefore measuring the suite against a **different SDK
+    # than the suite pins**, and it surfaced as `StepProgress.__init__() got an unexpected keyword
+    # argument 'session_done'`: the checkout's SDK had a field the installed copy did not. A
+    # measurement that resolves different code than the thing it measures is the shape this whole
+    # instrument exists to refuse, so the mirror now carries the SDK the pin names.
+    pathlib.Path("sdks") / "python",
 )
 
 #: 🔴 **A VERDICT FILE MUST NOT BE PART OF ITS OWN KEY.** They live under `contracts/`, which is

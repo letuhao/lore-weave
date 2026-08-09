@@ -73,6 +73,7 @@ SUITES = (
     # to force — the CP-0 suite above sat unregistered for a whole checkpoint and its 13 guards
     # were counted as declared by arithmetic while the partition printed clean.
     "tests/test_cp4_derive.py",
+    "tests/test_cp3_plan.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402
