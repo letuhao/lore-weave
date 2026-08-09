@@ -781,8 +781,32 @@ before `3D`, because every signature takes `&SessionContext`.
 |---|---|---|
 | `4A` | `cache_key!` (`DP-R4`) | ✅ reality-scoped form; tier checked by construction (`E0271`), `KeyId` refuses `:` and empty; channel form deferred |
 | `4B` | `t0_write`..`t3_write` typed by the tier marker traits | ✅ `DP-R5` held by rustc (`E0271`), bitten |
-| `4C` | `read_projection_*` per `04b` | ⬜ next — `A::Projection` now exists |
-| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | ⬜ ordered after `4C` — see the subject note |
+| `4C` | `read_projection_*` per `04b` | ✅ scope held by rustc (`E0271`), bitten; `Decode` split from `DpAggregate` |
+| `4D` | `dp-clippy` `R-6` (`forbid_swallowed_backpressure`) | ⬜ **buildable now, still subject-less** — see below |
+
+#### `4D` — the one row where "no subject" is still the honest answer
+
+`R-6` flags `.ok()` / `unwrap_or_default()` applied to a `Result<_, DpError>`.
+After `4B`/`4C` that type finally exists on a real surface, so the lint has
+something to *match*. What it does not have is a **call site**: every caller of
+`t2_write` / `read_projection_reality` today is a `#[cfg(test)]` fixture inside
+`crates/dp`, because no crate depends on `dp` yet.
+
+**This is NOT the `4B` mistake repeating.** The difference is what the missing
+piece is. `4B` was missing *code I could write*, and calling that a blocker was
+the lazy tell. `4D` is missing *other people's call sites*, which arrive when a
+service adopts the SDK — and that is `3E`, which is itself ordered after slice 5.
+Writing the lint now would produce a rule that is green on the whole tree, and
+this run has already removed five mechanisms with exactly that shape.
+
+**The cheap half is already done, and deliberately:**
+`DpError::is_backpressure` exists and is the set `R-6` must key on, so the lint
+cannot mint a second copy of `{RateLimited, CircuitOpen}` that drifts.
+`crates/dp/src/write.rs`'s own test asserts backpressure is returned rather than
+swallowed — the property `R-6` will police, proven at the one place that can
+prove it today.
+
+**Trigger:** the first crate outside `crates/dp` that calls a `dp` primitive.
 
 #### ⚠ `4B` WAS PARKED FOR AN HOUR, AND THE PARK WAS WRONG
 
