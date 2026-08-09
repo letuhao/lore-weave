@@ -48,8 +48,23 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T17's remaining 15 files**, then Phase 3. Phase 2 is otherwise complete — four ports,
-four fakes, a gate, and the parity control that keeps the fakes honest.
+**RESUME: T22** — build and publish the Postgres image (PG18 + pgvector + pgvectorscale). T21
+cleared its gate: StreamingDiskANN has **no dimension ceiling of its own**, so nothing about the
+vector plan changes.
+
+⚠️ **T22 is the task the sealed design flagged as the place the migration's founding argument can
+INVERT** (M4): today a self-hoster runs `docker compose up` and gets a working Neo4j; after this
+they need an image with pinned compiled extensions. The decision to publish a prebuilt image is
+made — and the cost is accepted and stated: **you own a Postgres distribution and its CVE cadence.**
+Build it that way deliberately.
+
+⚠️ **Verify the extension matrix on PG18.** T21 measured on PG17 (the readily available image);
+the design records pgvectorscale supports PG18 via `--pg18 pg_config`, and T22 is where that stops
+being a citation and becomes a build.
+
+**Still open elsewhere:** 6 `db/migrations/` backfills still carry Cypher (Phase 7 must port or
+retire them), QC-2's rendered-block diff is owed once a consumer holds a port, and 283
+Postgres-gated integration skips remain.
 
 ⚠️ **Two debts recorded rather than dropped:** (a) QC-2's *rendered-block* diff is owed once a
 consumer actually holds a port (T17); the port-level diff shipped in its place. (b) **283 Postgres
@@ -1353,9 +1368,42 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 vectors ≈ 390–780 GB. And **D2 needs as-of-filtered semantic search**, which is impossible while
 vectors and validity intervals live in different stores.
 
-- [ ] **T21** — Verify pgvectorscale dims > 2000 (**gate**)
+- [x] **T21** — Verify pgvectorscale dims > 2000 (**gate**) — **GREEN: no ceiling, T22 unblocked**
   `SUPPORTED_PASSAGE_DIMS = (384, 1024, 1536, 2560, 3072)`. pgvector HNSW caps at 2000 (`vector`) /
   4000 (`halfvec`); StreamingDiskANN's ceiling is undocumented. **Blocks T22.**
+  ---
+  **Evidence.** [`docs/measurements/2026-08-10-pgvectorscale-dimension-ceiling.md`](../measurements/2026-08-10-pgvectorscale-dimension-ceiling.md).
+  Throwaway `timescale/timescaledb-ha:pg17` container — PG **17.10**, pgvector **0.8.6**,
+  pgvectorscale **0.9.0**.
+
+  **Stop condition 2 does NOT fire.** All five supported dimensions index with
+  StreamingDiskANN, including the two HNSW cannot take. At 3072 with real data: 2 000 rows,
+  **2.0 s** build, 1 808 kB, the planner **chooses** the index (`Index Scan using f3072_dann …
+  Order By: emb <=> …`), and the nearest neighbour of row 42 **is** row 42.
+
+  ⚠️ **The answer is stronger than "≥3072".** Pushing upward: 4000 OK, 8000 OK, 16000 OK, and
+  `vector(16001)` is rejected by the TYPE. **StreamingDiskANN has no dimension ceiling of its
+  own** — pgvector's 16 000-dim type limit is the only one, five times the largest dimension in
+  the closed set. That turns "no problem in our range" into "there is no index-side limit to run
+  into", which is what T22 needs to commit.
+
+  **The positive control is what makes that mean anything:** pgvector's HNSW was run at the same
+  dimensions and failed at 2560/3072 with the exact documented message, at exactly the documented
+  2000 boundary. A harness that reports OK for everything reports OK for a broken backend too.
+
+  ⚠️ **Its first run reported FAIL for all five** — it treated any stderr output as failure and
+  `DROP TABLE IF EXISTS` emits a `NOTICE`. Now keys on the exit code with `ON_ERROR_STOP=1`. A
+  gate whose first run is a false negative is a gate people learn to argue with.
+
+  ⚠️ **Tested on PG17 while the design targets PG18** — the readily available image bundling
+  pgvectorscale is PG17, and the design's own M1 note records PG18 support (`--pg18 pg_config`).
+  A dimension ceiling is a property of the extension's index implementation rather than the server
+  version, so the result carries; stated rather than glossed, because "I tested what you're
+  shipping" and "I tested a close relative" are different claims.
+
+  **Consequence for T24:** `halfvec` is **not needed for reach**. It is a recall-vs-storage trade
+  to be measured, not a workaround for a cap — so T24 is free to reject it, rather than owing its
+  recall cost as the price of indexing 3072 at all.
 
 - [ ] **T22** — Build and publish the Postgres image (**decision T5**)
   New: `infra/postgres-knowledge/Dockerfile` — PG18 + pgvector + pgvectorscale

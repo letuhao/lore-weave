@@ -165,7 +165,17 @@ against whatever engine is bound, so an engine swap breaks them silently.
 because the happy path never touches it. Untested closed-set guards turned up in T17 batch 1 and
 again in batch 5, in different modules — worth checking for on sight rather than waiting for a bite.
 
-**▶ Resume at the 6 backfills** (or start Phase 3 — the backfills are not blocking).
+**Phase 3 started — T21's gate is CLEAR.** StreamingDiskANN has **no dimension ceiling of its
+own**: it indexed every `SUPPORTED_PASSAGE_DIM` (including the 2560/3072 that pgvector's HNSW
+refuses) and kept going to 16 000, where pgvector's `vector` TYPE stops it. Positive control: HNSW
+failed at 2560/3072 with the exact documented message at the exact documented boundary.
+[`2026-08-10-pgvectorscale-dimension-ceiling.md`](../measurements/2026-08-10-pgvectorscale-dimension-ceiling.md)
+⚠️ Measured on PG17 (the available image); the design targets PG18 — T22 is where that becomes a build.
+
+**▶ Resume at T22** — build/publish the Postgres image. It is the task the design flagged as the
+place the migration's founding argument can INVERT (M4): a self-hoster's `docker compose up` becomes
+an image with pinned compiled extensions, and **you own a Postgres distribution and its CVE
+cadence.** That cost is accepted; build it deliberately.
 
 🔒 **Enrichment's safety properties were unasserted.** Its write-back can corrupt canon in five
 distinct ways and only a live graph ever exercised them; six guards now read the Cypher directly.
