@@ -376,8 +376,18 @@ def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
 def run_all() -> int:
     """Executed in PARALLEL, and that is not an optimisation.
 
-    Serially this takes >20 minutes on Windows. Every gate here is an independent
-    read-only scan of the working tree, so there is nothing to serialise for, and
+    Serially this takes >20 minutes on Windows. MOST gates here are independent
+    read-only scans of the working tree, so there is nothing to serialise for, and
+
+    **THREE ARE NOT, and that sentence used to say "every".** The bite harnesses
+    EDIT the tree — break a guard, assert RED, restore — and one of them also
+    runs `cargo` repeatedly over a crate it is mutating. Running those beside a
+    gate that reads or builds the same tree makes a verdict depend on
+    scheduling; measured, `dp-slice1-bite-gate` reported 32/32 and 28/32 from
+    the identical invocation minutes apart. They are dispatched serially after
+    the pool (see MUTATING below). The claim above was false the day the first
+    bite harness was wired, and nothing noticed because the race biases toward
+    false RED, which reads as an ordinary failure rather than as a harness bug.
     a gate suite people cancel is back to being decorative.
 
     **A measurement trap, recorded so the next person does not re-derive it.**
@@ -404,9 +414,42 @@ def run_all() -> int:
             print(f"  {n:<44} SKIP           needs a live stack: {NEEDS_STACK[n]}")
 
     runnable = [n for n in names if n not in NEEDS_STACK and n not in TOO_SLOW]
+
+    # MUTATING gates run SERIALLY, and after everything else.
+    #
+    # These three edit the working tree — they break a guard, assert the harness
+    # goes RED, and restore it. That is the only evidence a guard is
+    # load-bearing, and it is only valid if nothing else is reading or building
+    # the tree at the same time.
+    #
+    # They were in the pool with everyone else, and the result was a gate whose
+    # verdict depended on SCHEDULING. Measured: `dp-slice1-bite-gate` passes
+    # standalone in ~126s with "32 bite(s) bit", and inside the sweep aborted in
+    # 9s — its first act is to measure a clean baseline, and another harness had
+    # the tree mutated at that moment. `reality-layer-bite-harness` refuses
+    # outright on a dirty tree, so it loses the same race from the other side.
+    #
+    # The race biases toward FALSE RED (a raced harness reports "did not bite"),
+    # which is the safe direction and exactly why it survived: it produced noise
+    # rather than false assurance, and noise is how a suite gets ignored.
+    #
+    # Serial-after-pool rather than a lock: a lock would make one of them SKIP,
+    # and a skipped bite harness proves nothing while still printing a line.
+    MUTATING = (
+        "scripts/dp-slice1-bite-gate.py",
+        "scripts/gate-bite-harness.py",
+        "scripts/reality-layer-bite-harness.py",
+    )
+    concurrent = [n for n in runnable if n not in MUTATING]
+    serial = [n for n in runnable if n in MUTATING]
+
     workers = min(8, (os.cpu_count() or 4))
     with ThreadPoolExecutor(max_workers=workers) as pool:
-        results = list(pool.map(_run, runnable))
+        results = list(pool.map(_run, concurrent))
+    if serial:
+        print(f"  ({len(serial)} tree-mutating gate(s) run serially — see MUTATING)")
+        results += [_run(n) for n in serial]
+    runnable = concurrent + serial
 
     for n, (ok, secs, out) in zip(runnable, results):
         expected_red = n in KNOWN_RED
