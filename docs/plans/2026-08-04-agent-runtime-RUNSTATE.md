@@ -4411,6 +4411,33 @@ was promoting destructive declarations into it: `memory_forget` matched *get*, `
 guard is proven red by restoring the substring key: the budget then keeps `glossary_deep_research`
 (declared `W`) over `jobs_summary` (declared `R`). Suite **2496**.
 
+#### CP-4 — the PRODUCER, and its coverage over a denominator it did not choose (2026-08-09)
+
+*"Declarations, one at a time"* × **315 tools** is six months at the withdrawn `≈13/week`. So what
+this checkpoint owes is a producer, not 315 authored rows. `agentruntime/derive.py` turns a
+catalogue entry into an admissible `Declaration` plus its ranking facets.
+
+**Measured on the frozen baseline and again on the live catalogue: `315 / 315 derived, 0
+unresolved`.** By service: composition 123 · glossary 54 · book 52 · knowledge 42 ·
+provider-registry 13 · translation 12 · agent-registry 9 · jobs 5 · ai-gateway 3 · catalog 2. Lanes
+102/60/153 reproduce the tier histogram exactly; 117 `deprecated` matches the 117 rows carrying
+`visibility`. `derive_all` returns `(derived, unresolved)` **both**, and `coverage()` asserts the
+two partition the input — a producer that silently skipped what it could not handle would report
+100% of what it chose to attempt.
+
+🔴 **`source_path` is the only hard field, and the obvious route is the defect 4.d just deleted.**
+Reading the service out of the tool's name prefix would be a name heuristic, and it would be *wrong*:
+`settings_*` is served by **provider-registry-service**, and no `settings-service` directory exists.
+The registry is transcribed from the gateway's own registration config and gated by two guards, both
+proven red by that one substitution.
+
+🔴 **The gateway is deliberately NOT asked to stamp the provider on the wire.** `_tool_tokens`
+serialises the whole definition including `_meta`, so one extra key changes every cost → every rank →
+what the budget cuts — and the legacy arm is **CP-2's control group** (§7). ✖ `cost` was written
+twice wrong first: a key-sorting flag (caught by the one-canonicaliser guard) and then
+`canon.canonical_bytes`, which **refuses floats by design** — correct for our closed row schema,
+wrong for third-party JSON Schema, and it derived **0 of 315**. A count needs no canonical form.
+
 Throughput is a first-class metric here: **≈13 admissions/week** keeps pace with the model cadence.
 Report it per checkpoint. *(The first draft's metric — "admits fewer than it retires" — cannot fire,
 because nothing is retired.)*

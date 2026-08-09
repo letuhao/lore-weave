@@ -69,6 +69,10 @@ SUITES = (
     # lower bound, and the second time an instrument built to stop that produced one.
     "tests/test_cp0_merge_db.py",
     "tests/test_cp2_assembly.py",
+    # CP-4's producer. Added in the same change as the suite, which is what the gate below exists
+    # to force — the CP-0 suite above sat unregistered for a whole checkpoint and its 13 guards
+    # were counted as declared by arithmetic while the partition printed clean.
+    "tests/test_cp4_derive.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

@@ -41,6 +41,20 @@ REQS = f"{CS}/requirements.txt"
 
 #: `{test name: [(file, old, new), ...]}` — apply every mutation, then that test must RED.
 FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
+    # ── CP-4 · the declaration producer ─────────────────────────────────────────────────────
+    # One edit, two guards. `settings_*` is served by provider-registry-service, and the obvious
+    # derivation — service = f"{prefix}-service" — is wrong exactly there. Both were driven red by
+    # this substitution before either was committed.
+    "test_THE_CASE_A_PREFIX_GUESS_GETS_WRONG": [
+        (f"{PKG}/derive.py",
+         '("settings", "provider-registry-service", ("settings_", "web_")),',
+         '("settings", "settings-service", ("settings_", "web_")),'),
+    ],
+    "test_EVERY_DERIVED_SOURCE_PATH_IS_A_REAL_DIRECTORY": [
+        (f"{PKG}/derive.py",
+         '("settings", "provider-registry-service", ("settings_", "web_")),',
+         '("settings", "settings-service", ("settings_", "web_")),'),
+    ],
     # ── the membrane ────────────────────────────────────────────────────────────────────────
     "test_THE_ALPHABET_ADMITS_EVERY_ID_THIS_REPOSITORY_ALREADY_DECLARES": [
         (f"{PKG}/contract.py",
