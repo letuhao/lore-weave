@@ -519,6 +519,16 @@
         "COST WEIGHED: paid tool, local model, tiny input. Iteration 26 declined a ~$0.04 image generation on the same reasoning; here the run was free, so it was made"
       ],
       "admitted": false
+    },
+    "glossary_search": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and proven against the CONTRACT another mechanism depends on rather than just smoke-tested. 217 calls / 64 sessions / 179 ok (82.5%). Of the 38 failures, 20 are our own breakers (18 blank-args streak, 2 repeated_read) and 17 are a missing `query` -- the model calling search with no search term. This tool is CP-5.3's RESOLVER: the ref registry names it as EntityRef's resolver_tool and keys on result_path=entities, id_field=entity_id, name_field=cached_name and match_field=tier with match_value=exact. All four were checked in the live reply, not assumed -- a resolver whose result shape drifts would make identifier resolution silently inert, which is the same failure mode that left CP-6.1 dead for a day. Its 2 repeated_read refusals are also the only TYPED refusals in this tool's history, which is CP-5.5 working on live traffic.",
+      "evidence": [
+        "PHASE 2, split: 179 ok / 38 failed = 20 breakers + 17 missing query + 1 malformed book_id",
+        "LIVE: glossary_search(book_id, query='Mira Vale') -> 1 entity, cached_name 'Mira Vale', tier 'exact', a real entity_id",
+        "CONTRACT CHECKED, not assumed: the registry's four keyed fields (entities / entity_id / cached_name / tier=exact) are all present in the live result. CP-5.3's 'exactly one match at the declared quality substitutes' branch is therefore reachable"
+      ],
+      "admitted": true
     }
   }
 }
