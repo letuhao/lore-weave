@@ -2827,7 +2827,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   meanwhile. **Retry when** T35 lands - and re-run this count first, because *"must be 0"* is
   the acceptance criterion and **2819** is where it starts.
 
-- [ ] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
+- [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   `docs/specs/.../README.md`: *"Its shape is the design's own test: fix the design, then **re-run
   this book**."*
   Re-run the Mị Đế authoring flow **end-to-end through the real frontend**, same plan, same cast <!-- doc-language-gate: ok -- the book title is the cited corpus subject of the acceptance case -->
@@ -2841,6 +2841,22 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   (depends on **T36** — it is T36 that closes the case this test proves)
   *(moved here from Phase 5 by `/aif-improve +check`: the acceptance test was scheduled to run
   one commit BEFORE the task that makes it pass, so it would have failed and read as a regression.)*
+  ---
+  ### DEFERRAL `D-QC5-ACCEPTANCE-BLOCKED-ON-T36`
+
+  | | |
+  |---|---|
+  | **Blocker** | QC-5 proves the case **T36 closes**, and T36 is deferred (`D-T36-ROLE-FACTS`). Running it now would re-run the dogfood book against a system where a role is still handed to the canon check as *currently true regardless of reading position* — so it would reproduce the original failure and report it as a **regression of this refactor**, which is the precise mistake `/aif-improve +check` already moved this task to avoid. |
+  | **Evidence** | The plan's own dependency line: *"depends on **T36** — it is T36 that closes the case this test proves"*, and the note recording that QC-5 was previously scheduled one commit BEFORE the task that makes it pass. `entity_facts` holds **0** rows of `fact_kind='relation'`, so there is no role fact for the check to window. `fact_for_check.py` still documents relations as not position-windowed. |
+  | **To unblock** | `D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2 (does the lore bible enter scope, or is the acceptance claim withdrawn?). |
+  | **Mechanism** | The task's own pass/fail rule is the tracker and it is unusually sharp: *"a pass here with `canon_consistency` 5/5 means the refactor has NOT landed."* That inverted criterion cannot be satisfied by accident — a green run is the failure signal — so QC-5 cannot be quietly marked done. |
+  | **Retry when** | T36 closes. Capture what the task names: the plan artifact, the drafted chapters, the critic's per-chapter scores, and the glossary delta (entity count before/after the cast pass). |
+
+  ⚠️ **This is the refactor's stated acceptance test, so its being blocked is the single most
+  important thing in this plan's status.** Nine tasks shipped this session with evidence; none
+  of them is the thing the register says this refactor is FOR. The register row
+  `D-CANON-CHECK-BLIND-TO-ROLE` still points here, and RT-2 says that row is either owed a
+  lore bible or owed a withdrawal. **That is a PO decision, not remaining work.**
 
 <!-- Commit checkpoint: T35–T37 + QC-5 -->
 
