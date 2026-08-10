@@ -199,6 +199,18 @@
         "CHECKED, not assumed: active_chapter_translation_versions has rows, but all three candidate chapters belong to books that no longer exist in loreweave_book, so the empty read is the environment's state rather than the tool's"
       ],
       "admitted": false
+    },
+    "settings_provider_inventory": {
+      "state": "proven",
+      "note": "PROVEN LIVE with a real state change, and the iteration's most useful moment was NOT filing a defect. All 22 calls (1 session, 2026-07-08) are args:{} -- the same blank-argument day as jobs_get and translation_list_versions -- missing the one required provider_credential_id. I nearly reported the tool broken: given a REAL credential it returned {models: []} while LM Studio was live, serving 69 models, and reachable from inside the service's own container. Reading the handler first is what saved it -- the tool reads a CACHE by design ('no upstream sync -- that would need the secret; the agent reads what's already synced'), and my user's cache was simply empty while nine other credentials had rows. Running the real sync took the cache from 0 to 69 and the tool returned all 69. WHAT SURVIVES AS A FINDING (DQ-10) is a description mismatch: the tool says it lists what a provider 'currently offers (its live inventory)', and no agent-surface tool can populate that cache -- only GET /v1/model-registry/providers/{id}/models?refresh=true, behind the user's own JWT. An empty answer cannot be told apart from 'never synced', and the model has no move that would change it.",
+      "evidence": [
+        "PHASE 2: 22 calls / 1 session / 2026-07-08, all args:{}, one error naming the single missing required property",
+        "LIVE, before: settings_provider_inventory with a real provider_credential_id -> {models: []} for all three of the test user's credentials",
+        "CHECKED rather than filed: LM Studio answers :1234/v1/models with 69 models from the host, and wget from INSIDE infra-provider-registry-service-1 reaches it too -- so 'unreachable provider' was ruled out before concluding anything. The handler reads provider_inventory_models and never calls upstream",
+        "DATA: GET /v1/model-registry/providers/019dc738.../models?refresh=true -> 200; cached rows for that credential 0 -> 69; the MCP tool then returned 69 models with real names and context lengths (allenai/olmocr-2-7b ctx 128000, cydonia-24b-v4.3 ctx 131072, ...). Falsifier: the same tool call returned an empty list minutes earlier",
+        "NO CODE CHANGE: the tool does exactly what its handler says. DQ-10 is about what its DESCRIPTION says, which is a different fix and partly a product decision"
+      ],
+      "admitted": false
     }
   }
 }

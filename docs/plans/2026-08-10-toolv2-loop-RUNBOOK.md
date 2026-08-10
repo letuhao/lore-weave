@@ -337,6 +337,31 @@ schemas is the same shape, one layer down.
 *Would clear it:* either accept-and-ignore `domain` on the glossary variant, or retire the variant
 in favour of `confirm_action(domain="glossary")` — a consolidation decision, not a bug fix.
 
+### DQ-10 · `settings_provider_inventory` promises "live" and reads a cache no agent tool can fill
+
+*Raised by:* iteration 18, and it nearly became a false defect report.
+
+The tool's description says it lists *"the upstream models a configured provider credential
+**currently offers** (its **live** inventory)"*. The handler's own comment says the opposite, and
+the code agrees: *"Read the cached inventory only (no upstream sync — that would need the secret;
+the agent reads what's already synced)."* It selects from `provider_inventory_models` and nothing
+else.
+
+That cache is populated by exactly one path — `GET /v1/model-registry/providers/{id}/models?refresh=true`,
+a REST route behind the user's own JWT. **No tool on the agent surface can fill it.** So when the
+tool answers `{"models": []}`, the model cannot distinguish *"this provider offers nothing"* from
+*"nobody has ever opened the Settings page for this credential"*, and it has no move that would
+change the answer.
+
+**How close this came to a wrong finding:** LM Studio was live, serving 69 models, reachable from
+inside the service's own container — and the tool returned empty. That reads as a broken tool.
+Reading the handler first is what turned it into a description mismatch instead of a bug report.
+The proof then ran the real sync (cache 0 → 69) and the tool returned all 69.
+
+*Would clear it:* either correct the description to say "last synced inventory" and say when it was
+synced, or give the agent surface a sync it can call. The first is a one-line honesty fix; the
+second is a product decision, because syncing needs the provider secret.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
