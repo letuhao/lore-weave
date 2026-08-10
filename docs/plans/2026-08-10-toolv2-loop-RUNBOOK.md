@@ -87,6 +87,55 @@ phase 4 after the fix.
 
 ---
 
+## Deferred questions — recorded when they block, cleared by evidence, never by guessing
+
+A question that blocks the CURRENT tool does not stop the loop and does not get invented an answer.
+It lands here with its evidence, and the loop moves on. These are revisited when the catalogue has
+no remaining independently-executable work, or when new evidence makes one of them live.
+
+### DQ-1 · An explicit JSON `null` for an OPTIONAL string is rejected before the handler runs
+
+*Raised by:* iteration 1 (`glossary_propose_curation`, phase 2) · *Measured:* 2 calls / 1 session —
+the tool's only genuine failures that are **not** the singular/plural conflation.
+
+```
+{"op":"status_change","status":"active","book_id":null,   "entity_ids":["019fea5a-…"]}
+{"op":"status_change","status":"active","winner_id":null, "entity_ids":["019fea5a-…"]}
+→ validating "arguments": … /properties/book_id: type: … has type "null", want "string"
+```
+
+Go's `json:"…,omitempty"` makes a field optional in the *struct*, but the generated JSON Schema
+still says `type: "string"`, so the MCP SDK's validator refuses `null` before any of our code sees
+it. Sending `null` for "I have no value" is an ordinary thing for a model to do, and `winner_id`
+here is a field of a **different op** — the flat superset invites filling it in with a blank.
+
+**The question, and it is a product/architecture call, not a lookup:** should every optional string
+on the glossary MCP surface accept an explicit `null` (`type: ["string","null"]`)? That is a
+schema-generator change across *every* glossary tool, and this runtime has already had one
+whole-provider de-federation caused by a schema-type edit. **2 measured calls do not justify that
+blast radius**, and no amount of local reasoning settles it — so it is recorded, not guessed.
+*Would clear it:* a corpus sweep showing the pattern is broad, or an explicit decision to accept it.
+
+### DQ-2 · Five glossary-service DB tests are red against the live `loreweave_glossary`
+
+*Raised by:* iteration 1, phase 4 · *Confirmed **pre-existing** at HEAD `b334fe531`* by re-running
+them in a detached worktree — they are not this iteration's regression, and the fix was not allowed
+to hide behind them.
+
+`TestTriggerStillFiresOnWatchedFields` (short_description / deleted_at / permanently_deleted_at),
+`TestTriggerSkipsRecalcOnUpdatedAtOnly`, `TestK2aSearchVectorRefreshesOnDirectShortDescriptionWrite`,
+`TestK3_AutoRegenOnDescriptionUpdate` — all "recalc did not fire", i.e. a **snapshot-recalc trigger
+that is absent or disabled in that database**. Plus `TestSyncTool_AvailableApplyRoundTrip`
+("fresh adopt: want 0 updates, got 3"), which is shared-state pollution: the test asserts a clean
+adopt against a DB that already has three adoptable standards.
+
+Whether these are a real trigger regression or environment drift is **not decidable from the test
+output alone** — and this runtime has already spent a full investigation on host-env drift wearing
+a code bug's clothes. *Would clear it:* comparing the trigger definitions in `loreweave_glossary`
+against the migration chain.
+
+---
+
 ## Ledger
 
 `contracts/agent-runtime-toolv2-ledger.json` records the **conclusion** per tool and nothing else —

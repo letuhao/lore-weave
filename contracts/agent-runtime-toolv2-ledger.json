@@ -2,11 +2,15 @@
   "ledger_version": 1,
   "tools": {
     "glossary_propose_curation": {
-      "state": "converting",
-      "note": "PHASE 2 DONE. 70 calls / 19 sessions / 0 ok, and the 0% is TWO populations. 42 of 70 are task.status=input_required suspensions already stamped call_outcome=deferred by CP-5.5 -- not failures, the legacy ok:false flag is the conflation. The 26 GENUINE failures all sent entity_id (singular, a VALID uuid) where op=status_change requires entity_ids (plural array), and the backend answers 'at least one valid entity_id is required' -- naming the singular field the model DID send, so the message is actively misleading. Site: services/glossary-service/internal/api/pipeline_propose_tools.go:102. Schema carries BOTH fields with additionalProperties:false. NEXT: phase 5 backend fix -- accept the singular for status_change (prose is not the lever, measured 3x), then phase 4 live prove.",
+      "state": "proven",
+      "note": "PROVEN LIVE. The 0% was two populations: 42 of 70 calls are input_required suspensions already typed `deferred` (never failures -- the legacy ok:false flag was the conflation), and 28 genuine failures. 26 of those 28, across 15 sessions, are ONE shape: entity_id (singular, a valid UUID) sent with op=status_change, which reads only entity_ids. The FLAT SUPERSET schema ACCEPTS entity_id -- it is a declared field of this tool -- and op-dispatch then silently drops it, so the core answered 'at least one valid entity_id is required', naming the exact field the caller DID send. FIX (glossary-service, cross-service): coalesceCurationEntityRef in curation_propose_tools.go reconciles the pair AT THE DISPATCH, where the narrowing happens -- not a reworded message (prose is not the lever, measured 3x). The reverse arm (a one-element entity_ids for a singular op) is written too, gated to exactly one element; a multi-element list still refuses, proven live. Nothing is disguised: every op mints a confirm card whose preview states the entity count before a human approves. NOT PROVEN: ops restore_revision and merge were never exercised (0 recorded calls; status_change is 70 of 70). NO CONTRACT MEMBER WRITTEN -- CP-5 sec7 no-subject: the ids the model sent were real UUIDs (no ref-resolution subject), the suspensions are already typed, and the mint output shape is uniform.",
       "evidence": [
         "corpus: 42 deferred / 26 entity_id-singular / 2 schema-type",
-        "backend: pipeline_propose_tools.go:102"
+        "backend: pipeline_propose_tools.go:102",
+        "CODE: coalesceCurationEntityRef + 5 tests in curation_propose_coalesce_test.go; falsifier probe (early return in) reds 3 of them on the exact pre-fix behaviour; glossary internal suite green (5 unrelated failures confirmed PRE-EXISTING at HEAD b334fe531 in a detached worktree)",
+        "LIVE: deployed image infra-glossary-service sha256:ce654254a69b -- container .Image == the built manifest list; POST :8211/mcp tools/call replaying the recorded arguments VERBATIM {op:status_change,status:active,book_id:019fea46-...,entity_id:019fea5a-...} now mints a card: preview_rows 'entities updated: 1', token payload p.entity_ids=[019fea5a-...]",
+        "DATA: throwaway book 019fea46-0694-76a9-94dd-a13c81b1f218, entity 019fea5a-4ef0-74ee-a5c3-4bb3b1eaf6bc PRE status=draft -> /v1/glossary/actions/confirm {status:active,updated:1} -> POST status=active. Falsifier: an empty or wrong coalesced list leaves it draft with updated:0",
+        "REVERSE ARM LIVE: op=reassign_kind + entity_ids:[one] mints (token p.entity_id filled); the two-element control still refuses"
       ],
       "admitted": false
     }
