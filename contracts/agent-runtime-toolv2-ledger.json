@@ -572,6 +572,15 @@
         "LIVE: kg_project_list -> the caller's projects with more:true and a note naming what to do with a project_id. The first row is this loop's own throwaway from iteration 2, which is a small reminder that the corpus now contains the loop's traffic (DQ-12)"
       ],
       "admitted": false
+    },
+    "glossary_list_ai_suggestions": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 93 calls / 29 sessions / 90 ok (96.8%). All 3 failures are correct: 2 repeat-read breaker refusals and 1 'unexpected additional properties [view]' -- the model invented a filter the tool does not declare, and additionalProperties:false refused it precisely. The live result closes a loop within the loop: it returns 'Thiên Cơ Lâu', the entity ITERATION 37 created when the model mapped cultivation_system onto the book's real power_system kind, tagged ['ai-suggested','assistant'] with status draft. The review inbox is holding an assistant-proposed entity exactly as designed, and this loop's own traffic is what is sitting in it.",
+      "evidence": [
+        "PHASE 2, split: 90 ok / 3 failed = 2 repeat-read breaker + 1 undeclared 'view' property",
+        "LIVE: glossary_list_ai_suggestions on throwaway book 019fea46 -> total 1, item 'Thiên Cơ Lâu' (entity_id 019feda6-ccb8, kind_code power_system, status draft, tags ai-suggested + assistant), created 2026-08-10 21:49 -- iteration 37's entity"
+      ],
+      "admitted": false
     }
   }
 }
