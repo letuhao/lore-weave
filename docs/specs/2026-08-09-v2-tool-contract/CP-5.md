@@ -419,19 +419,30 @@ we will ship that user can use to write book with co-writer agent."* So the term
 already exist and are federated; they have simply never been admitted *through* the contract.
 
 The set is **derived** (`scripts/cp5-essential-set.py`): roles from the journey, membership by
-session reach above a floor of 1% of tool-calling sessions. **10 tools — `tool_list` · `tool_load` ·
-`glossary_search` · `book_list` ✅ · `book_read` ✅ · `book_chapter_create` ·
+session reach above a floor of 1% of tool-calling sessions. **11 tools — `tool_list` ✅ ·
+`tool_load` ✅ · `glossary_search` ✅ · `book_list` ✅ · `book_read` ✅ · `book_chapter_create` ·
 `book_chapter_save_draft` · `plan_propose_spec` · `glossary_book_ontology_read` ·
-`glossary_propose_entities`.** 🔴 **A first derivation reported the `compose` role as having no qualifying tool. That was WRONG
+`glossary_propose_entities` · `compose_prose`.** 🔴 **A first derivation reported the `compose` role as having no qualifying tool. That was WRONG
 and is corrected:** `compose_prose` serves it at **2 sessions / 4 calls / 100% ok**, and was
 invisible because the search ran over the FEDERATED snapshot alone — §4 scopes rung 2 to *"all
-324"*, and the 9 chat-service-local tools are not in that file. What remains is a **decision, not a
-gap**: `compose_prose` is the only tool for the role the PO named as the point of the journey, and
-it sits below the reach floor (2 vs 3). **Open: does a role's only tool join the set regardless of
-reach?**
+324"*, and the 9 chat-service-local tools are not in that file. ⭐ **ANSWERED (PO, 2026-08-10): a
+role's ONLY tool joins the set regardless of reach, and the role is AUDITED first (row 5.11).** The
+journey defines the SET; reach only ranks *within* a role. The floor still rejects noise wherever a
+role has alternatives — exactly the `plan_compile` case (1 session, 0% success), which lost to
+`plan_propose_spec` in its own role, so nothing was ever empty and the noise had somewhere to lose
+to.
+
+🔴 **AND `compose_prose` CANNOT BE ADMITTED TODAY, FOR THE SAME REASON IT WAS INVISIBLE.**
+`derive.py` reads the FEDERATED SNAPSHOT ALONE, so a chat-service-local tool is not derivable and
+therefore not promotable. The producer needs the correction `cp5-essential-set.py`'s `catalogue()`
+already carries — union the local tools, and **raise rather than degrade** when they cannot be read,
+because a partial catalogue is precisely how the false finding above was manufactured.
 
 **Exit:** a tool that does not implement the pattern **cannot be released**, proven by injection;
-**the ESSENTIAL SET above is admitted through the contract** (2/10 today);
+**the ESSENTIAL SET above is admitted through the contract** — 🔴 **5 of 11 as of 2026-08-10, so
+this half of the exit is NOT MET.** All 13 spec rows are closed (1 withdrawn), and **the rows are
+not the exit**: reporting CP-5 closed on *"13 of 13"* would be the typed-denominator failure one
+level up;
 ✅ **the residual is CLASSIFIED (2026-08-10, `scripts/cp5-residual.py`): 17 calls / 14 sessions = 3.9%**, derived by classifying all 4,181 failed calls from scratch rather than subtracting §1's figures. It is not a new class — it is per-tool WORDING of existing members, plus **3 genuinely message-less failures**, which is the true size of the class §1 filed at 41. 🔴 The first pass put CP-5.4's own refusal message in the residual, so the first class is now the TYPED `call_outcome` rather than a regex over prose; and the first
 essential tool is admitted **through** the contract with QC evidence.
 
