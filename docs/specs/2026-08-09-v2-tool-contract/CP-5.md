@@ -432,7 +432,7 @@ reach?**
 
 **Exit:** a tool that does not implement the pattern **cannot be released**, proven by injection;
 **the ESSENTIAL SET above is admitted through the contract** (2/10 today);
-the residual (§1, 5.0%) is either classified or declared out of scope with a reason; and the first
+✅ **the residual is CLASSIFIED (2026-08-10, `scripts/cp5-residual.py`): 17 calls / 14 sessions = 3.9%**, derived by classifying all 4,181 failed calls from scratch rather than subtracting §1's figures. It is not a new class — it is per-tool WORDING of existing members, plus **3 genuinely message-less failures**, which is the true size of the class §1 filed at 41. 🔴 The first pass put CP-5.4's own refusal message in the residual, so the first class is now the TYPED `call_outcome` rather than a regex over prose; and the first
 essential tool is admitted **through** the contract with QC evidence.
 
 **Only then does tool v2 resume.**
