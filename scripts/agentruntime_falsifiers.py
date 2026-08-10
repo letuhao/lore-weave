@@ -1360,6 +1360,91 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/stream_service.py", "_pending_record = instrument.stamp_deferred({",
                                                  "_pending_record = ({"),
     ],
+    # ── TOOL-V2 LOOP #5 · one id in two different id fields ──────────────────────────────────
+    # Neutering the scan is the pre-fix world: 134 calls over 7 tools, 0 successes, each dying at
+    # another service with a message naming the wrong thing.
+    "test_THE_14_CALL_SESSION_book_chapter_delete": [
+        (f"{PKG}/toolcontract.py", "        if val in seen:", "        if False:  # falsifier"),
+    ],
+    "test_THE_71_CALL_SESSION_glossary_get_entity": [
+        (f"{PKG}/toolcontract.py", "        seen[val] = key", "        pass  # falsifier"),
+    ],
+    "test_A_SELF_LOOP_EDGE_IS_CAUGHT_TOO": [
+        # Restrict the scan to book_id, which would catch the two headline tools and quietly
+        # miss every same-kind pair.
+        (f"{PKG}/toolcontract.py", '        if not (type(key) is str and key.endswith("_id")):',
+                                   '        if key != "book_id":  # falsifier'),
+    ],
+    "test_A_NON_UUID_REPEAT_IS_NOT_THIS_DEFECT": [
+        # Claim iteration 3's placeholders as this rule's population — inflating a measured
+        # denominator with calls it does not fix.
+        (f"{PKG}/toolcontract.py", "        if type(val) is not str or not _ID_VALUE_RE.match(val):",
+                                   "        if type(val) is not str:  # falsifier"),
+    ],
+    "test_A_PLURAL_LIST_IS_OUT_OF_SCOPE": [
+        # Match `_id` ANYWHERE in the key, so `entity_ids` is scanned. The guard now passes a
+        # STRING-valued plural key, which is the only shape where this filter is load-bearing —
+        # a LIST value is stopped by the type check first, so the old case tested nothing.
+        (f"{PKG}/toolcontract.py", '        if not (type(key) is str and key.endswith("_id")):',
+                                   '        if not (type(key) is str and "_id" in key):  # falsifier'),
+    ],
+    "test_THE_ARGUMENT_OBJECT_MAY_BE_ANYTHING": [
+        (f"{PKG}/toolcontract.py", "    if type(call_args) is not dict:",
+                                   "    if False:  # falsifier"),
+    ],
+    "test_IT_SAYS_THE_CALL_CANNOT_SUCCEED_AS_SENT": [
+        (f"{PKG}/toolcontract.py", "f\"and can never be the same id. One of them is wrong, and this call cannot succeed as \"",
+                                   "f\"and can never be the same id. One of them is wrong. \""),
+    ],
+    "test_IT_NAMES_BOTH_PARAMETERS_AND_THE_VALUE": [
+        (f"{PKG}/toolcontract.py", "f\"'{param_a}' and '{param_b}' were both set to {value} — they identify DIFFERENT things \"",
+                                   "f\"two identifier arguments were set to the same value \""),
+    ],
+    "test_THE_BACKEND_DISPATCH_CHECKS_IT": [
+        (f"{CS}/app/services/stream_service.py", "                _dupe = _dup_check(args_obj)",
+                                                 "                _dupe = None  # falsifier"),
+    ],
+    "test_THE_FRONTEND_BRANCH_CHECKS_IT_TOO": [
+        # DQ-5's shape exactly: a gate wired on one dispatch path only, leaving a measured tool
+        # out by construction.
+        (f"{CS}/app/services/stream_service.py", "                    _fe_dupe = _fe_dup_check(_fe_args)",
+                                                 "                    _fe_dupe = None  # falsifier"),
+    ],
+    # The narrowness half. A rule this cheap earns its keep by NOT over-firing, and a false
+    # refusal on a write is worse than the failure it replaces — so each way of over-firing
+    # gets its own falsifier rather than being covered by arithmetic.
+    "test_DISTINCT_IDS_PASS": [
+        # Fire on the SECOND id parameter regardless of its value.
+        (f"{PKG}/toolcontract.py", "        if val in seen:", "        if seen:  # falsifier"),
+    ],
+    "test_ONE_ID_ALONE_PASSES": [
+        # Record before comparing, so the very first id parameter matches itself.
+        (f"{PKG}/toolcontract.py",
+         "        if val in seen:\n            return (seen[val], key, val)\n        seen[val] = key",
+         "        seen.setdefault(val, key)  # falsifier\n        if val in seen:\n"
+         "            return (seen[val], key, val)"),
+    ],
+    "test_A_NON_ID_FIELD_SHARING_THE_VALUE_IS_IGNORED": [
+        # Scan every key, so a note or a title that happens to carry the id refuses the call.
+        (f"{PKG}/toolcontract.py", '        if not (type(key) is str and key.endswith("_id")):',
+                                   "        if type(key) is not str:  # falsifier"),
+    ],
+    "test_IT_DOES_NOT_CLAIM_A_PERMISSION_PROBLEM": [
+        # Put back the sentence the two services actually returned — "not accessible" — which is
+        # what sent one session looking at permissions 14 times and another 71.
+        (f"{PKG}/toolcontract.py", "f\"'{param_a}' and '{param_b}' were both set to {value} — they identify DIFFERENT things \"",
+                                   "f\"'{param_a}' not accessible: it was set to {value} \""),
+    ],
+    "test_IT_RUNS_BEFORE_THE_RESOLVER_SPENDS_A_DISPATCH": [
+        # The same technique the two CP-6.1 ordering guards use: rename the marker the guard
+        # indexes on, and the ordering claim can no longer be located at all.
+        (f"{CS}/app/services/stream_service.py", "# ── TOOL-V2 LOOP #5 · ONE ID IN TWO DIFFERENT ID FIELDS",
+                                                 "# ── loop 5 duplicate identifier check"),
+    ],
+    "test_THE_DUPLICATE_REFUSAL_IS_TYPED_REFUSED_NOT_FAILED": [
+        (f"{CS}/app/services/stream_service.py", '                    }, "duplicate_identifier")}',
+                                                 '                    }, "invalid_arguments")}'),
+    ],
     # ── TOOL-V2 LOOP #3 · a suspension that never resolves ───────────────────────────────────
     # Each of these turns the resolution back into what it was: nothing, or a guess.
     "test_AN_APPLIED_EDIT_RESOLVES_TO_DONE": [

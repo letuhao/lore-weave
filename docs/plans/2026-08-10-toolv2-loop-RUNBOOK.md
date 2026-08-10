@@ -232,6 +232,67 @@ cannot red it is a green light that means nothing, and each already has a diagno
 | `test_NO_FEDERATED_TOOL_DECLARES_ITS_OWN_OWNER` | it injects `_meta_forged`, a key nothing reads; forging the owner needs the tool's real `_meta.served_by` |
 | `test_THE_UNION_DERIVES_COMPLETELY` | the replacement still appends whenever a name exists, so it is a no-op on every catalogue row |
 
+### D-5 · Two guards sharing a bare test name silently collapse, and two pairs already do
+
+*Found by colliding with it in iteration 5.* `_guards()` in `agentruntime-falsification.py` builds
+`{test name: suite}` across every registered suite. A name defined in two suites keeps **one**, so
+the other guard's falsifier is applied and then measured against a test **in a different file** —
+which the edit does not touch. The verdict comes back *"GREEN — the guard requires nothing"*, an
+accusation aimed at a perfectly good falsifier.
+
+My `test_THE_REFUSAL_IS_TYPED_REFUSED_NOT_FAILED` collided with CP-6.1's and is renamed to
+`test_THE_DUPLICATE_REFUSAL_IS_TYPED_REFUSED_NOT_FAILED`. **Two more collisions predate this
+iteration and are live right now:**
+
+| name | suites |
+|---|---|
+| `test_AN_UNKNOWN_LANE_FAILS_CLOSED` | `test_cp5_refresolve.py`, `test_cp6_vocabulary.py` |
+| `test_IT_SITS_BEFORE_THE_ONE_REAL_DISPATCH` | `test_cp5_namesource.py`, `test_cp6_vocabulary.py` |
+
+For each pair, one of the two guards is currently counted as proven on the strength of running the
+*other* one. Both have falsifiers registered, and both of those falsifiers are measuring a test
+they do not name.
+
+**The real fix is in the instrument, not the names:** `_guards()` should REFUSE a duplicate rather
+than let a dict overwrite decide which guard is measured — the same posture the census takes when
+two refusals share an id (*"Two refusals with one id means an allowlist row does not name a
+site"*). Doing that turns these two pairs red immediately, which is why it is a change of its own
+rather than a footnote to a tool iteration: it needs the two colliding pairs renamed in suites this
+loop does not own.
+
+### D-4 · A NEW suite must be `git add`ed before its falsifiers mean anything
+
+*Learned the hard way in iteration 5.* The falsification harness runs each mutated suite inside a
+mirror, and the mirror is built from **tracked** files (`git ls-files`). A brand-new suite that has
+not been staged is simply absent there, so `pytest tests/<new>.py` exits *"file or directory not
+found"* — non-zero, with the test's name nowhere in stdout.
+
+The harness reads that as `red=True, named=False` and reports, for **every guard in the file**:
+
+> `NOT FALSIFIABLE  test_X: RED, but a DIFFERENT test - the falsifier measured a bystander`
+
+which reads like sixteen badly-written falsifiers and is in fact one missing `git add`. The tell is
+the count: *all* of a new suite's guards fail together and none of the old ones change. Stage the
+file, re-run, and they pass unchanged — the falsifiers were never the problem.
+
+Worth stating because the failure is silent in the flattering direction's opposite: it under-reports
+your own work as unproven, and the obvious response — rewriting perfectly good falsifiers — makes
+things worse.
+
+### D-3 · The durable-gate resume infers its outcome instead of stating it
+
+*Raised by:* iteration 5. The `book_task_provide_input` row from an accepted delete gate carries
+`call_outcome: done` with **`call_outcome_inferred: true`** — the task path stamps `ok` and lets
+the chokepoint's default decide the type, which is the same shape iterations 2 and 3 closed on the
+denial and frontend-resume paths. It happens to land on the right answer here because the write
+really did succeed, and that is exactly why it is easy to leave: an inferred outcome is only
+visibly wrong when it disagrees.
+
+Small and self-contained — the task chunk is built in one place and already knows `_accepted` and
+the envelope's success — but it belongs to `book_task_provide_input`'s row, not
+`book_chapter_delete`'s, so it is recorded rather than folded into an iteration about another
+tool.
+
 ### D-2 · Running the falsification harness concurrently with the suite reds tree-mirroring guards
 
 `test_NEITHER_CENSUS_WRITER_CAN_REACH_THE_LIVE_TREE__all_8_cells` went red mid-iteration, and

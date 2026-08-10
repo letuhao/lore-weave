@@ -101,6 +101,10 @@ SUITES = (
     "tests/test_cp5_localtools.py",
     # CP-6.1's closed-vocabulary resolution. Registered in the same change as the suite.
     "tests/test_cp6_vocabulary.py",
+    # TOOL-V2 LOOP #5's duplicate-identifier gate. Registered in the same change as the suite,
+    # per the note above — the CP-0 suite sat unregistered for a whole checkpoint and its 13
+    # guards counted as declared by arithmetic while the partition printed clean.
+    "tests/test_cp5_dupeid.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

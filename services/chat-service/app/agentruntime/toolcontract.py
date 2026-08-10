@@ -31,6 +31,7 @@ pathological loops — the top 3 sessions alone held 28.3% of all failed calls).
 """
 from __future__ import annotations
 
+import re as _re
 from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Callable
@@ -96,6 +97,65 @@ def has_ref_property(tool_def: dict) -> bool:
 
 def _is_ref_name(name: str) -> bool:
     return type(name) is str and (name.endswith("_id") or name.endswith("_ids"))
+
+
+#: A canonical UUID, by regex, for the reason `refresolve.looks_like_an_id` gives: the membrane
+#: gate refuses `import uuid` in this package as an ambient API, and that turned out to make the
+#: check STRICTER rather than merely compliant.
+_ID_VALUE_RE = _re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def duplicate_identifier(call_args: dict) -> tuple[str, str, str] | None:
+    """Two DIFFERENT id parameters carrying ONE id. Returns `(param_a, param_b, value)`.
+
+    🔴 **MEASURED ACROSS THE WHOLE CORPUS: 135 calls over 7 tools and 19 sessions send the same UUID into two
+    distinct `*_id` parameters, and NOT ONE OF THEM SUCCEEDED.** The largest are
+    `glossary_get_entity` with `book_id == entity_id` (71 calls / 5 sessions) and
+    `book_chapter_save_draft` with `book_id == chapter_id` (38 / 6). Zero calls of this shape
+    have ever succeeded, which is the falsifier for the rule: a legitimate one would be a
+    counter-example and there are none in 135.
+
+    **Two causes, one fatal shape.** In `book_chapter_delete` the shared value is a REAL BOOK
+    ("The Tidewright") — the model had the book id, did not have a chapter id, and filled the
+    field it lacked with the one it had. In `glossary_get_entity` the shared value is neither a
+    book nor an entity today — an id invented whole. Both are well-formed UUIDs, so every shape
+    check passes and the call dies at another service.
+
+    **And it dies naming the wrong thing.** `book_chapter_delete` was answered *"book not
+    accessible"* — the book was perfectly accessible; the CHAPTER id was a book. `glossary_get_entity`
+    was answered *"entity not accessible"*, which reads as a permission problem for a row that does
+    not exist. One session repeated its version 14 times, another 71.
+
+    This is deliberately a REFUSAL and not a repair. The runtime knows the two arguments cannot
+    both be right; it does not know which one is wrong, and inventing the missing chapter is not
+    something a guess may decide (§3a's rule, restated for a second identifier defect).
+    """
+    if type(call_args) is not dict:
+        return None
+    seen: dict[str, str] = {}
+    for key in sorted(call_args):
+        val = call_args[key]
+        # `_ids` (plural) is excluded on purpose: a batch member legitimately repeating a value
+        # is a different question, and iteration 1 already showed the singular/plural pair is
+        # where this family's confusion actually lives.
+        if not (type(key) is str and key.endswith("_id")):
+            continue
+        if type(val) is not str or not _ID_VALUE_RE.match(val):
+            continue
+        if val in seen:
+            return (seen[val], key, val)
+        seen[val] = key
+    return None
+
+
+def duplicate_identifier_message(param_a: str, param_b: str, value: str) -> str:
+    return (
+        f"'{param_a}' and '{param_b}' were both set to {value} — they identify DIFFERENT things "
+        f"and can never be the same id. One of them is wrong, and this call cannot succeed as "
+        f"sent. Look the missing one up (a list/search tool for that kind of record returns it) "
+        f"and call again with both ids distinct."
+    )
 
 
 def _declared_types(prop: dict) -> tuple[str, ...]:

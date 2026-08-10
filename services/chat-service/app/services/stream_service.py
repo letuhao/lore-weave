@@ -3949,7 +3949,24 @@ async def _stream_with_tools(
                     # already gets — and on a mismatch feed the model the standard
                     # `required: missing properties` signal it knows how to repair,
                     # instead of suspending. Never suspend an un-appliable card.
-                    _fe_err = validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
+                    # TOOL-V2 LOOP #5 — the SAME check the backend dispatch runs, run here too.
+                    # DQ-5 is the standing lesson: this branch refuses or suspends and never
+                    # reaches the backend's pre-dispatch checks, which is exactly how CP-5.3's
+                    # resolver became unreachable for frontend tools and how the context-id
+                    # injector missed them before it. `glossary_propose_entity_edit` is in the
+                    # measured population (book_id == entity_id, 2 calls / 2 sessions), so a
+                    # one-sided gate would leave it out by construction. Pure argument check,
+                    # no dispatch — running it twice costs nothing and forgetting it costs a
+                    # whole surface.
+                    from app.agentruntime.toolcontract import (
+                        duplicate_identifier as _fe_dup_check,
+                        duplicate_identifier_message as _fe_dup_message,
+                    )
+                    _fe_dupe = _fe_dup_check(_fe_args)
+                    _fe_err = (
+                        _fe_dup_message(*_fe_dupe) if _fe_dupe is not None
+                        else validate_frontend_tool_args(c["name"], _fe_args, _fe_def)
+                    )
                     if _fe_err is not None:
                         # A missing-required miss feeds the SAME cross-tool blank/
                         # invalid-args streak breaker the backend feeds (mirrors the
@@ -4102,6 +4119,45 @@ async def _stream_with_tools(
                             _plan_supplied["params"], c["name"], _plan_supplied["model_sent"],
                         )
                         args_obj.update(_bound)
+
+                # ── TOOL-V2 LOOP #5 · ONE ID IN TWO DIFFERENT ID FIELDS ─────────────────────
+                # 🔴 **MEASURED: 135 calls over 7 tools and 19 sessions, and NOT ONE SUCCEEDED.** The largest are
+                # `glossary_get_entity` with `book_id == entity_id` (71 calls / 5 sessions) and
+                # `book_chapter_save_draft` with `book_id == chapter_id` (38 / 6). Zero successes
+                # in 135 is the falsifier for the rule itself: one legitimate call of this shape
+                # would be a counter-example, and the corpus has none.
+                #
+                # It is invisible to every check that already runs. Both values are well-formed
+                # UUIDs, so the schema passes, `looks_like_an_id` says no resolution is needed,
+                # and `_inject_context_ids` deliberately honours a valid-but-different id as a
+                # cross-book call. The call dies at another service, naming the wrong thing:
+                # `book_chapter_delete` got *"book not accessible"* for a book that was perfectly
+                # accessible — the shared id WAS the book, reused for the chapter it did not have.
+                # One session repeated that 14 times, another repeated its version 71.
+                #
+                # Placed BEFORE resolution because it is a pure argument check with no dispatch:
+                # spending a resolver read on a call that cannot succeed either way is the cost
+                # §3a is careful about. A REFUSAL, never a repair — the runtime knows both
+                # arguments cannot be right and does not know which one is wrong.
+                from app.agentruntime.toolcontract import (
+                    duplicate_identifier as _dup_check,
+                    duplicate_identifier_message as _dup_message,
+                )
+                _dupe = _dup_check(args_obj)
+                if _dupe is not None:
+                    _dup_msg = _dup_message(*_dupe)
+                    logger.info("loop#5: refused %r — %s and %s are both %s",
+                                c["name"], _dupe[0], _dupe[1], _dupe[2])
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "duplicate_identifier", "message": _dup_msg}),
+                    })
+                    yield {"tool_call": instrument.stamp_refused({
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _dup_msg,
+                    }, "duplicate_identifier")}
+                    continue
 
                 # ── CP-5.3 · IDENTIFIER RESOLUTION — a NAME in an id field ──────────────────
                 # 🔴 **THE MEASURED FAILURE: 338 calls across 11 sessions sent a human name into an
