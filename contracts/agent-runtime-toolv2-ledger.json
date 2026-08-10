@@ -423,6 +423,17 @@
         "SOURCE-CHECKED: the breaker calls instrument.stamp_refused(..., 'idempotent_noop_write'), so the 263 untyped rows are an artefact of predating CP-5.5, not a missing stamp"
       ],
       "admitted": false
+    },
+    "kg_project_entities_to_nodes": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 296 calls / 142 sessions / 272 ok (91.9%) -- the healthiest tool the loop has reached. Every one of the 24 failures is the project id: 19 'project not found' (8 sessions), 4 'project_id: Input should be a valid string', 1 'must be a valid id'. The 4 type errors are the 1-element-list wrap, and the repair for it names THIS TOOL in its own docstring ('gemma sent kg_project_entities_to_nodes project_id=[\"<uuid>\"]'). Its test uses the corpus's exact argument object, same uuid. One of the recorded failures is an EMPTY list, which the coercion deliberately does NOT touch -- there is no value to take, and inventing one would be the guess it exists to avoid.",
+      "evidence": [
+        "PHASE 2, split: 272 ok / 24 failed, all project-id shaped",
+        "LIVE: created a project bound to throwaway book 019fea46 (2 glossary entities), then kg_project_entities_to_nodes -> {nodes_created: 2, nodes_existing: 0, entities_seen: 2, skipped: 0}",
+        "DATA, read from Neo4j independently of the tool: 2 Entity nodes now carry that project_id. The tool's own count and the store agree",
+        "THE COERCION IS GUARDED, checked rather than assumed: tests/test_unwrap_wrapped_args.py asserts project_id=['019f579c-f359-76e2-b76b-9ff2e2247055'] unwraps to the scalar -- the same uuid that appears in this tool's recorded failures -- and 20 tests pass"
+      ],
+      "admitted": false
     }
   }
 }
