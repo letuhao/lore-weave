@@ -2150,7 +2150,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   commands emit nothing and change nothing.
   (depends on T28)
 
-- [ ] **QC-4** — Emit-wiring live proof (the one that catches a bypass)
+- [x] **QC-4** — Emit-wiring live proof (the one that catches a bypass) ✅
   New: `scripts/glossary-lifecycle-live-smoke.sh`
   `/review-impl`. Then on a **live** stack: trash an entity and assert the effect **in every
   consumer** — absent from the KG `<facts>` block, `is_glossary_stale` raised in translation, absent
@@ -2159,6 +2159,77 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   delivery. The register records three bugs that were declared closed and were not — all three were
   emit/consume gaps.
   **Bite:** revert one `*Core`'s outbox write → the smoke must go red.
+  ---
+  ✅ **DONE — and it found two real defects plus a stale container, on its first live run.**
+  `scripts/glossary-lifecycle-live-smoke.sh`: **10 passed, 0 failed, 0 skipped**, stable across
+  repeat runs. Nothing in it writes an outbox row — a real `DELETE /v1/glossary/books/{book}/
+  entities/{entity}` drives everything, which is what lets the bite reach it.
+
+  🐞 **FINDING 1 — translation-service dropped all four lifecycle events.**
+  `handle_glossary_event` returned early for every event that was not `glossary.entity_updated`,
+  so `entity_deleted` / `entity_restored` / `entity_purged` / `entity_status_changed` were
+  **acked and discarded**. Every *reading* consumer sees a delete for free (`deleted_at IS
+  NULL`); a finished translation is stored TEXT that already contains the term, and nothing
+  re-reads the glossary on its behalf. So an already-translated chapter kept rendering a name
+  the glossary no longer had, **with nothing marking it for retranslation** — the flag is the
+  only mechanism that reaches output already produced. Fixed; the four events now flag, and
+  they keep M6b's *precision* path (they carry `glossary_entity_id`, so one deleted entity does
+  not stale a whole book). **1170 translation tests green.**
+  ⚠️ **A passing test asserted the bug was intentional.** `test_handle_ignores_other_event_types`
+  pinned `glossary.entity_deleted` as correctly ignored. Replaced with a parametrised test over
+  all four, plus one asserting the precision path — and a narrower ignore-test on
+  `entity_created`, which genuinely must not flag (a brand-new entity cannot appear in an
+  already-translated chapter). *Bite: restore the `!=` → all 5 new tests red, the other 14 green.*
+
+  🐞 **FINDING 2 — the running glossary container did not contain T27/T28 at all.**
+  `grep` of the running binary: `glossary.entity_updated → 1`, but `entity_deleted`,
+  `entity_purged`, `entity_status_changed` → **0**, despite the image's build timestamp
+  post-dating those commits. So the plan's own warning — *"rebuild the images first; a stale
+  container passes for the wrong reason"* — held, except here it produced a false **FAIL**. I
+  would have filed a bug against correct code had I trusted the run. **The emit had never once
+  been exercised live from the producer**: T27's replay inserts the outbox row itself, and
+  T50's parity evidence is Go tests.
+
+  **The mandated bite fired.** Commenting out `emitEntityLifecycleTx` in
+  `mutateEntityLifecycleTx`, rebuilding and re-running: **LEG 1, LEG 2 and both LEG 3
+  assertions red, exit 1**; LEG 4/5 stayed green, which is itself informative — the cast and
+  `<facts>` reads filter `deleted_at IS NULL` and never needed the event. Reverted, verified
+  clean against HEAD, rebuilt.
+
+  ⚠️ **Three of my own false passes, fixed, because each one is the failure mode this task
+  exists to prevent:**
+  1. **Skipped legs reported as success.** The first run picked the book with the most glossary
+     entities; it had no knowledge project, so 3 of 6 legs skipped and it printed *"6 passed, 0
+     failed"*. Skips are now counted, reported, and make the run exit 3 — **a leg that did not
+     run has not asserted anything.** Fixture selection now prefers a KG-capable book.
+  2. **LEG 6 crediting the CREATE for the DELETE's effect.** Creating an entity emits *two*
+     `entity_updated` rows, which translation already acted on; if either landed after the
+     scratch translation row existed, the flag flipped and LEG 6 claimed the delete did it.
+     Proven by the bite: with the emit removed entirely, LEG 6 still passed. Three successive
+     timing guards (settle-and-clear, consumer `lag=0`, `lag`+`pending`) each failed, because
+     **`lag` cannot see an outbox row the relay has not shipped yet.** Now attributed from the
+     producer's ledger: the flag must flip *and* `glossary.entity_deleted` must be the only
+     event for this entity with `published_at` after the clear. *Bite: with the consumer fix
+     reverted, LEG 6 goes red — which is what proves the fix is what makes it pass.*
+  3. **LEG 2 matching by proximity.** It grepped for the entity id and looked two lines either
+     side for the event type; on a busy stream that window slid off the entry and reported "not
+     relayed" for an event Neo4j had visibly already archived on. Now matched by the stream
+     entry's own `outbox_id` — the row's primary key.
+
+  **Live evidence (final, twice):**
+  ```
+  LEG 1  outbox carries glossary.entity_deleted (1 row)
+  LEG 2  relay carried THIS entity's glossary.entity_deleted onto loreweave:events:glossary
+  LEG 3  KG node archived · anchor severed with a breadcrumb for restore to match
+  LEG 4  absent from <facts> (was present before: 2)
+  LEG 5  absent from the cast roster (was 1 before)
+  LEG 6  translation flagged stale, and the ONLY event for this entity since the delete was
+         glossary.entity_deleted
+  10 passed, 0 failed, 0 skipped
+  ```
+  Writes only rows it mints itself (entity via the real create API — the name is an *attribute*,
+  `cached_name` is trigger-maintained, so an INSERT would have built a row no writer produces),
+  and removes them on exit including on failure.
 
 - [x] **T50** — Bring the entity-lifecycle **MCP tools** onto the new command contract ✅
   *(added by `/aif-improve +check`)*
