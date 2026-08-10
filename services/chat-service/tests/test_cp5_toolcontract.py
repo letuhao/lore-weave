@@ -375,3 +375,61 @@ class TestTheCoverageDenominatorComesFromTheInput:
             f"migrated tool. Update this test with the count and the tool names."
         )
         assert c["blocked_by_member"]["error_contract"] == c["total"]
+
+
+class TestATriggerMustReadAUnionTypeOrItMissesItsOwnSubject:
+    """🔴 **THE `.get("type")` ARTIFACT, THIRD APPEARANCE IN ONE CHECKPOINT — AND THIS TIME IT
+    POINTED THE OTHER WAY.**
+
+    JSON Schema lets `type` be a LIST, and Pydantic emits exactly that for an optional field:
+    `"type": ["null", "array"]`. **100 of 1,313 properties in the frozen catalogue declare a union
+    type.** A predicate comparing `type` to a bare string is blind to every one of them.
+
+    It withdrew row 5.3b by making `anyOf: [string, null]` look UNTYPED — *"120 untyped
+    properties"* that do not exist. Here it did the opposite: `is_batch` selected **3 tools where
+    16 qualify**, so `partial_outcome` did not apply to `glossary_propose_entities` — **the tool
+    whose measured failures ARE that member's subject** (46 of 184 `ok:true` calls created nothing;
+    12 reported success with every item failed).
+
+    A withdrawal on a false absence and a member scoped to a fifth of its population are the same
+    bug wearing opposite signs. Guarded here in both directions.
+    """
+
+    def test_A_UNION_TYPED_ARRAY_IS_STILL_A_BATCH(self):
+        from app.agentruntime.toolcontract import is_batch
+        union = {"name": "t", "inputSchema": {"properties": {"items": {
+            "type": ["null", "array"], "items": {"type": "object", "properties": {"k": {}}}}}}}
+        assert is_batch(union), (
+            "a batch tool whose list is optional reads as scalar, so `partial_outcome` never "
+            "applies to it — which is how the member missed 13 of the 16 tools it is about"
+        )
+
+    def test_THE_REAL_TOOL_THE_MISS_WAS_MEASURED_ON(self):
+        from app.agentruntime.toolcontract import is_batch
+        assert is_batch(tool("glossary_propose_entities")), (
+            "the tool whose 46 zero-created successes ARE partial_outcome's subject must trigger it"
+        )
+
+    def test_THE_TRIGGER_SELECTS_THE_WHOLE_POPULATION_NOT_A_FIFTH(self):
+        """The number is the point: 3 was not a small subject, it was a broken predicate. A member
+        whose evidence is *"3 tools"* invites withdrawal under §7 — the rule that killed 5.3b —
+        so a trigger that under-counts can retire a member that has a real population."""
+        from app.agentruntime.toolcontract import is_batch
+        batch = [t for t in catalogue() if is_batch(t)]
+        assert len(batch) >= 16, f"is_batch selects {len(batch)}; the measured population is 16"
+
+    def test_AN_ENUM_INSIDE_AN_ANYOF_BRANCH_IS_STILL_A_CLOSED_VOCABULARY(self):
+        """The same shape one level down: `anyOf: [{enum: [...]}, {type: null}]` is how an optional
+        closed set is written, and reading only the top level missed **10 of 106** tools."""
+        from app.agentruntime.toolcontract import has_enum_property
+        nested = {"name": "t", "inputSchema": {"properties": {
+            "mode": {"anyOf": [{"enum": ["a", "b"]}, {"type": "null"}]}}}}
+        assert has_enum_property(nested)
+
+    def test_A_PROPERTY_WITH_NO_TYPE_KEY_YIELDS_NO_TYPES(self):
+        """The reader must not invent a type for a property that declares none — that would make
+        `is_batch` fire on anything with an `items` key."""
+        from app.agentruntime.toolcontract import _declared_types
+        assert _declared_types({}) == ()
+        assert _declared_types({"type": 7}) == ()
+        assert _declared_types({"type": ["array", 7, "null"]}) == ("array", "null")

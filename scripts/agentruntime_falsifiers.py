@@ -1812,6 +1812,32 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                                                  "would repair them"),
     ],
 
+    # ── CP-5 · a trigger must read a UNION type or it misses its own subject ──────────────────
+    "test_A_UNION_TYPED_ARRAY_IS_STILL_A_BATCH": [
+        # Back to comparing `type` against a bare string: an optional list reads as scalar.
+        (f"{PKG}/toolcontract.py", '        if type(v) is dict and "array" in _declared_types(v) and type(v.get("items")) is dict:',
+                                   '        if type(v) is dict and v.get("type") == "array" and type(v.get("items")) is dict:'),
+    ],
+    "test_THE_REAL_TOOL_THE_MISS_WAS_MEASURED_ON": [
+        (f"{PKG}/toolcontract.py", '        if type(v) is dict and "array" in _declared_types(v) and type(v.get("items")) is dict:',
+                                   '        if type(v) is dict and v.get("type") == "array" and type(v.get("items")) is dict:'),
+    ],
+    "test_THE_TRIGGER_SELECTS_THE_WHOLE_POPULATION_NOT_A_FIFTH": [
+        (f"{PKG}/toolcontract.py", '        if type(v) is dict and "array" in _declared_types(v) and type(v.get("items")) is dict:',
+                                   '        if type(v) is dict and v.get("type") == "array" and type(v.get("items")) is dict:'),
+    ],
+    "test_AN_ENUM_INSIDE_AN_ANYOF_BRANCH_IS_STILL_A_CLOSED_VOCABULARY": [
+        # Read only the top level, as before — an optional closed set stops being one.
+        (f"{PKG}/toolcontract.py", "    return any(type(v) is dict and _enum_anywhere(v)",
+                                   "    return any(type(v) is dict and type(v.get('enum')) is list  # falsifier\n               and _enum_anywhere(v)"),
+    ],
+    "test_A_PROPERTY_WITH_NO_TYPE_KEY_YIELDS_NO_TYPES": [
+        # Invent a type for a property that declares none: is_batch then fires on anything with
+        # an `items` key.
+        (f"{PKG}/toolcontract.py", '    if type(t) is list:\n        return tuple(x for x in t if type(x) is str)\n    return ()',
+                                   '    if type(t) is list:\n        return tuple(str(x) for x in t)\n    return ("array",)'),
+    ],
+
     # ── CP-5 · the tools chat-service serves ITSELF ──────────────────────────────────────────
     "test_IT_DECLARES_A_TIER_AND_A_SCOPE": [
         # The state these four were in for weeks: on the wire, declaring nothing, therefore

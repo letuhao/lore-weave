@@ -3,6 +3,30 @@
   "contract_version": "1.0.0",
   "declarations": [
     {
+      "id": "book_chapter_create",
+      "kind": "tool",
+      "owning_service": "book-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "action",
+      "tier": "A",
+      "cost": 942
+    },
+    {
+      "id": "book_chapter_save_draft",
+      "kind": "tool",
+      "owning_service": "book-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "action",
+      "tier": "A",
+      "cost": 2273
+    },
+    {
       "id": "book_list",
       "kind": "tool",
       "owning_service": "book-service",
@@ -39,6 +63,30 @@
       "cost": 721
     },
     {
+      "id": "glossary_book_ontology_read",
+      "kind": "tool",
+      "owning_service": "glossary-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 648
+    },
+    {
+      "id": "glossary_propose_entities",
+      "kind": "tool",
+      "owning_service": "glossary-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "action",
+      "tier": "A",
+      "cost": 1857
+    },
+    {
       "id": "glossary_propose_entity_edit",
       "kind": "tool",
       "owning_service": "chat-service",
@@ -61,6 +109,18 @@
       "lane": "read",
       "tier": "R",
       "cost": 746
+    },
+    {
+      "id": "plan_propose_spec",
+      "kind": "tool",
+      "owning_service": "composition-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "action",
+      "tier": "A",
+      "cost": 2178
     },
     {
       "id": "tool_list",

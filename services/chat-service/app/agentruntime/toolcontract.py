@@ -98,8 +98,49 @@ def _is_ref_name(name: str) -> bool:
     return type(name) is str and (name.endswith("_id") or name.endswith("_ids"))
 
 
+def _declared_types(prop: dict) -> tuple[str, ...]:
+    """The type names a property declares, whether it declares one or a UNION of several.
+
+    🔴 **`prop.get("type") == "array"` IS THE WRONG TEST, AND IT COST THIS CHECKPOINT TWICE.**
+    JSON Schema lets `type` be a LIST, and Pydantic emits exactly that for an optional field:
+    `"type": ["null", "array"]`. Measured over the frozen catalogue, **100 of 1,313 properties
+    declare a union type** — so any predicate comparing `type` to a bare string is blind to them.
+
+    This is the **third** appearance of the same artifact in one checkpoint, and it has now pointed
+    in both directions. It withdrew row 5.3b by making `anyOf: [string, null]` look UNTYPED (the
+    *"120 untyped properties"* that did not exist), and it silently shrank `partial_outcome` by
+    making a batch tool look scalar — `is_batch` selected **3 tools where 16 qualify**, missing
+    **81%** of them, including `glossary_propose_entities`, whose measured failures are the
+    member's own subject.
+
+    A withdrawal on a false absence and a member scoped to a fifth of its population are the same
+    bug wearing opposite signs, which is why the reader lives here rather than in each predicate.
+    """
+    t = prop.get("type")
+    if type(t) is str:
+        return (t,)
+    if type(t) is list:
+        return tuple(x for x in t if type(x) is str)
+    return ()
+
+
+def _enum_anywhere(prop: dict) -> bool:
+    """An enum declared directly, or inside a `anyOf`/`oneOf` branch.
+
+    Optional-with-a-closed-set is written `anyOf: [{enum: [...]}, {type: null}]`, and reading only
+    the top level misses it — **10 of 106** tools with a closed vocabulary, measured.
+    """
+    if type(prop.get("enum")) is list:
+        return True
+    for key in ("anyOf", "oneOf"):
+        for branch in (prop.get(key) or ()):
+            if type(branch) is dict and type(branch.get("enum")) is list:
+                return True
+    return False
+
+
 def has_enum_property(tool_def: dict) -> bool:
-    return any(type(v) is dict and type(v.get("enum")) is list
+    return any(type(v) is dict and _enum_anywhere(v)
                for v in properties_of(tool_def).values())
 
 
@@ -162,8 +203,8 @@ def is_paged(tool_def: dict) -> bool:
 def is_batch(tool_def: dict) -> bool:
     """A tool taking a LIST of work items, so it can half-succeed."""
     for v in properties_of(tool_def).values():
-        if type(v) is dict and v.get("type") == "array" and type(v.get("items")) is dict:
-            if v["items"].get("type") == "object" or "properties" in v["items"]:
+        if type(v) is dict and "array" in _declared_types(v) and type(v.get("items")) is dict:
+            if "object" in _declared_types(v["items"]) or "properties" in v["items"]:
                 return True
     return False
 

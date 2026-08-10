@@ -331,6 +331,253 @@
         "_KNOWN_GAP": "🔴 NO SUCCESSFUL CALL EXISTS TO VERIFY AGAINST — 0 of 101. The shape above is read from the tool's own description and the resume contract, and is explicitly NOT marked `_verified_against`, because a shape checked against nothing is the lie that looks like a contract. It becomes verifiable the first time this tool succeeds.",
         "closes_when": "one recorded `applied_saved` resume exists; the shape is then confirmed or corrected against it."
       }
+    },
+    "book_chapter_create": {
+      "_why": "The essential set's WRITE role, and the healthiest member of it - 129 sessions at 99.5%. Admitted alongside the others so the set is uniform: a contract written only for the tools that fail would be a defect log rather than a declaration.",
+      "identifier_resolution": {
+        "book_id": "an opaque id, not a name. Resolvable from the ambient book on a book-bound surface."
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "title": "model - the chapter's title",
+        "original_language": "model - ISO code of the prose being written; required, and the model is the only party that knows what language it just wrote in",
+        "sort_order": "model - where the chapter sits; omitted appends",
+        "body": "model - the prose itself"
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope"
+      },
+      "effect_and_undo": {
+        "effect": "creates one chapter and returns its id",
+        "undo": "no delete is exposed on this path; the chapter is archived through the book studio. Declared as a KNOWN ASYMMETRY rather than claimed reversible.",
+        "auto_commits": "tier A - this writes with no human confirm step, which is why the id it returns is the only receipt."
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_create",
+        "cost_removable": false,
+        "signal_retained": "A repeat CREATES A SECOND CHAPTER, so it must never be short-circuited or served from a cache: suppressing the call would hide a duplicate the author then has to find. The breaker counts and escalates; it does not answer."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ chapter_id: string }",
+        "emit_paths": [
+          "chapter_id"
+        ],
+        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses."
+      }
+    },
+    "book_chapter_save_draft": {
+      "_why": "THE WORST-PERFORMING ESSENTIAL TOOL AT 40.6% OVER 122 SESSIONS - and the measurement says most of that is not the tool. Of its recorded failures, 93 are OUR OWN BREAKER PROSE (5.7) and ~16 are missing arguments (5.4). The genuine, tool-specific defect is one argument: body.",
+      "identifier_resolution": {
+        "book_id": "an opaque id; the ambient book on a book-bound surface",
+        "chapter_id": "an opaque id, obtained from book_list_chapters or book_chapter_create's own return. Measured: 2 calls sent a non-UUID."
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "chapter_id": "model - OBTAINED from a prior listing or create, never authored",
+        "base_version": "model - OPTIONAL and best omitted. The tool's own description says the backend uses the chapter's current version when it is absent, so passing it buys conflict control at the cost of a pre-read. Measured: 3 failures for a MISSING base_version, i.e. the model treating an optional argument as required.",
+        "body": "model - the prose. THE tool-specific defect lives here; see closed_vocabulary.",
+        "commit_message": "model"
+      },
+      "closed_vocabulary": {
+        "field": "body_format",
+        "values": [
+          "plain",
+          "markdown",
+          "json"
+        ],
+        "default": "plain",
+        "source": "declared in the tool's own inputSchema enum",
+        "_measured": "~25 recorded failures are body SHAPE, and they are the largest genuine class this tool has. body is declared type:string - prose - and the model sent a ProseMirror node array, a whole doc {type:doc}, a QUILL DELTA {ops:[...]}, an empty object, and bare prose wrapped in a list. Four different structures where a string is declared, which is a VOCABULARY failure rather than a typo: the model knows an editor format is involved and guesses which one. body_format:json is the single arm that accepts a structure, and nothing points at it from the failure."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "requires_a_chapter": "A SECOND PRECONDITION THAT IS NOT A SCOPE, measured at 4 failures: 'this book has no chapters yet - create one first with book_chapter_create'. The book can be in scope and the tool still have no target."
+      },
+      "effect_and_undo": {
+        "effect": "saves a new DRAFT revision of one chapter and returns the new version",
+        "undo": "the previous draft survives as a revision (snapshot_revision_id in the result), so this is genuinely reversible - the one write in this set that is",
+        "auto_commits": "tier A"
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_write",
+        "cost_removable": false,
+        "signal_retained": "Each save mints a new draft version, so a repeat is a real second write and must not be suppressed. The breaker counts it."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied",
+          "conflict",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false,
+        "_conflict_is_real": "a stale base_version stops the write; that is a genuine conflict class and not an invalid argument."
+      },
+      "output_contract": {
+        "shape": "{ chapter_id: string, new_draft_version: int, snapshot_revision_id: string }",
+        "emit_paths": [
+          "chapter_id",
+          "snapshot_revision_id"
+        ],
+        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses."
+      }
+    },
+    "plan_propose_spec": {
+      "_why": "The PLAN role the PO named explicitly - 142 sessions at 97.4%. It is also the only essential-set member that is both ASYNC and PAID, and neither fact was in any contract before.",
+      "identifier_resolution": {
+        "book_id": "an opaque id; the ambient book",
+        "model_ref": "an opaque id - a MODEL id, not a model NAME. Supplied by the runtime from the session's planner pin, never by the model."
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "source_markdown": "model - the document to turn into a spec; the actual CONTENT and genuinely the model's",
+        "mode": "model - but it has a default; see closed_vocabulary",
+        "model_ref": "context - THE RUNTIME OWNS THIS AND OVERRIDES THE MODEL. The session's planner pin wins, and a model-supplied ref is stripped when there is no pin. Declared because a value the model may send and never controls is exactly the case 5.4 was built for.",
+        "ground_on_existing": "model"
+      },
+      "closed_vocabulary": {
+        "field": "mode",
+        "values": [
+          "rules",
+          "llm"
+        ],
+        "default": "llm",
+        "source": "declared in the tool's own inputSchema enum",
+        "note": "rules is a heading matcher that only fits documents already written in its vocabulary; llm reads the document. The default is the general arm, so an omitted mode is the safe one."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope"
+      },
+      "effect_and_undo": {
+        "effect": "STARTS AN ASYNC JOB and returns a run in status 'pending' - the spec does not exist when this returns. _meta.async:true says so and nothing consumed it.",
+        "undo": "the run is cancellable through the jobs surface; the artifacts it produces are drafts until adopted",
+        "paid": "_meta.paid:true - CALLING THIS SPENDS REAL MONEY. The only essential-set member for which a retry has a price, which is what makes its repeat semantics load-bearing rather than tidy."
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_job",
+        "cost_removable": false,
+        "signal_retained": "A repeat starts a SECOND PAID JOB. It must never be short-circuited (the first job's result is not ready, so a cache would answer with nothing) and never silently retried. Poll the returned run; do not re-propose."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "permission_denied",
+          "upstream_unavailable",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": true,
+        "_why_retryable": "the failure mode includes an LLM call, so an upstream timeout is genuinely transient - the same exception compose_prose carries, and the reason C-7's fail-closed terminal_permanent is declared away here deliberately."
+      },
+      "output_contract": {
+        "shape": "{ run: { id, status, mode, book_id, model_ref, arcs: [], artifacts: [{kind, artifact_id}], created_at } }",
+        "emit_paths": [
+          "run.id"
+        ],
+        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses.",
+        "_status_is_not_success": "status:'pending' is what a SUCCESSFUL call returns. Reading this result as the finished spec is the async-honesty trap _meta.async exists to prevent."
+      }
+    },
+    "glossary_book_ontology_read": {
+      "_why": "THE BROADEST REPEAT CASE IN THE CORPUS - 5.7 measured one repeat in each of 23 separate sessions, a different shape from the pathological loops (tool_list at 566 in one session) and the reason the honest denominator is sessions. 203 sessions, 389 calls. It is also the tool that ANSWERS glossary_propose_entities' largest failure.",
+      "identifier_resolution": {
+        "book_id": "an opaque id. _meta.ambient_book:true - the runtime fills it from the book in scope, which is why the parameter has no required entry at all."
+      },
+      "argument_supplier": {
+        "book_id": "context - _meta.ambient_book declares the runtime supplies it; the model should send nothing"
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "note": "an EMPTY ontology is a valid answer, not an unmet precondition - a new book legitimately has no kinds yet."
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "THIS IS THE MEMBER'S FLAGSHIP CASE. A second identical read in one turn returns the same ontology, so the cost is removable - but the repeat is COUNTED and escalates, because 23 sessions repeating it once each is a signal about the prompt, not about any one session. Remove the cost, never the signal.",
+        "_measured": "1 repeat in each of 23 sessions (5.7)."
+      },
+      "error_contract": {
+        "classes": [
+          "not_found",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ ontology: { book_id, kinds: [], genres: [], attributes: [], kind_genres: [] } }",
+        "emit_paths": [
+          "ontology.book_id"
+        ],
+        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses.",
+        "_this_is_the_vocabulary": "ontology.kinds IS the closed vocabulary glossary_propose_entities fails against - 44+ recorded 'unknown kind' failures. The two contracts name each other so the repair path is declared rather than left to prose."
+      }
+    },
+    "glossary_propose_entities": {
+      "_why": "62.3% BY THE ok FLAG, AND THE ok FLAG IS WRONG. Measured over 184 ok:true calls: 46 CREATED NOTHING - 34 entirely skipped as duplicates, and 12 where every item FAILED while the envelope said success. Genuine effect lands on 138 of 293 calls, 47.1%. A sixth instance of the ok:bool conflation, and the first where ok:TRUE is the one hiding a null effect.",
+      "identifier_resolution": {
+        "book_id": "an opaque id; the ambient book on a book-bound surface"
+      },
+      "argument_supplier": {
+        "book_id": "context - the runtime supplies the ambient book",
+        "items": "model - the entities to propose. Each item's kind is NOT free text; see preconditions and the ontology tool."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "requires_the_ontology": "THE PRECONDITION THIS TOOL ACTUALLY FAILS ON, and it is not a scope: every kind must already exist in THIS BOOK's ontology. Measured: 44+ failures reading 'unknown kind: character', 'unknown kind: place' - ordinary words that are simply not kinds in that book. The tool's own item description already says 'see glossary_book_ontology_read', and the 44 are what that instruction's compliance measures."
+      },
+      "partial_outcome": {
+        "atomic": false,
+        "per_item": "each item returns {name, status, error} and the batch returns summary {created, skipped, failed}",
+        "_measured": "46 of 184 ok:true CALLS CREATED ZERO ENTITIES - 34 all-skipped (the entity already existed: a legitimate no-op) and 12 where every item failed and the call still reported success. C-14 has the words for both and they were never written: an all-skipped batch is `empty`, an all-failed batch is `failed`, and only a mixed one is `partial`.",
+        "the_flag_is_not_the_effect": "A caller must read summary.created, never ok. This member exists so that is a declaration rather than folklore.",
+        "_why_this_member_was_invisible": "partial_outcome's trigger is_batch compared type == 'array' and this tool declares type: ['null','array'], so the member did not apply to the tool its own subject lives in. Fixed 2026-08-10 - the trigger selected 3 tools where 16 qualify."
+      },
+      "effect_and_undo": {
+        "effect": "creates 0..n glossary entities in one call; the count is in summary.created and is NOT implied by the ok flag",
+        "undo": "glossary_entity_delete / glossary_entity_restore per entity; there is no batch reversal, so a 30-item call is 30 undos",
+        "auto_commits": "tier A"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_by_name",
+        "cost_removable": false,
+        "signal_retained": "A repeat is SAFE here, and that is exactly why it must not be silenced: the duplicate is skipped rather than created (34 measured all-skipped calls), so the call looks successful while doing nothing. Suppressing the repeat would remove the only evidence that the model is re-proposing what already exists."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false,
+        "_note": "an 'unknown kind' is invalid_argument and is NOT retryable - retrying the same kind hits the same closed vocabulary. The repair is to read the ontology, or propose the kind first."
+      },
+      "output_contract": {
+        "shape": "{ results: [{name, status, error}], summary: {created, skipped, failed} }",
+        "emit_paths": [
+          "summary.created"
+        ],
+        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses."
+      }
     }
   }
 }
