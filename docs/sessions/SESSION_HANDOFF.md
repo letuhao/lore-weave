@@ -4,8 +4,19 @@
 
 **HEAD:** `fb199ef5f`+ (UNCOMMITTED — see below) · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-75`).
 
-> **▶ DO NEXT — `G3`'s problem is the DENOMINATOR, and the producer check that proves it is done.**
-> Coverage sits at **14 of 26**, and it cannot honestly rise much: of the 12 unread documents,
+> **▶ DO NEXT — one document. `01_scope_and_boundary.md`.**
+> Coverage now reads **14 of 15 COVERABLE** (26 in the corpus). The denominator was split
+> 2026-08-10 and both exclusion tables are checked, so the remaining worklist is a single item:
+> `01_scope_and_boundary`'s boundary rule — *"if a service reads or writes an aggregate in a
+> per-reality database it is game-layer"* — is what `reality-id-adoption-gate.py`'s `IN_SCOPE`
+> tuple is derived from, and **nothing compares them.** Note the shape before starting: the
+> consumer is a **Python gate**, while this coverage ratchet counts **Rust** readers only
+> (`rglob("*.rs")` over `crates` + `services`). So it is either a Rust oracle against a Rust code
+> side, or a deliberate widening of the ratchet — decide that first, and do not fake it.
+>
+> <details><summary>Why 11 documents left the denominator (the producer audit, 2026-08-10)</summary>
+>
+> Coverage sat at **14 of 26** and could not honestly rise: of the 12 unread documents,
 > **11 cannot be covered at all** — measured, not assumed:
 >
 > * **7 have no producer** — `14_durable_subscribe`, `15_turn_boundary`, `16_bubble_up_aggregator`,
@@ -19,12 +30,12 @@
 > * **1 is genuinely coverable and genuinely uncovered:** `01_scope_and_boundary`. Its boundary rule
 >   is what `reality-id-adoption-gate.py`'s `IN_SCOPE` is derived from, and nothing compares them.
 >
-> So the next move is **not** more oracles. It is to split the denominator into `NOT_A_SPEC` and
-> `NO_PRODUCER`, each row **reasoned and checked**, each with a **shrink arm** — a producerless doc
-> returns to the denominator the moment a marker symbol appears in non-comment source, exactly the
-> arm already built and bitten for `DP-R7`. Coverage then reads **14/15** with a one-item worklist,
-> instead of 14/26 with a number that cannot move. §0.6e row 2 asked for precisely this
-> (*"excluded from the denominator rather than faked into it"*).
+> **Done 2026-08-10:** the denominator is split into `NOT_A_SPEC` and `NO_PRODUCER`, each row
+> reasoned **and** checked, each with a shrink arm — a producerless doc returns the moment a marker
+> symbol appears in non-comment source, the arm already built and bitten for `DP-R7`. §0.6e row 2
+> asked for precisely this (*"excluded from the denominator rather than faked into it"*).
+>
+> </details>
 >
 > Also open: **`G4`/`G6`–`G13`** (slice 1). And **`D-META-ERASURE-COVERAGE`'s two undecided tables**
 > (`session_cost_summary`, `service_to_service_audit`) remain a **GDPR product decision for the
@@ -39,6 +50,7 @@
 > | `--verify-proofs` | the teeth ratchet now **runs** its 42 advertised self-tests (18.6s) instead of matching their text. Caught `dp-oracle-bite-gate.py` certified on a string literal it uses to read *another* gate's output — a **bite harness** with no self-test, which prints `bitten: 19/19` and is believed |
 > | `language-bias` **red for 9 days** | two live ML-2 violations since 2026-08-01, fixed at the source. The fold is a *symmetric* match key, so `Ｅｌａｒａ` and `Straße` were being reported to authors as **unanchored names** — false accusations |
 > | `D-GATE-ROT-LANGUAGE-BIAS` | mechanism moved from a `KNOWN_RED` row to the 37-row BASELINE. All ten of its named offenders were **already baselined**; the gate was red because of two *unrelated* lines — the register was satisfied by the wrong offenders |
+| `G3` **14/26 → 14/15** | the denominator split, both tables checked and bitten on the real tree. The worklist is now **one document**. A fourth self-test arm was written that **could not fail** (`NV-1`) and biting found it — see `BDR-79` |
 >
 > ### What shipped, 2026-08-10 (first half)
 >

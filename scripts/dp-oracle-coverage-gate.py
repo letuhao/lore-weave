@@ -314,8 +314,175 @@ def docs_read_by(path: Path, locked: set[str]) -> set[str]:
     return covered
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# THE DENOMINATOR — why it is not simply "every .md in the directory"
+#
+# It was, and that made the ratio unmovable. 14 of 26, with **eleven of the
+# twelve unread documents impossible to cover**: either they specify rules for
+# code that does not exist, or they are prose with no code side at all. A
+# denominator that counts those measures the size of the directory, not the
+# reach of the oracles, and the only ways to move it are to fake an oracle
+# (which §0.6c forbids) or to build the whole Phase-4 tier first.
+#
+# So the split below. **This is the `BDR-55` move — a number going up because
+# its definition changed — and the only thing that makes it honest is that every
+# exclusion is CHECKED and can EXPIRE.** A row that stops being true reds; the
+# document returns to the denominator and the ratio falls. An exclusion nobody
+# can lose is a deletion wearing a reason.
+
+#: Documents with NO code side to compare against: preamble, index, quickstart,
+#: open questions. Not specifications — they state no rule an oracle could hold
+#: code to.
+#:
+#: THE CHECK: a doc here must declare **zero** `## DP-<id>` rule headings. Add
+#: rules to `99_open_questions.md` and it stops being open questions; the row
+#: reds and the doc comes back.
+NOT_A_SPEC: dict[str, str] = {
+    "00_preamble.md": "framing for the tier; states no rule and names no symbol",
+    "22_feature_design_quickstart.md": "a how-to for authors, not a contract on code",
+    "99_open_questions.md": "questions, by construction unresolved — nothing to hold code to",
+    "_index.md": "the directory's table of contents",
+}
+
+#: Documents whose rules are real but whose SUBJECT IS UNBUILT. Each row names
+#: the marker symbols the design specifies; the day one appears in non-comment
+#: source, the doc is coverable and must return to the denominator.
+#:
+#: Measured 2026-08-10 — every symbol below is 0 files, except two that resolve
+#: to DEFERRED-register rows recording the thing as unbuilt (`BubbleUpAggregator`
+#: in `dp-control-plane`'s `DEFERRED_RPCS`, `CausalityToken` in `dp`'s id
+#: register). Writing oracles for these is the orphan shape `§0.6c` forbids:
+#: ceremony over Phase-4 designs nothing implements.
+NO_PRODUCER: dict[str, tuple[str, ...]] = {
+    "14_durable_subscribe.md": ("DurableEventStream", "durable_subscribe"),
+    "15_turn_boundary.md": ("TurnBoundary", "wait_for_token"),
+    "16_bubble_up_aggregator.md": ("BubbleUpAggregator", "bubble_up_aggregator"),
+    "18_causality_and_routing.md": ("CausalityToken", "route_to_writer"),
+    "19_privacy_redaction_policies.md": ("RedactionFilter", "RedactionPolicy"),
+    "20_operational_residuals.md": ("cap_rotation_days", "subscription_grace_seconds"),
+    "21_llm_turn_slot.md": ("claim_turn_slot", "release_turn_slot"),
+}
+
+#: A marker that is only ever a DEFERRED-register row — the repo recording that
+#: the thing is unbuilt. Named here so the shrink arm does not read a register
+#: entry as a producer, which is the same distinction `deferral-gate` draws.
+REGISTER_ONLY: dict[str, tuple[str, ...]] = {
+    "BubbleUpAggregator": ("crates/dp-control-plane/src/lib.rs",),
+    "CausalityToken": ("crates/dp/src/error.rs", "crates/dp/src/read.rs"),
+}
+
+#: Where a producer would live.
+PRODUCER_ROOTS = ("crates", "services")
+
+
+def _code_files() -> list[Path]:
+    out: list[Path] = []
+    for root in PRODUCER_ROOTS:
+        base = REPO / root
+        if not base.is_dir():
+            continue
+        for ext in ("*.rs", "*.py", "*.go"):
+            for p in base.rglob(ext):
+                if "target" in p.parts or ".claude" in p.parts:
+                    continue
+                out.append(p)
+    return out
+
+
+def producers_for(markers: tuple[str, ...]) -> dict[str, list[str]]:
+    """Files whose NON-COMMENT source names each marker, minus register rows.
+
+    Two exclusions, and both were learned the hard way today (`BDR-76`,
+    `BDR-78`):
+
+    * **comment lines are stripped.** Prose *about* an unbuilt symbol is not the
+      symbol. A docstring recording *"`advance_turn` 0 files"* is itself a file
+      containing `advance_turn`, and a naive grep reads it as a producer — which
+      happened, to five symbols at once.
+    * **this file is skipped.** It declares every marker in `NO_PRODUCER`, so if
+      it were ever inside the walk, each row would find its own table and no
+      document could be excluded. A gate must never be its own witness.
+
+      **Say the honest part: today that skip is DEFENCE IN DEPTH, not the thing
+      doing the work.** `PRODUCER_ROOTS` is `crates` + `services` and this file
+      lives in `scripts/`, so it is already out of scope — measured by deleting
+      the skip and watching nothing change. The self-test therefore asserts the
+      property that IS load-bearing (this file is outside the walk) rather than
+      the line that looks like it (`NV-1` — an arm whose subject cannot vary
+      passes forever, and the first version of that arm did).
+    """
+    hits: dict[str, list[str]] = {m: [] for m in markers}
+    me = Path(__file__).resolve()
+    for f in _code_files():
+        if f.resolve() == me:
+            continue
+        rel = str(f.relative_to(REPO)).replace("\\", "/")
+        try:
+            src = f.read_text(encoding="utf-8", errors="ignore")
+        except OSError:
+            continue
+        code = "\n".join(
+            l for l in src.splitlines() if not l.lstrip().startswith(("//", "#"))
+        )
+        for m in markers:
+            if m in code and rel not in REGISTER_ONLY.get(m, ()):
+                hits[m].append(rel)
+    return {m: v for m, v in hits.items() if v}
+
+
+def check_denominator(locked: set[str], covered: set[str]) -> list[str]:
+    """Is every exclusion still true, and still about a document that exists?"""
+    problems: list[str] = []
+    for name, reason in sorted(NOT_A_SPEC.items()):
+        if name not in locked:
+            problems.append(f"NOT_A_SPEC names `{name}`, which is not in the corpus")
+            continue
+        if len(reason) < 30:
+            problems.append(f"NOT_A_SPEC `{name}` has no real reason")
+        rules = [
+            l.strip()[3:].split()[0]
+            for l in (DOC_DIR / name).read_text(encoding="utf-8", errors="replace").splitlines()
+            if l.strip().startswith("## DP-")
+        ]
+        if rules:
+            problems.append(
+                f"`{name}` is excluded as NOT A SPEC and now declares {len(rules)} rule "
+                f"heading(s) {rules[:4]}. It became a specification; put it back in the "
+                f"denominator and write its oracle.")
+    for name, markers in sorted(NO_PRODUCER.items()):
+        if name not in locked:
+            problems.append(f"NO_PRODUCER names `{name}`, which is not in the corpus")
+            continue
+        if not markers:
+            problems.append(f"NO_PRODUCER `{name}` names no marker, so nothing can wake it")
+        found = producers_for(markers)
+        if found:
+            problems.append(
+                f"`{name}` is excluded because its subject is UNBUILT, and it now has a "
+                f"producer: {found}. The design is being implemented — return the document "
+                f"to the denominator and write its oracle against the real code.")
+    both = sorted(set(NOT_A_SPEC) & set(NO_PRODUCER))
+    if both:
+        problems.append(f"in BOTH exclusion tables, so the reason is order-dependent: {both}")
+    for name in sorted((set(NOT_A_SPEC) | set(NO_PRODUCER)) & covered):
+        problems.append(
+            f"`{name}` is excluded from the denominator and IS read by a live oracle. One of "
+            f"the two is wrong, and the exclusion is the likelier — delete its row.")
+    return problems
+
+
 def locked_docs() -> set[str]:
+    """Every document in the corpus, INCLUDING the excluded ones.
+
+    Callers that want the denominator use `coverable_docs`. This stays whole so
+    the exclusion checks can ask whether a row still names a real file.
+    """
     return {p.name for p in DOC_DIR.glob("*.md")}
+
+
+def coverable_docs() -> set[str]:
+    """The denominator: documents an oracle could actually be written against."""
+    return locked_docs() - set(NOT_A_SPEC) - set(NO_PRODUCER)
 
 
 def measure() -> dict[str, list[str]]:
@@ -498,15 +665,57 @@ def selftest() -> int:
             f"path is wrong and every ratio this gate prints is meaningless"
         )
 
+    # THE EXCLUSION MACHINERY. `check_denominator` is what lets 14/26 read as
+    # 14/15, so it is the most load-bearing thing here and the easiest to make
+    # vacuous — a `producers_for` that finds nothing excuses every document
+    # forever, and looks exactly like a tier nobody has built yet.
+    #
+    # A REACH ARM, because the walk is the part that can silently die.
+    if not producers_for(("RealityId",)):
+        failures.append(
+            "the producer walk found no file naming `RealityId`, which crates/dp defines. "
+            "It is reading nothing, so every NO_PRODUCER row would stay excused forever"
+        )
+    # A SELF-WITNESS ARM — and the SECOND version of it, because the first could
+    # not fail. It asserted `producers_for(("NO_PRODUCER",)) == []`, which is
+    # true whatever the code does: this file lives in `scripts/` and the walk
+    # covers `crates` + `services`. Deleting the skip it was "proving" changed
+    # nothing. `NV-1`, the subject cannot vary — found by biting the arm, which
+    # is the only thing that ever finds this.
+    #
+    # So assert the property that actually keeps the gate out of its own walk.
+    # Add `scripts` to PRODUCER_ROOTS and this reds; the skip inside
+    # `producers_for` then becomes the live defence rather than a comment.
+    if any(Path(__file__).resolve() == f.resolve() for f in _code_files()):
+        failures.append(
+            "this gate's own source is INSIDE the producer walk. It declares every marker "
+            "in NO_PRODUCER, so each exclusion row would read its own table as an "
+            "implementation and the denominator would silently snap back to the whole corpus"
+        )
+    # A doc cannot be excluded AND covered; and an exclusion naming a file that
+    # is not in the corpus is a claim about something that is not there.
+    if not check_denominator({"only.md"}, set()):
+        failures.append(
+            "the exclusion hygiene check passed against a corpus containing NONE of the "
+            "excluded documents — a phantom row excuses whatever is written there next"
+        )
+    if not check_denominator(locked_docs(), {next(iter(NOT_A_SPEC))}):
+        failures.append(
+            "a document that is both EXCLUDED and read by a live oracle did not red; the "
+            "two answers contradict and the exclusion is the likelier to be wrong"
+        )
+
     if failures:
         for f in failures:
             print(f"dp-oracle-coverage-gate: SELFTEST FAIL — {f}")
         return 1
     print(
-        "dp-oracle-coverage-gate: SELFTEST PASS — 11 case(s); it counts a doc read "
+        "dp-oracle-coverage-gate: SELFTEST PASS — 15 case(s); it counts a doc read "
         "through a helper, ignores one in dead code / in a comment / with no "
         "assertion, reds on a decrease, an unrecorded increase and a stale row, does "
-        "NOT red on an exact match, and can see the corpus"
+        "NOT red on an exact match, can see the corpus, and its exclusion machinery "
+        "reaches real code, refuses to witness itself, and reds on a phantom row or "
+        "a doc that is both excluded and covered"
     )
     return 0
 
@@ -519,7 +728,8 @@ def main() -> int:
 
     readers = measure()
     covered = set(readers)
-    locked = locked_docs()
+    locked = coverable_docs()
+    whole = locked_docs()
 
     if os.environ.get("REGEN_ORACLE_COVERAGE_BASELINE") == "1":
         write_baseline(readers)
@@ -539,16 +749,20 @@ def main() -> int:
         return 2
 
     print(
-        f"[dp-oracle-coverage] {len(covered)}/{len(locked)} LOCKED 06_data_plane "
-        f"document(s) read by a live, asserting test"
+        f"[dp-oracle-coverage] {len(covered)}/{len(locked)} COVERABLE 06_data_plane "
+        f"document(s) read by a live, asserting test "
+        f"({len(whole)} in the corpus; {len(NOT_A_SPEC)} are not specifications, "
+        f"{len(NO_PRODUCER)} specify code that does not exist yet)"
     )
     for d in sorted(readers):
         print(f"    {d}  <- {', '.join(readers[d])}")
     unread = sorted(locked - covered)
     if unread:
         print(f"    still unread ({len(unread)}): {', '.join(unread)}")
+    print(f"    excluded — not a spec ({len(NOT_A_SPEC)}): {', '.join(sorted(NOT_A_SPEC))}")
+    print(f"    excluded — no producer ({len(NO_PRODUCER)}): {', '.join(sorted(NO_PRODUCER))}")
 
-    problems = compare(covered, baseline, locked)
+    problems = compare(covered, baseline, locked) + check_denominator(whole, covered)
     if problems:
         print("\ndp-oracle-coverage-gate: FAIL")
         for p in problems:
