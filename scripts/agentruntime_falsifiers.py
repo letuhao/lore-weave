@@ -1065,6 +1065,54 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.4: the argument supplier ---------------------------------------------------------
+    "test_THE_DOMINANT_REAL_FAILURE_IS_A_CONTEXT_VALUE": [
+        # Declare the largest real failure class as the MODEL's job: 78 calls / 46 sessions told
+        # to supply a value the runtime owes them and does not have.
+        ("contracts/agent-runtime-tool-contracts.json",
+         '"book_id": "context | plan — the ambient book when the surface is book-bound, otherwise plan-bound",',
+         '"book_id": "model — the caller types it",'),
+    ],
+    "test_THE_RUNTIME_IS_PREFERRED_OVER_THE_MODEL_WHEN_BOTH_APPEAR": [
+        # Read `model` out of a declaration that also names a runtime source, putting the work
+        # back on the model exactly where the runtime already owes the value.
+        (f"{PKG}/toolcontract.py",
+         '    named = [s for s in ("context", "plan", "model") if s in raw.split("—")[0]]',
+         '    named = [s for s in ("model", "context", "plan") if s in raw.split("—")[0]]'),
+    ],
+    "test_PROSE_AFTER_THE_DASH_IS_NOT_PARSED_FOR_SUPPLIERS": [
+        # Parse the human explanation as if it declared suppliers.
+        (f"{PKG}/toolcontract.py", 'if s in raw.split("—")[0]]', "if s in raw]"),
+    ],
+    "test_AN_UNDECLARED_PARAMETER_IS_NONE_NOT_A_GUESS": [
+        (f"{PKG}/toolcontract.py", "    if type(raw) is not str:\n        return None",
+                                   '    if type(raw) is not str:\n        return "model"'),
+    ],
+    "test_EVERY_DECLARED_SUPPLIER_NAMES_A_KNOWN_SIDE": [
+        (f"{PKG}/toolcontract.py", 'SUPPLIERS = ("model", "context", "plan")',
+                                   'SUPPLIERS = ("model",)'),
+    ],
+    "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
+        # 🔴 The first version flipped `if _owed:` to `if False:` — which disables the branch but
+        # leaves the SOURCE STRINGS this guard greps for, so it stayed green. A source-level guard
+        # can only be reddened by removing what it reads.
+        (f"{CS}/app/services/stream_service.py",
+         "                        _owed = [a for a in _missing_args\n"
+         "                                 if declared_supplier(_c_block, a) in (\"context\", \"plan\")]",
+         "                        _owed = []"),
+    ],
+    "test_A_MODEL_SUPPLIED_ARGUMENT_KEEPS_THE_ORIGINAL_MESSAGE": [
+        # Report the model's own content as runtime-owed — the same error pointed the other way.
+        (f"{PKG}/toolcontract.py", "    return named[0] if named else None", '    return "context"'),
+    ],
+    "test_A_CONTENT_ARGUMENT_IS_THE_MODELS": [
+        (f"{PKG}/toolcontract.py", "    return named[0] if named else None", '    return "plan"'),
+    ],
+    "test_A_PLAN_BOUND_ARGUMENT_READS_AS_OWED_BY_THE_RUNTIME": [
+        (f"{PKG}/toolcontract.py", '    block = contract.get("argument_supplier")',
+                                   "    block = {}"),
+    ],
+
     # -- CP-5.5: the typed CALL outcome --------------------------------------------------------
     "test_EVERY_PERSISTED_CALL_CARRIES_ONE": [
         # Back to the state measured across 7,990 rows: the enum exists and nothing writes it.
@@ -1444,8 +1492,14 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_A_BROKEN_PROGRAM_IS_NOT_ABSORBED_AS_A_BAD_FILE": [
         # Restore the bare-except swallow that turned a NameError into one warning line and hid a
         # mechanism that had never run once.
+        # Anchored on the COMMENT as well as the clause: CP-5.4 added a second
+        # `except (NameError, AttributeError, ImportError)` for the tool-contract registry, and a
+        # bare clause anchor then matched twice — which the stale-anchor guard caught immediately.
         (f"{CS}/app/services/stream_service.py",
-         "    except (NameError, AttributeError, ImportError):", "    except ():"),
+         "    except (NameError, AttributeError, ImportError):\n"
+         "        # 🔴 **THESE ARE BUGS, NOT MISCONFIGURATION",
+         "    except ():\n"
+         "        # 🔴 **THESE ARE BUGS, NOT MISCONFIGURATION"),
     ],
     "test_THE_REGISTRY_FILE_IS_WHERE_THE_LOADER_LOOKS": [
         # Look for the registry somewhere it is not — `agentruntime_arm`'s missing compose entry,

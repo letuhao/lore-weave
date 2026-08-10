@@ -87,6 +87,8 @@ SUITES = (
     "tests/test_cp5_refresolve.py",
     # CP-5.5's typed call outcome. Registered in the same change as the suite.
     "tests/test_cp5_calloutcome.py",
+    # CP-5.4's argument supplier. Registered in the same change as the suite.
+    "tests/test_cp5_supplier.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

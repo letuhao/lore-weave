@@ -1726,6 +1726,33 @@ def _is_uuid(v: str) -> bool:
 _REF_REGISTRY_CACHE: dict[str, tuple[dict, dict]] = {}
 
 
+#: CP-5.4 — the tool-contract registry, read once. Same posture as the ref registry: an absent file
+#: is a legitimate empty state (no tool declares a supplier, so every message reads as it did
+#: before), and a broken PROGRAM is never absorbed as a bad file.
+_TOOL_CONTRACT_CACHE: dict[str, dict] = {}
+
+
+def _tool_contract_registry() -> dict:
+    cached = _TOOL_CONTRACT_CACHE.get("value")
+    if cached is not None:
+        return cached
+    doc: dict = {}
+    try:
+        from app.agentruntime.manifest import manifest_path
+        from app.agentruntime.toolcontract import CONTRACT_REGISTRY_FILENAME
+
+        mpath = manifest_path()
+        path = (mpath.parent / CONTRACT_REGISTRY_FILENAME) if mpath is not None else None
+        if path is not None and path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+    except (NameError, AttributeError, ImportError):
+        raise
+    except Exception as exc:
+        logger.warning("CP-5.4: tool-contract registry not loaded (%s)", exc)
+    _TOOL_CONTRACT_CACHE["value"] = doc
+    return doc
+
+
 def _ref_registry(lane_of) -> tuple[dict, dict]:
     """`(resolvers, bindings)`, or two empty dicts.
 
@@ -4379,6 +4406,41 @@ async def _stream_with_tools(
                             "e.g. a list of the items to create, or the search text. Read the "
                             "tool's schema for their exact shape, fill them in, and call again. "
                             "Do not call it with only ids or empty arguments."
+                        )
+                    # ── CP-5.4 · WHO OWES THIS ARGUMENT ──────────────────────────────────────
+                    # 🔴 One sentence was covering two OPPOSITE situations. Measured over 266
+                    # missing-argument failures / 87 sessions: the largest single case is
+                    # `book_read` missing `book_id` — **78 calls across 46 sessions** — and
+                    # `book_id` is a CONTEXT value the runtime fills from the ambient book and
+                    # simply does not have outside a book studio. Telling the model "you are
+                    # missing a required argument" reads as *you forgot something* when the truth
+                    # is *I owe you this and do not have it*, and the model cannot act on it.
+                    # `body`, `items` and `base_version` ARE model-supplied, and for those the
+                    # message above is already right.
+                    #
+                    # The supplier is read from the tool's DECLARED contract (5.1's
+                    # `argument_supplier` member), so this is the contract doing work rather than
+                    # a table of tool names kept here.
+                    _owed = []
+                    try:
+                        from app.agentruntime.toolcontract import (
+                            declared_supplier, resolve_contract,
+                        )
+                        _c_block, _ = resolve_contract(
+                            cat_index.get(c["name"]) or plain_index.get(c["name"]) or {},
+                            _tool_contract_registry())
+                        _owed = [a for a in _missing_args
+                                 if declared_supplier(_c_block, a) in ("context", "plan")]
+                    except Exception:
+                        _owed = []
+                    if _owed:
+                        _ma_msg = (
+                            f"'{c['name']}' is missing {_owed}, and {'these are' if len(_owed) > 1 else 'this is'} "
+                            f"NOT yours to invent: the runtime supplies "
+                            f"{'them' if len(_owed) > 1 else 'it'} from the current context or an "
+                            f"active plan, and has none right now. Establish that context first "
+                            f"(e.g. list or open the book you mean, then call this with the id it "
+                            f"returns). Do NOT guess a value."
                         )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],

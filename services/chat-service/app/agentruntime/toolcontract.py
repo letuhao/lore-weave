@@ -375,6 +375,38 @@ def declared_contract(tool_def: dict) -> dict:
 #: separation `plan_supplied.overrode` had to make.
 CONTRACT_REGISTRY_FILENAME = "agent-runtime-tool-contracts.json"
 
+#: CP-5.4 — the suppliers an input may declare. `model` is the ONLY one the model can act on; the
+#: other two name a value the RUNTIME owes it, which is the distinction the generic
+#: *"missing required argument"* message cannot make.
+SUPPLIERS = ("model", "context", "plan")
+
+
+def declared_supplier(contract: dict, param: str) -> str | None:
+    """Which side owes `param`, per the tool's `argument_supplier` member, or None.
+
+    🔴 **THE MEASUREMENT THAT MAKES THIS WORTH BUILDING.** Of 266 missing-argument failures across
+    87 sessions, the single largest is **`book_read` missing `book_id` — 78 calls over 46
+    sessions** — and `book_id` is a **context** value: the runtime fills it from the ambient book
+    and simply has none outside a book studio. The model is told *"missing required argument
+    book_id"*, which reads as *"you forgot something"* when the truth is *"I owe you this and do
+    not have it"*. The remaining classes (`body`, `items`, `base_version`) are genuinely
+    `model`-supplied content, where that same message IS right.
+
+    One generic sentence for two opposite situations is the same defect as `ok:false` covering both
+    a failure and a suspension (5.5), one layer up.
+    """
+    block = contract.get("argument_supplier")
+    if type(block) is not dict:
+        return None
+    raw = block.get(param)
+    if type(raw) is not str:
+        return None
+    # A declaration reads like `"context | plan — the ambient book …"`. The SUPPLIERS it names are
+    # what matters; the prose after them is for a human. `model` last: a value the runtime can
+    # supply is the runtime's to supply, and only if nothing can is it the model's job.
+    named = [s for s in ("context", "plan", "model") if s in raw.split("—")[0]]
+    return named[0] if named else None
+
 
 def resolve_contract(tool_def: dict, registry: dict | None) -> tuple[dict, str]:
     """The contract that governs this tool, and WHICH source supplied it.
