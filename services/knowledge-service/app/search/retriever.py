@@ -25,6 +25,7 @@ from app.clients.embedding_client import EmbeddingClient
 from app.clients.reranker_client import RerankerClient
 from app.config import settings
 from app.context.query_embedding import embed_query_cached
+from app.ports.vector_store import VectorHit
 from app.db.models import Project
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
@@ -110,6 +111,47 @@ def passage_to_hit(h: PassageSearchHit, *, match_type: str = "semantic") -> dict
             "chunkIndex": p.chunk_index,
             # P3-C: real chapter block where this chunk starts → precise jump.
             "blockIndex": p.block_index,
+            "headingContext": None,
+            "charStart": 0,
+            "charEnd": 0,
+        },
+    }
+
+
+def vector_hit_to_raw_hit(h: VectorHit, *, match_type: str = "semantic") -> dict[str, Any]:
+    """Map a port `VectorHit` → the unified raw-search hit shape (plan T25b).
+
+    A FORK of `passage_to_hit`, not a replacement, and that is the PO's call recorded rather
+    than a shortcut. `passage_to_hit` takes a `PassageSearchHit` — a Neo4j-shaped model — and
+    it is shared with the CJK LEXICAL leg, which is not a vector search and will never come
+    through this port. Widening it to accept both shapes would rewrite a retrieval path this
+    migration has no business touching, to serve a caller that does not exist yet.
+
+    The duplication is real and bounded: two mappers, one output shape, and the shape is
+    pinned by a test that compares them field-for-field. When the lexical leg eventually gets
+    a port of its own, they converge — until then, the cost of forking is a test, and the cost
+    of sharing would be the CJK leg.
+
+    Reads `attributes` defensively because the port says `attributes` is a plain mapping whose
+    keys are scope-specific: a backend that omits one must produce a degraded hit, not a
+    KeyError that takes out the whole search.
+    """
+    a = h.attributes or {}
+    chapter_index = a.get("chapter_index")
+    return {
+        "chapterId": a.get("source_id"),
+        "chapterTitle": None,
+        "sortOrder": chapter_index if chapter_index is not None else 0,
+        "surface": "canon" if a.get("canon", True) else "draft",
+        "matchType": match_type,
+        "sourceLang": a.get("source_lang", "unknown"),
+        "score": h.score,
+        "relevance": h.score,
+        "snippet": a.get("text"),
+        "highlights": [],
+        "location": {
+            "chunkIndex": a.get("chunk_index"),
+            "blockIndex": a.get("block_index"),
             "headingContext": None,
             "charStart": 0,
             "charEnd": 0,

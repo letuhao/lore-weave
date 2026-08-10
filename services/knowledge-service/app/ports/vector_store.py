@@ -124,6 +124,23 @@ class EntityVectorRecord:
     embedding_model: str
     embedding_version: int
     scope: VectorScope = "entity"
+    # T25b (reopening T14) — the two fields that made `PgVectorStore.search(scope="entity")`
+    # refuse. They are LIFECYCLE state, and a vector-only store genuinely does not hold them:
+    # `project_id` scopes the search (the glossary FK is unique per (user, project), so an
+    # unscoped entity search returns an arbitrary project's node — the same defect that put
+    # every T27 lifecycle archive in the DLQ), and `archived` is what keeps a retired entity
+    # out of retrieval.
+    #
+    # Carried on the RECORD rather than looked up at search time on purpose: a store that had
+    # to join back to the graph to answer "is this archived" would be a store that cannot be
+    # swapped, which is the entire point of the port. The writer knows both at upsert time.
+    #
+    # Defaults keep this additive: an existing caller that constructs the record positionally
+    # or omits them still compiles, and `archived=False` is the safe reading of "not stated"
+    # — a vector that forgot to say it was archived must not vanish from retrieval, it must
+    # be visible and wrong in a way somebody notices.
+    project_id: str | None = None
+    archived: bool = False
 
 
 VectorRecord = PassageVectorRecord | EntityVectorRecord

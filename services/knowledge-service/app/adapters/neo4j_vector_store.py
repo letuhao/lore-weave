@@ -96,6 +96,13 @@ class Neo4jVectorStore:
                         "chapter_index": getattr(h.passage, "chapter_index", None),
                         "canon": getattr(h.passage, "canon", True),
                         "source_lang": getattr(h.passage, "source_lang", "unknown"),
+                        # T25b — the gap the plan named. `block_index` is the real chapter
+                        # block a chunk starts at, and it is what turns a search hit into a
+                        # precise jump in the reader. Without it here, a caller mapping a
+                        # VectorHit could only ever produce a hit that lands at the top of
+                        # the chapter — degraded in a way no test would notice, because the
+                        # hit is otherwise perfectly well formed.
+                        "block_index": getattr(h.passage, "block_index", None),
                     },
                     vector=h.vector,
                 )
@@ -126,6 +133,14 @@ class Neo4jVectorStore:
                         "kind": getattr(h.entity, "kind", None),
                         "anchor_score": getattr(h.entity, "anchor_score", None),
                         "glossary_entity_id": getattr(h.entity, "glossary_entity_id", None),
+                        # T25b — the lifecycle pair, so a caller can tell a retired entity
+                        # from a live one without a second round trip to the graph. Neo4j's
+                        # own query already excludes archived nodes, so `archived` reads
+                        # False here; it is carried anyway because the PORT promises the
+                        # field, and a backend that silently omitted it would make the
+                        # contract true of one adapter and not the other.
+                        "project_id": getattr(h.entity, "project_id", None),
+                        "archived": getattr(h.entity, "archived_at", None) is not None,
                     },
                 )
                 for h in hits
