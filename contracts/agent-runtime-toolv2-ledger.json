@@ -488,6 +488,16 @@
         "GREPPED: the old breaker message is absent from services/ and frontend/src, so the message was replaced rather than merely idle"
       ],
       "admitted": true
+    },
+    "glossary_list_system_standards": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 170 calls / 104 sessions / 159 ok (93.5%), and BOTH failure classes are dated shut. 7 'unparseable content' are all on 2026-07-09, the same #9B placeholder-vs-structuredContent defect iteration 36 dated to its fix commit that same day. 4 'unexpected additional properties [\"limit\"]' are all on 2026-07-12 -- the model assumed a paging parameter the tool does not declare, and additionalProperties is false, so it was refused precisely. This tool matters beyond its own row: CP-6.1 dispatches it as the STANDARDS source when it refuses an unknown kind, so iteration 37's first-ever live CP-6.1 refusal ran through it.",
+      "evidence": [
+        "PHASE 2, split: 159 ok / 11 failed = 7 unparseable (all 2026-07-09) + 4 unexpected 'limit' (all 2026-07-12). Neither class has recurred",
+        "LIVE: glossary MCP -> content[0].text is the placeholder 'ok — see structuredContent…' and structuredContent carries 20 system kinds. The same shape that broke the client before 2026-07-09 is still what the tool returns; the client changed",
+        "CROSS-REFERENCE: iteration 37's live CP-6.1 refusal shows this tool dispatching as the standards source (glossary_list_system_standards | done) in the same turn"
+      ],
+      "admitted": false
     }
   }
 }
