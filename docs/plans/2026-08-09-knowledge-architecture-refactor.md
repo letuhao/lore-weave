@@ -2569,6 +2569,47 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   check, and the relation proposer already measured 3-of-8 defensible.
   **Bite:** run over the corpus → edge count non-zero **and** the graph acyclic.
   (depends on T32)
+  ---
+  ✅ **Code + unit evidence done; the corpus bite is running (see below).**
+
+  **`causes | precedes | unknown`.** `causal_edges.py` labelled nothing — it returned bare
+  `(cause, effect)` pairs from a prompt that said *"CAUSES or ENABLES"*, collapsing two
+  different strengths of claim into one. Now every edge carries a relation: `causes` asserts
+  **why**, `precedes` asserts only **when**. They persist as **different Neo4j relationship
+  types**, not as a property, and `get_causal_motif_pairs` still reads `:CAUSES` **only** —
+  letting a `PRECEDES` edge through there would mean *"B came after A"* silently certified
+  *"A caused B"* as **causally verified** in deep arc-conformance.
+
+  **`unknown` is a first-class answer, and it makes the output SMALLER.** A widening that could
+  only add edges would be the failure mode here. `unknown` is dropped, never downgraded to
+  `precedes`: the plan's reason is that *a wrong order is worse than an absent one*, and the
+  sibling relation proposer measured **3-of-8 defensible**. Downgrading would look conservative
+  and be the opposite — the graph fills with order claims the model explicitly declined to make,
+  indistinguishable from the ones it did.
+  *Bite: downgrade `unknown` to `precedes` → 2 tests red.*
+
+  **Back-compat that cannot over-claim.** A legacy 2-element pair parses as `precedes`, the
+  **weaker** claim. At the persistence boundary the default is the opposite (`causes`), and
+  deliberately: an unlabelled *model* response must not be promoted to a causal assertion,
+  while an existing *caller* passing 2-tuples is passing the causal edges it always was.
+
+  **The cycle guard, mirrored from `motif_link`.** `drop_cycles` walks the existing edges of the
+  SAME kind and refuses any edge whose target can already reach its source — per-kind, because
+  a loop in `causes` is not a loop in `precedes`. Applied to a *sorted* edge list so which edge
+  of a cycle gets refused is deterministic; otherwise two runs over one corpus would disagree
+  about world order and neither would be reproducible.
+  ⚠️ **It refuses nothing today, on purpose.** Every edge runs forward in reading order, so the
+  graph is a DAG by construction — acyclicity is a property of ONE filter in ONE function. D0.1
+  makes world order a partial order that will accept edges *not* derived from reading order
+  (curated `HAPPENS_BEFORE`, cross-chapter anchors), and on that day the guarantee vanishes
+  **silently**: a cyclic world order answers *"did A happen before B"* with yes in both
+  directions and nothing errors. So it is written and tested against a hand-built cycle now.
+  *Bite: judge cycles across all kinds instead of per-kind → `test_cycles_are_judged_PER_KIND` reds.*
+
+  **Evidence:** 9 new tests; **4158 knowledge unit tests green (+9)**. Three pre-existing
+  `causal_edges` tests were updated to the new triple shape rather than deleted — the filtering
+  they cover (forward-only, no self-loops, no invented ids) is unchanged by T33 and still
+  asserted.
 
 - [ ] **T34** — Write-time dedupe (**D7**)
   `emitChapterFacts` — if the incoming `value_hash` equals the currently-open fact's, attach

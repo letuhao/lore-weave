@@ -963,6 +963,23 @@ MERGE (a)-[:CAUSES]->(b)
 RETURN count(*) AS written
 """
 
+# The ORDER-only sibling (plan T33 / D0.1). A separate relationship type, not a property on
+# CAUSES, because the two are different assertions: `PRECEDES` claims only that b happens after
+# a, while `CAUSES` claims a brought b about. Cypher cannot parameterise a relationship type,
+# so this is a second literal statement rather than string interpolation — the same reason
+# `write_summary_to_node` keeps its label set closed.
+_MERGE_PRECEDES_EDGES_CYPHER = """
+UNWIND $rows AS row
+MATCH (a:Event {id: row.cause}), (b:Event {id: row.effect})
+WHERE a.user_id = $user_id AND b.user_id = $user_id
+MERGE (a)-[:PRECEDES]->(b)
+RETURN count(*) AS written
+"""
+
+# NOTE: this reads :CAUSES ONLY, and must keep doing so. Deep arc-conformance uses it to
+# upgrade a succession transition to *causally verified*; letting a mere PRECEDES edge through
+# would mean "B came after A" silently certified "A caused B" — the exact over-claim T33's
+# `unknown` answer exists to prevent.
 _CAUSAL_MOTIF_PAIRS_CYPHER = """
 MATCH (a:Event)-[:CAUSES]->(b:Event)
 WHERE a.user_id = $user_id AND b.user_id = $user_id
@@ -973,17 +990,38 @@ RETURN DISTINCT a.realized_motif_code AS cause, b.realized_motif_code AS effect
 
 
 async def merge_causal_edges(
-    session: CypherSession, *, user_id: str, pairs: list[tuple[str, str]],
+    session: CypherSession, *, user_id: str,
+    pairs: list[tuple[str, str]] | list[tuple[str, str, str]],
 ) -> int:
-    """Persist inferred `(:Event)-[:CAUSES]->(:Event)` edges (idempotent MERGE), tenant-scoped
-    on BOTH endpoints (a foreign id matches nothing → never a cross-tenant edge). ``pairs`` is
-    ``[(cause_event_id, effect_event_id)]``. Returns the rows whose endpoints both matched."""
-    rows = [{"cause": c, "effect": e} for c, e in pairs if c and e and c != e]
-    if not rows:
-        return 0
-    result = await run_write(session, _MERGE_CAUSAL_EDGES_CYPHER, user_id=user_id, rows=rows)
-    record = await result.single()
-    return int(record["written"]) if record else 0
+    """Persist inferred world-order edges (idempotent MERGE), tenant-scoped on BOTH endpoints
+    (a foreign id matches nothing → never a cross-tenant edge).
+
+    ``pairs`` is ``[(a, b, relation)]`` with relation ``causes`` | ``precedes`` (plan T33).
+    A 2-tuple is accepted for back-compat and treated as ``causes``, which is what it always
+    meant before the order-only kind existed — the reverse of ``parse_edges``' default, and
+    deliberately so: there, an unlabelled MODEL response must not be promoted to a causal
+    claim; here, an existing CALLER passing 2-tuples is passing the causal edges it always was.
+
+    Returns the rows whose endpoints both matched, across both kinds."""
+    by_kind: dict[str, list[dict[str, str]]] = {}
+    for item in pairs:
+        if len(item) == 3:
+            a, b, rel = item
+        else:
+            a, b = item
+            rel = "causes"
+        if a and b and a != b:
+            by_kind.setdefault(rel, []).append({"cause": a, "effect": b})
+    written = 0
+    for rel, cypher in (("causes", _MERGE_CAUSAL_EDGES_CYPHER),
+                        ("precedes", _MERGE_PRECEDES_EDGES_CYPHER)):
+        rows = by_kind.get(rel)
+        if not rows:
+            continue
+        result = await run_write(session, cypher, user_id=user_id, rows=rows)
+        record = await result.single()
+        written += int(record["written"]) if record else 0
+    return written
 
 
 async def get_causal_motif_pairs(

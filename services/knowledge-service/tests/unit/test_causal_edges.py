@@ -25,14 +25,17 @@ def test_build_messages_numbers_events_in_order():
 
 
 def test_parse_edges_keeps_forward_drops_backward_self_and_foreign():
-    content = '[["e1","e3"], ["e3","e1"], ["e2","e2"], ["e1","ghost"]]'
+    # T33 widened the edge to (a, b, relation). The filtering asserted here is UNCHANGED —
+    # forward-only, no self-loops, no invented ids — only the shape moved, so this keeps
+    # covering what it always covered rather than being replaced by the new-shape tests.
+    content = '[["e1","e3","causes"], ["e3","e1","causes"], ["e2","e2","causes"], ["e1","ghost","causes"]]'
     out = parse_edges(content, order_index=ORDER, window_ids=WIN)
-    assert out == [("e1", "e3")]  # forward only; backward/self/foreign dropped
+    assert out == [("e1", "e3", "causes")]  # forward only; backward/self/foreign dropped
 
 
 def test_parse_edges_tolerates_edges_wrapper_and_fence():
-    content = '```json\n{"edges": [["e1","e2"]]}\n```'
-    assert parse_edges(content, order_index=ORDER, window_ids=WIN) == [("e1", "e2")]
+    content = '```json\n{"edges": [["e1","e2","causes"]]}\n```'
+    assert parse_edges(content, order_index=ORDER, window_ids=WIN) == [("e1", "e2", "causes")]
 
 
 def test_parse_edges_junk_is_empty():
@@ -55,10 +58,12 @@ class _FakeLLM:
 
 
 async def test_infer_returns_validated_forward_edges():
-    llm = _FakeLLM(_job('[["e1","e2"], ["e2","e3"]]'))
+    llm = _FakeLLM(_job('[["e1","e2","causes"], ["e2","e3","precedes"]]'))
     out = await infer_causal_edges(llm, user_id="u", model_source="user_model",
                                    model_ref="m1", events=EVENTS)
-    assert out == [("e1", "e2"), ("e2", "e3")]
+    # T33: the relation now rides on the edge, and the two kinds are kept distinct all the way
+    # out of the inference rather than being flattened at the boundary.
+    assert out == [("e1", "e2", "causes"), ("e2", "e3", "precedes")]
 
 
 async def test_infer_degrades_on_exception():
