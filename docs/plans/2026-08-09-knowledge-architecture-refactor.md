@@ -48,21 +48,33 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T25** — cut over, drop the Neo4j vector indexes, **build the vector backup path**. Read
-T24's evidence block and [the recall measurement](../measurements/2026-08-10-vector-backend-recall.md)
-first; T25 inherits three obligations from it:
+**RESUME: T25a — wire the `VectorStore` port into the read path. ⚠️ NEEDS A PO DECISION FIRST.**
 
-1. **The cutover gate is a metric, not a checklist tick.**
-   `vector_dual_write_total{outcome="secondary_failed"}` must read **zero** before the primary's
-   indexes are dropped. A swallowed secondary failure is invisible by construction, so that counter
-   is the only evidence that the target is complete.
-2. **The search-effort defaults were measured at 181 rows.** 300/200 turned 0.715 into 1.000 there;
-   whether it holds at 63 M vectors is QC-3's to re-measure, and the fallback is named — pgvector's
-   HNSW hit 1.000 at the server's own defaults for dims ≤ 2000.
-3. **The entity read path is still owed.** `PgVectorStore.search(scope="entity")` refuses:
+T25 delivered and drilled the backup path, then found its other two parts blocked by something no
+task in this plan owns: **nothing constructs a `VectorStore`.** Phase 3 builds the image, the
+adapter, the dual-write and the cutover — and never wires the port into the three live call sites
+(`context/selectors/passages.py`, `routers/public/drawers.py`, `search/retriever.py`). See T25's
+entry for the evidence.
+
+**Read this before treating any Phase 3 gate as green:**
+`vector_dual_write_total{outcome="secondary_failed"}` is the cutover gate, and it is currently stuck
+at zero **because no write reaches it** — indistinguishable, at a glance, from zero because nothing
+failed. Do not read it as a pass until something is wired.
+
+The three obligations from T24 still stand and now belong to T25a/QC-3:
+
+1. **The cutover gate must be able to move** before it can be trusted (above).
+2. **The search-effort defaults were measured at 181 rows** — 300/200 turned 0.715 into 1.000
+   there. QC-3 re-measures at scale; the fallback is named, pgvector's HNSW hit 1.000 at the
+   server's own defaults for dims ≤ 2000.
+3. **The entity read path is still owed.** `PgVectorStore.search(scope="entity")` refuses, because
    `include_archived` and `project_id` describe lifecycle state a vector-only store does not hold.
-   T24 built the dual-write writer but not those columns, so this moves to T25 — **the cutover
-   cannot land while the Postgres store cannot answer an entity search at all.**
+   Closing it means adding those fields to `EntityVectorRecord` — **a T14 port change**, which is
+   why it is a PO decision and not a quiet fix.
+
+Also owed for the RTO: **a diskann rebuild measured above 65 536 vectors**
+(`diskann.min_vectors_for_parallel_build`), since every number in the restore drill was taken below
+that threshold and is therefore single-threaded.
 
 **Still open elsewhere:** 6 `db/migrations/` backfills carry Cypher (Phase 7 must port or retire),
 QC-2's rendered-block diff is owed once a consumer holds a port, and 283 Postgres-gated integration
@@ -1576,10 +1588,47 @@ vectors and validity intervals live in different stores.
   their answers become identical.
   (depends on T23)
 
-- [ ] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
-  Vectors are **durable primary data** (decision T4) — restored, never recomputed, because
-  per-project BYOK means re-embedding spends **the user's** budget. This task creates the backup
-  and restore procedure that three other claims depend on.
+- [~] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
+  **Backup path DONE and drilled. The cutover is BLOCKED, and not by anything T25 can fix.**
+
+  **① The backup path ✅** — [`scripts/vector-backup-drill.sh`](../../scripts/vector-backup-drill.sh),
+  evidence in [`docs/measurements/2026-08-10-vector-restore-drill.md`](../measurements/2026-08-10-vector-restore-drill.md).
+  It destroys the table and gets it back rather than checking that a file exists; the destroy step
+  is what makes the rest mean anything, and the bite (replace `pg_restore` with `true`) gives
+  `passed=2 failed=4`, exit 1.
+
+  **The restore is sound and it does not restore the answers.** Every vector returns byte-identical
+  and the exact nearest-neighbour query is unchanged, but at 20 000 rows the rebuilt ANN index
+  returns a **different top-10 (overlap 7/10)** — `pg_restore` rebuilds the graph rather than
+  copying it. Data recovery and *result* recovery are different guarantees; only the first is
+  promised, and post-restore recall is an open question every time.
+
+  **The index rebuild IS the recovery time:** 34.3 s of a 35.3 s restore at 20 000 rows (97 %).
+  ⚠️ **Not extrapolable.** `diskann.min_vectors_for_parallel_build = 65536`, and both measurements
+  sit below it, so both were single-threaded. **QC-3 owes a rebuild measurement above 65 536
+  vectors; until then there is no defensible RTO.**
+
+  **② The cutover ⛔ and ③ dropping the Neo4j indexes ⛔.** Measured, not assumed:
+  `grep` for constructors of `PgVectorStore` / `Neo4jVectorStore` / `DualWriteVectorStore` outside
+  `app/adapters/` returns **nothing**. The live semantic read path still calls
+  `find_passages_by_vector` directly from `context/selectors/passages.py`, `routers/public/drawers.py`
+  and `search/retriever.py`. **Nothing holds a `VectorStore`, so there is nothing to cut over** —
+  and dropping the Neo4j vector indexes today would simply break semantic search.
+
+  **This is a gap in the plan, not a slip in the work.** Phase 3 goes T22 build the image → T23
+  write the adapter → T24 dual-write → T25 cut over, and **no task ever wires the port into the
+  read path.** The plan half-knows this: line 1340 already notes "no consumer holds a port yet…
+  there is no assembly path that goes through". T24's dual-write store is likewise composed by
+  nobody, which means `vector_dual_write_total{outcome="secondary_failed"}` — the cutover gate — is
+  structurally stuck at zero because no write reaches it. **A gate that reads zero because nothing
+  is wired looks exactly like a gate that reads zero because nothing failed.** That is the most
+  dangerous shape in this whole phase and it must not be read as a pass.
+
+  **Needed before T25 can finish (proposed T25a, for the PO):** replace the three direct
+  `find_passages_by_vector` call sites with a `VectorStore` injected at the composition root, then
+  run the dual-write in shadow long enough for the counter to mean something. Also still owed from
+  T23/T24: `PgVectorStore.search(scope="entity")` refuses outright, so the Postgres store cannot
+  serve entity search at all — the cutover cannot land over that either.
   (depends on T24)
 
 - [ ] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
