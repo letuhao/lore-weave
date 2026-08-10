@@ -252,6 +252,20 @@ not a pattern, so it stays recorded. What has changed is that a `preconditions` 
 have three declarations to write instead of one, which is the difference between a special case and
 a contract member.
 
+**UPDATE 2 — iteration 40 found a FOURTH, and this one is ORGANIC:**
+
+```
+plan_propose_spec {book_id, source_markdown, mode: "llm"}
+  → "model_ref required when mode=llm"
+```
+
+`model_ref` is `anyOf [string, null], default null` — optional. This is not a probe: a real session
+hit it. So the traffic subject is now **two tools** (12 calls + 1) rather than one, and the shape
+holds on four. Still thin by §7's standard, and still recorded rather than built — but the next
+organic instance should tip it, and the declarations are now written down ready to become a member:
+`scope=arc ⇒ arc_id`, `scope=chapter ⇒ chapter_id`, `op=create ⇒ plan_run_id+budget_usd+
+pause_after_each_unit`, `op=list ⇒ chapter_id`, `mode=llm ⇒ model_ref`.
+
 ### DQ-7 · 436 of 438 projects cannot build a graph, and the remedy has never been called once
 
 *Raised by:* iteration 8. `kg_build_graph` refused all 13 of its calls with:

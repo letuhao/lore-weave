@@ -434,6 +434,17 @@
         "THE COERCION IS GUARDED, checked rather than assumed: tests/test_unwrap_wrapped_args.py asserts project_id=['019f579c-f359-76e2-b76b-9ff2e2247055'] unwraps to the scalar -- the same uuid that appears in this tool's recorded failures -- and 20 tests pass"
       ],
       "admitted": false
+    },
+    "plan_propose_spec": {
+      "state": "proven",
+      "note": "PROVEN LIVE (in iteration 23, and it was that proof which made plan_compile's fix demonstrable). 156 calls / 142 sessions / 152 ok -- 97.4%, the highest rate the loop has reached. Only 4 failures: 3 'not found or not accessible' across 2 sessions, and ONE 'model_ref required when mode=llm'. That single call matters out of proportion to its size: model_ref is declared anyOf[string,null] default null -- OPTIONAL -- and required when mode=llm. It is DQ-6's conditional-optional shape on a FOURTH tool, and unlike the second and third it was reached by a real session rather than by this loop's probes. The traffic subject for that member is now two tools instead of one.",
+      "evidence": [
+        "PHASE 2, split: 152 ok / 4 failed (3 project/book access, 1 conditional-optional)",
+        "LIVE (iteration 23): plan_propose_spec mode=rules on throwaway book 019fcaa4 with markdown written to the format plan_compile's fixed message described -> run 019fed7d-dab9 with spec, package and outline artifacts; the spec parsed one arc and two events, and plan_compile then compiled it",
+        "SCHEMA CHECKED: required is ['book_id','source_markdown']; model_ref is optional with default null, so a caller reading the schema and omitting it under mode=llm is doing what the schema says",
+        "DQ-6 UPDATED: four tools now show the shape, two of them from organic traffic"
+      ],
+      "admitted": true
     }
   }
 }
