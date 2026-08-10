@@ -48,7 +48,36 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T25b — the vector READ cutover.** Both PO decisions are standing (below).
+**RESUME: QC-3 — finish the two owed measurements.**
+
+**Run state as of 2026-08-10 22:2x (context compaction point).**
+
+DONE this session: T26–T29 + T50 (**Phase 4 complete**, no open deferrals) ·
+`D-T27-LIVE-REPLAY` cleared (it found lifecycle handlers that had never worked — every archive
+was hitting the DLQ on a missing `project_id`) · the dead `/kg/neighborhood` upstream now served
+· T25b parts 1 and 2a · `D-T25B-PG-ANCHOR-SCORE` decided and guarded by a test.
+
+NEXT, in this order:
+1. **QC-3a** — re-run `./scripts/diskann-rebuild-scale.sh 40000,70000,100000`. One point landed
+   (40 000 rows → **175 s**, against 104 s predicted by the drill's curve) before a harness bug
+   cut it short; the bug is fixed and the syntax checked. See
+   `docs/measurements/2026-08-10-diskann-rebuild-scale.md` — the headline is that
+   `maintenance_work_mem = 64 MB` fills the builder's neighbor cache at ~14 700 vectors, which
+   is *below* the drill's own 20 000-row fit point and far below the 65 536 threshold. Add a
+   second sweep at a raised `maintenance_work_mem`; that now looks like the real lever.
+2. **QC-3b** — re-measure the `300/200` search-effort defaults above 181 rows
+   (`app/benchmark/vector_backend_bench.py --rows 5000,20000`). **Do not run it while 3a is
+   running** — one container, and contending for CPU corrupts both.
+3. Then the rest of QC-3, and T25b part 2b.
+
+⚠️ **T25b part 2b is genuinely blocked, not deferred by choice.** The passage read swap needs
+the dual-write soak, and dual-write is default-off (`KNOWLEDGE_VECTOR_DB_URL` unset), so the
+secondary has had **zero** writes. Enabling and soaking it is an operational decision about the
+dev stack. Until then `vector_dual_write_total{outcome="secondary_failed"}` reads zero because
+nothing is wired, which — as T25a's own docstring puts it — looks exactly like zero because
+nothing failed.
+
+**T25b — the vector READ cutover.** Both PO decisions are standing (below).
 T26–T29 are done, `D-T27-LIVE-REPLAY` is cleared (it found a handler that had never worked),
 and the dead `/kg/neighborhood` upstream is served. **Phase 4 is COMPLETE** (T26–T29, T50) with
 no open deferrals. T25b's two PO decisions are standing: reopen T14 to add `project_id` + an
