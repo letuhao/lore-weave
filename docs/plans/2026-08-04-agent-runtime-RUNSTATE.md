@@ -4604,10 +4604,10 @@ summary.
 | **5.7** | ❌ | repeat semantics — cost removed, **signal retained** |
 | **5.8** | ❌ | preconditions (18.7%) — pre-dispatch **and** gating advertisement |
 | **5.10** | ❌ | registry is the only name source (10.1%) |
-| **5.11** | ⭐ **NEW (PO 2026-08-10)** | audit the compose role before admitting either implementation — `compose_prose` (local, 2 sessions, 100% ok) vs `composition_write_prose`/`get_prose` (federated, **0 sessions**). Two implementations of one journey step; **admitting the wrong one contract-governs a dead path**. Blocks only `compose_prose`'s admission |
+| **5.11** | ✅ **AUDITED + CLOSED same day** | **The catalogue answered it itself:** both federated candidates declare `visibility: legacy` **and** `superseded_by` in their own `_meta` (`composition_write_prose → book_chapter_save_draft`, `composition_get_prose → book_get_chapter`), and agent-registry's migration calls the first *"a DEPRECATED, discovery-hidden thin proxy"*. **The real co-writer path is `compose_prose`**, run inline by `stream_service` against the composer model, with the write landing through `book_chapter_save_draft` — already in the set. ⭐ **The derivation now reads that declaration**: a `legacy`/`superseded_by` tool can never enter the essential set, so this error cannot recur from a hand-kept list |
 | §1 residual | ❌ | 5.0% — classified, or declared out of scope **with a reason** |
 
-**5 of 13 done, 1 withdrawn, 7 rows + the residual remain** (5.4 · 5.5 · 5.6 · 5.7 · 5.8 · 5.10).
+**6 of 13 done, 1 withdrawn, 6 rows + the residual remain** (5.4 · 5.5 · 5.6 · 5.7 · 5.8 · 5.10).
 ▶ **Next: 5.5 (error contract) and 5.7 (repeat semantics) are the cheapest of the six; 5.6 is the
 one that unblocks CP-3's `emits` at plan-build time.**
 
@@ -4661,11 +4661,11 @@ of a member.
 | write | `book_chapter_create` (129 · 99.5%) · `book_chapter_save_draft` (122 · **40.6%**) |
 | plan | `plan_propose_spec` (142 · 97.4%) |
 | canon | `glossary_book_ontology_read` (173 · 78.4%) · `glossary_propose_entities` (168 · 62.3%) |
-| compose | `compose_prose` (2 · 100%) — **below the reach floor, in by the only-tool rule; gated on 5.11** |
+| compose | `compose_prose` (2 · 100%) — **below the reach floor, in by the only-tool rule; gated on 5.11 ✅ CLOSED** |
 
 **Admitted through the contract: 2/11.** Remaining for the exit: `tool_list` · `tool_load` ·
 `glossary_search` · `book_chapter_create` · `book_chapter_save_draft` · `plan_propose_spec` ·
-`glossary_book_ontology_read` · `glossary_propose_entities` · `compose_prose` (gated on 5.11).
+`glossary_book_ontology_read` · `glossary_propose_entities` · `compose_prose` (5.11 ✅ closed — admissible).
 
 🔴🔴 **THE `compose` FINDING WAS MINE, AND IT WAS WRONG — CORRECTED SAME DAY.** The first
 derivation reported *"the step where the co-writer produces prose has never been taken in a

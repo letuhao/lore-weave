@@ -102,7 +102,19 @@ def catalogue() -> set[str]:
     """
     doc = json.loads((ROOT / "contracts" / "agent-runtime-baseline"
                       / "tools-list.snapshot.json").read_text(encoding="utf-8"))
-    federated = {(t.get("function", t)).get("name") for t in doc["tools"]}
+    # 🔴 **A LEGACY TOOL CAN NEVER BE AN ESSENTIAL-SET MEMBER, AND THE CATALOGUE ALREADY SAYS SO.**
+    # Row 5.11's audit found `composition_write_prose` and `composition_get_prose` carrying
+    # `visibility: legacy` AND `superseded_by` in their own `_meta` — they are deprecated,
+    # discovery-hidden thin proxies over `book_chapter_save_draft` / `book_get_chapter`. Reading
+    # that here means a superseded tool cannot enter the set even if usage briefly favours it, and
+    # the rule comes from the provider's own declaration rather than from a list kept in this file.
+    federated = set()
+    for t in doc["tools"]:
+        fn = t.get("function", t)
+        meta = fn.get("_meta") or {}
+        if meta.get("visibility") == "legacy" or meta.get("superseded_by"):
+            continue
+        federated.add(fn.get("name"))
     sys.path.insert(0, str(ROOT / "services" / "chat-service"))
     try:
         from app.services.composer import COMPOSE_PROSE_NAME
