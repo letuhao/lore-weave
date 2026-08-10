@@ -31,7 +31,7 @@ def src() -> str:
 class TestAnUndispatchableNameIsRefusedBeforeTheWire:
 
     def test_THE_CHECK_EXISTS_ON_THE_DISPATCH_PATH(self):
-        assert 'if c["name"] not in cat_index and c["name"] not in plain_index:' in src(), (
+        assert 'c["name"] not in cat_index and c["name"] not in plain_index:' in src(), (
             "nothing stops an invented name reaching the wire, so a tool that does not exist is "
             "still dispatched — 101 times, in the measured case"
         )
@@ -52,7 +52,7 @@ class TestAnUndispatchableNameIsRefusedBeforeTheWire:
         """Placement is the mechanism — V-METRIC round 3 was a placement bug, not a null. A check
         after the dispatch would still burn the round trip it exists to save."""
         s = src()
-        check = s.index('if c["name"] not in cat_index and c["name"] not in plain_index:')
+        check = s.index('c["name"] not in cat_index and c["name"] not in plain_index:')
         dispatch = s.index("envelope = await knowledge_client.mcp_execute_tool(")
         assert check < dispatch, "the name check must precede the dispatch it is meant to prevent"
 
@@ -67,10 +67,29 @@ class TestAnUndispatchableNameIsRefusedBeforeTheWire:
         assert "cat_index" in check_line and "plain_index" in check_line
         assert "snapshot" not in check_line and "baseline" not in check_line
 
+    def test_A_CATALOGUE_OUTAGE_DOES_NOT_REFUSE_EVERY_TOOL(self):
+        """🔴 **THE DEFECT THIS CHECK SHIPPED WITH, FOUND BY ASKING WHAT IT DOES WHEN IT KNOWS
+        NOTHING.** Exactly one of the two indexes is ever populated — `cat_index` on the discovery
+        path, `plain_index` off it — so BOTH empty means the catalogue did not load (U-2's
+        outage). The first version refused on that state, which would have answered *"that is not
+        a tool"* for every tool that exists and turned a degraded turn into a totally broken one.
+
+        Fail OPEN here, against the usual direction: an unknown name that slips through merely
+        fails at the wire, which is exactly what happened before the check existed.
+        """
+        s = src()
+        assert "_known = cat_index or plain_index" in s, (
+            "the name check does not ask whether it KNOWS the catalogue, so an outage refuses "
+            "every tool call"
+        )
+        assert "if _known and c[\"name\"] not in cat_index" in s, (
+            "the refusal is not gated on knowing the catalogue"
+        )
+
     def test_EVERY_OTHER_DISPATCH_PATH_IS_HANDLED_EARLIER(self):
         """Frontend tools, the composer and the suspend paths all `continue` or `break` above this
         line, so the check cannot swallow a call that had somewhere else to go."""
         s = src()
-        check = s.index('if c["name"] not in cat_index and c["name"] not in plain_index:')
+        check = s.index('c["name"] not in cat_index and c["name"] not in plain_index:')
         for earlier in ("if is_composer_tool(c[\"name\"])", "suspended_call = {"):
             assert s.index(earlier) < check, f"{earlier} must be handled before the name check"

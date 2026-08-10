@@ -1155,7 +1155,7 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     # -- CP-5.10: the registry is the only name source -----------------------------------------
     "test_THE_CHECK_EXISTS_ON_THE_DISPATCH_PATH": [
         (f"{CS}/app/services/stream_service.py",
-         'if c["name"] not in cat_index and c["name"] not in plain_index:',
+         'if _known and c["name"] not in cat_index and c["name"] not in plain_index:',
          "if False:"),
     ],
     "test_IT_IS_REFUSED_NOT_FAILED": [
@@ -1170,8 +1170,14 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_IT_SITS_BEFORE_THE_ONE_REAL_DISPATCH": [
         # Keep the check but never reach it -- the placement bug V-METRIC round 3 was.
         (f"{CS}/app/services/stream_service.py",
-         '                if c["name"] not in cat_index and c["name"] not in plain_index:',
+         '                if _known and c["name"] not in cat_index and c["name"] not in plain_index:',
          '                if False and c["name"] not in cat_index:'),
+    ],
+    "test_A_CATALOGUE_OUTAGE_DOES_NOT_REFUSE_EVERY_TOOL": [
+        # Restore the defect this check shipped with: refuse on an EMPTY catalogue, so a U-2
+        # outage answers "that is not a tool" for every tool that exists.
+        (f"{CS}/app/services/stream_service.py", "                _known = cat_index or plain_index",
+                                                 "                _known = True"),
     ],
     "test_EVERY_OTHER_DISPATCH_PATH_IS_HANDLED_EARLIER": [
         # Move the name check ABOVE the composer branch, so `compose_prose` — a real tool that is
@@ -1186,8 +1192,8 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # Check against a frozen federated snapshot, which excludes every consumer-local tool and
         # would refuse workflow_load, chat_search_sessions and run_subagent -- all real.
         (f"{CS}/app/services/stream_service.py",
-         'if c["name"] not in cat_index and c["name"] not in plain_index:',
-         'if c["name"] not in cat_index:  # snapshot'),
+         'if _known and c["name"] not in cat_index and c["name"] not in plain_index:',
+         'if _known and c["name"] not in cat_index:  # snapshot'),
     ],
 
     # -- CP-5.6: output completeness, where it meets the resolver -------------------------------

@@ -4831,7 +4831,16 @@ async def _stream_with_tools(
                 # Recorded as `refused`, not `failed` (5.7): the tool did not fail, it does not
                 # exist. The suggestion comes from the discovery matcher the surface already uses,
                 # so the model gets the real name rather than a dead end.
-                if c["name"] not in cat_index and c["name"] not in plain_index:
+                # 🔴 **FAIL OPEN WHEN WE DO NOT KNOW THE CATALOGUE, AND THIS IS THE OPPOSITE OF
+                # THE USUAL DIRECTION FOR A REASON.** Exactly one of these indexes is ever
+                # populated (`cat_index` on the discovery path, `plain_index` off it), so BOTH
+                # being empty means the catalogue did not load — U-2's outage. Refusing then would
+                # answer *"that is not a tool"* for every tool that exists, turning a degraded but
+                # working turn into a totally broken one, and the model would have no way to tell
+                # the two apart. An unknown name that slips through merely fails at the wire, which
+                # is what happened before this check existed.
+                _known = cat_index or plain_index
+                if _known and c["name"] not in cat_index and c["name"] not in plain_index:
                     _near = [n for n in (list(cat_index) + list(plain_index))
                              if n.endswith(c["name"].split(".")[-1]) or c["name"] in n][:3]
                     _unknown_msg = (
