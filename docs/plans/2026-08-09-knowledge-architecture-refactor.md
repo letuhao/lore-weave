@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T33 — Phase 5 continues.**
+**RESUME: T34 — Phase 5 continues.**
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -2562,7 +2562,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   **Evidence:** 2 new tests + the **full Go api suite green (63.6 s, live Postgres)**.
 
-- [ ] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
+- [~] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
   Widen `app/extraction/causal_edges.py` from `causes/enables` to `causes | precedes`; copy the
   `motif_link` cycle guard to the event DAG.
   **`unknown` must be a first-class answer** — a wrong order is worse than an absent one for a canon
@@ -2610,6 +2610,36 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `causal_edges` tests were updated to the new triple shape rather than deleted — the filtering
   they cover (forward-only, no self-loops, no invented ids) is unchanged by T33 and still
   asserted.
+
+  ### 🔻 DEFERRAL `D-T33-CORPUS-BITE-REASONING-MODEL` — the corpus run produced 0 edges, and the cause is the MODEL
+
+  The task's bite is *"run over the corpus → edge count non-zero **and** the graph acyclic"*.
+  It was run, live, against the rebuilt image, and it returned **`{"edges_written":0,
+  "events_considered":27}`**. The acyclicity half is therefore **vacuous** — an empty graph is
+  trivially acyclic and proves nothing.
+
+  | | |
+  |---|---|
+  | **Blocker** | The configured chat model is a **reasoning model** that spends its whole token budget on `reasoning_content` and never emits an answer. This is a bug class this repo has already recorded, not a T33 defect. |
+  | **Evidence** | `llm_jobs` rows for `job_meta.extractor='causal_edges'`, read directly: <br>• job 1 — `finish_reason=stop`, `output_tokens=1182`, **`reasoning_tokens=1176`**, `content="[]"` <br>• job 2 — **`finish_reason=length`**, `output_tokens=4950`, **`reasoning_tokens=4947`**, `content=""` <br>The reasoning traces are coherent and on-task (they enumerate the events in Vietnamese and reason about causation) — the model understood the prompt and ran out of budget before answering. `max_tokens_for("causal_edges", …)` is sized for the ANSWER, not for a reasoning preamble. |
+  | **What it is NOT** | Not the T33 parse path: the earlier run with a wrong `model_ref` logged five `LLMModelNotFound` warnings and still returned HTTP 200 with 0 edges, which is the module's documented ADVISORY contract working correctly. Not an `unknown`-over-refusal artefact either: job 2 returned no content at all, so nothing reached `parse_edges`. |
+  | **To unblock** | Either raise the causal-edges token budget to cover a reasoning preamble, or route this extractor to a non-reasoning chat model. Both are provider-config decisions with cost implications and belong to whoever owns the model policy — **the repo's own rule is to never manage the LLM provider's model lifecycle from here.** |
+  | **Mechanism** | The run is one command, recorded verbatim below, and its result is self-describing: a non-zero `edges_written` is the bite passing. `drop_cycles`' refusal path logs `WARNING causal-edges: refused N edge(s) that would close a cycle`, so the acyclicity half reports itself rather than needing a separate check. |
+  | **Retry when** | The `chat` capability resolves to a model that answers within budget, or the extractor gets its own budget. **Before QC-6**, which depends on world order meaning something. |
+
+  ```
+  curl -X POST -H "X-Internal-Token: $TOKEN" -H "Content-Type: application/json"     -d '{"user_id":"<u>","book_id":"<b>","model_source":"user_model",
+         "model_ref":"<user_default_models.user_model_id for capability=chat>",
+         "tagged_only":false}'     http://localhost:8216/internal/extraction/causal-edges
+  ```
+  ⚠️ **`model_ref` is a `user_model_id`, NOT a `provider_inventory_model_id`.** Passing the
+  latter 404s as `LLMModelNotFound` — the same trap `D-WX-PRECISION-FILTER-MODEL-ARCH` records,
+  and it cost a run here. Resolve it from `user_default_models`.
+
+  **Corpus state at the time of the run** (so a later run can tell movement from noise):
+  **1059 `:Event` nodes, 0 `:CAUSES` edges, 0 `:PRECEDES` edges** across the dev graph — the
+  inference had never run there, so the bite has to produce the first edges this graph will
+  ever have. The target project held 27 events, none motif-tagged (hence `tagged_only=false`).
 
 - [ ] **T34** — Write-time dedupe (**D7**)
   `emitChapterFacts` — if the incoming `value_hash` equals the currently-open fact's, attach
