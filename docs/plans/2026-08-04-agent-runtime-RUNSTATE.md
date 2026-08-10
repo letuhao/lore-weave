@@ -4604,9 +4604,10 @@ summary.
 | **5.7** | ❌ | repeat semantics — cost removed, **signal retained** |
 | **5.8** | ❌ | preconditions (18.7%) — pre-dispatch **and** gating advertisement |
 | **5.10** | ❌ | registry is the only name source (10.1%) |
+| **5.11** | ⭐ **NEW (PO 2026-08-10)** | audit the compose role before admitting either implementation — `compose_prose` (local, 2 sessions, 100% ok) vs `composition_write_prose`/`get_prose` (federated, **0 sessions**). Two implementations of one journey step; **admitting the wrong one contract-governs a dead path**. Blocks only `compose_prose`'s admission |
 | §1 residual | ❌ | 5.0% — classified, or declared out of scope **with a reason** |
 
-**5 of 12 done, 1 withdrawn, 6 rows + the residual remain** (5.4 · 5.5 · 5.6 · 5.7 · 5.8 · 5.10).
+**5 of 13 done, 1 withdrawn, 7 rows + the residual remain** (5.4 · 5.5 · 5.6 · 5.7 · 5.8 · 5.10).
 ▶ **Next: 5.5 (error contract) and 5.7 (repeat semantics) are the cheapest of the six; 5.6 is the
 one that unblocks CP-3's `emits` at plan-build time.**
 
@@ -4650,7 +4651,7 @@ reach** (never calls — ranking by calls ranks pathological loops). A member mu
 without it the rule admitted `plan_compile` on **1 session and 0% success**, noise wearing the shape
 of a member.
 
-**THE ESSENTIAL SET — 10 tools, and 2 of them are admitted:**
+**THE ESSENTIAL SET — 11 tools, and 2 of them are admitted:**
 
 | role | members (sessions · ok%) |
 |---|---|
@@ -4660,10 +4661,11 @@ of a member.
 | write | `book_chapter_create` (129 · 99.5%) · `book_chapter_save_draft` (122 · **40.6%**) |
 | plan | `plan_propose_spec` (142 · 97.4%) |
 | canon | `glossary_book_ontology_read` (173 · 78.4%) · `glossary_propose_entities` (168 · 62.3%) |
+| compose | `compose_prose` (2 · 100%) — **below the reach floor, in by the only-tool rule; gated on 5.11** |
 
-**Admitted through the contract: 2/10.** Remaining for the exit: `tool_list` · `tool_load` ·
+**Admitted through the contract: 2/11.** Remaining for the exit: `tool_list` · `tool_load` ·
 `glossary_search` · `book_chapter_create` · `book_chapter_save_draft` · `plan_propose_spec` ·
-`glossary_book_ontology_read` · `glossary_propose_entities`.
+`glossary_book_ontology_read` · `glossary_propose_entities` · `compose_prose` (gated on 5.11).
 
 🔴🔴 **THE `compose` FINDING WAS MINE, AND IT WAS WRONG — CORRECTED SAME DAY.** The first
 derivation reported *"the step where the co-writer produces prose has never been taken in a
@@ -4675,11 +4677,11 @@ the derivation was measuring a population that structurally excluded the co-writ
 `catalogue()` now unions the local tools and **raises rather than degrading** if it cannot read
 them, because a partial catalogue is exactly how this finding was manufactured.
 
-**What survives the correction is a real question, not a gap:** `compose_prose` is the ONLY tool
-serving the role the PO named as the point of the journey, it works (100%), and it sits **below the
-reach floor at 2 sessions vs 3**. The floor exists to reject noise — it caught `plan_compile` at 1
-session and 0% — and 2 sessions genuinely cannot distinguish a member from noise on reach alone.
-**Whether a role's ONLY tool joins the set regardless of reach is a product call, and it is open.**
+⭐ **ANSWERED (PO 2026-08-10): a role's ONLY tool joins the set regardless of reach — and the role
+is AUDITED first (new row 5.11).** The journey defines the SET; reach only ranks *within* a role.
+The floor still rejects noise wherever a role has alternatives, which is the `plan_compile` case
+exactly: it lost to `plan_propose_spec` in the same role, so nothing was ever empty and the noise
+had somewhere to lose to. **The set is now 11 tools, 2 admitted.**
 
 🔴 **The set is also a defect list.** Four of the ten are below 65% success — `tool_list` **34.7%**
 (the repeat-loop, 5.7), `glossary_search` 38.2%, `book_chapter_save_draft` 40.6%,

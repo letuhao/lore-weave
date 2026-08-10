@@ -155,11 +155,20 @@ def main() -> int:
         cands.sort(key=lambda c: (-c["sessions"], c["tool"]))
         chosen[role] = [c for c in cands[:args.top] if c["sessions"] >= floor]
         if not chosen[role]:
-            # 🔴 A ROLE WITH NO QUALIFYING TOOL IS A FINDING, NOT AN EMPTY LIST. It says the
-            # journey has a step no recorded session has ever taken — which is either the wrong
-            # tools for the role, or a step of the product that is not live yet. Either way it is
-            # reported rather than silently dropped.
-            gaps.append(role)
+            # ⭐ **A ROLE'S ONLY TOOL JOINS REGARDLESS OF REACH (PO, 2026-08-10).** The journey
+            # defines the SET; reach only ranks WITHIN a role. Low usage reflects newness, not
+            # unimportance — and excluding it would ship a "co-writer journey" with no co-writer
+            # step. The floor still does its job wherever a role has alternatives, which is the
+            # `plan_compile` case exactly: it was rejected while `plan_propose_spec` qualified, so
+            # that role was never empty and the noise had somewhere to lose to.
+            fallback = [c for c in cands if c["sessions"] > 0][:1]
+            for c in fallback:
+                c["below_floor"] = True
+            chosen[role] = fallback
+            if not fallback:
+                # Still nothing: the journey names a step no recorded session has ever taken.
+                # Reported rather than silently dropped — it is not coverage.
+                gaps.append(role)
         print(f"\n{role.upper():<10} — {why}")
         for c in cands[:args.top + 3]:
             mark = "*" if c in chosen[role] else " "
