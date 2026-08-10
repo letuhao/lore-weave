@@ -208,18 +208,139 @@ async def test_entity_vectors_round_trip_through_the_existence_oracle(store, vec
         assert await conn.fetchval(f"SELECT count(*) FROM {entity_table(_DIM)}") == 1
 
 
-async def test_entity_search_refuses_rather_than_answering_without_its_filters(store):
-    """Found in review, and it is the more dangerous half of the pair above.
+# ── entity scope (T25b) ─────────────────────────────────────────────────────
+#
+# Entity upserts need the existence oracle (a vector-only Postgres cannot see the entity —
+# see the adapter docstring), so these build their own store rather than using the shared
+# `store` fixture. `store` is still requested so the schema exists before they write.
 
-    The port's entity narrowings — `include_archived=False` (the DEFAULT) and `project_id` —
-    describe entity lifecycle state that a vector-only store does not hold. An adapter that
-    answered anyway would return archived and cross-project entities to a call that asked
-    for neither, and the first time it happened would be the CUTOVER: results quietly widen,
-    every test still green, nothing raised. Refusing keeps that visible until T24 builds the
-    writer that can maintain those columns.
+
+def _entity_store(vector_pool, live: set[str] | None = None):
+    """A store whose oracle says yes to everything by default — these tests are about the
+    SEARCH filters, and a missing-entity oracle would fail them for an unrelated reason."""
+
+    async def exists(user_id: str, entity_id: str) -> bool:
+        return True if live is None else entity_id in live
+
+    return PgVectorStore(vector_pool, entity_exists=exists)
+
+
+async def test_entity_search_excludes_archived_by_default(store, vector_pool):
+    """This adapter REFUSED entity search until T25b, and the refusal was right: the port's
+    two narrowings — `include_archived=False` (the DEFAULT) and `project_id` — describe
+    lifecycle state a vector-only store did not hold, and answering anyway would have
+    returned archived and cross-project entities to a call that asked for neither. The fix
+    was never to ignore them; it was for the WRITE path to record them, which it now does.
+
+    Archived exclusion is the default, so a caller that says nothing gets live entities only.
     """
-    with pytest.raises(NotImplementedError, match="include_archived"):
-        await store.search(scope="entity", user_id=_USER, embedding=_axis(0), dim=_DIM, k=10)
+    live = EntityVectorRecord(
+        user_id=_USER, entity_id="e-live", embedding=_axis(0), embedding_dim=_DIM,
+        embedding_model="m", embedding_version=1, project_id="p-1", archived=False,
+    )
+    retired = EntityVectorRecord(
+        user_id=_USER, entity_id="e-retired", embedding=_axis(0), embedding_dim=_DIM,
+        embedding_model="m", embedding_version=1, project_id="p-1", archived=True,
+    )
+    s = _entity_store(vector_pool)
+    assert await s.upsert(live) is True
+    assert await s.upsert(retired) is True
+
+    hits = await s.search(scope="entity", user_id=_USER, embedding=_axis(0), dim=_DIM, k=10)
+    ids = {h.record_id for h in hits}
+    assert "e-live" in ids
+    assert "e-retired" not in ids, (
+        "an archived entity reached a default search — the retirement is invisible to "
+        "retrieval, which is the split brain T28 spent a task removing"
+    )
+
+    # And the caller can still ask for them explicitly.
+    all_hits = await s.search(
+        scope="entity", user_id=_USER, embedding=_axis(0), dim=_DIM, k=10,
+        filter=VectorFilter(include_archived=True),
+    )
+    assert {h.record_id for h in all_hits} >= {"e-live", "e-retired"}
+
+
+async def test_entity_search_scopes_to_the_project(store, vector_pool):
+    """The glossary FK is unique per (user, project), so an unscoped entity search returns an
+    arbitrary project's node — the same defect that put every T27 lifecycle archive in the
+    DLQ, reached from the read side."""
+    s = _entity_store(vector_pool)
+    for eid, proj in (("e-p1", "p-1"), ("e-p2", "p-2")):
+        assert await s.upsert(EntityVectorRecord(
+            user_id=_USER, entity_id=eid, embedding=_axis(0), embedding_dim=_DIM,
+            embedding_model="m", embedding_version=1, project_id=proj,
+        )) is True
+
+    hits = await s.search(
+        scope="entity", user_id=_USER, embedding=_axis(0), dim=_DIM, k=10,
+        filter=VectorFilter(project_id="p-1"),
+    )
+    ids = {h.record_id for h in hits}
+    assert "e-p1" in ids
+    assert "e-p2" not in ids, "the project filter did not reach the query"
+
+
+async def test_entity_search_does_not_cross_tenants(store, vector_pool):
+    """The founding argument for this backend is that the tenant predicate reaches the
+    PLANNER rather than being applied after an oversample. Entity scope must honour it too."""
+    s = _entity_store(vector_pool)
+    assert await s.upsert(EntityVectorRecord(
+        user_id=_USER, entity_id="e-mine", embedding=_axis(0), embedding_dim=_DIM,
+        embedding_model="m", embedding_version=1, project_id="p-1",
+    )) is True
+    hits = await s.search(
+        scope="entity", user_id="someone-else", embedding=_axis(0), dim=_DIM, k=10,
+    )
+    assert [h.record_id for h in hits] == []
+
+
+async def test_entity_hits_omit_anchor_score_rather_than_faking_it(store, vector_pool):
+    """D-T25B-PG-ANCHOR-SCORE, pinned so it cannot be discovered the expensive way.
+
+    The port promises entity hits carry `anchor_score` for two-layer ranking. This store
+    holds vectors, and `anchor_score` is recomputed on its own schedule by the anchor pass —
+    a copy on the vector row would be confidently STALE, which is worse than absent. So it is
+    left OUT of the dict rather than set to None: a consumer that ranks by it raises a
+    KeyError instead of silently multiplying every score by nothing.
+    """
+    s = _entity_store(vector_pool)
+    assert await s.upsert(EntityVectorRecord(
+        user_id=_USER, entity_id="e-1", embedding=_axis(0), embedding_dim=_DIM,
+        embedding_model="m", embedding_version=1, project_id="p-1",
+    )) is True
+    hits = await s.search(scope="entity", user_id=_USER, embedding=_axis(0), dim=_DIM, k=10)
+    assert hits
+    assert "anchor_score" not in hits[0].attributes
+    assert hits[0].attributes["project_id"] == "p-1"
+    assert hits[0].attributes["archived"] is False
+
+
+async def test_entity_lifecycle_columns_are_added_to_a_pre_t25b_table(store, vector_pool):
+    """`CREATE TABLE IF NOT EXISTS` does NOTHING to an existing table.
+
+    Without the explicit ALTER, the two columns would appear on every fresh test database —
+    where this file runs — and on no deployment that already had data. The search would pass
+    here and fail in production, on exactly the installations that matter. This simulates the
+    old schema and asserts `ensure_vector_schema` repairs it.
+    """
+    table = entity_table(_DIM)
+    async with vector_pool.acquire() as conn:
+        await conn.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS project_id")
+        await conn.execute(f"ALTER TABLE {table} DROP COLUMN IF EXISTS archived")
+        cols = {r["column_name"] for r in await conn.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = $1", table)}
+        assert "project_id" not in cols and "archived" not in cols
+
+    await ensure_vector_schema(vector_pool, dims=(_DIM,))
+
+    async with vector_pool.acquire() as conn:
+        cols = {r["column_name"] for r in await conn.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE table_name = $1", table)}
+    assert {"project_id", "archived"} <= cols, (
+        "ensure_vector_schema did not repair a pre-T25b entity table"
+    )
 
 
 # ── search effort: a correctness setting, not a tuning one (T24) ─────────────

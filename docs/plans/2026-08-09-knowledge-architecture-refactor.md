@@ -90,10 +90,35 @@ dual-write is default-off (`KNOWLEDGE_VECTOR_DB_URL` unset), so the secondary ha
 **zero** writes. Switching reads to a store nothing has fed would not be a cutover, it would be
 an outage with a port in front of it.
 
-⬜ **T25b PART 2, in order:**
-1. `PgVectorStore.search(scope="entity")` still raises. Its refusal names the T14 port gap as
-   the blocker, and that gap is now closed — so: add the two columns to the entity table, have
-   the entity upsert write them, and implement the filtered search.
+✅ **T25b PART 2a IS DONE — the entity refusal is lifted.** `PgVectorStore.search(scope=
+"entity")` now filters on `project_id` and `NOT archived`, the upsert writes both, and the
+tenant index widened to `(user_id, project_id)` so the project predicate reaches the planner
+rather than a post-filter. **21 pgvector integration tests green on a live pgvector Postgres**
+(6 of them new), 4145 unit tests green.
+
+⚠️ **`CREATE TABLE IF NOT EXISTS` does nothing to an existing table** — so the two new columns
+would have appeared on every fresh test database (where these tests run) and on **no
+deployment that already had data**, passing here and failing in production on exactly the
+installations that matter. `ensure_vector_schema` now runs an explicit
+`ADD COLUMN IF NOT EXISTS` pair, and a test drops the columns to simulate a pre-T25b table and
+asserts they are repaired.
+
+⚠️ **The refusal was pinned by an integration test that had been SKIPPING** — Postgres-gated,
+so the suite reported green over an assertion nobody had run since T23. It is replaced by five
+real ones. *(Bite: remove the `NOT archived` predicate → "an archived entity reached a default
+search".)*
+
+⚠️ **Deferred, tracked: `D-T25B-PG-ANCHOR-SCORE`.** The port promises entity hits carry
+`anchor_score` for two-layer ranking. This store holds vectors, and `anchor_score` is
+recomputed on its own schedule by the anchor pass — a copy on the vector row would be
+confidently STALE, which is worse than absent. It is left **out of the attributes dict** rather
+than set to `None`, so a consumer that ranks by it raises `KeyError` instead of silently
+multiplying every score by nothing. Pinned by
+`test_entity_hits_omit_anchor_score_rather_than_faking_it`. **This is a real gap in the entity
+read path and must be closed before the entity read cutover** — either by the caller joining
+the graph for scores, or by the anchor pass writing through the port.
+
+⬜ **T25b PART 2, what remains:**
 2. The dual-write soak. `vector_dual_write_total{outcome="secondary_failed"}` must be watched
    with the secondary actually enabled before a read swap can be argued for at all.
 3. Only then the three read sites (`context/selectors/passages.py`,

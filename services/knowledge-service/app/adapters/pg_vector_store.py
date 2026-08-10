@@ -178,9 +178,26 @@ CREATE TABLE IF NOT EXISTS {table} (
     embedding         vector({dim}) NOT NULL,
     embedding_model   text NOT NULL,
     embedding_version integer NOT NULL,
+    -- T25b — the two lifecycle columns that lifted this store's entity-search refusal.
+    -- `project_id` is nullable because the port's `EntityVectorRecord` allows it (a record
+    -- written before the field existed, or a global entity); a NULL never matches a
+    -- project-scoped search, which is the safe direction — it hides a row rather than
+    -- leaking it across projects.
+    project_id        text,
+    archived          boolean NOT NULL DEFAULT false,
     updated_at        timestamptz NOT NULL DEFAULT now()
 )
 """
+
+# `CREATE TABLE IF NOT EXISTS` does NOTHING to a table that already exists — so the two
+# columns above would never appear on any deployment created before T25b, while every fresh
+# test database got them and passed. The search would then fail at runtime on exactly the
+# installations that have data. This ALTER is what makes `ensure_vector_schema` idempotent in
+# the sense it already claims: safe on every start, for old and new schemas alike.
+_ENTITY_LIFECYCLE_BACKFILL = (
+    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS project_id text",
+    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false",
+)
 
 
 async def ensure_vector_schema(pool: asyncpg.Pool, dims: tuple[int, ...] | None = None) -> None:
@@ -199,6 +216,8 @@ async def ensure_vector_schema(pool: asyncpg.Pool, dims: tuple[int, ...] | None 
             ptable, etable = passage_table(dim), entity_table(dim)
             await conn.execute(_PASSAGE_DDL.format(table=ptable, dim=dim))
             await conn.execute(_ENTITY_DDL.format(table=etable, dim=dim))
+            for stmt in _ENTITY_LIFECYCLE_BACKFILL:
+                await conn.execute(stmt.format(table=etable))
             for scope, table in (("passage", ptable), ("entity", etable)):
                 await conn.execute(
                     f"CREATE INDEX IF NOT EXISTS {index_name(scope, dim, 'emb')} "
@@ -215,7 +234,11 @@ async def ensure_vector_schema(pool: asyncpg.Pool, dims: tuple[int, ...] | None 
             )
             await conn.execute(
                 f"CREATE INDEX IF NOT EXISTS {index_name('entity', dim, 'tenant')} "
-                f"ON {etable} (user_id)"
+                # (user_id, project_id) since T25b, matching passages: the entity search now
+                # filters on both, and a single-column index would leave the project
+                # predicate to a post-filter — giving away the planner path this backend
+                # exists for.
+                f"ON {etable} (user_id, project_id)"
             )
 
 
@@ -226,6 +249,11 @@ _PASSAGE_ATTRS = (
     "text", "source_type", "source_id", "chunk_index",
     "is_hub", "chapter_index", "canon", "source_lang",
 )
+
+# Columns returned for an entity hit (T25b). Short by comparison with passages, and that
+# is the honest shape: this store holds vectors plus the lifecycle state it filters on.
+# `anchor_score` is absent by design — see the builder (D-T25B-PG-ANCHOR-SCORE).
+_ENTITY_ATTRS = ("project_id", "archived")
 
 EntityExists = Callable[[str, str], Awaitable[bool]]
 
@@ -323,30 +351,48 @@ class PgVectorStore:
         if scope not in ("passage", "entity"):
             raise ValueError(f"unknown vector scope {scope!r}")
         if scope == "entity":
-            # Both of the port's entity-scope narrowings describe state that lives on the
-            # ENTITY, and this store holds only vectors:
+            # T25b — this refused until the port carried the two fields it filters on.
+            # The refusal's reasoning stands and is worth keeping: silently ignoring
+            # `include_archived` or `project_id` would widen every result set on cutover,
+            # which is precisely what QC-3 exists to catch. The fix was never to ignore
+            # them — it was for the WRITE path to record them, which it now does.
             #
-            #   * `include_archived=False` — the DEFAULT — means "exclude archived
-            #     entities". Neo4j runs a different query for it
-            #     (`_FIND_BY_VECTOR_CYPHER_ACTIVE`); there is no `archived_at` here to run
-            #     it against.
-            #   * `project_id` narrows to one project. `EntityVectorRecord` carries no
-            #     project at all, so the write path cannot store what the read path filters
-            #     on — a port gap (T14), not something this adapter can close.
-            #
-            # Silently ignoring either would return archived and cross-project entities
-            # from a call that asked for neither, and the CUTOVER is where that would
-            # first happen — a backend swap quietly widening a result set is precisely
-            # what QC-3 exists to catch. So it refuses, and the entity read path is owed
-            # by T24, where the dual-write writer that could maintain those columns is
-            # built. Entity UPSERT works today, so T24 has rows to measure.
-            raise NotImplementedError(
-                "PgVectorStore cannot serve entity-scope search yet: `include_archived` "
-                "and `project_id` describe entity lifecycle state that this store does "
-                "not hold, and answering without them would silently widen every result "
-                "set on cutover. Owed by T24 (dual-write). Use the Neo4j store for entity "
-                "search until then; passage search is unaffected."
+            # ⚠️ `anchor_score` is NOT here, and its absence is deliberate + tracked
+            # (D-T25B-PG-ANCHOR-SCORE). The port promises entity hits carry it for
+            # two-layer ranking; this store holds vectors, and `anchor_score` is
+            # recomputed on its own schedule by the anchor pass, so a copy on the vector
+            # row would be confidently stale — worse than absent. It is left OUT of the
+            # dict rather than set to None so a consumer that ranks by it raises a
+            # KeyError instead of silently multiplying every score by nothing.
+            etable = entity_table(dim)
+            where = ["user_id = $1"]
+            params: list[object] = [user_id]
+            applied: list[str] = []
+
+            def _add_entity(sql_col: str, value: object, label: str) -> None:
+                params.append(value)
+                where.append(f"{sql_col} = ${len(params)}")
+                applied.append(label)
+
+            if f.project_id is not None:
+                _add_entity("project_id", f.project_id, "project")
+            if f.embedding_model is not None:
+                _add_entity("embedding_model", f.embedding_model, "model")
+            if not f.include_archived:
+                where.append("NOT archived")
+                applied.append("active")
+
+            params.append(_vector_literal(embedding))
+            evec = f"${len(params)}::vector"
+            params.append(k)
+            elimit = f"${len(params)}"
+            esql = (
+                f"SELECT entity_id AS record_id, 1 - (embedding <=> {evec}) AS score, "
+                f"project_id, archived "
+                f"FROM {etable} WHERE {' AND '.join(where)} "
+                f"ORDER BY embedding <=> {evec} LIMIT {elimit}"
             )
+            return esql, params, applied
         table = passage_table(dim)
 
         # Clauses are appended only when the filter is actually set. The alternative —
@@ -401,7 +447,8 @@ class PgVectorStore:
         sql, params, applied = self.build_search_sql(
             scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k, filter=filter,
         )
-        table = passage_table(dim)  # entity scope raised in the builder above
+        # Only used for the log line below; the SQL itself came from the builder.
+        table = passage_table(dim) if scope == "passage" else entity_table(dim)
 
         async with self._pool.acquire() as conn:
             if not self._search_gucs:
@@ -418,12 +465,13 @@ class PgVectorStore:
                     await conn.execute(self.setter_sql())
                     rows = await conn.fetch(sql, *params)
 
+        attrs = _PASSAGE_ATTRS if scope == "passage" else _ENTITY_ATTRS
         out = [
             VectorHit(
                 record_id=r["record_id"],
                 score=float(r["score"]),
                 scope=scope,
-                attributes={a: r[a] for a in _PASSAGE_ATTRS},
+                attributes={a: r[a] for a in attrs},
             )
             for r in rows
         ]
@@ -495,17 +543,21 @@ class PgVectorStore:
                 await conn.execute(
                     f"""
                     INSERT INTO {table} (
-                        entity_id, user_id, embedding, embedding_model, embedding_version
-                    ) VALUES ($1,$2,$3::vector,$4,$5)
+                        entity_id, user_id, embedding, embedding_model, embedding_version,
+                        project_id, archived
+                    ) VALUES ($1,$2,$3::vector,$4,$5,$6,$7)
                     ON CONFLICT (entity_id) DO UPDATE SET
                         user_id = EXCLUDED.user_id,
                         embedding = EXCLUDED.embedding,
                         embedding_model = EXCLUDED.embedding_model,
                         embedding_version = EXCLUDED.embedding_version,
+                        project_id = EXCLUDED.project_id,
+                        archived = EXCLUDED.archived,
                         updated_at = now()
                     """,
                     record.entity_id, record.user_id, _vector_literal(record.embedding),
                     record.embedding_model, record.embedding_version,
+                    record.project_id, record.archived,
                 )
             written = True
         else:
