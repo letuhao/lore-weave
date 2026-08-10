@@ -349,6 +349,17 @@
         "CONTROL: the recorded shape (mode=from_glossary, no project) still answers 'no project in scope', and CP-5.8's gate now refuses it in chat-service before dispatch"
       ],
       "admitted": false
+    },
+    "kg_graph_query": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it is the SECOND near-miss false defect this loop has caught by reading the handler first. Its single call sent {scope:'project'} with no project and got 'no project in scope' -- scope=project with project_id optional, which CP-5.8's gate now refuses before the wire. Given my own throwaway project it returned an EMPTY graph even though iterations 2 and 31 had created three nodes there, all carrying that project_id in Neo4j (verified: count(e)=3). That looks like a broken read. It is not: _GRAPH_READ_CYPHER matches (subj:Entity)-[r:RELATES_TO]->(obj:Entity) -- it returns EDGES and the nodes they connect. My project has three isolated nodes and zero edges, because iteration 2's proposed edge was PARKED and never confirmed (INV-K1: propose_edge never writes the graph). An empty answer was the correct answer.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-08-04, {scope:'project'} with no project_id",
+        "NEAR-MISS CHECKED: all three TOOLV2 nodes carry project_id=019fec6c in Neo4j (count(e)=3), and the tool still returned 0. The handler's Cypher explains it -- it matches RELATES_TO edges, and that project has none",
+        "LIVE, CROSS-CHECKED AGAINST THE STORE: project 019f6e0a-7c8f-7a9b-822a-0802404ee307 has exactly 1 qualifying edge by direct Cypher (same user, same project both ends, valid_until IS NULL, neither endpoint archived). The tool reports edges_total 1 and nodes_total 2 -- the edge and its two endpoints. Exact agreement with ground truth measured independently of the tool",
+        "NOT USED as evidence: a project with 110 edges in Neo4j whose knowledge_projects row no longer exists -- the tool correctly answers 'project not found' for it"
+      ],
+      "admitted": false
     }
   }
 }
