@@ -48,12 +48,12 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T50 — bring the entity-lifecycle MCP tools onto the new command contract.**
+**RESUME: T25b — the vector READ cutover.** Both PO decisions are standing (below).
 T26–T29 are done, `D-T27-LIVE-REPLAY` is cleared (it found a handler that had never worked),
-and the dead `/kg/neighborhood` upstream is served. Phase 4 has no open deferrals. After T50
-comes T25b, whose two PO decisions are now standing:
-reopen T14 to add `project_id` + an archived flag to `EntityVectorRecord`, and fork a
-vector-specific mapper rather than touching `passage_to_hit`.
+and the dead `/kg/neighborhood` upstream is served. **Phase 4 is COMPLETE** (T26–T29, T50) with
+no open deferrals. T25b's two PO decisions are standing: reopen T14 to add `project_id` + an
+archived flag to `EntityVectorRecord`, and fork a vector-specific mapper rather than touching
+`passage_to_hit`.
 T27's deferral is CLEARED. It formerly read: the lifecycle events are proven as outbox rows on a
 live Postgres, but nothing has yet carried one through Redis into Neo4j. T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
 
@@ -1974,7 +1974,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   emit/consume gaps.
   **Bite:** revert one `*Core`'s outbox write → the smoke must go red.
 
-- [ ] **T50** — Bring the entity-lifecycle **MCP tools** onto the new command contract
+- [x] **T50** — Bring the entity-lifecycle **MCP tools** onto the new command contract ✅
   *(added by `/aif-improve +check`)*
   `entity_delete_tools.go:59,68` · `entity_attribute_edit_tools.go:56,85` —
   `glossary_entity_delete` · `glossary_entity_restore` · `glossary_entity_rename` ·
@@ -1989,6 +1989,47 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   **Logging:** `DEBUG` the transport (HTTP vs MCP) on every command dispatch.
   **Test:** for each transition, assert HTTP and MCP produce **identical outbox emissions**.
   (depends on T29)
+
+  ✅ **DONE.** `command_transport.go` + a parity suite. Full Go api suite green (65 s, live DB),
+  all three gates PASS.
+
+  **The four named tools were already on the contract** — and checking rather than assuming is
+  the point. `glossary_entity_delete` writes through `effectEntityDelete` →
+  `softDeleteEntityCore`; `glossary_entity_restore` → `restoreEntityCore`;
+  `glossary_entity_rename` and `glossary_entity_set_attributes` both converge on
+  `setEntityAttributes`, whose post-commit hole T29 closed. Every one already carried an
+  explicit actor. So the task's real content was the two things it asked for that did **not**
+  exist: the transport record and the parity proof.
+
+  ⚠️ **Three copies of one INSERT, found while looking for somewhere to put the log.**
+  `emitEntityLifecycleTx`, `emitEntityStatusChangedTx` and `insertEntityOutboxEvent` each held
+  their own `INSERT INTO outbox_events` — three places for a column to be added to two of them,
+  which is the shape T27/T28/T29 each spent a task on. Converged onto `insertOutboxEventTx`,
+  which is now the ONE place an entity event is written, and therefore the one place the
+  transport can be logged. "Every dispatch is logged" is a property of the code's shape rather
+  than a promise to remember.
+
+  **The transport is tagged at the boundary, never by the handler** — middleware sets `http` at
+  the root, `internal` on the `/internal` subtree, `mcp` in `mcpIdentityMiddleware`; chi runs a
+  subtree's middleware after the parent's, so the specific tag wins and a NEW command route
+  inherits a truthful transport instead of `unknown`. A handler that tagged itself would be
+  reporting its own name rather than how it was reached, and the two diverge the moment a
+  handler serves a second transport — which is this entire surface.
+
+  It is a **log** field, not a payload field: a consumer that behaved differently for an MCP
+  delete than an HTTP one would be the split brain this phase exists to remove.
+
+  **The parity test compares the outbox PAYLOAD, not the status code** — all three transports
+  return 2xx while emitting whatever they like. It asserts the field *key set* matches (the
+  FastMCP-strips shape survives equal values) plus `op`/`book_id`/`actor_type`, and asserts the
+  entity ids **differ**, so the test cannot pass by comparing one write with itself.
+
+  **Bites:** make the KAL stop honouring the forwarded actor → *"kal delete disagrees with HTTP
+  on `actor_type`: http=user kal=pipeline"*, **with both transports still returning 2xx** —
+  exactly the silent drift the task names. Drop the transport from the log line → the log-field
+  test reds. `LOG_LEVEL` is unset in the dev stack so DEBUG is suppressed there; the assertion
+  captures the logger instead, which is repeatable in CI and does not require mutating real
+  dev data to read one line back.
 
 <!-- Commit checkpoint: T26–T29 — cross-service seam -->
 

@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -118,21 +116,11 @@ func emitEntityLifecycleTx(
 		ActorID:          actorID,
 		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("lifecycle outbox marshal: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-		VALUES ('glossary', $1, $2, $3)`,
-		entityID, eventType, payloadJSON,
-	); err != nil {
-		return fmt.Errorf("lifecycle outbox insert: %w", err)
-	}
-	slog.Debug("entity lifecycle emitted",
-		"event_type", eventType, "entity_id", entityID.String(),
+	return insertOutboxEventTx(ctx, func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}, entityID, eventType, payload,
 		"book_id", bookID.String(), "actor_type", actorType)
-	return nil
 }
 
 // bulkDeleteEntitiesCore soft-deletes many entities in ONE transaction, emitting one

@@ -436,18 +436,8 @@ func insertEntityOutboxEvent(
 	entityID uuid.UUID,
 	payload entityEventPayload,
 ) error {
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("outbox marshal: %w", err)
-	}
-	if err := exec(ctx, `
-		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-		VALUES ('glossary', $1, $2, $3)`,
-		entityID, entityUpdatedEvent, payloadJSON,
-	); err != nil {
-		return fmt.Errorf("outbox insert: %w", err)
-	}
-	return nil
+	return insertOutboxEventTx(ctx, exec, entityID, entityUpdatedEvent, payload,
+		"op", payload.Op, "actor_type", payload.ActorType)
 }
 
 // emitEntityUpdatedTx emits within an open transaction (atomic with the

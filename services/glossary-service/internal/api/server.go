@@ -95,6 +95,11 @@ func (s *Server) Router() http.Handler {
 	// the trace id in both the response body and the X-Trace-Id header.
 	r.Use(traceIDMiddleware)
 	r.Use(jsonRecovererMiddleware)
+	// T50 — default every request to the `http` transport. `/internal` re-tags itself as
+	// `internal` and the MCP handler as `mcp`; chi runs a subtree's middleware after the
+	// parent's, so the more specific tag wins. Tagging at the ROOT rather than per-route is
+	// what makes a new command route inherit a truthful transport instead of `unknown`.
+	r.Use(transportMiddleware(transportHTTP))
 
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		if s.pool != nil {
@@ -139,6 +144,8 @@ func (s *Server) Router() http.Handler {
 	// ── Internal service-to-service endpoints ─────────────────────────────
 	r.Route("/internal", func(r chi.Router) {
 		r.Use(s.requireInternalToken)
+		// T50 — the KAL/service transport (see command_transport.go).
+		r.Use(transportMiddleware(transportInternal))
 		r.Get("/books/{book_id}/translation-glossary", s.internalTranslationGlossary)
 		r.Get("/books/{book_id}/extraction-profile", s.internalExtractionProfile)
 		r.Post("/books/{book_id}/select-for-context", s.internalSelectForContext)

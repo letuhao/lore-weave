@@ -2,8 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"log/slog"
 	"time"
 
@@ -97,21 +95,12 @@ func emitEntityStatusChangedTx(
 		ActorID:          actorID,
 		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
-	payloadJSON, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("status-change outbox marshal: %w", err)
-	}
-	if _, err := tx.Exec(ctx, `
-		INSERT INTO outbox_events (aggregate_type, aggregate_id, event_type, payload)
-		VALUES ('glossary', $1, $2, $3)`,
-		entityID, entityStatusChangedEvent, payloadJSON,
-	); err != nil {
-		return fmt.Errorf("status-change outbox insert: %w", err)
-	}
-	slog.Debug("entity status change emitted",
-		"entity_id", entityID.String(), "book_id", bookID.String(),
-		"status", status, "prior_status", priorStatus, "actor_type", actorType)
-	return nil
+	return insertOutboxEventTx(ctx, func(ctx context.Context, sql string, args ...any) error {
+		_, e := tx.Exec(ctx, sql, args...)
+		return e
+	}, entityID, entityStatusChangedEvent, payload,
+		"book_id", bookID.String(), "status", status,
+		"prior_status", priorStatus, "actor_type", actorType)
 }
 
 // setEntityStatusCore is the ONE place a curated status change is written.
