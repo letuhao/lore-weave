@@ -143,7 +143,7 @@ func (s *Server) reassignEntityKind(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "GLOSS_VALIDATION", "kind_id must be a UUID")
 		return
 	}
-	err := s.reassignEntityKindCore(r.Context(), bookUUID, entityID, newKindID)
+	err := s.reassignEntityKindCore(r.Context(), bookUUID, entityID, newKindID, userID)
 	switch {
 	case errors.Is(err, errReassignKindNotFound):
 		writeError(w, http.StatusNotFound, "GLOSS_NOT_FOUND", "target kind not found")
@@ -169,7 +169,14 @@ var (
 // in-book), then re-keys the entity onto the new kind in a transaction. Grant is the
 // CALLER's concern. Single source of truth for the HTTP reassign handler and the
 // confirm effect.
-func (s *Server) reassignEntityKindCore(ctx context.Context, bookID, entityID, newKindID uuid.UUID) error {
+//
+// T28: it now emits `glossary.entity_updated` in the SAME transaction as the re-key. It had
+// emitted nothing, and `kind` is a field of that payload — so an entity that moved from
+// `species` to `character` kept the old kind in the KG mirror forever, with no event that
+// would ever correct it. A content event rather than a new event type: the re-key IS a content
+// change, the payload already carries `kind`, and the consumer already knows what to do with
+// it. `actorID` is a parameter for the reason recorded in `actorFor`.
+func (s *Server) reassignEntityKindCore(ctx context.Context, bookID, entityID, newKindID, actorID uuid.UUID) error {
 	var kindExists bool
 	if err := s.pool.QueryRow(ctx,
 		`SELECT EXISTS(SELECT 1 FROM book_kinds WHERE book_kind_id=$1 AND book_id=$2 AND deprecated_at IS NULL)`,
@@ -196,8 +203,26 @@ func (s *Server) reassignEntityKindCore(ctx context.Context, bookID, entityID, n
 		return err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// Pre-rekey fields → the event's `before` snapshot, read inside the tx so the diff the
+	// consumer sees is consistent with the write (no TOCTOU). `kind` is the field that moves.
+	bn, bk, ba, bsd, _ := loadEntityEventFields(ctx, tx, entityID)
+	before := &EntitySnapshot{Name: bn, Kind: bk, Aliases: ba, ShortDescription: bsd}
+
 	if err := s.rekeyEntityToKind(ctx, tx, entityID.String(), newKindID.String()); err != nil {
 		return err
+	}
+
+	an, ak, aa, asd, fok := loadEntityEventFields(ctx, tx, entityID)
+	if fok {
+		actorType, actor := actorFor(actorID)
+		payload := buildEntityEventPayload(
+			bookID.String(), entityID.String(), an, ak, aa, asd,
+			"updated", actorType, actor, before,
+		)
+		if err := emitEntityUpdatedTx(ctx, tx, entityID, payload); err != nil {
+			return err
+		}
 	}
 	return tx.Commit(ctx)
 }

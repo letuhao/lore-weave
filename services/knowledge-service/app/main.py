@@ -238,6 +238,7 @@ async def lifespan(app: FastAPI):
             handle_glossary_entity_deleted,
             handle_glossary_entity_purged,
             handle_glossary_entity_restored,
+            handle_glossary_entity_status_changed,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
             handle_translation_published,
@@ -307,6 +308,12 @@ async def lifespan(app: FastAPI):
         )
         dispatcher.register(
             "glossary.entity_purged", handle_glossary_entity_purged,
+        )
+        # T28 — the curation axis. `status` is a liveness predicate in glossary-service
+        # (every consumer read filters `status = 'active'`), so retiring an entity removed
+        # it from the glossary's own canon reads while this mirror kept answering about it.
+        dispatcher.register(
+            "glossary.entity_status_changed", handle_glossary_entity_status_changed,
         )
 
         consumer = EventConsumer(

@@ -43,6 +43,7 @@ __all__ = [
     "handle_glossary_entity_deleted",
     "handle_glossary_entity_restored",
     "handle_glossary_entity_purged",
+    "handle_glossary_entity_status_changed",
 ]
 
 logger = logging.getLogger(__name__)
@@ -1470,8 +1471,12 @@ async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Poo
     from app.db.neo4j_repos.entities import restore_entity_by_glossary_id
 
     async with neo4j_session() as session:
+        # T28 scope: a recycle-bin restore undoes a `glossary_deleted` archive only. A node
+        # archived because its status is `rejected` stays archived — the trash and the status
+        # axis retire an entity for different reasons, and neither may silently undo the other.
         entity = await restore_entity_by_glossary_id(
             session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+            reason_prefix="glossary_deleted",
         )
     if entity is None:
         logger.debug(
@@ -1503,4 +1508,98 @@ async def handle_glossary_entity_purged(event: EventData, *, pool: asyncpg.Pool)
         )
     logger.debug(
         "glossary.entity_purged removed %d KG node(s) for %s", deleted, glossary_entity_id,
+    )
+
+
+async def handle_glossary_entity_status_changed(
+    event: EventData, *, pool: asyncpg.Pool,
+) -> None:
+    """`glossary.entity_status_changed` → archive or un-archive the KG node (plan T28).
+
+    In glossary-service `status` is a LIVENESS predicate, not a label: every consumer-facing
+    read filters `status = 'active'` alongside `deleted_at IS NULL`. Retiring an entity to
+    `inactive` or `rejected` therefore removes it from the glossary's own canon reads — and it
+    emitted nothing, so the KG mirror kept the node and kept answering RAG queries about an
+    entity the author had retired. The same split brain T27 removed for delete/restore,
+    reached by a different verb.
+
+    Archive rather than delete, for the same reason the delete handler archives: a status
+    change is trivially reversible, and `archive_entity` leaves evidence, relations and
+    timeline intact so the way back is a flag flip rather than a re-extraction.
+
+    The `reason` records WHICH status retired the node, because a KG node archived by a
+    rejection and one archived by a glossary delete are different facts to whoever is later
+    asking why the graph is missing something — and, since the restore paths are scoped by
+    that reason, it is also what keeps the two axes from undoing each other.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "status_changed")
+    if resolved is None:
+        return
+    user_id, glossary_entity_id = resolved
+
+    payload = event.payload or {}
+    status = str(payload.get("status") or "").strip()
+    if not status:
+        # A status-change event with no status cannot be acted on either way. Warn rather than
+        # guess: silently choosing "archive" would retire nodes on a malformed producer, and
+        # silently choosing "restore" would resurrect them.
+        logger.warning(
+            "glossary.entity_status_changed: no status in payload for %s — skipping",
+            glossary_entity_id,
+        )
+        return
+
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import (
+        get_entity_by_glossary_id,
+        restore_entity_by_glossary_id,
+        user_archive_entity,
+    )
+
+    # Exceptions propagate to the consumer's retry path — a transient Neo4j outage SHOULD
+    # redeliver rather than silently drop the propagation. Both directions are idempotent.
+    if status == "active":
+        async with neo4j_session() as session:
+            entity = await restore_entity_by_glossary_id(
+                session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+                reason_prefix="glossary_status_",
+            )
+        if entity is None:
+            logger.debug(
+                "glossary.entity_status_changed: no KG node for %s — nothing to restore",
+                glossary_entity_id,
+            )
+            return
+        logger.debug(
+            "glossary.entity_status_changed un-archived KG entity %s (%s → active)",
+            glossary_entity_id, payload.get("prior_status"),
+        )
+        return
+
+    async with neo4j_session() as session:
+        entity = await get_entity_by_glossary_id(
+            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+        )
+        if entity is None:
+            logger.debug(
+                "glossary.entity_status_changed: no KG node for %s — nothing to archive",
+                glossary_entity_id,
+            )
+            return
+        # `user_archive_entity`, NOT `archive_entity` — and the difference is load-bearing,
+        # not stylistic. `archive_entity` is the §3.4.F glossary-DELETED path: it nulls
+        # `glossary_entity_id` because the glossary entry itself is gone. A retired entity's
+        # entry is not gone, and severing the anchor here would be actively wrong: the KG
+        # sync MERGEs on (user_id, project_id, glossary_entity_id), so the next content edit
+        # to a still-editable `rejected` entity would fail to match the anchorless archived
+        # node and CREATE A SECOND, UN-ARCHIVED TWIN of it. `user_archive_entity` keeps the
+        # anchor (and the anchor score, so a reinstated entity ranks correctly at once
+        # instead of at the next recompute pass).
+        await user_archive_entity(
+            session, user_id=str(user_id), canonical_id=entity.id,
+            reason=f"glossary_status_{status}",
+        )
+    logger.debug(
+        "glossary.entity_status_changed archived KG entity %s (%s → %s)",
+        glossary_entity_id, payload.get("prior_status"), status,
     )

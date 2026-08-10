@@ -48,7 +48,10 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T28 — converge the `curation*Core` family.** T26 and T27 are done (see their entries).
+**RESUME: T29 — the `command-or-nothing` gate + KAL command routes + `SR06` tier.** T26–T28 are
+done (see their entries). T27's deferral `D-T27-LIVE-REPLAY` is still open and now covers T28's
+event too — neither `entity_deleted` nor `entity_status_changed` has been carried end-to-end
+through Redis into Neo4j, which is where a payload-shape mismatch would first appear.
 T27 leaves one deferral, `D-T27-LIVE-REPLAY`: the lifecycle events are proven as outbox rows on a
 live Postgres, but nothing has yet carried one through Redis into Neo4j. T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
 
@@ -1772,10 +1775,68 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   Redis into Neo4j. That is the leg where a payload-shape mismatch would first appear.
   (depends on T26)
 
-- [ ] **T28** — Converge the `curation*Core` family
-  `curationMergeCore` · `curationReassignKindCore` · `curationStatusChangeCore` ·
-  `curationRestoreRevisionCore` — a second entry point to the same transitions is how emission
-  drifts. Converge, or the gate allowlists one forever.
+- [x] **T28** — Converge the `curation*Core` family ✅
+  `internal/api/outbox_curation.go` + 5 call sites + a consumer + the gate on a second axis.
+  **4131 python (+11) + the full Go api suite (63 s, live DB) green**, 6 new Go tests, 11 new
+  Python tests.
+
+  ⚠️ **The named premise was half wrong, and the half that was right was one layer down.** The
+  four `curation*Core` funcs the plan names are the MINT side — they write nothing, they mint a
+  confirm card, and they already converge (one core, two MCP tools). The drift the plan
+  predicted is real but lives on the WRITE side. Of the four write cores each transition
+  actually routes through: `mergeEntitiesCore` and `restoreEntityRevisionCore` emit;
+  **`bulkSetEntityStatusCore` and `reassignEntityKindCore` emitted nothing.**
+
+  **`status` is a liveness predicate here, not a label** — `knowledge_client.go:411,451`,
+  `server.go:718,725,734,791` and the wiki read all filter `status = 'active'` alongside
+  `deleted_at IS NULL`. Retiring an entity to `inactive`/`rejected` removed it from every
+  consumer-facing glossary read and announced nothing, so **the KG mirror kept the node and
+  kept answering RAG queries about an entity the author had retired** — T27's split brain
+  reached by a different verb. A re-key was silent the same way, and `kind` is a field of the
+  payload the mirror stores, so a moved entity kept its old kind in the graph forever.
+
+  **Three status entry points, not two.** REST bulk, the confirm effect, **and
+  `seedSelfEntityCore`**, whose draft→active promotion flips an entity from invisible to live
+  canon. It keeps its own UPDATE (the same statement sets `is_self` and strips provenance tags
+  — splitting it would trade one silent write for two non-atomic ones); what is shared is the
+  emit. A fourth path, `reconcileEntityFromSnapshot`, restores `status` too, so a revision
+  restore now emits `status_changed` when the snapshot moves it.
+
+  `glossary.entity_status_changed` is its own event, not a `status` field on `entity_updated`:
+  that event fires from ~a dozen paths and means "re-sync the content", so hanging an
+  archive/restore side effect off an optional field makes every one of them a latent archive
+  trigger. The re-key goes the other way for the same reason — it IS a content change and the
+  payload already carries `kind`.
+
+  ⚠️ **Reviewing my own diff caught two hazards I had just introduced.** (1) I reached for
+  `archive_entity`, which nulls `glossary_entity_id` — correct for a delete, wrong here: the KG
+  sync MERGEs on that anchor, and a retired entity is still editable, so **the next edit would
+  have failed to match the anchorless node and created a second, un-archived twin of it.** Now
+  `user_archive_entity` (keeps anchor + score). (2) Two archive sources can now undo each
+  other. Restores are scoped by `archive_reason` prefix, and both archive Cyphers `coalesce` it
+  so **whoever archived it first owns the un-archive** — otherwise trashing an
+  already-`rejected` entity and pulling it back out of the bin resurrects it through a route
+  that never mentions status. The reverse order is unreachable (`setEntityStatusCore` filters
+  `deleted_at IS NULL`).
+
+  **The gate's bite failed twice more, and both misses were holes in the T27 gate I shipped.**
+  (1) Removing the emit left it GREEN because **comments were never blanked** and the
+  roll-back comment right below explains itself by naming `bulkDeleteEntitiesCore`, which is in
+  `_EMITS`. T27 fixed this class twice at the chunk BOUNDARIES; neither fix touched prose
+  *inside* them. Now stripped, with string literals kept (the SQL lives in raw strings).
+  (2) Silencing `reassignEntityKindCore` left it green because the SQL sits in the allowlisted
+  `rekeyEntityToKind` and **nothing ever checked that the caller the exemption points at still
+  emits** — the exemption outlived the exact thing that justified it. Entries now name their
+  emitters and the gate holds them to it; its first run caught that I had named
+  `resolveEntityKind`, a pass-through that has never emitted anything.
+
+  ⚠️ **T27's entry claimed "the consumers are unit-covered". They were not** — no test in
+  knowledge-service named any of the three handlers. `test_glossary_lifecycle_handlers.py` now
+  covers both tasks (11 tests), including the Cypher predicates themselves, since a mocked repo
+  cannot tell you a query honours its own argument.
+
+  **Bites:** removing the status emit reds 5 of 6 Go tests; unscoping the restore Cypher and
+  mislabelling the delete-restore prefix reds 2 Python tests; all three gate bites red the gate.
   (depends on T27)
 
 - [ ] **T29** — The `command-or-nothing` gate + KAL command routes + `SR06` tier

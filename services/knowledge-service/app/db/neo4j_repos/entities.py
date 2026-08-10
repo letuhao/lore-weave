@@ -1184,20 +1184,43 @@ SET e.archived_at = datetime(),
     e.anchor_score = 0.0,
     e.prior_glossary_entity_id = prior_gid,
     e.glossary_entity_id = NULL,
-    e.archive_reason = $reason,
+    e.archive_reason = coalesce(e.archive_reason, $reason),
     e.updated_at = datetime()
 RETURN e
 """
+# `coalesce` reads as defensive and is not (plan T28). Since T28 two independent sources can
+# archive a node, and the restore paths are scoped by `archive_reason` so neither undoes the
+# other. Overwriting the reason breaks that in one specific order: retire an entity to
+# `rejected` (archived, reason `glossary_status_rejected`), then trash it. Without the
+# coalesce the reason becomes `glossary_deleted`, and pulling it back out of the recycle bin
+# un-archives a node the author still has marked rejected — resurrecting it into every RAG
+# answer via a route that never mentions status.
+#
+# The rule the coalesce states: WHOEVER ARCHIVED IT FIRST OWNS THE UN-ARCHIVE. It is not
+# permanently sticky — every restore path clears `archive_reason` to NULL — so ownership lasts
+# exactly as long as the archive does. The reverse order needs no special handling: a trashed
+# entity's status cannot be changed at all (`setEntityStatusCore` filters `deleted_at IS
+# NULL`), so "trashed, then rejected" is unreachable.
 
 # Restore by GLOSSARY id, matching either the live anchor or the archive breadcrumb. The
 # `OR` is not defensive padding: an entity archived by the glossary-deleted path has only
 # the breadcrumb, while one archived some other way (or never archived) has only the anchor,
 # and the restore event cannot know which it is looking at.
+#
+# The `archive_reason` clause is what keeps two archive SOURCES from undoing each other
+# (plan T28). Since T28 a node can be archived because the glossary entity was trashed
+# (`glossary_deleted`) OR because its status left `active` (`glossary_status_*`). Without the
+# scope, restoring an entity from the recycle bin would un-archive a node that is still
+# `rejected`, resurrecting it into every RAG answer — a restore event undoing a retirement it
+# knows nothing about. `archived_at IS NULL` is kept in the predicate so re-attaching the
+# anchor to a live node stays idempotent.
 _RESTORE_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity)
 WHERE e.user_id = $user_id
   AND (e.glossary_entity_id = $glossary_entity_id
        OR e.prior_glossary_entity_id = $glossary_entity_id)
+  AND (e.archived_at IS NULL
+       OR coalesce(e.archive_reason, '') STARTS WITH $reason_prefix)
 SET e.archived_at = NULL,
     e.archive_reason = NULL,
     e.glossary_entity_id = $glossary_entity_id,
@@ -1241,10 +1264,14 @@ _USER_ARCHIVE_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
 SET e.archived_at = datetime(),
-    e.archive_reason = $reason,
+    e.archive_reason = coalesce(e.archive_reason, $reason),
     e.updated_at = datetime()
 RETURN e
 """
+# Same first-archiver-owns-the-un-archive rule as `_ARCHIVE_CYPHER`, and it has to be the same
+# here or the rule is true of one Cypher and not its twin. Concretely: a user hides an entity
+# (`user_archived`), the author then rejects it. Without the coalesce the reason becomes
+# `glossary_status_rejected`, and reinstating the status would un-hide something the user hid.
 
 
 async def archive_entity(
@@ -1355,12 +1382,19 @@ async def restore_entity_by_glossary_id(
     *,
     user_id: str,
     glossary_entity_id: str,
+    reason_prefix: str,
 ) -> Entity | None:
     """Un-archive the entity anchored to `glossary_entity_id`, re-attaching the anchor.
 
-    The counterpart of `archive_entity` for the `glossary.entity_restored` event. Returns
-    None when no node matches — which is normal, not an error: the book may have no KG
-    project, or the entity may never have been synced.
+    The counterpart of `archive_entity` for the `glossary.entity_restored` and
+    `glossary.entity_status_changed` events. Returns None when no node matches — which is
+    normal, not an error: the book may have no KG project, the entity may never have been
+    synced, or (since T28) the node may be archived for a reason this restore does not own.
+
+    `reason_prefix` scopes the un-archive to the archive SOURCE the caller is authorised to
+    undo — `'glossary_deleted'` for a recycle-bin restore, `'glossary_status_'` for a return
+    to `active`. It has no default on purpose: an unscoped restore is the bug (one source
+    silently undoing another's retirement), so a caller must state which one it is undoing.
 
     Anchor score is deliberately NOT recomputed here, matching `restore_entity`: that is the
     anchor pass's job, and doing it inline would make one event handler responsible for a
@@ -1371,6 +1405,7 @@ async def restore_entity_by_glossary_id(
         _RESTORE_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
         glossary_entity_id=glossary_entity_id,
+        reason_prefix=reason_prefix,
     )
     record = await result.single()
     if record is None:

@@ -76,6 +76,23 @@ func lifecycleOpFor(eventType string) string {
 	}
 }
 
+// actorFor renders an actor id as the (actor_type, actor_id) pair every entity event carries.
+//
+// `uuid.Nil` means "no user was on the call" — a pipeline, sweeper or system-seeded write —
+// and must render as an EMPTY actor_id rather than the nil UUID, so a downstream owner-guard
+// cannot mistake a fake all-zero user for a real one.
+//
+// The actor is a parameter everywhere it is used rather than read from ctx: the only ctx
+// identity this service has (`userIDFromCtx`) is set by MCP middleware alone, so a REST write
+// would silently record itself as a pipeline write. An audit trail that mislabels who did
+// something is worse than one that says nothing.
+func actorFor(actorID uuid.UUID) (actorType, actor string) {
+	if actorID == uuid.Nil {
+		return "pipeline", ""
+	}
+	return "user", actorID.String()
+}
+
 // emitEntityLifecycleTx writes ONE lifecycle event inside the caller's transaction.
 //
 // It does not check that the entity exists or is in the expected state: the caller has just
@@ -162,10 +179,7 @@ func (s *Server) bulkDeleteEntitiesCore(
 		return 0, err
 	}
 
-	actorType, actor := "pipeline", ""
-	if actorID != uuid.Nil {
-		actorType, actor = "user", actorID.String()
-	}
+	actorType, actor := actorFor(actorID)
 	for _, id := range changed {
 		if err := emitEntityLifecycleTx(
 			ctx, tx, bookID, id, entityDeletedEvent, actorType, actor,

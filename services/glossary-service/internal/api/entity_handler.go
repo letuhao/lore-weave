@@ -1339,7 +1339,7 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids)
+	updated, err := s.bulkSetEntityStatusCore(r.Context(), bookID, in.Status, ids, userID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "bulk status update failed")
 		return
@@ -1349,21 +1349,18 @@ func (s *Server) bulkSetEntityStatus(w http.ResponseWriter, r *http.Request) {
 
 // bulkSetEntityStatusCore sets `status` on the live, book-scoped entities in `ids`
 // and returns the count actually updated. Status validity + grant are the CALLER's
-// concern; book-scoping (book_id = $2) is enforced here so a confirm-token effect can
-// never touch another book's rows. Single source of truth for the HTTP bulk handler
-// and the glossary_propose_status_change confirm effect.
-func (s *Server) bulkSetEntityStatusCore(ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID) (int, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
-	tag, err := s.pool.Exec(ctx,
-		`UPDATE glossary_entities SET status = $1, updated_at = now()
-		 WHERE book_id = $2 AND entity_id = ANY($3::uuid[]) AND deleted_at IS NULL`,
-		status, bookID, ids)
-	if err != nil {
-		return 0, err
-	}
-	return int(tag.RowsAffected()), nil
+// concern; book-scoping is enforced in the core so a confirm-token effect can never touch
+// another book's rows. Single source of truth for the HTTP bulk handler and the
+// glossary_propose_status_change confirm effect.
+//
+// T28: the write and its `glossary.entity_status_changed` emission live together in
+// `setEntityStatusCore`. This wrapper survives only as the name the two entry points already
+// call; it deliberately holds no SQL of its own, because a status write that is separable from
+// its event is a status write that will be separated again.
+func (s *Server) bulkSetEntityStatusCore(
+	ctx context.Context, bookID uuid.UUID, status string, ids []uuid.UUID, actorID uuid.UUID,
+) (int, error) {
+	return s.setEntityStatusCore(ctx, bookID, status, ids, actorID)
 }
 
 // countLiveEntitiesInBook returns how many of `ids` are live entities in the book — used

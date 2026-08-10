@@ -88,7 +88,7 @@ func TestPipelineCores_BookScoped(t *testing.T) {
 	otherBook := uuid.New() // a book the entity does NOT belong to
 
 	// status_change: a wrong-book scope must update 0 and leave the entity untouched.
-	n, err := f.srv.bulkSetEntityStatusCore(ctx, otherBook, "active", []uuid.UUID{entityID})
+	n, err := f.srv.bulkSetEntityStatusCore(ctx, otherBook, "active", []uuid.UUID{entityID}, f.ownerID)
 	if err != nil {
 		t.Fatalf("bulkSetEntityStatusCore: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestPipelineCores_BookScoped(t *testing.T) {
 	}
 
 	// reassign_kind: an entity not in the addressed book is rejected (not silently moved).
-	if err := f.srv.reassignEntityKindCore(ctx, otherBook, entityID, charKind); !errorsIs(err, errReassignKindNotFound, errReassignEntityNotFound) {
+	if err := f.srv.reassignEntityKindCore(ctx, otherBook, entityID, charKind, f.ownerID); !errorsIs(err, errReassignKindNotFound, errReassignEntityNotFound) {
 		t.Errorf("cross-book reassign: want a not-found sentinel, got %v", err)
 	}
 
