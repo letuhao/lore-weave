@@ -87,6 +87,56 @@ async def pool():
         await p.close()
 
 
+# ── the vector Postgres (plan T23) ───────────────────────────────────────────
+#
+# A SECOND Postgres, not the one above: `PgVectorStore` runs on the T22 image
+# (PG18 + pgvector + pgvectorscale), which the knowledge DB is not. It gets its own env var
+# for the same reason `TEST_KNOWLEDGE_DB_URL` never falls back to `KNOWLEDGE_DB_URL` — a
+# fallback is how a test suite finds a real database. The fixture lives HERE rather than in
+# the test module because this file's contract is that no test opens its own pool: the
+# throwaway guard has to be unavoidable, and one that a test file could route around is
+# decoration.
+
+
+def _vector_dsn() -> str | None:
+    return os.environ.get("TEST_VECTOR_DB_URL")
+
+
+@pytest_asyncio.fixture
+async def vector_pool():
+    """Pool on a disposable pgvector Postgres, with its tables dropped before each test.
+
+    Start one with:
+
+        docker run -d --name lw-vec-test -e POSTGRES_PASSWORD=… \\
+          -e POSTGRES_DB=loreweave_vectors_test -p 7995:5432 \\
+          loreweave/postgres-knowledge:18
+        export TEST_VECTOR_DB_URL=postgresql://postgres:…@localhost:7995/loreweave_vectors_test
+    """
+    dsn = _vector_dsn()
+    if not dsn:
+        pytest.skip("TEST_VECTOR_DB_URL not set — skipping live pgvector test")
+    _guard_throwaway(dsn)  # refuse a real DB BEFORE any DROP
+    try:
+        p = await asyncpg.create_pool(dsn, min_size=1, max_size=4, command_timeout=30)
+    except (OSError, asyncpg.PostgresError) as exc:
+        pytest.skip(f"vector DB unreachable: {exc}")
+    try:
+        from app.adapters.pg_vector_store import entity_table, passage_table
+        from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+
+        async with p.acquire() as conn:
+            # DROP, not TRUNCATE: these tests also assert on the SCHEMA (which indexes
+            # exist, what the planner does with them), so a leftover index from a previous
+            # run would let a test pass on somebody else's DDL.
+            for dim in SUPPORTED_PASSAGE_DIMS:
+                for table in (passage_table(dim), entity_table(dim)):
+                    await conn.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+        yield p
+    finally:
+        await p.close()
+
+
 # The dev graph runs on 7687 inside the compose network and 7688 on the host, and it holds
 # REAL data. These tests create and DETACH DELETE nodes, so pointing TEST_NEO4J_URI at it
 # would write into somebody's book. The Postgres fixture above has refused a non-throwaway

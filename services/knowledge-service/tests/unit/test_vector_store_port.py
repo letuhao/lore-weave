@@ -23,6 +23,15 @@ import pytest
 
 from app.adapters.fake_vector_store import FakeVectorStore
 from app.adapters.neo4j_vector_store import Neo4jVectorStore
+from app.adapters.pg_vector_store import (
+    PgVectorStore,
+    entity_table,
+    index_name,
+    parse_vector_index_name,
+    passage_table,
+)
+from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+from app.db.neo4j_repos.vector_indexes import parse_summary_index_name
 from app.ports.vector_store import (
     EntityVectorRecord,
     PassageVectorRecord,
@@ -186,7 +195,7 @@ async def test_ensure_index_is_idempotent_and_names_match_the_real_scheme():
 # ── structural conformance ───────────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("impl", [FakeVectorStore, Neo4jVectorStore])
+@pytest.mark.parametrize("impl", [FakeVectorStore, Neo4jVectorStore, PgVectorStore])
 def test_implementations_match_the_port_signatures(impl):
     """`isinstance(x, VectorStore)` passes as soon as the method NAMES exist — a
     `runtime_checkable` Protocol checks nothing else. An adapter whose `search` took
@@ -210,6 +219,92 @@ def test_implementations_match_the_port_signatures(impl):
                 f"port says {pparam.default!r} — a differing default makes the two "
                 "backends behave differently for a caller that omits it"
             )
+
+
+# ── the Postgres adapter's name grammar (plan T23) ───────────────────────────
+#
+# No database needed: these are the checks that run BEFORE any SQL, and they are the ones
+# that decide whether a shared index can be dropped or a relation name can be injected.
+
+
+def test_no_name_this_store_mints_looks_project_scoped_to_the_prune_path():
+    """The load-bearing safety property of the Postgres index model.
+
+    The prune-orphans admin endpoint decides what to drop by parsing a project id out of an
+    index name. A Postgres index here serves EVERY tenant, so if one of these names parsed,
+    the endpoint would offer to drop an index the whole install depends on. The names are
+    built so it cannot.
+    """
+    for dim in SUPPORTED_PASSAGE_DIMS:
+        for scope in ("passage", "entity"):
+            for kind in ("emb", "tenant"):
+                name = index_name(scope, dim, kind)
+                assert parse_summary_index_name(name) is None, (
+                    f"{name} parses as a per-project summary index — the prune endpoint "
+                    "would treat a shared index as one project's orphan"
+                )
+                assert parse_vector_index_name(name) is not None
+
+
+def test_that_check_is_not_vacuous():
+    """Positive control. `parse_summary_index_name` returning None for EVERYTHING would
+    make the test above pass while proving nothing, so a real summary name must parse."""
+    from app.db.neo4j_repos.vector_indexes import summary_index_name
+
+    real = summary_index_name("1" * 32, "2" * 32, "chapter")
+    assert parse_summary_index_name(real) is not None
+    assert parse_vector_index_name(real) is None
+
+
+@pytest.mark.parametrize("bad_dim", [0, -1, 512, 4096, 1537])
+def test_a_dim_outside_the_closed_set_never_reaches_a_relation_name(bad_dim):
+    """SQL cannot parameterise a relation name, so the closed dim set IS the injection
+    barrier — the same role it already plays for the Cypher property name in passages.py."""
+    for build in (passage_table, entity_table):
+        with pytest.raises(ValueError, match="unsupported embedding dim"):
+            build(bad_dim)
+
+
+def test_parse_rejects_a_dim_that_is_not_in_the_closed_set():
+    """A well-formed name for an unsupported dim must still fail to parse — otherwise
+    `drop_index` would accept `passage_vectors_9999_emb` on grammar alone."""
+    assert parse_vector_index_name("passage_vectors_9999_emb") is None
+    assert parse_vector_index_name("passage_vectors_1536_emb") is not None
+
+
+@pytest.mark.asyncio
+async def test_drop_index_refuses_a_name_it_did_not_mint_before_touching_the_pool():
+    """`pool=None` is the point: if the refusal ever moved after the first `acquire()`,
+    this test would fail with AttributeError instead of passing, which is how it stays a
+    barrier rather than a formality."""
+    store = PgVectorStore(pool=None)
+    for foreign in ("pg_class_oid_index", "entity_embeddings_1024", "passage_vectors_1536"):
+        with pytest.raises(ValueError, match="does not own"):
+            await store.drop_index(name=foreign)
+
+
+@pytest.mark.asyncio
+async def test_entity_upsert_refuses_to_guess_when_it_has_no_existence_oracle():
+    """The port's False return means "the entity was deleted between embedding and write".
+    A vector-only Postgres cannot observe that — the embedding row is the only object and
+    an INSERT always succeeds. Returning True would satisfy the signature while dropping
+    the guarantee, so it raises instead."""
+    store = PgVectorStore(pool=None)
+    rec = EntityVectorRecord(user_id=_USER, entity_id="e-1", embedding=[1.0, 0.0],
+                             embedding_dim=2, embedding_model="m", embedding_version=1)
+    with pytest.raises(NotImplementedError, match="entity_exists"):
+        await store.upsert(rec)
+
+
+@pytest.mark.asyncio
+async def test_with_an_oracle_a_missing_entity_is_reported_not_raised():
+    async def absent(user_id: str, entity_id: str) -> bool:
+        return False
+
+    store = PgVectorStore(pool=None, entity_exists=absent)
+    rec = EntityVectorRecord(user_id=_USER, entity_id="e-gone", embedding=[1.0, 0.0],
+                             embedding_dim=2, embedding_model="m", embedding_version=1)
+    assert await store.upsert(rec) is False
 
 
 def test_the_signature_check_can_actually_fail():

@@ -48,11 +48,13 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T23** — the `PgVectorStore` adapter. The image is built and proven
-(`loreweave/postgres-knowledge:18`), so this is now a code task: per-dim partitioned tables using
-the closed `SUPPORTED_PASSAGE_DIMS` set, with the tenant filter **in the planner** — the thing
-Neo4j cannot do, and the reason `oversample_factor` was deliberately kept OFF the `VectorStore`
-port in T14. It implements the port that already exists, against a database that already works.
+**RESUME: T24** — dual-write + shadow-read with a recall gate. T23 landed the adapter and
+**proved the planner property with `EXPLAIN`**, so T24 now has both backends to compare and a
+measured baseline to compare them against. Read T23's evidence block first: it also hands T24 two
+pieces of owed work — the **entity read path** (`search(scope="entity")` refuses today, because
+`include_archived` and `project_id` describe lifecycle state a vector-only store does not hold, and
+T24's dual-write writer is where those columns get maintained) and the **`query_rescore`** knob,
+which is wired but unmeasured.
 
 **Still open elsewhere:** 6 `db/migrations/` backfills carry Cypher (Phase 7 must port or retire),
 QC-2's rendered-block diff is owed once a consumer holds a port, and 283 Postgres-gated integration
@@ -1454,11 +1456,63 @@ vectors and validity intervals live in different stores.
   like the cutover had happened. Its healthcheck asks for the **extension**, not just `pg_isready`:
   an image that starts without pgvectorscale is not healthy for this purpose.
 
-- [ ] **T23** — `PgVectorStore` adapter
-  Per-dim partitioned tables using the **closed dim set already in the code**; tenant filtered in
-  the planner (the thing Neo4j cannot do, and the reason per-tenant indexes exist).
-  **Logging:** `DEBUG` chosen partition, filter selectivity, recall-relevant params.
-  (depends on T22)
+- [x] **T23** — `PgVectorStore` adapter ✅
+  `services/knowledge-service/app/adapters/pg_vector_store.py`, 8 unit + 15 live tests, **4115
+  green**. Per-dim tables from the closed `SUPPORTED_PASSAGE_DIMS` set — and that is *structural*,
+  not a choice: `vector(n)` is a typed column, so one table cannot hold 384 and 3072. The closed
+  set is therefore the injection barrier for the interpolated relation name, the same role it
+  already plays for the Cypher property name in `passages.py`.
+
+  **The planner property is PROVED, not asserted.** "The tenant filter reaches the planner" is a
+  claim about a query plan; reading the SQL cannot settle it, and a test that EXPLAINed its own
+  re-typed query would pass after the real one changed. So `build_search_sql` was extracted and the
+  test EXPLAINs *that* statement. On 4 000 rows across two tenants:
+
+  ```
+  scan=Index Scan  index=passage_vectors_384_emb  rows_out=10  removed_by_filter=5
+  ```
+
+  One scan node, the diskann index serving the ordering, and `user_id` evaluated **on that node** —
+  15 rows read to return 10. `Neo4jVectorStore` fetches 100 for the same answer.
+
+  **Bitten five times, each one fired.** (A) drop `user_id = $1` → the cross-tenant test *and* the
+  plan test go red. (B) over-fetch 10× and filter above the scan — the Neo4j shape — → **the
+  cross-tenant test stays GREEN** and only the plan test catches it, which is exactly why the plan
+  test exists: the wasteful shape returns correct results. (C) report cosine *distance* as the
+  score → ordering stays right, only the explicit `score ≈ 1.0` assertion fires. (D) let the entity
+  path guess. (E) answer entity search anyway.
+
+  **Two defects found in review, same shape: a narrowing filter that silently does not narrow.**
+  `search(scope="entity")` was ignoring `include_archived` (whose DEFAULT `False` means *exclude
+  archived* — Neo4j runs a different query for it) and `project_id` (which `EntityVectorRecord`
+  does not even carry, so the write path cannot store what the read path filters on — a **T14 port
+  gap**). Answering anyway would have widened every entity result set **at the cutover**, green all
+  the way. It now refuses with a named owner. Entity *upsert* works, so T24 has rows to measure.
+
+  **The entity-existence oracle is a constructor argument.** The port's `False` return means "the
+  entity was deleted between embedding and write". Neo4j can answer that because the node and its
+  embedding are the same object; here the embedding row is the only object and an `INSERT` always
+  succeeds. Returning `True` would satisfy the signature while dropping the guarantee, so the
+  composition root passes `entity_exists` and without it entity writes raise — the same refusal
+  `TruthStore` (T19) makes for a capability it does not have.
+
+  **Divergence from the port's index lifecycle, recorded rather than smoothed over.**
+  `ensure_index` is documented as returning `{level: name}` for chapter/part/book. That shape is
+  Neo4j's per-project *summary* index model, and it describes neither half of this backend:
+  summary vectors are a third family the port never modelled (`search`/`upsert` take
+  `passage | entity`, while the index methods address `summary_embedding`), and there is no
+  per-project index here **on purpose** — minting one would rebuild the ~30 000-index scheme the
+  port's own docstring cites as the reason to move. So it returns `{scope: name}` over the shared
+  per-dim indexes, and **every name it mints is unparseable by `parse_summary_index_name`**. That
+  is load-bearing, not cosmetic: the prune-orphans admin path decides what to drop by parsing a
+  project out of an index name, so an unparseable name is what stops it offering to drop an index
+  serving every tenant. On this backend orphans are **rows, not indexes**. Unit-tested with a
+  positive control, because a parser that returned `None` for everything would pass it silently.
+
+  **`query_rescore`** (StreamingDiskANN's recall knob) is a constructor argument for the same
+  reason `oversample_factor` never reached the port, and it applies `SET LOCAL` **inside an
+  explicit transaction** — bare on a pooled connection it warns and does nothing, and plain `SET`
+  would leak into the next borrower. **Unmeasured: T24 owns it.**
 
 - [ ] **T24** — Dual-write + shadow-read, with a recall gate
   Extend `services/knowledge-service/app/benchmark/flat_knn_rawsearch.py`
