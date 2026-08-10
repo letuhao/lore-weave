@@ -445,6 +445,17 @@
         "DQ-6 UPDATED: four tools now show the shape, two of them from organic traffic"
       ],
       "admitted": true
+    },
+    "book_chapter_create": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, 195 calls / 131 sessions / 192 ok (98.5%). Only 3 failures and both classes are the tool being RIGHT: 2 'book is not in an editable state' (a trashed book) and 1 'book_id must be a UUID'. There is no defect here to find, which is worth recording as plainly as a defect would be.",
+      "evidence": [
+        "PHASE 2, split: 192 ok / 3 failed (2 lifecycle refusals, 1 malformed id)",
+        "LIVE: book-service MCP on throwaway book 019fcaa4 -> chapter 019fedbd-443b-7b5f-a20c-deee3dd1eef8 created, active chapters 14 -> 15, and the reply carries an undo_hint naming book_chapter_delete with the new id -- the Tier-A reversibility contract stated by the tool",
+        "CONTROL: the same call against a TRASHED book answers 'book is not in an editable state', the recorded failure verbatim",
+        "INCIDENTAL, and it is the good kind: my first attempt omitted original_language and was answered 'required: missing properties: [\"original_language\"]' -- named, and fixed in one retry"
+      ],
+      "admitted": true
     }
   }
 }
