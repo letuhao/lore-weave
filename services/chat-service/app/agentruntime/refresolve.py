@@ -113,7 +113,9 @@ class Resolution:
     #: Set only on the single-match branch.
     resolved: str | None = None
     candidates: tuple[Candidate, ...] = field(default=())
-    #: `resolved` | `no_match` | `ambiguous` | `resolver_failed`
+    #: `resolved` | `no_match` | `ambiguous` | `truncated` | `resolver_failed`
+    #: `truncated` is kept DISTINCT from `ambiguous`: one says the candidates conflict, the
+    #: other says we cannot see all of them. Merging them would hide which defect to fix.
     outcome: str = "no_match"
 
     @property
@@ -218,6 +220,31 @@ def load_registry(doc: dict, lane_of: Callable[[str], str | None]) -> tuple[
     return resolvers, bindings
 
 
+#: The bound `resolve_call` asks for. A result holding exactly this many rows may have had more.
+#: Mirrors `glossary_search`'s own default (`searchToolDefaultLimit`), which is what the resolver
+#: sends; a tool that DECLARES its completeness (`page.is_complete`) is read from the declaration
+#: instead, which is the whole point of the member.
+RESOLVER_PAGE_LIMIT = 20
+
+
+def _page_cap(result: Any) -> int:
+    """How many rows would mean *"possibly truncated"*.
+
+    Prefers the tool's OWN completeness declaration when it makes one — `is_complete: true` means
+    the list is whole no matter how long it is, so the cap is unreachable. Falls back to the
+    requested bound for the tools measured to declare nothing.
+    """
+    if isinstance(result, dict):
+        page = result.get("page")
+        block = page if isinstance(page, dict) else result
+        complete = block.get("is_complete") if isinstance(block, dict) else None
+        if complete is True:
+            return 1 << 30
+        if isinstance(block, dict) and block.get("has_more") is False:
+            return 1 << 30
+    return RESOLVER_PAGE_LIMIT
+
+
 def _dig(result: Any, path: str) -> list:
     """Follow a dotted path to the candidate list. No expression syntax, for §3a's reason: a
     language that can compute can read something it was not handed."""
@@ -275,6 +302,21 @@ def decide(resolver: Resolver, param: str, name: str, result: Any) -> Resolution
                   quality=str(r.get(resolver.match_field) or ""))
         for r in rows if isinstance(r, dict)
     )
+    # 🔴 **CP-5.6 — "EXACTLY ONE" IS ONLY TRUE IF THE LIST WAS NOT TRUNCATED, AND THIS RESOLVER'S
+    # OWN SOURCE NEVER SAYS.** Measured 2026-08-10: of the 36 tools that declare paging, **five
+    # never report completeness at all** — `kg_project_list`, `memory_search`, `jobs_list`,
+    # `book_get_chapter`, and **`glossary_search`, which is this resolver's tool**. It returns at
+    # most `limit` rows and no `is_complete`, so a full page is indistinguishable from a page that
+    # had more behind it.
+    #
+    # The exact tier is filled FIRST, so one exact among a truncated page is still the only exact
+    # — unless the exacts themselves fill the page, and then a second one may be sitting just past
+    # the cap. Substituting there would be a silent wrong answer, which is worse than every
+    # failure this member exists to fix. Refused instead, and named as its own outcome so it never
+    # merges with a genuine ambiguity.
+    if matched and len(matched) >= len(rows) and len(rows) >= _page_cap(result):
+        return Resolution(param=param, ref_type=resolver.ref_type, sent=name,
+                          candidates=candidates, outcome="truncated")
     if len(matched) == 1:
         return Resolution(param=param, ref_type=resolver.ref_type, sent=name,
                           resolved=str(matched[0].get(resolver.id_field) or ""),
@@ -341,6 +383,11 @@ def refusal_message(resolutions: list[Resolution]) -> str:
             parts.append(
                 f"{r.param}: {r.sent!r} matched MORE THAN ONE entry exactly — {names}. "
                 f"Pick one and pass its id; this cannot be guessed for you.")
+        elif r.outcome == "truncated":
+            parts.append(
+                f"{r.param}: {r.sent!r} matched the maximum number of entries the search can "
+                f"return, so there may be more it could not show. Narrow the name or pass the id "
+                f"directly; picking one from a partial list could be wrong.")
         elif r.outcome == "no_match":
             names = ", ".join(repr(c.name) for c in shown)
             parts.append(

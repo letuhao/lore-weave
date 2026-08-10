@@ -138,6 +138,55 @@ class TestTwoBranchesAndNoThird:
                    {"entities": [hit("Castle Dracula", tier="fts")]})
         assert r.outcome == "no_match"
 
+    def test_A_FULL_PAGE_OF_EXACT_MATCHES_IS_REFUSED_NOT_RESOLVED(self):
+        """🔴 **CP-5.6 — "exactly one" is only true if the list was not truncated, and this
+        resolver's own source never says.** Measured 2026-08-10: of the 36 tools declaring paging,
+        **five never report completeness at all** — and one of them is `glossary_search`, the
+        resolver's tool. It returns at most `limit` rows with no `is_complete`, so a full page is
+        indistinguishable from a page with more behind it.
+
+        The exact tier fills first, so one exact among a truncated page is still the only exact —
+        UNLESS the exacts themselves fill the page, and then a second may sit just past the cap.
+        Substituting there is a silent wrong answer, worse than any failure this member fixes.
+        """
+        from app.agentruntime.refresolve import RESOLVER_PAGE_LIMIT
+        rows = [hit("Ash", eid=f"e{i}") for i in range(RESOLVER_PAGE_LIMIT)]
+        r = decide(self._resolver(), "entity_id", "Ash", {"entities": rows})
+        assert r.outcome == "truncated"
+        assert r.resolved is None
+
+    def test_TRUNCATED_IS_NOT_THE_SAME_OUTCOME_AS_AMBIGUOUS(self):
+        """One says the candidates conflict; the other says we cannot see all of them. Merging
+        them would hide which defect to fix."""
+        from app.agentruntime.refresolve import RESOLVER_PAGE_LIMIT
+        full = decide(self._resolver(), "entity_id", "Ash",
+                      {"entities": [hit("Ash", eid=f"e{i}") for i in range(RESOLVER_PAGE_LIMIT)]})
+        few = decide(self._resolver(), "entity_id", "Ash",
+                     {"entities": [hit("Ash", eid="a"), hit("Ash", eid="b")]})
+        assert full.outcome == "truncated" and few.outcome == "ambiguous"
+        assert "may be more" in refusal_message([full])
+
+    def test_A_TOOL_THAT_DECLARES_COMPLETENESS_IS_BELIEVED(self):
+        """The member doing its job: a result that SAYS it is whole is not second-guessed, however
+        long it is. That is the difference declaring completeness buys."""
+        from app.agentruntime.refresolve import RESOLVER_PAGE_LIMIT
+        rows = [hit("Ash", eid=f"e{i}") for i in range(RESOLVER_PAGE_LIMIT)]
+        r = decide(self._resolver(), "entity_id", "Ash",
+                   {"entities": rows, "page": {"is_complete": True}})
+        assert r.outcome == "ambiguous", (
+            "with completeness declared the list is whole, so this is a genuine ambiguity — not a "
+            "truncation we cannot see past"
+        )
+
+    def test_ONE_EXACT_IN_A_FULL_PAGE_OF_NEAR_MISSES_STILL_RESOLVES(self):
+        """The exact tier fills FIRST, so a page full of `fts` hits behind a single exact is not a
+        truncation risk — refusing there would throw away the member's main case."""
+        from app.agentruntime.refresolve import RESOLVER_PAGE_LIMIT
+        rows = [hit("Ash", eid="the-one")] + [
+            hit(f"Ashen {i}", tier="fts", eid=f"n{i}") for i in range(RESOLVER_PAGE_LIMIT - 1)]
+        r = decide(self._resolver(), "entity_id", "Ash", {"entities": rows})
+        assert r.outcome == "resolved" and r.resolved == "the-one"
+
     def test_THE_REFUSAL_IS_ACTIONABLE_WHERE_TODAYS_ERROR_IS_NOT(self):
         rows = [hit("Dracula", eid="a"), hit("Dracula", eid="b")]
         msg = refusal_message([decide(self._resolver(), "entity_id", "Dracula",

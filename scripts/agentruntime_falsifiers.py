@@ -1065,6 +1065,30 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.6: output completeness, where it meets the resolver -------------------------------
+    "test_A_FULL_PAGE_OF_EXACT_MATCHES_IS_REFUSED_NOT_RESOLVED": [
+        # Substitute from a possibly-truncated list: a silent WRONG answer, worse than any failure
+        # 5.3 exists to fix.
+        (f"{PKG}/refresolve.py",
+         "    if matched and len(matched) >= len(rows) and len(rows) >= _page_cap(result):",
+         "    if False:"),
+    ],
+    "test_TRUNCATED_IS_NOT_THE_SAME_OUTCOME_AS_AMBIGUOUS": [
+        # Merge "the candidates conflict" with "we cannot see all of them", hiding which to fix.
+        (f"{PKG}/refresolve.py", '                          candidates=candidates, outcome="truncated")',
+                                 '                          candidates=candidates, outcome="ambiguous")'),
+    ],
+    "test_A_TOOL_THAT_DECLARES_COMPLETENESS_IS_BELIEVED": [
+        # Ignore the declaration, so declaring completeness buys a provider nothing.
+        (f"{PKG}/refresolve.py", "        if complete is True:\n            return 1 << 30",
+                                 "        if complete is True:\n            pass"),
+    ],
+    "test_ONE_EXACT_IN_A_FULL_PAGE_OF_NEAR_MISSES_STILL_RESOLVES": [
+        # Refuse on ANY full page, throwing away the member's main case.
+        (f"{PKG}/refresolve.py", "    if matched and len(matched) >= len(rows) and len(rows) >= _page_cap(result):",
+                                 "    if matched and len(rows) >= _page_cap(result):"),
+    ],
+
     # -- CP-5.7: repeat semantics --------------------------------------------------------------
     "test_A_BREAKER_SHORT_CIRCUIT_IS_REFUSED": [
         # Back to 52.4% of the failure corpus being our own breaker prose typed as tool failures.
