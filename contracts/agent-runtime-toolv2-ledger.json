@@ -498,6 +498,17 @@
         "CROSS-REFERENCE: iteration 37's live CP-6.1 refusal shows this tool dispatching as the standards source (glossary_list_system_standards | done) in the same turn"
       ],
       "admitted": false
+    },
+    "book_read": {
+      "state": "proven",
+      "note": "PROVEN LIVE on BOTH arms of its polymorphic contract, and its 51.5% headline is measurement traffic. 196 calls / 87 sessions / 101 ok. The dominant failure is 78 calls across 46 sessions, ALL on 2026-08-09, ALL missing book_id, and NOT ONE of those sessions had a book in scope -- so book_read had nothing to read. ALL 46 ARE MEASUREMENT RUNS, and proving that is the iteration's real result (DQ-12): a title regex misclassified 5 of them. 28 match 'VM3%', 13 match eval|control|smoke|throwaway|probe|test, and 5 -- 'LADDER d4 t0/t1', 'LADDER d8 t0/t1', 'CP-3 provenance' -- match nothing and are unmistakably instrumented once read. My first pass called those 5 'organic' and I corrected it before recording. A specialised message ('missing book_id, and this is NOT yours to invent: the runtime supplies it from the current book') appears on 2026-08-10, the day AFTER the spike -- someone already responded to this.",
+      "evidence": [
+        "PHASE 2, split: 101 ok / 95 failed; 78 of the failures are one message on one day across 46 sessions, every one of which had chat_sessions.book_id IS NULL",
+        "THE 46 CLASSIFIED BY HAND: 28 VM3 batch, 13 keyword-matching, 5 that a keyword regex MISSES (LADDER d4/d8 t0/t1, CP-3 provenance). That failure rate of the obvious workaround is the finding",
+        "LIVE, arm 1 (book): read=book, the book's detail plus guidance naming how to read a chapter",
+        "LIVE, arm 2 (chapter): read=chapter, the chapter's body with a COMPLETE page contract (has_more false, is_complete true, returned 2, total 2) and guidance 'Do NOT call again for this chapter'. This is one of the two tools CP-5 marked POLYMORPHIC, and both arms are now exercised rather than one sampled"
+      ],
+      "admitted": true
     }
   }
 }

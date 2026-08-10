@@ -411,6 +411,26 @@ formatting is exactly that. Ten calls do not buy the right to decide it.
 Note the rest of this tool's failures are already handled: **93 of the 145, across 13 sessions, are
 the blank-args streak breaker** — our own refusal, not a tool failure.
 
+### DQ-12 · The corpus cannot separate MEASUREMENT traffic from PRODUCT traffic, and a title regex misses
+
+*Raised by:* iteration 46, with a hard number at last. `book_read` reads 196 calls / 101 ok — a
+51.5% headline. Its dominant failure is **78 calls across 46 sessions, all on 2026-08-09, all
+missing `book_id`, and not one of those sessions had a book in scope.**
+
+All 46 are measurement runs. The obvious workaround — classify by session title — **misclassified 5
+of them**: `LADDER d4 t0`, `LADDER d4 t1`, `LADDER d8 t0`, `LADDER d8 t1`, `CP-3 provenance` match
+no sensible keyword regex (`eval|control|smoke|throwaway|probe|test`) and are unmistakably
+instrumented once a human reads them. 28 matched `VM3%`, 13 matched the keywords, 5 needed eyes.
+
+So the debt is not "we lack a convenient filter". It is that **every success-rate number this loop
+publishes is contaminated by an unknown amount of its own kind of traffic**, and the only available
+separator is a heuristic that provably fails. This iteration's own throwaway sessions are in the
+corpus too, and they will contaminate the next reader's numbers exactly the same way.
+
+*Would clear it:* a marker stamped at session creation — the thing iteration 1 already noted was
+needed and said should be built **with** its first producer. Until then, a phase-2 population split
+must look at session titles by hand and say so, as this row does.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
