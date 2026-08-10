@@ -185,6 +185,31 @@ dedupe-by-id care, and doing it badly silently duplicates or deletes recorded ca
 *Would clear it:* an id-keyed merge with a test that a resumed turn keeps its first pass, both
 upsert sites covered.
 
+### DQ-5 · CP-5.3's resolver is structurally unreachable from the frontend path
+
+*Raised by:* iteration 3 · *Measured:* `validate_frontend_tool_args` runs at
+`stream_service.py` ~3952; identifier resolution runs at ~4106. The frontend branch either
+refuses or suspends, so **it never reaches the resolver**. A name in an id field — CP-5.3's
+entire subject, 338 calls across 11 sessions — is answered by the UUID-shape check instead of
+being resolved. And `glossary_propose_entity_edit` is the **one `entity_id` field of 19 that is
+not bound to `EntityRef`** in the resolver registry.
+
+There is a precedent for the fix in the same function: `_inject_context_ids` had *exactly this
+defect one field over* — frontend tools were validated before the backend dispatch's context-id
+injection, so the session's known `book_id` never reached them and a weak model invented one
+(recorded 2026-07-26, "mình sẽ sử dụng một ID giả định"). It was fixed by running the same
+injector inside the frontend branch.
+
+**Why it is recorded and not built:** this tool's corpus contains **zero names**. All 92 are
+placeholders (`placeholder_id_1`, `current_book_id_placeholder`, `0`), which no resolver can
+serve — `glossary_search("placeholder_id_1")` returns nothing and refuses, correctly. Wiring the
+resolver here would move those from a backend 400 to a typed refusal and change no outcome, and
+§7 says a member with no subject is not written. Today's model reads first and sends real UUIDs,
+so the subject may simply be gone.
+*Would clear it:* a measured name-in-an-id-field on any frontend tool. The right shape when it
+arrives is to EXTRACT the resolution block and call it from both sites — the same consolidation
+`_inject_context_ids` already got — not a second copy.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
