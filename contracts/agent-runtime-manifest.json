@@ -27,6 +27,30 @@
       "cost": 1210
     },
     {
+      "id": "compose_prose",
+      "kind": "tool",
+      "owning_service": "chat-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 721
+    },
+    {
+      "id": "glossary_propose_entity_edit",
+      "kind": "tool",
+      "owning_service": "chat-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "write",
+      "tier": "W",
+      "cost": 3263
+    },
+    {
       "id": "glossary_search",
       "kind": "tool",
       "owning_service": "glossary-service",

@@ -219,6 +219,41 @@ def token_cost(tool_def: dict) -> int:
     return len(unicodedata.normalize("NFC", json.dumps(wire_form(tool_def), ensure_ascii=False)))
 
 
+#: Every repository service directory a declaration may name as its owner. `PROVIDERS` cannot be
+#: the source here: it lists the services the GATEWAY federates from, and a consumer-local tool is
+#: served by a consumer that federates nothing. Kept as the union so a typo'd `served_by` is
+#: refused rather than written into a manifest as an owner nobody can find.
+_OWNING_SERVICES: frozenset[str] = frozenset(
+    [service for _p, service, _n in PROVIDERS] + ["chat-service"]
+)
+
+
+def declared_service(tool_def: dict) -> str | None:
+    """`_meta.served_by` — the owner as DECLARED BY THE DEFINITION, or None.
+
+    🔴 **THIS EXISTS BECAUSE A TOOL'S NAME CAN LIE ABOUT ITS OWNER, AND ONE DOES.**
+    `glossary_propose_entity_edit` is named into glossary-service's namespace and is served by
+    **chat-service** — it is a frontend tool, executed in the browser after a human Apply, and
+    glossary-service has never heard of it. `resolve_service` is a PREFIX table, so it answers
+    `glossary-service` with total confidence, and a manifest built on that answer would attribute
+    the tool to a team that does not serve it. C-0 reads the owner out of `source_path`; a wrong
+    owner there is not a cosmetic error.
+
+    So the declaration wins over the prefix, for the reason the prefix table itself gives: it is
+    *"a claim about another service's configuration"* — specifically the gateway's ROUTING — and a
+    consumer-local tool is not routed at all. Where routing has nothing to say, the definition
+    does.
+
+    **The forgery question is answered by a gate, not by this function**, exactly as the prefix
+    table's own accuracy is: `test_NO_FEDERATED_TOOL_DECLARES_ITS_OWN_OWNER` asserts the frozen
+    catalogue carries **zero** `served_by` keys, so today the override is reachable only by tools
+    this repository serves itself. The day a provider ships one, that guard reds and a human looks
+    at it — which is the visible-drift treatment, not a silent resolution in favour of either side.
+    """
+    served_by = _meta(tool_def).get("served_by")
+    return served_by if type(served_by) is str and served_by else None
+
+
 def resolve_service(name: str) -> str | None:
     """The repository service directory that serves `name`, or None when no provider claims it.
 
@@ -240,13 +275,25 @@ def derive_one(tool_def: dict) -> Derived:
     if type(name) is not str or not name:
         raise Underivable(str(name), "id", "the catalogue entry carries no tool name")
 
-    service = resolve_service(name)
+    # The DECLARED owner wins over the name prefix — see `declared_service`. A declared value that
+    # names no service in this repository is REFUSED rather than falling back to the prefix: the
+    # fallback would turn a typo into a plausible wrong owner, which is the failure mode the whole
+    # declaration exists to remove.
+    service = declared_service(tool_def)
+    if service is not None and service not in _OWNING_SERVICES:
+        raise Underivable(
+            name, "owning_service",
+            f"_meta.served_by is {service!r}, which is not a service directory in this repository. "
+            f"A declared owner that names nothing is worse than none: it would be written into the "
+            f"manifest and read back as fact")
+    if service is None:
+        service = resolve_service(name)
     if service is None:
         raise Underivable(
             name, "owning_service",
-            "no registered provider declares a namespace this name falls under. C-0 requires the "
-            "owner DERIVED; guessing a service from the name is the heuristic C-1 forbids, so this "
-            "is reported rather than defaulted")
+            "no registered provider declares a namespace this name falls under, and the definition "
+            "does not declare `_meta.served_by`. C-0 requires the owner DERIVED; guessing a service "
+            "from the name is the heuristic C-1 forbids, so this is reported rather than defaulted")
 
     meta = _meta(tool_def)
     tier = meta.get("tier")

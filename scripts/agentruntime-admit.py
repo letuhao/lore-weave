@@ -56,8 +56,39 @@ CONTRACT_REGISTRY = ROOT / "contracts" / "agent-runtime-tool-contracts.json"
 
 
 def catalogue() -> dict[str, dict]:
+    """The frozen federated baseline **UNIONED WITH THE TOOLS CHAT-SERVICE SERVES ITSELF.**
+
+    🔴 **§4 scopes rung 2 to *"all 324"* and this function used to see 315.** The four missing ones
+    are not an edge case: they include `compose_prose` — the co-writer step the PO named as the
+    point of the journey, and therefore an essential-set member that could not be admitted — and
+    `glossary_propose_entity_edit`, the largest 0%-success tool in the whole corpus (101 calls / 12
+    sessions), which for the same reason could carry no contract to fix it.
+
+    **RAISES rather than degrading if the local tools cannot be read**, the rule
+    `cp5-essential-set.py` already adopted for the same union: a partial catalogue here does not
+    fail, it silently produces a manifest that is missing rows nobody asked about.
+    """
     doc = json.loads(BASELINE.read_text(encoding="utf-8"))
-    return {t["name"]: t for t in doc["tools"]}
+    cat = {t["name"]: t for t in doc["tools"]}
+    try:
+        from app.services.local_tools import local_tool_defs
+        local = local_tool_defs()
+    except Exception as exc:  # noqa: BLE001 — a partial catalogue is worse than a loud failure
+        raise SystemExit(
+            f"cannot read chat-service's own tool definitions ({exc}). Admitting from a partial "
+            f"catalogue is how the co-writer's tool came to look like a role nobody had ever used.")
+    for d in local:
+        fn = d.get("function", d)
+        name = fn.get("name")
+        if not name:
+            raise SystemExit(f"a local tool definition carries no name: {d!r}")
+        if name in cat:
+            raise SystemExit(
+                f"{name!r} is served BOTH locally and federated. That is a real ambiguity about "
+                f"which definition a turn dispatches, not something this script may pick a side "
+                f"on.")
+        cat[name] = d
+    return cat
 
 
 def contract_registry() -> dict:

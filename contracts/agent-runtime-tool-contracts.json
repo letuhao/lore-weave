@@ -252,6 +252,85 @@
         "unmet": "not advertised; the withholding is recorded",
         "note": "book_id resolves from the ambient book on a book-bound surface; without either it fails closed."
       }
+    },
+    "compose_prose": {
+      "_why": "The co-writer step the PO named as the point of the journey — CHAT-SERVICE'S OWN tool, and the row CP-5's exit was blocked on. It was underivable for weeks because it declared no `_meta` at all, so the essential set could name it and rung 2 could never admit it.",
+      "argument_supplier": {
+        "instructions": "model — what to write, or how to rewrite the source text. Only the caller knows this; there is no runtime value to fall back on.",
+        "source_text": "model — the existing text being transformed; omitted for fresh generation"
+      },
+      "repeat_semantics": {
+        "kind": "non_idempotent_generative",
+        "cost_removable": false,
+        "signal_retained": "🔴 A repeat is NOT cost-removable here and must never be served from a cache: this tool calls a MODEL, so two identical calls legitimately return different prose, and answering the second from the first would silently replace a generation the author asked for. §3's rule cuts the other way for a generative tool — remove the SIGNAL of a loop, never the generation."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "upstream_unavailable",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": true,
+        "_why_retryable": "Unlike every other member here, the failure mode is a model call: an upstream timeout is genuinely transient. Declared explicitly rather than defaulted, because C-7's fail-closed answer is `terminal_permanent` and this is the one tool where that would be wrong."
+      },
+      "output_contract": {
+        "shape": "{ prose: string }",
+        "emit_paths": [
+          "prose"
+        ],
+        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10 (session-level tool_calls). NOT read from the tool description — that method produced the wrong shape for 4 of the first 5 contracts authored."
+      }
+    },
+    "glossary_propose_entity_edit": {
+      "_why": "🔴 THE LARGEST 0%-SUCCESS TOOL IN THE CORPUS — 101 calls / 12 sessions, every one refused. It is a CHAT-SERVICE FRONTEND tool whose NAME sits in glossary-service's namespace, so it was doubly invisible: absent from the federated snapshot, and misattributed by the name-prefix owner table. Admitting it is what lets it declare the members that address its own failure.",
+      "identifier_resolution": {
+        "entity_id": "an opaque id, NEVER a name and never a placeholder. Resolvable from a name via EntityRef (contracts/agent-runtime-ref-resolvers.json); the correct source is a prior `glossary_get_entity` or `glossary_search`.",
+        "book_id": "an opaque id; the ambient book on a book-bound surface"
+      },
+      "argument_supplier": {
+        "book_id": "context — the runtime supplies the ambient book; not the model's to invent",
+        "entity_id": "model — but OBTAINED, not authored. 🔴 MEASURED 2026-08-10: 89 of the 101 recorded calls sent a model-invented placeholder (`placeholder_id_1` x60, `placeholder_id` x29, `new_entity_id_placeholder`). The value exists only in a prior read; there is nothing for the model to compose it from.",
+        "base_version": "model — obtained, not authored: the entity's `updated_at` from the same prior read, which is what makes the edit conflict-safe",
+        "changes": "model — the actual CONTENT of the edit, and the one argument here that genuinely is the model's"
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "refused before dispatch, naming how to obtain the scope",
+        "requires_prior_read": "🔴 THE PRECONDITION THIS TOOL ACTUALLY FAILS ON, and it is not a scope: two of its four required arguments (`entity_id`, `base_version`) can only come from a prior `glossary_get_entity`. Its own description has said so since 2026-07-22 and the measured compliance is 0 of 101."
+      },
+      "consent": {
+        "required": true,
+        "mechanism": "The turn SUSPENDS and the browser renders a diff card; the user Applies or dismisses. Nothing is written by calling this tool — which is why its tier is W and why a failure here costs a round trip rather than data."
+      },
+      "effect_and_undo": {
+        "effect": "proposes an atomic multi-field edit to one existing entity; the write happens only on the user's Apply",
+        "undo": "dismissing the card is the undo before the fact; after Apply, the entity's revision history (`glossary_list_entity_revisions` / `glossary_propose_restore_revision`) is the reversal path"
+      },
+      "partial_outcome": {
+        "atomic": true,
+        "note": "All `changes[]` apply TOGETHER or not at all — declared because the resume vocabulary (`applied_saved` / `applied_conflict` / `applied_error` / `dismissed`) has no per-change arm, so a partial result is not merely unwanted, it is unrepresentable."
+      },
+      "repeat_semantics": {
+        "kind": "propose_write",
+        "cost_removable": true,
+        "signal_retained": "🔴 The measured shape is a LOOP on the same rejected arguments — 4 calls / 1 distinct args in a single turn appears in the corpus. The repeat is short-circuited before the wire and counted; the count is what escalates."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false,
+        "_measured": "🔴 ALL 101 recorded failures carry `result: null` and an `error` that is CHAT-SERVICE'S OWN VALIDATION PROSE — the tool never ran. They are a runtime REFUSAL recorded as a tool failure, the same conflation as 5.5's suspensions, 5.4's owed arguments and 5.7's breakers. Typing the outcome is what separates them."
+      },
+      "output_contract": {
+        "shape": "SUSPENDS — the call returns no result; the turn resumes with an `outcome` of `applied_saved` | `applied_conflict` | `applied_error` | `dismissed`",
+        "emit_paths": [],
+        "_KNOWN_GAP": "🔴 NO SUCCESSFUL CALL EXISTS TO VERIFY AGAINST — 0 of 101. The shape above is read from the tool's own description and the resume contract, and is explicitly NOT marked `_verified_against`, because a shape checked against nothing is the lie that looks like a contract. It becomes verifiable the first time this tool succeeds.",
+        "closes_when": "one recorded `applied_saved` resume exists; the shape is then confirmed or corrected against it."
+      }
     }
   }
 }

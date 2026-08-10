@@ -156,3 +156,60 @@ class TestTheTwoVocabulariesStaySeparate:
     def test_THE_ONLY_SHARED_MEMBER_IS_FAILED(self):
         shared = set(OUTCOMES) & set(instrument.OUTCOMES)
         assert shared == {FAILED}, f"the vocabularies now share {shared}"
+
+
+class TestAFrontendValidationRefusalIsNotAToolFailure:
+    """🔴 **THE FIFTH INSTANCE OF THE SAME CONFLATION, AND THE LARGEST SINGLE POPULATION.**
+
+    `glossary_propose_entity_edit` is recorded at **101 calls / 12 sessions / 0% success** — the
+    worst row in the corpus. Every one of them carries `result: null` and an `error` that is
+    **chat-service's own validation prose**: the tool never ran. They are runtime refusals wearing
+    a tool's name, exactly like 5.5's suspensions, 5.4's owed arguments and 5.7's breaker output,
+    and while they are typed `failed` they inflate the very corpus every member here is measured
+    against.
+
+    ✖ **This does NOT claim to change the model's behaviour, and the evidence says not to expect
+    it to.** The remedy this defect already received was PROSE — the re-route text in
+    `validate_frontend_tool_args`, added 2026-07-22 after the same failure was measured at 13
+    calls, telling the model in as many words not to pass a placeholder. The corpus AFTER that fix
+    is the 101. What is claimed is what is verifiable: the outcome is typed and the refusal is
+    counted as a refusal.
+    """
+
+    def _src(self) -> str:
+        import pathlib
+        return (pathlib.Path(__file__).resolve().parents[1] / "app" / "services"
+                / "stream_service.py").read_text(encoding="utf-8")
+
+    def test_THE_FRONTEND_VALIDATION_REFUSAL_IS_STAMPED_REFUSED(self):
+        assert 'yield {"tool_call": instrument.stamp_refused(\n                            _fe_chunk,' in self._src(), (
+            "the frontend validation path still records `ok:false` untyped, so 101 calls that "
+            "never ran stay in the corpus as tool failures"
+        )
+
+    def test_THE_TWO_REFUSAL_KINDS_ARE_KEPT_APART(self):
+        """*The model invented a value it had no way to know* and *the model got the shape wrong*
+        are different defects with different fixes; merged into one `refusal_kind` neither can be
+        counted."""
+        s = self._src()
+        assert '"unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)' in s
+        assert 'else "invalid_arguments",' in s
+
+    def test_THE_KIND_CLAIMS_ONLY_WHAT_THE_SITE_CAN_KNOW(self):
+        """🔴 It is `unresolved_identifier`, NOT `invented_identifier`. This site knows one thing —
+        an id-shaped argument is not a UUID, so it did not come from a read. It cannot tell an
+        invented placeholder from a human NAME the resolver could have substituted, and naming it
+        `invented` would assert that difference rather than observe it."""
+        s = self._src()
+        assert '"invented_identifier"' not in s, (
+            "the kind asserts the model's intent, which this site cannot observe"
+        )
+        assert '"unresolved_identifier"' in s
+
+    def test_THE_MEASUREMENT_THAT_SAYS_RESOLUTION_WOULD_NOT_HELP_IS_RECORDED(self):
+        """The tempting build here is to bind CP-5.3's resolver to this tool, since it declares
+        `identifier_resolution`. Measured over all 94 non-UUID `entity_id` values in the corpus:
+        **91 contain "placeholder", 3 are `"0"`, ZERO are names** — so resolution would have
+        repaired NONE of them. The number is kept next to the code so the next reader does not
+        rediscover the idea and build it."""
+        assert "would have repaired **none** of them" in self._src()

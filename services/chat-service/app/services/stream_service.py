@@ -666,6 +666,20 @@ class _ProbeAccessDenied(Exception):
 # toward this streak.
 _MISSING_REQUIRED_ARGS_MARKER = "required: missing properties"
 
+#: CP-5.4 · the two frontend-validation refusals kept APART, because they are different defects
+#: with different fixes. This matches the message `validate_frontend_tool_args` emits for an id
+#: field that failed its UUID pattern.
+#:
+#: 🔴 **NAMED FOR WHAT THIS SITE CAN ACTUALLY KNOW.** It knows one thing: an id-shaped argument is
+#: not a UUID, so it did not come from a read. It CANNOT distinguish an invented placeholder from a
+#: human NAME the resolver could have substituted — and calling the kind `invented_identifier`
+#: would assert the difference rather than observe it. Measured over all 94 non-UUID `entity_id`
+#: values in the corpus: **91 contain "placeholder", 3 are `"0"`, and ZERO are names** — so on
+#: today's data every one is genuinely unobtainable, and binding CP-5.3's resolver to this tool
+#: would have repaired **none** of them. That is why this row types the outcome rather than
+#: reaching for resolution.
+_UNRESOLVED_ID_RE = re.compile(r"must be a real UUID")
+
 # D-CONFIRM-CARD-NUDGE (dogfood 2026-07-21) — a Tier-W/S propose tool returns a
 # SERVER-BUILT confirm card ({confirm_token, descriptor, …}); the FE renders it with
 # Confirm/Cancel and the human confirms via the domain endpoint — the model does NOT
@@ -3930,10 +3944,37 @@ async def _stream_with_tools(
                             "role": "tool", "tool_call_id": c["id"],
                             "content": tool_result_content({"error": _fe_err}),
                         })
-                        yield {"tool_call": {
+                        # 🔴🔴 **CP-5.4/5.5 — THE FIFTH INSTANCE OF THE SAME CONFLATION, AND THE
+                        # LARGEST SINGLE POPULATION IN THE CORPUS.** `glossary_propose_entity_edit`
+                        # is recorded at **101 calls / 12 sessions / 0% success**, and every one of
+                        # those rows carries `result: null` with an `error` that is THIS FUNCTION'S
+                        # OWN PROSE — the tool never ran. They are runtime REFUSALS wearing a
+                        # tool's name, exactly like 5.5's suspensions, 5.4's owed arguments and
+                        # 5.7's breaker output, and while they are typed `failed` they inflate the
+                        # very corpus every member on this checkpoint is measured against.
+                        #
+                        # 89 of the 101 sent a model-invented PLACEHOLDER in `entity_id`
+                        # (`placeholder_id_1` ×60, `placeholder_id` ×29) — the class 5.3-pilot
+                        # separated out and 5.4 owns. It is split from a plain schema miss here so
+                        # the two never merge into one number: one says *the model invented a value
+                        # it had no way to know*, the other says *the model got the shape wrong*.
+                        #
+                        # ✖ **AND THIS DOES NOT CLAIM TO CHANGE THE MODEL'S BEHAVIOUR.** The
+                        # remedy this defect already received was PROSE — the re-route text a few
+                        # lines up in `validate_frontend_tool_args`, added 2026-07-22 after the
+                        # same failure was measured at 13 calls. The corpus AFTER that fix is the
+                        # 101. What is claimed is what is verifiable: the outcome is typed, the
+                        # refusal is counted as a refusal, and the cost was already removed because
+                        # nothing was dispatched.
+                        _fe_chunk = {
                             "id": c["id"], "iteration": iteration, "tool": c["name"],
                             "args": _fe_args, "ok": False, "result": None, "error": _fe_err,
-                        }}
+                        }
+                        yield {"tool_call": instrument.stamp_refused(
+                            _fe_chunk,
+                            "unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)
+                            else "invalid_arguments",
+                        )}
                         continue
                     blank_tool_args_streak = 0  # a valid frontend-tool call
                     # A valid call breaks the failure loop — reset the tool's failure map

@@ -244,13 +244,23 @@ class TestTheManifestStartsEmpty:
         baseline = _json.loads(
             (_REPO / "contracts" / "agent-runtime-baseline" / "tools-list.snapshot.json")
             .read_text("utf-8"))
-        catalogue = {t["name"] for t in baseline["tools"]}
+        # 🔴 **THE UNION, AND THIS GUARD IS WHERE THE PARTIAL-CATALOGUE DEFECT SHOWED UP LAST.**
+        # §4 scopes rung 2 to *all* the tools this repository puts on the wire — the 315 federated
+        # PLUS the four chat-service serves itself. Reading the snapshot alone, this guard called
+        # the producer a forger for `compose_prose`, a row the producer had just derived: the guard
+        # was looking at a smaller catalogue than the producer used. Same error as the essential-set
+        # derivation, the 5.10 phantom count and `declared_lane`'s own docstring — the fourth place
+        # one missing union manufactured a false finding.
+        from app.services.local_tools import local_tool_defs
+
+        catalogue = ({t["name"] for t in baseline["tools"]}
+                     | {d.get("function", d)["name"] for d in local_tool_defs()})
         ids = [r["id"] for r in doc["declarations"]]
         assert set(ids) <= catalogue, (
-            f"{sorted(set(ids) - catalogue)} are in the manifest and not in the frozen catalogue. "
-            f"A declaration is DERIVED from a catalogue entry; a row naming nothing derivable was "
-            f"hand-written, and a hand-written row cannot be told from a leak — which is the exact "
-            f"reason this file started empty."
+            f"{sorted(set(ids) - catalogue)} are in the manifest and not in the frozen catalogue "
+            f"nor among the tools chat-service serves itself. A declaration is DERIVED from a "
+            f"catalogue entry; a row naming nothing derivable was hand-written, and a hand-written "
+            f"row cannot be told from a leak — which is the exact reason this file started empty."
         )
         assert len(set(ids)) == len(ids), f"a declaration id appears twice: {ids}"
 

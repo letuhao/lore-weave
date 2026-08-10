@@ -4560,7 +4560,7 @@ moves with the corpus; a figure copied from here is stale the moment traffic lan
 | 3 | **`plan_propose_spec`** | 142 sessions · 97.4% — admit. The PO named the plan path explicitly |
 | 4 | **`glossary_book_ontology_read`** | 203 sessions · 78.4% organic — admit. Also the corpus's broadest repeat case (1 repeat in each of 23 sessions, 5.7) |
 | 5 | **`glossary_propose_entities`** | 172 sessions · 62.3% — admit |
-| 6 | **`compose_prose`** | 🔴 **BLOCKED, and the blocker is a real defect, not a chore** — see below |
+| 6 | ~~**`compose_prose`**~~ | ✅ **UNBLOCKED + ADMITTED 2026-08-10.** With `glossary_propose_entity_edit`, which came free with the same fix — **6 of 11** |
 
 ### 🔴 ROW 6's BLOCKER — INVESTIGATED 2026-08-10, AND **THE FIX THIS SECTION FIRST PRESCRIBED WOULD NOT HAVE WORKED**
 
@@ -4583,14 +4583,54 @@ declare all three. 🔴 **And `declared_lane`'s own docstring states *"measured 
 that EXCLUDES the only four tools that do not.** Same partial-catalogue error, now inside the
 function that decides hot-set privilege.
 
-**⛔ STOPPED HERE FOR A PO DECISION, and it is a real fork, not a preference** — see *"who owns a
-consumer-local tool"* below. Both answers are defensible and they produce different manifests.
+⭐ **CLEARED 2026-08-10 (PO: the definition declares its owner).** `_meta.served_by` is honoured
+over the prefix table, a declared owner naming no service in this repository is **refused rather
+than falling back** (a typo would otherwise become a confident wrong owner, WRITTEN DOWN), and the
+forgery question is answered by a gate rather than a rule — `test_NO_FEDERATED_TOOL_DECLARES_ITS_OWN_OWNER`
+asserts the frozen catalogue carries **zero** `served_by`, so the day a provider ships one it reds
+and a human decides which side is lying. All four local tools now declare `tier` + `scope`, each
+**read off the code rather than chosen** (`confirm_action`'s own header says *"generic Tier-W/S
+confirm"*; `compose_prose` streams a model and writes nothing ⇒ `R`). `app/services/local_tools.py`
+is the single union, and both the admit script and the drift gate raise rather than degrade if they
+cannot read it. **Coverage over the union: 319/319, 0 unresolved.**
+
+🔴 **AND THE GUARD THAT CAUGHT THE LAST INSTANCE WAS ITSELF READING THE PARTIAL CATALOGUE.**
+`test_EVERY_COMMITTED_ROW_IS_ONE_THE_PRODUCER_DERIVES` called the producer a forger for
+`compose_prose` — a row the producer had just derived — because the guard was looking at a smaller
+catalogue than the producer used. **Fourth place one missing union manufactured a false finding**,
+and the first where the false finding was an accusation against the mechanism.
+
+⭐ **`glossary_confirm_action`'s scope was CORRECTED while declaring it**: `none`, not `book`. Its
+parameters are the evidence — it takes a `confirm_token` and nothing that identifies a book. The
+token carries the scope, which is what makes it a confirm step rather than a second chance to name
+a target.
+
+### 🔴 AND THE FULL SUITE HAD BEEN RED SINCE 5.10 SHIPPED — **12 tests, and I never ran it**
+
+The CP-5 rows were verified with `-k cp…`, so *"454 passed"* was a subset that excluded the suite
+5.10's own change broke. **Found only because clearing this block required a full run.** The cause
+is real and worth stating: **5.10's name check COUPLED *advertised* to *dispatchable***, and twelve
+tests dispatch tools they never advertise. Fixed by widening the harness default to what the script
+calls — never by weakening the check, and nothing is blinded, because 5.10's guard reads the
+dispatch source directly and a test that passes `tools=` still controls its own surface.
+
+🔴 **ONE OF THE TWELVE IS NOT A FIXTURE PROBLEM — IT IS AN INTERACTION BETWEEN TWO MECHANISMS.**
+The interior-leak splitter **manufactures a second tool call at runtime** out of a corrupted
+argument blob (the live incident where a model packed a correct call inside another call's
+`query`). That reconstructed call names a real tool — and 5.10 refuses it whenever the extracted
+tool was not advertised for the turn. So a repair that exists to rescue a mangled call now has a
+narrower reach than before, off the discovery path. **Replacing a surface does not carry its
+guarantees**, and this one was found by a test rather than by reasoning. Recorded, not silently
+advertised away.
+
+**Suite: 2,801 passed / 3 skipped — green for the first time since 5.10 landed.** Membrane gate OK;
+falsification **695 guards, 306 falsified, 0 failed**, all 13 new guards proven red.
 
 ### The two questions — decide them, do not build past them
 
-**Q0 · WHO OWNS A CONSUMER-LOCAL TOOL, AND MAY ITS NAME LIE ABOUT THAT?** ⛔ **THE BLOCKER. A PO
-DECISION, because the two answers produce different manifests and one of them changes a tool name
-users' sessions already reference.**
+**Q0 · WHO OWNS A CONSUMER-LOCAL TOOL, AND MAY ITS NAME LIE ABOUT THAT?** ✅ **ANSWERED (PO,
+2026-08-10): (A) — the definition declares its owner.** Built, gated and admitted; (B) stays
+available as the day supersession gets a real subject.**
 
 `glossary_propose_entity_edit` is named into **glossary-service's namespace** and is served by
 **chat-service**. C-0 derives the owner from `source_path`; `derive.py` derives it from the name
@@ -4608,7 +4648,21 @@ is not routed by at all. So the two disagree, and the disagreement is in the NAM
   this answer creates the very case Q1 was withdrawn for lacking.
 
 **Recommendation: (A) now, and let (B) be the thing that gives supersession a real subject later.**
-A rename is a migration; the block only needs an owner that is true.
+A rename is a migration; the block only needs an owner that is true. ⭐ **TAKEN.**
+
+**Q0b · the 101-call defect: PO said fix it, and it is TYPED rather than argued with.** The call is
+now `call_outcome: refused` with `refusal_kind` — `unresolved_identifier` or `invalid_arguments`,
+kept apart because *the model invented a value it could not know* and *the model got the shape
+wrong* are different defects. 🔴 **The kind is named for what the SITE CAN KNOW**: it sees only
+that an id-shaped argument is not a UUID, so it cannot tell an invented placeholder from a NAME the
+resolver could substitute — `invented_identifier` would assert that difference instead of observing
+it. ⭐ **AND THE OBVIOUS BUILD WAS MEASURED AND REJECTED:** the tool declares
+`identifier_resolution`, so binding CP-5.3's resolver to it is the tempting next step — but of all
+**94 non-UUID `entity_id` values in the corpus, 91 contain "placeholder", 3 are `"0"`, and ZERO are
+names.** Resolution would have repaired **none** of them. The number lives next to the code so the
+next reader does not rediscover the idea and build it. ✖ **No claim is made that the model's
+behaviour changes** — the remedy this defect already received was PROSE, and the corpus *after*
+that fix is the 101.
 
 **Q1 · WITHDRAWN, and the withdrawal is the finding.** This asked whether *removal-without-
 supersession* deserved a row, on the reading that `glossary_propose_entity_edit` was a retired tool

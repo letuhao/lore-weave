@@ -1785,6 +1785,93 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/promotion.py", "        return not self.missing and not self.unknown",
                                 "        return True"),
     ],
+
+    "test_THE_FRONTEND_VALIDATION_REFUSAL_IS_STAMPED_REFUSED": [
+        # Put 101 calls that never ran back in the corpus with the genuine tool failures.
+        (f"{CS}/app/services/stream_service.py",
+         'yield {"tool_call": instrument.stamp_refused(\n                            _fe_chunk,',
+         'yield {"tool_call": (lambda c, k: c)(\n                            _fe_chunk,'),
+    ],
+    "test_THE_TWO_REFUSAL_KINDS_ARE_KEPT_APART": [
+        # Merge them: "invented a value it could not know" and "got the shape wrong" become one
+        # number, and neither can be counted again.
+        (f"{CS}/app/services/stream_service.py",
+         '"unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)',
+         '"invalid_arguments" if True or _UNRESOLVED_ID_RE.search(_fe_err)'),
+    ],
+    "test_THE_KIND_CLAIMS_ONLY_WHAT_THE_SITE_CAN_KNOW": [
+        # Assert the model's intent from a pattern failure the site cannot see intent through.
+        (f"{CS}/app/services/stream_service.py",
+         '"unresolved_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)',
+         '"invented_identifier" if _UNRESOLVED_ID_RE.search(_fe_err)'),
+    ],
+    "test_THE_MEASUREMENT_THAT_SAYS_RESOLUTION_WOULD_NOT_HELP_IS_RECORDED": [
+        # Drop the measurement and the next reader rebuilds the resolver binding that fixes none
+        # of the 101.
+        (f"{CS}/app/services/stream_service.py", "would have repaired **none** of them",
+                                                 "would repair them"),
+    ],
+
+    # ── CP-5 · the tools chat-service serves ITSELF ──────────────────────────────────────────
+    "test_IT_DECLARES_A_TIER_AND_A_SCOPE": [
+        # The state these four were in for weeks: on the wire, declaring nothing, therefore
+        # underivable and unadmittable — which is why the largest 0%-success tool in the corpus
+        # had no contract to fix it.
+        (f"{CS}/app/services/composer.py",
+         '"_meta": {"tier": "R", "scope": "none", "served_by": "chat-service"},',
+         '"_meta": {"served_by": "chat-service"},'),
+    ],
+    "test_IT_DERIVES_TO_CHAT_SERVICE": [
+        # Remove the declared owner and the name-prefix table answers for it — with total
+        # confidence, and wrongly for the glossary-named frontend tools.
+        (f"{PKG}/derive.py", "    service = declared_service(tool_def)",
+                             "    service = None  # falsifier"),
+    ],
+    "test_THE_CONFIRM_TOOLS_ARE_WRITES_AND_COMPOSE_IS_INERT": [
+        # A human-confirmed write derived as a read is the fail-OPEN direction declared_lane's
+        # docstring warns about: it would put a W tool in the safe read-first hot set.
+        (f"{CS}/app/services/frontend_tools.py",
+         '"_meta": {"tier": "W", "scope": "none", "served_by": "chat-service",\n'
+         '                  "_confirm_step": True},',
+         '"_meta": {"tier": "R", "scope": "none", "served_by": "chat-service",\n'
+         '                  "_confirm_step": True},'),
+    ],
+    "test_THE_NAME_ACTUALLY_LIES_TODAY_SO_THIS_IS_NOT_HYPOTHETICAL": [
+        # Attribute the tool to the team its NAME names — glossary-service, which does not serve it.
+        (f"{CS}/app/services/frontend_tools.py",
+         '"_meta": {"tier": "W", "scope": "book", "served_by": "chat-service"},',
+         '"_meta": {"tier": "W", "scope": "book"},'),
+    ],
+    "test_A_DECLARED_OWNER_THAT_NAMES_NOTHING_IS_REFUSED_NOT_IGNORED": [
+        # Fall back to the prefix on a typo: `chat-serivce` silently becomes `glossary-service`.
+        (f"{PKG}/derive.py", "    if service is not None and service not in _OWNING_SERVICES:",
+                             "    if False:  # falsifier"),
+    ],
+    "test_NO_FEDERATED_TOOL_DECLARES_ITS_OWN_OWNER": [
+        # A provider claiming an owner the gateway does not route it to — the drift this guard is
+        # here to surface rather than silently resolve.
+        ("contracts/agent-runtime-baseline/tools-list.snapshot.json",
+         '"name": "book_list",', '"name": "book_list", "_meta_forged": {"served_by": "chat-service"},'),
+    ],
+    "test_THE_UNION_DERIVES_COMPLETELY": [
+        # An underivable local tool reported as covered — the self-derived denominator again.
+        (f"{PKG}/derive.py", "        derived.append(derive_one(td))",
+                             "        derived.append(derive_one(td)) if _fn(td).get('name') else None"),
+    ],
+    "test_A_LOCAL_NAME_NEVER_COLLIDES_WITH_A_FEDERATED_ONE": [
+        # Two definitions for one name is a real ambiguity about which one a turn dispatches.
+        (f"{CS}/app/services/local_tools.py",
+         "    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values()]",
+         "    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values(),\n"
+         "            {'function': {'name': 'book_list'}}]"),
+    ],
+    "test_COMPOSE_PROSE_IS_IN_THE_SET_BECAUSE_IT_IS_THE_POINT_OF_THE_JOURNEY": [
+        # Drop the co-writer's own tool from the union — the exact omission that made its role read
+        # as one no recorded session had ever taken.
+        (f"{CS}/app/services/local_tools.py",
+         "    return [COMPOSE_PROSE_TOOL, *_ALL_FRONTEND_TOOLS_BY_NAME.values()]",
+         "    return [*_ALL_FRONTEND_TOOLS_BY_NAME.values()]"),
+    ],
 }
 
 #: Guards whose falsifier is a DECISION not to write one, each with a stated reason.

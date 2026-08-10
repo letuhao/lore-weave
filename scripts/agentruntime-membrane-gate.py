@@ -445,6 +445,22 @@ def _manifest_drift() -> int:
 
     _baseline = REPO / "contracts" / "agent-runtime-baseline" / "tools-list.snapshot.json"
     _cat = {t["name"]: t for t in _json.loads(_baseline.read_text(encoding="utf-8"))["tools"]}
+    # 🔴 **THE UNION, FOR THE SAME REASON `agentruntime-admit.py` TAKES IT (CP-5, §4's *"all 324"*).**
+    # Without it this gate reads the admission path's catalogue MINUS the four tools chat-service
+    # serves itself, so an admitted local row would be reported as *"names nothing derivable, it was
+    # hand-written"* — the gate calling the producer a forger because the gate is looking at a
+    # smaller catalogue than the producer used. Raising beats degrading here for the usual reason:
+    # a partial catalogue makes this check pass over rows it never examined.
+    try:
+        from app.services.local_tools import local_tool_defs as _local_defs
+        for _d in _local_defs():
+            _fn = _d.get("function", _d)
+            _cat[_fn["name"]] = _d
+    except Exception as exc:  # noqa: BLE001
+        print(f"FAIL: cannot read chat-service's own tool definitions ({exc}); the drift check "
+              f"would run against a catalogue smaller than the one the producer writes from",
+              file=sys.stderr)
+        return 1
     _ids = [r["id"] for r in doc.get("declarations", [])]
     _absent = [i for i in _ids if i not in _cat]
     if _absent:
