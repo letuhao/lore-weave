@@ -5041,6 +5041,7 @@ dependencies = [
  "async-trait",
  "axum 0.8.9",
  "criterion",
+ "dp",
  "dp-kernel",
  "meta-rs",
  "pgvector",

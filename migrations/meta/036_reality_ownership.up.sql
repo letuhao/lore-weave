@@ -59,10 +59,25 @@
 -- either. Referential integrity for this column is the writer's obligation.
 
 ALTER TABLE reality_registry
-    ADD COLUMN owner_kind    TEXT NOT NULL DEFAULT 'system',
-    ADD COLUMN owner_user_id UUID;
+    ADD COLUMN IF NOT EXISTS owner_kind    TEXT NOT NULL DEFAULT 'system',
+    ADD COLUMN IF NOT EXISTS owner_user_id UUID;
 
+-- `DROP … IF EXISTS` first, because Postgres has no `ADD CONSTRAINT IF NOT
+-- EXISTS` and a retried migration must not fail on the second attempt. This is
+-- the idiom seven sibling meta migrations already use (029, 031, 032, 035, …);
+-- 036 and 037 were the only two that did not, measured 2026-08-10 by re-running
+-- them against a throwaway meta database.
+--
+-- ONE STATEMENT, not two. This file has no `BEGIN;`, so psql runs each statement
+-- in its own transaction — and a separate `DROP …;` followed by a separate
+-- `ADD …;` leaves a window in which the constraint DOES NOT EXIST. These three
+-- are the tenancy rules (`owner_kind`/`owner_user_id`), so that window is one in
+-- which a `user`-kind row with a NULL owner would be accepted. `ALTER TABLE`
+-- takes a comma-separated action list and applies it atomically, which costs
+-- nothing and closes the window. Caught by `/review-impl`, which noticed that
+-- 037 — the same change, the same session — had already been written this way.
 ALTER TABLE reality_registry
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_kind_enum,
     ADD CONSTRAINT reality_registry_owner_kind_enum
         CHECK (owner_kind IN ('system', 'user'));
 
@@ -89,16 +104,18 @@ ALTER TABLE reality_registry
 --   owner_system_null → rejects a system row that names an owner
 --   owner_user_set    → rejects a user row with no owner
 ALTER TABLE reality_registry
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_system_null,
     ADD CONSTRAINT reality_registry_owner_system_null
         CHECK (owner_kind <> 'system' OR owner_user_id IS NULL);
 
 ALTER TABLE reality_registry
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_user_set,
     ADD CONSTRAINT reality_registry_owner_user_set
         CHECK (owner_kind <> 'user' OR owner_user_id IS NOT NULL);
 
 -- The access pattern this column exists for: "list the realities user X owns".
 -- Partial, because system-owned rows are never fetched by owner.
-CREATE INDEX idx_reality_registry_owner
+CREATE INDEX IF NOT EXISTS idx_reality_registry_owner
     ON reality_registry (owner_user_id)
     WHERE owner_user_id IS NOT NULL;
 

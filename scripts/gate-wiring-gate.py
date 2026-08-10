@@ -470,6 +470,19 @@ def run_all() -> int:
         # `5D`. Mutates crates/dp and runs cargo on it, and also imports the
         # 5b harness — same reason as 5c.
         "scripts/dp-slice5d-bite-gate.py",
+        # `G3`. Mutates a LOCKED document (`05_control_plane_spec.md`), two
+        # crates and `crates/dp/tests/spec_oracle.rs`, and runs cargo on
+        # `dp-control-plane`. It also imports the 5b harness for its
+        # read/restore/lock machinery — same reason as 5c and 5d. Listed on the
+        # day it was written rather than after a flaky sweep, which is the only
+        # cheap moment to do it.
+        "scripts/dp-oracle-bite-gate.py",
+        # `W7-SHELL-UNCOVERED`. Mutates `infra/db-ensure.sh` and, on a box with
+        # the compose Postgres up, CREATEs and DROPs a throwaway role while
+        # doing it. Both halves are reasons it must not run beside anything
+        # else. Its live leg reports SKIP (not pass) without a cluster, so it is
+        # runnable in the shared sweep rather than NEEDS_STACK.
+        "scripts/db-ensure-bite-gate.py",
         "scripts/gate-bite-harness.py",
         "scripts/reality-layer-bite-harness.py",
     )

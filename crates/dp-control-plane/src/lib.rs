@@ -96,3 +96,64 @@ pub fn unimplemented_reason(method: &str) -> Option<&'static str> {
         .find(|(m, _)| *m == method)
         .map(|(_, why)| *why)
 }
+
+/// `DP-C3` RPCs that are **absent from the contract entirely**, each with what
+/// they wait on.
+///
+/// # Not the same register as [`UNIMPLEMENTED_METHODS`], and the difference is
+/// the whole point
+///
+/// A method in `UNIMPLEMENTED_METHODS` is **in the proto**: a caller can invoke
+/// it and receives `UNIMPLEMENTED` naming the missing table. A row here is not
+/// in the proto at all — there is no method to call, and `tests/surface.rs`
+/// therefore cannot see it. Its absence is invisible to every check that talks
+/// to the running server, which is exactly why it needs a register that is
+/// compared against the **document**.
+///
+/// `crates/dp/tests/spec_oracle.rs` states the argument for the shape: a
+/// transcription needs an oracle by a different method. This is the same three
+/// arms as `DP-K3`'s `DEFERRED_VARIANTS`, applied to an RPC surface —
+/// `dp-control-plane/tests/spec_oracle_cp.rs` reds when `DP-C3` declares an RPC
+/// that is in neither the proto nor this list, when the proto invents one
+/// `DP-C3` does not declare, and when a row here turns out to be implemented.
+///
+/// **The register shrinks or it reds.** All twelve are the four CHANNEL groups,
+/// which are slice `5D`'s work: the first thing in this repo that produces a
+/// `ChannelId`.
+pub const DEFERRED_RPCS: &[(&str, &str)] = &[
+    ("GetChannelTree", "no channel tree is served over the wire yet (slice 5D)"),
+    ("StreamChannelTreeUpdates", "nothing publishes channel-tree deltas to stream"),
+    ("ResolveAncestorChain", "the ancestor chain is resolved in-process by dp::ChannelTree"),
+    ("GetChannelWriter", "the writer lease lives in dp-kernel, not behind the CP surface"),
+    ("RequestWriterHandoff", "no CP-mediated handoff protocol exists (DP-A16, slice 5D)"),
+    ("HeartbeatWriterLease", "the lease heartbeat is dp-kernel's, not the CP's"),
+    ("RegisterBubbleUpAggregator", "no aggregator registry table (DP-Ch28)"),
+    ("UnregisterBubbleUpAggregator", "no aggregator registry table (DP-Ch28)"),
+    ("ListAggregatorsForChannel", "no aggregator registry table (DP-Ch28)"),
+    ("TransitionChannelLifecycle", "channel lifecycle state is per-reality, not CP state (DP-Ch31)"),
+    ("PauseChannel", "no pause state and no ack path (DP-Ch34)"),
+    ("ResumeChannel", "no pause state to resume from (DP-Ch34)"),
+];
+
+/// `DP-C2` storage tables that have **no migration in this repo**, each with
+/// why.
+///
+/// `DP-C2` lists seven tables as the control plane's own storage. Two exist —
+/// `reality_registry` (`001`) and `session_registry` (`039`, the `5B`
+/// amendment). The other five are named by a LOCKED document and backed by
+/// nothing, which is the state `UNIMPLEMENTED_METHODS` already reports one
+/// consequence of: four of the eight rows there say *"has no migration in this
+/// repo"*.
+///
+/// Recording it here makes the claim checkable in the other direction too. The
+/// oracle reds when a table appears in `DP-C2` and in neither the migration
+/// tree nor this list, when a row here names a table `DP-C2` has dropped, and —
+/// the arm that matters — when a row's table **gains a migration** and the row
+/// outlives it.
+pub const CP_TABLES_WITHOUT_A_MIGRATION: &[(&str, &str)] = &[
+    ("tier_policy", "DP-C4's aggregate registry; its rows come from a deploy manifest calling an admin API that does not exist"),
+    ("npc_binding", "no NPC is bound to a node by anything in this repo"),
+    ("schema_version", "DP-C5's migration coordination is unbuilt; per-reality schema_migrations is a different table with a different owner"),
+    ("capability_signing_keys", "explicitly NOT BUILT — superseded by the 5B amendment on DP-C8, which ships an opaque bearer validated by lookup"),
+    ("deploy_cohort", "DP-C5 deploy sequencing is unbuilt"),
+];

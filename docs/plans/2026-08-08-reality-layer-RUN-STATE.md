@@ -255,9 +255,9 @@ the point this file's ordering dictates.
 
 | # | row | done = |
 |---|---|---|
-| 1 | **`G3-ORACLE-COVERAGE`** — `spec_oracle` opens **9 of 26** LOCKED `06_data_plane/` documents. Add a **monotonic coverage ratchet** (the count may only rise), then raise it: `05_control_plane_spec.md` first (`DP-C2`'s table list, `DP-C3`'s RPC set, `DP-C8`'s TTL), then `04d_capability_and_lifecycle`, `13_channel_ordering_and_writer`, `17_channel_lifecycle` | the ratchet exists and reds on a decrease; each new oracle rule is **bitten** per the six steps above — mutate one side of the doc/code pair, RED naming BOTH sides, restore, GREEN |
-| 2 | **`META-DOWN-UNCOVERED`** — `scripts/migration-idempotency-validator.sh` walks only `contracts/migrations/per_reality`. The meta tree is unexercised, which is the same `NV-3` shape this file has diagnosed twice | the validator walks both trees; the `036`/`037` down-migrations actually run, with pasted output |
-| 3 | **`3E-NAMING-INCONSISTENCY`** — `commit-service`'s `args.reality` escapes `reality-id-adoption-gate` by NAMING rather than by property | resolved by teaching the gate the input-boundary category, or by an explicit reasoned exemption. **NOT by renaming** — `BDR-55`: renaming moves the number, not the property |
+| 1 | ~~**`G3-ORACLE-COVERAGE`**~~ **✅ DONE 2026-08-10** — see `G3` in §4 for what shipped and what it found | the ratchet exists and reds on a decrease; each new oracle rule is **bitten** per the six steps above — mutate one side of the doc/code pair, RED naming BOTH sides, restore, GREEN |
+| 2 | ~~**`META-DOWN-UNCOVERED`**~~ **✅ DONE 2026-08-10** — see the row in §4 | the validator walks both trees; the `036`/`037` down-migrations actually run, with pasted output |
+| 3 | ~~**`3E-NAMING-INCONSISTENCY`**~~ **✅ DONE 2026-08-10** — see the row in §4 | resolved by teaching the gate the input-boundary category, or by an explicit reasoned exemption. **NOT by renaming** — `BDR-55`: renaming moves the number, not the property |
 
 **Deliberately NOT in this list:** `D-META-ERASURE-COVERAGE`'s two undecided
 tables (`session_cost_summary`, `service_to_service_audit` declare no erasure
@@ -622,8 +622,9 @@ not implement toward it.
 
 | id | what | trigger |
 |---|---|---|
-| `G3-ORACLE-COVERAGE` | **`spec_oracle` opens 9 of 26 LOCKED `06_data_plane/` documents.** Every slice from 3 to 5 cited `DP-K*`, `DP-C*`, `DP-A*` and `DP-Ch*` as authority, and nothing compares a `const` to most of those documents. Measured cost this session: the capability TTL was 15 min against a spec stating 5 in three places, and `channel_key`'s segment order disagreed with `DP-K7` — the first was caught by reading, the second only because a doc-comparing oracle happened to be added in the same commit | a coverage ratchet: the count of opened documents may only rise. Start with `05_control_plane_spec.md` (`DP-C2`'s table list, `DP-C3`'s RPC set, `DP-C8`'s TTL), then `04d_capability_and_lifecycle`, `13_channel_ordering_and_writer`, `17_channel_lifecycle` |
-| `3E-NAMING-INCONSISTENCY` | `reality-id-adoption-gate` matches `reality_id: Uuid`. `commit-service`'s CLI input is spelled `args.reality`, so it escapes the gate **by naming rather than by property** — the same input-boundary category `embedding_queue/live/config.rs` needed an explicit exemption for. Latent: both are honest raw inputs today | either the gate learns the input-boundary category directly, or `args.reality` gets the same explicit exemption. Do NOT resolve it by renaming — that moves the number, not the property (`BDR-55`) |
+| ~~`G3-ORACLE-COVERAGE`~~ | **CLOSED 2026-08-10. 9 → 13 of 26**, ratchet built and bitten. `scripts/dp-oracle-coverage-gate.py` + `contracts/dp/oracle-coverage-baseline.json`: a document counts only when its name is a string literal in code (not a comment), in a function **reachable from a `#[test]`**, with an assertion **somewhere in that chain** — a grep would have scored 14/26 on day one and been wrong about five, because `spec_oracle`'s own docstring names documents it does not read. Four new oracle files: `dp-control-plane/tests/spec_oracle_cp.rs` (`DP-C2` tables · `DP-C3` RPC set · `DP-C8` TTL), `dp/tests/spec_oracle_sdk.rs` (`DP-K9` refresh lead · `DP-K11` lint set), `dp/tests/spec_oracle_channels.rs` (`DP-Ch11` columns + uniqueness triple · `DP-Ch31` states, incl. a doc↔doc arm). **`scripts/dp-oracle-bite-gate.py`: 19/19 legs, each mutating ONE side and requiring the red to NAME BOTH.** Three prose-only gaps became registers with a shrink arm: `CP_TABLES_WITHOUT_A_MIGRATION` (5), `DEFERRED_LINTS` (2), `DEFERRED_EVENT_COLUMNS` (1). **New finding: `DP-Ch11` declares `events.turn_number` and NO migration creates it** — registered, blocker named. See `BDR-57`..`BDR-60` | done |
+| ~~`3E-NAMING-INCONSISTENCY`~~ | **CLOSED 2026-08-10, and it was NOT latent.** The gate learned the property, nothing was renamed. **`commit-service` reported `0 adoptable, 0 exempt` — completely adopted — while carrying five real sites, four of them on the spine's LIVE WRITE PATH (`epoch_commit.rs`).** A whole in-scope service was invisible because its field is spelled `reality`. A second defect fell out in the opposite direction: the regex tail accepted `reality_id: Uuid::from_u128(0x42)`, a struct *literal*, so **eleven non-sites** were inflating `exempt` (63 → 52). Now three categories — `adoptable` (must reach zero) · `exempt` (the reality cannot be accepting commands) · **`boundary`** (the raw value a bind consumes) — each ratcheted against growth, with an `AMBIGUOUS` arm refusing a prefix in both tables. **The boundary category is detected by PROPERTY**, not a list: a `reality: Uuid` parameter of a function whose body reaches `SessionContext::bind`/`MetaControlPlane` is a bind input, and stops being one if the body stops binding — self-tested in both directions on a pair of sources differing by one line. Only `spine_args` (a struct field with no enclosing function to read) is curated, which is the *"or an explicit reasoned exemption"* half of the trigger. **Honest outcome per `BDR-55`: the number went UP, 0 → 5 adoptable.** New debt row below | done |
+| ~~`3E-EPOCH-COMMIT-ADOPTION`~~ | **PAID 2026-08-10, 5 → 1.** All four `epoch_commit` signatures (`drain_and_reconcile` / `reconcile_and_commit` / `activation_payload` / `envelope`) now take `&dp::RealityId`; `spine.rs` passes `session.reality_id()` — **taken from the `SessionContext` the loop already holds, never from a helper returning an id alone**, which is `BDR-54`'s shape and would have dropped the `plane` that keeps the capability refreshable. The two test callers bind through the existing `tests/support::verified_reality` double rather than a new one. Evidence: `cargo check` enumerated every call site; suite green (`epoch_event_contract` 4 passed, `epoch_activation_live` 4 passed — both *ran*, checked, because a test that quietly stops running is the red-for-the-wrong-reason mode); ratchet bitten 1 → 2 → 1 by reverting one signature. **Remaining: 1** — `bin/ceilings.rs`'s benchmark envelope builder, left ADOPTABLE rather than exempted on purpose: under-exempting leaves something to read, and it was outside this row's stated cell | ratcheted at 1 and cannot grow. `ceilings.rs` earns either an adoption or a *reasoned* exemption the next time that harness is touched — not a third category invented to make the number zero |
 | `FLOW-19` | `channel_writer_state` has no FK to `channels` | `flow19_trigger()` in `dp-channels-schema-gate` reds when `channels` gains a non-test writer. `W3` did NOT create one — it creates the *table*, per migration; the first row-writer is still ahead |
 | `W3-DEVKEY` | the dev stack's admin signing key is operator-env only, so `reality provision` reverts to unaudited-refused after a fresh clone | a second person needing to run an admin command here, or CI wanting one. Do **not** commit a key; a bootstrap script that generates one is the fix |
 | `W3-LOCKSPAN` | the advisory lock is held across the WHOLE 11-step provision (incl. migrations), not just through `register_pending` at step 3 | provisioning becoming frequent enough that per-shard serialisation hurts. Deliberate: correctness over throughput on an admin-gated action |
@@ -631,8 +632,8 @@ not implement toward it.
 | ~~`W5-CRON`~~ | **CLOSED.** An `orphan-scanner` compose service runs it hourly and records through the bridge. Deliberately NOT another cron-manifest YAML: `scripts/archive-worker-cron.yaml` says of itself that its scheduler binding is deferred, so it is a schedule nothing reads — the same apparatus-without-a-subject shape this row exists to kill | done |
 | `W6-OWNER-UNVALIDATED` | **conscious decision, recorded because `V.1` found it undocumented.** Nothing checks that `owner_user_id` names a real user: there is no FK (cross-database), and neither the bridge nor the admin handler looks the user up. An admin CAN provision a reality owned by a UUID belonging to nobody. Acceptable for an admin-only tier-2 command where the operator supplies the id deliberately — **not** acceptable once users request their own | the user-facing request pipeline. It must resolve the owner from the authenticated caller, not from a typed parameter |
 | `D-META-ERASURE-COVERAGE` | **4 open, down from a reported 8** — the first count asked *"does PgMetaScrubber handle it"* rather than *"does ANY mechanism"*, and three (`pii_kek`, `pii_registry`, `user_consent_ledger`) turned out fully handled by admin-cli's crypto-shred / revoke path; `user_queue_metrics` is now implemented. Open: `user_cost_ledger` + `user_daily_cost` declare `pseudonymize_user_ref_at_2y`, a TIME-based retention job that is unbuilt; **`session_cost_summary` and `service_to_service_audit` declare NO method at all — a PO call, not an engineering one** | `TestMetaMigrationsDeclareAnImplementedErasure` — three registers (`implemented` / `handledElsewhere` / `knownUnhandled`), each must shrink, and a NEW user-referencing meta table cannot be added without a row in one of them |
-| `W7-SHELL-UNCOVERED` | four round-3-era fixes ship with **no test and no bite**: `infra/db-ensure.sh` (the injection fix itself), the 036/037 down-migration guards, the column-level GRANT, and the `main.go` nil-owner guard. The bite harness's `TARGETS` are Go/Rust files only | a shell-level bite harness, or the next change to `db-ensure.sh`. Recorded because the injection fix is the highest-severity change in this run and is verified only by hand |
-| `META-DOWN-UNCOVERED` | `scripts/migration-idempotency-validator.sh` walks **only** `contracts/migrations/per_reality` — the same `NV-3` shape this run diagnosed twice. The 036/037 down migrations are exercised by nothing automated | pointing the validator at both trees; it is the meta-tree twin of the erasure-gate fix |
+| ~~`W7-SHELL-UNCOVERED`~~ | **CLOSED 2026-08-10 — the shell-level bite harness exists: `scripts/db-ensure-bite-gate.py`, 4/4 bitten.** ~~036/037 down-migration guards~~ discharged by `META-DOWN-UNCOVERED` (both downs run and re-run; `036`'s data-loss guard bitten with a real user-owned reality). ~~The injection fix~~ — **the live leg is the strongest evidence in this run: with `:'pw'` in place the payload `x'; ALTER ROLE … SUPERUSER; --` is refused (`rolsuper = false`); with the binding removed THE SAME PAYLOAD GRANTED SUPERUSER.** The fix is proven load-bearing by making the vulnerability come back. It runs the pipeline **extracted from `db-ensure.sh` itself**, not a retyped copy, against a throwaway role — the real `loreweave_provisioner` owns the reality databases, so Postgres would refuse to drop it and the script's `if ! role exists` branch can never be reached on a booted cluster. ~~The column-level GRANT~~ and ~~the over-privilege assert~~ carry static paired-anchor legs, each bitten. ~~the `main.go` nil-owner guard~~ **also closed**, and it was the only one of the four with no witness at all: `TestProvisionRequest_RejectsNilUUID` covers the *reality* id, not the *owner*. `cmd/admin/provisionowner_test.go` adds the pair — the nil owner is refused, **and a real owner gets past the guard** (`NV-2`: a single-sided test proves the handler errors, not that the GUARD errored). Bitten by replacing `if owner == uuid.Nil` with `if false`: the nil owner then flowed past and died in the subprocess invoker instead, which the test caught and named. **The silent failure it prevents is a tenancy downgrade reported as success** — the invoker drops the flag when the value is nil, so the operator would get a platform-owned reality and a cheerful message | **all four covered.** The next shell/Go guard added to this path earns a leg in the same two harnesses |
+| ~~`META-DOWN-UNCOVERED`~~ | **CLOSED 2026-08-10.** The validator now walks **both** trees — `PASS — 116 file(s) across 2 tree(s)` (38 + 78) — and its logic moved to `migration-idempotency-validator.py` behind the existing `.sh`, which stays the entry point because two CI legs name it. **Pointing it at the meta tree was not enough**: every check was a `grep` anchored to one LINE, and 8 of 13 `ALTER TABLE … COLUMN` statements across both trees are multi-line, four in the tree it already walked. Statement-aware now, plus a per-tree file **floor** (a walk that finds nothing exits **2**, not 0) and a new check for the `DROP CONSTRAINT IF EXISTS` idiom that 7 of 9 sibling migrations already used. **8 real violations found and fixed, all in `036`/`037`.** Down migrations run and RE-run clean against a throwaway meta DB (39 ups applied, both downs ×2, exit 0, columns gone), the ups are retry-safe, and `036`'s data-loss guard still refuses when a user-owned reality exists — verified by inserting one. See `BDR-61`/`BDR-62` | done |
 | `W6-ERASURE-EVENT` | `reality_registry` + `OpUpdate` maps to `reality.status.changed` in the allowlist, so the erasure reassign would emit a status-changed event carrying no status change. **Latent only** — `main.go` builds the MetaWrite config with no `Outbox`, so nothing fires today | wiring an Outbox into the meta-worker erasure path |
 | `W7-TEMPLATE1` | the provisioner relies on `CREATE DATABASE`'s **implicit** `TEMPLATE template1` to inherit `vector`; a future `TEMPLATE template0` (the standard move for encoding control) silently returns provisioning to needing superuser. Also cluster-wide: every new database on this box now carries pgvector, and `infra/foundation-dev/` is a **second** cluster that never runs `db-ensure.sh` | anyone adding a TEMPLATE clause, or standing up the foundation-dev cluster for provisioning |
 | `1b7db-03` | ~~`loreweave` is the sole Postgres login and is superuser~~ **CLEARED by `W7`** — provisioning runs as `loreweave_provisioner` (`CREATEDB` only). Other services still connect as `loreweave`; narrowing those is a separate, larger sweep | the next service touched |
@@ -640,7 +641,7 @@ not implement toward it.
 | `1b7db-08` | `CREATE TABLE … INHERITS (channels)` bypasses constraints | conscious won't-fix; a non-SDK writer appearing |
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
 | `G-S3`/`G-S4` | lore bible has no schema; "pre-manifest stub" is not a named artifact | the BOOK_TO_GAME track |
-| slice 1 | `G3`/`G4`/`G6`–`G13` open. **`G3` RE-MEASURED 2026-08-09: 17 of 26 LOCKED docs unopened, not 22** — `spec_oracle` now opens nine. **The one that matters most is still not among them: `05_control_plane_spec.md`**, which governs everything `5B`/`5C` built and is where the capability TTL sat at 3× its specified value until someone read the file by hand (`BDR-52`). `G4`'s stated blocker — *no dylint anywhere* — was discharged by slice 2; the specific aggregate-contract lint is still unwritten | `2026-08-06` run-state §6i; and for `G3`, an oracle-coverage ratchet over `06_data_plane/` |
+| slice 1 | `G4`/`G6`–`G13` open. **`G3` is CLOSED** (row above): re-measured 2026-08-10 by `dp-oracle-coverage-gate`, **13 of 26 read, 13 unopened** — `05_control_plane_spec.md` among the read ones, which was the point. The thirteen still unread are `00_preamble`, `01_scope_and_boundary`, `11_access_pattern_rules`, `14_durable_subscribe`, `15_turn_boundary`, `16_bubble_up_aggregator`, `18_causality_and_routing`, `19_privacy_redaction_policies`, `20_operational_residuals`, `21_llm_turn_slot`, `22_feature_design_quickstart`, `99_open_questions`, `_index` — **and the ratchet is what keeps that number honest now, so it is a worklist rather than an unknown.** `G4`'s stated blocker — *no dylint anywhere* — was discharged by slice 2; the specific aggregate-contract lint is still unwritten | `2026-08-06` run-state §6i |
 | ~~slice 2~~ | **CLOSED 2026-08-09 (row was stale).** It said *"board not written"* and *"no dylint anywhere"*; the board IS written below and `2A`–`2G` are all ✅ — `lints/dp-clippy` ships two lints (`forbid_raw_kernel_client`, `forbid_swallowed_backpressure`) on a pinned nightly with a ratcheted CI gate. **The row outlived its subject by four slices**, which is the register rot this file keeps finding elsewhere | done |
 
 ## 4b · SLICE 2 — `DP-R3`'s lint. Board written at the slice's start (`BDR-26`).
@@ -909,7 +910,7 @@ which `commit-service`'s 3 are reachable first.
 | step | what | done = |
 |---|---|---|
 | `3E.1` | *(after slice 5)* `scripts/reality-id-adoption-gate.py` + `contracts/dp/reality-id-baseline.json` — count the 84 in-scope sites, fail on increase and on an unrecorded decrease | self-test + 2 bites (a new bare site; a baseline row that improved) |
-| `3E.2` | migrate `commit-service` (3) then `world-service` (73) | ✅ **commit-service: 3 → 0.** `Manager` and `recover_writer_state` take a verified `dp::RealityId`; `spine` binds through the real `MetaControlPlane` before acquiring a lease. Baseline lowered, ratchet re-bitten. ⬜ **world-service: 73, and it is NOT a sweep — see below** |
+| `3E.2` | migrate `commit-service` (3) then `world-service` (73) | ✅ **world-service: 0 adoptable** (52 structurally exempt + 2 input-boundary), classified below and re-measured 2026-08-10. ⚠ **`commit-service` is NOT 0 — it is 5**, and the "3 → 0" recorded here was measured by a gate that could not see the crate: it matched `reality_id:` and the field is spelled `reality`. Four of the five are `epoch_commit.rs` on the live write path. Tracked as `3E-EPOCH-COMMIT-ADOPTION` in §4; see `BDR-63`. **The row is left visible rather than rewritten, because "3 → 0" was the reading that made this file believe the crate was finished** |
 
 > ### ⚠ `world-service`'s 73 sites are NOT mechanically adoptable, measured 2026-08-09
 >
@@ -1361,6 +1362,239 @@ does not transfer across a language boundary · `BDR-47` execute the path before
 `BDR-48` "blocked" is a label, and it was the only blocker.
 
 ---
+
+**`BDR-67` (2026-08-10) — the test that already existed was for the wrong nil.**
+`W7-SHELL-UNCOVERED` listed the `main.go` nil-owner guard as untested, and a grep for `uuid.Nil` in
+`admin-cli` finds `TestProvisionRequest_RejectsNilUUID` — which looks exactly like the coverage in
+question and is about the **reality id**, not the **owner**. Two guards, two nil UUIDs, one search
+term. The row was right and the grep would have talked anyone out of it. **When a row says
+something is uncovered and a search says otherwise, check WHICH subject the hit covers** — this is
+`NV-1`'s "the subject cannot vary" wearing a plausible test name. The guard it protects fails
+*upward*: the invoker drops the flag when the owner is nil, so accepting it yields a platform-owned
+reality and a success message — a tenancy downgrade that reports as a win.
+
+**`BDR-66` (2026-08-10) — the strongest security evidence available is making the vulnerability come
+back.** `W7`'s injection fix had been *"verified only by hand"* for two days. The static check —
+*does `db-ensure.sh` contain `:'pw'`* — is worth little: it says the fix is spelled, not that it
+works. `db-ensure-bite-gate`'s live leg runs the pipeline **extracted from the script** with
+`LOREWEAVE_PROVISIONER_PASSWORD` set to the payload from the script's own comment, twice: bound
+(`rolsuper = false`) and then with the binding removed (**SUPERUSER granted**). Only the second run
+makes the first one mean anything — without it, "the payload did not escalate" is equally consistent
+with the payload never reaching the statement. Two things had to be reasoned about first, and both
+would have been incidents: the real `loreweave_provisioner` **owns the reality databases**, so
+`DROP ROLE` fails and the script's `if ! role exists` branch is unreachable on any booted cluster;
+and the injection must be attempted against a **throwaway** role, dropped in a `finally`.
+
+**`BDR-65` (2026-08-10) — two defects in one harness, and the harness caught both.**
+`db-ensure-bite-gate`'s first run scored its own first leg `THE CHECK IS NOT LOAD-BEARING` and its
+live leg `NOBUILD`. Neither verdict was about `db-ensure.sh`:
+
+* the mutation anchored on `:'pw'`, whose **first occurrence is in the comment explaining the fix**,
+  twenty lines above the statement — so a first-occurrence replace edited prose and the code never
+  changed. `BDR-56`, arriving in the file written to apply `BDR-56`. Re-anchored on
+  `PASSWORD :'pw' CREATEDB`, which exists only in the DDL.
+* `subprocess.run(..., text=True, input=…)` on Windows writes stdin through a `newline=None`
+  wrapper, so every `\n` became `\r\n` and bash read `PROVISIONER_ROLE=lw_bite_provisioner\r`. Same
+  family as §0.6's *"heredocs eat backslashes"*, one layer down. Fixed by passing **bytes**.
+
+Worth keeping for the shape rather than the details: **both presented as "the guard is broken" when
+the harness was broken**, and the four-way verdict is the only reason they were distinguishable —
+`nobuild` named the second one outright, and the first was found by asking *why* it went green.
+
+**`BDR-64` (2026-08-10) — I presented a POST-REVIEW and then STOPPED, and §0.6b calls it "a
+presentation, not a question".** Three rows were complete, the sweep was green, and the honest next
+action was `3E-EPOCH-COMMIT-ADOPTION` — a row I had just written, with a trigger I had just
+established as fired (§0.6c reverses at ~50 sites; this was 5). Instead the turn ended on *"I'm
+presenting here first rather than starting it."* The rationalisation was reasonable-sounding and
+wrong in a specific way: **it treated a checkpoint the file defines as a REPORT as though it were a
+GATE.** The stop-condition list in §0.6d has four entries and none of them is "the work reached a
+natural-looking pause." Worth recording because the failure was not forgetting the rule — the rule
+was quoted, in the same message, as the justification for breaking it. **A checkpoint that produces
+a presentation does not also produce a halt**, and the tell is reaching for §0.6b while the
+continuation check in §0.6d has an executable answer.
+
+The work itself then took one turn: `cargo check` enumerated every call site, and the four
+signatures, one call site and two test callers were done in minutes. **The stop cost more than the
+row did.**
+
+**`BDR-69` (2026-08-10) — I counted diacritics and called it a violation count, then deferred the
+work on the inflated figure.** `SESSION_HANDOFF.md` was reported as *"162 lines across ~120
+regions"* of English-only-rule breach and parked as gate #2 (large/structural). Both numbers were
+`grep -c` over a diacritic class. The LOCKED rule permits non-English **where the text IS the
+subject matter**, and almost all of it was: novel character names and cultivation terminology,
+scene titles, shipped i18n strings, CJK/full-width normalisation fixtures, and the Vietnamese
+pronoun data that is the literal subject of the linguistic-QA sections. **The real defect was ~19
+blocks of pasted author speech**, fixed in one pass. Stripping the other ~120 would have destroyed
+meaning while reporting compliance.
+
+This is the same defect as `BDR-63`, committed within the hour of fixing it: **a pattern match
+standing in for the property**, where the property is *"is this prose the author wrote, or is it
+the subject under test?"* — and a regex cannot tell those apart. Worse, the deferral row I wrote
+proposed building *"a diacritic ratchet over `docs/**`"* as the obvious mechanism.
+`scripts/doc-language-gate.py` **is** that gate, already wired pre-commit, deliberately judging
+added lines only against a 995-file baseline. I proposed building a mechanism that already existed
+**while the standards index was open in the same turn** — §0.1's *"grep/read the SOURCE that already
+implements it"*, skipped.
+
+**`/review-impl`, 2026-08-10 — four findings on this session's own work, three of them MED.**
+Run after every row was closed and the sweep was green, which is the point: the three-axis DoD and a
+green sweep passed all four (`BDR-50` — *"the axes test the SUBJECT; only an independent reader
+tests the APPARATUS"*).
+
+1. **`[User Boundaries & Tenancy]` `036` up dropped a tenancy CHECK non-atomically.** Three separate
+   `ALTER TABLE … DROP CONSTRAINT IF EXISTS x;` / `ADD CONSTRAINT x` pairs, in a file with no
+   `BEGIN;` — so each ran in its own transaction and there was a window in which
+   `reality_registry_owner_user_set` did not exist, i.e. a window accepting a `user`-kind row with a
+   NULL owner. **`037`, the same change made in the same hour, already used the atomic
+   comma-separated form.** The review found it by comparing the two halves of one edit against each
+   other; nothing else would have. Fixed, re-verified live: 39 ups applied, `036`/`037` up re-applied
+   exit 0, all five owner constraints present, and the data-loss guard still refuses with a real
+   user-owned row inserted (`INSERT 0 1` → `ERROR: refusing to roll back 036`).
+2. **`is_bind_input` leaked its exemption past the function's closing brace.** It walked back to the
+   nearest `fn` and never checked the site was *inside* it, so a `pub reality: Uuid` struct field
+   following a binding function inherited `boundary` and vanished from the adoptable count — in the
+   gate written because a *different* measurement defect hid four live sites. Not live in the tree
+   (counts unchanged at 1/52/4 after the fix, which is how we know), and it would have bitten the
+   first file to put a struct under a bind. Fixed with a containment check, and **bitten**: removing
+   it turns the new self-test red naming the leak.
+3. **The bite harness wrote to a file the live cluster executes every five seconds.**
+   `infra/db-ensure.sh` is bind-mounted into the postgres container and run as its healthcheck
+   (`infra/docker-compose.yml:62,66`, `interval: 5s`). `write_text` truncates before writing, so a
+   healthcheck landing mid-write reads a syntax error and postgres goes UNHEALTHY — cascading to
+   every `depends_on: service_healthy`; and a harness killed before its `finally` leaves the
+   **interpolated, vulnerable** form on disk to run every five seconds. The write bought nothing:
+   `extract_create_role_pipeline` takes a string. Removed; still 4/4, still proves the escalation.
+4. **The self-test that should have caught #2 could not.** Its struct fixture had no preceding
+   function, so `rfind("fn ")` returned `-1` and the dangerous branch was never reached — `NV-1`,
+   the subject could not vary. A struct-after-a-binding-fn case is now leg 2 of that arm.
+
+**And one during the verification itself:** the re-check of finding 1's guard inserted a row that
+the `reality_registry_db_host_format` CHECK rejected, so the "guard refuses" leg ran against a table
+with no user-owned rows and would have passed for the wrong reason. Caught by reading the output
+rather than the exit code. Redone with a valid host. `BDR-56` does not stop applying to the
+verification of a fix for `BDR-56`.
+
+**`BDR-68` (2026-08-10) — I piped the sweep through `tail` and read `tail`'s exit code as the
+sweep's.** The second full sweep was reported as **"exit code 0"** and it had **failed**:
+`gate-wiring-gate --run-all | tail -45` returns the status of the LAST command in the pipeline, so
+a genuine red — `file-ceiling-gate`, a file I had grown past its recorded size — was masked. It was
+caught only because the text was grepped for `FAILED` afterwards, which was luck dressed as
+process. **This is `BDR-50`'s lesson inverted: not a red for the wrong reason, but a GREEN that was
+never the gate's own verdict.** The habit that produced it is ordinary and will recur — piping a
+long-running command to `tail` to keep the output readable. The fix is mechanical: redirect to a
+file and echo `$?`, never pipe the thing whose exit code is the evidence.
+
+The masked finding deserves its own line, because the tempting fix was the wrong one. `spine.rs`
+was allowlisted at 375 lines and a five-line comment took it to 377 — so update the allowlist to
+377? `file-ceiling-gate` answers that in its own words: *"an allowlist entry buys amnesty for the
+debt that exists, never for more of it."* **The comment was shortened instead.** A ceiling that
+moves whenever something touches it is not a ceiling.
+
+**VERIFICATION, 2026-08-10 — three full sweeps, each run alone.** Final:
+`gate-wiring-gate.py --run-all`, **RC=0 captured directly** (not through a pipe): **84 GREEN**, zero
+untracked failures, zero stale `KNOWN_RED` rows, one tracked red (`language-bias-gate`,
+`D-GATE-ROT-LANGUAGE-BIAS`, pre-existing and unrelated). All **six** bite harnesses green, including
+the two added here (`dp-oracle-bite-gate` 64.1s, `db-ensure-bite-gate` 2.9s), both run serially per
+their `MUTATING` rows. Afterwards, byte-identical: `06_data_plane/`, `contracts/migrations/`,
+`infra/db-ensure.sh`, `crates/dp/src`, `crates/meta-rs/src`, `admin-cli/cmd/admin/main.go` —
+`BDR-53`'s damage mode is precisely a mutation that survives the sweep it was made in. The cluster
+too: **0** stray `lw_bite%` roles, **0** leftover throwaway databases, `loreweave_meta` still
+holding its 7 realities.
+
+**`BDR-63` (2026-08-10) — the gate said a service was FULLY ADOPTED, and the reason was a field
+name.** `3E-NAMING-INCONSISTENCY` was filed as *"latent — both are honest raw inputs today"*, about
+one CLI argument. It was not latent. `reality-id-adoption-gate` matched `reality_id:` and
+`commit-service` spells the field `reality`, so the crate reported **`0 adoptable, 0 exempt`** —
+indistinguishable from a crate that had finished the migration — while carrying five bare sites,
+**four of them on the spine's live write path**. The row that predicted this is in the gate's own
+source: *"the alternative was renaming the field to `reality` so the regex stopped matching, which
+would have moved the number without moving the property."* It had already happened, one service
+over, and the note did not go looking.
+
+Two lessons, and the second is the one worth carrying:
+
+1. **A clean number from a name-matching check is the least trustworthy number there is.** `0 of 0`
+   should have prompted *"does this gate can see this crate at all?"*, and `--list` answers that in
+   one command. It was never run against the crate reporting zero.
+2. **When you write down a failure mode you are avoiding, go and look for it.** The gate documented
+   the exact defect, in the exact words, as a hypothetical — and a sibling instance was live in the
+   tree at the time of writing. Writing the trap down is not the same as searching for it.
+
+The fix widened the regex to the property, which surfaced a mirror defect in the other direction:
+the tail accepted `reality_id: Uuid::from_u128(0x42)`, a struct **literal**, so eleven non-sites had
+been inflating `exempt`. **A count that includes things that are not its subject is not a
+measurement** — and it had been baselined, so the ratchet was holding a number partly made of noise.
+
+**`BDR-62` (2026-08-10) — a WALK is not a CHECK, and a file count reads exactly like coverage.**
+`migration-idempotency-validator` was widened from one migration tree to two, which is what
+`META-DOWN-UNCOVERED` asked for. It would have been close to worthless. Every one of its six checks
+was a `grep -E` anchored to a single LINE, and the meta tree writes multi-clause DDL across several
+lines — measured, **8 of 13 `ALTER TABLE … COLUMN` statements are multi-line, four of them in the
+tree it had walked all along.** So the widened validator would have printed *"78 file(s)"* and
+*"PASS"*, and a reader would have had a number, a green, and almost no checking. Two things fell out
+of fixing it properly: a per-tree file **floor**, because the old code printed *"no migrations
+found"* and **exited 0** — the wrong-path failure is silent in the direction of success; and a rule
+for the `DROP CONSTRAINT IF EXISTS` idiom, because **7 of 9** constraint-adding migrations already
+followed it and 2 did not, and a convention with a 78% adoption rate is a coin flip wearing a
+convention's name.
+
+**`BDR-61` (2026-08-10) — the lint went GREEN on the file whose retry still failed, and it was RIGHT
+to.** After all 8 text violations in `036`/`037` were fixed, `migration-idempotency-validator`
+passed. Re-running `036_reality_ownership.down.sql` against a throwaway meta database still died:
+`ERROR: column "owner_kind" does not exist`. The statement that broke it is inside a `DO $guard$ …
+$guard$` block — a PL/pgSQL data-loss guard that counts user-owned realities before dropping the
+column — and the validator **deliberately blanks dollar-quoted bodies**, because a function body is
+not DDL and reading it would be guessing. So the one statement that mattered lives in the one region
+the check cannot see, by a correct design decision. **Every `IF EXISTS` added in that pass was real
+and none of them helped: the file failed before reaching any of them.** The lesson is the one this
+validator's own docstring already stated and I still had to re-learn by running it — *it reads TEXT;
+the property is BEHAVIOUR* — and the corollary is sharper: **a proxy that is honest about its blind
+spot will still be mistaken for the property unless something exercises the property.** The fix was
+an early `RETURN` when the guarded column is already gone, and the guard was then re-bitten in the
+direction that matters: with a user-owned reality inserted, it still refuses.
+
+**`BDR-60` (2026-08-10) — deleting ONE call site killed an entire register check and the suite
+reported 15 passed.** The bite for the coverage ratchet removed
+`check_deferred_write_forms();` — the sole call site of the helper that checks
+`DEFERRED_READ_FORMS` and `DEFERRED_WRITE_FORMS` against `DP-K4`/`DP-K5`. The crate still compiles
+(an uncalled private fn is a warning), and `cargo test -p dp --test spec_oracle` printed **`test
+result: ok. 15 passed; 0 failed`** with the check dead. **Nothing in the unit suite can see a
+defeated helper, because the suite's unit of observation is the test that still runs.** The
+coverage ratchet saw it, and this is the concrete answer to *"why a gate and not just tests"* — the
+question a reader will reasonably ask of every ratchet in this repo.
+
+**`BDR-59` (2026-08-10) — the reachability walk was written BACKWARDS, and the self-test caught it
+on the first run.** The gate asks *"is this function called from a live one"*; the first draft asked
+*"does this function call a live one"*. Same words, opposite edge direction, and it scored
+`check_deferred_write_forms` — a real helper reached from a real test — as dead code. Worth keeping
+for what caught it: not review and not the tree, but a five-line synthetic fixture written **before**
+the walk, whose only job was to be the ordinary shape. A gate's self-test earns its cost on the day
+the gate is written, not later.
+
+**`BDR-58` (2026-08-10) — a fence parser defeated by a document that TALKS about fences.**
+`DP-Ch11`'s SQL block contains an amendment comment reading *"the previous scan read only ```sql
+blocks containing `REFERENCES channels`"* — a triple backtick, mid-line, inside the block. A closing
+delimiter matched as a plain substring ended the block after **341 characters**, `ADD COLUMN` matched
+**zero** times, and both new `DP-Ch11` rules failed. **They failed for the right reason and said so**,
+because each carries a `parsed only N — the block's shape moved` guard. That is the cheap version of
+this bug; the expensive version is a truncation that still finds *something*, agrees with the code,
+and reports green. **The non-vacuity guard was worth more than the parser it protected** — and note
+the recursion: the corpus documents its own tooling, so a parser over these documents must survive
+prose about parsers. Fixed by reading the format (a fence is a LINE-INITIAL delimiter), not by
+special-casing the file.
+
+**`BDR-57` (2026-08-10) — the coverage gate measured a NAMING CONVENTION and called it a property.**
+It counted a document as read when a string literal equalled its filename. `spec_oracle.rs` writes
+`dp_doc("08_scale_and_slos.md")`, so it worked; `spec_oracle_cp.rs`, written the same hour, writes
+`.join("../../docs/…/06_data_plane/05_control_plane_spec.md")` — and the gate reported that file as
+reading **nothing at all**, while the test beside it was comparing three sections of that document
+to code. **`NV-3`, inside the gate written to close an `NV-3`**: the scope never reached a reader
+that spelled the path differently, and it was default-uncovered rather than refused. The tell was
+available immediately and nearly missed — the gate printed `05_control_plane_spec.md` in its
+*still unread* list one command after a test that reads it had gone green. **When a fresh measurement
+contradicts something you just did, the measurement is the thing to doubt first.** Fixed by matching
+the literal's BASENAME, which is the property; a fixture for the path form is now leg 11 of the
+self-test.
 
 **`BDR-56` (2026-08-09) — a bite mutation that changes nothing prints exactly what a vacuous guard
 prints.** Three legs of `dp-slice5d-bite-gate` scored `THE GUARD IS NOT LOAD-BEARING` and all three

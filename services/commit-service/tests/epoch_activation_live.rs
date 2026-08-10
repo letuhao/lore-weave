@@ -39,6 +39,9 @@ use sqlx::postgres::PgPoolOptions;
 use uuid::Uuid;
 use commit_service::RealityRules;
 
+mod support;
+use support::verified_reality;
+
 mod epoch_live_common;
 use epoch_live_common::{
     activation_rows, boot_for, dsns, island, put_quantities, CHANNEL_DSN_VAR, META_DSN_VAR,
@@ -86,7 +89,7 @@ async fn the_activation_event_carries_the_unadvanced_turn_number() {
 
     // 41 turns already played on this channel. The switch must not advance it,
     // and must not drop it either.
-    reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 41)
+    reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 41)
         .await
         .expect("reconcile");
 
@@ -141,7 +144,7 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     // Nothing has moved yet. This must be a NO-OP, not a refusal: an island
     // already at the bound epoch attempted nothing, so nothing was rejected.
     assert_eq!(
-        reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+        reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
             .await
             .expect("reconcile"),
         EpochOutcome::AlreadyCurrent
@@ -157,7 +160,7 @@ async fn an_activated_epoch_reaches_the_channel_log() {
     // No Redis entry was delivered to this island. It switches anyway, because
     // the decision is a read of the TABLE — which is the property that makes a
     // missed signal survivable.
-    let outcome = reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+    let outcome = reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
         .await
         .expect("reconcile");
     let EpochOutcome::Activated { from, to, .. } = outcome else {
@@ -245,7 +248,7 @@ async fn reconciling_again_appends_nothing() {
         .expect("switch");
 
     for _ in 0..5 {
-        reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+        reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
             .await
             .expect("reconcile");
     }
@@ -291,7 +294,7 @@ async fn a_missed_epoch_is_not_replayed() {
     activate_reality_epoch(boot.bindings.as_ref(), &boot.store, &reality.to_string(), &d3, "s3")
         .expect("switch 3");
 
-    let outcome = reconcile_and_commit(&boot, reality, channel, &mut isle, &writer, &mut version, 0)
+    let outcome = reconcile_and_commit(&boot, &verified_reality(reality), channel, &mut isle, &writer, &mut version, 0)
         .await
         .expect("reconcile");
     assert_eq!(

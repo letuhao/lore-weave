@@ -5,16 +5,35 @@ WHAT THIS GUARDS
 ================
 `DP-A12` / `DP-R1` want a reality addressed by `dp::RealityId`, a newtype whose
 constructor is `pub(crate)` to `dp` and whose only source is
-`SessionContext::bind`. Game-layer services still pass a bare `Uuid` in **76**
-places. This gate is what makes that number go one direction.
+`SessionContext::bind`. Game-layer services still pass a bare `Uuid`. This gate
+is what makes that number go one direction.
 
-The figure has been corrected three times, and each correction narrowed it to
+THREE CATEGORIES, because one number was answering three questions
+==================================================================
+    ADOPTABLE       5   must reach zero — a reality that CAN bind, addressed raw
+    exempt         52   the reality cannot be accepting commands (provisioning,
+                        frozen, being dropped) — see STRUCTURALLY_EXEMPT
+    input boundary  4   the raw value a bind CONSUMES; it cannot already be the
+                        verified thing the bind produces
+
+Only the first is debt. The other two are ratcheted against GROWTH but will
+never reach zero, and mixing them into one figure is how a gate becomes a
+number nobody can act on (`BDR-55`).
+
+The figure has been corrected five times, and each correction narrowed it to
 something truer: 457 (the plan, stale) -> 884 (every MENTION, including SQL
 column names and comments) -> 178 (real typed sites, all crates) -> 84 (the two
-game-layer crates) -> **76**, which is those two crates' `src/`. The last eight
-are in `tests/`, and a test fixture is not production adoption debt: those
-adopt when the code they exercise does. `src/` only, so the number measures the
-thing the ratchet is for.
+game-layer crates) -> 76 (their `src/`; a test fixture is not production
+adoption debt) -> the split above, after `3E-NAMING-INCONSISTENCY` found the
+regex was matching a NAME rather than the property. Two defects, opposite
+directions, both live:
+
+  * it required the spelling `reality_id`, and `commit-service` spells the field
+    `reality` — so that crate reported **0 adoptable, 0 exempt**, completely
+    adopted, while carrying five real sites including four on the spine's live
+    write path;
+  * its tail accepted `reality_id: Uuid::from_u128(0x42)`, a struct LITERAL,
+    which is not a typed site at all — eleven of those were inflating `exempt`.
 
 WHY A RATCHET AND NOT A SWEEP (run-state §0.6c, sealed)
 =======================================================
@@ -70,7 +89,32 @@ BASELINE = REPO / "contracts" / "dp" / "reality-id-baseline.json"
 # baseline was never wrong. The hole was `NV-3` all the same — DEFAULT-UNCOVERED
 # for anything written tomorrow, and a bite is the only reason it was found
 # before someone relied on it.
-SITE = re.compile(r"reality_id\s*:\s*(?:&\s*)?(?:Option\s*<\s*)?(?:::)?(?:\w+::)*Uuid(?![A-Za-z0-9_])")
+# `reality` AS WELL AS `reality_id`, and `(?!:)` on the tail. Both were found by
+# `3E-NAMING-INCONSISTENCY` and both are the same defect in opposite directions:
+# the regex was matching a NAME where the property is "a reality addressed as a
+# bare uuid".
+#
+#   * **The name.** `commit-service` spells its field `reality`, so the crate
+#     reported **0 adoptable, 0 exempt** — completely adopted — while carrying
+#     seven bare sites, four of them on the spine's live write path
+#     (`epoch_commit.rs`). A whole in-scope service was invisible.
+#     `BDR-55` says the fix is never to RENAME the field so the regex matches;
+#     it is to make the regex measure the property.
+#
+#   * **The tail.** `reality_id: Uuid::from_u128(0x42)` is a struct LITERAL, not
+#     a type annotation, and the old tail `(?![A-Za-z0-9_])` accepted it because
+#     the next character is a colon. Measured: **10 such lines**, every one of
+#     them a test fixture inside an exempt file — so they were inflating the
+#     `exempt` baseline with sites that are not sites. A count that includes
+#     things that are not its subject is not a measurement.
+SITE = re.compile(
+    r"\breality(?:_id)?\s*:\s*(?:&\s*)?(?:Option\s*<\s*)?(?:::)?(?:\w+::)*Uuid(?![A-Za-z0-9_:])"
+)
+
+# What turns a raw uuid INTO a verified one. A parameter of a function whose
+# body reaches one of these is a bind's INPUT, and a bind's input cannot already
+# be its own output.
+BIND_MARKERS = ("SessionContext::bind", "MetaControlPlane")
 
 # The game-layer services, per DPA-SCOPE's reading of the LOCKED §4.
 IN_SCOPE = ("services/world-service", "services/commit-service")
@@ -141,16 +185,47 @@ STRUCTURALLY_EXEMPT: dict[str, str] = {
         "scans for orphaned rows across realities regardless of state; "
         "`orphan_scan.rs` lists \"frozen\" among the statuses it handles."
     ),
-    # A DIFFERENT KIND of exemption from the six above, and worth the distinction.
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# INPUT BOUNDARY — the raw value a bind CONSUMES, which cannot already be the
+# verified thing the bind produces.
+#
+# A THIRD CATEGORY, and `3E-NAMING-INCONSISTENCY` is why it is not a row in the
+# dict above. `embedding_queue/live/config` used to sit there with a reason that
+# began *"A DIFFERENT KIND of exemption from the six above"* — a comment marking
+# a distinction the data structure did not make. `commit-service`'s `args.reality`
+# is the same category, and the note predicting that ended:
+#
+#     "The alternative was renaming the field to `reality` so the regex stopped
+#      matching, which would have moved the number without moving the property."
+#
+# It had already happened. `commit-service` spells it `reality`, the regex never
+# matched, and the crate reported clean.
+#
+# **Most of this category is now detected by PROPERTY, not listed here.** A
+# `reality: Uuid` parameter of a function whose body reaches `SessionContext::bind`
+# or `MetaControlPlane` IS a bind input, mechanically — and stops being one the
+# moment the body no longer binds. That covers `reality_bind::bind_reality` and
+# `embedding_queue::bind_reality` with no entry at all.
+#
+# What remains here is the case with no enclosing function to read: a value
+# parsed from argv or the environment into a STRUCT, where the binding happens
+# somewhere else entirely. Curated, reasoned, and ratcheted like the rest.
+INPUT_BOUNDARY: dict[str, str] = {
     "services/world-service/src/embedding_queue/live/config": (
         "the ENV INPUT the bind consumes, not a reality the code addresses. "
         "`EMBEDDING_REALITY_ID` is text read before any database is open; "
         "`embedding_queue::bind_reality` is what turns it into a verified "
-        "`dp::RealityId`, so it cannot already be one — a bind's input cannot be "
-        "its own output. Everything downstream of that call now takes "
-        "`dp::RealityId`. The alternative was renaming the field to `reality` so "
-        "the regex stopped matching, which would have moved the number without "
-        "moving the property; this says what is true instead."
+        "`dp::RealityId`, so it cannot already be one. Everything downstream of "
+        "that call now takes `dp::RealityId`."
+    ),
+    "services/commit-service/src/spine_args": (
+        "the CLI INPUT the bind consumes. `Args::reality` is parsed from argv "
+        "before any connection exists, and `reality_bind::bind_reality` is what "
+        "turns it into a verified `dp::RealityId` — so the field cannot already "
+        "hold one. Listed rather than property-detected because it is a struct "
+        "field with no enclosing function whose body could be read for a bind."
     ),
 }
 
@@ -170,6 +245,91 @@ def exemption_for(rel_path: str) -> str | None:
         if rel_path.startswith(prefix):
             return reason
     return None
+
+
+def boundary_for(rel_path: str) -> str | None:
+    """The reason this path is a curated INPUT BOUNDARY, or `None`."""
+    for prefix, reason in INPUT_BOUNDARY.items():
+        if rel_path.startswith(prefix):
+            return reason
+    return None
+
+
+def blank_line_comments(text: str) -> str:
+    """Blank `//` lines, keeping offsets so match positions stay meaningful."""
+    out = []
+    for line in text.replace("\r", "").split("\n"):
+        out.append(" " * len(line) if line.lstrip().startswith("//") else line)
+    return "\n".join(out)
+
+
+def is_bind_input(text: str, off: int) -> bool:
+    """Is the site at `off` a PARAMETER of a function that performs a bind?
+
+    This is the input-boundary category detected by PROPERTY rather than by a
+    path list — the thing `3E-NAMING-INCONSISTENCY` asked for. The claim it
+    makes is narrow and mechanical: *a bind's input cannot already be its own
+    output.*
+
+    It is non-vacuous in the direction that matters. Delete the
+    `SessionContext::bind` call from `bind_reality`'s body and the parameter
+    stops being a boundary and becomes adoptable debt — the classification
+    follows what the function DOES, not where it lives or what it is called.
+
+    LIMIT, stated: it reads the enclosing function's body textually. A bind
+    performed in a helper the function calls is not seen, so such a site is
+    counted as ADOPTABLE. Under-exempting is the safe direction — it leaves
+    something to read rather than quietly excusing it.
+
+    # The site must be INSIDE the function this finds
+
+    `rfind("fn ")` walks backwards to the nearest preceding `fn`, which for a
+    declaration that is not in any function — a struct field, a trait item, a
+    `const` — lands on whatever function happens to sit above it. Without the
+    containment check at the end, a `pub reality: Uuid` struct field placed
+    after `bind_reality` INHERITED its classification and was silently excused.
+    Found by `/review-impl` on a synthetic pair; not live in the tree at the
+    time, and it would have been the first file to put a struct under a binding
+    function. **A gate whose exemption leaks to the next declaration is the
+    "quietly deciding it is done" shape `BDR-55` is about**, in the gate written
+    to fix a measurement defect.
+    """
+    fn = text.rfind("fn ", 0, off)
+    if fn < 0:
+        return False
+    # The site is inside the parameter list, so the `(` precedes it. Walk to the
+    # matching `)`, then to the `{` that opens the body, then brace-match.
+    open_paren = text.find("(", fn)
+    if open_paren < 0 or open_paren > off:
+        return False
+    depth, i = 0, open_paren
+    while i < len(text):
+        if text[i] == "(":
+            depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    body_open = text.find("{", i)
+    if body_open < 0:
+        return False
+    depth, j = 0, body_open
+    while j < len(text):
+        if text[j] == "{":
+            depth += 1
+        elif text[j] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        j += 1
+    # CONTAINMENT: the site must lie inside this function — in its parameter
+    # list (`open_paren..i`) or its body (`body_open..j`). Anything past `j` is
+    # a different declaration that merely follows this function in the file.
+    if not (open_paren < off < i or body_open < off < j):
+        return False
+    body = text[body_open:j]
+    return any(m in body for m in BIND_MARKERS)
 
 
 def is_dp_crate(crate_dir: Path) -> bool:
@@ -193,40 +353,45 @@ def is_dp_crate(crate_dir: Path) -> bool:
     )
 
 
-def count_sites(root: Path) -> tuple[int, int, list[str], set[str]]:
-    """`(adoptable, exempt, per-file lines, exemption prefixes that matched)`."""
-    adoptable = 0
-    exempt = 0
+def count_sites(root: Path) -> tuple[dict[str, int], list[str], set[str]]:
+    """`({adoptable, exempt, boundary}, per-file lines, prefixes that matched)`."""
+    counts = {"adoptable": 0, "exempt": 0, "boundary": 0}
     where: list[str] = []
     used: set[str] = set()
     for path in sorted(root.rglob("*.rs")):
         try:
-            text = path.read_text(encoding="utf-8", errors="replace")
+            raw = path.read_text(encoding="utf-8", errors="replace")
         except OSError:
             continue
-        hits = 0
-        for line in text.replace("\r", "").splitlines():
-            stripped = line.lstrip()
-            # A commented-out signature is not a call site. The same stripper
-            # `gate-wiring-gate` needed after prose in a source file certified
-            # three deferrals as mechanised.
-            if stripped.startswith("//"):
-                continue
-            hits += len(SITE.findall(line))
-        if not hits:
+        # A commented-out signature is not a call site. The same stripper
+        # `gate-wiring-gate` needed after prose in a source file certified three
+        # deferrals as mechanised.
+        text = blank_line_comments(raw)
+        matches = list(SITE.finditer(text))
+        if not matches:
             continue
         rel = path.relative_to(REPO).as_posix()
-        reason = exemption_for(rel)
-        if reason is None:
-            adoptable += hits
-            where.append(f"{rel}: {hits}  [ADOPTABLE]")
-        else:
-            exempt += hits
-            where.append(f"{rel}: {hits}  [exempt]")
-            for prefix in STRUCTURALLY_EXEMPT:
-                if rel.startswith(prefix):
-                    used.add(prefix)
-    return adoptable, exempt, where, used
+        struct_reason = exemption_for(rel)
+        bound_reason = boundary_for(rel)
+        per = {"adoptable": 0, "exempt": 0, "boundary": 0}
+        for m in matches:
+            if struct_reason is not None:
+                per["exempt"] += 1
+            elif bound_reason is not None or is_bind_input(text, m.start()):
+                per["boundary"] += 1
+            else:
+                per["adoptable"] += 1
+        for k, v in per.items():
+            counts[k] += v
+        tags = ", ".join(f"{v} {k}" for k, v in per.items() if v)
+        where.append(f"{rel}: {tags}")
+        for prefix in STRUCTURALLY_EXEMPT:
+            if rel.startswith(prefix) and per["exempt"]:
+                used.add(prefix)
+        for prefix in INPUT_BOUNDARY:
+            if rel.startswith(prefix) and per["boundary"]:
+                used.add(prefix)
+    return counts, where, used
 
 
 def measure() -> tuple[dict[str, dict[str, int]], set[str]]:
@@ -241,8 +406,8 @@ def measure() -> tuple[dict[str, dict[str, int]], set[str]]:
             # plane is a scope change someone must see.
             print(f"[reality-id] {rel} declares dp-crate = true; out of scope")
             continue
-        adoptable, exempt, _, used = count_sites(crate / "src")
-        out[rel] = {"adoptable": adoptable, "exempt": exempt}
+        counts, _, used = count_sites(crate / "src")
+        out[rel] = counts
         used_all |= used
     return out, used_all
 
@@ -260,11 +425,22 @@ def self_test() -> int:
         ("    reality_id: uuid::Uuid,", 1),
         ("    reality_id: ::uuid::Uuid,", 1),
         ("    reality_id: Option<uuid::Uuid>,", 1),
+        # `3E-NAMING-INCONSISTENCY`: the SAME property, spelled without `_id`.
+        ("    pub reality: Uuid,", 1),
+        ("fn f(reality: Uuid) {}", 1),
+        ("    reality: Option<uuid::Uuid>,", 1),
         # Must NOT match — these are what the loose count wrongly swept in.
         ('    "reality_id" => v,', 0),
         ("    reality_id: RealityId,", 0),
+        ("    reality: RealityId,", 0),
         ("    SELECT reality_id FROM t", 0),
         ("    reality_id: i64,", 0),
+        # A struct LITERAL is not a type annotation. Ten of these were being
+        # counted as adoption sites before `3E`.
+        ("            reality_id: Uuid::from_u128(0x42),", 0),
+        ("            reality: Uuid::new_v4(),", 0),
+        # ...and a word merely ENDING in `reality` is a different field.
+        ("    unreality: Uuid,", 0),
     ]
     for line, want in hits:
         got = len(SITE.findall(line))
@@ -278,10 +454,11 @@ def self_test() -> int:
         if "sites" not in data:
             fails.append("baseline has no `sites` key")
         for k, v in data.get("sites", {}).items():
-            if not isinstance(v, dict) or set(v) != {"adoptable", "exempt"}:
+            if not isinstance(v, dict) or set(v) != {"adoptable", "exempt", "boundary"}:
                 fails.append(
                     f"baseline row {k!r} = {v!r}; each row is "
-                    f"{{'adoptable': int, 'exempt': int}} since the 2026-08-09 split")
+                    f"{{'adoptable': int, 'exempt': int, 'boundary': int}} since `3E` added "
+                    f"the input-boundary category")
                 continue
             for kind, n in v.items():
                 if not isinstance(n, int) or n < 0:
@@ -303,9 +480,16 @@ def self_test() -> int:
 
     # THE EXEMPTION ARMS, on synthetic input rather than on the tree — so they
     # are proven to fire regardless of what the tree currently contains.
-    saved = dict(STRUCTURALLY_EXEMPT)
+    # BOTH tables are isolated. The first version of this block cleared only
+    # `STRUCTURALLY_EXEMPT`, and the moment a second table existed its two real
+    # entries were phantoms against the synthetic `used` set — so the
+    # false-positive arm reded and said the hygiene check was broken when the
+    # FIXTURE was. A self-test that does not control all of its inputs is
+    # measuring the tree it happens to be run in.
+    saved_x, saved_b = dict(STRUCTURALLY_EXEMPT), dict(INPUT_BOUNDARY)
     try:
         STRUCTURALLY_EXEMPT.clear()
+        INPUT_BOUNDARY.clear()
         STRUCTURALLY_EXEMPT["a/b"] = "x" * MIN_REASON
         if check_exemption_hygiene({"a/b"}):
             fails.append("hygiene reded on a well-formed, matched exemption (false positive)")
@@ -314,15 +498,95 @@ def self_test() -> int:
         STRUCTURALLY_EXEMPT["a/b"] = "too short"
         if not check_exemption_hygiene({"a/b"}):
             fails.append("REASON arm did NOT red on a short reason")
+
+        # ...and the same two arms for the NEW table, so it is not covered only
+        # by resemblance to the old one.
+        STRUCTURALLY_EXEMPT.clear()
+        INPUT_BOUNDARY["c/d"] = "y" * MIN_REASON
+        if check_exemption_hygiene({"c/d"}):
+            fails.append("hygiene reded on a well-formed INPUT BOUNDARY (false positive)")
+        if not check_exemption_hygiene(set()):
+            fails.append("PHANTOM arm did NOT red on an INPUT BOUNDARY matching nothing")
+        INPUT_BOUNDARY["c/d"] = "short"
+        if not check_exemption_hygiene({"c/d"}):
+            fails.append("REASON arm did NOT red on a short INPUT BOUNDARY reason")
+
+        # And the overlap arm: one prefix cannot be both categories.
+        INPUT_BOUNDARY.clear()
+        STRUCTURALLY_EXEMPT["e/f"] = "z" * MIN_REASON
+        INPUT_BOUNDARY["e/f"] = "z" * MIN_REASON
+        if not any("AMBIGUOUS" in p for p in check_exemption_hygiene({"e/f"})):
+            fails.append("AMBIGUOUS arm did NOT red on a prefix in both tables")
     finally:
         STRUCTURALLY_EXEMPT.clear()
-        STRUCTURALLY_EXEMPT.update(saved)
+        STRUCTURALLY_EXEMPT.update(saved_x)
+        INPUT_BOUNDARY.clear()
+        INPUT_BOUNDARY.update(saved_b)
 
     # And the classifier itself, which is the new load-bearing decision.
     if exemption_for("services/world-service/src/provisioner.rs") is None:
         fails.append("provisioner.rs classified ADOPTABLE; it creates the reality")
     if exemption_for("services/world-service/src/embedding_queue/mod.rs") is not None:
         fails.append("embedding_queue classified exempt; it runs against ACTIVE realities")
+
+    # THE INPUT-BOUNDARY PROPERTY, on synthetic source, in BOTH directions.
+    #
+    # The pair differs by one line — whether the body binds — and that is the
+    # whole claim. If both answered the same, the detector would be reading
+    # something other than what it says it reads.
+    binds = (
+        "pub async fn bind_reality(pool: &Pool, reality: Uuid) -> Result<dp::RealityId, E> {\n"
+        "    let plane = MetaControlPlane::new(reader, store);\n"
+        "    plane.go()\n"
+        "}\n"
+    )
+    does_not_bind = (
+        "pub async fn append_turn(pool: &Pool, reality: Uuid) -> Result<(), E> {\n"
+        "    sqlx::query(\"INSERT ...\").execute(pool).await\n"
+        "}\n"
+    )
+    m = SITE.search(binds)
+    if not (m and is_bind_input(binds, m.start())):
+        fails.append(
+            "a `reality: Uuid` parameter of a function that BINDS was not detected as an "
+            "input boundary — the property detector is not reading the body")
+    m = SITE.search(does_not_bind)
+    if not m or is_bind_input(does_not_bind, m.start()):
+        fails.append(
+            "a `reality: Uuid` parameter of a function that does NOT bind was called an "
+            "input boundary — the detector excuses everything, which is worse than a list")
+    # A site in no function at all (a struct field) must not be property-excused;
+    # that is precisely why `spine_args` needs a curated row.
+    bare_struct = "pub struct Args {\n    pub reality: Uuid,\n}\n"
+    m = SITE.search(bare_struct)
+    if m and is_bind_input(bare_struct, m.start()):
+        fails.append("a bare struct field was treated as a bind parameter")
+
+    # ...and the SAME struct placed AFTER a binding function, which is the case
+    # the fixture above cannot reach: with nothing before it, `rfind("fn ")`
+    # returns -1 and the containment logic is never exercised. `NV-1` — the
+    # subject could not vary in the direction that fails. This is the shape
+    # `/review-impl` found live in the detector.
+    struct_after_fn = (
+        "pub async fn bind_reality(p: &Pool, reality: Uuid) -> Result<dp::RealityId, E> {\n"
+        "    let plane = MetaControlPlane::new(reader, store);\n"
+        "    plane.go()\n"
+        "}\n"
+        "\n"
+        "pub struct TurnRow {\n"
+        "    pub reality: Uuid,\n"
+        "}\n"
+    )
+    hits = list(SITE.finditer(struct_after_fn))
+    if len(hits) != 2:
+        fails.append(f"the struct-after-fn fixture parsed {len(hits)} site(s), expected 2")
+    else:
+        if not is_bind_input(struct_after_fn, hits[0].start()):
+            fails.append("the binding function's own PARAMETER stopped being a boundary")
+        if is_bind_input(struct_after_fn, hits[1].start()):
+            fails.append(
+                "a struct field AFTER a binding function was excused as a bind input — the "
+                "exemption leaks past the function's closing brace to the next declaration")
 
     for f in fails:
         print(f"FAIL: {f}")
@@ -342,19 +606,28 @@ def check_exemption_hygiene(used: set[str]) -> list[str]:
     same check for the same reason.
     """
     problems: list[str] = []
-    for prefix, reason in sorted(STRUCTURALLY_EXEMPT.items()):
-        if len(reason) < MIN_REASON:
-            problems.append(
-                f"UNREASONED EXEMPTION: `{prefix}` has a {len(reason)}-char reason "
-                f"(minimum {MIN_REASON}). State WHY the reality it addresses cannot "
-                f"accept commands; an exemption nobody has to justify is one nobody "
-                f"reviews.")
-        if prefix not in used:
-            problems.append(
-                f"PHANTOM EXEMPTION: `{prefix}` matches no file with a bare "
-                f"`reality_id: Uuid` site. Either the code moved, or it was migrated "
-                f"and this entry outlived its subject — delete it. A prefix left "
-                f"behind silently exempts whatever is written there next.")
+    both = [("EXEMPTION", STRUCTURALLY_EXEMPT), ("INPUT BOUNDARY", INPUT_BOUNDARY)]
+    for kind, table in both:
+        for prefix, reason in sorted(table.items()):
+            if len(reason) < MIN_REASON:
+                problems.append(
+                    f"UNREASONED {kind}: `{prefix}` has a {len(reason)}-char reason "
+                    f"(minimum {MIN_REASON}). State WHY the reality it addresses cannot "
+                    f"accept commands; an exemption nobody has to justify is one nobody "
+                    f"reviews.")
+            if prefix not in used:
+                problems.append(
+                    f"PHANTOM {kind}: `{prefix}` matches no file with a bare "
+                    f"`reality: Uuid` site of that category. Either the code moved, or it "
+                    f"was migrated and this entry outlived its subject — delete it. A "
+                    f"prefix left behind silently exempts whatever is written there next.")
+    # An overlap would make the classification order-dependent, and the order is
+    # an implementation detail nobody reading the two tables can see.
+    for prefix in sorted(set(STRUCTURALLY_EXEMPT) & set(INPUT_BOUNDARY)):
+        problems.append(
+            f"AMBIGUOUS: `{prefix}` is in BOTH tables. A site is structurally unable to "
+            f"bind, or it is the raw input to a bind — not both, and which one the gate "
+            f"picks would depend on dict order.")
     return problems
 
 
@@ -374,7 +647,7 @@ def main() -> int:
         for rel in IN_SCOPE:
             crate = REPO / rel / "src"
             if crate.is_dir():
-                _, _, where, _ = count_sites(crate)
+                _, where, _ = count_sites(crate)
                 for w in where:
                     print(w)
 
@@ -385,7 +658,11 @@ def main() -> int:
                        indent=2) + "\n",
             encoding="utf-8",
         )
-        tot = sum(v["adoptable"] + v["exempt"] for v in current.values())
+        # SUM THE ROW, not a hand-listed pair. The first version added
+        # `adoptable + exempt` and was silently 4 short the day a third category
+        # existed — the same "enumerated list goes stale" shape this gate's own
+        # docstring is about, in its summary line.
+        tot = sum(sum(v.values()) for v in current.values())
         print(f"[reality-id] baseline written: {tot} site(s)")
         return 0
 
@@ -404,7 +681,11 @@ def main() -> int:
                 f"reality through `dp::RealityId`.")
             continue
         # ADOPTABLE — the ratchet that is supposed to reach zero.
-        for kind, verb in (("adoptable", "ADOPTABLE"), ("exempt", "EXEMPT")):
+        for kind, verb in (
+            ("adoptable", "ADOPTABLE"),
+            ("exempt", "EXEMPT"),
+            ("boundary", "INPUT BOUNDARY"),
+        ):
             now, was = counts[kind], prev.get(kind)
             if was is None:
                 fails.append(f"BASELINE SHAPE: `{rel}` has no `{kind}` row; rewrite the baseline")
@@ -430,13 +711,16 @@ def main() -> int:
 
     adoptable = sum(v["adoptable"] for v in current.values())
     exempt = sum(v["exempt"] for v in current.values())
-    print(f"[reality-id] {adoptable} ADOPTABLE + {exempt} structurally exempt "
-          f"= {adoptable + exempt} bare `reality_id: Uuid` site(s) "
-          f"across {len(current)} in-scope crate(s)")
+    boundary = sum(v["boundary"] for v in current.values())
+    print(f"[reality-id] {adoptable} ADOPTABLE + {exempt} structurally exempt + "
+          f"{boundary} input-boundary = {adoptable + exempt + boundary} bare "
+          f"`reality[_id]: Uuid` site(s) across {len(current)} in-scope crate(s)")
     for rel, counts in sorted(current.items()):
-        print(f"    {rel}: {counts['adoptable']} adoptable, {counts['exempt']} exempt")
+        print(f"    {rel}: {counts['adoptable']} adoptable, {counts['exempt']} exempt, "
+              f"{counts['boundary']} boundary")
     if adoptable == 0:
-        print("    (adoptable is ZERO — every remaining site is on a path that cannot bind)")
+        print("    (adoptable is ZERO — every remaining site is on a path that cannot bind, "
+              "or is the raw input a bind consumes)")
 
     if fails:
         print("\nFAIL:")

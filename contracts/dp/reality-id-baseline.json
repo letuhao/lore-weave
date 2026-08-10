@@ -1,12 +1,14 @@
 {
   "sites": {
     "services/commit-service": {
-      "adoptable": 0,
+      "adoptable": 1,
+      "boundary": 2,
       "exempt": 0
     },
     "services/world-service": {
       "adoptable": 0,
-      "exempt": 63
+      "boundary": 2,
+      "exempt": 52
     }
   }
 }

@@ -28,6 +28,10 @@
 -- @legal_basis: contract
 
 ALTER TABLE reality_registry
+    -- `DROP … IF EXISTS` first: Postgres has no `ADD CONSTRAINT IF NOT EXISTS`,
+    -- and a retried migration must not fail on its second attempt. Seven
+    -- sibling meta migrations already use this idiom.
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_not_nil_uuid,
     ADD CONSTRAINT reality_registry_owner_not_nil_uuid
         CHECK (owner_user_id IS NULL
                OR owner_user_id <> '00000000-0000-0000-0000-000000000000'::uuid);

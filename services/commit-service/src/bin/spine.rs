@@ -184,8 +184,11 @@ async fn main() -> anyhow::Result<()> {
         // FIRST iteration is what closes the boot race — the consumer group was
         // created at `$`, so an activation between the boot read and the group's
         // creation reaches this node only through the table.
+        // `3E`: the VERIFIED id from the session this loop holds — not
+        // `args.reality`, the raw CLI text the bind consumed. Read off
+        // `session` so the `plane` that refreshes it stays alive (`BDR-54`).
         epoch_commit::drain_and_reconcile(
-            &mut signals, &boot, args.reality, args.channel, &mut isle, &writer,
+            &mut signals, &boot, session.reality_id(), args.channel, &mut isle, &writer,
             &mut aggregate_version, turn_number,
         )
         .await?;

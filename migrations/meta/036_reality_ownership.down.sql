@@ -20,10 +20,38 @@
 -- never be noticed. They are now correct AND ordered before the column drop, so
 -- a rename in the up.sql will actually surface here.
 
+-- ⚠ AMENDED 2026-08-10 (`META-DOWN-UNCOVERED`). The early return below is not
+-- defensive padding — without it this file could not be run twice.
+--
+-- Measured, on a throwaway meta database with all 39 up-migrations applied: the
+-- first run succeeded, and the second died with
+-- `ERROR: column "owner_kind" does not exist` from the guard's own SELECT,
+-- because by then the column it protects has been dropped. Every DDL statement
+-- below was already made `IF EXISTS` in the same pass, and it made no
+-- difference: **the file still failed before reaching any of them.**
+--
+-- That is worth stating plainly, because the text linter went GREEN on this
+-- file. `migration-idempotency-validator` blanks dollar-quoted bodies on
+-- purpose — a PL/pgSQL body is not DDL, and reading it would be guessing — so
+-- the one statement that broke the retry is in the one region the lint cannot
+-- see. The lint is a proxy for retry-safety; running it twice is the property.
 DO $guard$
 DECLARE
     owned_count BIGINT;
 BEGIN
+    -- Already rolled back: the column this guard protects is gone, so there is
+    -- no ownership left to erase and nothing to refuse. Returning early rather
+    -- than erroring is what makes a re-run a no-op instead of a failure.
+    IF NOT EXISTS (
+        SELECT 1
+          FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name   = 'reality_registry'
+           AND column_name  = 'owner_kind'
+    ) THEN
+        RETURN;
+    END IF;
+
     SELECT count(*) INTO owned_count
       FROM reality_registry
      WHERE owner_kind = 'user';
@@ -44,16 +72,16 @@ $guard$;
 -- Constraints first, so a name that no longer matches the up.sql fails loudly
 -- here rather than being silently swept away by the column drop's cascade.
 ALTER TABLE reality_registry
-    DROP CONSTRAINT reality_registry_owner_user_set;
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_user_set;
 
 ALTER TABLE reality_registry
-    DROP CONSTRAINT reality_registry_owner_system_null;
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_system_null;
 
 ALTER TABLE reality_registry
-    DROP CONSTRAINT reality_registry_owner_kind_enum;
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_kind_enum;
 
-DROP INDEX idx_reality_registry_owner;
+DROP INDEX IF EXISTS idx_reality_registry_owner;
 
 ALTER TABLE reality_registry
-    DROP COLUMN owner_user_id,
-    DROP COLUMN owner_kind;
+    DROP COLUMN IF EXISTS owner_user_id,
+    DROP COLUMN IF EXISTS owner_kind;

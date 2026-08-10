@@ -5,4 +5,4 @@
 -- layers become the only thing refusing it.
 
 ALTER TABLE reality_registry
-    DROP CONSTRAINT reality_registry_owner_not_nil_uuid;
+    DROP CONSTRAINT IF EXISTS reality_registry_owner_not_nil_uuid;

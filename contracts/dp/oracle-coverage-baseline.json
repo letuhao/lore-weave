@@ -1,0 +1,17 @@
+{
+  "covered": [
+    "02_invariants.md",
+    "03_tier_taxonomy.md",
+    "04a_core_types_and_session.md",
+    "04b_read_write.md",
+    "04c_subscribe_and_macros.md",
+    "04d_capability_and_lifecycle.md",
+    "05_control_plane_spec.md",
+    "06_cache_coherency.md",
+    "07_failure_and_recovery.md",
+    "08_scale_and_slos.md",
+    "12_channel_primitives.md",
+    "13_channel_ordering_and_writer.md",
+    "17_channel_lifecycle.md"
+  ]
+}

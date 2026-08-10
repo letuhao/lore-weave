@@ -1,6 +1,84 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the FOUNDATION track: slices 3, 4 and 5 of `crates/dp` (2026-08-09, branch `feat/game-logic`)
+## ▶ GAME BUILD — the run-state's three §0.6e targets, and two rows they uncovered (2026-08-10, branch `feat/game-logic`)
+
+**HEAD:** `1fbf5ad69`+ (UNCOMMITTED — see below) · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-67` are this session).
+
+> **▶ DO NEXT.** §0.6e's three mandated targets are CLOSED, and so are the two §4 rows they
+> uncovered. **No remaining §4 row has a fired trigger**, so the next work is a *new* target, not a
+> leftover one. The honest candidates, in the run-state's own words:
+>
+> * **`3E-EPOCH-COMMIT-ADOPTION` has 1 site left** — `commit-service/src/bin/ceilings.rs`'s
+>   benchmark envelope builder. Left ADOPTABLE rather than exempted on purpose: under-exempting
+>   leaves something to read. It earns an adoption or a *reasoned* exemption next time that harness
+>   is touched — not a third category invented to make the number zero.
+> * **`G4`/`G6`–`G13`** (slice 1) are still open; `G4`'s stated blocker was discharged by slice 2.
+> * **`D-META-ERASURE-COVERAGE`'s two undecided tables** (`session_cost_summary`,
+>   `service_to_service_audit`) are a **GDPR product decision for the PO**, deliberately not in an
+>   autonomous run.
+>
+> ### What shipped
+>
+> | target | result |
+> |---|---|
+> | `G3-ORACLE-COVERAGE` | a monotonic coverage ratchet (`scripts/dp-oracle-coverage-gate.py`), then **9 → 13 of 26** LOCKED `06_data_plane/` docs read by a live, asserting test. Four new oracle files; `scripts/dp-oracle-bite-gate.py` bites all 19 legs |
+> | `META-DOWN-UNCOVERED` | the validator walks **both** migration trees (116 files) and is statement-aware, not line-anchored. **8 real violations found and fixed** in `036`/`037`; both downs run and re-run clean against a throwaway meta DB |
+> | `3E-NAMING-INCONSISTENCY` | the adoption gate learned the **input-boundary** category by property. It had reported `commit-service` as fully adopted while four sites sat on the spine's live write path |
+> | `3E-EPOCH-COMMIT-ADOPTION` | **5 → 1.** All four `epoch_commit` signatures take `&dp::RealityId`, threaded from the `SessionContext` `spine.rs` already holds |
+> | `W7-SHELL-UNCOVERED` | **CLOSED, all four subjects.** `scripts/db-ensure-bite-gate.py` proves the SQL-injection fix by *removing* it: bound → refused; unbound → **the same payload granted SUPERUSER** |
+>
+> ### Three findings worth carrying
+>
+> 1. **A clean number from a name-matching check is the least trustworthy number there is.**
+>    `commit-service` read `0 adoptable, 0 exempt` — indistinguishable from finished — because its
+>    field is spelled `reality`, not `reality_id` (`BDR-63`).
+> 2. **A text lint can be green on a file whose retry still fails.** `036`'s breaking statement was
+>    inside a `DO $$…$$` body the validator deliberately cannot read (`BDR-61`).
+> 3. **A checkpoint that produces a presentation does not also produce a halt** — §0.6b calls
+>    POST-REVIEW *"a presentation, not a question"*, and I stopped on it anyway (`BDR-64`).
+>
+<!-- doc-language-gate: ok -- this block's SUBJECT is which Vietnamese terms are corpus content; it cannot name them without containing them, and every term below is a novel character/terminology, an i18n string, or CJK normalisation test data -->
+> ### ✅ `D-HANDOFF-VIETNAMESE-ARCHIVE` — FIXED, and my own sizing of it was wrong twice
+>
+> **Done: 19 author/PO quote blocks translated to their MEANING in English, 12 quoted
+> model-output evidence spans glossed, 7 prose uses of `chương 1` → `chapter 1`.** Lines carrying
+> Vietnamese beyond permitted proper nouns: **193 → 143**; any diacritic at all: 226 → 176.
+>
+> **Both of my earlier numbers were wrong, in the same way.** I sized this at *"162 lines across
+> ~120 regions"* and deferred it as large/structural. That counted **diacritics**, not
+> **violations** — which is exactly the "measure the property, not the pattern" mistake I had just
+> finished fixing in `reality-id-adoption-gate`, made again one file over. The LOCKED rule permits
+> non-English *where the text IS the subject matter*, and almost all of it is: character names and
+> cultivation terminology from the novel under test (`Mị Đế` ×27, `Tô Thanh Dao`, `Lâm Uyên`,
+> `Chân Linh`, `Trận pháp`…), scene and chapter titles, shipped i18n strings (`Hoàn tác`,
+> `Chưa có cảnh`), CJK/full-width normalisation fixtures (`沈硯`/`沈砚`, `Ｕｙển`/`Uyển`), and the
+> Vietnamese pronoun/reduplication data (`mẫu thân ngươi`, `chằm chằm`) that is *the literal
+> subject* of the linguistic-QA work. **The real defect was ~19 blocks of pasted author speech.**
+> Stripping the rest would have destroyed meaning, not enforced a rule.
+>
+> **And the mechanism I proposed building already exists.** I wrote *"the obvious mechanism is a
+> diacritic ratchet over `docs/**`"* — `scripts/doc-language-gate.py` is that gate, wired
+> pre-commit, and its deliberate policy is to judge **added lines only** with a whole-repo baseline
+> of **995 files**, precisely so legacy content does not switch the gate off. Proposing to build a
+> mechanism that is already wired is the failure `docs/standards/README.md` exists to prevent, and
+> I hit it while holding the standards index open.
+>
+> *Residual:* the 143 are the permitted categories above. The repo-wide 995-file baseline is the
+> gate's own tracked business, not this row's.
+<!-- doc-language-gate: end -->
+>
+> ### ⚠ State of the tree
+>
+> **Everything above is UNCOMMITTED.** Full sweep green (`gate-wiring-gate --run-all`, exit 0,
+> 59 GREEN + 1 pre-existing tracked red) before the last two rows landed; re-run it before commit.
+> New files: `scripts/dp-oracle-coverage-gate.py`, `scripts/dp-oracle-bite-gate.py`,
+> `scripts/db-ensure-bite-gate.py`, `scripts/migration-idempotency-validator.py`,
+> `contracts/dp/oracle-coverage-baseline.json`, three `spec_oracle_*.rs`, one Go test.
+
+<details>
+<summary>Previous session (2026-08-09) — slices 3, 4 and 5 of <code>crates/dp</code></summary>
+
+## GAME BUILD — the FOUNDATION track: slices 3, 4 and 5 of `crates/dp` (2026-08-09, branch `feat/game-logic`)
 
 **HEAD:** `50d9cf7f9`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; its §0 is the how-to-work rules, §0.6c is the sealed forks, and §1 is the measured state.
 
@@ -434,6 +512,8 @@ LOCKED documents' line endings on every run, invisibly to `git diff`, because `.
 normalises on read. Found by a sha256 check on its first run.
 
 ---
+
+</details>
 
 ## GAME BUILD — `M1` and `M2` are BUILT (2026-08-06, HEAD was `1a3497418`)
 
@@ -921,14 +1001,15 @@ COMMIT), the AUDIT block, the standing quality bars, the sealed decisions, and t
 
 ### ⛔ KG / extraction is PARKED — do not start it
 
-The author's call, explicit: *"tôi không khuyến khích lao đầu vào KG ngay bây giờ, bao gồm
-2026-08-01-entity-identity-under-qualitative-extraction.md … cách làm đúng bây giờ nên là làm
-phần 'Budget seam rot' trước và rồi resume slice 7 và các slice còn lại."*
+The author's call, explicit: **do not dive into KG now** — including
+`2026-08-01-entity-identity-under-qualitative-extraction.md`. The right order is the
+*Budget seam rot* work first, then resume slice 7 and the slices after it.
 
 The entity-identity spec is a **diagnosis to return to**, not the next work item.
 
-**And the root goes deeper than that spec says.** Author, 2026-08-02: *"tính năng alive chết là
-đúng rồi, ngay từ đầu chúng ta đã sai vì không có lifecycle thực sự cho entity."* So the
+**And the root goes deeper than that spec says.** Author, 2026-08-02: **the `alive` feature being dead
+is the right outcome — we were wrong from the start, because an entity never had a real
+lifecycle.** So the
 FK-unreachability the spec measured is a **symptom**. `alive`/gone was built on an entity model
 that was never designed — there is no lifecycle. **Do not try to fix this by repairing the join.**
 It belongs to a larger refactor that **already has its own document**, and the author will name the
@@ -1129,8 +1210,8 @@ local). Smoke debris to purge: book `019fbd8f-008c-7cef-bf81-1d53a808361d`.
 
 ## 🔴 …AND THE GUARD STILL CANNOT READ IT — the join key is unreachable (2026-08-01)
 
-The author asked the only question that mattered: *"tính năng quản lý status nhân vật giờ đã
-work chưa?"* **No.** The store fills now; the guard cannot address it. I had proven a rung and
+The author asked the only question that mattered: **does character-status management
+actually work yet?** **No.** The store fills now; the guard cannot address it. I had proven a rung and
 celebrated the ladder.
 
 **Measured:** all **21** `:EntityStatus` rows in the graph, across **5** projects, sit on
@@ -1624,8 +1705,8 @@ to score a fiction. (That the directive is ambiguous for CJK at all is a real S2
 
 ## 📖 THE REAL CHAPTERS — four guards a book without extraction actually gets (2026-08-01)
 
-Author: *"đã thực sự tạo ra được chapter thực sự nào để phân tích chưa? chứ đếm từ không làm
-gì"* — and they were right. Every measurement to that point was ONE scene on an EMPTY book: no
+Author: **has this actually produced a real chapter to analyse yet? counting words
+achieves nothing** — and they were right. Every measurement to that point was ONE scene on an EMPTY book: no
 canon, no cast, no prior prose, one synopsis line. So: **three consecutive chapters, 19,494
 words, 9 scenes**, authored with full intent into a book with 10k words of existing prose and a
 31-scene plan. Reading them found what counting could not.
@@ -1647,8 +1728,8 @@ exact pair that shipped, plus a hand-consistent control:
     CONTROL (consistent)   contradictions=0
 
 Valid JSON, no parse error — **gemma-26b simply does not make that judgement**. Identical
-answers on a seeded defect and its control is the InkOS F1 shape (*"QA dịch thuật về mặt cấu
-trúc không thể fail"*), and I had just built a fifth instance of it.
+answers on a seeded defect and its control is the InkOS F1 shape (**a translation-QA that
+structurally cannot fail**), and I had just built a fifth instance of it.
 
 Rewritten as **EXTRACT-then-compare-in-code**: the model fills slots (reliable — `A → {who:"He",
 pronoun:"he", role:"the anchor"}`), the comparison is deterministic and unit-tested. A linking
@@ -1724,8 +1805,9 @@ asking for 2500 did, and a third of what 1200 did.
 **Reading the actual prose explains the inversion, and corrected my first explanation for it**
 ("the model summarises the span" — wrong). It **negotiates**. Both 4000 runs opened with:
 
-> *"Do lỗi kỹ thuật, tôi không thể tạo ra một văn bản dài 4000 chữ trong một phản hồi duy nhất
-> do giới hạn về độ dài đầu ra của hệ thống. Tuy nhiên, tôi sẽ viết một phân đoạn…"*
+> *"Due to a technical limitation I cannot produce a 4000-word text in a single response,
+> because of the system's output-length limit. However, I will write one segment…"* — the model's
+> own words, translated; it announced the shortfall rather than hitting one.
 > — "I cannot produce a 4000-word text in a single response… However, I will write one segment."
 
 …then a `***` rule, then an opening scene. All three 2500 single-call runs opened with a shorter
@@ -2163,7 +2245,7 @@ and inventing a length floor I cannot validate trades a blind spot for a flake.
 ### 🔴 The real find: three specs were silently RED, and the cause was the UI language
 `studio-motif-graph.spec.ts` never reached its canvas assertions — it died at
 `openPanel('motif-graph', 'motif graph')`. The screenshot says it plainly: the palette is
-open, the query is `motif graph`, and the answer is **"Không có lệnh phù hợp."**
+open, the query is `motif graph`, and the answer is **"no matching command"** (`Không có lệnh phù hợp.` — the shipped Vietnamese string) <!-- doc-language-gate: ok -- the product's own i18n string, quoted as the observed output and glossed immediately before it -->
 
 `filterCommands` matches `c.label` — the **localized** label — and nothing else (not the id,
 not the description). The test account's UI language is **Vietnamese**, so every spec that
@@ -2444,9 +2526,9 @@ for an author:
 
 | turn | what it SAID | `tool_calls` | database |
 |---|---|---|---|
-| 26 | "đã tạo Chương 1 + 5 cảnh" | 4 calls, **all reads** | 0 nodes, 0 chapters |
-| 28 | "đã tạo Chương 1, ID `019fb1c3…`" | 1 write, approved | ✅ 1 node — **true** |
-| 32 | "5 cảnh đang ở trạng thái Draft, **bạn mở tab Outline để kiểm tra**" | 6 calls, all reads | still 1 node |
+| 26 | *"created Chapter 1 + 5 scenes"* | 4 calls, **all reads** | 0 nodes, 0 chapters |
+| 28 | *"created Chapter 1, ID `019fb1c3…`"* | 1 write, approved | ✅ 1 node — **true** |
+| 32 | *"5 scenes are in Draft state, **open the Outline tab to check**"* | 6 calls, all reads | still 1 node |
 
 Being told to go and look at work that was never done is a worse failure than a loop.
 
@@ -2477,7 +2559,7 @@ empty in the DB after two successful `tool_load`s.
 
 **Verified:** 1,958 tests · deployed image sha256 == host · **live**: the guard fired on the real
 book, caught `composition_outline_node_edit` named-but-never-called, nudged once, then correctly
-declined a second. The model's next answer was **honest**: *"Tôi không thể tạo cảnh vì…"* instead
+declined a second. The model's next answer was **honest** — *"I cannot create the scene because…"* — instead
 of a fabricated success.
 
 ### ▶ Next: three ids for one book (`D-COMPOSITION-ID-TRAP`)
@@ -2598,9 +2680,10 @@ The sequential bleed is gone (no scene now marches through its neighbours' beats
 replaced by something subtler and worse: **every scene closes on scene 5's image** — the Thanh
 Tâm Ấn seed and the watching figure who is *counting*:
 
-> 1 · *"một dao động cực nhỏ… một bóng hình vô hình đang đứng từ xa, lặng lẽ **đếm**"*
-> 2 · *"…lặng lẽ **đếm** từng nhịp thở"* · 3 · *"Hắn đang **đếm**."*
-> 4 · *"một ánh nhìn vô hình đang dõi theo, bắt đầu **đếm**"*
+> 1 · *"a minute tremor… an unseen figure standing far off, quietly **counting**"*
+> 2 · *"…quietly **counting** each breath"* · 3 · *"He is **counting**."*
+> 4 · *"an invisible gaze watching, beginning to **count**"* — four scene endings, translated,
+> all landing on the same verb
 
 Each scene is drafted in a SEPARATE call carrying the SAME whole-chapter plan, so each one
 reaches for the plan's most striking image as its closer. The system prompt already forbids
@@ -2783,9 +2866,9 @@ from the lens and restoring from memory.
 | **total** | | 2,745 | 2,830 | 2,597 | **3,124** |
 
 Best total, and much the most even spread (507–720, against 387–736). More importantly the
-intent is visibly LANDING: scene 2 closes on *"Hôn ước trên giấy tờ… tất cả đều đã chết"* —
-its authored `outcome` was *"hôn ước còn trên giấy, đã chết trong lòng nàng"*. Scene 5 names
-the *"chữ ký"* the Thanh Tâm Ấn outcome describes. These are not paraphrases of the synopsis;
+intent is visibly LANDING: scene 2 closes on *"a betrothal on paper… all of it already dead"* —
+its authored `outcome` was *"the betrothal survives on paper, dead in her heart"*. Scene 5 names
+the *"signature"* the Thanh Tâm Ấn outcome describes. <!-- doc-language-gate: ok -- Thanh Tam An is a named artifact in the novel under test; corpus content, not authored prose --> These are not paraphrases of the synopsis;
 they are the scene arriving where the author said it should.
 
 **Still short of target**, which supports the author's own next thesis: a weak model cannot
@@ -2842,7 +2925,7 @@ is not.
 
 ### Two residuals from the story_order fix, both still open:
 1. Scene 3 now echoes scene 2's *closing line* almost verbatim
-   (*"…món quà chàng dùng máu của người khác để tặng cho kẻ thù"*). The reinjection block reads
+   (*"…the gift he used another's blood to give his enemy"*). The reinjection block reads
    as prose to CONTINUE from (the system prompt says "CONTINUE the story forward"), while the
    anti-repetition rule is a separate generic sentence — so the model bridges off the injected
    text instead of avoiding it. Feeding prior prose is necessary but not sufficient; it needs
@@ -2852,8 +2935,8 @@ is not.
 
 ### ▶ Next: an agent-made chapter is invisible to the tool that reports book state
 
-The live retry then failed **honestly** and on new ground: *"ID Chương 1 không tồn tại …
-`composition_package_tree` cho thấy `chapter_count: 0`"* — with the node sitting in
+The live retry then failed **honestly** and on new ground: *"the ID for Chapter 1 does not exist …
+`composition_package_tree` shows `chapter_count: 0`"* — with the node sitting in
 `outline_node`, alive, `kind='chapter'`, correct `book_id`.
 
 `structure.py`'s count is `LEFT JOIN outline_node o ON o.structure_node_id = t.node AND o.kind =
@@ -3021,7 +3104,7 @@ fallback.
 chars / 0 reasoning deltas** · worker **2,393 chars**, `reasoning_source=suppress_unclassified` ·
 **with both client hints removed: 3,149 chars.**
 
-**NEXT:** write chương 1 through the FE as a real user — the original goal, now unblocked.
+**NEXT:** write chapter 1 through the FE as a real user — the original goal, now unblocked.
 
 ### Recently cleared
 
@@ -3064,7 +3147,7 @@ their spend. Platform motifs stay free in all 17 locales and are refused server-
 
 ### The three "deferred" rows — all three turned out to be buildable
 
-Parked first, then challenged ("đừng để chúng trôi"). Two of the three were **wrong
+Parked first, then challenged (**"don't let them drift"**). Two of the three were **wrong
 diagnoses**, which is the point of challenging them:
 
 | Was | What it actually was | Now |
@@ -3155,7 +3238,7 @@ move is a suite whose counts lie.
 
 **Evidence:** composition **2,924 pass / 0 fail**, twice.
 
-**Next:** write chương 1 from the dogfood's scene plan (book `019f9f2d`, run `019fadb5`).
+**Next:** write chapter 1 from the dogfood's scene plan (book `019f9f2d`, run `019fadb5`).
 
 
 ## ✅ #6 — THE REVIEW SURVIVES A RELOAD, AND SAYS WHEN IT IS STALE (2026-07-29)
@@ -3206,7 +3289,7 @@ sentence.
   Both measured corpora trace to this project and one I wrote myself. A real planning document from
   someone else is the strongest arm we have never had.
 
-**Next:** write chương 1 from the scene plan the dogfood produced (book `019f9f2d`, run
+**Next:** write chapter 1 from the scene plan the dogfood produced (book `019f9f2d`, run
 `019fadb5`, 3 scenes, tension 65→85, every entity resolved).
 
 
@@ -3259,7 +3342,7 @@ provider-gate green · the grounding block verified on the deployed image.
   dogfood's mechanics came back as `['Bối cảnh', 'Thiết lập linh hồn']`: the story's premise filed as
   a world rule. A 7th kind touches the board, the search meanings, the questions and the apply map.
 
-**Then:** write chương 1 from the scene plan the dogfood produced.
+**Then:** write chapter 1 from the scene plan the dogfood produced.
 
 
 ## 🐕 DOGFOOD RESUMED — the author flow, end to end (2026-07-29)
@@ -3312,7 +3395,7 @@ does not exist where most runs now go.
 `title`/`synopsis` and no chapter title. Assert shapes against the producer — the same rule this
 codebase already carries in `PassArtifactEditor`.
 
-**Next:** write chương 1 from that scene plan, then fix 2 and 5 (both small, both hit a real author in
+**Next:** write chapter 1 from that scene plan, then fix 2 and 5 (both small, both hit a real author in
 the first ten minutes).
 
 
@@ -3368,7 +3451,7 @@ was one deterministic line. Both were caught, both corrected in the commits.
 
 ### NOT done
 
-- **The original goal** — the author dogfood into chương 1. Nothing of it started.
+- **The original goal** — the author dogfood into chapter 1. Nothing of it started.
 - **Review state does not survive a reload** — the packet is component state; re-opening re-searches
   (and re-spends). No persistence, by choice, not yet revisited.
 - **4 of 6 kinds cannot land structurally.** Only `writing_principles` / `open_questions` have string
@@ -3816,7 +3899,7 @@ changed — everything you kept was already in the plan."* That is the **idempot
 honestly** rather than claiming a success. Only console error is the pre-existing
 `/v1/notifications/stream` chunked-encoding one.
 
-**Remaining:** the original session goal — the author dogfood into chương 1, which now has a clean
+**Remaining:** the original session goal — the author dogfood into chapter 1, which now has a clean
 pipeline under it.
 
 ## 🔴→✅ THE PLANNER COULD NOT READ THE AUTHOR'S OWN DOCUMENT (2026-07-28, M)
@@ -3876,8 +3959,8 @@ that apart needs to understand the words.
 
 Full write-up: [`docs/specs/2026-07-28-poc-material-read.md`](../specs/2026-07-28-poc-material-read.md).
 
-Answers the PO's original question — *gemma + a state machine, hiểu và khai thác được không, hay chỉ
-làm theo?* — **it understands**:
+Answers the PO's original question — *gemma + a state machine: does it understand and exploit the
+material, or does it only follow instructions?* — **it understands**:
 
 - **Classification:** regex 0/9 → gemma **8/9**, one call, 5.2 s, $0. `Bối cảnh` → mechanics,
   `Quan hệ` → character_seed. Its own missing-report (`planner_variables`, `writing_principles`,
@@ -3936,14 +4019,14 @@ mutation-tested (both went red on sabotage, restored) · provider-gate + db-safe
 
 ### ⚠️ SCOPE CORRECTION FROM THE PO — M1 is aimed one layer too low
 
-> *planforge đã làm đủ tốt nếu có plan sẵn rồi. cái chúng ta đang build là khiến model giúp human
-> tạo lên nguyên liệu cho chính planforge* — and: *planforge không chỉ consume markdown, nó build
-> lên architecture để compiler khai thác.*
+> *PlanForge already does well enough once a plan exists. What we are building is the model
+> helping a human produce the RAW MATERIAL that PlanForge itself consumes* — and: *PlanForge does
+> not merely consume markdown; it builds the architecture the compiler exploits.*
 
 `outline_node`'s slots are the OUTPUT of PlanForge's `scenes` pass. So M1 is a refine-after-plan
 tool — real and correct, but not the gap. **Verified against code**, the actual boundary is:
 
-| the author must supply (nguyên liệu) | PlanForge BUILDS (architecture) |
+| the author must supply (raw material) | PlanForge BUILDS (architecture) |
 |---|---|
 | `character_seed` · `mechanics` · `planner_variables` · `arc_overview` · `writing_principles` · `open_questions` | `cast_plan`* · `beat_plan`* · `world_plan` · `char_arc_plan` · `scene_plan` · `motif_plan` |
 
@@ -4778,7 +4861,7 @@ So a book whose glossary was built **before chapter 1** drafted from names only.
 **LIVE (Mị Đế, local bge-m3, $0):** project embed model set → backfill `entities_seen: 16`,
 `indexed`/`unchanged` split correct → **16 glossary passages in Neo4j** → the lore lens answers
 a natural-language question whose answer exists ONLY inside an attribute value
-(*"điều gì xảy ra khi dùng linh năng quá mức"* → `Linh năng học`, `raw_score` 0.68–0.81).
+(*"what happens when spirit-energy is over-used"* → `Linh năng học`, `raw_score` 0.68–0.81). <!-- doc-language-gate: ok -- the retrieved entity name is corpus terminology and IS the measurement; the query beside it is already translated -->
 Before: that query returned nothing for this project.
 
 **Tests:** glossary Go `./internal/...` all ok (api 109s) · knowledge **3974** · composition
@@ -4935,7 +5018,7 @@ replaying it against gemma directly.
 call reproduces production exactly). Our own rules scored WORSE than no rules until the
 canon list arrived — Rule 8 ("bias toward omission" for backstory) and Rule 2 ("fold
 duplicates") are only safe when the model knows what is canon. `Luyện khí` sits inside
-*"anh **nhớ lại** buổi Luyện khí đầu tiên"*; the model obeyed Rule 8 correctly.
+*"he **recalled** his first Luyện khí (qi-refining) session"*; the model obeyed Rule 8 correctly. <!-- doc-language-gate: ok -- a cited span from the corpus, translated, with the cultivation term kept and glossed on use -->
 
 **Root cause — `D-EXTRACT-KNOWN-ENTITIES-PINNED-ONLY`.** Two mechanisms that never meet:
 `load_glossary_anchors` feeds Neo4j + a recovery-tier dict, while the prompt's
@@ -7939,8 +8022,8 @@ Ownership, since this is easy to get wrong: **W8/W10/W11 are product *journeys*,
 - **Trigger**: user asked to inspect a real production chat session (`019f4000-43ee-7201-9d45-e2fafc83696d`, a genuine other end-user, NOT the dev test account) reporting a general web-search query. Confirmed: `find_tools` called with blank `args:{}` 7 then 6 times across two turns (gemma-4-26b-a4b-qat), `glossary_web_search` called blank-args twice (validation error `missing properties: ["query"]`) — all bounded only by the pre-existing `max_total_passes=15` safety net, not by anything targeted.
 - **Root cause (ours, fixable)**: `FindToolsAttemptTracker.record()` (`tool_discovery.py`) deliberately never tracks a blank-intent call ("no wording to detect a near-duplicate of") — but a blank-intent call is EXACTLY the shape the known upstream LM Studio blank-args bug produces, so the one loop-prevention mechanism built for this class of bug structurally never engages for its dominant real-world trigger.
 - **Fix**: a NEW per-turn (in-memory, not session-keyed) circuit breaker in `stream_service.py` — `BLANK_TOOL_ARGS_CAP=2`, one SHARED streak counter across both observed shapes: (1) `find_tools` called with no `group` + blank `intent`, short-circuited before `find_tools_result_async` runs; (2) ANY generic backend tool whose args fail the domain service's own `"required: missing properties"` validation, short-circuited before the `mcp_execute_tool` MCP round-trip. Shared (not two independent counters) because the real session mixed both shapes in one turn. First `BLANK_TOOL_ARGS_CAP` blank/invalid attempts still behave exactly as before (a call or two probing the surface is normal); the next one returns a hard "STOP retrying, tell the user" directive instead of the same unhelpful note/error repeated. A genuine non-blank call resets the streak (no false-positive capping of legitimate multi-tool turns). Also: a `TraceAccumulator` span (`trace.add(..., is_error=True)`) at each trip, reusing the EXISTING Context-Budget-Law Inspector plumbing (not a new metrics pipeline) so a capped turn is visible in the Inspector GUI, plus a `logger.warning("D-BLANK-TOOL-ARGS-LOOP: ...")` line, greppable for ops monitoring.
-- **VERIFY — genuinely live, not just unit**: rebuilt the `chat-service` Docker image (host edits don't hot-reload; the container has no source volume mount), sent the EXACT reproducing query ("Giúp tôi tìm kiếm trên internet về tình hình chiến tranh của Mỹ và Iran hiện nay") through the real gateway→chat-service→LM Studio pipeline against the SAME model (gemma-4-26b-a4b-qat, dev test account's own instance, `019ebb72-27a2-72f3-a42d-d2d0e0ded179`) 3 separate times (including once after the rebuild that added the Inspector trace span). Every run: the model called `glossary_web_search` blank-args, 3rd attempt capped exactly as designed (`chat_messages.tool_calls[2].error` = the new directive message), `docker logs` shows the `D-BLANK-TOOL-ARGS-LOOP` warning firing, and the model's final answer to the user was a coherent, honest degrade (told the user tool-calling is down, gave real alternative news sources) instead of looping for 13+ turns. chat-service full suite: 1238/1238 (4 new tests: blank-intent find_tools capping, streak-reset-on-real-call, generic-tool capping, shared-streak-across-both-shapes reproducing the exact real session's tool sequence).
-- **Also resolved, incidentally, while investigating**: user's second hypothesis ("web search chưa bao giờ test, hoàn toàn vô dụng") was only partially right — the buggy session never actually reached provider-registry-service (blank args failed validation before the MCP call), and a DIFFERENT same-day session with well-formed args got REAL SearXNG results (Vietnamese news, real URLs) — so the backend itself works; the gap is that `TestLive_WebSearch_RealProvider` (a real live-smoke test that already exists in provider-registry-service) is opt-in-only, not wired into any continuous/production monitoring, so a SearXNG per-engine degradation (the pasted DuckDuckGo/Startpage CAPTCHA log) would go undetected — not fixed this pass (see Deferred). Also confirmed `lore-enrichment-service` has NO web-search implementation of its own (the user's third hypothesis) — its one `searx`/`tavily`/`ddgs` reference is a NEGATIVE test asserting it must never import one; the ONLY real web-search implementation in the repo is provider-registry-service's Tavily-compatible adapter.
+- **VERIFY — genuinely live, not just unit**: rebuilt the `chat-service` Docker image (host edits don't hot-reload; the container has no source volume mount), sent the EXACT reproducing query (*"help me search the internet about the current state of the war between the US and Iran"* — kept in the user's Vietnamese below because the language is load-bearing for this bug: `"Giúp tôi tìm kiếm trên internet về tình hình chiến tranh của Mỹ và Iran hiện nay"`) through the real gateway→chat-service→LM Studio pipeline against the SAME model (gemma-4-26b-a4b-qat, dev test account's own instance, `019ebb72-27a2-72f3-a42d-d2d0e0ded179`) 3 separate times (including once after the rebuild that added the Inspector trace span). Every run: the model called `glossary_web_search` blank-args, 3rd attempt capped exactly as designed (`chat_messages.tool_calls[2].error` = the new directive message), `docker logs` shows the `D-BLANK-TOOL-ARGS-LOOP` warning firing, and the model's final answer to the user was a coherent, honest degrade (told the user tool-calling is down, gave real alternative news sources) instead of looping for 13+ turns. chat-service full suite: 1238/1238 (4 new tests: blank-intent find_tools capping, streak-reset-on-real-call, generic-tool capping, shared-streak-across-both-shapes reproducing the exact real session's tool sequence).
+- **Also resolved, incidentally, while investigating**: user's second hypothesis (**"web search has never been tested, completely useless"**) was only partially right — the buggy session never actually reached provider-registry-service (blank args failed validation before the MCP call), and a DIFFERENT same-day session with well-formed args got REAL SearXNG results (Vietnamese news, real URLs) — so the backend itself works; the gap is that `TestLive_WebSearch_RealProvider` (a real live-smoke test that already exists in provider-registry-service) is opt-in-only, not wired into any continuous/production monitoring, so a SearXNG per-engine degradation (the pasted DuckDuckGo/Startpage CAPTCHA log) would go undetected — not fixed this pass (see Deferred). Also confirmed `lore-enrichment-service` has NO web-search implementation of its own (the user's third hypothesis) — its one `searx`/`tavily`/`ddgs` reference is a NEGATIVE test asserting it must never import one; the ONLY real web-search implementation in the repo is provider-registry-service's Tavily-compatible adapter.
 - **Deferred**: `D-WEBSEARCH-PROD-MONITORING` (gate #2, large/structural) — no continuous health-check/alerting on the real web-search provider's engine success rate; would need either a scheduled job hitting `TestLive_WebSearch_RealProvider`'s same path or a metrics pipeline (chat-service/provider-registry-service currently have neither Prometheus counters nor a cron runner wired for this) — not built this pass, needs its own small design (which job-runner, what alert threshold).
 
 ---
@@ -8374,7 +8457,7 @@ ontology tools; reuses `proposeNewEntity` per item). `entity_set_genres`/
 `chapter_link`/`evidence` batching stays unconfirmed, deferred until a real caller
 appears. Commit `ae6358071`.
 
-**Same commit — 3 recurring test failures fixed (user: "quá phiền", just fix them):**
+**Same commit — 3 recurring test failures fixed (user: **"too annoying"** — just fix them):**
 - chat-service `_emit_chat_turn`: `_chain_reason`/`_stateful`/`_prev_rid`/
   `_delta_msgs` were only initialized inside the tool-calling branch but read
   unconditionally later — `UnboundLocalError` on every plain-gateway (non-tool)
@@ -8578,7 +8661,7 @@ Stage 0-5 pipeline, discarded after the job response. **The smallest real editab
 whole architecture is the entire Chapter's Tiptap body** — this is a design constraint to respect,
 not a gap to invent around.
 User's direction: build a multi-step auto-bootstrap workflow, but **POC first, done rigorously**
-(their words: "cân poc và làm nghiêm ngặt vì nó có rất nhiều bước, khá là lớn"). Proposed 5-step
+(their words: **weigh a POC and do it rigorously — it has a great many steps and is fairly large**). Proposed 5-step
 workflow in the spec: [A] create real chapter shells from `package.chapters[]` (NEW — zero prior
 art, the foundational unknown) → [B] fix glossary seeding to use the spec's own data (bug fix) →
 [C] wire Stage 0-5 scene/beat plans as per-chapter drafting CONTEXT, not new DB rows → [D] reach
@@ -8631,9 +8714,9 @@ Live-verified rendering (local static server + Playwright screenshots, 3 states 
 sharing — not wired to any real API, review artifact only. **Not yet a written spec or BUILD** —
 next step if picked up: gather any feedback on the mockup, then write the accompanying spec doc
 (`docs/specs/YYYY-MM-DD-planforge-planner-redesign.md`) before implementation.
-**v2 same day — edge-case pass** (user: "chức năng này phải đủ dễ sử dụng, tránh tình huống check
-lỗi, người dùng phải mò và sửa raw plan, họ không làm được đâu" — never let a failure path force
-the writer to touch the raw plan themselves). v1 had 5 gaps that would have done exactly that:
+**v2 same day — edge-case pass** (user: **this feature has to be easy enough to use that a
+failed check never leaves someone poking at the raw plan to repair it — they cannot do that**;
+never let a failure path force the writer to touch the raw plan themselves). v1 had 5 gaps that would have done exactly that:
 "Quick check" (the fragile regex parser) was the DEFAULT mode — swapped default to AI-assisted;
 no state existed for "we couldn't understand your document" (0 arcs/0 characters) — added a
 dedicated low-extraction branch with concrete next steps; "Continue anyway" let you skip past a
@@ -8779,8 +8862,8 @@ name extraction in the breadcrumb (needs NER). Both low-priority.
 
 ---
 
-**`D-PLANFORGE-GUI-AUDIT` — P0 crash FIXED, 4 real UX gaps found + scoped, 2026-07-06** (user: "planner
-GUI thật sự là không thể sử dụng được... đứng ở vai trò người dùng và xem lại UI/UX" — go use it as
+**`D-PLANFORGE-GUI-AUDIT` — P0 crash FIXED, 4 real UX gaps found + scoped, 2026-07-06** (user: **the planner
+GUI is genuinely unusable — stand in the user's shoes and review the UI/UX**; go use it as
 a real user, don't guess from code). Live-drove the Planner panel via Playwright as a real user
 would (login → open book → Planner tab → paste markdown → Propose → Validate → Compile), on an
 EXISTING book with prior runs, not a synthetic fixture.
@@ -8881,7 +8964,7 @@ OLD `full.py`/`config.py` — rebuild the image for M1a to run in live grounding
 ---
 
 **`sg_value_shift_per_scene` ADOPTED as PlanForge's 8th rule, ADVISORY tier, 2026-07-06** (user
-picked "Adopt Story Grid rule vào validator thật" — closing out
+picked **"adopt the Story Grid rule into the real validator"** — closing out
 `docs/specs/2026-07-05-narrative-forge/00_METHODOLOGY.md` §5 decision 3). `run_rules()` now
 returns this rule tagged `"tier": "advisory"`; every pre-existing rule defaults to `tier="hard"`
 (zero changes needed to them). **The real problem this surfaced**: `plan_forge_service.py`'s
@@ -8945,8 +9028,8 @@ considered fix not a same-session regex tweak. 1 new regression test
 untracked-variable value shifts" caveat. Full addendum:
 [`docs/eval/plan-forge-story-grid-poc-2026-07-06.md`](../eval/plan-forge-story-grid-poc-2026-07-06.md)
 (same file, "Addendum" section).
-**`D-PLANFORGE-PA-REALM-FALSE-POSITIVE` FIXED same day** (user: "đi test thật rồi đánh giá để
-fix bug hoặc improve" — go test for real, evaluate, then fix or improve). Built a committed,
+**`D-PLANFORGE-PA-REALM-FALSE-POSITIVE` FIXED same day** (user: **go test for real, then evaluate, then
+fix the bug or improve it**). Built a committed,
 reusable harness (`services/composition-service/scripts/live_validate_planforge_llm.py`) that
 runs the REAL async LLM propose path N times against the real fixture and scores all 8 core
 rules each run. **Round 1 (5 runs) found a SECOND real bug immediately**: the harness crashed on
@@ -8974,8 +9057,8 @@ detail: `docs/eval/plan-forge-story-grid-poc-2026-07-06.md` ("Second addendum" s
 ---
 
 **`D-KG-EXTRACTION-CANON-WIRE` + `D-CANON-CHECK-SDK-UNIFY` SHIPPED 2026-07-06 (both follow-ups
-from the 2026-07-05 POC + 2026-07-06 judge-eval, user: "làm D-KG-EXTRACTION-CANON-WIRE vaf
-D-CANON-CHECK-SDK-UNIFY"; plan [`docs/plans/2026-07-06-canon-check-wire-and-unify.md`](../plans/2026-07-06-canon-check-wire-and-unify.md)).**
+from the 2026-07-05 POC + 2026-07-06 judge-eval, user: **do D-KG-EXTRACTION-CANON-WIRE and
+D-CANON-CHECK-SDK-UNIFY**; plan [`docs/plans/2026-07-06-canon-check-wire-and-unify.md`](../plans/2026-07-06-canon-check-wire-and-unify.md)).**
 **Part A — WIRE.** Researched the write path (`pass2_orchestrator.py::_run_pipeline`, right
 before `write_pass2_extraction`) and REJECTED reusing `kg_triage_items` (structurally similar
 "park for review" but semantically wrong — its own docstring says items are parked
@@ -9497,7 +9580,7 @@ commits mid-way through this one) — re-verify shared spine files (`catalog.ts`
 > DELETE 204, no confirm. **⇒ TRACK A COMPLETE (A1-A4).**
 >
 > **▶ KG SCHEMA EDITOR MODERNIZATION — COMPLETE (M1–M3b), 2026-07-03.** User: the Track-A editor felt
-> like "mấy cái text box thông thường". Spec [`2026-07-03-kg-schema-editor-modernization`](../specs/2026-07-03-kg-schema-editor-modernization.md)
+> like **"just a bunch of ordinary text boxes"**. Spec [`2026-07-03-kg-schema-editor-modernization`](../specs/2026-07-03-kg-schema-editor-modernization.md)
 > (`7f923afe5`), 4 milestones ALL shipped + live-proven: **M1 `172e576fc`** typed KindMultiSelect
 > pickers (source/target from real kinds, no typos) + inline "· used by N" usage badges (one
 > `GET /schema/usage-summary`) + empty-state coaching — live: picker offered real kinds, "character → —"
