@@ -71,6 +71,19 @@
         "NO NEW GUARD: both populations are already covered by the registered guards from iterations 2 (denial -> refused) and 3 (suspension -> resolved). A tool-specific copy would assert the same code a third time"
       ],
       "admitted": false
+    },
+    "composition_conformance_run": {
+      "state": "blocked",
+      "note": "BLOCKED, and this is a finished iteration with an honest outcome, not a skip. INVESTIGATED: all 31 calls are from ONE DAY (2026-07-15) across 4 sessions and every one is an argument-shape failure -- 12 conditional-requirement refusals (arc_id when scope='arc' 6, chapter_id when scope='chapter' 3, model_ref when scope='arc' 3), 23 carrying a half-wrapped {args:{...}, <sibling>} envelope, and 5 sending scope='book' when the enum is exactly ['chapter','arc']. The July sessions also passed the BOOK id as project_id: the real composition project for that book is 019f63e2-7436-..., a different id entirely, so the model never had the project id at all. LIVE FINDING (DQ-6), reproduced verbatim on today's deployed runtime: scope='arc' without arc_id still answers \"arc_id is required when scope='arc'\" while the SCHEMA declares arc_id as anyOf[string,null] default null -- optional. A model that reads the schema and omits it is doing what the schema says and is refused for it. WHAT BLOCKS THE SUCCESS PATH: the tool needs a composition project the caller can EDIT, bound to a book whose chapters carry motif applications, and for arc scope an arc. Three project/chapter pairings were tried live and all returned 'not found or not accessible'.",
+      "evidence": [
+        "TRIED 1: the knowledge project from iteration 2 (019fec6c) with a throwaway chapter -> not found or not accessible",
+        "TRIED 2: a real composition_work pair (project 019fbca8-ba2c / book 019fbca8-b9f8, an eval-throwaway owned by the test user with 1 active chapter) -> not found or not accessible",
+        "TRIED 3: the July book's REAL project id (019f63e2-7436) -> the book 019f63e2-70ae no longer exists and has no chapters, so its traffic can never be replayed against it",
+        "MEASURED, not assumed: arc_conformance_state has 0 rows and there is no arc entity table with content -- NO ARC EXISTS in this environment, so scope='arc' cannot be satisfied here at all without authoring one",
+        "WHAT WOULD UNBLOCK IT: a composition project with an EDIT grant on a book whose chapters have motif applications (motif_application has 43 rows globally, so the data shape exists somewhere), plus one authored arc for the arc scope. That is content to be built, not a call to be fixed -- which is why this is blocked rather than failed",
+        "NOT BUILT, recorded as DQ-6: the conditional-requirement family is 12 calls in ONE tool across 3 sessions on ONE day. Section 7 -- a member with no subject is not written -- is the same rule that withdrew a spec row in CP-5"
+      ],
+      "admitted": false
     }
   }
 }

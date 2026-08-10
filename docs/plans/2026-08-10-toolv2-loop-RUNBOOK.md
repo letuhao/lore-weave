@@ -210,6 +210,30 @@ so the subject may simply be gone.
 arrives is to EXTRACT the resolution block and call it from both sites — the same consolidation
 `_inject_context_ids` already got — not a second copy.
 
+### DQ-6 · A required-when-X argument the schema declares OPTIONAL
+
+*Raised by:* iteration 7 · *Live-reproduced on today's runtime*, verbatim from the corpus:
+
+```
+composition_conformance_run {project_id, scope: "arc"}
+→ "arc_id is required when scope='arc'"
+```
+
+and the schema for `arc_id` is `anyOf [string, null], default null` — i.e. **optional**. Same for
+`chapter_id when scope='chapter'` and `model_ref when scope='arc'`. A model that reads the schema
+and omits them is doing exactly what the schema says, and is then refused. 12 of the tool's 31
+calls are this.
+
+**Why it is recorded and not built:** corpus-wide, the whole
+`X is required when Y='Z'` family is **12 calls in ONE tool across 3 sessions on a single day**.
+§7's rule is the one that withdrew a spec row in CP-5: a member with no subject is not written, and
+a mechanism for one tool's twelve calls is a member without one. It is recorded because the defect
+is real and live, not because it is ready.
+*Would clear it:* the same shape measured on a second tool, or this tool's traffic resuming. The
+natural home is a `preconditions` contract member declaring the conditional as DATA
+(`scope=arc ⇒ arc_id`), checked pre-dispatch like CP-5.8's scope gate — never a reworded message,
+which is what the tool already has and what already failed 12 times.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
