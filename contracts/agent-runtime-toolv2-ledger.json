@@ -370,6 +370,16 @@
         "GROUND TRUTH, read independently of the tool: kg_triage_items for that project is exactly one row, item_type proposed_edge, status pending. The tool's summary matches the table"
       ],
       "admitted": false
+    },
+    "kg_view_read": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Its single call passed a project_id that no longer exists and was correctly answered 'project not found'. On a real project it returned {views: [], count: 0} -- a well-formed empty, since a fresh project has no saved views. Rather than stop at an empty read, a view was created with kg_view_edit and the same call then returned it: count 0 -> 1, with the code, name and timestamps intact.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-07-14, project_id 019f6146-56ca-710d-afe7-5a1f376df3c9, 'project not found' -- the id, not the tool",
+        "LIVE: kg_view_read on throwaway project 019fec6c -> {views: [], count: 0}",
+        "DATA: kg_view_edit op=upsert created view code 'toolv2_probe'; kg_view_read then returned it with count 1 and matching created_at/updated_at. Falsifier: the same call returned count 0 moments earlier, so the read reflects the store rather than a constant"
+      ],
+      "admitted": false
     }
   }
 }
