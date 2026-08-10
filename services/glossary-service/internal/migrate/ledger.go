@@ -177,6 +177,10 @@ var chain = []Step{
 	// inside execGuarded's transaction; see entity_facts_asof_index.go for the measurements
 	// and the operator escape hatch.
 	{"0062_entity_facts_asof_index", UpEntityFactsAsOfIndex},
+	// T31 / design D5 — the physical lifecycle ledger. `deleted_at` alone cannot say when,
+	// by whom, or from what: a delete-then-restore leaves it NULL, identical to an entity
+	// nobody touched. See entity_lifecycle_ledger.go.
+	{"0063_entity_lifecycle_ledger", UpEntityLifecycleLedger},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

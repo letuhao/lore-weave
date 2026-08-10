@@ -48,7 +48,24 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: QC-3 — finish the two owed measurements.**
+**RESUME: T31 — Phase 5 continues.**
+
+**Run state as of 2026-08-11.** DONE since the last compaction: **QC-3a** (rebuild sweeps at
+two memory settings + the drill-path RTO: **17.5 min → 7.3 min** at 100 000 vectors) ·
+**QC-3b** (the `300/200` search defaults return **0.516** at 20 000 rows against **1.000** at
+181; `query_rescore` has a hard ceiling of 1000 — `D-QC3B-NO-REAL-CORPUS-AT-SCALE` recorded) ·
+**QC-4** (live emit-wiring proof, 10/10, both bites fire; found translation-service dropping
+all four lifecycle events, and a glossary container that did not contain T27/T28 at all) ·
+**T30** (the `glossary.*` SSOT gate; the producer-rename bite names six consumer sites across
+four services) · T9 ticked · `D-T17-BACKFILL-CYPHER` and `D-T25B-SOAK` formalised.
+
+⏸ **QC-3's POST-REVIEW checkpoint is NOT signed off** — it still owes `/review-impl` and the
+real-corpus recall comparison. It gates the **vector cutover only**, which `D-T25B-SOAK`
+independently blocks, so Phase 5 proceeds without crossing it.
+
+⚠️ **T30 is `[~]`, not done:** the enforcement half shipped, the registry half is open and
+flagged for the PO (registering the events the `canon.*` way would add another parallel list
+rather than remove the five that exist — see the task entry).
 
 **Run state as of 2026-08-10 22:2x (context compaction point).**
 
@@ -2346,11 +2363,63 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   ticked so it cannot be mistaken for done. This is flagged rather than decided: the sealed
   design says the registry is authoritative, and making it so is a scope call for the PO.
 
-- [ ] **T31** — Physical lifecycle ledger; emit on delete **and restore and purge**; wire
+- [x] **T31** — Physical lifecycle ledger; emit on delete **and restore and purge**; wire
   `archive_entity(reason='glossary_deleted')` — built, correct, honoured at 38 sites, **only test
-  callers** since it was written.
+  callers** since it was written. ✅
   **Test:** per-consumer conformance — trash an entity, assert absent from that consumer's output.
   (depends on T30)
+  ---
+  **Three of the four deliverables were already standing** — recorded rather than re-done:
+  the delete/restore/purge emits are T27's, `archive_entity(reason=…)` is wired and was proven
+  **live** by QC-4 (`KG node archived · anchor severed with a breadcrumb`), and per-consumer
+  conformance is exactly what QC-4's smoke asserts across all four consumers. What was missing
+  is the **ledger**.
+
+  **`entity_lifecycle_ledger`, shipped as chain step `0063`** (a NEW step — editing an applied
+  one breaks every already-migrated database, since `ApplyOnce` records the name and never
+  revisits it). Written in the **same transaction** as the mutation and the outbox row, which
+  is how the architecture diagram draws it (`rect: ONE transaction — the invariant`).
+
+  **Why a ledger and not the columns.** `deleted_at` answers *"is it gone NOW"* and forgets
+  everything else: a delete followed by a restore leaves it `NULL`, **byte-identical to an
+  entity nobody ever touched**. That is asserted directly — the round-trip test checks two
+  ledger rows survive *and* that `deleted_at` is back to `NULL`. D-ENTITY-LIFECYCLE's finding
+  was four services keeping four private notions of "gone"; a column that discards its own
+  history is why they could never be reconciled after the fact.
+
+  **Append-only in the SCHEMA, not by convention.** A trigger refuses `UPDATE` and `DELETE`
+  outright — a ledger you can rewrite is a cache with extra steps, and this one is the audit
+  trail for entity deletion. The test asserts the error *mentions* `append-only`, because
+  otherwise it would pass on any error at all, including a typo'd column name.
+
+  🐞 **The bite found a real hole.** Removing the ledger write turned three tests red as
+  intended — but the fourth stayed green, and that was the finding:
+  **`bulkDeleteEntitiesCore` never went through `lifecycleEntityCore` at all.** It emits
+  per-entity events directly, so it would have written events and **no ledger rows** — the
+  audit trail silently incomplete for precisely the operation that removes the most entities at
+  once. Now writes the ledger too, tagged `reason='bulk_delete'` so a sweep and a single click
+  stay distinguishable, with its own test.
+
+  **Evidence:** 5 ledger tests + the **full Go api suite green (67 s, live Postgres)** on a
+  throwaway DB. *Bite: delete the ledger write → `RecordsDeleteRestoreInOrder`,
+  `WrittenInTheSameTransactionAsTheEvent` and `IsAppendOnly` all red; the curation-axis test
+  stays green, correctly, because the two axes are wired independently.*
+
+  ⚠️ **KNOWN-RED, pre-existing, NOT mine:**
+  `migrate.TestSystemAttrDescriptions_SeedsDescriptionsAndRefreshesHash` fails with
+  *"pre-migration empty descriptions = 3, want 93"*. Verified by stashing every change in this
+  task and re-running on a **fresh** database — it fails identically at HEAD. The rest of the
+  migrate suite passes (`-skip SystemAttrDescriptions` → ok). Reported rather than absorbed:
+  a red that arrives with your commit and is not caused by it is the easiest kind to inherit
+  silently.
+
+  ⚠️ **Half of D5 is deliberately NOT here.** The design also demotes `deleted_at` and `status`
+  to *derived caches* of this ledger. That is a reader migration across the whole service — the
+  same shape as T32's `alive` work, which is the very next task — and doing it in the same step
+  as creating the table would mean changing every reader before a single ledger row existed to
+  read from. The columns stay authoritative; the ledger accumulates alongside them, so the
+  demotion has something to derive FROM when it happens. Stated in the migration file itself,
+  where the next person to touch this will be standing.
 
 - [ ] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
   parameter; migrate the spoiler window onto *"read at reveal position P"* (decision Q8).

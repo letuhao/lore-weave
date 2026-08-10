@@ -169,6 +169,13 @@ func (s *Server) bulkDeleteEntitiesCore(
 
 	actorType, actor := actorFor(actorID)
 	for _, id := range changed {
+		if err := appendLifecycleLedgerTx(
+			ctx, tx, bookID, id, "deleted", "", "", actorType, actor, "bulk_delete",
+		); err != nil {
+			slog.Warn("bulk delete rolled back — ledger append failed",
+				"book_id", bookID.String(), "entity_id", id.String(), "error", err)
+			return 0, err
+		}
 		if err := emitEntityLifecycleTx(
 			ctx, tx, bookID, id, entityDeletedEvent, actorType, actor,
 		); err != nil {
@@ -213,6 +220,18 @@ func mutateEntityLifecycleTx(
 	}
 	if tag.RowsAffected() == 0 {
 		return false, nil
+	}
+	// The LEDGER row, in the same transaction as the mutation and the event (plan T31 / D5).
+	// The architecture diagram draws all three inside one `rect: ONE transaction — the
+	// invariant`, and the reason is the same one T27 applied to the outbox: the failure mode
+	// was never a wrong UPDATE, it was an UPDATE that arrived alone. `deleted_at` answers "is
+	// it gone NOW" and forgets everything else — a delete followed by a restore leaves it
+	// NULL, byte-identical to an entity nobody ever touched.
+	if err := appendLifecycleLedgerTx(ctx, tx, bookID, entityID,
+		lifecycleOpFor(eventType), "", "", actorType, actorID, ""); err != nil {
+		slog.Warn("entity lifecycle mutation rolled back — ledger append failed",
+			"event_type", eventType, "entity_id", entityID.String(), "error", err)
+		return false, err
 	}
 	if err := emitEntityLifecycleTx(ctx, tx, bookID, entityID, eventType, actorType, actorID); err != nil {
 		// WARN before returning: the caller rolls back, so the mutation is undone — but a

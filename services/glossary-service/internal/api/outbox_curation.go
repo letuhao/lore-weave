@@ -95,6 +95,14 @@ func emitEntityStatusChangedTx(
 		ActorID:          actorID,
 		EmittedAt:        time.Now().UTC().Format(time.RFC3339),
 	}
+	// The ledger row goes first, in this same transaction (plan T31 / D5). On THIS axis the
+	// prior value is the whole point: `status` is a liveness predicate, so "went from active
+	// to rejected" and "was created rejected" are different facts that the column alone cannot
+	// tell apart afterwards.
+	if err := appendLifecycleLedgerTx(ctx, tx, bookID, entityID,
+		"status_changed", priorStatus, status, actorType, actorID, ""); err != nil {
+		return err
+	}
 	return insertOutboxEventTx(ctx, func(ctx context.Context, sql string, args ...any) error {
 		_, e := tx.Exec(ctx, sql, args...)
 		return e
