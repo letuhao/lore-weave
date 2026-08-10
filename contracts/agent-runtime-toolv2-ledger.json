@@ -541,6 +541,18 @@
         "CLEANED UP: the standing deny was a real preference on the test account and was deleted after the proof"
       ],
       "admitted": false
+    },
+    "glossary_get_entity": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and it is where CP-5.3 can be seen WORKING IN PRODUCTION -- the check iteration 37 wished someone had run on CP-6.1. 240 calls / 55 sessions / 55 ok (23%). The failures are two known populations: 112 'entity_id must be a UUID' (the model sent a NAME -- CP-5.3's exact subject) and 72 'entity not accessible' (71 of which are iteration 5's book_id == entity_id duplicate). CP-5.3 IS ALIVE, and both of its branches are visible in the corpus. A resolution object on a 2026-08-09 call reads model_sent {entity_id: 'Bela Quist'} -> resolved {entity_id: 019f85d0-cefa-792e-b944-464fa53774ee}, outcome 'resolved', and THAT CALL SUCCEEDED. Another reads outcome 'no_match', refused [entity_id], and carries the candidate list ('Did you mean Lâm Uyên, Tidewatch Tower…'). Two branches, no third, on live traffic. 111 of the 112 name-failures predate 2026-08-09; exactly ONE is after, alongside one resolver refusal.",
+      "evidence": [
+        "PHASE 2, split: 55 ok / 185 failed = 112 name-in-id + 72 duplicate-identifier + 1 resolver refusal",
+        "CP-5.3 OBSERVED SUBSTITUTING: a recorded resolution object with model_sent 'Bela Quist', resolved to a real entity_id, outcome resolved, ok true. 3 resolver dispatches (resolver_for via glossary_search) across 3 sessions, 2026-08-09..10",
+        "CP-5.3 OBSERVED REFUSING: outcome no_match with the candidate list, which is the branch that must never guess",
+        "AND IT RECORDS BOTH VALUES: the resolution keeps model_sent apart from resolved -- exactly the pattern DQ-7 asks the context-id injector to adopt, since that one overwrites silently",
+        "LIVE: glossary_get_entity with a real id -> Mira Vale with 2 attribute values. The recorded duplicate shape (book_id == entity_id) still answers 'entity not accessible' at the service, and iteration 5's gate now refuses it in chat-service before the wire"
+      ],
+      "admitted": false
     }
   }
 }
