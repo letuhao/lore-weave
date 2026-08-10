@@ -366,6 +366,38 @@ second is a product decision, because syncing needs the provider secret.
 
 ## Debt this loop surfaced but did not absorb
 
+### D-8 · A whole checkpoint shipped, closed, and never ran — one missing `COPY` line
+
+*Found by iteration 37, and it is the loop's most consequential result.*
+
+CP-6.1 (closed-vocabulary resolution) was designed, built, unit-tested, falsified, admitted and
+recorded closed. **It had never executed once in production.** `agent-runtime-vocabularies.json`
+was not in the chat-service Dockerfile's per-file `COPY` list, so `/app/contracts/` in the running
+image held three registries and not the fourth. `path.exists()` was False, the loader returned an
+empty registry, and the entire block was skipped in silence — because *an absent registry is
+indistinguishable from a legitimately empty one*, which the Dockerfile's own comment had already
+warned about for CP-5.
+
+The proof it was dead: a forced live turn — an unknown kind on the exact bound parameter — went to
+the wire and failed at the backend with the old message, `call_outcome: failed`, no `refusal_kind`.
+Corpus-wide, `unknown_vocabulary_value` had fired **zero** times since the checkpoint closed.
+
+**And the guard that exists to prevent exactly this did not catch it, because its list was typed by
+hand.** `test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS` carried three literal
+filenames. It now DERIVES them from the runtime's own `*_REGISTRY_FILENAME` constants, plus the
+manifest path, with a floor assertion so the derivation cannot silently collapse to nothing. With
+the `COPY` removed it goes red naming the exact file; before the change it passed.
+
+After the fix, the same turn: `CP-6.1: 1 vocabular(ies), 1 bound parameter(s)`, both source reads
+dispatch, and the call is **refused before the wire** — `refused` / `unknown_vocabulary_value` —
+naming the book's real kinds. Its sibling logs `CP-5.3: 1 ref type(s), 19 bound parameter(s)`, so
+that registry was loading all along.
+
+**The transferable rule:** *a mechanism is not shipped until something in production says it ran.*
+A green suite, a falsified guard and a closed row all held while the feature was inert, and the one
+signal that would have exposed it — a log line saying the registry loaded — was available the whole
+time and nobody read it.
+
 ### D-7 · The recorded `args` are what the MODEL sent, not what was DISPATCHED
 
 *Nearly corrupted iteration 13's reading, and would corrupt any phase 2 that does not know it.*

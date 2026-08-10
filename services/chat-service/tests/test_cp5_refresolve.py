@@ -12,6 +12,7 @@ import pathlib
 
 import pytest
 
+from app.agentruntime import manifest as _manifest
 from app.agentruntime.refresolve import (
     RefContractViolation, Resolver, apply_resolutions, decide, load_registry, looks_like_an_id,
     pending_for, refusal_message, resolve_call,
@@ -298,14 +299,41 @@ class TestTheMechanismIsREACHABLEFromProduction:
 
         This is the gate: a contract the runtime reads must have a `COPY` line, or the mechanism
         has no deployment path.
+
+        🔴 **AND IT FAILED ANYWAY, BECAUSE ITS LIST WAS TYPED.** Measured 2026-08-11: CP-6.1
+        shipped `agent-runtime-vocabularies.json`, nobody added it to the three names below, and
+        the registry was absent from `/app/contracts` in the running image. `path.exists()` was
+        False, the loader returned an empty registry, and the entire closed-vocabulary block was
+        skipped in silence. A forced live turn — an unknown kind on the exact bound parameter —
+        went to the wire and failed at the backend with the old message, and corpus-wide
+        `unknown_vocabulary_value` had fired ZERO times since the checkpoint closed.
+
+        A guard whose denominator is HAND-MAINTAINED protects only what somebody remembered, which
+        is the failure this repository has recorded more than any other. The list is now DERIVED
+        from the runtime's own `*_REGISTRY_FILENAME` constants, so a new registry is covered the
+        moment it exists.
         """
+        import importlib
+        import pkgutil
+
+        import app.agentruntime as _pkg
+
         dockerfile = ((pathlib.Path(__file__).resolve().parents[1] / "Dockerfile")
                       .read_text(encoding="utf-8"))
         contracts = pathlib.Path(__file__).resolve().parents[3] / "contracts"
-        needed = ["agent-runtime-manifest.json",
-                  "agent-runtime-tool-contracts.json",
-                  "agent-runtime-ref-resolvers.json"]
-        for name in needed:
+        # DERIVED, never typed: every module-level `*_REGISTRY_FILENAME` in the runtime package,
+        # plus the manifest's own path constant. Adding a registry adds a name here for free.
+        needed = {_manifest._MANIFEST_REL.name}
+        for mod in pkgutil.iter_modules(_pkg.__path__):
+            m = importlib.import_module(f"app.agentruntime.{mod.name}")
+            needed |= {v for k, v in vars(m).items()
+                       if k.endswith("_REGISTRY_FILENAME") and isinstance(v, str)}
+        assert len(needed) >= 4, (
+            f"only {len(needed)} registry filename(s) were derived ({sorted(needed)}) — the "
+            f"derivation has stopped seeing the runtime's constants, which would make this guard "
+            f"pass by measuring nothing"
+        )
+        for name in sorted(needed):
             assert (contracts / name).exists(), f"{name} is expected by the runtime but absent"
             assert f"contracts/{name}" in dockerfile, (
                 f"{name} is read at runtime and has no COPY line in the Dockerfile — it would be "

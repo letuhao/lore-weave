@@ -55,6 +55,17 @@ COPY contracts/agent-runtime-manifest.json ./contracts/agent-runtime-manifest.js
 # `test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS` is what makes this a gate.
 COPY contracts/agent-runtime-tool-contracts.json ./contracts/agent-runtime-tool-contracts.json
 COPY contracts/agent-runtime-ref-resolvers.json ./contracts/agent-runtime-ref-resolvers.json
+# 🔴 **CP-6.1 SHIPPED WITHOUT THIS LINE AND THEREFORE NEVER RAN.** Measured 2026-08-11: the
+# registry was absent from /app/contracts in the deployed image, `path.exists()` was False, the
+# loader returned an empty registry, and the whole closed-vocabulary block was skipped in silence.
+# A forced live turn — an unknown kind on the exact bound parameter — went to the wire and failed
+# at the backend with the old message; `refusal_kind` was never stamped, and corpus-wide
+# `unknown_vocabulary_value` had fired ZERO times since the checkpoint closed.
+# The guard above (`test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS`) EXISTED and
+# did not catch it, because its file list was TYPED BY HAND. It now DERIVES the list from
+# the runtime's own `*_REGISTRY_FILENAME` constants, so a new registry is covered the
+# moment it exists rather than when somebody remembers.
+COPY contracts/agent-runtime-vocabularies.json ./contracts/agent-runtime-vocabularies.json
 
 ENV PORT=8090
 EXPOSE 8090

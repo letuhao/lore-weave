@@ -399,6 +399,19 @@
         "LIVE: the reply's content[0].text is literally 'ok — see structuredContent for the full result' and structuredContent carries the ontology with 14 kinds. The placeholder shape that once broke the client is exactly what the tool still returns -- the client changed, not the tool"
       ],
       "admitted": true
+    },
+    "glossary_propose_entities": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and it exposed that CP-6.1 HAD NEVER RUN IN PRODUCTION. 294 calls / 173 sessions / 185 ok (62.9%); the failures are dominated by 'unknown kind' -- 88 of them, CP-6.1's exact subject, all before 2026-08-10. Since CP-6.1 deployed there were 5 calls, 5 ok, 0 unknown-kind failures -- a sample far too small to claim the fix works, so I forced the case instead. First attempt: I asked for kind='cultivation_system'; the model READ THE ONTOLOGY FIRST and mapped it to 'power_system' itself, succeeding -- the near-miss substitution CP-6.1 deliberately refuses to make silently, done openly by the model where it is visible in the args. Second attempt with a kind that has no near-miss ('teahouse_franchise'): the call went TO THE WIRE and failed at the backend with the old message, call_outcome=failed, no refusal_kind. Corpus-wide, unknown_vocabulary_value had fired ZERO times ever. ROOT CAUSE: agent-runtime-vocabularies.json was not in the chat-service Dockerfile's per-file COPY list, so it was absent from /app/contracts in the image; the loader treats absent as EMPTY and skipped the whole block in silence. The guard that exists to prevent exactly this had a HAND-TYPED list of three filenames and passed. It now derives them from the runtime's own *_REGISTRY_FILENAME constants.",
+      "evidence": [
+        "PHASE 2, split by outcome: 185 ok / 109 failed; the failure head is 'unknown kind' across many books (character, place, era, cultivation_system, ...). Before 2026-08-10: 289 calls, 88 unknown-kind. Since: 5 calls, 0",
+        "THE MECHANISM WAS DEAD, proven by a forced live turn BEFORE the fix: glossary_propose_entities | failed | refusal_kind '-' | 'no entities were created — unknown kind: teahouse_franchise ...' — the backend's message, reached over the wire",
+        "ROOT CAUSE, read from the running container: /app/contracts/ held manifest, ref-resolvers and tool-contracts and NOT vocabularies. The Dockerfile COPYs by filename and CP-6.1's line was never added",
+        "FIX 1, the instance: the COPY line. FIX 2, the class: test_THE_DOCKERFILE_SHIPS_EVERY_CONTRACT_THE_RUNTIME_READS now DERIVES its file list from every module-level *_REGISTRY_FILENAME in app.agentruntime plus the manifest, with a len>=4 floor so the derivation cannot collapse and pass. Falsifier: removing the COPY reds it naming the exact file; it passed before the change",
+        "LIVE AFTER THE FIX, same turn: 'CP-6.1: 1 vocabular(ies), 1 bound parameter(s)' in the log, glossary_book_ontology_read and glossary_list_system_standards both dispatch, and glossary_propose_entities | refused | unknown_vocabulary_value | \"'teahouse_franchise' is not in this book's vocabulary. This book has: 'character', 'location', 'item', 'event', 'terminology', 'power_system', ...\" -- refused BEFORE the wire, naming the book's real kinds, which is what the 88 calls needed",
+        "SIBLING CHECKED: 'CP-5.3: 1 ref type(s), 19 bound parameter(s)' also logs, so that registry was loading all along. Suite 2862 passed / 3 skipped"
+      ],
+      "admitted": true
     }
   }
 }
