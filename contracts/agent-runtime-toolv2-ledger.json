@@ -274,6 +274,18 @@
         "LIVE: plan_run_pass on run 019fed7d-dab9 (created by iteration 23's proposal) with pass_id=motifs -> the full pass state: per-pass records with blockers ['scenes','cast'], pass_cursor 0, runnable_now ['motifs','cast']"
       ],
       "admitted": false
+    },
+    "settings_model_delete": {
+      "state": "proven",
+      "note": "PROVEN LIVE end to end with no code change. All 3 calls are args:{} on 2026-07-08 -- the SIXTH tool this loop has concluded out of that single blank-argument day, after jobs_get, translation_list_versions, settings_provider_inventory, translation_coverage and translation_job_status. The tool is a class-C propose: given a real user_model_id it mints a confirm card rather than deleting, and the row survives until a human confirms.",
+      "evidence": [
+        "PHASE 2: 3 calls / 1 session / 2026-07-08, all args:{}, one error naming the single missing user_model_id",
+        "LIVE: registered a throwaway model (settings_model_register, context_length 8192 -- the tool said 'context_length is required for ollama/lm_studio' and that message was actionable first try) -> user_model_id 019fed83-d457-77ca-85dc-6ea0fa8b57c9",
+        "LIVE: settings_model_delete on it -> a confirm card with a 302-char token, descriptor settings.model_delete, domain settings, title 'Delete model \"TOOLV2 LOOP probe\"'. The row was STILL PRESENT at that point, which is the contract: propose, do not delete",
+        "DATA: POST /v1/settings/actions/confirm with that token -> user_models rows for that id went 1 -> 0. Falsifier: before the confirm the row was 1 despite the delete tool having returned successfully. The probe model is cleaned up by the same step that proves it",
+        "CONTROL: args:{} still answers 'required: missing properties: [\"user_model_id\"]', the recorded failure verbatim"
+      ],
+      "admitted": false
     }
   }
 }
