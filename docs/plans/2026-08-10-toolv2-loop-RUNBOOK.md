@@ -264,6 +264,41 @@ a guess deciding a cost-and-correctness question on behalf of every future proje
 *Would clear it:* a stated default (model + provider + who pays), or a decision that the three-step
 path is intended and should instead be surfaced at project creation rather than at first build.
 
+### DQ-8 · 37 tools require a `project_id` nothing supplies, and the scope gate cannot see them
+
+*Raised by:* iteration 9 · *Measured over the frozen catalogue and the live corpus.*
+
+**37 tools declare `project_id` as REQUIRED. Every single one of them declares
+`_meta.scope: "book"`. Not one declares `scope: "project"`.** CP-5.8's precondition gate fires on
+`scope == "project"` and a missing project — deliberately, and its own comment explains why
+`scope: book` must not be gated (`book_list` is `scope: book` and is how a model FINDS a book).
+The consequence is that the gate guards the 33 tools where `project_id` is OPTIONAL and resolves
+from the envelope, and **guards none of the 37 where it is required**.
+
+So a book-scoped chat asks for an id the runtime never injects, the model cannot derive from the
+book it is working in, and no gate refuses before the wire. Measured cost across `composition_*`:
+
+| failure | calls | tools | sessions |
+|---|---:|---:|---:|
+| project id not found or not accessible | 116 | 10 | 18 |
+| missing `project_id` | 38 | 4 | 5 |
+
+`composition_list_outline` alone is 19 calls sending `{}` and 14 sending an id that resolves to
+nothing. The tool itself is fine — given a real project id it returned 51 outline nodes first try.
+
+**Why it is recorded rather than built, and the number is the reason.** The obvious fix is ambient
+resolution: derive the composition project from the book in scope, the way `ambient_book` already
+resolves `book_id` from `X-Book-Id`. But `composition_work` is **not** 1:1 — of the books that have
+any project, **328 have exactly one and 52 have two or four**, because derivatives are a feature
+(`composition_create_derivative`). Resolving for those 52 would pick a derivative on the user's
+behalf, which is the guess CP-5.3 refused to make at 37.5% ambiguity and CP-6.1 refused to make on
+near-miss kinds.
+
+*The shape when it is built:* two branches and no third — exactly one project for the book resolves
+silently; zero or many refuse and NAME the candidates. That is CP-5.3's contract applied to a new
+ref type, and it belongs server-side with the other ambient resolution, not in a 37-way client
+table. *Would clear it:* a decision on what a book-scoped call means when the book has derivatives.
+
 ---
 
 ## Debt this loop surfaced but did not absorb

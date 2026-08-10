@@ -96,6 +96,18 @@
         "NO NEW GUARD and NO CONTRACT MEMBER: nothing in the runtime is wrong. The gap is a product default (DQ-7), and section 7 forbids writing a member for a decision that has not been made"
       ],
       "admitted": false
+    },
+    "composition_list_outline": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and the investigation found something much larger than this tool. Its 33 calls are two populations: 19 sent args:{} -- literally nothing -- in one session, and 14 sent a project_id that resolves to neither a book nor a composition project today. Given a real project id the tool answered first try with 51 outline nodes. Nothing about it is broken. THE FINDING (DQ-8): 37 tools declare project_id REQUIRED and EVERY ONE of them declares _meta.scope='book'; not one declares scope='project'. CP-5.8's precondition gate fires on scope=='project', deliberately, so it guards the 33 tools where project_id is OPTIONAL and ambient-resolved and guards NONE of the 37 where it is required. A book-scoped chat is therefore asked for an id the runtime never injects and the model cannot derive from the book it is in. Measured across composition_*: 116 calls / 10 tools / 18 sessions fail 'not found or not accessible' and 38 / 4 / 5 fail 'missing project_id'. NOT BUILT because the obvious fix guesses: ambient resolution from the book would work for the 328 books with exactly one composition project and would PICK A DERIVATIVE for the 52 with two or four. Two branches and no third -- resolve when there is exactly one, refuse and name the candidates otherwise -- is CP-5.3's contract applied to a new ref type, and the ambiguous arm is a product decision.",
+      "evidence": [
+        "PHASE 2: 33 calls / 3 sessions / 2026-07-08..15. 19 x args:{} (one session), 14 x a project_id that is neither a books row nor a composition_work row today -- deletion and invention are indistinguishable at this remove and the note says so rather than picking",
+        "LIVE: composition-service MCP, project 019f9d2b-b3d7-768f-bd14-bccb1b8e372b (57 outline nodes, book owned by the test user) -> total 51, returned 5, real chapter titles and chapter_ids. Falsifier: the same call without project_id is the recorded validation error, which is how the 19 empty calls died",
+        "CATALOGUE, from the frozen SSOT: 37 tools require project_id; all 37 declare _meta.scope='book'; 0 declare scope='project'. That is why CP-5.8's gate -- which its own comment says is gated on 'project' ONLY, so that book_list stays reachable -- cannot see any of them",
+        "AMBIGUITY, measured not assumed: composition_work maps 328 books to exactly 1 project, 51 books to 2, and 1 book to 4. Ambient resolution would be a guess for 52 of 380",
+        "NO NEW GUARD: nothing in this tool is wrong, and a member for DQ-8 would encode a product decision that has not been made"
+      ],
+      "admitted": false
     }
   }
 }
