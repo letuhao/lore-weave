@@ -1065,6 +1065,46 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.8: the precondition --------------------------------------------------------------
+    "test_THE_PROJECT_BOOTSTRAP_TOOLS_ARE_NOT_PROJECT_SCOPED": [
+        # Make the bootstrap tool project-scoped in the catalogue itself: the gate would then
+        # refuse the only tool that can FIND a project, and the scope becomes unreachable forever.
+        ("contracts/agent-runtime-baseline/tools-list.snapshot.json",
+         '      "name": "kg_project_list",\n      "description": ',
+         '      "name": "kg_project_list_RENAMED",\n      "description": '),
+    ],
+    "test_THE_CHECK_EXISTS_AND_PRECEDES_THE_DISPATCH": [
+        (f"{CS}/app/services/stream_service.py", '_scope_meta.get("scope") == "project"',
+                                                 '_scope_meta.get("scope") == "__never__"'),
+    ],
+    "test_AN_EXPLICIT_PROJECT_ID_SATISFIES_IT": [
+        # Refuse even when the call carries a project -- every project-scoped tool dies.
+        (f"{CS}/app/services/stream_service.py", '                        and not args_obj.get("project_id")',
+                                                 "                        and True"),
+    ],
+    "test_A_PRECONDITION_MISS_IS_REFUSED_NOT_FAILED": [
+        (f"{CS}/app/services/stream_service.py", '}, "precondition_unmet")}', "})}"),
+    ],
+    "test_THE_REFUSAL_NAMES_THE_WAY_OUT": [
+        # Strip the two tool names OUT OF THE MESSAGE. The guard reads the message slice, not
+        # the file, because the explanatory comment above it names both tools too.
+        (f"{CS}/app/services/stream_service.py",
+         "Call kg_project_list to find one and pass its id ",
+         "Give up. "),
+    ],
+    "test_THE_DECLARATION_IS_THE_SOURCE_NOT_A_TOOL_NAME_LIST": [
+        # Read the scope from a hardcoded literal instead of the tool's own declaration, which
+        # drifts the first time a service adds a project-scoped tool.
+        (f"{CS}/app/services/stream_service.py",
+         '(cat_index.get(c["name"]) or plain_index.get(c["name"]) or {})',
+         '({"function": {"_meta": {"scope": "project"}}})'),
+    ],
+    "test_BOOK_SCOPE_IS_NOT_GATED_BECAUSE_BOOK_LIST_CARRIES_IT": [
+        # Gate `book` too, which starves book discovery -- book_list is itself scope: book.
+        (f"{CS}/app/services/stream_service.py", '_scope_meta.get("scope") == "project"',
+                                                 '_scope_meta.get("scope") == "book"'),
+    ],
+
     # -- CP-5.10: the registry is the only name source -----------------------------------------
     "test_THE_CHECK_EXISTS_ON_THE_DISPATCH_PATH": [
         (f"{CS}/app/services/stream_service.py",

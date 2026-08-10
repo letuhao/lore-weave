@@ -4852,6 +4852,44 @@ async def _stream_with_tools(
                     }, "unknown_tool")}
                     continue
 
+                # ── CP-5.8 · THE STATE A TOOL REQUIRES, CHECKED BEFORE DISPATCH ──────────────
+                # 🔴 **MEASURED: 414 calls / 82 sessions fail on a missing or wrong scope** — the
+                # largest remaining population by the honest denominator. Every failing tool
+                # ALREADY DECLARES what it needs (`_meta.scope`: 194 book · 65 user · 33 project ·
+                # 23 none) and nothing consulted it, so the model learned the requirement from a
+                # round trip and a backend error like `no project in scope`.
+                #
+                # Gated on `project` only, deliberately. `scope: book` is the SCOPE KEY, not a
+                # hard precondition — `book_list` is `scope: book` and is how a model FINDS a
+                # book, so refusing it without one would make books unreachable. Verified before
+                # building: `kg_project_create` and `kg_project_list` are `scope: user`, so the
+                # path to create or find a project stays open under this gate.
+                _scope_meta = ((cat_index.get(c["name"]) or plain_index.get(c["name"]) or {})
+                               .get("function") or {}).get("_meta") or {}
+                if (_scope_meta.get("scope") == "project"
+                        and not args_obj.get("project_id")
+                        and not (context_ids or {}).get("project_id")
+                        and not project_id):
+                    _pre_msg = (
+                        f"'{c['name']}' works inside a knowledge PROJECT and there is none in "
+                        f"scope — it cannot run. Call kg_project_list to find one and pass its id "
+                        f"as project_id, or kg_project_create to make one. Calling this again "
+                        f"without a project cannot succeed."
+                    )
+                    logger.info("CP-5.8: refused %r — declares scope=project, none in scope",
+                                c["name"])
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "precondition_unmet", "message": _pre_msg}),
+                    })
+                    yield {"tool_call": instrument.stamp_refused({
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _pre_msg,
+                        "precondition": "project",
+                    }, "precondition_unmet")}
+                    continue
+
                 # CP-0.3 — the ONE call in this file where a tool genuinely executes. `source='tool'`
                 # is defined by having passed through here, not by inspecting the result: that is
                 # what makes the "our prose vs a real tool" split exact rather than a text match
