@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T29's second half — `kal-write.controller.ts` + the `SR06` dependency-tier row.**
+**RESUME: T50 — bring the entity-lifecycle MCP tools onto the new command contract.**
 T26–T29 are done, `D-T27-LIVE-REPLAY` is cleared (it found a handler that had never worked),
 and the dead `/kg/neighborhood` upstream is served. Phase 4 has no open deferrals. After T50
 comes T25b, whose two PO decisions are now standing:
