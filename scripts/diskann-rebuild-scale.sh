@@ -19,6 +19,18 @@
 # nobody recorded is not reproducible.
 #
 #   ./scripts/diskann-rebuild-scale.sh [rows-csv]
+#   VEC_MAINT_MEM=1GB ./scripts/diskann-rebuild-scale.sh [rows-csv]
+#
+# The first run of this script found the lever is NOT the parallel threshold. At the image's
+# default `maintenance_work_mem = 64MB` the builder logs
+#
+#     WARNING: Builder neighbor cache is full after processing 14717 vectors
+#
+# — i.e. the cache binds at ~14.7 k vectors, BELOW the 20 000-row point the restore drill fitted
+# its O(n^1.6) curve through and four times below the 65536 parallel threshold. So the drill's
+# curve spans a regime change it could not see. `VEC_MAINT_MEM` raises the setting for the index
+# build only (session-scoped `SET`, not a server change) so the same rows can be measured on both
+# sides of that limit and the two sweeps compared.
 #
 # Writes only to a throwaway database it creates and drops.
 
@@ -28,6 +40,7 @@ CONTAINER="${VEC_CONTAINER:-lw-t23-vec}"
 DB="${VEC_QC3_DB:-lw_vec_qc3}"
 DIM="${VEC_DIM:-1024}"
 ROWS_CSV="${1:-40000,80000}"
+MAINT_MEM="${VEC_MAINT_MEM:-}"
 export MSYS_NO_PATHCONV=1
 
 psql_db() { docker exec "$CONTAINER" psql -U postgres -d "$DB" -v ON_ERROR_STOP=1 "$@"; }
@@ -47,14 +60,24 @@ psql_adm -t -A -c "SELECT name || ' = ' || setting || coalesce(' ' || unit, '')
                                    'maintenance_work_mem','max_parallel_workers','shared_buffers')
                     ORDER BY name"
 echo "  host cpus visible to the container: $(docker exec "$CONTAINER" nproc)"
+if [ -n "$MAINT_MEM" ]; then
+  # Session-scoped, applied in the same statement as CREATE INDEX. Deliberately NOT a server
+  # change: this measurement must be repeatable against the stock image, and a mutated server
+  # would make every LATER measurement in this container quietly incomparable to the first.
+  MAINT_SET="SET maintenance_work_mem = '$MAINT_MEM'; "
+  echo "  ⚠ OVERRIDE for the index build only: maintenance_work_mem = $MAINT_MEM"
+else
+  MAINT_SET=""
+  echo "  maintenance_work_mem: image default (no override)"
+fi
 
 psql_adm -c "DROP DATABASE IF EXISTS $DB" >/dev/null 2>&1
 psql_adm -c "CREATE DATABASE $DB" >/dev/null
 psql_db -c "CREATE EXTENSION IF NOT EXISTS vector; CREATE EXTENSION IF NOT EXISTS vectorscale CASCADE" >/dev/null
 psql_db -t -A -c "SELECT 'vectorscale ' || extversion FROM pg_extension WHERE extname='vectorscale'"
 
-printf '\n%-10s %-12s %-14s %-16s %-14s %s\n' \
-  "rows" "parallel?" "seed_s" "index_build_s" "index_size" "vs O(n^1.6) from 20k"
+printf '\n%-10s %-12s %-14s %-16s %-14s %-19s %s\n' \
+  "rows" "parallel?" "seed_s" "index_build_s" "index_size" "vs O(n^1.6) 20k" "builder cache"
 
 BASE_ROWS=20000
 BASE_SECS=34.3
@@ -82,10 +105,18 @@ for n in "${ROWS[@]}"; do
     continue
   fi
 
+  # stderr is CAPTURED rather than left to scroll past, because the builder announces the thing
+  # this whole measurement turned out to be about on stderr and nowhere else:
+  #   "Builder neighbor cache is full after processing N vectors"
+  # Reading it per row is what tells you whether a build was memory-bound — the elapsed time
+  # alone cannot, and the first run of this script mistook one for the other.
   build_start=$(date +%s%3N)
-  psql_db -q -c "CREATE INDEX v_emb ON v USING diskann (embedding vector_cosine_ops)" >/dev/null \
-    || { echo "  index build failed at $n"; continue; }
+  build_log=$(psql_db -q -c "${MAINT_SET}CREATE INDEX v_emb ON v USING diskann (embedding vector_cosine_ops)" 2>&1 >/dev/null) \
+    || { echo "  index build failed at $n: $build_log"; continue; }
   build_end=$(date +%s%3N)
+  cache_full=$(printf '%s\n' "$build_log" \
+    | awk 'match($0, /full after processing [0-9]+/){print substr($0, RSTART+22, RLENGTH-22); exit}')
+  [ -n "$cache_full" ] || cache_full="not reached"
 
   size=$(psql_db -t -A -c "SELECT pg_size_pretty(pg_relation_size('v_emb'))")
   # Integer milliseconds + awk. Git Bash on Windows has no `bc`, and an inline `python3 -c`
@@ -98,8 +129,8 @@ for n in "${ROWS[@]}"; do
   pred=$(awk -v n=$n -v br=$BASE_ROWS -v bs=$BASE_SECS "BEGIN{printf \"%.1f\", bs*(n/br)^1.6}")
   par=$([ "$n" -ge 65536 ] && echo "eligible" || echo "single")
 
-  printf '%-10s %-12s %-14s %-16s %-14s predicted %ss\n' \
-    "$n" "$par" "$seed_s" "$build_s" "$size" "$pred"
+  printf '%-10s %-12s %-14s %-16s %-14s predicted %-9s cache_full_at=%s\n' \
+    "$n" "$par" "$seed_s" "$build_s" "$size" "${pred}s" "$cache_full"
 done
 
 echo

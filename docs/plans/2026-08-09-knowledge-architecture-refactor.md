@@ -167,6 +167,16 @@ argument order changed … close D-T25B-PG-ANCHOR-SCORE first".)* 4149 unit test
 3. Only then the three read sites (`context/selectors/passages.py`,
    `routers/public/drawers.py`, `search/retriever.py`).
 
+### 🔻 DEFERRAL `D-T25B-SOAK` — the passage read swap, blocked on an operational decision
+
+| | |
+|---|---|
+| **Blocker** | The read swap's own precondition is unmet. Dual-write is default-off (`KNOWLEDGE_VECTOR_DB_URL` unset), so the Postgres secondary has received **zero** writes. Switching reads onto a store nothing has fed is not a cutover; it is an outage with a port in front of it. |
+| **Evidence** | `app/adapters/vector_store_provider.py` returns a plain `Neo4jVectorStore` when the env var is unset (T25a, asserted by test). Consequently `vector_dual_write_total{outcome="secondary_failed"}` reads **0** — and as T25a's own docstring puts it, *a gate that reads zero because nothing is wired looks exactly like a gate that reads zero because nothing failed*. The counter is not evidence of health here; it is evidence of absence. |
+| **To unblock** | Someone with authority over the dev stack sets `KNOWLEDGE_VECTOR_DB_URL`, and the secondary then takes real traffic for long enough that a zero on the failure counter means something. **This is an operational decision about a shared environment, not a code change** — which is exactly why it is not mine to make unilaterally. |
+| **Mechanism** | `tests/unit/test_vector_primary_owns_anchor_score.py::test_the_provider_keeps_neo4j_as_primary` asserts on the **constructed** store that Neo4j is primary and that `DualWriteVectorStore(primary, secondary)` keeps that argument order. Any attempt to begin the read cutover reds it with a message naming this deferral. A note in a file nobody is editing would not have done that; T27 already proved that failure mode here, shipping handlers that could never run. |
+| **Retry when** | `KNOWLEDGE_VECTOR_DB_URL` is set on the dev stack **and** the soak has produced a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Both halves are required; the second without the first is the trap above. |
+
 **PO decisions (both ANSWERED, kept for the record):**
 
 1. **The entity read path.** `PgVectorStore.search(scope="entity")` refuses, because
@@ -181,17 +191,15 @@ that threshold and is therefore single-threaded. QC-3 owns it, along with the sc
 the 300/200 search-effort defaults (measured at 181 rows; the named fallback is pgvector's HNSW,
 which hit 1.000 at the server's own defaults for dims ≤ 2000).
 
-**Still open elsewhere:** 6 `db/migrations/` backfills carry Cypher (Phase 7 must port or retire),
-QC-2's rendered-block diff is owed once a consumer holds a port, and 283 Postgres-gated integration
-skips remain.
+**Still open elsewhere:** the 6 `db/migrations/` backfills that carry Cypher — now tracked as
+`D-T17-BACKFILL-CYPHER` under T17, gated at 6 by `scripts/graph-port-gate.py`; QC-2's
+rendered-block diff, owed once a consumer holds a port; and 283 Postgres-gated integration skips.
+*(This list appeared twice in this header, verbatim, and one copy is now deleted — a duplicated
+debt list is a debt list that gets updated in one place.)*
 
 ⚠️ **Verify the extension matrix on PG18.** T21 measured on PG17 (the readily available image);
 the design records pgvectorscale supports PG18 via `--pg18 pg_config`, and T22 is where that stops
 being a citation and becomes a build.
-
-**Still open elsewhere:** 6 `db/migrations/` backfills still carry Cypher (Phase 7 must port or
-retire them), QC-2's rendered-block diff is owed once a consumer holds a port, and 283
-Postgres-gated integration skips remain.
 
 ⚠️ **Two debts recorded rather than dropped:** (a) QC-2's *rendered-block* diff is owed once a
 consumer actually holds a port (T17); the port-level diff shipped in its place. (b) **283 Postgres
@@ -814,7 +822,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 <!-- Commit checkpoint: T4–T8 — contract boundary -->
 
-- [ ] **T9** — Covering index for the book-wide as-of read (**D9**)
+- [x] **T9** — Covering index for the book-wide as-of read (**D9**) ✅
   New migration in `services/glossary-service/internal/migrate/`
   `(book_id, entity_id, attr_or_predicate, valid_from_ordinal DESC) WHERE invalidated_at IS NULL AND cardinality='single'`
   Removes the sort. Today's plan is `idx_entity_facts_book` (**128 lifetime scans**) + quicksort,
@@ -1278,13 +1286,32 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   finding as batch 1, in two new places: a guard that is the *injection barrier* is exactly the kind
   nothing exercises, because the happy path never touches it. Both now bitten.
 
-  **Still owed — 6 backfill files, and they are NOT this task's to fix.** The remaining Cypher is
-  graph traversal and truth, which belong to **T18 (`GraphStore`)** and **T19 (`TruthStore`)**;
-  they cannot move onto "the two shipped ports" because neither port covers them. Concretely:
-  6 `db/migrations/` backfills (admin one-shots, reachable via `internal_backfill.py` — Phase 7
-  must port or retire them), `extraction/glossary_sync.py`, `extraction/hierarchy_writer.py`,
-  `jobs/summary_processor.py` (7 clauses, graph traversal), `routers/internal_enrichment.py` (5),
-  `routers/public/{entities,extraction,graph_views}.py`, `tools/kg_unify.py`, `benchmark/runner.py`.
+  ⚠️ **This paragraph was STALE and said so with a longer list than the truth** *(corrected
+  2026-08-10)*. It named `glossary_sync.py`, `hierarchy_writer.py`, `summary_processor.py`,
+  `internal_enrichment.py`, `routers/public/{entities,extraction,graph_views}.py`, `kg_unify.py`
+  and `benchmark/runner.py` as still owed — **batches 2–5 cleared every one of them** and nobody
+  trimmed the list. A completeness list that over-states what is left is not the safe direction
+  it looks like: it hides the *real* remainder inside noise, and the next reader prices the task
+  by the list rather than by the gate. The gate is the authority; it reads **6**:
+
+  ```
+  $ python scripts/graph-port-gate.py
+  [graph-port-gate] PASS — 296 file(s) scanned outside adapter dirs;
+                    6 baselined file(s) still carry Cypher (T17 shrinks that list)
+  ```
+
+  ### 🔻 DEFERRAL `D-T17-BACKFILL-CYPHER` — the last 6 files, tracked to Phase 7
+
+  | | |
+  |---|---|
+  | **Blocker** | The 6 remaining files are `db/migrations/` backfills whose Cypher is *graph traversal and truth*, which belong to **T18 (`GraphStore`)** / **T19 (`TruthStore`)** — neither of the two ports T17 was scoped to migrate onto covers them. Moving them onto `neo4j_repos/` would be motion, not progress: they would have to move again at the engine swap. |
+  | **Evidence** | `scripts/graph-port-gate.py` baseline, lines 93–98: `backfill_entity_alias_map.py`, `backfill_event_date.py`, `backfill_orders.py`, `backfill_participant_anchors.py`, `backfill_status.py`, `recanon_honorifics.py`. Gate output pasted above. |
+  | **To unblock** | A second `GraphStore` adapter must exist, so "port or retire" is a decision with two real options rather than one. That is **T42**. |
+  | **Mechanism** | The gate's baseline list *is* the tracker — it is asserted, not documented: any 7th file fails the gate, and removing an entry without porting the file fails it too. Wired into pre-commit and `foundation-ci.yml`, so the count cannot drift unnoticed between now and Phase 7. |
+  | **Retry when** | T42 lands a second `GraphStore` adapter. **These are admin one-shots that run against whatever engine is bound, so an engine swap breaks them silently** — porting or retiring them is a precondition of QC-7's rebuild drill, not a follow-up to it. |
+
+  T17 therefore stays `[~]` on purpose: its runtime scope is **complete** (every runtime path is
+  Cypher-free), and the residue is a named, gated, Phase-7-owned list rather than an open end.
 
 <!-- Commit checkpoint: T14–T17 -->
 
