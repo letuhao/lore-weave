@@ -157,6 +157,16 @@
         "NOT BUILT: refusing a non-UUID book_id pre-dispatch would be CP-5.8-shaped, but CP-5.8 deliberately does NOT gate scope=book -- book_list is itself scope=book and is how a model finds a book, so gating it would make books unreachable. The quantifier class is 36 calls / 7 tools / 6 sessions and has no expressible answer in a per-book parameter"
       ],
       "admitted": false
+    },
+    "book_list_revisions": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change -- the same finding as iteration 13, in the SAME TWO SESSIONS. All 6 calls (2026-08-04) sent book_id='all' AND chapter_id='all', the quantifier class refresolve names as unservable because the parameter cannot express it (W3). Neither session had a book in scope, so there was nothing for the context-id injector to supply, and the repeated-failure breaker fired at 2. The user's actual question was cross-book ('list categories and count books'); this is a per-book, per-chapter tool. Given real ids it answered first call. Worth noting for the duplicate-identifier gate shipped in iteration 5: both id fields carry the SAME value here ('all'), and the gate correctly ignores it because neither is a UUID -- which is exactly what test_A_NON_UUID_REPEAT_IS_NOT_THIS_DEFECT asserts. A gate that fired here would be claiming iteration 3's placeholder population as its own.",
+      "evidence": [
+        "PHASE 2: 6 calls / 2 sessions / 2026-08-04, all {book_id: 'all', chapter_id: 'all'}; 4 raw failures plus 2 breaker short-circuits. visibility=legacy",
+        "LIVE: book-service MCP :8205 with real ids on throwaway book 019fcaa4, chapter 019fcab8-8261 -> total 1, a real revision row (revision_id 019fcab8-8273-..., author, created_at, message 'seed from assistant', body_byte_length 64). Non-empty on the first call, so nothing had to be authored to make the read meaningful",
+        "CONTROL: {book_id:'all', chapter_id:'all'} still answers 'book_id must be a UUID', the recorded failure verbatim"
+      ],
+      "admitted": false
     }
   }
 }
