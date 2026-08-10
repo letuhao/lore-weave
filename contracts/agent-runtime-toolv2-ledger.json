@@ -232,6 +232,16 @@
         "CONTROL: the exact job_id from the 21 recorded calls still answers 'not found or not accessible' -- the failure is the id, not the tool"
       ],
       "admitted": false
+    },
+    "translation_job_status": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. All 13 calls are args:{} in one session on 2026-07-08 -- the fifth tool this loop has concluded from that one blank-argument day, after jobs_get, translation_list_versions, settings_provider_inventory and translation_coverage. Given a real job_id the tool returned a per-chapter status breakdown with version numbers and a total.",
+      "evidence": [
+        "PHASE 2: 13 calls / 1 session / 2026-07-08, all args:{}, one error naming the single missing job_id",
+        "LIVE: translation-service MCP :8210 with job 019fc352-ec63-7fb2-870a-421ffe11b701 -> two chapters, both status completed, version_num 1, total 2 returned 2 truncated 0",
+        "CONTROL: args:{} still answers 'invalid arguments for translation_job_status -- job_id: Field required', the recorded failure verbatim"
+      ],
+      "admitted": false
     }
   }
 }
