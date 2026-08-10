@@ -92,3 +92,60 @@ class TestTheDeclarationItselfIsVerified:
                     f"{tool}'s output contract does not say what its shape was checked against; "
                     f"four of the first five were wrong when taken from the tool's description"
                 )
+
+
+class TestOneSampledResultCannotVerifyAShape:
+    """🔴 **THE SECOND METHODOLOGY FAILURE ON THE SAME MEMBER, AND IT IS SUBTLER THAN THE FIRST.**
+
+    Round one: shapes authored from each tool's DESCRIPTION — four of five wrong.
+    Round two: shapes authored from ONE RECORDED RESULT — better, and still wrong twice over.
+
+    The query that picked the sample ordered by `length(result)`, so it took the **shortest**
+    recorded result per tool: the least informative one available. `book_chapter_save_draft` was
+    declared with three keys and returns six. Worse, **two tools are POLYMORPHIC** and a single
+    sample named one arm as if it were the whole contract:
+
+    * `book_list` — 37 of 160 recorded successes return `chapters` or `revisions` and carry **no
+      `books` key at all**, with `kind` as the discriminator. CP-3's live emit path
+      `books[0].book_id` is valid only on the books arm.
+    * `book_read` — 12 of 101 return a chapter and its body rather than the book record.
+
+    Shapes are now declared from the **union of top-level keys across every recorded success**,
+    with counts. A shape is a claim about all results, so its evidence has to be all results.
+    """
+
+    def test_EVERY_VERIFIED_SHAPE_STATES_ITS_SAMPLE_SIZE(self):
+        """*"Checked against a real result"* is not evidence — one result is consistent with a shape
+        that is right once and wrong 37 times."""
+        for tool, block in contracts().items():
+            oc = block.get("output_contract", {})
+            if not oc.get("emit_paths"):
+                continue
+            v = oc.get("_verified_against", "")
+            assert "n=" in v, (
+                f"{tool}'s shape does not say how many results it was checked against, so a "
+                f"single-sample verification is indistinguishable from a complete one"
+            )
+
+    def test_A_POLYMORPHIC_SHAPE_NAMES_ITS_DISCRIMINATOR(self):
+        """A caller cannot branch on a shape that does not say which arm it is in. `book_read` is
+        exempt only because its arms are distinguished by which key is present, which the shape
+        string already spells out."""
+        for tool, block in contracts().items():
+            oc = block.get("output_contract", {})
+            if "POLYMORPHIC on" in oc.get("shape", ""):
+                assert oc.get("_the_discriminator"), (
+                    f"{tool} declares a discriminated union without naming the field that "
+                    f"discriminates it"
+                )
+
+    def test_THE_TWO_KNOWN_POLYMORPHIC_TOOLS_ARE_DECLARED_AS_SUCH(self):
+        """Pinned by name: these are the two the union measurement caught, and a future edit that
+        flattens either back to one arm re-introduces the exact defect."""
+        for tool in ("book_list", "book_read"):
+            shape = contracts()[tool]["output_contract"]["shape"]
+            assert "POLYMORPHIC" in shape, (
+                f"{tool} returns more than one shape ({tool == 'book_list' and '37 of 160' or '12 of 101'} "
+                f"recorded successes take the other arm); declaring one of them is the lie that "
+                f"looks like a contract"
+            )

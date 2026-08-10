@@ -4539,28 +4539,41 @@ retrofitted to whatever gets built.
 
 *The `/goal` points here. If the prompt and this section disagree, **this section wins.***
 
-> ### 🔴 THE ONE THING TO READ FIRST: **13 of 13 ROWS CLOSED IS NOT CP-5 CLOSED.**
+> ### ✅ **CP-5 CLOSES — 2026-08-10. BOTH HALVES OF THE EXIT, AND THE SECOND ONE WAS THE HARD ONE.**
 >
-> CP-5's exit has two halves — *"a tool that does not implement the pattern cannot be released,
-> proven by injection; the residual classified; **and the essential tool set admitted through the
-> contract with QC evidence**."* The rows are the first half. **The second is 5 of 11**, re-derived
-> live 2026-08-10 rather than read from this file. Reporting "13 of 13" as the checkpoint's state
-> is the typed-denominator failure the previous run already caught once, one level up: **the spec's
-> row list is not the checkpoint's exit, and the row list is the smaller number.**
+> *"A tool that does not implement the pattern cannot be released, proven by injection; the residual
+> classified; **and the essential tool set admitted through the contract with QC evidence**."*
+>
+> | half | state |
+> |---|---|
+> | rung 2 refuses an incomplete contract, proven by injection | ✅ and enforced on the FILE, not only at the command that writes it |
+> | the residual is classified | ✅ **3.9%**, derived from scratch over all 4,181 failed calls |
+> | **the essential SET admitted through the contract** | ✅ **11 of 11**, re-derived live by `scripts/cp5-essential-set.py`, never read from this file |
+>
+> **LIVE, on the deployed image:** rebuilt + `--force-recreate`, all three contract files
+> **byte-identical in-container** (sha256 compared, not eyeballed), **12 admitted rows** reachable,
+> and a real turn through the real boundary dispatched `glossary_book_ontology_read` ·
+> `book_chapter_create` · `book_chapter_save_draft` — all `ok:true`, all typed `call_outcome: done`.
+>
+> 🔴 **"13 of 13 rows" was never the exit, and saying so was this board's own standard applied to
+> itself.** The spec's row list is the smaller number; the checkpoint's exit is the set.
 
 ### Scope, frozen at entry — 6 admissions + 2 questions + 1 debt
 
 **The denominator is `scripts/cp5-essential-set.py`, re-run at entry, never this table.** The set
 moves with the corpus; a figure copied from here is stale the moment traffic lands.
 
-| # | row | state at entry (live 2026-08-10) |
+**ALL SIX ADMITTED 2026-08-10 — and each AGAINST its measured defect, which is what *"not a
+formality"* had to mean in practice.**
+
+| # | row | what it was admitted against |
 |---|---|---|
-| 1 | **`book_chapter_create`** | 129 sessions · **99.5%** — admit |
-| 2 | **`book_chapter_save_draft`** | 122 sessions · **40.6%** — admit. On the defect list; 5.4–5.8 are what it is admitted *against* |
-| 3 | **`plan_propose_spec`** | 142 sessions · 97.4% — admit. The PO named the plan path explicitly |
-| 4 | **`glossary_book_ontology_read`** | 203 sessions · 78.4% organic — admit. Also the corpus's broadest repeat case (1 repeat in each of 23 sessions, 5.7) |
-| 5 | **`glossary_propose_entities`** | 172 sessions · 62.3% — admit |
-| 6 | ~~**`compose_prose`**~~ | ✅ **UNBLOCKED + ADMITTED 2026-08-10.** With `glossary_propose_entity_edit`, which came free with the same fix — **6 of 11** |
+| 1 | ✅ **`book_chapter_create`** | 99.5% — the healthy one. Admitted with the rest **so the set is uniform**: a contract written only for the tools that fail is a defect log, not a declaration |
+| 2 | ✅ **`book_chapter_save_draft`** | 🔴 **The worst at 40.6%, and most of that is NOT the tool** — 93 of its failures are our own breaker prose (5.7) and ~16 are missing arguments (5.4). The genuine tool-specific class is ONE argument: `body` is declared `type: string` and the model sent a **ProseMirror node array, a whole `{type:doc}`, a QUILL DELTA `{ops:[…]}`, an empty object, and prose wrapped in a list** — four structures where a string is declared, which is a closed-vocabulary failure (`body_format`) rather than a typo. It also has a **precondition that is not a scope**: *"this book has no chapters yet"* |
+| 3 | ✅ **`plan_propose_spec`** | The only **ASYNC and PAID** member. `status: pending` is what a SUCCESSFUL call returns, and a repeat **starts a second paid job** — neither fact was in any contract |
+| 4 | ✅ **`glossary_book_ontology_read`** | The corpus's broadest repeat case (one repeat in each of 23 sessions). ⭐ Its `ontology.kinds` **IS the closed vocabulary `glossary_propose_entities` fails against**, so the two contracts now name each other and the repair path is declared rather than left to prose |
+| 5 | ✅ **`glossary_propose_entities`** | 🔴🔴 **62.3% BY THE `ok` FLAG, AND THE FLAG IS WRONG.** Of **184 `ok:true` calls, 46 created NOTHING** — 34 entirely skipped as duplicates, and **12 where every item FAILED while the envelope said success.** Genuine effect: **138 of 293 calls, 47.1%.** Sixth instance of the `ok:bool` conflation and the first where **`ok:true`** is the one hiding a null effect; C-14 already had the words (`empty` / `failed` / `partial`) |
+| 6 | ✅ **`compose_prose`** | Unblocked by the registration fix, with `glossary_propose_entity_edit` free alongside it |
 
 ### 🔴 ROW 6's BLOCKER — INVESTIGATED 2026-08-10, AND **THE FIX THIS SECTION FIRST PRESCRIBED WOULD NOT HAVE WORKED**
 
@@ -4625,6 +4638,43 @@ advertised away.
 
 **Suite: 2,801 passed / 3 skipped — green for the first time since 5.10 landed.** Membrane gate OK;
 falsification **695 guards, 306 falsified, 0 failed**, all 13 new guards proven red.
+
+### 🔴 ADMITTING THE SET FOUND A DEFECT IN 5.1's OWN MEMBER DATA — the `.get("type")` artifact, THIRD time
+
+`partial_outcome`'s trigger asked `type == "array"`. `glossary_propose_entities` declares
+**`"type": ["null", "array"]`** — what Pydantic emits for an optional field — so **the member did not
+apply to the tool whose measured failures ARE its subject.** Measured: `is_batch` selected **3 tools
+where 16 qualify (81% missed)**, and `has_enum_property` missed **10 of 106** by not reading enums
+inside `anyOf` branches. **100 of 1,313 properties in the frozen catalogue declare a union type.**
+
+🔴 **THE SAME ARTIFACT HAS NOW POINTED IN BOTH DIRECTIONS.** It withdrew row 5.3b by making
+`anyOf: [string, null]` look UNTYPED — the *"120 untyped properties"* that do not exist — and here
+it shrank a member to a fifth of its population. **A withdrawal on a false absence and a member
+scoped to a fifth are the same bug with opposite signs**, and the second is the more dangerous:
+a member whose evidence reads *"3 tools"* invites withdrawal under §7, so **an under-counting
+trigger can retire a member that has a real subject.**
+
+### 🔴🔴 AND THE OUTPUT SHAPES WERE WRONG A SECOND TIME — a subtler methodology failure than the first
+
+Round 1 authored shapes from each tool's **description**: 4 of 5 wrong. Round 2 authored them from
+**one recorded result** — better, and still wrong twice over, because the query that picked the
+sample ordered by `length(result)` and therefore took the **shortest, least informative** result
+per tool.
+
+* `book_chapter_save_draft` was declared with 3 keys and returns **6** (the live turn showed it).
+* 🔴 **TWO TOOLS ARE POLYMORPHIC and a single sample named one arm as the whole contract:**
+  **`book_list` — 37 of 160 recorded successes return `chapters` or `revisions` and carry NO
+  `books` key at all**, with `kind` as the discriminator; **`book_read` — 12 of 101** return a
+  chapter and its body rather than the book record. **CP-3's live emit path `books[0].book_id` is
+  valid only on the books arm.**
+
+Every shape is now declared from the **UNION of top-level keys across every recorded success, with
+counts and a stated `n`** — guarded, because *"checked against a real result"* is not evidence when
+one result is consistent with a shape that is right once and wrong 37 times. **A shape is a claim
+about all results, so its evidence has to be all results.**
+
+**Final: suite 2,809 passed / 3 skipped · membrane gate OK · falsification 703 guards, 314
+falsified, 0 stale anchors · deployed and byte-identical in-container.**
 
 ### The two questions — decide them, do not build past them
 

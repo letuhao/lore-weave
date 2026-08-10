@@ -1094,9 +1094,27 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         # saying what its shape was checked against.
         # Anchored on ONE tool's block: `_verified_against` appears on all five, and an anchor
         # that matches five times is not an anchor — the stale-anchor guard said so.
+        # Re-anchored 2026-08-10: the old anchor sat in text the shape rewrite replaced, and the
+        # stale-anchor guard caught it before the runner could report a false green.
         ("contracts/agent-runtime-tool-contracts.json",
-         'rather than failing at execution (§2).",\n        "_verified_against"',
-         'rather than failing at execution (§2).",\n        "_unchecked"'),
+         '"book.book_id"\n        ],\n        "_verified_against"',
+         '"book.book_id"\n        ],\n        "_unchecked"'),
+    ],
+    "test_EVERY_VERIFIED_SHAPE_STATES_ITS_SAMPLE_SIZE": [
+        # Back to "checked against a real result" with no n — one result is consistent with a shape
+        # that is right once and wrong 37 times, which is exactly what happened to book_list.
+        ("contracts/agent-runtime-tool-contracts.json",
+         "n=192 successes", "a recorded success"),
+    ],
+    "test_A_POLYMORPHIC_SHAPE_NAMES_ITS_DISCRIMINATOR": [
+        # A discriminated union whose discriminator is unnamed: the caller cannot branch on it.
+        ("contracts/agent-runtime-tool-contracts.json",
+         '"_the_discriminator": "kind"', '"_the_discriminator_removed": "kind"'),
+    ],
+    "test_THE_TWO_KNOWN_POLYMORPHIC_TOOLS_ARE_DECLARED_AS_SUCH": [
+        # Flatten book_list back to the single arm one sampled result showed.
+        ("contracts/agent-runtime-tool-contracts.json",
+         '"shape": "POLYMORPHIC on `kind`', '"shape": "{ books: [...], total: int } was the whole story'),
     ],
     "test_A_DECLARED_PATH_PASSES": [
         # Refuse a path the tool DOES declare — the check inverted.

@@ -438,11 +438,7 @@ therefore not promotable. The producer needs the correction `cp5-essential-set.p
 already carries — union the local tools, and **raise rather than degrade** when they cannot be read,
 because a partial catalogue is precisely how the false finding above was manufactured.
 
-**Exit:** a tool that does not implement the pattern **cannot be released**, proven by injection;
-**the ESSENTIAL SET above is admitted through the contract** — 🔴 **5 of 11 as of 2026-08-10, so
-this half of the exit is NOT MET.** All 13 spec rows are closed (1 withdrawn), and **the rows are
-not the exit**: reporting CP-5 closed on *"13 of 13"* would be the typed-denominator failure one
-level up;
+**Exit:** ✅ **MET 2026-08-10 — CP-5 CLOSES.** A tool that does not implement the pattern **cannot be released**, proven by injection and enforced on the FILE; **the ESSENTIAL SET above is admitted through the contract — 11 of 11**, re-derived live rather than read from a document, each admitted AGAINST its measured defect rather than as a formality; and the residual is classified at 3.9%. **LIVE on the deployed image:** rebuilt + `--force-recreate`, all three contract files byte-identical in-container by sha256, 12 admitted rows, and a real turn dispatching three newly-admitted tools with `call_outcome: done`. 🔴 The rows were never the exit: reporting CP-5 closed on *"13 of 13"* would have been the typed-denominator failure one level up;
 ✅ **the residual is CLASSIFIED (2026-08-10, `scripts/cp5-residual.py`): 17 calls / 14 sessions = 3.9%**, derived by classifying all 4,181 failed calls from scratch rather than subtracting §1's figures. It is not a new class — it is per-tool WORDING of existing members, plus **3 genuinely message-less failures**, which is the true size of the class §1 filed at 41. 🔴 The first pass put CP-5.4's own refusal message in the residual, so the first class is now the TYPED `call_outcome` rather than a regex over prose; and the first
 essential tool is admitted **through** the contract with QC evidence.
 

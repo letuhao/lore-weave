@@ -30,12 +30,13 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ books: [{book_id, title, access_level, chapter_count, lifecycle_state, original_language}], total }",
+        "shape": "POLYMORPHIC on `kind` - { kind, page, guidance, total, books: [...] } | { kind, page, guidance, chapters: [...] } | { kind, page, guidance, revisions: [...] }",
         "emit_paths": [
           "books[0].book_id"
         ],
-        "note": "Declared so a CP-3 `emits` path is checkable at PLAN-BUILD time rather than failing at execution (§2).",
-        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=160 successes: `total` 160, `kind`/`page`/`guidance` 128, `books` 119, `chapters` 28, `revisions` 9.",
+        "_THE_FIRST_DRAFT_CALLED_THIS_A_SINGLE_SHAPE": "It was declared `{books, total}` from ONE recorded result. This tool answers three different questions and says which in `kind` - 37 of 160 recorded successes return `chapters` or `revisions` and carry NO `books` key at all. CP-3's emit path `books[0].book_id` is therefore valid only on the books arm, and a plan step emitting it against a chapters listing resolves to null - which §3a already types as a FAILED step rather than a null bound forward.",
+        "_the_discriminator": "kind"
       },
       "result_completeness": {
         "fields": [
@@ -87,12 +88,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ book: {...}, read: {...}, guidance }",
+        "shape": "POLYMORPHIC - { book, read, guidance } | { chapter, body, page, read, guidance }",
         "emit_paths": [
           "book.book_id"
         ],
-        "note": "The DEEPEST id present decides which branch of the shape is returned.",
-        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=101 successes: `guidance`/`read` 101, `book` 89, `chapter`/`body`/`page` 12.",
+        "_ALSO_POLYMORPHIC": "12 of 101 successes return a CHAPTER and its body rather than the book record, and carry no `book` key. Same correction as book_list: one sampled result named one arm as the whole contract."
       },
       "result_completeness": {
         "fields": [
@@ -131,12 +132,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ tools: [{name, description}], count, category }",
+        "shape": "{ count: int, tools: [...], category?: string, categories?: [...], note?: string, loaded_tools?: [...], listed_before?: [...], reason?: string, incomplete?: bool, unavailable_providers?: [...] }",
         "emit_paths": [
-          "tools[0].name"
+          "tools"
         ],
-        "note": "Declared so a CP-3 emits path over this result is checkable at plan-build time.",
-        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=641 successes: `count` 641, `category` 636, `tools` 616, and six further optional keys down to `incomplete` at 1.",
+        "_incomplete_is_the_outage_signal": "`incomplete` + `unavailable_providers` appear once each and are how a degraded catalogue announces itself - the U-2 state 5.10's name check must fail OPEN on. Declared so a reader can act on it rather than discover it."
       },
       "closed_vocabulary": {
         "category": [
@@ -182,12 +183,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ tools: [{name, description, inputSchema}] }",
+        "shape": "{ tools: [...], note?: string, truncated?: bool, not_found?: [...] }",
         "emit_paths": [
-          "tools[0].name"
+          "tools"
         ],
-        "note": "`unknown` is part of the contract: a partially-satisfied load must say which names it could not find.",
-        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=57 successes: `tools` 57, `note` 22, `truncated` 21, `not_found` 4.",
+        "_truncated_is_declared_completeness": "unlike glossary_search, this tool DOES report truncation, so CP-5.6 believes it rather than compensating - which is what declaring it buys."
       },
       "closed_vocabulary": {
         "category": [
@@ -239,7 +240,7 @@
           "entities[0].entity_id"
         ],
         "match_quality": "`tier` is a MATCH-QUALITY signal, not a score: `exact` means the name or an alias matched exactly after normalisation. CP-5.3 keys the resolver on it.",
-        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=173 successes; `entities` is the sole top-level key in all 173 - genuinely monomorphic."
       },
       "result_completeness": {
         "declared_fields": [],
@@ -279,7 +280,7 @@
         "emit_paths": [
           "prose"
         ],
-        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10 (session-level tool_calls). NOT read from the tool description — that method produced the wrong shape for 4 of the first 5 contracts authored."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, n=4 successes: `prose` is the sole key in all 4. A small n and it is stated - this tool has only ever been called 4 times, so the shape is as verified as it can be and no more."
       }
     },
     "glossary_propose_entity_edit": {
@@ -373,7 +374,8 @@
         "emit_paths": [
           "chapter_id"
         ],
-        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=192 successes; `chapter_id` is the sole key in all 192 - the one shape in this set that a single sample would have got right.",
+        "_live": "CONFIRMED on the deployed image 2026-08-10 by a real turn."
       }
     },
     "book_chapter_save_draft": {
@@ -428,12 +430,13 @@
         "_conflict_is_real": "a stale base_version stops the write; that is a genuine conflict class and not an invalid argument."
       },
       "output_contract": {
-        "shape": "{ chapter_id: string, new_draft_version: int, snapshot_revision_id: string }",
+        "shape": "{ chapter_id: string, new_draft_version: int, snapshot_revision_id: string, word_count?: int, chapter_title?: string, chapter_number?: int }",
         "emit_paths": [
           "chapter_id",
           "snapshot_revision_id"
         ],
-        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=100 successes; the three core keys appear in all 100, the three optional ones in 2.",
+        "_live": "CONFIRMED on the deployed image 2026-08-10 by a real turn: all six keys present."
       }
     },
     "plan_propose_spec": {
@@ -485,12 +488,14 @@
         "_why_retryable": "the failure mode includes an LLM call, so an upstream timeout is genuinely transient - the same exception compose_prose carries, and the reason C-7's fail-closed terminal_permanent is declared away here deliberately."
       },
       "output_contract": {
-        "shape": "{ run: { id, status, mode, book_id, model_ref, arcs: [], artifacts: [{kind, artifact_id}], created_at } }",
+        "shape": "{ async: true, job_id: string, run_id: string, run: { id, status, mode, book_id, model_ref, arcs: [], artifacts: [{kind, artifact_id}], created_at } }",
         "emit_paths": [
-          "run.id"
+          "run_id",
+          "job_id"
         ],
-        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses.",
-        "_status_is_not_success": "status:'pending' is what a SUCCESSFUL call returns. Reading this result as the finished spec is the async-honesty trap _meta.async exists to prevent."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=152 successes; all four top-level keys appear in all 152.",
+        "_the_first_draft_named_the_WRONG_LEVEL": "I declared only `{run: {...}}` and an emit path of `run.id`. The result carries `run_id` and `job_id` AT THE TOP LEVEL, and `async: true` beside them - the async-honesty signal this contract's own effect_and_undo describes, which I then failed to declare where it actually lives. A shape verified from one sample can be right about a nested field and blind to the level above it.",
+        "_status_is_not_success": "`run.status: 'pending'` is what a SUCCESSFUL call returns, and `async: true` says so in the envelope. Reading this result as the finished spec is the trap `_meta.async` exists to prevent."
       }
     },
     "glossary_book_ontology_read": {
@@ -522,12 +527,13 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ ontology: { book_id, kinds: [], genres: [], attributes: [], kind_genres: [] } }",
+        "shape": "{ ontology: { book_id, kinds: [], genres: [], attributes: [], kind_genres: [], note?: string } }",
         "emit_paths": [
           "ontology.book_id"
         ],
-        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses.",
-        "_this_is_the_vocabulary": "ontology.kinds IS the closed vocabulary glossary_propose_entities fails against - 44+ recorded 'unknown kind' failures. The two contracts name each other so the repair path is declared rather than left to prose."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=319 successes; `ontology` is the sole top-level key in all 319.",
+        "_this_is_the_vocabulary": "ontology.kinds IS the closed vocabulary glossary_propose_entities fails against - 44+ recorded 'unknown kind' failures. The two contracts name each other so the repair path is declared rather than left to prose.",
+        "_live": "CONFIRMED on the deployed image 2026-08-10; the live result also carries a `note` explaining a compact view, hence the optional key."
       }
     },
     "glossary_propose_entities": {
@@ -572,11 +578,11 @@
         "_note": "an 'unknown kind' is invalid_argument and is NOT retryable - retrying the same kind hits the same closed vocabulary. The repair is to read the ontology, or propose the kind first."
       },
       "output_contract": {
-        "shape": "{ results: [{name, status, error}], summary: {created, skipped, failed} }",
+        "shape": "{ results: [{name, status, error}], summary: {created, skipped, failed}, guidance?: string }",
         "emit_paths": [
           "summary.created"
         ],
-        "_verified_against": "a RECORDED successful result in loreweave_chat, 2026-08-10. NOT read from the tool description - that method produced the wrong shape for 4 of the first 5 contracts authored, including the one emit path CP-3 actually uses."
+        "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=184 successes; `results` and `summary` in all 184, `guidance` in 5."
       }
     }
   }
