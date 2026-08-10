@@ -91,6 +91,43 @@ func ingestEpisode(ctx context.Context, q pgxRWQuerier, bookID, chapterID uuid.U
 	return episodeID, minted, nil
 }
 
+// supersedePriorEpisodeFacts invalidates the facts a chapter REVISION replaced (plan T32 /
+// decision Q6).
+//
+// A chapter edit changes its content hash, so `ingestEpisode` mints a NEW episode row rather
+// than resuming the old one — `uq_episode_chapter_hash` guarantees that. Every fact still
+// citing one of that chapter's OLDER episodes was extracted from prose that no longer exists.
+// Left open, those facts keep answering as-of reads with claims the book no longer makes, and
+// nothing anywhere says so.
+//
+// ── WHY THE BELIEF AXIS AND NOT THE STORY AXIS ───────────────────────────────────────────
+// Q6 is explicit: story-time intervals are UNTOUCHED. A rewrite does not move when something
+// happened in the narrative; it changes what the system is entitled to believe about it. That
+// is exactly what `invalidated_at` / `invalidated_reason` are for, and it is why this reuses
+// the mechanism already live for `superseded_same_ordinal` instead of inventing a third axis.
+//
+// ── WHY THIS PATH HAS NEVER FIRED ────────────────────────────────────────────────────────
+// Measured when the decision was sealed: **99 episodes, 99 chapters, 0 revisions.** Every
+// episode in the corpus is a chapter's first and only one, so no fact has ever been
+// superseded this way. That makes it red-before-green by construction — the test below has to
+// create the revision the corpus has never contained.
+func supersedePriorEpisodeFacts(
+	ctx context.Context, q pgxRWQuerier, chapterID, keepEpisodeID uuid.UUID,
+) (int64, error) {
+	tag, err := q.Exec(ctx, `
+		UPDATE entity_facts
+		   SET invalidated_at = now(), invalidated_reason = 'episode_superseded'
+		 WHERE invalidated_at IS NULL
+		   AND source_episode_id IN (
+		         SELECT episode_id FROM episodes
+		          WHERE chapter_id = $1 AND episode_id <> $2)`,
+		chapterID, keepEpisodeID)
+	if err != nil {
+		return 0, fmt.Errorf("supersede_prior_episode_facts(%s): %w", chapterID, err)
+	}
+	return tag.RowsAffected(), nil
+}
+
 // reconcileEpisode flips a sealed 'pending' episode to 'reconciled' once its facts
 // have committed (the tx-2 step of §12.2.5).
 func reconcileEpisode(ctx context.Context, q pgxRWQuerier, episodeID uuid.UUID) error {

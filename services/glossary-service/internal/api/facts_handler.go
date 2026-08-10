@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -17,14 +18,14 @@ import (
 // half-open as-of predicate is the §12.3.1 lock: valid_from <= N AND (valid_to IS NULL OR N < valid_to).
 
 type factDTO struct {
-	FactID       string  `json:"fact_id"`
-	EntityID     string  `json:"entity_id"`
-	FactKind     string  `json:"fact_kind"`
-	Attr         string  `json:"attr_or_predicate"`
-	Value        string  `json:"value"`
-	ValidFrom    int64   `json:"valid_from_ordinal"`
-	ValidTo      *int64  `json:"valid_to_ordinal"`
-	Cardinality  string  `json:"cardinality"`
+	FactID        string  `json:"fact_id"`
+	EntityID      string  `json:"entity_id"`
+	FactKind      string  `json:"fact_kind"`
+	Attr          string  `json:"attr_or_predicate"`
+	Value         string  `json:"value"`
+	ValidFrom     int64   `json:"valid_from_ordinal"`
+	ValidTo       *int64  `json:"valid_to_ordinal"`
+	Cardinality   string  `json:"cardinality"`
 	SourceEpisode *string `json:"source_episode_id"`
 }
 
@@ -40,7 +41,7 @@ func (s *Server) internalGetFacts(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	asOf, hasAsOf := parseOptionalInt(r.URL.Query().Get("as_of"))
-	args := []any{entityID, bookID} // book_id scopes the read (tenancy, LOCKED)
+	args := []any{entityID, bookID}    // book_id scopes the read (tenancy, LOCKED)
 	pred := "valid_to_ordinal IS NULL" // current head
 	if hasAsOf {
 		args = append(args, asOf)
@@ -175,6 +176,23 @@ func (s *Server) internalIngestEpisode(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "ingest episode failed: "+err.Error())
 		return
+	}
+	// A newly minted episode for a chapter that already had one is a REVISION (Q6): the prose
+	// those older facts were extracted from no longer exists. Invalidate them on the BELIEF
+	// axis, in this same transaction — a revision that committed while its superseded facts
+	// stayed open would leave the graph answering with claims the book no longer makes.
+	// `minted` is the discriminator: a re-run with identical text resumes and must supersede
+	// nothing.
+	if minted {
+		n, serr := supersedePriorEpisodeFacts(r.Context(), tx, chapterID, epID)
+		if serr != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "supersede prior episode facts failed: "+serr.Error())
+			return
+		}
+		if n > 0 {
+			slog.Info("chapter revision superseded prior facts",
+				"chapter_id", chapterID.String(), "episode_id", epID.String(), "facts", n)
+		}
 	}
 	if err := tx.Commit(r.Context()); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")

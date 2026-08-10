@@ -181,6 +181,10 @@ var chain = []Step{
 	// by whom, or from what: a delete-then-restore leaves it NULL, identical to an entity
 	// nobody touched. See entity_lifecycle_ledger.go.
 	{"0063_entity_lifecycle_ledger", UpEntityLifecycleLedger},
+	// T32 / design D1 — liveness becomes a FACT, not a column. Widens the closed fact-kind
+	// set to admit 'status'. See entity_facts_status_kind.go for why this is a separate step
+	// rather than an edit to the CREATE TABLE block.
+	{"0064_entity_facts_status_kind", UpEntityFactsStatusKind},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

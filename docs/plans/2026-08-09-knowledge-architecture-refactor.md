@@ -48,7 +48,20 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T31 — Phase 5 continues.**
+**RESUME: T52 — Phase 5 continues.**
+
+T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
+mutation's own transaction, append-only enforced by a trigger. Its bite found that
+`bulkDeleteEntitiesCore` bypassed `lifecycleEntityCore` entirely and would have written events
+with **no ledger rows**. ⚠️ **Pre-existing KNOWN-RED** (verified at HEAD with all changes
+stashed, fresh DB): `migrate.TestSystemAttrDescriptions_SeedsDescriptionsAndRefreshesHash`.
+⚠️ **Half of D5 is open by design**: demoting `deleted_at`/`status` to derived caches is a
+whole-service reader migration — the same shape as T32's `alive` work, which is next.
+
+**Test DBs for this stretch** (throwaway, on `localhost:5555`, creds
+`loreweave:loreweave_dev`): `loreweave_glossary_t31test`, `_t31mig`, `_t31mig2`, `_t31base`.
+Go api suite: `GLOSSARY_TEST_DB_URL=… go test ./internal/api/ -count=1` (**not** `./internal/...`
+— that runs api and migrate concurrently against one DB and reports ~30 false reds).
 
 **Run state as of 2026-08-11.** DONE since the last compaction: **QC-3a** (rebuild sweeps at
 two memory settings + the drill-path RTO: **17.5 min → 7.3 min** at 100 000 vectors) ·
@@ -2421,7 +2434,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   demotion has something to derive FROM when it happens. Stated in the migration file itself,
   where the next person to touch this will be standing.
 
-- [ ] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
+- [~] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
   parameter; migrate the spoiler window onto *"read at reveal position P"* (decision Q8).
   Also: `invalidated_reason='episode_superseded'` for chapter revisions (decision Q6).
   ⚠️ **State `glossary_entities.alive`'s disposition explicitly**
@@ -2432,6 +2445,61 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   alongside `:EntityStatus` 0-of-21 reachable). **Deprecate it, migrate every reader to the
   as-of liveness fact, then drop the column or document why it survives.**
   (depends on T31)
+  ---
+  **✅ Widened, ✅ Q6, ✅ `alive` deprecated + pinned — ⬜ the reveal axis and the reader
+  migration are deferred with evidence.**
+
+  **① `entity_facts_kind_chk` widened to admit `'status'`** — chain step **0064**, shipped as a
+  `DROP CONSTRAINT IF EXISTS` + `ADD` rather than an edit to `entity_facts.go`'s
+  `CREATE TABLE IF NOT EXISTS`. That is the load-bearing choice: `IF NOT EXISTS` skips the whole
+  statement on an already-migrated database, so editing it would leave migrated databases narrow
+  while fresh ones went wide — **the exact divergence this repo has already recorded**. Proven
+  on both paths:
+
+  ```
+  fresh DB      → CHECK (fact_kind IN (…,'alias','status'))      ✅
+  t31test DB    BEFORE: CHECK ((fact_kind = ANY (ARRAY[… 'alias'])))
+                AFTER : CHECK ((fact_kind = ANY (ARRAY[… 'alias', 'status'])))   ✅ converged
+  ```
+  The value vocabulary is deliberately **not** constrained in SQL — D1 says `life_status`'s
+  values should *"seed the ONT existence ladder rather than invent a parallel enum"*, and a
+  second CHECK here would be that parallel enum.
+
+  **② Q6 — `invalidated_reason='episode_superseded'`.** `supersedePriorEpisodeFacts` invalidates
+  facts still citing an older episode of a revised chapter, wired into the ingest route and
+  gated on `minted` so an idempotent re-run supersedes nothing. Story intervals are untouched:
+  a rewrite changes what the system may *believe*, not when something happened — which is why
+  it reuses the belief-axis mechanism already live for `superseded_same_ordinal` rather than
+  inventing a third axis.
+  **Red before green, by construction:** the corpus is *99 episodes / 99 chapters / **0
+  revisions***, so the tests had to **create** the revision production has never contained.
+  3 tests + the **full Go api suite green (66.6 s, live Postgres)**.
+  *Bite: drop the `chapter_id` predicate → `LeavesOtherChaptersAlone` reds with "revising one
+  chapter invalidated another chapter's fact".* ⚠️ The **first** bite attempt failed for the
+  wrong reason — it broke parameter typing and errored before reaching the assertion, which
+  would have "passed" as a bite while proving nothing. Redone so the predicate is dropped with
+  the parameter still typed.
+
+  ### 🔻 DEFERRAL `D-T32-ALIVE-NO-FACTS` — the reader migration cannot be validated yet
+
+  | | |
+  |---|---|
+  | **Blocker** | Migrating the `alive` readers onto the as-of liveness fact requires liveness facts to exist. **None do.** |
+  | **Evidence** | Re-measured on the dev DB 2026-08-11: `alive` = **7345 true / 0 false / 7345 total**; `SELECT count(*) FROM entity_facts WHERE fact_kind='status' OR attr_or_predicate='life_status'` = **0**. T32 shipped the schema half (the widened CHECK); nothing yet *produces* such facts. |
+  | **Why not do it anyway** | A migrated reader today must either fail closed — every entity reads as not-alive, a total outage of the canon reads — or fail open, which is behaviourally identical to `alive=true` and proves nothing. Neither is a migration; both are a way to make the gate green. |
+  | **To unblock** | Extraction (or a backfill) must emit `fact_kind='status'`, `attr_or_predicate='life_status'` facts. The CHECK now admits them, so this is a producer change, not a schema one. |
+  | **Mechanism** | **`scripts/alive-column-deprecation-gate.py`**, wired into pre-commit + `foundation-ci.yml`. It pins the reader set exactly — 7 files, each annotated with what it does — so **a NEW reader fails the build** and a file that stops reading must be removed from the baseline. **The baseline can only shrink, and it IS the migration checklist.** *Bite: add a file reading `alive` → FAIL, exit 1, file named.* |
+  | **Retry when** | Any liveness facts exist for a real book. Migrate `canon_at_chapter_handler.go` first — **T52 is already rewriting it** — then the remaining six, dropping each from the baseline as it moves. |
+
+  ### 🔻 DEFERRAL `D-T32-REVEAL-AXIS` — Q8's read parameter is not built
+
+  | | |
+  |---|---|
+  | **Blocker** | Q8 makes the reveal axis a **first-class read parameter**, replacing the author-curation opt-out and the reader spoiler window with *"read at reveal position P"*. That re-cuts a shipped surface with live behaviour and tests — the sealed decision says so itself (*"Cost accepted: re-cuts a surface with shipped behaviour and tests"*) — and it is a larger change than the two above combined. |
+  | **Evidence** | The spoiler window is today a set of query flags (`wiki_handler.go`'s `spoiler_chapters` + the curation opt-out the register records as *"curation=true or facts fail-close EMPTY"*). No `reveal position` parameter exists on any read. |
+  | **To unblock** | Nothing external — this is schedulable work, not a blocked dependency. It is deferred because T32 already carries two shipped changes and a migration, and bundling a surface re-cut into the same commit would make the bite for any one of them ambiguous. |
+  | **Mechanism** | Tracked here and in the RESUME block. It shares the *"read at position P"* shape with T5's as-of read and with T52's rewrite, so it should land **with or immediately after T52**, which is already touching the one handler that reads both axes. |
+  | **Retry when** | T52 (the `canon_at_chapter_handler` rewrite) is picked up — the next task but one. |
 
 - [ ] **T52** — Fix `canon_at_chapter_handler` — the design's own worked example
   *(added by `/aif-improve +check`)*
