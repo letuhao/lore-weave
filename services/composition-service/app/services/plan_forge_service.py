@@ -85,6 +85,41 @@ def _hard_rules_pass(rules_out: list[dict[str, Any]]) -> bool:
     )
 
 
+def _compile_blocked_message(rules_out: list[dict[str, Any]]) -> str:
+    """Name the rules that actually blocked the compile.
+
+    🔴 **THE REASONS WERE COMPUTED AND THROWN AWAY.** `run_rules` returns a verdict per rule --
+    `{rule, pass, detail, tier, applicable}` -- and `compile()` used to discard the whole list and
+    raise only *"validation failed -- compile blocked"*. Measured: 3 calls in one session, each
+    answered with that sentence and nothing else. There is no move a caller can make from it. It
+    names no rule, no field, and nothing that would be legal instead (C-12: *the rejection names
+    what WOULD be legal*).
+
+    This is not a reworded message. It is the SAME information the function already had, stopped
+    from being deleted on the way out -- the failure-side twin of a call that reports "completed"
+    while discarding its own signal.
+
+    Only rules that actually BLOCKED are named. An advisory rule and an inapplicable one do not
+    gate the compile (`_hard_rules_pass`), so listing them would accuse the author of failing
+    checks that stopped nothing -- the same dishonesty `validate.py`'s own comment calls out about
+    a vacuous check mark.
+    """
+    blocking = [
+        r for r in rules_out
+        if not r["pass"] and r.get("tier", "hard") == "hard" and r.get("applicable", True)
+    ]
+    if not blocking:
+        # `_hard_rules_pass` said no while nothing is both hard, applicable and failing: a
+        # contradiction inside this module. Saying so is more useful than the old sentence, which
+        # was indistinguishable from it.
+        return ("validation failed — compile blocked, but no hard applicable rule reports a "
+                "failure; this is a validator inconsistency, not something the spec can fix")
+    named = "; ".join(
+        f"{r['rule']}" + (f" ({r['detail']})" if r.get("detail") else "") for r in blocking
+    )
+    return f"validation failed — compile blocked by {len(blocking)} hard rule(s): {named}"
+
+
 def _work_project_id(work: CompositionWork) -> UUID:
     """generation_job.project_id is NOT NULL — knowledge project or surrogate work.id."""
     if work.project_id is not None:
@@ -1799,7 +1834,23 @@ class PlanForgeService:
         spec = spec_art.content
         rules_out = run_rules(spec)
         if not _hard_rules_pass(rules_out):
-            raise ValueError("validation failed — compile blocked")
+            # 🔴 **THE REASONS WERE COMPUTED AND THROWN AWAY.** `run_rules` returns a verdict per
+            # rule — `{rule, pass, detail, tier, applicable}` — and this raise used to discard the
+            # whole list and say only *"validation failed — compile blocked"*. Measured: 3 calls
+            # in one session, each answered with that sentence and nothing else. There is no move
+            # a caller can make from it: it names no rule, no field, and nothing that would be
+            # legal instead (C-12).
+            #
+            # This is not a reworded message. It is the SAME information the function already
+            # has, stopped from being deleted on the way out — the failure half of the pattern
+            # this runtime keeps finding on the success side, where a call reports "completed"
+            # while discarding its own signal.
+            #
+            # Only the rules that actually BLOCKED are named. An advisory rule and an
+            # inapplicable one do not gate the compile (see `_hard_rules_pass`), so listing them
+            # here would accuse the author of failing checks that did not stop anything — the
+            # same dishonesty `validate.py`'s own comment calls out about a vacuous ✓.
+            raise ValueError(_compile_blocked_message(rules_out))
 
         # GENRE (PF-15) — the open sub-question this comment used to name is now ANSWERED.
         #

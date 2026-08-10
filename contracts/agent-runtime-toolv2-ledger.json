@@ -253,6 +253,17 @@
         "AND AT THE GATE: duplicate_identifier on that same object returns ('book_id','project_id',...) and the message names both parameters, the shared value, and says the call cannot succeed as sent -- so through chat-service this is now refused before it reaches the wire"
       ],
       "admitted": false
+    },
+    "plan_compile": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and this iteration shipped a real fix whose value it then demonstrated on itself. All 3 calls (one session, 2026-08-02) were answered with exactly 'validation failed -- compile blocked' and NOTHING ELSE -- no rule, no field, nothing that would be legal instead (C-12). The reasons existed: run_rules returns a verdict per rule ({rule, pass, detail, tier, applicable}) and the raise discarded the entire list. That is the failure-side twin of a call reporting 'completed' while throwing away its own signal. FIX: _compile_blocked_message names the rules that ACTUALLY blocked -- hard tier and applicable only, because an advisory or inapplicable rule gates nothing and naming it would accuse the author of failing a check that stopped nothing, the same dishonesty validate.py's own comment calls out about a vacuous check mark. THE PROOF IS THE FIX USING ITSELF: replayed verbatim, the recorded call now answers 'blocked by 2 hard rule(s): spec_has_arc (no arcs parsed -- an arc is a \"## \" heading inside the Arc Overview section); spec_has_events (no events parsed -- an event is a \"### \" heading inside an arc)'. I wrote a spec to that description and it compiled FIRST TRY. The information the raise used to delete is exactly what was needed to succeed.",
+      "evidence": [
+        "PHASE 2: 3 calls / 1 session / 2026-08-02, one error string with no detail, arc_id='arc_1' alongside real UUIDs for book_id and run_id",
+        "CODE: 3 guards in tests/unit/test_plan_forge.py beside the existing _hard_rules_pass tests; the falsifier probe (blocking = []) reds two of them on the pre-fix behaviour. composition-service unit suite: 3580 passed",
+        "LIVE: deployed composition-service sha256:8044b892ffff, container .Image == the built image. The recorded call replayed verbatim now names both blocking rules AND the heading syntax that would satisfy them",
+        "DATA: plan_propose_spec (mode=rules) on throwaway book 019fcaa4 with markdown written from that message -> run 019fed7d-dab9, spec artifact parsing one arc and two events; plan_compile on it -> linked_versions {arc:arc_1: 1, chapter:arc_1_event_1: 1, chapter:arc_1_event_2: 1}. Falsifier: the same call against the old spec still blocks, and before this fix the message could not have told anyone why"
+      ],
+      "admitted": false
     }
   }
 }
