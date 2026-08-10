@@ -48,10 +48,14 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T29 — the `command-or-nothing` gate + KAL command routes + `SR06` tier.** T26–T28 are
-done and `D-T27-LIVE-REPLAY` is cleared (see the T27 entry — it found a handler that had never
-worked). No open deferrals in Phase 4.
-T27 leaves one deferral, `D-T27-LIVE-REPLAY`: the lifecycle events are proven as outbox rows on a
+**RESUME: T29's second half — `kal-write.controller.ts` + the `SR06` dependency-tier row.**
+T26–T28 are done, `D-T27-LIVE-REPLAY` is cleared (it found a handler that had never worked),
+the dead `/kg/neighborhood` upstream is served, and T29's gate half is done (it found a third
+silent writer). What remains of T29 is only the KAL write surface and its F5 tier — no code has
+been written against either. Then T50, then T25b, whose two PO decisions are now standing:
+reopen T14 to add `project_id` + an archived flag to `EntityVectorRecord`, and fork a
+vector-specific mapper rather than touching `passage_to_hit`.
+T27's deferral is CLEARED. It formerly read: the lifecycle events are proven as outbox rows on a
 live Postgres, but nothing has yet carried one through Redis into Neo4j. T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
 
 **T25b — the READ cutover.** ⚠️ Two decisions are the PO's, listed at the bottom.
