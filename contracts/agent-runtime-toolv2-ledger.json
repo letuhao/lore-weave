@@ -108,6 +108,18 @@
         "NO NEW GUARD: nothing in this tool is wrong, and a member for DQ-8 would encode a product decision that has not been made"
       ],
       "admitted": false
+    },
+    "jobs_get": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. All 19 calls are args:{} -- literally nothing -- across 3 sessions on one day (2026-07-08), and in those SAME sessions jobs_list succeeded 3 times and jobs_summary twice, so the model had job ids in hand and sent none of them. The tool is fine: given the service+job_id that jobs_list had just returned it answered with the full job record first try, and the control -- args:{} -- reproduces the recorded error verbatim. WHAT MAKES THIS A PROOF RATHER THAN A SHRUG is the corpus trend for the defect class. Blank-argument FAILURES: 4 in June, 561 across 23 tools and 59 sessions in July, 37 across 3 tools and 35 sessions in August. August is a partial month so the raw counts are not comparable, but the SHAPE is: 9.5 blank failures per affected session in July against 1.06 in August. The loops are gone, which is exactly what the blank-args streak cap and the repeated-failure breaker were built to do. jobs_get's own 19-call loop is the July shape and cannot recur.",
+      "evidence": [
+        "PHASE 2: 19 calls / 3 sessions / 2026-07-08, one error, one argument object ({}). Same sessions: jobs_list ok x3, jobs_summary ok x2",
+        "LIVE: jobs-service MCP on :8224. jobs_list -> job 019fc63b-94c0-7ba4-be06-cdf7b8375a39 (service=composition, kind=draft_chapter, status=completed); jobs_get with that pair -> the full record including params, model, created_at/updated_at, child_count",
+        "CONTROL: jobs_get with args:{} still answers 'invalid arguments for jobs_get -- service: Field required ...; job_id: Field required ...', character-for-character the recorded failure. The tool did not change and did not need to",
+        "DATA, the defect class over time: blank-arg failures 4 (Jun) / 561 across 23 tools and 59 sessions (Jul) / 37 across 3 tools and 35 sessions (Aug). Per AFFECTED SESSION that is 9.5 -> 1.06, which is a shape claim rather than a volume claim and so survives August being a partial month",
+        "MINOR, recorded not fixed: the message says '(you sent a dict)' for a field that is MISSING -- the parenthetical describes the whole payload, not the field, and reads as if the field's value was a dict. Prose is not the lever and this changed no outcome"
+      ],
+      "admitted": false
     }
   }
 }
