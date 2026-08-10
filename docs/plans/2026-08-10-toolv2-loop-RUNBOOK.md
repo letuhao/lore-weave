@@ -134,6 +134,57 @@ output alone** — and this runtime has already spent a full investigation on ho
 a code bug's clothes. *Would clear it:* comparing the trigger definitions in `loreweave_glossary`
 against the migration chain.
 
+### DQ-3 · `kg_propose_edge` cannot satisfy its own precondition, and INV-K1 says it may not
+
+*Raised by:* iteration 2 · *Measured:* 2 calls / 2 sessions — the only genuine failures the tool
+has, once the 14 human denials and 1 pending card are removed from its 17.
+
+Both were refused `KG_ENDPOINT_NOT_NODE`: an edge whose endpoints are not yet graph nodes. The
+message is already correct, complete, and names the remedy tool by name
+(`kg_project_entities_to_nodes`) — so **a better sentence is not available as a fix**. One of the
+two sessions did then call the projection successfully and **never retried the edge**; the other
+never projected at all.
+
+The obvious repair — have `kg_propose_edge` project the missing endpoints itself — is **forbidden
+by INV-K1**: this tool must never write Neo4j, which is why it parks a proposal for a human instead.
+Its own source says so at the precheck (*"This READS Neo4j … the write stays human-gated"*).
+
+**The question:** is a two-call round trip the intended cost of INV-K1, or should the runtime chain
+the projection on `KG_ENDPOINT_NOT_NODE`? Chaining is a mechanism built for a 2-call population,
+which §7 says is not a subject; weakening INV-K1 is a safety decision that is not mine.
+*Would clear it:* traffic after the tool is actually reachable — the corpus cannot say how often
+this bites, because the tool has never been permitted to run.
+
+---
+
+## Debt this loop surfaced but did not absorb
+
+Recorded here rather than fixed inline, because the loop's whole design is one tool at a time and
+a run that absorbs every adjacent finding never reaches its second row.
+
+### D-1 · Five falsifiers do not red the guard they name
+
+Found by a **clean** `agentruntime-falsification.py --run` (332 of 337 red; the 5 below report
+*"GREEN — the guard requires nothing"*). All five predate this loop; every new guard added in
+iterations 1–2 reds correctly. The gate exits 0, so this is advisory — but a guard whose falsifier
+cannot red it is a green light that means nothing, and each already has a diagnosis:
+
+| guard | why the falsifier misses |
+|---|---|
+| `test_THE_CREATE_PATH_IS_NOT_THE_LEGACY_TOOL` | the falsifier edits `agent-runtime-vocabularies.json`; the test reads the **hardcoded `vocab()` fixture**, so the registry it claims to protect is never asserted against |
+| `test_THERE_IS_NO_FUZZY_SUBSTITUTION_ARM` | the injected arm compares `_normalise('place')` against the book's kinds, and `place` does not normalise to `location` — so the value stays unknown and the guard stays green |
+| `test_A_MISSING_OR_WRONG_SHAPE_YIELDS_NOTHING_RATHER_THAN_RAISING` | `seq = [seq]` is caught by the per-row `isinstance` check downstream, so the wrong shape still yields nothing instead of raising |
+| `test_NO_FEDERATED_TOOL_DECLARES_ITS_OWN_OWNER` | it injects `_meta_forged`, a key nothing reads; forging the owner needs the tool's real `_meta.served_by` |
+| `test_THE_UNION_DERIVES_COMPLETELY` | the replacement still appends whenever a name exists, so it is a no-op on every catalogue row |
+
+### D-2 · Running the falsification harness concurrently with the suite reds tree-mirroring guards
+
+`test_NEITHER_CENSUS_WRITER_CAN_REACH_THE_LIVE_TREE__all_8_cells` went red mid-iteration, and
+**reproduced at two earlier commits in a detached worktree** — which looked like a long-standing
+break until the variable turned out to be a background `--run` competing for temp mirrors. It
+passes clean (23.75s) once nothing else is running. Run the gates serially; a red here is a
+scheduling artefact before it is a defect.
+
 ---
 
 ## Ledger

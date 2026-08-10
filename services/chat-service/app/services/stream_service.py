@@ -8806,11 +8806,33 @@ async def resume_stream_response(
             # Explicitly `breaker`, not left to inference: a user denial is OUR refusal, and this is
             # the branch where the two are one line apart. Stating it removes the only place where a
             # reader could mistake the classifier's default for a decision.
-            pre_tool_chunks = [instrument.stamp_tool_call({
-                "id": tool_call_id, "iteration": 0, "tool": _tool_name,
-                "args": _tool_args, "ok": False,
-                "result": None, "error": "denied by user",
-            }, source=instrument.SOURCE_BREAKER)]
+            #
+            # ── TOOL-V2 LOOP #2 · AND THE OUTCOME MUST BE STATED HERE TOO ────────────────────
+            # 🔴 **MEASURED: 21 calls across 17 sessions and 4 tools are a human saying no, and
+            # every one of them is recorded as a tool FAILURE.** `source` was stamped here; the
+            # typed outcome was not, so `ensure_tool_call_instrumented` fell through to its
+            # fail-closed default (`ok is not True` ⇒ `failed`, `error_class` ⇒ unclassifiable)
+            # and flagged it `call_outcome_inferred`. The row then says the tool broke.
+            #
+            # It did not break. It never ran. `kg_propose_edge` reads 0 successes in 17 calls and
+            # **14 of those 17, across 12 of its 14 sessions, are this branch** — a Tier-A tool
+            # that has literally never been permitted to dispatch. Its "0% success rate" was
+            # measuring the approval card, not the tool.
+            #
+            # This is the SAME conflation for the third time: a suspension recorded `ok:false`
+            # (5.5), 52.4% of failures being our own breaker prose (`stamp_refused`), and now a
+            # denial. The vocabulary already had the word — `refused` is defined as "a call the
+            # RUNTIME declined to make", and the line above already argues a user denial is ours.
+            # `refusal_kind` keeps it separable from the breaker refusals, so "the human said no"
+            # and "we short-circuited a repeat" can never merge into one number.
+            pre_tool_chunks = [instrument.stamp_tool_call(
+                instrument.stamp_refused({
+                    "id": tool_call_id, "iteration": 0, "tool": _tool_name,
+                    "args": _tool_args, "ok": False,
+                    "result": None, "error": "denied by user",
+                }, "denied_by_user"),
+                source=instrument.SOURCE_BREAKER,
+            )]
 
     resume_discovery_catalog: list[dict] | None = None
     resume_extra_frontend: list[dict] | None = None

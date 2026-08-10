@@ -1360,6 +1360,27 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/stream_service.py", "_pending_record = instrument.stamp_deferred({",
                                                  "_pending_record = ({"),
     ],
+    # ── TOOL-V2 LOOP #2 · the user-denial half of the same conflation ────────────────────────
+    # Un-stamp the denial site and the chokepoint's fail-closed default takes over — which is
+    # exactly what the 21 recorded rows say today.
+    "test_A_USER_DENIAL_IS_REFUSED_NOT_FAILED": [
+        (f"{CS}/app/services/instrument.py", '    chunk["call_outcome"] = CALL_REFUSED',
+                                             '    chunk["call_outcome"] = CALL_FAILED'),
+    ],
+    "test_A_DENIAL_STAYS_SEPARABLE_FROM_THE_BREAKER_REFUSALS": [
+        # Collapse the kinds: "the human said no" and "we short-circuited a repeat" become one
+        # number, which is the merge `refusal_kind` exists to prevent.
+        (f"{CS}/app/services/instrument.py", '    chunk["refusal_kind"] = kind',
+                                             '    chunk["refusal_kind"] = "refused"'),
+    ],
+    "test_A_DENIAL_CARRIES_NO_ERROR_CLASS": [
+        (f"{CS}/app/services/instrument.py", '        chunk.pop("error_class", None)',
+                                             "        pass  # falsifier"),
+    ],
+    "test_THE_DENIAL_SITE_ACTUALLY_STAMPS_IT": [
+        (f"{CS}/app/services/stream_service.py", '                }, "denied_by_user"),',
+                                                 "                }),"),
+    ],
     "test_AN_UNCLASSIFIED_FAILURE_GETS_C7S_FAIL_CLOSED_ANSWER": [
         (f"{CS}/app/services/instrument.py", '            chunk["error_class"] = CALL_UNCLASSIFIABLE',
                                              "            pass  # falsifier"),
@@ -1875,6 +1896,21 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_AN_UNKNOWN_LANE_FAILS_CLOSED": [
         (f"{PKG}/vocabulary.py", "        if lane is None:", "        if False:  # falsifier"),
+    ],
+    # ── The three refusals the CENSUS named as checked by nothing, guarded in loop #2 ────────
+    # Losing the first is the worst of the three: a blank `source_path` does not raise later, it
+    # enumerates to an EMPTY legal set, so every value the model sends is refused as unknown.
+    "test_A_ROW_MISSING_ITS_SOURCE_TRIPLE_IS_REFUSED": [
+        (f"{PKG}/vocabulary.py", "        if not value or not isinstance(value, str):",
+                                 "        if False:  # falsifier"),
+    ],
+    "test_A_MALFORMED_BINDING_BLOCK_IS_REFUSED_NOT_SKIPPED": [
+        (f"{PKG}/vocabulary.py", "        if not isinstance(block, dict):",
+                                 "        if False:  # falsifier"),
+    ],
+    "test_A_MALFORMED_VOCABULARY_ROW_IS_REFUSED_NOT_SKIPPED": [
+        (f"{PKG}/vocabulary.py", "        if not isinstance(row, dict):",
+                                 "        if False:  # falsifier"),
     ],
     "test_THE_STANDARDS_SOURCE_IS_CHECKED_TOO": [
         # Check only the primary source — half the mechanism dispatches unguarded.

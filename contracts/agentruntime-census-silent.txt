@@ -63,4 +63,9 @@ surface.py::TakeWhileBudget.__post_init__::ValueError::1::3130a968
 # raised exactly one other class — dead by construction of that statement. This one is dead only
 # because a DIFFERENT invariant holds elsewhere, and deleting it turns a future P1 regression from
 # a named failure into a bare `StopIteration` three frames up. Kept, and the cost is this row.
-surface.py::SurfaceAssembler.assemble::AssertionError::1::6b19409d
+#
+# ✅ CLOSED 2026-08-10 (tool-v2 loop #2). The census reported it NOW GUARDED, and the row is
+# removed rather than left as stale debt. The id is UNCHANGED (`6b19409d`), which is what
+# distinguishes this from the failure mode the header above warns about: a row can also leave
+# because its digest CHURNED, and that case shows up as a NEW id arriving NEWLY SILENT. No
+# surface.py id did. The raise itself stays in the source for the reason argued above.

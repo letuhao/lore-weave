@@ -135,6 +135,18 @@ class TestTheSourceMustBeSafeToDispatchUnasked:
             check_vocabulary(vocab(), lambda t: "read" if t == "glossary_book_ontology_read"
                              else "write")
 
+    @pytest.mark.parametrize("field", ["source_tool", "source_path", "value_field"])
+    def test_A_ROW_MISSING_ITS_SOURCE_TRIPLE_IS_REFUSED(self, field):
+        """🔴 **NAMED BY THE CENSUS AS A REFUSAL NOTHING CHECKED**, filed the run after this
+        module landed. The lane checks below it were guarded and this one — the check that the
+        row says WHERE the values come from at all — was not, so removing it reddened nothing.
+
+        An unguarded emptiness check is the worst one to lose: a row with a blank `source_path`
+        does not raise later, it enumerates to an EMPTY legal set, and an empty set refuses every
+        value the model sends. The failure would arrive as "unknown kind" on a correct kind."""
+        with pytest.raises(VocabularyContractViolation, match=f"declares no {field}"):
+            check_vocabulary(vocab(**{field: ""}), lambda _t: "read")
+
 
 class TestTheRegistryRefusesTheWholeDocumentRatherThanDroppingARow:
 
@@ -142,6 +154,21 @@ class TestTheRegistryRefusesTheWholeDocumentRatherThanDroppingARow:
         """F-50's shape: a silently dropped row leaves its binding in place, naming nothing."""
         doc = {"vocabularies": {}, "bindings": {"t": {"p": "Nope"}}}
         with pytest.raises(VocabularyContractViolation, match="not declared"):
+            load_registry(doc, lambda _t: "read")
+
+    def test_A_MALFORMED_BINDING_BLOCK_IS_REFUSED_NOT_SKIPPED(self):
+        """🔴 **THE CENSUS'S SECOND UNCHECKED REFUSAL HERE.** `{"t": "BookEntityKind"}` — a
+        binding written as a bare string instead of a `{path: vocabulary}` map — is the shape a
+        hand-edited registry actually takes. Unguarded, removing this raise makes the whole block
+        iterate over the STRING's characters and bind nothing, so every call the block was meant
+        to protect sails through unvalidated with the registry looking fine."""
+        doc = {"vocabularies": {}, "bindings": {"glossary_propose_entities": "BookEntityKind"}}
+        with pytest.raises(VocabularyContractViolation, match="binding block is not an object"):
+            load_registry(doc, lambda _t: "read")
+
+    def test_A_MALFORMED_VOCABULARY_ROW_IS_REFUSED_NOT_SKIPPED(self):
+        doc = {"vocabularies": {"BookEntityKind": "not-an-object"}, "bindings": {}}
+        with pytest.raises(VocabularyContractViolation, match="is not an object"):
             load_registry(doc, lambda _t: "read")
 
     def test_THE_COMMITTED_REGISTRY_LOADS_AND_BINDS_THE_MEASURED_PATH(self):

@@ -13,6 +13,17 @@
         "REVERSE ARM LIVE: op=reassign_kind + entity_ids:[one] mints (token p.entity_id filled); the two-element control still refuses"
       ],
       "admitted": false
+    },
+    "kg_propose_edge": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and the 0-of-17 was never the tool. Population: 14 of 17 calls (12 of its 14 sessions) are 'denied by user' -- a human declining the Tier-A approval card -- 1 is the pending card itself, and only 2 are genuine refusals (KG_ENDPOINT_NOT_NODE). The tool had literally NEVER been permitted to dispatch, so its success rate was measuring the approval card. FIX (chat-service, and it is corpus-wide): the denial branch stamped source but not the typed outcome, so ensure_tool_call_instrumented fell through to its fail-closed default and 21 calls / 17 sessions / 4 tools (kg_propose_edge 14, kg_propose_fact 4, glossary_plan 2, composition_outline_node_create 1) are recorded as TOOL FAILURES. It now stamps refused + refusal_kind=denied_by_user -- the third instance of this exact conflation after CP-5.5's suspensions and stamp_refused's 52.4% breaker prose. NOT FIXED: the 2 endpoint refusals -- auto-projecting is forbidden by INV-K1 (this tool must never write Neo4j), recorded as DQ-3 rather than guessed. NO CONTRACT MEMBER: no residual subject once denials are typed. Also surfaced, recorded not absorbed: 5 pre-existing falsifiers that do not red their guard (D-1) and a concurrency artefact in the census guard (D-2).",
+      "evidence": [
+        "CODE: 4 guards in the REGISTERED cp5_calloutcome suite + 1 end-to-end resume test in test_permission_modes; falsifier probe reds it with 'got failed (inferred=True)', which is what the 21 rows already say; clean falsification 332/337; chat-service suite green (2840 tests)",
+        "LIVE-1 tool: knowledge-service MCP on throwaway project 019fec6c-d421-77f0-b2f4-ab7c3ced3f67 -> parked:true, on_schema:true, triage_id 019fec6e-12e8-7dca-a025-e09033620fc9, and kg_triage_list shows it (total 1). CONTROL: an unprojected endpoint still refuses KG_ENDPOINT_NOT_NODE",
+        "LIVE-2 recording: DEPLOYED chat-service sha256:518198727754 (container .Image == built image), real POST /v1/chat/sessions/{id}/tool-results outcome=denied on a throwaway session -> persisted row reads refused | denied_by_user | breaker | NOT inferred",
+        "DATA falsifier: the same table's 21 legacy denial rows carry NO call_outcome at all (they infer to failed at read time); the one new row is the only refused/denied_by_user"
+      ],
+      "admitted": false
     }
   }
 }

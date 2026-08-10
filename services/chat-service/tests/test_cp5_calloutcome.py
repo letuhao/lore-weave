@@ -87,6 +87,59 @@ class TestASuspensionIsNotAFailure:
         )
 
 
+class TestAUserDenialIsNotAFailureEither:
+    """TOOL-V2 LOOP #2 — the same conflation, a third population.
+
+    🔴 **MEASURED: 21 calls / 17 sessions / 4 tools are a human saying no, and every one is
+    recorded `failed`.** The denial site stamped `source` and stopped there, so the chokepoint
+    fell through to its fail-closed default and the row says the tool broke.
+
+    It did not break — it never ran. `kg_propose_edge` reads **0 successes in 17 calls, and 14 of
+    them, across 12 of its 14 sessions, are this branch**: a Tier-A tool that has never once been
+    permitted to dispatch. Its "0% success rate" was measuring the approval card.
+
+    `refused` already existed for this (*"a call the RUNTIME declined to make"*), and the denial
+    site's own comment already argued a user denial is ours.
+    """
+
+    def test_A_USER_DENIAL_IS_REFUSED_NOT_FAILED(self):
+        got = instrumented(**instrument.stamp_refused(
+            {"ok": False, "error": "denied by user"}, "denied_by_user"))
+        assert got["call_outcome"] == instrument.CALL_REFUSED
+        assert got["call_outcome"] != FAILED
+        assert "call_outcome_inferred" not in got
+
+    def test_A_DENIAL_STAYS_SEPARABLE_FROM_THE_BREAKER_REFUSALS(self):
+        """"The human said no" and "we short-circuited a repeat" are both refusals and must never
+        merge into one number — which is what `refusal_kind` is for."""
+        denial = instrumented(**instrument.stamp_refused(
+            {"ok": False, "error": "denied by user"}, "denied_by_user"))
+        breaker = instrumented(**instrument.stamp_refused(
+            {"ok": False, "error": "unchanged repeat"}, "repeat_unchanged"))
+        assert denial["call_outcome"] == breaker["call_outcome"]
+        assert denial["refusal_kind"] != breaker["refusal_kind"]
+
+    def test_A_DENIAL_CARRIES_NO_ERROR_CLASS(self):
+        """§4.2 — the error class is a sub-field of `failed`. Asking whether a human's "no" is
+        retryable is a category error, and the answer it used to get was `terminal_permanent`."""
+        got = instrumented(**instrument.stamp_refused(
+            {"ok": False, "error": "denied by user", "error_class": "retryable_transient"},
+            "denied_by_user"))
+        assert "error_class" not in got
+
+    def test_THE_DENIAL_SITE_ACTUALLY_STAMPS_IT(self):
+        """The wiring, checked at the source — a mechanism nothing calls is the shape this run has
+        now found six times, and the end-to-end proof lives in
+        `test_permission_modes.py::test_denied_is_recorded_REFUSED_not_failed`."""
+        import pathlib
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert '}, "denied_by_user"),' in src, (
+            "the user-denial record does not mark itself refused, so every denial persists as a "
+            "tool failure exactly as before"
+        )
+
+
 class TestAFailureCarriesAClassOrFailsClosed:
 
     def test_AN_UNCLASSIFIED_FAILURE_GETS_C7S_FAIL_CLOSED_ANSWER(self):
