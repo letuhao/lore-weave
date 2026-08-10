@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T52 — Phase 5 continues.**
+**RESUME: T33 — Phase 5 continues.**
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -2501,7 +2501,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | Tracked here and in the RESUME block. It shares the *"read at position P"* shape with T5's as-of read and with T52's rewrite, so it should land **with or immediately after T52**, which is already touching the one handler that reads both axes. |
   | **Retry when** | T52 (the `canon_at_chapter_handler` rewrite) is picked up — the next task but one. |
 
-- [ ] **T52** — Fix `canon_at_chapter_handler` — the design's own worked example
+- [x] **T52** — Fix `canon_at_chapter_handler` — the design's own worked example ✅
   *(added by `/aif-improve +check`)*
   `services/glossary-service/internal/api/canon_at_chapter_handler.go:124`
   A **live public route** (`GET /v1/glossary/books/{book_id}/known-entities`, View-gated,
@@ -2516,6 +2516,51 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   falls back to a current value.
   **Test:** an entity renamed at ch.30 must render under its **ch.10 name** when queried at ch.10.
   (depends on T32)
+  ---
+  ✅ **DONE.** `name` and `aliases` now resolve **as of the requested chapter** via two
+  `LEFT JOIN LATERAL`s over `entity_facts`, using the same half-open story predicate as
+  `state@as_of` (`valid_from_ordinal <= P < valid_to_eff`, `ORDER BY valid_from DESC` so an
+  overlapping-interval substrate bug degrades to *freshest wins* rather than *random wins*).
+  The current attribute value is the FALLBACK, not the source.
+
+  **The acceptance case, exactly as the plan wrote it.** An entity named `Ash` from ch.1 and
+  renamed `Ashborn` at ch.30:
+  ```
+  before_chapter_index=10  -> "Ash"       PASS
+  before_chapter_index=40  -> "Ashborn"   PASS (the control)
+  ```
+  The control is load-bearing: without it, a handler that simply always returned the *oldest*
+  name would pass the ch.10 assertion and be just as broken.
+
+  **The bite shows what was actually there.** Dropping `name_asof` from the projection reds the
+  test with **`got "Nezha"`** — neither story name, but the CURRENT cached name. That is the
+  defect in one line: the entity SET was timed by `chapter_entity_links`, and everything
+  rendered about it was not.
+
+  **The untimed read is pinned as correct, not as a gap.** `before_chapter_index` omitted means
+  *the whole book*, which has no single position — "the name as of the whole book" is not a
+  question. The position is then NULL, the lateral matches nothing, and the current value is
+  used. A second test asserts this so a later change cannot quietly make the untimed read
+  answer at position 0 and render the whole panel under earliest names. (Same reasoning
+  composition's `_cast_roster` records for its untimed catalogue read.)
+
+  **Logging, per the task's contract.** DEBUG carries the resolved position and the per-field
+  as-of source; WARN fires when any field fell back to a current value. Observed live:
+  ```
+  WARN known-entities fell back to CURRENT values on a timed read
+       as_of=10 entities=1 name_fallbacks=0 alias_fallbacks=1
+  WARN known-entities cannot resolve kind or liveness as-of  deferral=D-T32-ALIVE-NO-FACTS
+  ```
+  `name_fallbacks=0` with `alias_fallbacks=1` is the honest reading: the name resolved as-of,
+  the alias had no covering fact.
+
+  ⚠️ **`kind` and `liveness` still read CURRENT, and say so on every timed read.** There are
+  **0** liveness facts and no `kind` fact_kind at all (measured: `entity_facts` holds
+  `attribute` 39045, `name` 5189, `alias` 1868 — nothing else), so there is no as-of source to
+  read. The unconditional WARN is deliberate: an unmet precondition nobody is reminded of is
+  one that never gets met. Tracked by `D-T32-ALIVE-NO-FACTS`.
+
+  **Evidence:** 2 new tests + the **full Go api suite green (63.6 s, live Postgres)**.
 
 - [ ] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
   Widen `app/extraction/causal_edges.py` from `causes/enables` to `causes | precedes`; copy the
