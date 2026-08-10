@@ -389,6 +389,16 @@
         "LIVE: translation-service MCP :8210 with throwaway book 019fcaa4, its first active chapter, target_language vi -> {chapter_id echoed, target_language 'vi', segments [], dirty_count 0, needs_count 0}. An untranslated chapter has no segments, and the reply says so in counts rather than leaving the emptiness ambiguous"
       ],
       "admitted": false
+    },
+    "glossary_book_ontology_read": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and the FIRST tool of the 'has recorded successes' band -- where the work is separating the failure population from the successful one rather than explaining a flat zero. 391 calls / 205 sessions / 319 ok (81.6%). The 72 failures split three ways: 33 are OUR OWN BREAKERS (23 repeat-breaker, 9 blank-args, 1 repeated-failure) and are refusals rather than tool failures; 11 are argument problems (7 'book not accessible', 4 missing book_id); and 28 -- the largest single class -- are 'mcp tool returned unparseable content'. THAT CLASS WAS FIXED THE DAY IT APPEARED. This tool returns a ~42KB payload, so #9B has it reply with a SHORT PLACEHOLDER in content[0].text and the real payload in structuredContent; the client used to json.loads the placeholder and a working tool read as broken. knowledge_client now prefers structuredContent (de464522d, 2026-07-09) and its comment names THIS TOOL as the example. All 28 failures are before 2026-07-10; there are 251 successes and ZERO unparseable failures after it.",
+      "evidence": [
+        "PHASE 2, split by outcome: 319 ok / 72 failed. Failures: 28 unparseable (3 sessions, 2026-07-09), 23 repeat-breaker (23 sessions), 9 blank-args breaker, 7 'book not accessible', 4 missing book_id, 1 repeated-failure breaker",
+        "THE FIX IS DATED: de464522d, 2026-07-09, 'prefer structuredContent when present'. Split by that date: before it, 68 ok and all 28 unparseable; after it, 251 ok and NONE",
+        "LIVE: the reply's content[0].text is literally 'ok — see structuredContent for the full result' and structuredContent carries the ontology with 14 kinds. The placeholder shape that once broke the client is exactly what the tool still returns -- the client changed, not the tool"
+      ],
+      "admitted": true
     }
   }
 }
