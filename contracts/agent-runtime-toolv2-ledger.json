@@ -132,6 +132,19 @@
         "AND A REGRESSION OF MY OWN LEDGER (D-6): this iteration began by failing to mint a token at all, because the RUNNING glossary-service was image 21c088f0f375 rather than the ce654254a69b that iteration 1 verified. The source was committed and unchanged; the deployment had drifted. A rebuild + --force-recreate restored it and iteration 1's singular-entity_id fix was re-verified live before this iteration continued"
       ],
       "admitted": false
+    },
+    "composition_authoring_run_start": {
+      "state": "blocked",
+      "note": "BLOCKED after investigation and two live probes. THE FAILURE IS A SIBLING MIS-PICK, and the tool that fixes it already exists. All 10 calls (2 sessions, 2026-07-15) carry budget_usd / plan_run_id / pause_after_each_unit -- which are composition_authoring_run_CREATE's required arguments -- sent to composition_authoring_run_START, whose schema requires book_id + run_id. Both tools are visibility:legacy with superseded_by=composition_authoring_run_manage, the unified op= tool that exists precisely because near-identical sibling verbs get mis-picked. This is the same shape as iteration 1's glossary_propose_curation and DQ-9's two confirm tools, a third time. The model also invented an {args:{...}} envelope (the wire schema is FLAT: book_id, run_id, pause_after_each_unit) and one call sent run_id == book_id == plan_run_id. WHAT BLOCKS THE SUCCESS PATH: starting a run needs a run, which op=create refuses without a plan_run_id, which needs a compiled plan run inside a composition project the caller can edit -- the same wall iteration 7 hit. That is a pipeline to be built, not a call to be fixed.",
+      "evidence": [
+        "PHASE 2: 10 calls / 2 sessions / one day. Errors are args.run_id and args.book_id Field required, and 'args Input should be a valid dict' where the model sent a LIST",
+        "CATALOGUE: composition_authoring_run_start is visibility=legacy, superseded_by=composition_authoring_run_manage; its wire schema is flat with required [book_id, run_id]. composition_authoring_run_create requires [book_id, plan_run_id, budget_usd, pause_after_each_unit] -- exactly the arguments the failing calls carried",
+        "LIVE PROBE 1: composition_authoring_run_manage op=create on a throwaway book -> 'op=create requires plan_run_id, budget_usd, and pause_after_each_unit'",
+        "LIVE PROBE 2: composition_authoring_run_start with a well-formed but non-existent run_id -> 'not found or not accessible', which is correct behaviour",
+        "A NOTE ON MY OWN GATE, checked rather than assumed: the duplicate-identifier gate from iteration 5 scans TOP-LEVEL keys, and this call's repeated id sits inside the invented args envelope where it does not look. A catalogue sweep says ZERO tools declare a nested object property carrying a *_id, so the gate is not missing a declared shape -- the nesting here is the model's fabrication, which the unwrap-repair handles when the envelope is a LONE key",
+        "WHAT WOULD UNBLOCK IT: a composition project the caller can edit, a compiled plan run in it, then op=create and op=start. Worth doing against the SUCCESSOR (composition_authoring_run_manage), since both legacy siblings are superseded by it"
+      ],
+      "admitted": false
     }
   }
 }
