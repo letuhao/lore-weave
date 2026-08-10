@@ -380,6 +380,15 @@
         "DATA: kg_view_edit op=upsert created view code 'toolv2_probe'; kg_view_read then returned it with count 1 and matching created_at/updated_at. Falsifier: the same call returned count 0 moments earlier, so the read reflects the store rather than a constant"
       ],
       "admitted": false
+    },
+    "translation_segment_status": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it is the LAST tool in the loop's 'called and NEVER succeeded' band -- the 34-tool population the runbook identified as arriving with a free reproducer. Its single call is args:{} on 2026-07-08, the NINTH tool concluded out of that one blank-argument day, and the error named all three missing required fields at once. Given them it answers with the chapter it was asked about, the language, and explicit dirty/needs counts.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-07-08, args:{}, one error naming book_id, chapter_id AND target_language together rather than one at a time",
+        "LIVE: translation-service MCP :8210 with throwaway book 019fcaa4, its first active chapter, target_language vi -> {chapter_id echoed, target_language 'vi', segments [], dirty_count 0, needs_count 0}. An untranslated chapter has no segments, and the reply says so in counts rather than leaving the emptiness ambiguous"
+      ],
+      "admitted": false
     }
   }
 }
