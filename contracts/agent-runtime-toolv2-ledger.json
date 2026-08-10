@@ -477,6 +477,17 @@
         "NOTED: CP-5.6 measured that 5 of 36 paging tools never report completeness at all. book_list is not one of them; it reports is_complete explicitly"
       ],
       "admitted": true
+    },
+    "tool_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and it is the loop's purest measurement trap. 1841 calls -- the highest-traffic tool in the corpus -- and 661 ok, a 36% headline. EVERY ONE of the 1180 failures is our own repeat breaker, and they sit in THREE sessions on a single day (566 + 307 + 307, all 2026-07-20). The tool has ZERO genuine failures across 114 sessions. Ranking tools by success rate would put the runtime's most-used primitive near the bottom of the list, which is exactly the denominator error this loop was built to stop making. The breaker's message ('...returns the SAME list every time — listing again cannot help') no longer exists anywhere in the tree -- GREPPED, not assumed, because absence of recent traffic is not evidence of removal. Its successor is the generic repeated-read breaker, which stamps refused/repeated_read; two of those are already in the corpus.",
+      "evidence": [
+        "PHASE 2, split: 661 ok / 114 sessions, 1180 breaker refusals / 3 sessions. No other error string appears at all",
+        "CONCENTRATION: 566, 307 and 307 refusals in three sessions on 2026-07-20 -- a single day's pathological loops, not a property of the tool",
+        "LIVE: a real agui turn -> tool_list {category: 'glossary'} | done | source=meta | ok, answered from the runtime's own catalogue rather than dispatched",
+        "GREPPED: the old breaker message is absent from services/ and frontend/src, so the message was replaced rather than merely idle"
+      ],
+      "admitted": true
     }
   }
 }
