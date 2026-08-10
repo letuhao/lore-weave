@@ -99,6 +99,8 @@ SUITES = (
     "tests/test_cp5_emits.py",
     # CP-5's consumer-local tools — registration + the declared owner. Same change as the suite.
     "tests/test_cp5_localtools.py",
+    # CP-6.1's closed-vocabulary resolution. Registered in the same change as the suite.
+    "tests/test_cp6_vocabulary.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

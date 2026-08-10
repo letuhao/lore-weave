@@ -1830,6 +1830,98 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                                                  "would repair them"),
     ],
 
+    # ── CP-6.1 · closed-vocabulary resolution ─────────────────────────────────────────────────
+    "test_A_VALUE_IN_THE_BOOKS_SET_PASSES": [
+        # Refuse a value the book DOES have — the check inverted.
+        (f"{PKG}/vocabulary.py", "    unknown = tuple(s for s in pending.sent if s not in allowed_set)",
+                                 "    unknown = tuple(pending.sent)  # falsifier"),
+    ],
+    "test_A_VALUE_OUTSIDE_IT_IS_REFUSED": [
+        (f"{PKG}/vocabulary.py", "    unknown = tuple(s for s in pending.sent if s not in allowed_set)",
+                                 "    unknown = ()  # falsifier"),
+    ],
+    "test_THERE_IS_NO_FUZZY_SUBSTITUTION_ARM": [
+        # Add the guess arm: `place` silently becomes `location`, and a wrong kind is written into
+        # canon with no failure anywhere.
+        (f"{PKG}/vocabulary.py", "    unknown = tuple(s for s in pending.sent if s not in allowed_set)",
+                                 "    unknown = tuple(s for s in pending.sent if s not in allowed_set\n"
+                                 "                    and _normalise(s) not in {_normalise(a) for a in allowed})"),
+    ],
+    "test_A_NORMALISED_NEAR_MISS_IS_SUGGESTED_NEVER_SUBSTITUTED": [
+        # Drop the suggestion: `power_systems` refuses with no hint at all.
+        (f"{PKG}/vocabulary.py", "        if _normalise(u) in by_norm and by_norm[_normalise(u)] != u",
+                                 "        if False  # falsifier"),
+    ],
+    "test_ONE_BAD_VALUE_REFUSES_THE_WHOLE_CALL": [
+        (f"{PKG}/vocabulary.py", "        sent=pending.sent, allowed=allowed, unknown=unknown,",
+                                 "        sent=pending.sent, allowed=allowed, unknown=(),  # falsifier"),
+    ],
+    "test_IT_NAMES_THE_BOOKS_ACTUAL_KINDS": [
+        # Back to naming only the mechanism, which is what the failing message already does.
+        (f"{PKG}/vocabulary.py", '        parts.append(f"This book has: {v_desc}.")',
+                                 '        parts.append("Create the categories first.")'),
+    ],
+    "test_AN_ADOPTABLE_STANDARD_IS_NAMED_WITH_ITS_ONE_CALL": [
+        (f"{PKG}/vocabulary.py", "    adoptable = tuple(u for u in unknown if u in standards_set)",
+                                 "    adoptable = ()  # falsifier"),
+    ],
+    "test_THE_CREATE_PATH_IS_NOT_THE_LEGACY_TOOL": [
+        # Point the model back at `glossary_propose_kinds`, which is visibility: legacy.
+        ("contracts/agent-runtime-vocabularies.json",
+         '"create_tool": "glossary_ontology_upsert"', '"create_tool": "glossary_propose_kinds"'),
+    ],
+    "test_A_NON_READ_SOURCE_IS_REFUSED_AT_REGISTRATION": [
+        (f"{PKG}/vocabulary.py", '        if lane != "read":', "        if False:  # falsifier"),
+    ],
+    "test_AN_UNKNOWN_LANE_FAILS_CLOSED": [
+        (f"{PKG}/vocabulary.py", "        if lane is None:", "        if False:  # falsifier"),
+    ],
+    "test_THE_STANDARDS_SOURCE_IS_CHECKED_TOO": [
+        # Check only the primary source — half the mechanism dispatches unguarded.
+        (f"{PKG}/vocabulary.py", '    for tool_field, tool in (("source_tool", vocab.source_tool),\n'
+                                 '                             ("standards_tool", vocab.standards_tool)):',
+                                 '    for tool_field, tool in (("source_tool", vocab.source_tool),):'),
+    ],
+    "test_A_BINDING_TO_AN_UNDECLARED_VOCABULARY_IS_REFUSED": [
+        (f"{PKG}/vocabulary.py", "            if vocab_name not in vocabs:", "            if False:"),
+    ],
+    "test_THE_COMMITTED_REGISTRY_LOADS_AND_BINDS_THE_MEASURED_PATH": [
+        ("contracts/agent-runtime-vocabularies.json",
+         '"items[].kind": "BookEntityKind"', '"items[].code": "BookEntityKind"'),
+    ],
+    "test_IT_READS_ONE_LIST_HOP": [
+        (f"{PKG}/vocabulary.py", "        if part.endswith(\"[]\"):", "        if False:"),
+    ],
+    "test_A_MISSING_OR_WRONG_SHAPE_YIELDS_NOTHING_RATHER_THAN_RAISING": [
+        (f"{PKG}/vocabulary.py", "            if not isinstance(seq, list):\n                return []",
+                                 "            if not isinstance(seq, list):\n                seq = [seq]"),
+    ],
+    "test_CODES_COME_FROM_THE_DECLARED_FIELD": [
+        (f"{PKG}/vocabulary.py", "            code = row.get(field)", "            code = row.get('name')"),
+    ],
+    "test_IT_SITS_BEFORE_THE_ONE_REAL_DISPATCH": [
+        (f"{CS}/app/services/stream_service.py",
+         "# ── CP-6.1 · CLOSED-VOCABULARY RESOLUTION", "# ── CP-6.1 moved below the dispatch"),
+    ],
+    "test_IT_SITS_AFTER_IDENTIFIER_RESOLUTION": [
+        (f"{CS}/app/services/stream_service.py",
+         "# ── CP-5.3 · IDENTIFIER RESOLUTION", "# ── CP-5.3 identifier resolution"),
+    ],
+    "test_A_FAILED_SOURCE_READ_DOES_NOT_BLOCK_THE_CALL": [
+        (f"{CS}/app/services/stream_service.py",
+         "# Failing CLOSED here would turn one degraded read into a blocked write.",
+         "# (reason removed)"),
+    ],
+    "test_THE_ENUMERATION_IS_RECORDED_AS_A_REAL_EXECUTION": [
+        (f"{CS}/app/services/stream_service.py", '"vocabulary_for": {"tool": c["name"], "param": _vp.param,',
+                                                 '"unrecorded": {"tool": c["name"], "param": _vp.param,'),
+    ],
+    "test_THE_REFUSAL_IS_TYPED_REFUSED_NOT_FAILED": [
+        (f"{CS}/app/services/stream_service.py",
+         'yield {"tool_call": instrument.stamp_refused(_vfail, "unknown_vocabulary_value")}',
+         'yield {"tool_call": _vfail}'),
+    ],
+
     # ── CP-5 · a trigger must read a UNION type or it misses its own subject ──────────────────
     "test_A_UNION_TYPED_ARRAY_IS_STILL_A_BATCH": [
         # Back to comparing `type` against a bare string: an optional list reads as scalar.

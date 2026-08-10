@@ -1738,6 +1738,7 @@ def _is_uuid(v: str) -> bool:
 #: returns before it is bound. Mutating a dict needs no `global`, so the early read is a plain
 #: lookup and the shape is gone rather than argued with.
 _REF_REGISTRY_CACHE: dict[str, tuple[dict, dict]] = {}
+_VOCAB_REGISTRY_CACHE: dict[str, tuple[dict, dict]] = {}
 
 
 #: CP-5.4 — the tool-contract registry, read once. Same posture as the ref registry: an absent file
@@ -1765,6 +1766,47 @@ def _tool_contract_registry() -> dict:
         logger.warning("CP-5.4: tool-contract registry not loaded (%s)", exc)
     _TOOL_CONTRACT_CACHE["value"] = doc
     return doc
+
+
+def _vocab_registry(lane_of) -> tuple[dict, dict]:
+    """`(vocabularies, bindings)`, or two empty dicts — CP-6.1, mirroring `_ref_registry` exactly.
+
+    Same posture and for the same reasons: `lane_of` comes from the turn because the catalogue is
+    per-request; a source that cannot be shown to be `lane=read` fails closed, since enumerating a
+    vocabulary dispatches a tool the user never asked for; a FAILED load is not cached (one unlucky
+    turn must not make the mechanism inert for the whole process); and `NameError`/`AttributeError`/
+    `ImportError` re-raise, because those are bugs and swallowing one hid a mechanism that had never
+    run once.
+    """
+    cached = _VOCAB_REGISTRY_CACHE.get("value")
+    if cached is not None:
+        return cached
+    loaded: tuple[dict, dict] = ({}, {})
+    cacheable = True
+    try:
+        from app.agentruntime.manifest import manifest_path
+        from app.agentruntime.vocabulary import (
+            VOCABULARY_REGISTRY_FILENAME, load_registry as _load_vocab,
+        )
+
+        mpath = manifest_path()
+        path = (mpath.parent / VOCABULARY_REGISTRY_FILENAME) if mpath is not None else None
+        if path is not None and path.exists():
+            doc = json.loads(path.read_text(encoding="utf-8"))
+            vocabs, bindings = _load_vocab(doc, lane_of)
+            logger.info("CP-6.1: %d vocabular(ies), %d bound parameter(s)",
+                        len(vocabs), len(bindings))
+            loaded = (vocabs, bindings)
+        else:
+            logger.info("CP-6.1: no vocabulary registry beside the manifest — the check is inert")
+    except (NameError, AttributeError, ImportError):
+        raise
+    except Exception as exc:
+        cacheable = False
+        logger.warning("CP-6.1: vocabulary registry not loaded (%s) — inert for THIS TURN", exc)
+    if cacheable:
+        _VOCAB_REGISTRY_CACHE["value"] = loaded
+    return loaded
 
 
 def _ref_registry(lane_of) -> tuple[dict, dict]:
@@ -4156,6 +4198,110 @@ async def _stream_with_tools(
                         "args": args_obj, "ok": False, "result": None,
                         "error": _resolution_refusal, "resolution": _resolution,
                     }}
+                    continue
+
+                # ── CP-6.1 · CLOSED-VOCABULARY RESOLUTION — a value outside the book's own set ──
+                # 🔴 **MEASURED: `glossary_propose_entities` fails in 51 organic sessions, and 88 of
+                # its 109 failures (81%) are `unknown kind`.** The largest remaining defect in the
+                # co-writer journey by the honest denominator.
+                #
+                # 🔴 **AND THE REMEDY IT ALREADY HAS IS PROSE THAT MEASURABLY DID NOT WORK** — the
+                # existing message explains the cause correctly and names both repair tools, and the
+                # corpus after it is still 88 calls. Third time on this board. Worse, **it names
+                # `glossary_propose_kinds`, which is `visibility: legacy`** in its own `_meta`, so
+                # the one actionable thing it says points at a deprecated tool.
+                #
+                # What this adds is not a better sentence: it is **the book's actual vocabulary**,
+                # read at dispatch, which a static JSON Schema cannot carry because the legal set
+                # differs per book. TWO BRANCHES, NO THIRD — in the set, or refused with the set
+                # named. **No fuzzy arm** (PO): `place` is never rewritten to `location`, because a
+                # wrong kind is a silent bad write into canon, which is worse than the loud failure
+                # it replaces. A normalised near-miss is SUGGESTED (`power_systems` →
+                # `power_system`) and never substituted.
+                _vocab_refusal: str | None = None
+                _vocab_record: dict | None = None
+                try:
+                    _vocabs, _vbind = _vocab_registry(
+                        lambda _n: declared_lane(cat_index.get(_n) or plain_index.get(_n) or {})
+                    )
+                except Exception:
+                    _vocabs, _vbind = {}, {}
+                if _vbind:
+                    from app.agentruntime.vocabulary import (
+                        decide as _vocab_decide, pending_for as _vocab_pending,
+                        refusal_message as _vocab_refusal_message,
+                    )
+                    _vpending = _vocab_pending(c["name"], args_obj, _vbind, _vocabs)
+                    _vdecisions: list = []
+                    for _vp in _vpending:
+                        # 🔴 **EACH ENUMERATION IS A REAL EXECUTION AND IS STAMPED AS ONE — AND
+                        # CP-0.3's POSITIONAL GATE CAUGHT THE SECOND ONE UNSTAMPED HERE, exactly as
+                        # it caught 5.3's resolver dispatch.** The first draft stamped only the
+                        # ontology read and left the standards read invisible, which is how a
+                        # mechanism's cost claim becomes uncheckable. Neither is appended to
+                        # `working`: the model never asked for either read.
+                        _venvs: dict[str, Any] = {}
+                        for _which, _vtool, _vargs in (
+                            ("source", _vp.vocabulary.source_tool, _vp.source_args),
+                            ("standards", _vp.vocabulary.standards_tool, {}),
+                        ):
+                            if not _vtool:
+                                continue
+                            _vt0 = _time.monotonic()
+                            try:
+                                _venv = await knowledge_client.mcp_execute_tool(
+                                    user_id=user_id, session_id=session_id, project_id=project_id,
+                                    book_id=(context_ids or {}).get("book_id"),
+                                    tool_name=_vtool, tool_args=_vargs, admin_token=admin_token,
+                                )
+                            except Exception:
+                                _venv = None
+                            _vchunk = {
+                                "id": f"{c['id']}:vocab:{_vp.param}:{_which}",
+                                "iteration": iteration, "tool": _vtool, "args": _vargs,
+                                "ok": bool(_venv and _venv.get("success")),
+                                "result": None,
+                                "error": None if _venv else "vocabulary source dispatch failed",
+                                "vocabulary_for": {"tool": c["name"], "param": _vp.param,
+                                                   "sent": list(_vp.sent), "role": _which},
+                            }
+                            instrument.stamp_tool_call(
+                                _vchunk, source=instrument.SOURCE_TOOL,
+                                latency_ms=int((_time.monotonic() - _vt0) * 1000))
+                            yield {"tool_call": _vchunk}
+                            _venvs[_which] = _venv
+                        _senv, _stdenv = _venvs.get("source"), _venvs.get("standards")
+                        if not _senv or not _senv.get("success"):
+                            # A source that fails is not a licence to refuse: the call proceeds
+                            # exactly as it does today and fails at the tool if the kind is wrong.
+                            # Failing CLOSED here would turn one degraded read into a blocked write.
+                            continue
+                        _vdecisions.append(_vocab_decide(
+                            _vp, _senv.get("result") or {},
+                            (_stdenv or {}).get("result") if _stdenv and _stdenv.get("success")
+                            else None))
+                    if _vdecisions:
+                        _vocab_record = {
+                            d.param: {"sent": list(d.sent), "outcome": d.outcome,
+                                      "unknown": list(d.unknown), "adoptable": list(d.adoptable)}
+                            for d in _vdecisions
+                        }
+                        if any(not d.is_ok for d in _vdecisions):
+                            _vocab_refusal = _vocab_refusal_message(_vdecisions)
+
+                if _vocab_refusal:
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "unknown_vocabulary_value", "message": _vocab_refusal}),
+                    })
+                    _vfail = {
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None,
+                        "error": _vocab_refusal, "vocabulary": _vocab_record,
+                    }
+                    # 5.7's typing: the tool did not fail, the runtime refused before the wire.
+                    yield {"tool_call": instrument.stamp_refused(_vfail, "unknown_vocabulary_value")}
                     continue
 
                 # The chat agent's arc-plan wants a SYNCHRONOUS plan (mode="rules"): a mid-tier
