@@ -1881,11 +1881,42 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   mislabelling the delete-restore prefix reds 2 Python tests; all three gate bites red the gate.
   (depends on T27)
 
-- [ ] **T29** — The `command-or-nothing` gate + KAL command routes + `SR06` tier
-  New: `scripts/command-outbox-gate.py`; `kal-write.controller.ts`; a row in `SR06`
-  No bare `UPDATE`/`INSERT` on `glossary_entities` outside a `*Core` command. The KAL gets a
-  dependency tier and a documented degraded mode **before** it owns writes (F5).
-  **Bite:** reintroduce `softDeleteEntityCore`'s bare UPDATE → red. *(It is red today.)*
+- [~] **T29** — The `command-or-nothing` gate + KAL command routes + `SR06` tier — **HALF DONE**
+  ✅ the gate (and the defect it found) · ⬜ `kal-write.controller.ts` + the `SR06` tier row.
+
+  ⚠️ **The rule as written is not enforceable, and enforcing it literally would hide the
+  defect rather than catch it.** "No bare `UPDATE`/`INSERT` on `glossary_entities` outside a
+  `*Core` command" covers **33 functions** (measured, list in the commit). Most write columns
+  **no consumer mirrors** — `dedup_key`, `is_pinned_for_context`, `kind_labels`. Converging all
+  33 is a refactor several times this task's size, and a gate written against the literal rule
+  would need ~30 allowlist entries — which is precisely the *"or the gate allowlists one
+  forever"* failure T28's own line warns about.
+
+  The property the recorded defects actually share is **not** "writes the table". It is
+  **"writes a column a consumer keeps a copy of"** — T27 was `deleted_at`, T28 was `status` and
+  `kind_id`. So the gate grew a third column family (`short_description`, `cached_name`,
+  `cached_aliases` — what `loadEntityEventFields` reads) rather than a table-wide ban. It now
+  polices **14** mutations, up from 11.
+
+  ⚠️ **Asking the sharper question found a third instance immediately.**
+  `regenerateAutoShortDescription` runs **post-commit** for two callers
+  (`applyEntityEdit`, `setEntityAttributes`) that had already emitted `entity_updated`
+  **inside** their transaction — so the mirror kept the **pre-edit summary forever**, in the one
+  field the composition packer reads for a cast bio. It now reports whether the summary
+  actually moved (`RowsAffected` off the existing `IS DISTINCT FROM`, so the signal cannot
+  disagree with the write) and those two announce it. The other three callers regenerate
+  *before* their emit and were always correct.
+
+  **What the gate cannot check, stated rather than implied:** it proves a mirrored-content
+  writer emits or has a named emitting caller. It **cannot** prove the emit happens *after* the
+  write — which is exactly what went wrong here. That ordering is covered by a test asserting
+  the changed-signal contract (*bite: make it always-true → red*), not by the gate.
+
+  **Verification:** full Go api suite green (63 s, live DB); all three gates PASS.
+
+  ⬜ **Still owed:** `kal-write.controller.ts` and the `SR06` dependency-tier row with a
+  documented degraded mode — the F5 precondition that the KAL gets a tier **before** it owns
+  writes. Untouched; no code was written against it.
   (depends on T28)
 
 - [ ] **QC-4** — Emit-wiring live proof (the one that catches a bypass)

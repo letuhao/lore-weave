@@ -75,6 +75,24 @@ _CURATION_SQL = re.compile(
     re.IGNORECASE,
 )
 
+# A MIRRORED-CONTENT write: the columns a consumer keeps a copy of (plan T29).
+#
+# `short_description` is the third instance of the same defect, found by asking which columns
+# a consumer MIRRORS rather than which table is written. `regenerateAutoShortDescription` runs
+# post-commit for two callers that had already emitted `entity_updated` INSIDE their
+# transaction, so the mirror kept the pre-edit summary forever — in the one field the
+# composition packer reads for a cast bio.
+#
+# `cached_name`/`cached_aliases` are trigger-maintained rather than hand-written today; they
+# are listed because they are what `loadEntityEventFields` reads, so a future hand-write to
+# either has the same consequence and should meet the same rule.
+_MIRRORED_SQL = re.compile(
+    r"UPDATE\s+glossary_entities(?:\s+\w+)?\s*(?:(?!UPDATE)[\s\S]){0,200}?SET"
+    r"(?:(?!UPDATE)[\s\S]){0,500}?"
+    r"\b(short_description|cached_name|cached_aliases)\s*=",
+    re.IGNORECASE,
+)
+
 # Emitting, or delegating to something that does. `insertMergedOutboxEvent` and
 # `emitEntityUpdated` count: a merge's soft-delete of the loser IS announced — as
 # `glossary.entity_merged`, which knowledge-service already consumes to rewire the graph.
@@ -127,6 +145,12 @@ ALLOWLIST = {
         "writes the resolved kind for the vote paths; both entry points emit entity_updated "
         "with the RESOLVED kind, gated on `moved`",
         ("bulkExtractEntities", "internalImportKindVotes"),
+    ),
+    "regenerateAutoShortDescription": (
+        "recomputes the auto summary for five callers; the three in-tx ones regenerate BEFORE "
+        "their emit so the before/after snapshot captures it, and the two post-commit ones "
+        "emit when it reports the summary actually moved",
+        ("applyEntityEdit", "setEntityAttributes"),
     ),
     "reconcileEntityFromSnapshot": (
         "restores every column including status; its only caller emits entity_updated AND, "
@@ -235,7 +259,9 @@ def main() -> int:
             bodies[name] = body
             if "glossary_entities" not in text:
                 continue
-            if not (_LIFECYCLE_SQL.search(body) or _CURATION_SQL.search(body)):
+            if not (_LIFECYCLE_SQL.search(body)
+                    or _CURATION_SQL.search(body)
+                    or _MIRRORED_SQL.search(body)):
                 continue
             checked += 1
             if _EMITS.search(body):

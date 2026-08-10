@@ -243,3 +243,45 @@ func TestReassignKind_EmitsUpdatedCarryingTheNewKind(t *testing.T) {
 		t.Errorf("actor_type: want user, got %q", actorType)
 	}
 }
+
+func TestAutoShortDescription_ReportsWhetherItActuallyMoved(t *testing.T) {
+	// The two POST-COMMIT callers emit `entity_updated` INSIDE their transaction and then
+	// rewrite `short_description` after the commit. Without a truthful "did it change" signal
+	// they cannot know whether to announce the rewrite — and before T29 they did not announce
+	// it at all, so the mirror kept the pre-edit summary forever, in the one field the
+	// composition packer reads for a cast bio.
+	//
+	// This is the half a static gate cannot check. The gate proves a mirrored-content writer
+	// emits or has a named emitting caller; it cannot prove the emit happens AFTER the write.
+	// Only the return contract asserted here can.
+	pool := openTestDB(t)
+	f := newVersionFixture(t, pool)
+	ctx := context.Background()
+
+	// A deliberately WRONG summary rather than an empty one: a CHECK constraint forbids
+	// empty, and "stale" is the state this test is about anyway.
+	if _, err := pool.Exec(ctx,
+		`UPDATE glossary_entities SET short_description='stale placeholder',
+		        short_description_auto=true
+		  WHERE entity_id=$1`, f.entityID); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+
+	changed, err := f.srv.regenerateAutoShortDescription(ctx, pool, f.entityID)
+	if err != nil {
+		t.Fatalf("regenerate: %v", err)
+	}
+	if !changed {
+		t.Fatal("regenerating over a STALE summary must report changed=true")
+	}
+
+	// Idempotence is the other half: re-running must report false, or the post-commit callers
+	// would emit an event on every edit that moved nothing — and a consumer acts on those.
+	again, err := f.srv.regenerateAutoShortDescription(ctx, pool, f.entityID)
+	if err != nil {
+		t.Fatalf("regenerate again: %v", err)
+	}
+	if again {
+		t.Error("re-running with nothing to change must report changed=false")
+	}
+}

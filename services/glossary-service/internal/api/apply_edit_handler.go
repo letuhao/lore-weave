@@ -239,9 +239,17 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 	// K3.3b parity: if the description attr changed and short_description is still
 	// auto, regenerate it (best-effort, post-commit, never fails the request).
 	if descriptionChanged {
-		if err := s.regenerateAutoShortDescription(ctx, s.pool, entityID); err != nil {
+		// T29: emit when the summary actually moved. The entity_updated for this edit was
+		// already written INSIDE the transaction above, and this runs after the commit — so
+		// without a second event the mirror keeps the pre-edit summary forever, in the one
+		// field the composition packer reads for a cast bio. Best-effort + pipeline actor,
+		// matching emitEntityUpdated's contract for post-commit paths with no tx in hand:
+		// the entity write has already committed, so a missed event must not fail the request.
+		if changed, err := s.regenerateAutoShortDescription(ctx, s.pool, entityID); err != nil {
 			slog.Warn("apply-edit: regenerate short_description failed",
 				"entity_id", entityID.String(), "error", err.Error())
+		} else if changed {
+			s.emitEntityUpdated(ctx, entityID, "updated")
 		}
 	}
 
