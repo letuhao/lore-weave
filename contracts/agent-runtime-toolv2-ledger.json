@@ -242,6 +242,17 @@
         "CONTROL: args:{} still answers 'invalid arguments for translation_job_status -- job_id: Field required', the recorded failure verbatim"
       ],
       "admitted": false
+    },
+    "composition_create_work": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and its 5 failures are a defect THIS LOOP ALREADY FIXED. All 5 calls (one session, 2026-07-25) sent book_id == project_id -- one of the seven tools in iteration 5's measured 135-call duplicate-identifier population -- and the service answered 'not found or not accessible', which names neither the repeated id nor the fact that two different things were given one value. The gate shipped in iteration 5 now refuses that exact argument object before dispatch and says what is wrong. The tool itself works and is IDEMPOTENT: asked to create a work for a book that already has one, it returned the existing row and the table stayed at 1, which is the Tier-A auto-write contract (idempotent + reversible) rather than a duplicate or an error.",
+      "evidence": [
+        "PHASE 2: 5 calls / 1 session / 2026-07-25, all {book_id: X, project_id: X} with the same UUID, all 'not found or not accessible'",
+        "LIVE: composition-service MCP, composition_create_work on throwaway book 019fcaa4 -> the full work record (status active, version 1, settings.source_language en). composition_work rows for that book: 1 before, 1 after -- idempotent, no duplicate",
+        "CONTROL at the service: the recorded argument object still answers 'not found or not accessible' when sent straight to composition-service, which has no such check",
+        "AND AT THE GATE: duplicate_identifier on that same object returns ('book_id','project_id',...) and the message names both parameters, the shared value, and says the call cannot succeed as sent -- so through chat-service this is now refused before it reaches the wire"
+      ],
+      "admitted": false
     }
   }
 }
