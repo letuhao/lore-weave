@@ -167,6 +167,17 @@
         "CONTROL: {book_id:'all', chapter_id:'all'} still answers 'book_id must be a UUID', the recorded failure verbatim"
       ],
       "admitted": false
+    },
+    "composition_error_block_edit": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and its 2 calls contain ZERO failures: both are kind=tool_approval cards -- the Tier-A approval suspension -- recorded ok:false with no error because they predate CP-5.5's stamp_deferred. Given a real project and chapter, op=list answered {blocks: [], open_count: 0, note: 'The author has not marked anything on this chapter.'} -- an EMPTY result that says why it is empty, which is the difference between C-14's `empty` and a failure. TWO THINGS THIS ITERATION CONFIRMED THAT ARE NOT ABOUT THIS TOOL. First, one of the two recorded calls carries chapter_id == project_id, both real UUIDs -- iteration 5's duplicate-identifier defect -- and that gate runs BEFORE the Tier-A approval suspension (verified by character offset in stream_service: 241694 < 273724), so today the call is refused instead of spending a human's approval on something that cannot run. The service itself has no such check: sent directly it answers 'not found or not accessible'. Second, op=list requires chapter_id while the schema declares chapter_id OPTIONAL -- the THIRD tool with DQ-6's conditional-optional shape, after composition_conformance_run and composition_authoring_run_manage.",
+      "evidence": [
+        "PHASE 2: 2 calls / 2 sessions / 2026-07-27, both kind=tool_approval, both ok:false with an EMPTY error string -- the pre-5.5 suspension record, not a defect",
+        "LIVE: composition-service MCP, project 019f9d2b + chapter 019f9d72-706d -> op=list returned blocks:[], open_count:0 and a note explaining the emptiness",
+        "LIVE, the conditional: op=list with project_id but no chapter_id -> 'op=list requires chapter_id', while the frozen schema lists chapter_id among the optional properties (required is ['op'] alone). Recorded against DQ-6, which now has three tools",
+        "ORDERING, verified not assumed: the duplicate-identifier gate sits before the Tier-A approval gate in stream_service, so the recorded chapter_id==project_id call would now be refused pre-dispatch rather than raised as a card"
+      ],
+      "admitted": false
     }
   }
 }

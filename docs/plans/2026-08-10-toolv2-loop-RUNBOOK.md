@@ -234,6 +234,24 @@ natural home is a `preconditions` contract member declaring the conditional as D
 (`scope=arc ⇒ arc_id`), checked pre-dispatch like CP-5.8's scope gate — never a reworded message,
 which is what the tool already has and what already failed 12 times.
 
+**UPDATE — iterations 12 and 15 found the second and third instances, LIVE rather than in the
+corpus:**
+
+```
+composition_authoring_run_manage {op: "create", book_id}
+  → "op=create requires plan_run_id, budget_usd, and pause_after_each_unit"
+composition_error_block_edit     {op: "list", project_id}
+  → "op=list requires chapter_id"
+```
+
+In both, every named argument is declared OPTIONAL in the schema. So the shape is systemic — three
+tools, all op/scope-dispatched — and the clearing condition above is **half met**: the SHAPE is
+confirmed on three tools, but the measured TRAFFIC subject is still 12 calls in one tool, because
+the other two were reached by this loop's own probes rather than by a model. §7 asks for a subject,
+not a pattern, so it stays recorded. What has changed is that a `preconditions` member would now
+have three declarations to write instead of one, which is the difference between a special case and
+a contract member.
+
 ### DQ-7 · 436 of 438 projects cannot build a graph, and the remedy has never been called once
 
 *Raised by:* iteration 8. `kg_build_graph` refused all 13 of its calls with:
