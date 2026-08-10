@@ -1,0 +1,14 @@
+{
+  "ledger_version": 1,
+  "tools": {
+    "glossary_propose_curation": {
+      "state": "converting",
+      "note": "PHASE 2 DONE. 70 calls / 19 sessions / 0 ok, and the 0% is TWO populations. 42 of 70 are task.status=input_required suspensions already stamped call_outcome=deferred by CP-5.5 -- not failures, the legacy ok:false flag is the conflation. The 26 GENUINE failures all sent entity_id (singular, a VALID uuid) where op=status_change requires entity_ids (plural array), and the backend answers 'at least one valid entity_id is required' -- naming the singular field the model DID send, so the message is actively misleading. Site: services/glossary-service/internal/api/pipeline_propose_tools.go:102. Schema carries BOTH fields with additionalProperties:false. NEXT: phase 5 backend fix -- accept the singular for status_change (prose is not the lever, measured 3x), then phase 4 live prove.",
+      "evidence": [
+        "corpus: 42 deferred / 26 entity_id-singular / 2 schema-type",
+        "backend: pipeline_propose_tools.go:102"
+      ],
+      "admitted": false
+    }
+  }
+}
