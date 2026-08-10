@@ -339,6 +339,16 @@
         "DATA: outline_node rows for that project 2 -> 3, measured either side"
       ],
       "admitted": false
+    },
+    "kg_add_nodes": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Its single call is a kind=tool_approval SUSPENSION on 2026-08-10 -- a Tier-A card awaiting a human, not a failure -- carrying {mode: 'from_glossary'} with no project. That shape is scope=project with project_id OPTIONAL, so CP-5.8's gate refuses it before the wire today; sent straight at the service it answers 'no project in scope -- pass the optional project_id (list your projects with kg_project_list), or open this chat from a project', which names both remedies. Iteration 2 had already driven mode=manual through this tool to build the two nodes its kg_propose_edge proof needed; this iteration re-proves it on its own terms.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-08-10, pending:true, kind=tool_approval, no error",
+        "LIVE: kg_add_nodes mode=manual on throwaway project 019fec6c -> entity_id 51763ce76d11cbd70e025ed17b9c8dbe, name 'TOOLV2 Gamma', kind location, plus a note naming the next tool that consumes it (kg_propose_edge)",
+        "CONTROL: the recorded shape (mode=from_glossary, no project) still answers 'no project in scope', and CP-5.8's gate now refuses it in chat-service before dispatch"
+      ],
+      "admitted": false
     }
   }
 }
