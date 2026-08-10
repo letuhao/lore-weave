@@ -1821,7 +1821,7 @@ vectors and validity intervals live in different stores.
   **Review of my own change** caught the store being constructed **per chunk** inside the ingest
   loop (and per entity in the embedder); both are now resolved once per batch.
 
-- [ ] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
+- [~] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
   `/review-impl` (data migration — deeper than `/aif-review`). Then **live**: re-run
   `flat_knn_rawsearch.py` against the real corpus on both backends and publish **recall@10 and
   latency ratios**, not absolutes.
@@ -2864,6 +2864,14 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 ### Phase 6 & 7 — tracked deferrals *(recorded 2026-08-11)*
 
+> **Checkbox convention from here on:** `[x]` = done with pasted evidence · `[~]` = **tracked
+> deferral** with a blocker, evidence, unblock condition, mechanism and retry trigger · `[ ]`
+> = untouched. As of 2026-08-11 there are **no `[ ]` tasks left** — every remaining item is
+> `[~]`, either under its own `D-…` deferral above or under Group A/B/C below. That is a
+> deliberate correction: 15 tasks were sitting `[ ]` while the prose already described them as
+> deferred, and a checkbox that disagrees with the paragraph next to it is how a plan starts
+> lying about itself.
+
 Every remaining task below is deferred with a mechanism rather than left silent, so the plan's
 state is *done-with-evidence* or *explicitly-tracked* with nothing in between. They fall into
 three groups, and the distinction matters because only one of them is waiting on a decision.
@@ -2898,10 +2906,10 @@ case* has not moved, because `D-CANON-CHECK-BLIND-TO-ROLE` needs T36, T36 needs 
 answer to RT-2, and RT-2 is a scope decision the red team explicitly left with the PO. **No
 amount of further implementation closes that; it needs a decision first.**
 
-- [ ] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
+- [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
-- [ ] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
+- [~] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
   31 files across nine feature folders consume these contracts — `glossary`, `trash`,
   `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
   Concretely: `frontend/src/features/glossary/api.ts` · `features/trash/useTrashItems.ts` ·
@@ -2913,11 +2921,11 @@ amount of further implementation closes that; it needs a decision first.**
   **Test:** the recycle-bin and spoiler surfaces still render after the reveal-axis change.
   (depends on T38, T32)
 
-- [ ] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
+- [~] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
   (depends on T38)
-- [ ] **T40** — Partition `entity_facts` by `book_id`
+- [~] **T40** — Partition `entity_facts` by `book_id`
   The growth table; every query is already book-scoped, so the key is clean.
   (depends on T39)
 
@@ -2925,10 +2933,10 @@ amount of further implementation closes that; it needs a decision first.**
 
 ### Phase 7 · Engine swap *(S4 — parallel to Phases 4–6)*
 
-- [ ] **T41** — Build the **rebuild-from-Postgres** path
+- [~] **T41** — Build the **rebuild-from-Postgres** path
   **It does not exist** — the only sweepers are `reconcile_evidence_count` and `stats_updater`.
   Three claims depend on it: graph HA is unnecessary, P3 rollback, DR. Must be **built**, then run.
-- [ ] **T42** — Second `GraphStore` adapter (Postgres-relational recommended; Kuzu the alternative)
+- [~] **T42** — Second `GraphStore` adapter (Postgres-relational recommended; Kuzu the alternative)
   AGE is eliminated. Kuzu: ✅ `MERGE … ON CREATE/ON MATCH SET` · ✅ `current_timestamp()` ·
   ❌ `CALL {}` (14 sites).
   ⚠️ **Decision X1 (PO, 2026-08-09): build BOTH candidates and let T43's shadow comparison choose.**
@@ -2940,12 +2948,12 @@ amount of further implementation closes that; it needs a decision first.**
   design rejected. Cost accepted: ~14 `CALL {}` rewrites + 152 mechanical renames for an adapter
   that may be discarded.
   (depends on T41)
-- [ ] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
+- [~] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
   No cutover while any port operation has **zero shadow observations** — merge/split/restore/coref/
   triage are rare and would diverge silently, and the graph feeds canon checks.
   (depends on T42)
 
-- [ ] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
+- [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
   `/review-impl`. **Actually run** rebuild-from-Postgres on a real book and time it — the path is
   being built in T41 and has never existed, so its cost is unknown and three claims depend on it.
   Publish the shadow-comparison ratios doc-21 style, and the **shadow-coverage report**: every port
@@ -2956,15 +2964,15 @@ amount of further implementation closes that; it needs a decision first.**
 
 ### Phase 8 · TruthStore consolidation *(T7 — last, needs identity first)*
 
-- [ ] **T44** — Rewrite `D-SUBSTRATE-HOME` and SCOPE-3's two-layer row
+- [~] **T44** — Rewrite `D-SUBSTRATE-HOME` and SCOPE-3's two-layer row
   They are inputs to a refactor, not blockers — but rewrite them **deliberately**, in the standards,
   not by drift.
   (depends on T43)
-- [ ] **T45** — Valid-time as a **scope-dependent axis** (`story_ordinal` | `wall_clock`)
+- [~] **T45** — Valid-time as a **scope-dependent axis** (`story_ordinal` | `wall_clock`)
   The one piece that must be *designed*, not ported: book truth is story-ordinal, memory truth is
   wall-clock.
   (depends on T44)
-- [ ] **T46** — Port the mature bitemporal machinery Go → Python and merge the stores
+- [~] **T46** — Port the mature bitemporal machinery Go → Python and merge the stores
   `maintain_chain` (pin-aware supersession), the content-addressed natural key, half-open interval
   invariants, `anchor+delta` fold with `folds_since_reground`. **Move it working — do not rewrite
   from the weaker side.**
@@ -2974,7 +2982,7 @@ amount of further implementation closes that; it needs a decision first.**
 
 ### Phase 9 · Closing controls *(the plan's own Settings demand these)*
 
-- [ ] **T47** — Documentation checkpoint (**`Docs: yes` in Settings makes this mandatory**)
+- [~] **T47** — Documentation checkpoint (**`Docs: yes` in Settings makes this mandatory**)
   `/aif-docs`. The refactor changes the KAL contract, the command surface, the storage model and two
   standards — none of which is discoverable from code.
   **Specifically:** `docs/standards/README.md` (INV-KAL scope now covers writes + the authored
@@ -2982,12 +2990,12 @@ amount of further implementation closes that; it needs a decision first.**
   two-layer rule and the four service sentences), and `contracts/api/knowledge-gateway/kal.v1.yaml`.
   (depends on T46)
 
-- [ ] **T48** — `/aif-verify` against this plan
+- [~] **T48** — `/aif-verify` against this plan
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
 
-- [ ] **T49** — Update `SESSION_HANDOFF.md` and archive the plan
+- [~] **T49** — Update `SESSION_HANDOFF.md` and archive the plan
   The ▶ NEXT SESSION block, the Deferred Items table, and the standards that moved. Then
   `/aif-archive`.
   **Do not** restate numbers a register or command already prints — that is how a second source of
