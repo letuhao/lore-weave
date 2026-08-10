@@ -280,7 +280,7 @@ deliberate: after this session the open items are all *numbers that can only fal
 
 | # | row | done = |
 |---|---|---|
-| 1 | **`GATE-TEETH-55`** — 55 of 97 CI-invoked gates carry no red-ability proof. Start with the four that matter most: `dp-slice1/5b/5c/5d-bite-gate`. **A bite harness with broken logic reports "all bit" and is believed** — these four certify every `crates/dp` guarantee, so an unproven bite harness is the single highest-leverage vacuity left in the tree | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
+| 1 | ~~**`GATE-TEETH-55`**, the four bite harnesses~~ **✅ DONE 2026-08-10, 55 → 51.** All four now carry a `--self-test`; both arm families bitten (break `classify`'s `missing` branch → red; rot a leg anchor → red). `5d` still bites 8/8 end to end, so the proof did not cost the harness. **Continues as `GATE-TEETH-51`** in §4 — next are the gates that read a SoT and could silently read nothing | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
 | 2 | **`G3` continued** — the coverage ratchet reports **13 of 26**; the thirteen unread are named in the `slice 1` row. `11_access_pattern_rules`, `14_durable_subscribe`, `15_turn_boundary` and `18_causality_and_routing` are the ones slices 3–5 actually cited | coverage rises, the baseline records it, and each new oracle rule is bitten per the six steps — mutate one side, RED naming BOTH, restore, GREEN. **Do not add a rule whose subject has no producer** (§0.6c): `DP-Ch11`'s `turn_number` is the worked example — declared by a LOCKED doc, created by no migration, and correctly a register row rather than an orphan column |
 | 3 | **`3E-EPOCH-COMMIT-ADOPTION`'s last site** — `commit-service/src/bin/ceilings.rs`, a benchmark envelope builder holding the one remaining bare `reality: Uuid` | either it adopts a verified id, or it earns a **reasoned** exemption naming why a benchmark harness cannot bind. **Not a third category invented to make the number zero** — `BDR-55` |
 
@@ -672,7 +672,7 @@ not implement toward it.
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
 | `G-S3`/`G-S4` | lore bible has no schema; "pre-manifest stub" is not a named artifact | the BOOK_TO_GAME track |
 | `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND` | **promoted here 2026-08-10 from the post-slice-5 review**, which is now collapsed — an open row inside a closed section is a row nobody re-reads. `MetaControlPlane::verify_bind` records the capability before returning; `SessionContext::bind` can still reject afterwards on `now_ms >= expires_at_ms`, so a caller more than one TTL ahead of the CP's clock leaves a live row whose secret was dropped. Not a security hole — an unpresentable row — but the shape (a store write whose caller can still fail) is worth a name | `session_registry` carries `@retention_hot: 90d`, so these are already inside a retention regime. Wakes on the first retention sweep reporting a non-trivial count of never-validated rows — which needs a `last_validated_at` column, and that column arrives with the fix |
-| `GATE-TEETH-55` | **NEW 2026-08-10, and it is a worklist rather than a defect.** Widening `gate-teeth-gate`'s discovery to the runner (`BDR-70`) took it from 58 to **97** CI-invoked gates; **55 of them carry no red-ability proof** — no `--self-test`, no `test_<name>.py`. The HARD tier is green (every one *can* return non-zero); what is missing is the demonstration that it *does*. Before this the number was 45 out of a scope that could not see its own subject | ratcheted at 55 and cannot grow. Each gate that gains a `--self-test` lowers it; the constant records every move with its reason. `dp-slice1/5b/5c/5d-bite-gate` are the highest-value four — they are bite harnesses, so a broken one reports "all bit" vacuously |
+| `GATE-TEETH-51` | **51 of 97 CI-invoked gates carry no red-ability proof** — no `--self-test`, no `test_<name>.py`. The HARD tier is green (every one *can* return non-zero); what is missing is the demonstration that it *does*. Opened at **55** on 2026-08-10 when `BDR-70` widened the teeth gate's scope from 58 to 97; **55 -> 51 the same day**, taking the four `dp-slice{1,5b,5c,5d}-bite-gate` harnesses first because a bite harness with broken machinery prints `bitten: N/N` and is believed. Each now proves the MACHINERY — the four-way verdict on synthetic transcripts, byte-exact CRLF round-trip, the restore check firing on a corrupted file, and every leg anchor still present — not the guards it bites | ratcheted at 51 and cannot grow; `NO_PROOF_BASELINE` records every move with its reason. Next highest value: the gates that read a SoT and could silently read nothing (`db-safety-gate`, `doc-language-gate`, `language-bias-gate`) |
 
 
 **Recently cleared (2026-08-10)** — moved out of the table because a closed row re-read at every PLAN is the register rot this file keeps finding in other people's lists. Evidence for each is in §5 and in the collapsed slice sections below: `G3-ORACLE-COVERAGE` · `3E-NAMING-INCONSISTENCY` · `3E-EPOCH-COMMIT-ADOPTION` · `W5-REMEDIATE` · `W5-CRON` · `W7-SHELL-UNCOVERED` · `META-DOWN-UNCOVERED` · `slice 1` · `slice 2`.
@@ -1472,6 +1472,28 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-71` (2026-08-10) — an unproven BITE HARNESS is worse than an unproven gate, and §0.6's
+oldest warning caught me again.** The four `dp-slice*-bite-gate` harnesses certify every
+`crates/dp` guarantee, and none of them proved its own machinery. The asymmetry is what makes them
+the right four to take first: an ordinary gate with broken logic goes quiet, while **a bite harness
+with broken logic prints `bitten: N/N`** — it does not merely fail to warn, it manufactures
+evidence for every guard it names. `classify` was split out of `test_outcome` so the four-way
+verdict could be checked on synthetic transcripts in milliseconds instead of a 30-second cargo run;
+the arm that matters most is that a `running 0 tests` transcript must NOT read as a pass, because
+a renamed witness would otherwise score as a successful bite.
+
+Two things worth keeping from doing it:
+
+* **§0.6's *"heredocs eat backslashes"* is still undefeated.** Writing the CRLF fixture through a
+  bash heredoc turned `"a\r\nb"` into a literal newline and a `SyntaxError`. The rule says use the
+  Edit/Write tools for anything containing a backslash; I used a heredoc, in a self-test whose
+  entire subject is CRLF handling. Repaired by building the string from `chr()` — the fix worked,
+  but the rule would have been cheaper.
+* **A display path stopped a safety check from being testable.** `restored_byte_identical` called
+  `path.relative_to(REPO)` in its failure branch, which raises for a temp file — so the corrupted-
+  restore arm could not be exercised against the REAL function, only a copy. Testing a copy of a
+  safety check proves nothing about the one that runs. Fixed in both harnesses.
 
 **`BDR-70` (2026-08-10) — the gate that exists to prove gates can fail could not see 40% of them.**
 `slice 1`'s `G6` said *"the gate is absent from `gate-bite-harness.MUTATIONS`"*. Checking it

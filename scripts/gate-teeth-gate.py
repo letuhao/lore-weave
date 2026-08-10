@@ -65,7 +65,17 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: proof was found to be real but DELEGATED to its `.py` (see `DELEGATES_PROOF`). Every one
 #: of the 55 is now a gate CI genuinely runs whose red-ability nothing demonstrates — which
 #: is a worklist, where the old 45 was a number that could not see its own subject.
-NO_PROOF_BASELINE = 55
+#:
+#: 2026-08-10 (same day, second move): 55 -> 51. The four `dp-slice{1,5b,5c,5d}-bite-gate`
+#: harnesses gained a `--self-test`, and they were the right four to take first: a BITE
+#: HARNESS with broken machinery prints `bitten: N/N` and is believed, so it launders a
+#: vacuous result as evidence for every guard it names. What each proves is the machinery,
+#: not the guards — the four-way verdict (`classify`, split out so it can be checked on
+#: synthetic transcripts without a 30s cargo run), byte-exact read/write through CRLF
+#: (`V1-F8`), the restore check firing on a corrupted file, and every leg's anchor still
+#: existing in its target. Both arms bitten: breaking `classify`'s `missing` branch and
+#: rotting one leg anchor each turn the self-test red.
+NO_PROOF_BASELINE = 51
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

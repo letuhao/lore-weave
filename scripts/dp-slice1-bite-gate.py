@@ -111,7 +111,15 @@ def restored_byte_identical(path: Path, original: str, label: str) -> bool:
     now = hashlib.sha256(path.read_bytes()).hexdigest()
     want = hashlib.sha256(original.encode("utf-8")).hexdigest()
     if now != want:
-        print(f"  x {label}: RESTORE FAILED — {path.relative_to(REPO)} differs after the bite")
+        # `relative_to` raises outside the repo, and the self-test exercises this
+        # function against a temp file on purpose — proving the REAL restore
+        # check rather than a copy. A display path must never be the reason a
+        # safety check cannot run.
+        try:
+            shown = path.relative_to(REPO)
+        except ValueError:
+            shown = path
+        print(f"  x {label}: RESTORE FAILED — {shown} differs after the bite")
         print(f"      sha256 now  = {now}")
         print(f"      sha256 want = {want}")
         print("      The tree is left MUTATED. Restore it before doing anything else.")
@@ -495,7 +503,71 @@ def _harness_lock():
     return mod.HarnessLock()
 
 
+#: (label, file, anchor) — every source/doc string this harness mutates. Kept as
+#: DATA so the self-test can check each one still exists without running cargo.
+#: A rotted anchor is a leg that cannot bite, and the harness only discovers it
+#: mid-run, after minutes of compilation.
+SELFTEST_ANCHORS = [
+    ("seal (DP-A5)", TIER, "pub(crate) mod sealed {"),
+    ("tier trait seal", TIER, TIER_SEAL_ANCHOR),
+    ("derived-row privacy (DP-R2)", AGGREGATE, "    type_name: &'static str,"),
+    ("DP-S3 ack budget", DOCS / "08_scale_and_slos.md", "| DP-T2 | <5 ms ack"),
+]
+
+
+def self_test() -> int:
+    """Prove the HARNESS, not the guards — `GATE-TEETH-55`.
+
+    This harness carries 23 legs and prints `bitten: N/N`. If its own machinery
+    is broken it prints the same thing, and every `crates/dp` guarantee it names
+    inherits that false confidence — which is why an unproven bite harness is
+    worse than an unproven ordinary gate.
+
+    Standalone on purpose: unlike `5c`/`5d` this file predates the shared
+    machinery in `dp-slice5b-bite-gate` and carries its own `read_txt` /
+    `write_txt` / `restored_byte_identical`. Those copies are what run here, so
+    those copies are what get proven — testing 5b's would prove nothing about
+    this file (`SDK-First` says the duplication should go; until it does, the
+    proof follows the code that actually executes).
+    """
+    import tempfile
+    fails: list[str] = []
+
+    with tempfile.TemporaryDirectory() as td:
+        probe = Path(td) / "crlf.rs"
+        body = "fn a() {}\r\nfn b() {}\r\n"
+        write_txt(probe, body)
+        if probe.read_bytes() != body.encode("utf-8"):
+            fails.append("write_txt did not write bytes verbatim — CRLF was rewritten (V1-F8)")
+        if read_txt(probe) != body:
+            fails.append("read_txt did not round-trip CRLF")
+        if not restored_byte_identical(probe, body, "selftest"):
+            fails.append("restored_byte_identical rejected an identical file")
+        write_txt(probe, body.replace("fn b", "fn c"))
+        print("  [selftest] the next RESTORE FAILED banner is EXPECTED — the negative case:")
+        if restored_byte_identical(probe, body, "selftest"):
+            fails.append("restored_byte_identical ACCEPTED a corrupted restore — the arm that "
+                         "stops the tree being left mutated does not fire")
+
+    for label, path, anchor in SELFTEST_ANCHORS:
+        if not path.is_file():
+            fails.append(f"{label}: {path} does not exist")
+        elif anchor not in read_txt(path):
+            fails.append(f"{label}: anchor has rotted out of {path.name} — {anchor[:60]!r}")
+
+    if fails:
+        for f in fails:
+            print(f"dp-slice1-bite-gate: SELFTEST FAIL — {f}")
+        return 1
+    print(f"dp-slice1-bite-gate: SELFTEST PASS — read/write is byte-exact through CRLF, the "
+          f"restore check refuses a corrupted file, and all {len(SELFTEST_ANCHORS)} mutation "
+          f"anchor(s) are still present in their targets")
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return self_test()
     """Hold the shared harness lock for the whole run.
 
     A wrapper rather than re-indenting `_run`'s body: the lock has to cover

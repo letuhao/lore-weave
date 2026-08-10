@@ -182,7 +182,49 @@ LEGS = [
 ]
 
 
+def self_test() -> int:
+    """Prove the HARNESS, not the guards — `GATE-TEETH-55`.
+
+    A bite harness that prints `bitten: N/N` is believed. If its own machinery
+    is broken it prints exactly that and is still believed, which makes an
+    unproven bite harness worse than an unproven ordinary gate: it launders a
+    vacuous result as evidence for every guard it names.
+
+    The shared machinery (the four-way verdict, byte-exact restore) is proven in
+    `dp-slice5b-bite-gate --self-test`, which this file imports rather than
+    re-implements — one copy, one proof. What is proven HERE is this harness's
+    own leg table: every anchor still exists in its target, and every mutation
+    actually changes something. A rotted anchor is a leg that cannot bite, and a
+    no-op mutation is `BDR-56` exactly.
+    """
+    fails: list[str] = []
+    rc = B.self_test()
+    if rc != 0:
+        fails.append("the shared machinery in dp-slice5b-bite-gate failed its own self-test")
+
+    for leg in LEGS:
+        label, path, find, replace = leg[0], leg[1], leg[2], leg[3]
+        if not path.is_file():
+            fails.append(f"{label}: target {path} does not exist")
+            continue
+        src = B.read_txt(path)
+        if find not in src:
+            fails.append(f"{label}: anchor has rotted out of {path.name} — {find[:60]!r}")
+        elif src.replace(find, replace, 1) == src:
+            fails.append(f"{label}: mutation is a no-op; it would bite nothing")
+
+    if fails:
+        for f in fails:
+            print(f"dp-slice5c-bite-gate: SELFTEST FAIL — {f}")
+        return 1
+    print(f"dp-slice5c-bite-gate: SELFTEST PASS — the shared verdict/restore machinery passes its own "
+          f"self-test, and all {len(LEGS)} leg(s) here have a live anchor and a non-empty mutation")
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return self_test()
     print("dp-slice5c-bite-gate — the gRPC surface's guards, each one removed\n")
     # The lock lives in the 5b harness this one already imports for its
     # read/restore machinery. Two mutators on one tree corrupt it — see

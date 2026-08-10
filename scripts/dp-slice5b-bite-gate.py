@@ -161,7 +161,15 @@ def restored_byte_identical(path: Path, original: str, label: str) -> bool:
     now = hashlib.sha256(path.read_bytes()).hexdigest()
     want = hashlib.sha256(original.encode("utf-8")).hexdigest()
     if now != want:
-        print(f"  x {label}: RESTORE FAILED — {path.relative_to(REPO)} differs after the bite")
+        # `relative_to` raises on anything outside the repo, and the self-test
+        # exercises this function against a temp file on purpose — proving the
+        # REAL restore check rather than a copy of it. A display path must never
+        # be the reason a safety check cannot run.
+        try:
+            shown = path.relative_to(REPO)
+        except ValueError:
+            shown = path
+        print(f"  x {label}: RESTORE FAILED — {shown} differs after the bite")
         print(f"      sha256 now  = {now}")
         print(f"      sha256 want = {want}")
         print("      The tree is left MUTATED. Restore it before doing anything else.")
@@ -177,23 +185,34 @@ def run(*args: str) -> tuple[int, str]:
     return p.returncode, (p.stdout or "") + (p.stderr or "")
 
 
-def test_outcome(crate: str, test_name: str) -> tuple[str, str]:
-    """Run ONE test. Returns (`pass` | `fail` | `nobuild` | `missing`, output).
+def classify(out: str) -> str:
+    """`pass` | `fail` | `nobuild` | `missing` from one cargo-test transcript.
 
-    The four-way answer is the point. `nobuild` and `missing` both look like
-    `fail` to a returncode check, and both would score a destructive mutation as
-    a successful bite.
+    Split out of [`test_outcome`] so it can be proven on synthetic transcripts
+    without a 30-second cargo run. **This function is the whole defence against
+    `BDR-56`** — `nobuild` and `missing` both look like `fail` to a returncode
+    check, and both would score a destructive mutation as a successful bite.
+    Unproven, it is the single highest-leverage vacuity in a bite harness.
+
+    The unknown case is `nobuild`, deliberately: an output this cannot parse is
+    a harness that does not know what happened, and the safe reading of "I do
+    not know" is "this proves nothing", never "it bit".
     """
-    code, out = run("cargo", "test", "-p", crate, "--lib", test_name, "--", "--exact")
     if "error: could not compile" in out or "error[E" in out:
-        return "nobuild", out
+        return "nobuild"
     if "running 0 tests" in out:
-        return "missing", out
+        return "missing"
     if "test result: ok" in out:
-        return "pass", out
+        return "pass"
     if "test result: FAILED" in out:
-        return "fail", out
-    return "nobuild", out
+        return "fail"
+    return "nobuild"
+
+
+def test_outcome(crate: str, test_name: str) -> tuple[str, str]:
+    """Run ONE test. Returns (`pass` | `fail` | `nobuild` | `missing`, output)."""
+    _code, out = run("cargo", "test", "-p", crate, "--lib", test_name, "--", "--exact")
+    return classify(out), out
 
 
 def bite(label: str, path: Path, find: str, replace: str, crate: str, test_name: str) -> bool:
@@ -366,7 +385,91 @@ LEGS = [
 ]
 
 
+def self_test() -> int:
+    """Prove the HARNESS, not the guards — `GATE-TEETH-55`.
+
+    A bite harness that runs its legs and prints `bitten: N/N` is believed. If
+    its own machinery is broken it prints exactly that and is still believed,
+    which makes an unproven bite harness worse than an unproven ordinary gate:
+    it launders a vacuous result as evidence for every guard it names.
+
+    Three things are proven here and each has a recorded reason to exist:
+
+    * **the four-way verdict** (`classify`) — `BDR-56`. A red for an unrelated
+      reason is the failure mode that looks most like success, and `nobuild` /
+      `missing` are the two shapes that produce it.
+    * **byte-exact read/write** — `V1-F8`. `Path.read_text`/`write_text` would
+      rewrite every line ending on Windows, and `.gitattributes` would hide it
+      from `git diff`: the tree stays mutated and the harness says it restored.
+    * **the leg table has live subjects** — a rotted anchor means a leg that
+      cannot bite. Checked without cargo, so it is cheap enough to always run.
+    """
+    fails: list[str] = []
+
+    # ── the four-way verdict, one synthetic transcript per outcome.
+    cases = {
+        "pass": "running 1 test\ntest foo ... ok\n\ntest result: ok. 1 passed; 0 failed",
+        "fail": "running 1 test\ntest foo ... FAILED\n\ntest result: FAILED. 0 passed; 1 failed",
+        "nobuild": "error[E0308]: mismatched types\nerror: could not compile `dp`",
+        "missing": "running 0 tests\n\ntest result: ok. 0 passed; 0 failed; 0 filtered out",
+    }
+    for want, out in cases.items():
+        got = classify(out)
+        if got != want:
+            fails.append(f"classify() read a {want!r} transcript as {got!r}")
+    # `missing` must win over the `test result: ok` that accompanies it — a
+    # filtered-out test prints BOTH, and reading the `ok` is how a renamed
+    # witness scores as a passing baseline.
+    if classify(cases["missing"]) != "missing":
+        fails.append("a 0-test run was read as a pass; a renamed witness would score as a bite")
+    # An unparseable transcript must NOT read as a pass.
+    if classify("some unexpected cargo failure") == "pass":
+        fails.append("an unrecognised transcript read as a pass — unknown must fail closed")
+
+    # ── byte-exact round trip, including the CRLF case that motivated it.
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        probe = Path(td) / "crlf.rs"
+        body = "fn a() {}\r\nfn b() {}\r\n"
+        write_txt(probe, body)
+        if probe.read_bytes() != body.encode("utf-8"):
+            fails.append("write_txt did not write bytes verbatim (CRLF rewritten)")
+        if read_txt(probe) != body:
+            fails.append("read_txt did not round-trip CRLF")
+        if not restored_byte_identical(probe, body, "selftest"):
+            fails.append("restored_byte_identical rejected an identical file")
+        write_txt(probe, body.replace("fn b", "fn c"))
+        print("  [selftest] the next RESTORE FAILED banner is EXPECTED — it is the negative "
+              "case proving the check fires on a corrupted file:")
+        if restored_byte_identical(probe, body, "selftest"):
+            fails.append("restored_byte_identical ACCEPTED a corrupted restore — the arm that "
+                         "exists to stop the tree being left mutated does not fire")
+
+    # ── every leg still has a subject, and every mutation actually mutates.
+    for label, path, find, replace, _crate, _test in LEGS:
+        if not path.is_file():
+            fails.append(f"{label}: target {path} does not exist")
+            continue
+        src = read_txt(path)
+        if find not in src:
+            fails.append(f"{label}: anchor has rotted out of {path.name} — {find[:60]!r}")
+        elif src.replace(find, replace, 1) == src:
+            fails.append(f"{label}: mutation is a no-op; it would bite nothing")
+
+    if fails:
+        for f in fails:
+            print(f"dp-slice5b-bite-gate: SELFTEST FAIL — {f}")
+        return 1
+    print(f"dp-slice5b-bite-gate: SELFTEST PASS — the four-way verdict maps all four transcripts "
+          f"and fails closed on an unknown one; read/write is byte-exact through CRLF and the "
+          f"restore check refuses a corrupted file; all {len(LEGS)} leg(s) have a live anchor and "
+          f"a non-empty mutation")
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return self_test()
     print("dp-slice5b-bite-gate — the capability store's refusals, each one removed\n")
     # Two mutators on one tree corrupt it — see `HarnessLock` for the measured
     # failure and why the restore-by-digest guard cannot detect it.
