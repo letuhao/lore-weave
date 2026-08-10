@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T36 — Phase 5 continues.**
+**RESUME: QC-6 — Phase 5 continues.**
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -2732,13 +2732,54 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   have over-stated the migration by **2.2×**, and an over-stated checklist hides the real
   remainder inside noise, which is precisely the mistake T17's "still owed" paragraph made.
 
-- [ ] **T36** — Roles as relation facts with story intervals (**M2**)
+- [~] **T36** — Roles as relation facts with story intervals (**M2**)
   Closes `D-CANON-CHECK-BLIND-TO-ROLE`, the refactor's stated acceptance case.
   (depends on T35)
+  ---
+  **The defect is confirmed, and the code documents it itself.**
+  `knowledge-service/app/db/neo4j_repos/fact_for_check.py` — the snapshot the canon check runs
+  on — says in its own docstring:
 
-- [ ] **T37** — composition-service becomes a KAL **command producer**
+  > *"**relations** — current valid relations for the set … NOTE: relations carry datetime
+  > validity (`valid_until`), a **DIFFERENT axis** from `event_order`, so they are **NOT
+  > position-windowed** here — 'current canon relations', documented, not a bug."*
+
+  That is "blind to role" precisely: a role is handed to the check as **currently true**,
+  regardless of the reading position. A role that ended at ch.20 still reads as live when
+  checking ch.10, and one that begins at ch.30 is already live at ch.1. Q2's fix is to make a
+  role an `entity_facts` row with `fact_kind='relation'` **and a story interval**, so it is
+  windowed by the same as-of machinery every other fact uses.
+
+  **The mechanism already exists and is unused.** `entity_facts_kind_chk` has always admitted
+  `'relation'`, and `appendFact` writes any kind. Measured 2026-08-11:
+  ```
+  attribute 41435 · name 5189 · alias 1868 · relation 0
+  ```
+  **Zero relation facts.** Nothing writes them — which is T37, below.
+
+  ### 🔻 DEFERRAL `D-T36-ROLE-FACTS`
+
+  | | |
+  |---|---|
+  | **Blocker** | Two, and neither is code-shaped. **(a)** It depends on T35 (`D-T35-OPAQUE-IDENTITY`): a role fact names two entities, so it inherits whatever identity they are keyed on, and writing roles against an id that is about to be retired means writing them twice. **(b)** The refactor's own red team records this as an open **scope-honesty defect**, not a schedulable task — see below. |
+  | **Evidence** | `fact_for_check.py`'s docstring, quoted above, is the defect in the code's own words. `entity_facts` holds **0** rows of `fact_kind='relation'`, so the read side has nothing to window even if it were windowed. RT-2 (`2026-08-09-architecture-RED-TEAM.md`): *"the register claims this refactor's acceptance case, and the plan does not close it. **SURVIVES as a scope-honesty defect**: either the bible enters scope, or the register row is re-pointed and the claim withdrawn."* |
+  | **To unblock** | T35 lands, **and** the PO resolves RT-2 — either the lore bible enters scope, or `D-CANON-CHECK-BLIND-TO-ROLE`'s register row is re-pointed and the acceptance claim withdrawn. The second is a decision, not work. |
+  | **Mechanism** | The `relation` count is the tracker and it is already asserted where it matters: `fact_for_check.py`'s docstring is the one place a reader of the canon check will stand, and it states the limitation rather than hiding it. When roles start being written, that paragraph must change or it becomes a lie — which is a review-visible edit, not a silent one. |
+  | **Retry when** | T35 lands and RT-2 is answered. **QC-5 cannot certify the acceptance case until then**, so QC-5's report must say so rather than scoring around it. |
+
+- [~] **T37** — composition-service becomes a KAL **command producer**
   Roles are plan-authored, not extracted — this is the scope widening M2 implies.
   (depends on T36)
+  ---
+  ### 🔻 DEFERRAL `D-T37-COMPOSITION-COMMAND-PRODUCER`
+
+  | | |
+  |---|---|
+  | **Blocker** | Strictly downstream of T36: this task exists to WRITE the role facts T36 defines. Building the producer before the thing it produces is settled means shipping a command surface whose payload shape is still open. |
+  | **Evidence** | Q2's own wording makes the ordering explicit — *"roles are **plan-authored, not extracted**, so **composition-service becomes a KAL command producer** … the command vocabulary is wider than entity CRUD"*. Today composition is a KAL **reader** only (`kal_client.py`: `roster`, `state`); it has no write path. |
+  | **To unblock** | `D-T36-ROLE-FACTS` closes. |
+  | **Mechanism** | T50's `command_transport.go` already logs the transport on every entity command, so a new producer arriving on that surface is visible in the parity suite rather than needing its own tracker. `scripts/entity-lifecycle-outbox-gate.py` covers the mutations it will call. |
+  | **Retry when** | T36 closes. |
 
 - [ ] **QC-6** — Identity live proof
   `/review-impl`. On a **live** stack: rename an entity, then re-kind it, then re-run extraction on a
