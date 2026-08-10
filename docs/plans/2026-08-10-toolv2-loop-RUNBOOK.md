@@ -376,6 +376,35 @@ The proof then ran the real sync (cache 0 → 69) and the tool returned all 69.
 synced, or give the agent surface a sync it can call. The first is a one-line honesty fix; the
 second is a product decision, because syncing needs the provider secret.
 
+### DQ-11 · A rich-text document array sent into a plain-prose STRING field
+
+*Raised by:* iteration 42, and it is the largest genuine defect in
+`book_chapter_save_draft` (245 calls, 100 ok).
+
+`body` is declared `type: string` — *"the chapter's PROSE, as plain text… do NOT send
+editor/Tiptap JSON unless you also set `body_format:"json"`"*. Ten calls across seven sessions sent
+a **Slate-shaped array** instead:
+
+```json
+[{"type": "paragraph", "children": [{"type": "text", "text": "The air was thick with…"}]}]
+```
+
+The description already forbids exactly this AND names the escape hatch, which makes it another
+*prose is not the lever* datum. But the escape hatch does not fit either: `body_format:"json"`
+means **Tiptap** (`content`), and what arrives is **Slate** (`children`) — a different dialect, and
+an array where a string is required.
+
+**Why it is recorded rather than repaired.** A mechanical fix has to choose:
+flatten the array's `text` leaves into paragraphs (lossless for plain prose, **lossy for any mark**
+— bold, italic, a link), or refuse. This runtime already has a rule for that choice — *a repair
+that emits parseable-but-wrong output needs a post-condition*, and prose that silently loses its
+formatting is exactly that. Ten calls do not buy the right to decide it.
+*Would clear it:* a decision on whether a marks-dropping flatten is acceptable for a DRAFT save
+(it may well be — a draft is re-editable), or a per-dialect converter if it is not.
+
+Note the rest of this tool's failures are already handled: **93 of the 145, across 13 sessions, are
+the blank-args streak breaker** — our own refusal, not a tool failure.
+
 ---
 
 ## Debt this loop surfaced but did not absorb

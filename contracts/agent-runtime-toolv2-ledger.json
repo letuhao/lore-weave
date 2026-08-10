@@ -456,6 +456,17 @@
         "INCIDENTAL, and it is the good kind: my first attempt omitted original_language and was answered 'required: missing properties: [\"original_language\"]' -- named, and fixed in one retry"
       ],
       "admitted": true
+    },
+    "book_chapter_save_draft": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and its 40.8% headline is three separate stories. 245 calls / 123 sessions / 100 ok. Of the 145 failures, 93 across 13 sessions are OUR OWN blank-args streak breaker -- the fourth tool this loop has found whose failure population is mostly the runtime declining to repeat itself. 13 are ordinary missing-argument errors naming the field, 4 are 'this book has no chapters yet' (correct), 4 are access. The genuine defect is the BODY FORMAT, recorded as DQ-11: 10 calls / 7 sessions sent a Slate document array into a field declared type:string. The description already forbids exactly that AND names the escape hatch -- prose is not the lever, again -- and the escape hatch does not fit either, because body_format:'json' means TIPTAP (content) and what arrives is SLATE (children). Not repaired: a mechanical fix must choose between flattening the text leaves (lossless for plain prose, LOSSY for any mark) and refusing, and this runtime's own rule is that a repair emitting parseable-but-wrong output needs a post-condition. ONE THING WAS FIXED, because it completes an existing enumeration rather than building a mechanism: model_ref was missing from _SCALAR_ID_ARGS.",
+      "evidence": [
+        "PHASE 2, split: 100 ok / 145 failed = 93 blank-args breaker (13 sessions) + 15 body-shape + 13 missing-arg + 4 no-chapters + 4 access + others",
+        "LIVE: book-service MCP, plain-prose body on the chapter iteration 41 created -> new_draft_version 2, word_count 15, snapshot_revision_id 019fedc3-e220-721c-b25d-521f7a40b22b, and chapter_drafts holds 1 row for it",
+        "THE FIX: model_ref added to _SCALAR_ID_ARGS. Measured subject stated plainly -- 3 calls in 1 session, translation_start_extraction with model_ref:['019ebb72-…'], a 1-element list holding a real model UUID, rejected for the type exactly as project_id=['…'] was before that arg joined the set. Guarded in test_unwrap_wrapped_args.py; the falsifier (removing it) reds the guard. Suite 2863 passed / 3 skipped",
+        "NOT FIXED, recorded as DQ-11: the Slate-vs-Tiptap body dialect"
+      ],
+      "admitted": true
     }
   }
 }

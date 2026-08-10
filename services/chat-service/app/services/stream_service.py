@@ -1525,6 +1525,15 @@ def _unwrap_wrapped_args(args_obj: dict, tool_def: dict | None) -> dict:
 _SCALAR_ID_ARGS = frozenset({
     "book_id", "project_id", "chapter_id", "entity_id", "world_id",
     "arc_id", "node_id", "outline_node_id", "run_id",
+    # 🔴 **MEASURED 2026-08-11 (tool-v2 loop #42): `model_ref` was missing from this set and has
+    # the defect it exists for.** `translation_start_extraction` was called 3 times with
+    # `model_ref: ["019ebb72-…"]` — a 1-element list holding a real model UUID — and the tool
+    # rejected it for the type, exactly as it rejected `project_id=["…"]` before that arg was
+    # added here. This set is an ENUMERATION of scalar-id args, so a missing member is an
+    # oversight rather than a decision; `model_ref` is a scalar UUID reference with no
+    # legitimately-array form, which is the same test `entity_ids` and `items` FAIL and are
+    # therefore correctly excluded. Small subject, stated plainly: 3 calls in 1 session.
+    "model_ref",
 })
 
 
