@@ -75,7 +75,28 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: (`V1-F8`), the restore check firing on a corrupted file, and every leg's anchor still
 #: existing in its target. Both arms bitten: breaking `classify`'s `missing` branch and
 #: rotting one leg anchor each turn the self-test red.
-NO_PROOF_BASELINE = 51
+#:
+#: 2026-08-10 (third move): 51 -> 48. `db-safety-gate`, `doc-language-gate` and
+#: `language-bias-gate` — chosen as the three gates that READ A CORPUS and could therefore
+#: silently read NOTHING. That failure mode is invisible by construction: a walk that reaches
+#: no files and a clean tree produce byte-identical output, exit 0 included. So each self-test
+#: has a **reach** family alongside its detectors — every `SEARCH_DIRS` entry must exist (a
+#: renamed directory is skipped silently, retiring the gate over that whole tree) and the walk
+#: must clear a floor. Demonstrated, not argued: with `services/` renamed, `db-safety-gate`
+#: still exits 0 with 1558 test files unguarded, and `doc-language-gate` reports a BETTER
+#: number (505/8678 vs 995/10821) with `/docs/` — the rule's entire subject — out of scope.
+#:
+#: Every detector arm has a false-positive twin, because a language gate that cries wolf is
+#: switched off within a day: accented English (`Soufflé`, `naïve`, `Gödel`), CJK domain terms,
+#: `self.name.lower()` behind the ML-2 lookbehind, and a `WHERE`-scoped DELETE all have to come
+#: back clean from the same code path that reds without them.
+#:
+#: The `language-bias-gate` arm found real decay: **7 of its 44 baseline rows named code that
+#: no longer existed** (four ML-2 offenders fixed, two ML-5 rows given `ensure_ascii=False`).
+#: A fingerprint whose subject is gone is a standing exemption for a line nobody has written
+#: yet. Pruned to 37, and the same run surfaced that the gate had been RED on `main` since
+#: 2026-08-01 over two live ML-2 violations — fixed at the source rather than baselined.
+NO_PROOF_BASELINE = 48
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
@@ -129,7 +150,24 @@ _SET_E = re.compile(r"^\s*set\s+-\w*e", re.M)
 # That is this file's own warning ("a gate must never be its own witness") re-committed one
 # level out. So the separator spellings are accepted only in the two shapes that are proofs
 # rather than prose: a `def self_test` and a `--self-test` CLI flag.
-_SELFTEST = re.compile(r"SELFTEST|def\s+self[-_]?test\b|--self[-_]?test\b", re.I)
+# 2026-08-10 — THE BARE `SELFTEST` ALTERNATIVE IS GONE, and it was the hole the
+# paragraph above describes, left open in the one branch it did not narrow. It
+# certified `dp-oracle-bite-gate.py`, which has no self-test at all: the match was
+# the string literal `"SELFTEST FAIL"`, which that harness uses to read the
+# COVERAGE GATE'S OUTPUT. A mention counted as a proof — fourth occurrence of that
+# shape here — and the cost was not cosmetic: the false certification kept a BITE
+# HARNESS off the worklist, and a bite harness with broken machinery prints
+# `bitten: 19/19` and is believed. Found by `--verify-proofs` on its first run.
+#
+# So all three alternatives are now SHAPES rather than words: a Python `def`, a
+# shell `selftest()` function, or a CLI flag. Measured: narrowing costs exactly one
+# certification, the phantom one.
+_SELFTEST = re.compile(
+    r"def\s+self[-_]?test\b"              # python:  def self_test / def selftest
+    r"|\bself[-_]?test\s*\(\s*\)\s*\{"    # shell:   selftest() {
+    r"|--self[-_]?test\b",                # either:  a CLI flag
+    re.I,
+)
 _PY_DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
 _HASH_COMMENT = re.compile(r"(?m)^\s*#.*$")
 
@@ -274,9 +312,139 @@ def teeth_proof(rel: str, path: Path) -> str | None:
     return None
 
 
+#: The two spellings a self-test flag is written in here, most specific first.
+#: READ FROM THE FILE, never guessed — a probe that assumed `--self-test` for
+#: everything reported six gates as broken that were simply spelled `--selftest`,
+#: and every one of those reds looked exactly like a finding (`BDR-56`).
+_FLAGS = ("--self-test", "--selftest")
+
+
+def _selftest_flag(src: str) -> str | None:
+    """The flag THIS file actually accepts, or None."""
+    for flag in _FLAGS:
+        if flag in src:
+            return flag
+    return None
+
+
+def verify_proofs(invoked: dict) -> int:
+    """RUN every advertised self-test and require exit 0.
+
+    # Why a string match is not a proof
+
+    `teeth_proof` certifies a gate when its executable text contains
+    `def self_test` or a `--self-test` flag. That is a claim the file makes
+    about itself, and nothing checks it: rename the function and leave the
+    argparse flag, and the gate still certifies while `--self-test` raises
+    `NameError`. Measured by doing exactly that — the count stayed at 49 and
+    `--list` still printed *built-in selftest*.
+
+    So the number this file publishes rests on **41 self-tests nobody runs**,
+    which is the shape its own docstring is about one level out: a proof that
+    cannot fail is a claim wearing the costume of evidence.
+
+    # Honest limits, both stated rather than discovered later
+
+    * A `test file <path>` proof is NOT executed here — those run with the
+      pytest suite, and shelling out to pytest per gate would make this mode
+      cost minutes rather than seconds. They are counted and named in the
+      output so the gap is visible instead of implied.
+    * Exit 0 means the self-test RAN and passed. It does not mean the arms
+      inside it are non-vacuous — that is what the six-step bite is for, and
+      no runner can substitute for it.
+
+    Measured 2026-08-10: 41 gates, 47s total, of which one (`actor-hub-figures`)
+    is 23s. That is ~3% of a `--run-all` sweep.
+    """
+    import concurrent.futures
+    import subprocess
+
+    targets: list[tuple[str, Path, str]] = []
+    deferred_to_pytest: list[str] = []
+    for rel in sorted(invoked):
+        path = ROOT / "scripts" / rel
+        if not path.exists() or path.name in NOT_A_GATE:
+            continue
+        proof = teeth_proof(rel, path)
+        if proof is None:
+            continue
+        if proof.startswith("test file"):
+            deferred_to_pytest.append(rel)
+            continue
+        # A delegated proof lives in the sibling `.py`; run THAT, since the
+        # wrapper does not take the flag.
+        run_path = path
+        if proof.startswith("delegated"):
+            run_path = ROOT / "scripts" / (path.stem + ".py")
+        flag = _selftest_flag(_executable_text(run_path,
+                                               run_path.read_text(encoding="utf-8",
+                                                                  errors="ignore")))
+        if flag is None:
+            print(f"FAIL — scripts/{rel} is certified '{proof}' and exposes no self-test "
+                  f"flag to run. The certification matched text that is not a flag.")
+            return 1
+        targets.append((rel, run_path, flag))
+
+    def run(t: tuple[str, Path, str]) -> tuple[str, int, str]:
+        rel, run_path, flag = t
+        # A POSIX-relative path against `cwd=ROOT`, NOT the absolute one. Git
+        # Bash on Windows receives `D:\Works\...` as an escape soup
+        # (`D:Workssource...`) and answers "No such file or directory" — exit
+        # 127, which reads exactly like a broken self-test. Four gates were
+        # reported as failing before the path was the thing at fault.
+        arg = run_path.relative_to(ROOT).as_posix()
+        cmd = ([sys.executable, arg, flag] if run_path.suffix == ".py"
+               else ["bash", arg, flag])
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=600, cwd=ROOT)
+        except subprocess.TimeoutExpired:
+            return rel, 124, "timed out after 600s"
+        tail = (r.stdout + r.stderr).strip().splitlines()
+        return rel, r.returncode, tail[-1] if tail else "(no output)"
+
+    broken: list[tuple[str, int, str]] = []
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        for rel, rc, tail in pool.map(run, targets):
+            if rc != 0:
+                broken.append((rel, rc, tail))
+
+    if broken:
+        print("FAIL — a gate certified as PROVEN has a self-test that does not pass:\n")
+        for rel, rc, tail in broken:
+            print(f"   scripts/{rel}  exit {rc}\n      {tail[:160]}")
+        print("\n   The teeth ratchet counts these as red-ability proofs. A self-test that "
+              "crashes\n   or fails is not a proof — fix it, or drop the claim and raise "
+              "NO_PROOF_BASELINE.")
+        return 1
+
+    # A FLOOR, because everything above is a loop over a list that could be empty.
+    # `verify_proofs({})` printed "0 advertised self-test(s) RAN and passed" and
+    # exited 0 — `NV-3`, *the scope never reaches it*, in the guard written this
+    # session to fix that exact shape in three other gates. Found by /review-impl.
+    #
+    # It is load-bearing beyond itself: `language-bias-gate`'s baseline-staleness
+    # arm lives in ITS `--self-test`, so this step is the only thing that runs it
+    # in CI. A vacuous pass here silently retires that arm too.
+    if len(targets) < 30:
+        print(f"FAIL — only {len(targets)} self-test(s) to run (floor 30, measured 42). "
+              f"Discovery or certification collapsed; a run with nothing to verify reports "
+              f"success indistinguishably from a healthy one.")
+        return 1
+
+    print(f"gate-teeth-gate --verify-proofs: {len(targets)} advertised self-test(s) RAN and "
+          f"passed.")
+    if deferred_to_pytest:
+        print(f"  {len(deferred_to_pytest)} proof(s) are pytest files, run by the python "
+              f"suite rather than here: {', '.join(deferred_to_pytest)}")
+    return 0
+
+
 def main() -> int:
     want_list = "--list" in sys.argv
     invoked = ci_invoked_scripts()
+
+    if "--verify-proofs" in sys.argv:
+        return verify_proofs(invoked)
 
     missing_file: list[str] = []
     toothless: list[str] = []

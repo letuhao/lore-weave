@@ -1,23 +1,46 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the run-state's three §0.6e targets, and two rows they uncovered (2026-08-10, branch `feat/game-logic`)
+## ▶ GAME BUILD — adoption reaches zero, and three corpus gates learn to see themselves (2026-08-10, branch `feat/game-logic`)
 
-**HEAD:** `1fbf5ad69`+ (UNCOMMITTED — see below) · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-67` are this session).
+**HEAD:** `fb199ef5f`+ (UNCOMMITTED — see below) · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-75`).
 
-> **▶ DO NEXT.** §0.6e's three mandated targets are CLOSED, and so are the two §4 rows they
-> uncovered. **No remaining §4 row has a fired trigger**, so the next work is a *new* target, not a
-> leftover one. The honest candidates, in the run-state's own words:
+> **▶ DO NEXT — `G3`'s problem is the DENOMINATOR, and the producer check that proves it is done.**
+> Coverage sits at **14 of 26**, and it cannot honestly rise much: of the 12 unread documents,
+> **11 cannot be covered at all** — measured, not assumed:
 >
-> * **`3E-EPOCH-COMMIT-ADOPTION` has 1 site left** — `commit-service/src/bin/ceilings.rs`'s
->   benchmark envelope builder. Left ADOPTABLE rather than exempted on purpose: under-exempting
->   leaves something to read. It earns an adoption or a *reasoned* exemption next time that harness
->   is touched — not a third category invented to make the number zero.
-> * **`G4`/`G6`–`G13`** (slice 1) are still open; `G4`'s stated blocker was discharged by slice 2.
-> * **`D-META-ERASURE-COVERAGE`'s two undecided tables** (`session_cost_summary`,
->   `service_to_service_audit`) are a **GDPR product decision for the PO**, deliberately not in an
->   autonomous run.
+> * **7 have no producer** — `14_durable_subscribe`, `15_turn_boundary`, `16_bubble_up_aggregator`,
+>   `18_causality_and_routing`, `19_privacy_redaction_policies`, `20_operational_residuals`,
+>   `21_llm_turn_slot`. Every marker symbol they specify is **0 files** (`BubbleUpAggregator`'s one
+>   hit is a `DEFERRED_RPCS` row recording it unbuilt; the only `redact` code in the tree is
+>   log-field PII masking, a different subject). An oracle over these is the orphan shape §0.6c
+>   forbids.
+> * **4 are prose with no code side** — `00_preamble`, `22_feature_design_quickstart`,
+>   `99_open_questions`, `_index`.
+> * **1 is genuinely coverable and genuinely uncovered:** `01_scope_and_boundary`. Its boundary rule
+>   is what `reality-id-adoption-gate.py`'s `IN_SCOPE` is derived from, and nothing compares them.
 >
-> ### What shipped
+> So the next move is **not** more oracles. It is to split the denominator into `NOT_A_SPEC` and
+> `NO_PRODUCER`, each row **reasoned and checked**, each with a **shrink arm** — a producerless doc
+> returns to the denominator the moment a marker symbol appears in non-comment source, exactly the
+> arm already built and bitten for `DP-R7`. Coverage then reads **14/15** with a one-item worklist,
+> instead of 14/26 with a number that cannot move. §0.6e row 2 asked for precisely this
+> (*"excluded from the denominator rather than faked into it"*).
+>
+> Also open: **`G4`/`G6`–`G13`** (slice 1). And **`D-META-ERASURE-COVERAGE`'s two undecided tables**
+> (`session_cost_summary`, `service_to_service_audit`) remain a **GDPR product decision for the
+> PO** — deliberately not in an autonomous run.
+>
+> ### What shipped, 2026-08-10 (second half)
+>
+> | target | result |
+> |---|---|
+> | `3E` **adoption reaches 0** | `ceilings.rs` earns a **checked** exemption, not prose. The reason is not *"it is a benchmark"* — that is the invented category — but that it **mints** its reality and registers it nowhere, so `bind` would refuse it. `SELF_MINTED` + `check_self_minted` void the exemption the moment a `--reality`/`REALITY_ID`/`parse_str` appears. The gate refused the 1→0 / 0→1 reclassification until the baseline recorded both; total unchanged at 57 |
+> | `GATE-TEETH` **51 → 48** | `db-safety-gate`, `doc-language-gate`, `language-bias-gate` — the three that read a corpus and could silently read **nothing**. Each gained a *reach* family: rename `services/` and `db-safety-gate` still exits 0 with **1558 test files unguarded** |
+> | `--verify-proofs` | the teeth ratchet now **runs** its 42 advertised self-tests (18.6s) instead of matching their text. Caught `dp-oracle-bite-gate.py` certified on a string literal it uses to read *another* gate's output — a **bite harness** with no self-test, which prints `bitten: 19/19` and is believed |
+> | `language-bias` **red for 9 days** | two live ML-2 violations since 2026-08-01, fixed at the source. The fold is a *symmetric* match key, so `Ｅｌａｒａ` and `Straße` were being reported to authors as **unanchored names** — false accusations |
+> | `D-GATE-ROT-LANGUAGE-BIAS` | mechanism moved from a `KNOWN_RED` row to the 37-row BASELINE. All ten of its named offenders were **already baselined**; the gate was red because of two *unrelated* lines — the register was satisfied by the wrong offenders |
+>
+> ### What shipped, 2026-08-10 (first half)
 >
 > | target | result |
 > |---|---|
@@ -27,7 +50,7 @@
 > | `3E-EPOCH-COMMIT-ADOPTION` | **5 → 1.** All four `epoch_commit` signatures take `&dp::RealityId`, threaded from the `SessionContext` `spine.rs` already holds |
 > | `W7-SHELL-UNCOVERED` | **CLOSED, all four subjects.** `scripts/db-ensure-bite-gate.py` proves the SQL-injection fix by *removing* it: bound → refused; unbound → **the same payload granted SUPERUSER** |
 >
-> ### Three findings worth carrying
+> ### Findings worth carrying
 >
 > 1. **A clean number from a name-matching check is the least trustworthy number there is.**
 >    `commit-service` read `0 adoptable, 0 exempt` — indistinguishable from finished — because its
@@ -36,6 +59,17 @@
 >    inside a `DO $$…$$` body the validator deliberately cannot read (`BDR-61`).
 > 3. **A checkpoint that produces a presentation does not also produce a halt** — §0.6b calls
 >    POST-REVIEW *"a presentation, not a question"*, and I stopped on it anyway (`BDR-64`).
+> 4. **A walk that reaches nothing is byte-identical to a clean tree** — same output, same exit 0.
+>    Three corpus gates could each be silently retired by one renamed directory, and nothing about
+>    the failure looks like failure (`BDR-74`).
+> 5. **An acknowledgement can be satisfied by the wrong offenders.** `D-GATE-ROT-LANGUAGE-BIAS`
+>    held a gate red over ten named lines; all ten had been quietly baselined and the redness came
+>    from two unrelated ones. The register read as tracked debt the whole time (`BDR-75`).
+> 6. **I reported six broken gates that were fine**, because my probe guessed `--self-test` where
+>    they spell it `--selftest`. `BDR-56`'s mirror: a red for an unrelated reason that looks like a
+>    *discovery* rather than like success. Read the output, not the exit code — which is also the
+>    day's most repeated mistake: a trailing `echo`/`tail` masked a real exit status **four**
+>    times, once in a task notification that reported 0 for a sweep that exited 1.
 >
 <!-- doc-language-gate: ok -- this block's SUBJECT is which Vietnamese terms are corpus content; it cannot name them without containing them, and every term below is a novel character/terminology, an i18n string, or CJK normalisation test data -->
 > ### ✅ `D-HANDOFF-VIETNAMESE-ARCHIVE` — FIXED, and my own sizing of it was wrong twice

@@ -47,6 +47,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from loreweave_extraction.name_normalize import normalize_entity_name
+
 _TOKEN = re.compile(r"([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\-]+(?:['’](?:s|t|ll|re|ve|m|d))?)")
 _SENTENCE_START = re.compile(r"(?:^|[.!?;:\n\"“”‘’()\[\]—–\-]\s*)$")
 
@@ -253,23 +255,44 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
         # where nothing was given. Report the method, claim nothing.
         return NameAudit(method="empty", truth_source="none")
     drafted = extract_names(draft, corpus=corpus)
-    lowered = {k.lower(): k for k in known}
+    # `ML-2` — the shared NFKC + casefold + Han spine, not `.lower()`.
+    #
+    # BOTH SIDES MOVE TOGETHER OR NEITHER DOES. This is a symmetric fold key: the
+    # dict is keyed by the fold and VALUED by the original, and it is the original
+    # that is reported. Fold one side differently from the other and every
+    # comparison below silently stops matching — which is why the swap is one edit
+    # covering the map, the membership test and the edit distance, rather than the
+    # two lines the gate happened to name.
+    #
+    # `.lower()` is not merely unfashionable here: it is wrong for `ß`/`İ` and it
+    # leaves full-width Latin unfolded, so `Ｅｌａｒａ` and `Elara` read as two
+    # different characters. The spine folds those and deliberately preserves
+    # accents, so `ma`/`má` and `Müller`/`Muller` stay distinct — exactly the
+    # property a near-miss check must not lose.
+    lowered = {normalize_entity_name(k): k for k in known}
     unanchored, near = [], []
     for name in sorted(drafted):
-        low = name.lower()
+        low = normalize_entity_name(name)
         # `Scribes` is not a near miss of `Scribe`; it is the plural of it. Measured: this
         # single case accounted for two of the run's four near-miss claims.
         if low in lowered or low.rstrip("s") in lowered or (low + "s") in lowered:
             continue
         closest, best = None, NEAR_MISS_MAX_DISTANCE + 1
-        if len(name) >= _NEAR_MISS_MIN_LEN:
+        # Lengths read off the FOLDED strings, because the distance below is
+        # measured on the folded strings. `.lower()` preserved length so raw and
+        # folded were interchangeable; the spine does not — `Straße` (6) folds to
+        # `strasse` (7). Gating on one string and measuring on another is the
+        # adjacent-decision shape: both halves individually correct, the pair
+        # wrong. A no-op for ASCII names, which is all of them today
+        # (/review-impl).
+        if len(low) >= _NEAR_MISS_MIN_LEN:
             for k_low, k in lowered.items():
-                if len(k) < _NEAR_MISS_MIN_LEN:
+                if len(k_low) < _NEAR_MISS_MIN_LEN:
                     continue
-                d = _edit_distance(name.lower(), k_low)
+                d = _edit_distance(low, k_low)
                 if d < best:
                     closest, best = k, d
-        limit = 1 if len(name) < _NEAR_MISS_STRICT_UNDER else NEAR_MISS_MAX_DISTANCE
+        limit = 1 if len(low) < _NEAR_MISS_STRICT_UNDER else NEAR_MISS_MAX_DISTANCE
         if closest is not None and best <= limit:
             near.append({"name": name, "closest": closest, "distance": best})
         else:

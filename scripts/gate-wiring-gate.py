@@ -216,36 +216,26 @@ TOO_SLOW: dict[str, str] = {
 #                         names and span excerpts reached an LLM judge prompt
 #                         unsanitized. Fixed, and the lint tightened from
 #                         "mentions the sanitizer" to "calls it".
+#   language-bias         D-GATE-ROT-LANGUAGE-BIAS — CLEARED 2026-08-10, and the way it
+#                         cleared is the lesson. The row said the gate was red because of
+#                         TEN classified offenders. Measured on the day it was deleted:
+#                         all ten were already in `language-bias-gate`'s BASELINE, and the
+#                         gate was red because of TWO UNRELATED lines added 2026-08-01
+#                         (`name_grounding.py`, fixed at the source). So the register was
+#                         satisfied by the wrong offenders — red for a reason other than
+#                         the one it recorded, which reads exactly like the debt still
+#                         being tracked. `BDR-56` at the register level.
+#
+#                         The sealed choice this reverses is `multilingual.md`'s
+#                         "deliberately RED, because baselining them would hide the debt".
+#                         That was true of a baseline nothing audited. It is not true of
+#                         this one: 37 named lines, failing on growth AND — as of the same
+#                         day — on a row whose code no longer exists. REVERSAL TRIGGER: if
+#                         the staleness or growth arm is ever removed, the objection is
+#                         valid again and this shape should come back.
 KNOWN_RED: dict[str, tuple[str, str]] = {
-    "scripts/language-bias-gate.py": (
-        "D-GATE-ROT-LANGUAGE-BIAS",
-        "10 offenders in chat-service + composition-service (was 13; class 1 CLEARED "
-        "2026-07-30). NOT A SWEEP, and the classification below is the deliverable so "
-        "the next pass starts from analysis rather than a list — TWO of the remaining "
-        "classes change bytes that are already persisted. "
-        "(1) json.dumps -> a DB column, x3 (internal.py, work_chapter_drafts.py, "
-        "pg_task_store.py): DONE 2026-07-30. Was called merely safe; internal.py:76 "
-        "turned out to be a SECURITY fix, found by /review-impl asking the "
-        "does-an-upstream-step-defeat-a-downstream-defense question. That json.dumps "
-        "feeds screen() from loreweave_safety, which NFKC-folds its input SPECIFICALLY "
-        "so 'unicode look-alikes and width variants dont slip' (floor.py:120). "
-        "ensure_ascii=True escaped those characters to backslash-u escapes BEFORE the "
-        "fold ran, so "
-        "a full-width payload in working_memory_seed bypassed the safety floor. The "
-        "serializer was defeating the screener. "
-        "(2) json.dumps(...).encode() -> a DIGEST, x2 (stream_service.py:3749, "
-        "arc_conformance_orchestrate.py:214): flipping it changes EVERY hash, so "
-        "it is a cache/dedup invalidation decision, not an edit. "
-        "(3) casefold() as a PERSISTED IDENTITY KEY, x5 (plan_forge_service x3, "
-        "world_plan, operations): wants NFC/NFKC first — and normalizing changes "
-        "lookups against rows ALREADY keyed the old way, so it needs a backfill "
-        "plan or it orphans them. "
-        "(4) re.findall(r'\\w{4,}') x2 (propose.py): space-delimited word "
-        "tokenizing, which cannot work for CJK at all — a design choice, not a fix. "
-        "Plus ONE FALSE POSITIVE: tool_surface.py:103 lowercases an MCP tool name, "
-        "ASCII by contract (closed-set snake_case), where casefold() is identical. "
-        "Defer gate #2 (large/structural — needs a plan) + #1 (platform track, not "
-        "the game tier)"),
+    # EMPTY. A row here is a gate whose redness is ACKNOWLEDGED, and `--run-all`
+    # deletes it for you by failing the moment the gate turns green.
 }
 
 

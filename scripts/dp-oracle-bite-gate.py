@@ -97,7 +97,19 @@ def cargo_outcome(test_name: str, where: tuple[str, str] = CP) -> tuple[str, str
         ],
         cwd=REPO, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
-    out = (p.stdout or "") + (p.stderr or "")
+    return classify_cargo((p.stdout or "") + (p.stderr or ""))
+
+
+def classify_cargo(out: str) -> tuple[str, str]:
+    """The four-way verdict, over a cargo transcript.
+
+    Split out of `cargo_outcome` so it can be checked on SYNTHETIC transcripts
+    in milliseconds instead of a 30-second cargo run — the same separation the
+    four `dp-slice*` harnesses made for the same reason (`BDR-71`). The arm that
+    matters most is `running 0 tests`: a renamed witness that no longer runs
+    must NOT read as a pass, or this harness scores a vanished test as a
+    successful bite and prints it as evidence.
+    """
     if "error: could not compile" in out or "error[E" in out:
         return "nobuild", out
     if "running 0 tests" in out:
@@ -388,7 +400,92 @@ LEGS: list[dict] = [
 ]
 
 
+def self_test() -> int:
+    """Prove THIS HARNESS's machinery, before believing anything it prints.
+
+    # Why a bite harness needs this more than an ordinary gate does
+
+    A gate with broken logic goes quiet. A bite harness with broken logic
+    prints `bitten: 19/19` — it does not merely fail to warn, it manufactures
+    evidence for every guard it names (`BDR-71`). Its four siblings were given
+    self-tests for exactly that reason; this one was skipped, and the reason it
+    was skipped is itself the finding: `gate-teeth-gate` had certified it as
+    already proven because it contains the string `"SELFTEST FAIL"` — a literal
+    it uses to read the coverage gate's OUTPUT. A mention counted as a proof,
+    so this harness never appeared on the worklist that would have caught it.
+
+    Three families, none of which needs cargo:
+      * the four-way verdict, on synthetic transcripts;
+      * `_both_sides`, the rule that a red must NAME what disagreed with what;
+      * every leg's anchor still existing in its target file — a rotted anchor
+        is scored as MISUSE at runtime, but only when someone runs the 20-minute
+        sweep, and it is free to check here.
+    """
+    fails: list[str] = []
+
+    # ── the four-way verdict ──────────────────────────────────────────────────
+    for label, transcript, expect in (
+        ("a clean pass", "running 1 test\ntest result: ok. 1 passed", "pass"),
+        ("a genuine failure", "running 1 test\ntest result: FAILED. 0 passed; 1 failed", "fail"),
+        ("a compile error", "error[E0308]: mismatched types", "nobuild"),
+        ("could-not-compile", "error: could not compile `dp` due to 1 error", "nobuild"),
+        # THE ARM THAT MATTERS. A renamed witness runs nothing; scoring that as a
+        # pass would let a vanished test certify a guard.
+        ("a witness that no longer runs", "running 0 tests\ntest result: ok. 0 passed", "missing"),
+        ("output in no known shape", "cargo: command not found", "nobuild"),
+    ):
+        got, _ = classify_cargo(transcript)
+        if got != expect:
+            fails.append(f"classify_cargo({label}) = {got!r}, want {expect!r}")
+
+    # Precedence: a build error inside a run that ALSO prints `ok` must not be
+    # read as a pass. The order of the branches is the whole content of that.
+    got, _ = classify_cargo("error[E0425]: cannot find value\ntest result: ok. 0 passed")
+    if got != "nobuild":
+        fails.append(f"a transcript with BOTH a compile error and `ok` classified {got!r}")
+
+    # ── the both-sides rule ───────────────────────────────────────────────────
+    if _both_sides("says 300000 ms but DEFAULT_CAPABILITY_TTL_MS is 900000",
+                   ("300000", "900000")):
+        fails.append("_both_sides reported a miss on a message naming BOTH sides")
+    missed = _both_sides("the values disagree", ("300000", "900000"))
+    if sorted(missed) != ["300000", "900000"]:
+        fails.append(
+            f"_both_sides on a message naming NEITHER side returned {missed}; a red that "
+            f"does not say what disagreed with what is a red nobody can act on")
+
+    # ── every leg's anchor still exists ───────────────────────────────────────
+    if len(LEGS) < 10:
+        fails.append(f"only {len(LEGS)} leg(s) defined; this harness covers four oracles")
+    for leg in LEGS:
+        path: Path = leg["path"]
+        if not path.exists():
+            fails.append(f"leg {leg['label']!r}: {path.relative_to(REPO)} does not exist")
+            continue
+        if leg["find"] not in B.read_txt(path):
+            fails.append(
+                f"leg {leg['label']!r}: its anchor is GONE from "
+                f"{path.relative_to(REPO)} — the mutation cannot be applied, so the leg "
+                f"scores MISUSE and the guard it names goes unproven: {leg['find'][:60]!r}")
+        if leg["find"] == leg["replace"]:
+            fails.append(f"leg {leg['label']!r}: find == replace, so it mutates nothing")
+        if not leg.get("names"):
+            fails.append(f"leg {leg['label']!r}: no `names`, so its red need not say anything")
+
+    for f in fails:
+        print(f"FAIL: {f}", file=sys.stderr)
+    if fails:
+        print("dp-oracle-bite-gate: SELFTEST FAIL", file=sys.stderr)
+        return 1
+    print(f"dp-oracle-bite-gate: self-test OK — 7 verdict arm(s) incl. `running 0 tests` -> "
+          f"missing, the both-sides rule in both directions, and all {len(LEGS)} leg anchors "
+          f"still present in their targets.")
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv:
+        return self_test()
     print("dp-oracle-bite-gate — one side of each doc/code pair, broken\n")
     with B.HarnessLock():
         results = [bite(leg) for leg in LEGS]

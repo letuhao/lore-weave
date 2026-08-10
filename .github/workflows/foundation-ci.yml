@@ -262,6 +262,13 @@ jobs:
                scripts/test_generation_guard_gate.py
                scripts/test_enforcement_claims_gate.py -q
       - run: python scripts/gate-teeth-gate.py
+      # ...and then RUN the proofs it just counted. The step above matches text:
+      # a gate advertising `--self-test` is certified whether or not that flag
+      # still works. Measured — rename the function, leave the flag, and the
+      # count stays at 49 while `--self-test` raises NameError. This step is the
+      # difference between 42 gates that CLAIM a proof and 42 that have one.
+      # ~19s (8-way pool); the 7 pytest-file proofs run in the step above.
+      - run: python scripts/gate-teeth-gate.py --verify-proofs
 
       # NOT wired, with the reason, because "it exists" is not "it enforces":
       #   fe-door-scan.py          — no exit path at all; a REPORT, not a gate

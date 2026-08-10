@@ -1,9 +1,9 @@
 {
   "sites": {
     "services/commit-service": {
-      "adoptable": 1,
+      "adoptable": 0,
       "boundary": 2,
-      "exempt": 0
+      "exempt": 1
     },
     "services/world-service": {
       "adoptable": 0,

@@ -185,7 +185,65 @@ STRUCTURALLY_EXEMPT: dict[str, str] = {
         "scans for orphaned rows across realities regardless of state; "
         "`orphan_scan.rs` lists \"frozen\" among the statuses it handles."
     ),
+    # `.rs` ON PURPOSE, unlike the directory-family rows above. These are PREFIX
+    # matches, so a bare `.../bin/ceilings` would also exempt a `ceilings_v2.rs`
+    # or `ceilings_live_writer.rs` written tomorrow — measured, all three matched.
+    # The rows above name DIRECTORIES whose whole subject is one thing; this row
+    # reasons about ONE FILE's behaviour, so it may only cover that file.
+    # `check_self_minted` would still demand a sibling mint its own reality, but
+    # an exemption must not widen by default and lean on a second check to narrow
+    # it back (/review-impl).
+    "services/commit-service/src/bin/ceilings.rs": (
+        "MINTS its own reality and registers it nowhere. `dp::RealityId` asserts "
+        "that the control plane confirmed this reality exists and accepts "
+        "commands; this harness invents a uuid three lines before use precisely "
+        "so the run cannot touch any real world's rows, so no `reality_registry` "
+        "row exists and `SessionContext::bind` would refuse it. Adoption would "
+        "mean forging that assertion, or provisioning a world — which would make "
+        "an append-throughput measurement depend on the meta stack and change "
+        "what it measures. The self-minted half of this reason is CHECKED below."
+    ),
 }
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SELF-MINTED — the exemption reasons that rest on "this code INVENTS its
+# reality", and are therefore checkable rather than prose.
+#
+# WHY THIS EXISTS (`BDR-55`, and it is the charge this row had to answer)
+# ----------------------------------------------------------------------
+# `§0.6e` row 3 allowed a reasoned exemption for `ceilings.rs` and said in the
+# same breath: **not a third category invented to make the number zero.** The
+# test of that is not how good the prose is — it is whether the exemption can
+# ever go WRONG and say so.
+#
+# `provisioner`'s reason is *"there is no bind that could precede the thing
+# being created"*. `ceilings`' is the same shape, and unlike the others it
+# names a property of the file that a future edit can falsify: the harness
+# holds a reality **nothing handed it**. The moment it gains one — a
+# `--reality` flag, an env var, a uuid parsed from text — that reality came
+# from somewhere that could have bound it first, and the exemption is void.
+#
+# So this is not a new classification (the sites still count as `exempt`, under
+# the same ratchet). It is the reason being MECHANISED, which is the difference
+# `deferral-gate` draws between a row and a mechanism.
+SELF_MINTED: dict[str, str] = {
+    "services/commit-service/src/bin/ceilings.rs": (
+        "an append-throughput harness against a throwaway Postgres; its "
+        "`reality` is `Uuid::new_v4()` at the top of each mode"
+    ),
+}
+
+# What the mint looks like. Absent ⇒ the reason no longer describes the code.
+MINT = "Uuid::new_v4()"
+
+# A reality the file did NOT mint. Any of these means something upstream handed
+# it one, and something upstream could have bound it.
+#
+# `Uuid::parse_str` is in the list because it is the only way a uuid enters this
+# codebase from text — argv, env or a config file — and a parsed uuid is by
+# definition external. Narrow scope keeps that from over-reaching: this pattern
+# is applied ONLY to files under a `SELF_MINTED` prefix.
+EXTERNAL_REALITY_SOURCE = re.compile(r"--reality\b|REALITY_ID|Uuid::parse_str")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # INPUT BOUNDARY — the raw value a bind CONSUMES, which cannot already be the
@@ -588,6 +646,66 @@ def self_test() -> int:
                 "a struct field AFTER a binding function was excused as a bind input — the "
                 "exemption leaks past the function's closing brace to the next declaration")
 
+    # THE SELF-MINTED ARMS, on a synthetic tree. Four states of one file, and
+    # the classification must differ between them — otherwise the check is
+    # reading something other than what it claims (`NV-1`).
+    import tempfile
+
+    saved_sm = dict(SELF_MINTED)
+    try:
+        SELF_MINTED.clear()
+        SELF_MINTED["svc/bin/bench"] = "x" * 40
+        STRUCTURALLY_EXEMPT["svc/bin/bench"] = "y" * MIN_REASON
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            src = root / "svc" / "bin" / "bench.rs"
+            src.parent.mkdir(parents=True)
+
+            src.write_text("fn c1() { let reality = Uuid::new_v4(); }\n", encoding="utf-8")
+            clean = check_self_minted(root)
+            if clean:
+                fails.append(
+                    f"self-minted reded on a file that mints and reads nothing: {clean}")
+
+            # ...and each way the claim can become false.
+            src.write_text("fn c1() { let reality = args.reality; }\n", encoding="utf-8")
+            if not any("CLAIM FALSE" in p for p in check_self_minted(root)):
+                fails.append("MINT arm did NOT red when `Uuid::new_v4()` disappeared")
+
+            src.write_text(
+                'fn c1() { let reality = Uuid::new_v4(); let _ = flag("--reality"); }\n',
+                encoding="utf-8")
+            if not any("CLAIM VOID" in p for p in check_self_minted(root)):
+                fails.append("EXTERNAL arm did NOT red on a `--reality` flag")
+
+            src.write_text(
+                "fn c1() { let reality = Uuid::parse_str(&s).unwrap(); }\n", encoding="utf-8")
+            if not any("CLAIM VOID" in p for p in check_self_minted(root)):
+                fails.append("EXTERNAL arm did NOT red on a parsed uuid")
+
+            # A line that only MENTIONS the flag in a comment is prose, not an
+            # input — the distinction `deferral-gate` had to learn the hard way.
+            src.write_text(
+                "// takes no --reality flag, by design\n"
+                "fn c1() { let reality = Uuid::new_v4(); }\n",
+                encoding="utf-8")
+            if check_self_minted(root):
+                fails.append(
+                    "a `--reality` mention in a COMMENT voided the claim; comments are prose")
+
+            src.unlink()
+            if not any("PHANTOM" in p for p in check_self_minted(root)):
+                fails.append("PHANTOM arm did NOT red when the claim matched no file")
+
+            # ...and the claim guarding an exemption that is not there.
+            del STRUCTURALLY_EXEMPT["svc/bin/bench"]
+            if not any("ORPHAN" in p for p in check_self_minted(root)):
+                fails.append("ORPHAN arm did NOT red on a claim with no matching exemption")
+    finally:
+        SELF_MINTED.clear()
+        SELF_MINTED.update(saved_sm)
+        STRUCTURALLY_EXEMPT.pop("svc/bin/bench", None)
+
     for f in fails:
         print(f"FAIL: {f}")
     if fails:
@@ -631,6 +749,66 @@ def check_exemption_hygiene(used: set[str]) -> list[str]:
     return problems
 
 
+def check_self_minted(root: Path = REPO) -> list[str]:
+    """Is every `SELF_MINTED` claim still true of the code it is about?
+
+    Three arms, and the middle one is the whole point:
+
+    * the prefix must be an actual exemption — a claim about a row that is not
+      there excuses nothing and reads as if it does;
+    * the file must still MINT (`Uuid::new_v4()`), and must contain no
+      **external** reality source. Gaining one is the event that voids the
+      reason, because a reality handed to you is a reality something could have
+      bound first;
+    * the prefix must match a file at all — the phantom arm, for the same
+      reason `check_exemption_hygiene` has one.
+
+    `root` is a parameter so the arms can be proven on synthetic files rather
+    than on whatever this tree happens to contain (`BDR-71`: a safety check
+    hardcoded to `REPO` is a safety check nobody can test).
+    """
+    problems: list[str] = []
+    for prefix, claim in sorted(SELF_MINTED.items()):
+        if prefix not in STRUCTURALLY_EXEMPT:
+            problems.append(
+                f"ORPHAN SELF-MINTED CLAIM: `{prefix}` is not in STRUCTURALLY_EXEMPT, so this "
+                f"check is guarding an exemption that does not exist.")
+        seen = 0
+        for path in sorted(root.rglob("*.rs")):
+            try:
+                rel = path.relative_to(root).as_posix()
+            except ValueError:
+                continue
+            if not rel.startswith(prefix):
+                continue
+            seen += 1
+            try:
+                text = blank_line_comments(path.read_text(encoding="utf-8", errors="replace"))
+            except OSError:
+                continue
+            if MINT not in text:
+                problems.append(
+                    f"SELF-MINTED CLAIM FALSE: `{rel}` is exempt because it mints its own "
+                    f"reality ({claim}), and `{MINT}` no longer appears in it. Either the "
+                    f"reality now comes from somewhere that could have bound it — in which "
+                    f"case pay the adoption debt — or the reason needs rewriting to say what "
+                    f"is actually true.")
+            found = sorted({m.group(0) for m in EXTERNAL_REALITY_SOURCE.finditer(text)})
+            if found:
+                problems.append(
+                    f"SELF-MINTED CLAIM VOID: `{rel}` is exempt because nothing hands it a "
+                    f"reality, and it now reads one from outside: {found}. A reality that "
+                    f"arrives from argv, the environment or a parse came from a caller that "
+                    f"could have bound it first, so `dp::RealityId` is obtainable here and "
+                    f"the exemption no longer holds. Adopt it, or replace this row with a "
+                    f"reason that survives the new input.")
+        if seen == 0:
+            problems.append(
+                f"PHANTOM SELF-MINTED CLAIM: `{prefix}` matches no `.rs` file. The harness "
+                f"moved or was deleted and the claim outlived it.")
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write-baseline", action="store_true")
@@ -670,7 +848,7 @@ def main() -> int:
         sys.exit(f"no baseline at {BASELINE.relative_to(REPO)} — run --write-baseline once")
     known = json.loads(BASELINE.read_text(encoding="utf-8"))["sites"]
 
-    fails = check_exemption_hygiene(used)
+    fails = check_exemption_hygiene(used) + check_self_minted()
 
     for rel, counts in sorted(current.items()):
         prev = known.get(rel)

@@ -317,7 +317,145 @@ def iter_files_staged():
             yield os.path.join(REPO_ROOT, rel)
 
 
+def self_test() -> int:
+    """Prove this gate can go RED — on synthetic input, and on its own reach.
+
+    `GATE-TEETH`: a gate is not proven by passing, it is proven by going red on
+    a bad input. Two families here, and the second is the one that would
+    otherwise never be looked at:
+
+    * **the detectors**, each with its false-positive twin. An arm that only
+      shows the finding fires proves nothing about a gate whose real cost is
+      crying wolf — the `WHERE`-scoped delete must come back CLEAN from the
+      same line that reds without it.
+    * **the reach**. This gate walks a hardcoded `SEARCH_DIRS`, and a directory
+      that is renamed or moved simply stops being walked: `os.path.isdir` is
+      False, the loop `continue`s, and the gate reports clean forever over code
+      it can no longer see. That is `NV-3` — *default-uncovered* — and it is the
+      shape that already shipped here twice (`"test" in base` missing every
+      `*-smoke.sh`, and `lines[:60]` discarding a pragma at line 69). Nothing
+      about a silent walk looks different from a clean tree, so it is checked
+      directly rather than inferred from a green run.
+    """
+    import tempfile
+
+    fails: list[str] = []
+
+    def scan(name: str, body: str, kind: str = "test") -> list[str]:
+        """Kinds found in a synthetic file. Paths stay OUT of the repo tree so
+        the fixtures cannot be picked up by a real scan, and `_dir_is_guarded`
+        short-circuits on them (they are not under `REPO_ROOT`)."""
+        with tempfile.TemporaryDirectory() as td:
+            p = os.path.join(td, name)
+            with open(p, "w", encoding="utf-8") as f:
+                f.write(body)
+            fn = scan_test_file if kind == "test" else scan_config_file
+            return [x.kind for x in fn(p)]
+
+    # Counted rather than written down: the summary line below states how many
+    # arms of each kind ran, and a literal there would drift from the arms the
+    # moment one is added — a gate reporting a coverage number it no longer has.
+    arms = {"red": 0, "clean": 0}
+
+    def want(label: str, got: list[str], expect: list[str]) -> None:
+        arms["red" if expect else "clean"] += 1
+        if sorted(got) != sorted(expect):
+            fails.append(f"{label}: got {got}, want {expect}")
+
+    # ── the detectors, each with its false-positive twin ──────────────────────
+    want("unscoped DELETE in a Go test",
+         scan("x_test.go", '\tdb.Exec("DELETE FROM books")\n'),
+         ["unscoped-DELETE-in-test"])
+    want("the SAME delete, scoped by a WHERE",
+         scan("x_test.go", '\tdb.Exec("DELETE FROM books WHERE owner_user_id = $1", u)\n'),
+         [])
+    want("TRUNCATE", scan("x_test.go", '\tdb.Exec("TRUNCATE books")\n'), ["TRUNCATE-in-test"])
+    want("DROP TABLE", scan("x_test.go", '\tdb.Exec("DROP TABLE books")\n'), ["DROP-in-test"])
+    want("the English word 'truncate' in a message",
+         scan("x_test.go", '\tt.Log("must not truncate the name")\n'), [])
+
+    # The pragma, and the block-walk that a fixed one-line window broke three
+    # times in this repo. The reason sits FOUR lines up, where a reader wants it.
+    want("inline pragma on the finding line",
+         scan("x_test.go", '\tdb.Exec("TRUNCATE books")  // db-safety-gate: ok — sqlmock only\n'),
+         [])
+    want("pragma in the comment BLOCK above, not the line above",
+         scan("x_test.go",
+              "\t// This fixture owns its database outright: the DSN is a\n"
+              "\t// throwaway created in TestMain and dropped after.\n"
+              "\t// db-safety-gate: ok — throwaway DB created by this test\n"
+              "\t// (see TestMain).\n"
+              '\tdb.Exec("TRUNCATE books")\n'),
+         [])
+    want("file-level pragma",
+         scan("x_test.go",
+              "// db-safety-gate: file-ok — every statement here is a string assertion\n"
+              '\tdb.Exec("DROP TABLE books")\n'),
+         [])
+
+    # SCOPE: the same statement in a file that is not a test is not this gate's
+    # subject. An arm that passes for the wrong reason — because the detector
+    # fires everywhere — would make the `is_test_file` split meaningless.
+    if is_test_file("/tmp/handler.go"):
+        fails.append("a non-test .go file was classified as a test file")
+    for name, expect in (
+        ("x_test.go", True), ("conftest.py", True), ("test_x.py", True),
+        ("x_test.py", True), ("db-smoke.sh", True), ("restore-drill.sh", True),
+        ("handler.go", False), ("main.py", False), ("deploy.sh", False),
+    ):
+        if is_test_file("/some/dir/" + name) is not expect:
+            fails.append(f"is_test_file({name!r}) is not {expect}")
+
+    # ── config: a *_TEST_*_URL aimed at a bare production database ────────────
+    want("test URL pointing at the real DB",
+         scan("ci.yml", "  BOOK_TEST_DATABASE_URL: postgres://u@h:5432/loreweave_book\n", "config"),
+         ["test-URL→production-DB"])
+    want("the same URL with a throwaway marker",
+         scan("ci.yml", "  BOOK_TEST_DATABASE_URL: postgres://u@h:5432/loreweave_book_test\n", "config"),
+         [])
+
+    # ── the reach: can this gate still SEE the tree it claims to guard? ───────
+    for d in SEARCH_DIRS:
+        if not os.path.isdir(os.path.join(REPO_ROOT, d)):
+            fails.append(
+                f"PHANTOM SEARCH DIR: `{d}` is in SEARCH_DIRS and does not exist. The walk "
+                f"skips a missing directory silently, so a rename retires this gate over that "
+                f"whole tree without a single line of output changing.")
+    if not os.path.isdir(os.path.join(REPO_ROOT, ".github")):
+        fails.append("`.github` is not walked; the CI-config arm scans nothing")
+
+    seen_test = seen_config = 0
+    for path in iter_files_full():
+        if not os.path.isfile(path):
+            continue
+        if is_test_file(path):
+            seen_test += 1
+        elif _is_config(path):
+            seen_config += 1
+    # Floors, not a ratchet. The question is "is it pointed at anything", and an
+    # exact count would red on every added test — noise that trains people to
+    # bump the number without reading it. Measured 2026-08-10: 1817 / 229.
+    if seen_test < 500:
+        fails.append(
+            f"the walk found only {seen_test} test file(s) (floor 500, measured 1817). This "
+            f"gate is pointed at nothing like the tree it guards.")
+    if seen_config < 50:
+        fails.append(
+            f"the walk found only {seen_config} config file(s) (floor 50, measured 229).")
+
+    for f in fails:
+        print(f"FAIL: {f}", file=sys.stderr)
+    if fails:
+        return 1
+    print(f"db-safety-gate: self-test OK — {arms['red']} arm(s) go RED on a destructive shape, "
+          f"{arms['clean']} stay clean on the scoped/exempt/non-test twin; walk reaches "
+          f"{seen_test} test + {seen_config} config file(s).")
+    return 0
+
+
 def main() -> int:
+    if "--self-test" in sys.argv:
+        return self_test()
     staged = "--staged" in sys.argv
     files = iter_files_staged() if staged else iter_files_full()
     findings: list[Finding] = []

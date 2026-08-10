@@ -62,7 +62,19 @@ def test_shell_gate_whose_check_is_an_embedded_python_heredoc(tmp_path):
 # ── the gate must not be its own witness ──────────────────────────────────────────────────
 
 def test_a_gate_cannot_certify_itself_by_mentioning_selftest_in_prose(tmp_path):
-    """A docstring or comment saying "selftest" is a claim; an `echo SELFTEST` is a proof."""
+    """Only a SHAPE is a proof: a `def`, a `selftest()` function, or a CLI flag.
+
+    This test used to assert that an `echo "SELFTEST PASS"` line counted — the
+    idea being that prose claims and literals differ. **It does not hold, and
+    the counter-example was live:** `dp-oracle-bite-gate.py` contains
+    `"SELFTEST FAIL" in out`, a literal it uses to read the COVERAGE GATE's
+    output, and on that string it was certified as carrying a self-test it did
+    not have. A literal is not evidence about the file that contains it.
+
+    Narrowing to the three shapes cost exactly one certification — that one.
+    Every genuine shell self-test here defines `selftest()`, so the echo line
+    they all also have was never what was carrying them.
+    """
     claimed = _write(tmp_path, "claim-lint.py",
                      '"""This gate has a SELFTEST built in."""\nimport sys\nsys.exit(1)\n')
     assert gtg.teeth_proof("claim-lint.py", claimed) is None
@@ -71,9 +83,21 @@ def test_a_gate_cannot_certify_itself_by_mentioning_selftest_in_prose(tmp_path):
                        "#!/usr/bin/env bash\n# SELFTEST: flags a bad input\nexit 1\n")
     assert gtg.teeth_proof("claim2-lint.sh", commented) is None
 
+    # The live shape, reduced: a literal used to READ SOMEONE ELSE's verdict.
+    reader = _write(tmp_path, "reader-gate.py",
+                    "import sys\nout = run_other_gate()\n"
+                    'if "SELFTEST FAIL" in out:\n    sys.exit(2)\n')
+    assert gtg.teeth_proof("reader-gate.py", reader) is None, \
+        "a literal naming another gate's selftest output is not a proof about THIS file"
+
     real = _write(tmp_path, "real-lint.sh",
-                  '#!/usr/bin/env bash\necho "[x] SELFTEST PASS — flags a bad input"\nexit 1\n')
+                  "#!/usr/bin/env bash\nselftest() {\n"
+                  '  echo "[x] SELFTEST PASS — flags a bad input"\n}\nexit 1\n')
     assert gtg.teeth_proof("real-lint.sh", real) == "built-in selftest"
+
+    flagged = _write(tmp_path, "flag-gate.py",
+                     'import sys\nif "--self-test" in sys.argv:\n    sys.exit(0)\n')
+    assert gtg.teeth_proof("flag-gate.py", flagged) == "built-in selftest"
 
 
 def test_the_analyzer_does_not_certify_itself():

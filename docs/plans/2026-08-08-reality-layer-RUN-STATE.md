@@ -312,9 +312,10 @@ deliberate: after this session the open items are all *numbers that can only fal
 
 | # | row | done = |
 |---|---|---|
-| 1 | ~~**`GATE-TEETH-55`**, the four bite harnesses~~ **✅ DONE 2026-08-10, 55 → 51.** All four now carry a `--self-test`; both arm families bitten (break `classify`'s `missing` branch → red; rot a leg anchor → red). `5d` still bites 8/8 end to end, so the proof did not cost the harness. **Continues as `GATE-TEETH-51`** in §4 — next are the gates that read a SoT and could silently read nothing | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
+| 1 | ~~**`GATE-TEETH-55`**, the four bite harnesses~~ **✅ DONE 2026-08-10, 55 → 51.** All four now carry a `--self-test`; both arm families bitten (break `classify`'s `missing` branch → red; rot a leg anchor → red). `5d` still bites 8/8 end to end, so the proof did not cost the harness. **Continues as `GATE-TEETH-48`** in §4. **2026-08-10, 51 → 48:** `db-safety-gate`, `doc-language-gate`, `language-bias-gate` — the three that read a corpus and could silently read nothing. Each gained a **reach** family (every search dir must exist; the walk must clear a floor) beside its detectors, because a walk that reaches nothing is byte-identical to a clean tree. Found: 7 stale `language-bias` baseline rows and a gate RED on `main` for 9 days. **And a fourth thing that was not on the list** — `--verify-proofs` now RUNS the 42 advertised self-tests instead of matching their text, which caught `dp-oracle-bite-gate.py` certified on a string literal it uses to read *another* gate's output. See `BDR-74`, `BDR-75` | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
 | 2 | **`G3` continued — 13 → 14 of 26, and THIS ROW WAS WRONG.** It named four candidates; **three have no producer**, measured before writing anything: `DurableEventStream` 0 files · `advance_turn` 0 · `TurnBoundary` 0 · `wait_for_token` 0 · `route_to_writer` 0 · `CausalityToken` twice, both DEFERRED-register rows recording it as unbuilt. Oracles for those would be the orphan shape §0.6c forbids — the row told me to avoid exactly the trap it was walking me into. Only `11_access_pattern_rules` had both sides, and it is now covered by `spec_oracle_rules.rs`, which **found `DP-R7` enforced by nothing** | coverage rises, the baseline records it, and each new oracle rule is bitten per the six steps — mutate one side, RED naming BOTH, restore, GREEN. **Do not add a rule whose subject has no producer** (§0.6c). Of the twelve still unread, `16_bubble_up_aggregator`, `19_privacy_redaction_policies`, `20_operational_residuals` and `21_llm_turn_slot` need the same producer check FIRST — `00_preamble`, `22_feature_design_quickstart`, `99_open_questions` and `_index` are prose with no code side and should be excluded from the denominator rather than faked into it |
-| 3 | **`3E-EPOCH-COMMIT-ADOPTION`'s last site** — `commit-service/src/bin/ceilings.rs`, a benchmark envelope builder holding the one remaining bare `reality: Uuid` | either it adopts a verified id, or it earns a **reasoned** exemption naming why a benchmark harness cannot bind. **Not a third category invented to make the number zero** — `BDR-55` |
+| 2b | **`G3`'s PRODUCER AUDIT — done 2026-08-10, and it settles what row 2 can still be.** All twelve unread documents classified, measured the shrink arm's way (comment lines stripped, the recording file excluded — see `BDR-76`). **Eleven cannot honestly be covered.** *No producer, 7:* `14_durable_subscribe` · `15_turn_boundary` · `16_bubble_up_aggregator` · `18_causality_and_routing` · `19_privacy_redaction_policies` · `20_operational_residuals` · `21_llm_turn_slot` — every marker symbol 0 files; `BubbleUpAggregator`'s single hit is a `DEFERRED_RPCS` row recording it unbuilt, and the only `redact` code in the tree is log-field PII masking, a different subject. *Prose, no code side, 4:* `00_preamble` · `22_feature_design_quickstart` · `99_open_questions` · `_index`. **Coverable and uncovered: exactly one** — `01_scope_and_boundary`, whose boundary rule is what `reality-id-adoption-gate.py`'s `IN_SCOPE` is derived from, with nothing comparing them | **the denominator, not the numerator, is the remaining work.** Split it into `NOT_A_SPEC` and `NO_PRODUCER`, every row reasoned AND checked, each with a **shrink arm** returning a doc to the denominator the moment a marker symbol appears in non-comment source — the arm already built and bitten for `DP-R7`. Coverage then reads **14/15** with a one-item worklist instead of 14/26 with a number that cannot move. **Do not raise the numerator by writing an oracle over a producerless doc** (§0.6c) |
+| 3 | ~~**`3E-EPOCH-COMMIT-ADOPTION`'s last site**~~ **✅ DONE 2026-08-10, 1 → 0 adoptable.** A **checked** exemption, not prose: the reason is that the harness *mints* its reality and registers it nowhere, so `bind` would refuse it — and that claim is now mechanised (`SELF_MINTED` + `check_self_minted`, four arms, void the moment a `--reality`/`REALITY_ID`/`parse_str` appears). The gate refused the 1→0 / 0→1 reclassification until the baseline recorded it; total unchanged at 57. See the §4 row and `BDR-73` | either it adopts a verified id, or it earns a **reasoned** exemption naming why a benchmark harness cannot bind. **Not a third category invented to make the number zero** — `BDR-55` |
 
 **Deliberately NOT in this list**, unchanged: `D-META-ERASURE-COVERAGE`'s two undecided tables
 (`session_cost_summary`, `service_to_service_audit` declare no erasure method at all). A GDPR
@@ -716,7 +717,8 @@ not implement toward it.
 |---|---|---|
 | ~~`G3-ORACLE-COVERAGE`~~ | **CLOSED 2026-08-10. 9 → 13 of 26**, ratchet built and bitten. `scripts/dp-oracle-coverage-gate.py` + `contracts/dp/oracle-coverage-baseline.json`: a document counts only when its name is a string literal in code (not a comment), in a function **reachable from a `#[test]`**, with an assertion **somewhere in that chain** — a grep would have scored 14/26 on day one and been wrong about five, because `spec_oracle`'s own docstring names documents it does not read. Four new oracle files: `dp-control-plane/tests/spec_oracle_cp.rs` (`DP-C2` tables · `DP-C3` RPC set · `DP-C8` TTL), `dp/tests/spec_oracle_sdk.rs` (`DP-K9` refresh lead · `DP-K11` lint set), `dp/tests/spec_oracle_channels.rs` (`DP-Ch11` columns + uniqueness triple · `DP-Ch31` states, incl. a doc↔doc arm). **`scripts/dp-oracle-bite-gate.py`: 19/19 legs, each mutating ONE side and requiring the red to NAME BOTH.** Three prose-only gaps became registers with a shrink arm: `CP_TABLES_WITHOUT_A_MIGRATION` (5), `DEFERRED_LINTS` (2), `DEFERRED_EVENT_COLUMNS` (1). **New finding: `DP-Ch11` declares `events.turn_number` and NO migration creates it** — registered, blocker named. See `BDR-57`..`BDR-60` | done |
 | ~~`3E-NAMING-INCONSISTENCY`~~ | **CLOSED 2026-08-10, and it was NOT latent.** The gate learned the property, nothing was renamed. **`commit-service` reported `0 adoptable, 0 exempt` — completely adopted — while carrying five real sites, four of them on the spine's LIVE WRITE PATH (`epoch_commit.rs`).** A whole in-scope service was invisible because its field is spelled `reality`. A second defect fell out in the opposite direction: the regex tail accepted `reality_id: Uuid::from_u128(0x42)`, a struct *literal*, so **eleven non-sites** were inflating `exempt` (63 → 52). Now three categories — `adoptable` (must reach zero) · `exempt` (the reality cannot be accepting commands) · **`boundary`** (the raw value a bind consumes) — each ratcheted against growth, with an `AMBIGUOUS` arm refusing a prefix in both tables. **The boundary category is detected by PROPERTY**, not a list: a `reality: Uuid` parameter of a function whose body reaches `SessionContext::bind`/`MetaControlPlane` is a bind input, and stops being one if the body stops binding — self-tested in both directions on a pair of sources differing by one line. Only `spine_args` (a struct field with no enclosing function to read) is curated, which is the *"or an explicit reasoned exemption"* half of the trigger. **Honest outcome per `BDR-55`: the number went UP, 0 → 5 adoptable.** New debt row below | done |
-| ~~`3E-EPOCH-COMMIT-ADOPTION`~~ | **PAID 2026-08-10, 5 → 1.** All four `epoch_commit` signatures (`drain_and_reconcile` / `reconcile_and_commit` / `activation_payload` / `envelope`) now take `&dp::RealityId`; `spine.rs` passes `session.reality_id()` — **taken from the `SessionContext` the loop already holds, never from a helper returning an id alone**, which is `BDR-54`'s shape and would have dropped the `plane` that keeps the capability refreshable. The two test callers bind through the existing `tests/support::verified_reality` double rather than a new one. Evidence: `cargo check` enumerated every call site; suite green (`epoch_event_contract` 4 passed, `epoch_activation_live` 4 passed — both *ran*, checked, because a test that quietly stops running is the red-for-the-wrong-reason mode); ratchet bitten 1 → 2 → 1 by reverting one signature. **Remaining: 1** — `bin/ceilings.rs`'s benchmark envelope builder, left ADOPTABLE rather than exempted on purpose: under-exempting leaves something to read, and it was outside this row's stated cell | ratcheted at 1 and cannot grow. `ceilings.rs` earns either an adoption or a *reasoned* exemption the next time that harness is touched — not a third category invented to make the number zero |
+| ~~`3E-EPOCH-COMMIT-ADOPTION`~~ | **PAID 2026-08-10, 5 → 1.** All four `epoch_commit` signatures (`drain_and_reconcile` / `reconcile_and_commit` / `activation_payload` / `envelope`) now take `&dp::RealityId`; `spine.rs` passes `session.reality_id()` — **taken from the `SessionContext` the loop already holds, never from a helper returning an id alone**, which is `BDR-54`'s shape and would have dropped the `plane` that keeps the capability refreshable. The two test callers bind through the existing `tests/support::verified_reality` double rather than a new one. Evidence: `cargo check` enumerated every call site; suite green (`epoch_event_contract` 4 passed, `epoch_activation_live` 4 passed — both *ran*, checked, because a test that quietly stops running is the red-for-the-wrong-reason mode); ratchet bitten 1 → 2 → 1 by reverting one signature. **Remaining: 1** — `bin/ceilings.rs`'s benchmark envelope builder, left ADOPTABLE rather than exempted on purpose: under-exempting leaves something to read, and it was outside this row's stated cell. **CLOSED 2026-08-10, 1 → 0** — see the row below | done |
+| ~~`3E-CEILINGS-LAST-SITE`~~ | **CLOSED 2026-08-10, 1 → 0 adoptable, and it is an EXEMPTION whose reason is CHECKED.** The trigger allowed *"a reasoned exemption naming why a benchmark harness cannot bind"* and forbade *"a third category invented to make the number zero"* — so the reason had to be falsifiable, not well-written. **The real reason is not "it is a benchmark"**, which would be the invented category: it is that `ceilings.rs` **mints** its reality with `Uuid::new_v4()` three lines before use, deliberately (its own §Safety: *"every run uses a freshly minted random `reality_id`, so it cannot touch another run's rows"*). No `reality_registry` row exists for it, so `SessionContext::bind` would **refuse** it — the same shape as `provisioner`'s *"there is no bind that could precede the thing being created"*. Adopting would mean forging the assertion `dp::RealityId` exists to make, or provisioning a world, which makes an append-throughput measurement depend on the meta stack. **The mechanism:** a new `SELF_MINTED` table + `check_self_minted()` with four arms — the file must still contain `Uuid::new_v4()`; it must contain **no external reality source** (`--reality`, `REALITY_ID`, `Uuid::parse_str`); the prefix must name a real exemption; the prefix must match a file. Comments are stripped first, so a mention of the flag in prose is not an input. **Bitten live:** added `flag("--reality")` to `main`, gate reds `SELF-MINTED CLAIM VOID … it now reads one from outside: ['--reality']`, restored, green, harness diff empty. **The reclassification could not be silent** — the gate refused adoptable 1 → 0 *and* exempt 0 → 1 until the baseline recorded both, and the total stayed 57. `--self-test` now also prints the retirement notice it was written with: adoptable is zero everywhere, so **the exemptions are the whole story**, which is precisely why this one is checked | done |
 | ~~`W5-REMEDIATE`~~ | **CLOSED.** `orphan_scanner --record` writes findings through a new bridge endpoint. **`reality_close_audit` turned out to be the WRONG sink** and R13 §12L has been wrong about it since migration 005: its `event_type` is a closed enum of six close-lifecycle values (no orphan class) and its `reality_id` is `NOT NULL`, which the untracked-database class by definition has none of. New table `orphan_scan_finding` (038), keyed by the database — the one field every class names | done |
 | ~~`W5-CRON`~~ | **CLOSED.** An `orphan-scanner` compose service runs it hourly and records through the bridge. Deliberately NOT another cron-manifest YAML: `scripts/archive-worker-cron.yaml` says of itself that its scheduler binding is deferred, so it is a schedule nothing reads — the same apparatus-without-a-subject shape this row exists to kill | done |
 | ~~`W7-SHELL-UNCOVERED`~~ | **CLOSED 2026-08-10 — the shell-level bite harness exists: `scripts/db-ensure-bite-gate.py`, 4/4 bitten.** ~~036/037 down-migration guards~~ discharged by `META-DOWN-UNCOVERED` (both downs run and re-run; `036`'s data-loss guard bitten with a real user-owned reality). ~~The injection fix~~ — **the live leg is the strongest evidence in this run: with `:'pw'` in place the payload `x'; ALTER ROLE … SUPERUSER; --` is refused (`rolsuper = false`); with the binding removed THE SAME PAYLOAD GRANTED SUPERUSER.** The fix is proven load-bearing by making the vulnerability come back. It runs the pipeline **extracted from `db-ensure.sh` itself**, not a retyped copy, against a throwaway role — the real `loreweave_provisioner` owns the reality databases, so Postgres would refuse to drop it and the script's `if ! role exists` branch can never be reached on a booted cluster. ~~The column-level GRANT~~ and ~~the over-privilege assert~~ carry static paired-anchor legs, each bitten. ~~the `main.go` nil-owner guard~~ **also closed**, and it was the only one of the four with no witness at all: `TestProvisionRequest_RejectsNilUUID` covers the *reality* id, not the *owner*. `cmd/admin/provisionowner_test.go` adds the pair — the nil owner is refused, **and a real owner gets past the guard** (`NV-2`: a single-sided test proves the handler errors, not that the GUARD errored). Bitten by replacing `if owner == uuid.Nil` with `if false`: the nil owner then flowed past and died in the subprocess invoker instead, which the test caught and named. **The silent failure it prevents is a tenancy downgrade reported as success** — the invoker drops the flag when the value is nil, so the operator would get a platform-owned reality and a cheerful message | **all four covered.** The next shell/Go guard added to this path earns a leg in the same two harnesses |
@@ -1504,6 +1506,176 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-78` (2026-08-10) — the pre-commit hook found what the self-test, the 25-minute sweep and
+`/review-impl` all missed, and it found it in the arm written to catch that exact thing.**
+`doc-language-gate` refused the commit: *"line 316: exemption with no reason"*. Line 316 was my
+own test fixture — the literal `<!-- doc-language-gate: ok -->` feeding the arm that proves a
+reasonless pragma IS a finding. To a scanner reading this file's own diff, test INPUT and a real
+reasonless exemption are the same bytes.
+
+**Why three layers were blind to it, and the hook was not:** the self-test feeds `parse_diff`
+synthetic diffs, so it never scans the file it lives in; the sweep runs the gate in `--all` mode,
+which reports the legacy baseline and never blocks; `/review-impl` read the diff as a human would.
+Only the real `--staged` path scans *this file as content*, and only at commit time. **The layer
+that caught it is the one closest to the actual event** — which is the entire argument for having
+more than one, and the reason CLAUDE.md ranks the hook above the goal condition.
+
+Fixed by composing the markers from a `_MARK` constant, so the fixture the test runs is
+byte-identical while the source text is not a pragma. Same rule as `gate-teeth-gate` refusing to
+certify itself, extended one step: **a gate must never be its own witness, and that includes its
+test data.** Third instance of the self-witness shape today — `dp-oracle-bite-gate` certified on a
+literal it uses to read another gate, my `spec_oracle_rules.rs` docstring inventing five
+producers, and now this.
+
+**`BDR-77` (2026-08-10) — I built a guard against "the scope never reaches it" and shipped it with
+that exact hole.** `/review-impl` on the day's diff: `verify_proofs({})` prints **"0 advertised
+self-test(s) RAN and passed"** and exits 0. Everything in it is a loop over a list, and nothing
+required the list to be non-empty — `NV-3`, in the mode written *that hour* to fix `NV-3` in three
+other gates, whose whole added value was a reach floor. I added floors to `db-safety-gate` (500
+test files), `doc-language-gate` (500 tracked) and `language-bias-gate` (500 scanned), and none to
+the thing running them.
+
+It is worse than a self-contained hole, and that is the part worth keeping: **`language-bias-gate`'s
+baseline-staleness arm lives in its `--self-test`, so this step is the only thing that runs it in
+CI.** A vacuous pass here silently retires an arm belonging to a different gate. A guard that other
+guards depend on has to be the *most* non-vacuous thing in the tree, not the least.
+
+Two more from the same review, both the same family — **an adjacent decision defeats it**:
+
+* The `ceilings` exemption was keyed on a path **prefix**, and the rows above it are directory
+  families where that is right. This one reasons about ONE FILE's behaviour — measured,
+  `ceilings_v2.rs` and `ceilings_live_writer.rs` both matched it. `check_self_minted` would still
+  have demanded a sibling mint its own reality, but **an exemption must not widen by default and
+  lean on a second check to narrow it back.** Keyed on `.rs` now.
+* In `name_grounding.py` the near-miss length gate read the RAW name while the edit distance read
+  the FOLDED one. Interchangeable under `.lower()`, which preserves length; not under the spine —
+  `Straße` (6) folds to `strasse` (7). Both halves individually correct, the pair wrong. A no-op
+  for ASCII, which is every name in the tree today, and exactly the kind of thing that stops being
+  a no-op the first time the feature is used for what it was built for.
+
+**`BDR-76` (2026-08-10) — three times in one session I "found" a defect that was an artefact of
+my own probe, and every time the correct method already existed in the repo.**
+
+1. **Six broken gates that were fine.** I ran `--self-test` against everything; four answered
+   `exit 127` and two `exit 2`. All six spell it `--selftest`.
+2. **Four more, one layer down.** With the spelling fixed, the shell gates still failed 127 —
+   `bash` on Windows turns an absolute `D:\Works\…` into `D:Workssource…`. The fix is a
+   POSIX-relative path against `cwd=ROOT`, which is what every other runner here already does.
+3. **A producer that appeared out of nowhere.** Re-verifying `BDR-72` before repeating it in a
+   handoff, `DurableEventStream` · `advance_turn` · `TurnBoundary` · `wait_for_token` ·
+   `route_to_writer` each came back **1 file** where `BDR-72` recorded 0. The one hit, in every
+   case, was **my own docstring in `spec_oracle_rules.rs` recording that they are 0 files.**
+   Writing down that a symbol has no producer creates an occurrence of that symbol.
+
+The third is the one worth keeping, because the mechanism I had already written handles it and
+the ad-hoc grep did not: the `DP-R7` shrink arm strips comment lines *and* skips the file doing
+the recording, for exactly this reason — *a gate must never be its own witness*. Re-measured its
+way, the numbers match `BDR-72` to the digit (`CausalityToken` 2, `BubbleUpAggregator` 1, the
+rest 0).
+
+**The pattern across all three: a measurement whose METHOD differs from the mechanism's method
+gives a different answer, and the ad-hoc one is the wrong one.** `BDR-56` warns about a red for
+an unrelated reason looking like success; this is its mirror — a red for an unrelated reason
+looking like a *discovery*, which is more tempting because it feels like diligence. And the
+day's most-repeated version of the same thing was smaller and dumber: a trailing `echo`/`tail`
+masked a real exit status **four** times, once inside a task notification that reported `0` for
+a sweep that had exited `1`.
+
+**`BDR-75` (2026-08-10) — the teeth ratchet counted 42 self-tests that nothing ran, and one of
+them did not exist.** `--verify-proofs` was built because `teeth_proof` certifies a gate by
+MATCHING TEXT: `def self_test`, a `--self-test` flag, or the bare word `SELFTEST`. Rename the
+function and leave the flag and the count stays at **49 proven** while `--self-test` raises
+`NameError` — measured, both modes run against the same tree, disagreeing. So the number this
+repo publishes about its own gates rested on claims, one level out from the thing the file is
+about.
+
+**On its first run it found a false certification, and the cost was not cosmetic.**
+`dp-oracle-bite-gate.py` was certified *built-in selftest* on the string `"SELFTEST FAIL"` — a
+literal it uses to read the **coverage gate's output**. It had no self-test at all. That matters
+because it is a **bite harness**: broken machinery there prints `bitten: 19/19` and is believed,
+which is why its four `dp-slice*` siblings were given self-tests in the previous move. **The
+false certification is exactly what kept it off that worklist.** A mention counted as a proof —
+fourth occurrence of that shape here, and the `_SELFTEST` comment already warned about it for
+the two spellings it *had* narrowed, leaving the third open. All three alternatives are now
+shapes, not words; narrowing cost exactly one certification, the phantom one. It now carries a
+real self-test (seven verdict arms including `running 0 tests` → `missing`, the both-sides rule
+both ways, and all 19 leg anchors), so the count held at 49.
+
+Two smaller things, both worth the ink:
+
+* **I reported six broken gates that were fine.** A probe that ran `--self-test` against
+  everything got four `exit 127` and two `exit 2`; all six spell it `--selftest`. Every one of
+  those reds looked precisely like a finding. `BDR-56` says a red for an unrelated reason is the
+  failure mode most like success — this is its mirror, a red for an unrelated reason that looks
+  like a *discovery*. The runner now reads the spelling out of the file instead of guessing.
+* **And then the same class again, one layer down:** `bash` on Windows receives an absolute
+  `D:\Works\…` as escape soup (`D:Workssource…`) and answers *No such file or directory* — exit
+  127, indistinguishable from a broken self-test. Four gates were reported failing before the
+  path was found to be at fault. The runner passes a POSIX-relative path against `cwd=ROOT`.
+
+**`BDR-74` (2026-08-10) — three gates that read a corpus, and the thing none of them could see
+was itself.** `db-safety-gate`, `doc-language-gate` and `language-bias-gate` were taken together
+because they share one failure mode that is invisible by construction: **a walk that reaches
+nothing and a clean tree produce byte-identical output, exit 0 included.** Demonstrated rather
+than argued — rename `services/` in `SEARCH_DIRS` and `db-safety-gate` still exits 0 with **1558
+test files unguarded**; add `/docs/` to `doc-language-gate`'s subject-matter allowlist and it
+reports a *better* number (505/8678 against a true 995/10821) with the rule's entire subject out
+of scope. So each self-test has a **reach** family: every search directory must exist, and the
+walk must clear a floor.
+
+Every detector arm has a false-positive twin, and that is not symmetry for its own sake — a
+language gate that cries wolf is switched off within a day, so `Soufflé`/`naïve`/`Gödel`, CJK
+domain terms, `self.name.lower()` behind the ML-2 lookbehind and a `WHERE`-scoped `DELETE` must
+all come back clean **from the same code path that reds without them**.
+
+**What the `language-bias-gate` arm found is the reason to prefer a checked baseline to a
+counted one.** 7 of its 44 rows named code that no longer existed — four ML-2 offenders fixed
+(one now imports the shared `normalize_entity_name` spine), two ML-5 rows given
+`ensure_ascii=False`, one line deleted. **A fingerprint whose subject is gone is a standing
+exemption for a line nobody has written yet:** write that exact statement at that exact path and
+the gate waves it through. A baseline's whole value is that it shrinks, and nothing was watching
+whether this one did. Pruned 44 → 37; `D-LANGBIAS-COMPACTION-LOWER` and
+`D-LANGBIAS-CANONCHECK-LOWER` are discharged by the same finding.
+
+The same run surfaced that the gate **had been RED on `main` since 2026-08-01** — nine days —
+over two live ML-2 violations in `composition-service/name_grounding.py`. Fixed at the source,
+not baselined, and the fix is load-bearing rather than lint-shaped: the fold is a *symmetric*
+match key, so `Ｅｌａｒａ` and `Straße` were being reported to the author as **unanchored names**
+— false accusations — while the spine keeps `ma`/`má` distinct as it documents. Both sides of the
+comparison had to move in one edit; folding one side differently from the other silently stops
+every match, which is the adjacent-decision shape. 53 + 138 tests green.
+
+**`BDR-73` (2026-08-10) — an exemption is a claim, and a claim that cannot be wrong is the shape
+`BDR-55` names.** The last adoptable site was `ceilings.rs`, and the row offered an exemption if it
+were *reasoned*. The tempting reason is **"it is a benchmark harness"** — and that is precisely the
+invented category, because nothing about being a benchmark stops a process from binding. A
+benchmark with a meta URL and a provisioned world binds like anything else; *"I would have to build
+it"* is §0.3's non-blocker, not a structural fact.
+
+The real reason is one clause narrower and it is a property of the code: **the harness MINTS its
+reality and registers it nowhere.** `dp::RealityId` asserts *the control plane confirmed this
+reality exists and accepts commands*; this uuid is invented three lines before use, deliberately, so
+the run cannot touch a real world's rows. There is no registry row, so `bind` would refuse it.
+Adoption would mean forging the assertion the type exists to make.
+
+**The difference between those two reasons is that the second can go wrong and say so.** So it is
+mechanised rather than written: `check_self_minted` reds if the mint disappears, if an external
+reality source appears (`--reality` / `REALITY_ID` / `Uuid::parse_str`), if the claim guards an
+exemption that is not there, or if it matches no file. Comments are stripped first — a mention of
+the flag in prose is not an input, the distinction `deferral-gate` had to learn.
+
+Two things the run got for free, both worth keeping:
+
+* **The reclassification could not be silent.** Moving one site from `adoptable` to `exempt` made
+  the gate fail *twice* — `BASELINE STALE (ADOPTABLE) 1 → 0` and `REGRESSION (EXEMPT) 0 → 1` — and
+  refuse to pass until both were recorded. The total stayed **57**. That is the three-category split
+  doing the job it was built for: an exemption cannot make a number disappear, only move it in
+  daylight. It was written for growth; this is the first time it caught a *reclassification*.
+* **The gate announced its own retirement, and the notice is the argument for this work.** With
+  adoptable at zero everywhere, `--self-test` now prints *"the exemptions have become the whole
+  story."* A ratchet at zero is only as honest as its exemption reasons — which is exactly when a
+  prose reason stops being sufficient.
 
 **`BDR-72` (2026-08-10) — a LOCKED access-pattern rule is enforced by nothing, and the board row
 that sent me looking was itself the trap it warned about.** `§0.6e` row 2 named four documents to
