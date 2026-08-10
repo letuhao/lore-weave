@@ -84,6 +84,18 @@
         "NOT BUILT, recorded as DQ-6: the conditional-requirement family is 12 calls in ONE tool across 3 sessions on ONE day. Section 7 -- a member with no subject is not written -- is the same rule that withdrew a spec row in CP-5"
       ],
       "admitted": false
+    },
+    "kg_build_graph": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it produced the loop's cleanest 'prose is not the lever' datum. All 13 calls / 4 sessions / one day carry ONE error: 'this project has no embedding model configured -- call kg_project_set_embedding_model first (pick one of your embedding models with settings_list_models), then kg_run_benchmark, then retry this build'. That message is correct, complete, ordered and names all three tools. It was delivered 13 times and STEP ONE WAS NEVER TAKEN: corpus-wide, kg_project_set_embedding_model has 0 calls ever and kg_run_benchmark has 0 calls ever -- until this iteration called them. The tool is not broken; its precondition is simply never met. Satisfying it by hand ran the whole path first try. THE REACH IS THE FINDING (DQ-7): 438 knowledge projects exist and 2 have an embedding model, so the feature is unreachable for 436 of them. Whether kg_project_create should set a default is a PRODUCT decision -- the model list is per-user, the choice spends that user's provider budget, and it fixes embedding_dimension for the project's whole vector store, so changing it later is a re-embed rather than a settings edit. Recorded, not invented.",
+      "evidence": [
+        "PHASE 2: 13 calls / 4 sessions / 2026-07-15, a single error string. In those same sessions the model called kg_project_entities_to_nodes 13x, kg_project_list 9x and kg_project_create 8x -- it was busy and capable, and still never called the one tool the error named",
+        "LIVE, all three steps on the throwaway project 019fec6c: (1) kg_project_set_embedding_model -> {changed: true, embedding_dimension: 1024} and the knowledge_projects row now carries it; (2) kg_run_benchmark -> {passed: true, recall_at_3: 1.0, mrr: 1.0, runs: 3, gate_failures: []}; (3) kg_build_graph -> a confirm_token with descriptor kg_build_graph, expires_in_s 600, and 'nothing is spent until confirmed' -- its cost-gated success state",
+        "DATA falsifier: before step 1 the same build call refused with the recorded message; the only thing that changed between the refusal and the token is the row in knowledge_projects, which was read back from the database rather than inferred from the tool's own reply",
+        "DENOMINATOR, from the SSOT not from what I built: SELECT over knowledge_projects gives 438 projects, 2 with an embedding model, 436 without",
+        "NO NEW GUARD and NO CONTRACT MEMBER: nothing in the runtime is wrong. The gap is a product default (DQ-7), and section 7 forbids writing a member for a decision that has not been made"
+      ],
+      "admitted": false
     }
   }
 }

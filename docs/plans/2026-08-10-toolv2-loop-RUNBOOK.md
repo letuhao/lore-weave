@@ -234,6 +234,36 @@ natural home is a `preconditions` contract member declaring the conditional as D
 (`scope=arc ⇒ arc_id`), checked pre-dispatch like CP-5.8's scope gate — never a reworded message,
 which is what the tool already has and what already failed 12 times.
 
+### DQ-7 · 436 of 438 projects cannot build a graph, and the remedy has never been called once
+
+*Raised by:* iteration 8. `kg_build_graph` refused all 13 of its calls with:
+
+> *"this project has no embedding model configured — call `kg_project_set_embedding_model` first
+> (pick one of your embedding models with `settings_list_models`), then `kg_run_benchmark`, then
+> retry this build"*
+
+That message is correct, complete, ordered, and names all three tools. **It was delivered 13 times
+across 4 sessions and step one was never taken.** Measured corpus-wide:
+`kg_project_set_embedding_model` — **0 calls, ever**. `kg_run_benchmark` — **0 calls, ever**.
+This is the cleanest *prose is not the lever* datum the loop has produced.
+
+And the reach is not marginal: **438 knowledge projects exist, 2 have an embedding model, 436 do
+not.** `kg_build_graph` is unreachable for 99.5% of them.
+
+The tool itself is fine — iteration 8 satisfied the precondition by hand and the whole path ran:
+set model (`changed: true`, dimension 1024) → benchmark (`passed: true`, recall@3 1.0, MRR 1.0) →
+build returns its cost-gated confirm token. Nothing is broken. The feature is simply gated behind
+three steps nobody takes.
+
+**The question, and it is a product decision:** should `kg_project_create` set a default embedding
+model, so a new project can build a graph without the detour? It cannot be answered from the code.
+The model list is **per-user** (`settings_list_models`), choosing one spends that user's provider
+budget on embeddings, and the choice fixes `embedding_dimension` for the project's whole vector
+store — changing it later is not a settings edit, it is a re-embed. A default picked by me would be
+a guess deciding a cost-and-correctness question on behalf of every future project.
+*Would clear it:* a stated default (model + provider + who pays), or a decision that the three-step
+path is intended and should instead be surfaced at project creation rather than at first build.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
