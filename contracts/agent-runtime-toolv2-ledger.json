@@ -412,6 +412,17 @@
         "SIBLING CHECKED: 'CP-5.3: 1 ref type(s), 19 bound parameter(s)' also logs, so that registry was loading all along. Suite 2862 passed / 3 skipped"
       ],
       "admitted": true
+    },
+    "kg_project_create": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and its 43% headline success rate is an artefact. 475 calls / 205 ok -- but 263 of the 270 failures, in just FIVE sessions, are the runtime's own idempotent-no-op-write breaker refusing a repeat. Among genuine attempts the tool succeeds 205 of 212 times (96.7%); the remaining 7 are 3 validation errors, 3 'only the book's owner can create' and 1 wrong type. The tool is idempotent BY DESIGN: a second identical create returns created:false with the existing project rather than a duplicate. The 263 repeats are models ignoring that flag, which is exactly what the breaker's message says ('reported created=false — the resource ALREADY EXISTS and its id is in that earlier result, above'). Those 263 rows carry NO call_outcome because they are from 2026-07-25, before CP-5.5. The site stamps refused/idempotent_noop_write today -- read at the source rather than assumed -- so the conflation is already closed for future traffic.",
+      "evidence": [
+        "PHASE 2, split: 205 ok / 270 failed, of which 263 (5 sessions) are the idempotent-no-op-write breaker, 3 validation, 3 ownership, 1 type error",
+        "LIVE: kg_project_create -> created:true, knowledge_projects 440 -> 441",
+        "LIVE IDEMPOTENCY: the identical call again -> created:false, 'a project with this name already exists — returning it instead of creating a duplicate', count STAYS 441. Falsifier: a non-idempotent create would have made 442",
+        "SOURCE-CHECKED: the breaker calls instrument.stamp_refused(..., 'idempotent_noop_write'), so the 263 untyped rows are an artefact of predating CP-5.5, not a missing stamp"
+      ],
+      "admitted": false
     }
   }
 }
