@@ -433,6 +433,37 @@ must look at session titles by hand and say so, as this row does.
 
 ---
 
+### DQ-13 · CP-5.3 resolves a name in an id field, but only when the field holds ONE id
+
+*Raised by:* iteration 55. `glossary_propose_status_change` was called with
+`entity_ids: ["Carfax Abbey", "Castle Dracula", "Van Helsing", "Mina Murray", "Jonathan Harker",
+"Count Dracula"]` — six human names in a list of entity ids — and the identifier resolver, whose
+entire subject is "338 failed calls sent a human name into an entity id field", did not fire.
+
+Not a binding oversight. It is structural: `refresolve.pending_for` skips any value failing
+`isinstance(value, str)`, so a list is invisible to it no matter what the registry says. Binding
+`entity_ids` today would change nothing.
+
+**Measured across the whole corpus, not this tool:** names sent into a list-shaped `*_id*` param
+total **8 items in 3 calls across 2 sessions** — 7 in `glossary_propose_status_change.entity_ids`,
+1 in `glossary_propose_merge.loser_ids`. That is the honest subject, and it is small.
+
+The reason this is deferred rather than fixed is not the size. It is that a list has a semantic a
+scalar does not: **what does a partly-resolved list mean?** If five of six names resolve, does the
+call proceed on five, refuse whole, or ask? CP-5.3 chose its shape deliberately — its own registry
+note records that ambiguity was REAL at 37.5% of contested calls "which is why there is no 'pick
+the best' arm" — and partial-list resolution is exactly a 'pick the best' arm wearing a different
+hat. Extending it is a decision about the resolver's contract, not a missing loop.
+
+*Would clear it:* a stated rule for partial resolution of a ref LIST — all-or-nothing, or proceed
+on the resolved subset with the refusals named in the result. Either answer is implementable in an
+afternoon; guessing between them would silently set the contract for every future list ref.
+
+*Meanwhile the failure is honest:* live control proves the model is told
+`at least one valid entity_id is required`, not a silent empty write.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-8 · A whole checkpoint shipped, closed, and never ran — one missing `COPY` line

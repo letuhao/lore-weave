@@ -592,6 +592,18 @@
         "CHECKED, not assumed: both glossary_web_search AND web_search are in the frozen catalogue -- two tools, two owners. Neither is retired"
       ],
       "admitted": false
+    },
+    "glossary_propose_status_change": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 48 calls / 24 sessions / 39 ok, and the 9 non-ok rows are only FOUR real failures: 5 of the 9 carry call_outcome=deferred with pending=true -- confirm cards awaiting a human, recorded ok=false because they had not returned yet. That is the turn-outcome/call-outcome split, not a defect. The four that remain are 2 calls carrying fabricated placeholder UUIDs (78901234-5678-..., the known invented-id class) and 2 calls carrying entity NAMES in entity_ids. Both are refused with an accurate message. RAISED DQ-13: the CP-5.3 resolver cannot fire on the name class here because pending_for requires isinstance(value, str) -- a LIST is structurally invisible to it, so binding entity_ids would change nothing. Deferred on a contract question (what a partly-resolved ref list means), not on effort; measured subject is 8 items in 3 calls across 2 sessions corpus-wide.",
+      "evidence": [
+        "PHASE 2, split of all 9 non-ok: 5 deferred/pending confirm cards (2 sessions, 2026-08-10) + 2 'none of the given entities are live in this book' (fabricated UUIDs) + 2 'at least one valid entity_id is required' (names: Carfax Abbey, Van Helsing, Gothic Atmosphere...)",
+        "LIVE: glossary-service MCP, throwaway book 019fea46, real entity id -> confirm card with a signed grant token, preview_rows (new status=active, entities updated=1) AND an honest warning 'all 1 matched entities already have status active — this will change nothing'",
+        "CONTROL A: entity_ids=['Mira Vale'] (a name that EXISTS -- glossary_search returns it at tier=exact) still returns 'at least one valid entity_id is required'. This is what proves DQ-13 is live and not historical",
+        "CONTROL B: entity_ids=['78901234-5678-90ab-cdef-1234567890ab'] returns 'none of the given entities are live in this book', the recorded failure verbatim",
+        "DATA, corpus-wide not tool-wide: names in list-shaped *_id* params = 8 items / 3 calls / 2 sessions (7 entity_ids, 1 loser_ids). The gap is real and it is small"
+      ],
+      "admitted": false
     }
   }
 }
