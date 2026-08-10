@@ -103,11 +103,47 @@ KIND_ID="$(gq "SELECT book_kind_id FROM book_kinds WHERE book_id='$BOOK_ID' AND 
 MARK="qc4-$(python -c 'import uuid;print(uuid.uuid4().hex[:12])')"
 [ ${#MARK} -eq 16 ] || die "could not mint a unique marker (python missing?) — got '${MARK}'"
 
-ENTITY_ID="$(gq "INSERT INTO glossary_entities(book_id,kind_id,status,name,short_description)
-                 VALUES('$BOOK_ID','$KIND_ID','active','$MARK','QC-4 scratch entity — safe to delete')
-                 RETURNING entity_id;")"
-[ -n "$ENTITY_ID" ] || die "could not mint the scratch entity"
-log "fixture book resolved (id withheld); scratch entity '$MARK' minted"
+mint_jwt() {
+  python - "$JWT_SECRET" "$OWNER_ID" <<'PY'
+import base64, hmac, hashlib, json, sys, time
+secret, sub = sys.argv[1], sys.argv[2]
+b = lambda o: base64.urlsafe_b64encode(json.dumps(o, separators=(",", ":")).encode()).rstrip(b"=")
+msg = b({"alg": "HS256", "typ": "JWT"}) + b"." + b({"sub": sub, "exp": int(time.time()) + 900})
+sig = base64.urlsafe_b64encode(hmac.new(secret.encode(), msg, hashlib.sha256).digest()).rstrip(b"=")
+print((msg + b"." + sig).decode())
+PY
+}
+JWT="$(mint_jwt)"; [ -n "$JWT" ] || die "could not mint a user JWT"
+
+# The scratch entity is created through the REAL create route, not by INSERT.
+#
+# This is not fastidiousness. **The name does not live on `glossary_entities`** — it is an
+# attribute value, and `cached_name` is trigger-maintained from it. An INSERT that set
+# `cached_name` directly would produce a row no writer in this service ever produces, and the
+# repo has already paid for that exact shape twice: `D-GLOSS-CREATE-DROPS-DOCUMENTED-FIELDS`
+# (a create returning 201 with a NAMELESS entity) and the lore that fixtures can seed a field
+# the writer never sets. A fixture that is not what the writer writes tests a row that cannot
+# occur.
+CREATE_BODY="{\"kind_id\":\"$KIND_ID\",\"display_name\":\"$MARK\",\"status\":\"active\"}"
+CREATE_OUT="$(curl -s -m 30 -w '\n%{http_code}' -X POST \
+              -H "Authorization: Bearer $JWT" -H "Content-Type: application/json" \
+              -d "$CREATE_BODY" "$GLOSSARY_URL/v1/glossary/books/$BOOK_ID/entities")"
+CREATE_CODE="$(printf '%s' "$CREATE_OUT" | tail -1)"
+case "$CREATE_CODE" in
+  200|201) : ;;
+  *) die "create returned $CREATE_CODE — $(printf '%s' "$CREATE_OUT" | head -c 300)" ;;
+esac
+ENTITY_ID="$(printf '%s' "$CREATE_OUT" | head -n -1 | python -c 'import json,sys
+try: print(json.load(sys.stdin).get("entity_id") or "")
+except Exception: print("")' 2>/dev/null)"
+[ -n "$ENTITY_ID" ] || die "create succeeded ($CREATE_CODE) but returned no entity_id"
+
+# The name is what every downstream reader matches on, so verify the create actually set it
+# rather than trusting the 2xx — that is the precise failure D-GLOSS-CREATE-DROPS-DOCUMENTED-
+# FIELDS records, and a nameless fixture would make every "absent" leg below pass vacuously.
+CACHED="$(gq "SELECT coalesce(cached_name,'') FROM glossary_entities WHERE entity_id='$ENTITY_ID';")"
+[ "$CACHED" = "$MARK" ] || die "the created entity's cached_name is '${CACHED:-<empty>}', not '$MARK' — a nameless fixture cannot be found by any consumer, so every absence below would be meaningless"
+log "fixture book resolved (id withheld); scratch entity created via the API, name verified"
 
 PROJECT_ID="$(kq "SELECT project_id FROM knowledge_projects WHERE book_id='$BOOK_ID' AND user_id='$OWNER_ID' LIMIT 1;")"
 NODE_ID="qc4-node-$ENTITY_ID"
@@ -124,18 +160,6 @@ cleanup() {
   log "scratch rows purged"
 }
 trap cleanup EXIT
-
-mint_jwt() {
-  python - "$JWT_SECRET" "$OWNER_ID" <<'PY'
-import base64, hmac, hashlib, json, sys, time
-secret, sub = sys.argv[1], sys.argv[2]
-b = lambda o: base64.urlsafe_b64encode(json.dumps(o, separators=(",", ":")).encode()).rstrip(b"=")
-msg = b({"alg": "HS256", "typ": "JWT"}) + b"." + b({"sub": sub, "exp": int(time.time()) + 900})
-sig = base64.urlsafe_b64encode(hmac.new(secret.encode(), msg, hashlib.sha256).digest()).rstrip(b"=")
-print((msg + b"." + sig).decode())
-PY
-}
-JWT="$(mint_jwt)"; [ -n "$JWT" ] || die "could not mint a user JWT"
 
 # The KG node the lifecycle consumer is supposed to archive. Created by hand because the
 # extraction pipeline that would normally mint it is not what QC-4 is testing — but the

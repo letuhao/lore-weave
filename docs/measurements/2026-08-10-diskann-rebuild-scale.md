@@ -57,6 +57,20 @@ WARNING:  Builder neighbor cache is full after processing 14717 vectors;
 At 1 GB the warning never appears. Crossing 65 536 changes nothing you can see in the table above;
 crossing 14 717 changes everything.
 
+**There is a second cache, and it only shows up at the largest size.** At 100 000 rows the builder
+also logs
+
+```
+WARNING:  Quantized vector cache is full after processing 83887 vectors;
+          consider increasing maintenance_work_mem
+```
+
+so the 100 000-row build at 64 MB is starved *twice*. At 1 GB neither warning appears. This was
+nearly missed: the harness originally reported only the **first** matching warning per build, so
+the 100 000-row row named one limit while the build had hit two. The extractor now reports all of
+them (`Builder neighbor:14717,Quantized vector:83887`) — an instrument that stops reading at the
+first finding under-reports precisely where the effect is largest.
+
 ### 2. The benefit is not a constant factor — it tracks how much of the build runs degraded
 
 The cache fills at a fixed vector count, so the **fraction** of the build that runs in the degraded
@@ -93,37 +107,52 @@ the drill's 20 000-row rebuild measured **34.3 s** originally and **40.4 s** on 
 comparison in this file is between numbers that survive that spread by a wide margin — the 1.99×
 at 70 000 is not an 18 % artefact. Single points close together are not treated as different.
 
-## The harness discrepancy, stated rather than smoothed over
+## The two harnesses disagree at 20 000 and agree at 100 000
 
-The standalone harness and the restore drill **disagree by ~1.57× at the same rows, dim, corpus
-generator, container and settings**:
+| index rebuild, 64 MB | 20 000 rows | 100 000 rows |
+|---|---|---|
+| `vector-backup-drill.sh` | 40.4 s | **817.5 s** |
+| `diskann-rebuild-scale.sh` | 63.5 s | **893.3 s** |
+| ratio | 1.57× | **1.09×** |
 
-| 20 000 rows, 64 MB | index rebuild |
-|---|---|
-| `vector-backup-drill.sh` (inside `pg_restore`) | **40.4 s** |
-| `diskann-rebuild-scale.sh` (standalone `CREATE INDEX`) | **63.5 s** |
-
-Both log the cache filling at 14 717, so it is not the memory. It was not chased further, because
-it does not change any conclusion above — **both columns of the table move together**, and the
-comparison this measurement exists to make is between the two memory settings, not between the two
-harnesses.
-
-It does decide one thing: **the RTO must be anchored on the drill, not on this harness.**
-`pg_restore` is the path recovery actually takes; the standalone `CREATE INDEX` is a model of it,
-and the model is the pessimistic one. Quoting the model as the RTO would be quoting a number that
-is 1.57× the real thing and calling it caution.
+The gap at 20 000 looked like a reason to distrust one of them. It is not: at 100 000 the two land
+**9 % apart**, inside the ~18 % run-to-run spread. Whatever the small-corpus difference is — most
+likely fixed per-build overhead the drill amortises differently — **it vanishes at the sizes an RTO
+is actually about**, so the RTO does not depend on which harness you believe. Both are reported.
 
 ## The RTO, measured on the recovery path
 
-<!-- QC3A-DRILL-RTO -->
-*(filled in below from `scripts/vector-backup-drill.sh` at 100 000 rows — see the run log.)*
+`scripts/vector-backup-drill.sh --rows 100000 --dim 1024`, **above** the 65 536 parallel threshold —
+the measurement T25 said did not exist and without which "there is no defensible RTO":
+
+| 100 000 rows × 1024-dim | 64 MB (image default) | **1 GB** | change |
+|---|---|---|---|
+| backup | 84.3 s | 69.6 s | — |
+| **full restore — this is the RTO** | **1051.1 s** (17.5 min) | **437.6 s** (7.3 min) | **2.40× faster, −10.2 min** |
+| index rebuild, timed alone | 817.5 s | 449.6 s | 1.82× |
+| integrity checks | passed=6 failed=0 | passed=6 failed=0 | unchanged |
+
+**One setting takes recovery at 100 000 vectors from 17.5 minutes to 7.3.** The 1.82× on the
+isolated rebuild matches the standalone harness's 1.80× at the same size — two harnesses that
+disagree on absolutes agreeing on the effect.
+
+The 1 GB restore was verified as a restore, not just as a fast number: all six of the drill's
+checks passed in both passes, including *every vector byte-identical* and *the exact
+nearest-neighbour answer unchanged*.
+
+⚠️ **The drill's own summary line is misleading and should be fixed** (noted here, not silently
+worked around). It prints `restore: Xs total (index rebuild alone: Ys)`, which reads as though
+Y ⊆ X. It is not: `X` is `pg_restore`'s wall time *including the index build it does itself*, while
+`Y` is a **second, later** rebuild after an explicit `DROP INDEX`. In pass A the wording passed
+unnoticed because 817.5 < 1051.1; in pass B it produces `restore: 437.6s total (index rebuild
+alone: 449.6s)` — a part larger than its whole, which is the only reason anyone would look.
 
 ## Recommendation
 
-**Raise `maintenance_work_mem` on `loreweave/postgres-knowledge`.** The evidence for it is that at
-70 000 rows it halves the rebuild, at 100 000 it removes 6.6 minutes, and it costs nothing in index
-size. It is a setting on the image, not a bigger machine — which is the cheapest kind of fix an RTO
-can have.
+**Raise `maintenance_work_mem` on `loreweave/postgres-knowledge`.** On the recovery path it takes
+the 100 000-vector RTO from **17.5 minutes to 7.3**, with every integrity check still passing and
+no change in index size. It is a setting on the image, not a bigger machine — the cheapest kind of
+fix an RTO can have.
 
 Two cautions that belong with the recommendation:
 
@@ -140,9 +169,10 @@ The PARTIAL version of this file had one point (40 000 rows) and concluded that 
 **under-predicted by 68 %** and that the published RTO was therefore optimistic. Two later
 corrections:
 
-1. **The 68 % was mostly the harness gap, not a modelling error.** Re-anchoring each harness on its
-   own 20 000-row point brings the 64 MB column back to within 8 % of `O(n^1.6)` at every size. The
-   drill's *exponent* was right; comparing across two harnesses made it look wrong.
+1. **The 68 % was an anchor mismatch, not a modelling error.** The comparison put this harness's
+   40 000-row time against a curve anchored on the *drill's* 20 000-row time. Re-anchoring the
+   64 MB column on **its own** 20 000-row point brings it back to within 8 % of `O(n^1.6)` at every
+   size. The drill's *exponent* was right; mixing two harnesses' absolutes made it look wrong.
 2. **A mid-run reading was reported here as confirmation and was a coincidence.** At 70 000 rows the
    1 GB build landed within 0.7 % of the drill's prediction, which looked like the curve being
    vindicated. It was two errors cancelling: the drill's anchor is ~1.57× faster than this harness,
@@ -156,6 +186,18 @@ is the easiest kind to over-read**, and both mistakes above came from stopping a
 ```
 ./scripts/diskann-rebuild-scale.sh 20000,40000,70000,100000
 VEC_MAINT_MEM=1GB ./scripts/diskann-rebuild-scale.sh 20000,40000,70000,100000
+```
+
+The RTO table, on the recovery path (the `ALTER DATABASE` is scoped to the throwaway database, so
+the server is never mutated and later measurements stay comparable):
+
+```
+docker exec lw-t23-vec psql -U postgres -c "CREATE DATABASE lw_drill_qc3_test"
+./scripts/vector-backup-drill.sh --dsn postgresql://postgres:…@localhost:7995/lw_drill_qc3_test \
+    --rows 100000 --dim 1024
+docker exec lw-t23-vec psql -U postgres \
+    -c "ALTER DATABASE lw_drill_qc3_test SET maintenance_work_mem='1GB'"
+./scripts/vector-backup-drill.sh --dsn … --rows 100000 --dim 1024   # repeat
 ```
 
 Creates and drops its own throwaway database, prints the bounding settings first, and reports

@@ -1798,6 +1798,75 @@ vectors and validity intervals live in different stores.
   **Restore drill (mandatory):** back up the vectors, drop them, restore, re-run recall. Decision T4
   says vectors are durable primary data — **an untested restore is not a backup.**
   ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
+  ---
+  **QC-3a ✅ — the rebuild measurement above the threshold, and the RTO.**
+  Full evidence: [`docs/measurements/2026-08-10-diskann-rebuild-scale.md`](../measurements/2026-08-10-diskann-rebuild-scale.md).
+
+  **The threshold was the wrong variable; `maintenance_work_mem` is the lever.** At the image
+  default (64 MB) every build logs `Builder neighbor cache is full after processing 14717
+  vectors` — the *same* 14 717 at every corpus size, because it is a function of memory alone,
+  and it binds **four times below** the 65 536 parallel threshold this task was commissioned to
+  cross. At 100 000 rows a *second* cache also fills (`Quantized vector … 83887`).
+
+  | rows | 64 MB | 1 GB | speed-up |
+  |---|---|---|---|
+  | 20 000 | 63.5 s | 65.1 s | 1.00× |
+  | 40 000 | 207.0 s | 127.2 s | 1.63× |
+  | 70 000 | 502.9 s | 252.9 s | 1.99× |
+  | 100 000 | 893.3 s | 497.6 s | 1.80× |
+
+  The benefit tracks the *share* of the build running past the cache limit (26 % at 20 000 → 85 %
+  at 100 000), which is why **the drill's own 20 000-row anchor was nearly blind to it**. Re-fitting
+  each column on its own anchor: exponent **1.64 at 64 MB** (matching the drill's fitted 1.6) and
+  **1.26 at 1 GB** — the memory changes the curve's shape, not just its constant.
+
+  **RTO, on the recovery path** (`vector-backup-drill.sh`, 100 000 rows — the measurement T25 said
+  did not exist): **1051.1 s → 437.6 s**, i.e. **17.5 min → 7.3 min**, `passed=6 failed=0` in both
+  passes including *every vector byte-identical* and *the exact nearest-neighbour answer
+  unchanged*. **Recommendation: raise `maintenance_work_mem` on the image** (per-operation, so
+  prefer the restore role over the global default).
+
+  ⚠️ **Two of my own earlier readings were wrong and are corrected in the file rather than
+  deleted.** A single 40 000-row point read as *"the drill under-predicts by 68 %"* — that was an
+  anchor mismatch across two harnesses, not a modelling error. And a mid-run 1 GB point landing
+  within 0.7 % of prediction looked like confirmation; it was two errors cancelling. Both came
+  from stopping at one measurement.
+
+  **QC-3b ⚠️ — the `300/200` defaults do NOT survive the corpus growing.**
+  Full evidence: [`docs/measurements/2026-08-11-vector-search-effort-at-scale.md`](../measurements/2026-08-11-vector-search-effort-at-scale.md).
+
+  T24 shipped `search_list=300, rescore=200` on **recall@10 = 1.000 at 181 rows**. At 20 000 rows
+  the same settings return **0.516** — about half the true top-10 missing, from a search that
+  reports success. The knobs themselves are vindicated (**+0.27 recall** over the server defaults
+  at both 5 000 and 20 000; the hnsw cells move ~0.03 under their own knob, which is what shows
+  the diskann movement is real). What fails is treating them as a constant.
+
+  It is effort-bound, not a dead corpus — and the effort **runs out**:
+
+  | 20 000 rows | recall@10 | p50 |
+  |---|---|---|
+  | 100/50 (server default) | 0.244 | 5.2 ms |
+  | **300/200 (shipped)** | **0.516** | 9.0 ms |
+  | 1000/500 | 0.712 | 14.4 ms |
+  | 4000/**1000** — rescore at its hard ceiling | 0.824 | 33.0 ms |
+  | *exact seq-scan* | **1.000** | 40.9 ms |
+
+  `diskann.query_rescore` is refused above 1000 (`InvalidParameterValueError … (0 .. 1000)`), so
+  "turn it up until recall is acceptable" stops being available — and by the ceiling the index
+  costs 33 ms for 0.824 against **40.9 ms for a perfect answer**. Harness positive control
+  (`exact` = 1.0000 vs numpy ground truth computed outside the DB) held on every run.
+
+  🔻 **`D-QC3B-NO-REAL-CORPUS-AT-SCALE`** — the absolute numbers are **synthetic, and a floor**.
+  The real passage corpus is **181 rows**, so *"recall on real data at scale"* cannot be measured
+  today. What transfers is the shape, not the value. **Retry when any real book's corpus exceeds
+  ~5 000 passages (most plausibly after QC-5) — and before the cutover ships, because this is an
+  input to that decision, not a follow-up to it.** Mechanism: `--source neo4j` already exists and
+  needs data, not code; its `exact` control voids the run if the harness is broken.
+
+  **Still owed by QC-3:** `/review-impl`, and the recall comparison on the real corpus — which is
+  the deferral above. The restore drill is done (T25 built it; QC-3a re-ran it at 100 000).
+  ⏸ **This checkpoint is NOT signed off.** It gates the vector cutover, which is independently
+  blocked by `D-T25B-SOAK`, so work continues on tasks the checkpoint does not gate.
 
 <!-- Commit checkpoint: T21–T25 — cross-service seam + data migration -->
 

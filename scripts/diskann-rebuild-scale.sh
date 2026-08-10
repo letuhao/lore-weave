@@ -114,9 +114,19 @@ for n in "${ROWS[@]}"; do
   build_log=$(psql_db -q -c "${MAINT_SET}CREATE INDEX v_emb ON v USING diskann (embedding vector_cosine_ops)" 2>&1 >/dev/null) \
     || { echo "  index build failed at $n: $build_log"; continue; }
   build_end=$(date +%s%3N)
+  # ALL of them, not the first. There is more than one cache: the builder announces
+  #   "Builder neighbor cache is full after processing N vectors"      (binds at ~14.7k on 64MB)
+  #   "Quantized vector cache is full after processing N vectors"      (binds at ~83.9k on 64MB)
+  # and an earlier version of this script printed only the first match, which meant the
+  # 100 000-row build reported one limit while it had actually hit two. A measurement whose
+  # instrument stops reading at the first finding under-reports exactly where the effect is
+  # largest — the `exit` that caused it is deliberately gone.
   cache_full=$(printf '%s\n' "$build_log" \
-    | awk 'match($0, /full after processing [0-9]+/){print substr($0, RSTART+22, RLENGTH-22); exit}')
-  [ -n "$cache_full" ] || cache_full="not reached"
+    | awk 'match($0, /[A-Za-z ]+cache is full after processing [0-9]+/){
+             s = substr($0, RSTART, RLENGTH); sub(/ cache is full after processing /, ":", s);
+             sub(/^[ \t]*(WARNING:[ \t]*)?/, "", s); out = out (out ? "," : "") s }
+           END { print out }')
+  [ -n "$cache_full" ] || cache_full="none"
 
   size=$(psql_db -t -A -c "SELECT pg_size_pretty(pg_relation_size('v_emb'))")
   # Integer milliseconds + awk. Git Bash on Windows has no `bc`, and an inline `python3 -c`
