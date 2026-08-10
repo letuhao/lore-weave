@@ -359,6 +359,129 @@ paths:
                   temporal_capability: { $ref: '#/components/schemas/TemporalCapability' }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  # ─────────────────── ENTITY COMMANDS (plan T29) ───────────────────────
+  #
+  # The five transitions T27/T28 made safe, exposed to SERVICES. Each forwards to the one
+  # `*Core` that writes and emits in a single transaction — so a command here produces the
+  # same event a browser's REST call does, which is the property that keeps the KG mirror
+  # convergent.
+  #
+  # A 404 means "nothing was in a state to change" (already deleted, already live, not in this
+  # book) and is a normal answer, not an error: a caller that cannot tell it from success will
+  # retry forever or stop too early.
+  #
+  # The KAL forwards `X-User-Id` when a caller identity exists and omits it otherwise; glossary
+  # records the absence as `pipeline` with an empty actor id rather than inventing a user.
+  /v1/kal/books/{book_id}/entities/{entity_id}/delete:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: Soft-delete an entity (reversible; emits glossary.entity_deleted)
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: nothing was in a state to delete }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/restore:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: Restore a soft-deleted entity (emits glossary.entity_restored)
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: nothing was in a state to restore }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/purge:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: >-
+        Permanently remove an entity (IRREVERSIBLE; emits glossary.entity_purged, which
+        cascades a hard delete into the KG). A separate verb from delete because it is a
+        separate fact — soft-delete maps to archive, purge does not.
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: nothing was in a state to purge }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/{entity_id}/reassign-kind:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: >-
+        Move an entity onto a different kind, re-keying its attribute values (emits
+        glossary.entity_updated carrying the NEW kind). Attribute values whose code has no
+        counterpart in the target kind are DROPPED; recoverable via revision restore.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind_id]
+              properties:
+                kind_id:
+                  type: string
+                  format: uuid
+                  description: >-
+                    the target book_kind_id. A kind CODE is deliberately not accepted — two
+                    entry points resolving a code separately is how they come to disagree
+                    about what it means.
+      responses:
+        '200': { $ref: '#/components/responses/EntityCommandApplied' }
+        '404': { description: the entity or the target kind does not exist in this book }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/kal/books/{book_id}/entities/status:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [writes]
+      summary: >-
+        Set curation status on up to 1000 entities (emits one
+        glossary.entity_status_changed per entity whose status ACTUALLY moved). `status` is a
+        liveness predicate — every consumer read filters `status = 'active'` — so retiring an
+        entity removes it from downstream reads and archives its KG node.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status, entity_ids]
+              properties:
+                status: { type: string, enum: [active, inactive, draft, rejected] }
+                entity_ids:
+                  type: array
+                  minItems: 1
+                  maxItems: 1000
+                  items: { type: string, format: uuid }
+      responses:
+        '200':
+          description: how many entities matched, and the status they now hold
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [updated, status]
+                properties:
+                  # The count and the emitted events are read off ONE locked row list, so they
+                  # cannot disagree. `updated` counts MATCHED entities; an entity already at
+                  # the target status is matched but emits nothing.
+                  updated: { type: integer }
+                  status: { type: string }
+        '422': { description: status outside the closed set }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   # ─────────────────────────────── WRITES ───────────────────────────────
   /v1/kal/books/{book_id}/episodes:
     parameters:
@@ -672,6 +795,20 @@ components:
         writeback_key: { type: string, description: Path-A idempotency gate (reused, §12.2.2) }
   responses:
     Unauthorized: { description: Missing/invalid auth }
+    # `applied` is always true on a 200 — the field exists so the shape stays stable if a
+    # future command grows a partial-apply case. A no-op is a 404, never a 200 with
+    # applied=false, because "nothing to do" is about the ENTITY's state, not the command's.
+    EntityCommandApplied:
+      description: the transition was applied and its event emitted in the same transaction
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [entity_id, op, applied]
+            properties:
+              entity_id: { type: string, format: uuid }
+              op: { type: string, enum: [delete, restore, purge, reassign_kind] }
+              applied: { type: boolean }
     Forbidden: { description: Caller lacks a View/Edit grant on the book }
     NotFound: { description: Entity/episode not found }
   securitySchemes:

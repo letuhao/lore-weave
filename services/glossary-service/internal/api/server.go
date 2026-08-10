@@ -198,6 +198,16 @@ func (s *Server) Router() http.Handler {
 		r.Get("/books/{book_id}/entities/{entity_id}/facts", s.internalGetFacts)
 		r.Get("/books/{book_id}/entities/{entity_id}/timeline", s.internalFactTimeline)
 		r.Get("/books/{book_id}/entities/{entity_id}/attr-values", s.internalListAttrValues)
+		// Entity-lifecycle + curation COMMANDS (plan T29). The KAL's write half: T27/T28
+		// made these five transitions safe, but every core was reachable only from the REST
+		// route a browser calls and the MCP tool an agent calls — a SERVICE had no sanctioned
+		// path at all, and INV-KAL forbids reaching around the KAL. See
+		// internal_entity_commands.go for the actor + authority model.
+		r.Post("/books/{book_id}/entities/{entity_id}/delete", s.internalEntityDelete)
+		r.Post("/books/{book_id}/entities/{entity_id}/restore", s.internalEntityRestore)
+		r.Post("/books/{book_id}/entities/{entity_id}/purge", s.internalEntityPurge)
+		r.Post("/books/{book_id}/entities/{entity_id}/reassign-kind", s.internalEntityReassignKind)
+		r.Post("/books/{book_id}/entities/status", s.internalEntityStatus)
 		r.Post("/books/{book_id}/facts/episode", s.internalIngestEpisode)
 		r.Post("/books/{book_id}/facts/append", s.internalAppendFact)
 		r.Post("/books/{book_id}/facts/close", s.internalCloseFact)

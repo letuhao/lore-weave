@@ -49,10 +49,9 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
 **RESUME: T29's second half — `kal-write.controller.ts` + the `SR06` dependency-tier row.**
-T26–T28 are done, `D-T27-LIVE-REPLAY` is cleared (it found a handler that had never worked),
-the dead `/kg/neighborhood` upstream is served, and T29's gate half is done (it found a third
-silent writer). What remains of T29 is only the KAL write surface and its F5 tier — no code has
-been written against either. Then T50, then T25b, whose two PO decisions are now standing:
+T26–T29 are done, `D-T27-LIVE-REPLAY` is cleared (it found a handler that had never worked),
+and the dead `/kg/neighborhood` upstream is served. Phase 4 has no open deferrals. After T50
+comes T25b, whose two PO decisions are now standing:
 reopen T14 to add `project_id` + an archived flag to `EntityVectorRecord`, and fork a
 vector-specific mapper rather than touching `passage_to_hit`.
 T27's deferral is CLEARED. It formerly read: the lifecycle events are proven as outbox rows on a
@@ -1885,8 +1884,10 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   mislabelling the delete-restore prefix reds 2 Python tests; all three gate bites red the gate.
   (depends on T27)
 
-- [~] **T29** — The `command-or-nothing` gate + KAL command routes + `SR06` tier — **HALF DONE**
-  ✅ the gate (and the defect it found) · ⬜ `kal-write.controller.ts` + the `SR06` tier row.
+- [x] **T29** — The `command-or-nothing` gate + KAL command routes + `SR06` tier ✅
+  The gate (and the defect it found) · the F5 tier rows + runbooks · the five KAL entity
+  commands. Full Go api suite green (74 s, live DB), 25 gateway tests, 9 new command tests,
+  all gates + both runbook lints PASS.
 
   ⚠️ **The rule as written is not enforceable, and enforcing it literally would hide the
   defect rather than catch it.** "No bare `UPDATE`/`INSERT` on `glossary_entities` outside a
@@ -1918,9 +1919,49 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   **Verification:** full Go api suite green (63 s, live DB); all three gates PASS.
 
-  ⬜ **Still owed:** `kal-write.controller.ts` and the `SR06` dependency-tier row with a
-  documented degraded mode — the F5 precondition that the KAL gets a tier **before** it owns
-  writes. Untouched; no code was written against it.
+  **The F5 precondition, landed first.** Three `SR06` rows in `contracts/dependencies/
+  matrix.yaml` — `knowledge-gateway`, `glossary-service`, `knowledge-service` — each with a
+  paired runbook, because the matrix's own governance says an entry without one is not an
+  entry. `TestLoadAndValidate_RealMatrixYAML` pins the shipped file, so the rows are validated
+  rather than merely written *(bite: `criticality: P9` → red)*.
+
+  The classes are argued, not defaulted: `knowledge-gateway` is `non_idempotent` because the
+  same host serves reads and the write verbs and a caller cannot tell them apart from outside
+  (`appendFact` twice is two facts); `glossary-service` is `critical_write` because it is the
+  sink every command lands in; its degraded mode is `read_only`, not `limited`, because when
+  the sink is down the KAL must **refuse** commands rather than accept and lose them.
+
+  ⚠️ **Recorded in the matrix rather than glossed over:** `kal/downstream.ts` calls both
+  backends with a bare `fetch` — **no timeout, no breaker, no bulkhead**. A hung
+  glossary-service parks a KAL request until the client gives up. The rows describe the
+  discipline the KAL is *required* to have; wiring them through `ClientFactory` is the
+  follow-up the dependency lint flips to error mode for.
+
+  ⚠️ **Two premises were already stale:** `kal-write.controller.ts` **existed** (fact verbs
+  only), and `SR06` is not a doc to edit but the registry at `contracts/dependencies/
+  matrix.yaml` that its §12AI.2 defines.
+
+  **The command routes, and the gap they close.** T27/T28 made five transitions safe but left
+  every core reachable only from the browser's REST route and the agent's MCP tool. **A service
+  had no sanctioned path at all** — and INV-KAL forbids reaching around the KAL into
+  `/internal/*`, so "no route" meant "no way to ask". Now: `internal_entity_commands.go` (five
+  thin handlers → the same cores) + the KAL forwards + 5 paths in the published `kal.v1.yaml`.
+
+  The handlers are thin on purpose: book scoping, the found/no-op distinction and the emission
+  all live in the core, and a handler re-implementing any of it would be the second place for
+  the two to drift — the failure T28 is named after. A no-op is **404, not a 200 with
+  `applied:false`**: a caller that cannot tell "I did it" from "nothing to do" retries forever
+  or stops too early.
+
+  **The actor is forwarded, never invented.** `X-User-Id` absent ⇒ `uuid.Nil` ⇒ `pipeline` with
+  an EMPTY actor id; a garbled value degrades to `pipeline` and warns rather than failing a
+  legitimate command, because authority comes from the internal token, not that header.
+  *(Bite: synthesise a user for the absent case → red.)*
+
+  **Live** (both images rebuilt): all four entity verbs reach glossary through the gateway and
+  return its status faithfully — `downstream 404: GLOSS_NOT_FOUND` for an absent entity,
+  `downstream 422: GLOSS_INVALID_STATUS` for an out-of-set status. Cross-book and untokened
+  commands emit nothing and change nothing.
   (depends on T28)
 
 - [ ] **QC-4** — Emit-wiring live proof (the one that catches a bypass)
