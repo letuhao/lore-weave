@@ -286,6 +286,17 @@
         "CONTROL: args:{} still answers 'required: missing properties: [\"user_model_id\"]', the recorded failure verbatim"
       ],
       "admitted": false
+    },
+    "book_set_cover": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Both calls are args:{} on 2026-07-08 -- the seventh tool concluded out of that one blank-argument day. Given a real book_id the tool mints a PRICED confirm card: descriptor book.media, domain book, estimate_usd '~0.04', title 'Generate book cover (priced)', with a real signed token and an expiry. That card IS the tool's success state. I DELIBERATELY DID NOT CONFIRM IT. Redeeming the token spends real money generating an image, and it would add nothing about whether this tool works -- the tool's job is to propose the spend, and it did, with the estimate the human needs to decide. Proving a priced action by paying for it is a cost the evidence does not require.",
+      "evidence": [
+        "PHASE 2: 2 calls / 1 session / 2026-07-08, both args:{}, one error naming the single missing book_id. visibility=legacy",
+        "LIVE: book-service MCP :8205 on throwaway book 019fcaa4 -> a confirm card with a signed token, descriptor book.media, destructive false, estimate_usd '~0.04', expires_at set",
+        "CONTROL: args:{} still answers 'required: missing properties: [\"book_id\"]', the recorded failure verbatim",
+        "NOT DONE, on purpose: the confirm. The token was left to expire rather than spending on image generation for evidence that would not change the conclusion"
+      ],
+      "admitted": false
     }
   }
 }
