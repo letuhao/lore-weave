@@ -86,11 +86,13 @@ class TestTheSignalIsRetained:
         """§3 names the repeated read; the no-op write is its sibling and was recorded the same
         wrong way. A mechanism wired at one of two sites is the shape this run keeps finding."""
         src = STREAM.read_text(encoding="utf-8")
-        assert src.count("instrument.stamp_refused(") == 2, (
-            f"expected both breakers wired, found {src.count('instrument.stamp_refused(')}"
-        )
-        assert '"repeated_read")' in src
-        assert '"idempotent_noop_write")' in src
+        # 🔴 This pinned the exact COUNT of `stamp_refused` sites and went red the moment 5.10
+        # legitimately added a third (an undispatchable tool name). A count over a set that is
+        # SUPPOSED to grow is a guard against progress; the claim was always "both NAMED breakers
+        # are wired", so it asserts the kinds — which is the thing that can actually regress.
+        assert '"repeated_read")' in src, "the repeated-read breaker is not typed as a refusal"
+        assert '"idempotent_noop_write")' in src, "the no-op-write breaker is not typed as one"
+        assert src.count("instrument.stamp_refused(") >= 2
 
     def test_NOTHING_IS_SERVED_FROM_A_CACHE(self):
         """🔴 The design decision, guarded. §3 ALLOWS a declared-idempotent read to be served from

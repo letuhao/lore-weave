@@ -91,6 +91,8 @@ SUITES = (
     "tests/test_cp5_supplier.py",
     # CP-5.7's repeat semantics. Registered in the same change as the suite.
     "tests/test_cp5_repeat.py",
+    # CP-5.10's name source. Registered in the same change as the suite.
+    "tests/test_cp5_namesource.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

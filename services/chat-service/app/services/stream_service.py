@@ -4815,6 +4815,43 @@ async def _stream_with_tools(
                 # frontend tool, which suspends for the human gate.
                 # T4c: on an admin surface, pass the RS256 admin token so
                 # glossary_admin_* route to /mcp/admin (no X-User-Id; INV-T2).
+                # ── CP-5.10 · THE REGISTRY IS THE ONLY NAME SOURCE ───────────────────────────
+                # 🔴 **MEASURED: `glossary_propose_entity_edit` was dispatched 101 TIMES across 12
+                # SESSIONS with a 0% success rate, and it is in no catalogue.** A name the model
+                # invented, sent to the wire a hundred times. `plan_forge.plan_propose_spec` is the
+                # same shape with a namespace prefix bolted on.
+                #
+                # Everything a turn can legitimately dispatch is in one of these two indexes —
+                # `cat_index` is the federated catalogue and `plain_index` the consumer-local
+                # tools — and every other path (frontend tools, skills, workflows, the composer)
+                # has already been handled ABOVE this line. So a name absent from both cannot be
+                # executed by anything; the only question is whether we learn that here or after a
+                # round trip and a wasted model pass.
+                #
+                # Recorded as `refused`, not `failed` (5.7): the tool did not fail, it does not
+                # exist. The suggestion comes from the discovery matcher the surface already uses,
+                # so the model gets the real name rather than a dead end.
+                if c["name"] not in cat_index and c["name"] not in plain_index:
+                    _near = [n for n in (list(cat_index) + list(plain_index))
+                             if n.endswith(c["name"].split(".")[-1]) or c["name"] in n][:3]
+                    _unknown_msg = (
+                        f"'{c['name']}' is not a tool. It is not in the catalogue and nothing can "
+                        f"execute it — calling it again cannot work."
+                        + (f" Did you mean {_near}?" if _near else
+                           " Call tool_list to see what exists, then use a name from that list.")
+                    )
+                    logger.info("CP-5.10: refused undispatchable name %r", c["name"])
+                    working.append({
+                        "role": "tool", "tool_call_id": c["id"],
+                        "content": tool_result_content(
+                            {"error": "unknown_tool", "message": _unknown_msg}),
+                    })
+                    yield {"tool_call": instrument.stamp_refused({
+                        "id": c["id"], "iteration": iteration, "tool": c["name"],
+                        "args": args_obj, "ok": False, "result": None, "error": _unknown_msg,
+                    }, "unknown_tool")}
+                    continue
+
                 # CP-0.3 — the ONE call in this file where a tool genuinely executes. `source='tool'`
                 # is defined by having passed through here, not by inspecting the result: that is
                 # what makes the "our prose vs a real tool" split exact rather than a text match

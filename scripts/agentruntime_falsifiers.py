@@ -1065,6 +1065,44 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.10: the registry is the only name source -----------------------------------------
+    "test_THE_CHECK_EXISTS_ON_THE_DISPATCH_PATH": [
+        (f"{CS}/app/services/stream_service.py",
+         'if c["name"] not in cat_index and c["name"] not in plain_index:',
+         "if False:"),
+    ],
+    "test_IT_IS_REFUSED_NOT_FAILED": [
+        # Put an undispatchable name back in the corpus with the genuine failures.
+        (f"{CS}/app/services/stream_service.py", '}, "unknown_tool")}', "})}"),
+    ],
+    "test_THE_REFUSAL_OFFERS_A_REAL_NAME": [
+        # Loud and unactionable, which is what the 101 dispatches already were.
+        (f"{CS}/app/services/stream_service.py", '+ (f" Did you mean {_near}?" if _near else',
+                                                 '+ ("" if _near else'),
+    ],
+    "test_IT_SITS_BEFORE_THE_ONE_REAL_DISPATCH": [
+        # Keep the check but never reach it -- the placement bug V-METRIC round 3 was.
+        (f"{CS}/app/services/stream_service.py",
+         '                if c["name"] not in cat_index and c["name"] not in plain_index:',
+         '                if False and c["name"] not in cat_index:'),
+    ],
+    "test_EVERY_OTHER_DISPATCH_PATH_IS_HANDLED_EARLIER": [
+        # Move the name check ABOVE the composer branch, so `compose_prose` — a real tool that is
+        # in neither MCP index because the runtime streams it inline — gets refused as a phantom.
+        (f"{CS}/app/services/stream_service.py",
+         '                if is_composer_tool(c["name"]) and composer_model is not None:',
+         '                if c["name"] not in cat_index and c["name"] not in plain_index:\n'
+         '                    pass\n'
+         '                if is_composer_tool(c["name"]) and composer_model is not None:'),
+    ],
+    "test_IT_USES_THE_TURNS_OWN_INDEXES_NOT_A_SNAPSHOT": [
+        # Check against a frozen federated snapshot, which excludes every consumer-local tool and
+        # would refuse workflow_load, chat_search_sessions and run_subagent -- all real.
+        (f"{CS}/app/services/stream_service.py",
+         'if c["name"] not in cat_index and c["name"] not in plain_index:',
+         'if c["name"] not in cat_index:  # snapshot'),
+    ],
+
     # -- CP-5.6: output completeness, where it meets the resolver -------------------------------
     "test_A_FULL_PAGE_OF_EXACT_MATCHES_IS_REFUSED_NOT_RESOLVED": [
         # Substitute from a possibly-truncated list: a silent WRONG answer, worse than any failure
