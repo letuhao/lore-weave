@@ -49,9 +49,8 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
 **RESUME: T29 — the `command-or-nothing` gate + KAL command routes + `SR06` tier.** T26–T28 are
-done (see their entries). T27's deferral `D-T27-LIVE-REPLAY` is still open and now covers T28's
-event too — neither `entity_deleted` nor `entity_status_changed` has been carried end-to-end
-through Redis into Neo4j, which is where a payload-shape mismatch would first appear.
+done and `D-T27-LIVE-REPLAY` is cleared (see the T27 entry — it found a handler that had never
+worked). No open deferrals in Phase 4.
 T27 leaves one deferral, `D-T27-LIVE-REPLAY`: the lifecycle events are proven as outbox rows on a
 live Postgres, but nothing has yet carried one through Redis into Neo4j. T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
 
@@ -1770,9 +1769,37 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   the comment above `purgeEntityCore` names a function in `_EMITS`. Bodies are now cut at their own
   closing brace. The behavioural bite (remove the emit) reds 4 tests.
 
-  ⚠️ **Deferred: `D-T27-LIVE-REPLAY`** — the events are asserted as real `outbox_events` rows on a
-  live Postgres, and the consumers are unit-covered, but no run yet carries one end-to-end through
-  Redis into Neo4j. That is the leg where a payload-shape mismatch would first appear.
+  ✅ **`D-T27-LIVE-REPLAY` — CLEARED, and it found a bug that had shipped.**
+  `scripts/glossary-lifecycle-live-replay.sh`. All four events now carry end-to-end on a live
+  stack: **outbox → worker-infra relay → `loreweave:events:glossary` → dispatcher → Neo4j.**
+
+  ⚠️ **T27's delete handler could never have worked, and T28 extended the same broken call.**
+  `get_entity_by_glossary_id` REQUIRES `project_id` (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE — the FK is
+  unique per *(user, project)*, so one glossary entity can have a node in each of a user's
+  projects). `_lifecycle_preamble` resolved the project and **threw it away**, so every archive
+  raised `TypeError`, retried 3×, and went to the DLQ. **The dev outbox agreed: lifetime count
+  of `glossary.entity_deleted` rows was ZERO** — the T27 events had never once flowed.
+
+  **Nothing could have caught it except this run.** The Go suite proves the producer; the Python
+  suite proves which repo call each handler makes — **by mocking that repo, and a bare
+  `AsyncMock` accepts any signature.** Every patch is now `autospec=True`, which reds on exactly
+  this. *(Bite: drop `project_id` again → `TypeError: missing a required argument`.)*
+
+  Restore and purge were scoped only by `user_id` while the archive was scoped by project, so
+  the two disagreed about breadth; both Cyphers now filter `project_id` too.
+
+  **Isolation:** a synthetic `user_id`/`project_id`/`book_id`/`entity_id` that no real row
+  references. Every query in this schema is `WHERE e.user_id = $user_id`, so the node is
+  unreachable from any real read, and the trap removes it on exit. The **first** run generated
+  four EMPTY ids (Git Bash has no `uuidgen`) and its cleanup ran
+  `MATCH (e:Entity {user_id: ''}) DETACH DELETE e` against the dev graph. Nothing matched;
+  nothing about that was by design. The script now refuses to start unless all four ids are
+  UUIDs, because every cleanup in it deletes **by tenant id**.
+
+  Green legs: archive on retire (`archive_reason=glossary_status_rejected`, **anchor
+  preserved** — `user_archive_entity`, not `archive_entity`), the reason-scoping boundary
+  (a recycle-bin restore does **not** un-archive a rejected entity), un-archive on reinstate,
+  archive + breadcrumb on delete, node gone on purge.
   (depends on T26)
 
 - [x] **T28** — Converge the `curation*Core` family ✅

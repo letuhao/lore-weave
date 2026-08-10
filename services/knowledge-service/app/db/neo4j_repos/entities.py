@@ -1217,6 +1217,7 @@ RETURN e
 _RESTORE_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity)
 WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
   AND (e.glossary_entity_id = $glossary_entity_id
        OR e.prior_glossary_entity_id = $glossary_entity_id)
   AND (e.archived_at IS NULL
@@ -1235,6 +1236,7 @@ RETURN e
 _PURGE_BY_GLOSSARY_ID_CYPHER = """
 MATCH (e:Entity)
 WHERE e.user_id = $user_id
+  AND e.project_id = $project_id
   AND (e.glossary_entity_id = $glossary_entity_id
        OR e.prior_glossary_entity_id = $glossary_entity_id)
 DETACH DELETE e
@@ -1381,6 +1383,7 @@ async def restore_entity_by_glossary_id(
     session: CypherSession,
     *,
     user_id: str,
+    project_id: str,
     glossary_entity_id: str,
     reason_prefix: str,
 ) -> Entity | None:
@@ -1404,6 +1407,7 @@ async def restore_entity_by_glossary_id(
         session,
         _RESTORE_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
+        project_id=project_id,
         glossary_entity_id=glossary_entity_id,
         reason_prefix=reason_prefix,
     )
@@ -1417,6 +1421,7 @@ async def purge_entity_by_glossary_id(
     session: CypherSession,
     *,
     user_id: str,
+    project_id: str,
     glossary_entity_id: str,
 ) -> int:
     """Hard-delete the entity anchored to `glossary_entity_id`, with its edges.
@@ -1432,6 +1437,7 @@ async def purge_entity_by_glossary_id(
         session,
         _PURGE_BY_GLOSSARY_ID_CYPHER,
         user_id=user_id,
+        project_id=project_id,
         glossary_entity_id=glossary_entity_id,
     )
     record = await result.single()

@@ -100,9 +100,9 @@ async def test_status_leaving_active_archives_with_that_reason(pool, status):
     entity = MagicMock(id="kg-node-1")
     with patch("app.db.neo4j.neo4j_session", _session), \
          patch("app.db.neo4j_repos.entities.get_entity_by_glossary_id",
-               new=AsyncMock(return_value=entity)), \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", new=AsyncMock()) as archive, \
-         patch("app.db.neo4j_repos.entities.archive_entity", new=AsyncMock()) as hard_archive:
+               autospec=True, return_value=entity), \
+         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive, \
+         patch("app.db.neo4j_repos.entities.archive_entity", autospec=True) as hard_archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
                    _payload(status=status, prior_status="active")),
@@ -127,8 +127,8 @@ async def test_status_returning_to_active_restores_only_status_archives(pool):
     """
     with patch("app.db.neo4j.neo4j_session", _session), \
          patch("app.db.neo4j_repos.entities.restore_entity_by_glossary_id",
-               new=AsyncMock(return_value=MagicMock(id="kg-node-1"))) as restore, \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", new=AsyncMock()) as archive:
+               autospec=True, return_value=MagicMock(id="kg-node-1")) as restore, \
+         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
                    _payload(status="active", prior_status="rejected")),
@@ -147,9 +147,9 @@ async def test_status_missing_from_payload_touches_nothing(pool):
     resurrect them. Neither is a safe silent choice, so the handler does nothing and warns.
     """
     with patch("app.db.neo4j.neo4j_session", _session), \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", new=AsyncMock()) as archive, \
+         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive, \
          patch("app.db.neo4j_repos.entities.restore_entity_by_glossary_id",
-               new=AsyncMock()) as restore:
+               autospec=True) as restore:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed", _payload(prior_status="active")),
             pool=pool,
@@ -163,7 +163,7 @@ async def test_status_change_on_a_book_with_no_kg_project_is_a_no_op(pool):
     """The cold-start answer for most books, and it must be silent rather than an error."""
     pool.fetchrow = AsyncMock(return_value=None)
     with patch("app.db.neo4j.neo4j_session", _session), \
-         patch("app.db.neo4j_repos.entities.user_archive_entity", new=AsyncMock()) as archive:
+         patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
                    _payload(status="rejected", prior_status="active")),
@@ -180,8 +180,8 @@ async def test_delete_archives_with_the_glossary_deleted_reason(pool):
     entity = MagicMock(id="kg-node-1")
     with patch("app.db.neo4j.neo4j_session", _session), \
          patch("app.db.neo4j_repos.entities.get_entity_by_glossary_id",
-               new=AsyncMock(return_value=entity)), \
-         patch("app.db.neo4j_repos.entities.archive_entity", new=AsyncMock()) as archive:
+               autospec=True, return_value=entity), \
+         patch("app.db.neo4j_repos.entities.archive_entity", autospec=True) as archive:
         await handle_glossary_entity_deleted(
             _event("glossary.entity_deleted", _payload(op="deleted")), pool=pool,
         )
@@ -199,7 +199,7 @@ async def test_recycle_bin_restore_does_not_undo_a_status_retirement(pool):
     """
     with patch("app.db.neo4j.neo4j_session", _session), \
          patch("app.db.neo4j_repos.entities.restore_entity_by_glossary_id",
-               new=AsyncMock(return_value=None)) as restore:
+               autospec=True, return_value=None) as restore:
         await handle_glossary_entity_restored(
             _event("glossary.entity_restored", _payload(op="restored")), pool=pool,
         )
@@ -213,7 +213,7 @@ async def test_purge_hard_deletes_the_node(pool):
     entity that justified it and keeps answering queries about something permanently gone."""
     with patch("app.db.neo4j.neo4j_session", _session), \
          patch("app.db.neo4j_repos.entities.purge_entity_by_glossary_id",
-               new=AsyncMock(return_value=1)) as purge:
+               autospec=True, return_value=1) as purge:
         await handle_glossary_entity_purged(
             _event("glossary.entity_purged", _payload(op="purged")), pool=pool,
         )

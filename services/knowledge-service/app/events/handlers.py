@@ -1395,7 +1395,17 @@ async def _resolve_kg_project(pool: asyncpg.Pool, book_id) -> tuple | None:
 
 
 async def _lifecycle_preamble(event: EventData, pool: asyncpg.Pool, kind: str):
-    """Shared parse + project resolve + Track-1 guard. Returns (user_id, glossary_id) or None."""
+    """Shared parse + project resolve + Track-1 guard.
+
+    Returns (project_id, user_id, glossary_id) or None.
+
+    It used to drop `project_id` on the floor after resolving it, and every lifecycle handler
+    was written against that shape. `get_entity_by_glossary_id` REQUIRES the project
+    (D-KG-GLOSSARY-FK-GLOBAL-UNIQUE: the FK is unique per (user, project), so the same glossary
+    entity can have one node in each of the user's projects) — so every archive raised
+    TypeError, retried three times, and went to the DLQ. Not one test saw it: the handler tests
+    mock the repo, and a mock accepts any signature. The live replay found it on its first run.
+    """
     payload = event.payload
     book_id = _uuid(payload.get("book_id"))
     glossary_entity_id = _uuid(payload.get("glossary_entity_id")) or _uuid(event.aggregate_id)
@@ -1417,8 +1427,8 @@ async def _lifecycle_preamble(event: EventData, pool: asyncpg.Pool, kind: str):
             "glossary.entity_%s: NEO4J_URI unset (Track 1) — skipping %s", kind, glossary_entity_id,
         )
         return None
-    _, user_id = resolved
-    return user_id, glossary_entity_id
+    project_id, user_id = resolved
+    return project_id, user_id, glossary_entity_id
 
 
 async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool) -> None:
@@ -1431,7 +1441,7 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
     resolved = await _lifecycle_preamble(event, pool, "deleted")
     if resolved is None:
         return
-    user_id, glossary_entity_id = resolved
+    project_id, user_id, glossary_entity_id = resolved
 
     from app.db.neo4j import neo4j_session
     from app.db.neo4j_repos.entities import archive_entity, get_entity_by_glossary_id
@@ -1440,7 +1450,8 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
     # redeliver rather than silently drop the propagation. Archiving is idempotent.
     async with neo4j_session() as session:
         entity = await get_entity_by_glossary_id(
-            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
         )
         if entity is None:
             logger.debug(
@@ -1465,7 +1476,7 @@ async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Poo
     resolved = await _lifecycle_preamble(event, pool, "restored")
     if resolved is None:
         return
-    user_id, glossary_entity_id = resolved
+    project_id, user_id, glossary_entity_id = resolved
 
     from app.db.neo4j import neo4j_session
     from app.db.neo4j_repos.entities import restore_entity_by_glossary_id
@@ -1475,7 +1486,8 @@ async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Poo
         # archived because its status is `rejected` stays archived — the trash and the status
         # axis retire an entity for different reasons, and neither may silently undo the other.
         entity = await restore_entity_by_glossary_id(
-            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
             reason_prefix="glossary_deleted",
         )
     if entity is None:
@@ -1497,14 +1509,15 @@ async def handle_glossary_entity_purged(event: EventData, *, pool: asyncpg.Pool)
     resolved = await _lifecycle_preamble(event, pool, "purged")
     if resolved is None:
         return
-    user_id, glossary_entity_id = resolved
+    project_id, user_id, glossary_entity_id = resolved
 
     from app.db.neo4j import neo4j_session
     from app.db.neo4j_repos.entities import purge_entity_by_glossary_id
 
     async with neo4j_session() as session:
         deleted = await purge_entity_by_glossary_id(
-            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
         )
     logger.debug(
         "glossary.entity_purged removed %d KG node(s) for %s", deleted, glossary_entity_id,
@@ -1535,7 +1548,7 @@ async def handle_glossary_entity_status_changed(
     resolved = await _lifecycle_preamble(event, pool, "status_changed")
     if resolved is None:
         return
-    user_id, glossary_entity_id = resolved
+    project_id, user_id, glossary_entity_id = resolved
 
     payload = event.payload or {}
     status = str(payload.get("status") or "").strip()
@@ -1561,7 +1574,8 @@ async def handle_glossary_entity_status_changed(
     if status == "active":
         async with neo4j_session() as session:
             entity = await restore_entity_by_glossary_id(
-                session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+                session, user_id=str(user_id), project_id=str(project_id),
+                glossary_entity_id=str(glossary_entity_id),
                 reason_prefix="glossary_status_",
             )
         if entity is None:
@@ -1578,7 +1592,8 @@ async def handle_glossary_entity_status_changed(
 
     async with neo4j_session() as session:
         entity = await get_entity_by_glossary_id(
-            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+            session, user_id=str(user_id), project_id=str(project_id),
+            glossary_entity_id=str(glossary_entity_id),
         )
         if entity is None:
             logger.debug(
