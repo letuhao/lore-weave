@@ -253,20 +253,51 @@ Otherwise: **continue executing.**
 Mandatory, and they do **not** replace the remaining rows of §4; execute them at
 the point this file's ordering dictates.
 
+**The 2026-08-10 set is CLOSED** — `G3-ORACLE-COVERAGE`, `META-DOWN-UNCOVERED` and
+`3E-NAMING-INCONSISTENCY`, plus the two §4 rows they uncovered (`3E-EPOCH-COMMIT-ADOPTION`,
+`W7-SHELL-UNCOVERED`) and `slice 1`'s `G4`/`G6`–`G13`. Each carries its evidence in §4 and its
+lessons in §5 (`BDR-57`..`BDR-70`). Shipped in `b4d495f4e` + the teeth-gate widening.
+
+<details>
+<summary>The three <code>done =</code> cells they were graded against, kept verbatim</summary>
+
+A closed row's acceptance criterion is what a later reader audits the closure *against*; deleting
+it leaves "done" as an assertion. Verbatim, as written when they were opened:
+
+1. `G3-ORACLE-COVERAGE` — *"the ratchet exists and reds on a decrease; each new oracle rule is
+   **bitten** per the six steps above — mutate one side of the doc/code pair, RED naming BOTH
+   sides, restore, GREEN"*
+2. `META-DOWN-UNCOVERED` — *"the validator walks both trees; the `036`/`037` down-migrations
+   actually run, with pasted output"*
+3. `3E-NAMING-INCONSISTENCY` — *"resolved by teaching the gate the input-boundary category, or by
+   an explicit reasoned exemption. **NOT by renaming** — `BDR-55`: renaming moves the number, not
+   the property"*
+
+</details>
+
+**The next three, in this order.** Every one is a worklist a mechanism can already count, which is
+deliberate: after this session the open items are all *numbers that can only fall*, not prose.
+
 | # | row | done = |
 |---|---|---|
-| 1 | ~~**`G3-ORACLE-COVERAGE`**~~ **✅ DONE 2026-08-10** — see `G3` in §4 for what shipped and what it found | the ratchet exists and reds on a decrease; each new oracle rule is **bitten** per the six steps above — mutate one side of the doc/code pair, RED naming BOTH sides, restore, GREEN |
-| 2 | ~~**`META-DOWN-UNCOVERED`**~~ **✅ DONE 2026-08-10** — see the row in §4 | the validator walks both trees; the `036`/`037` down-migrations actually run, with pasted output |
-| 3 | ~~**`3E-NAMING-INCONSISTENCY`**~~ **✅ DONE 2026-08-10** — see the row in §4 | resolved by teaching the gate the input-boundary category, or by an explicit reasoned exemption. **NOT by renaming** — `BDR-55`: renaming moves the number, not the property |
+| 1 | **`GATE-TEETH-55`** — 55 of 97 CI-invoked gates carry no red-ability proof. Start with the four that matter most: `dp-slice1/5b/5c/5d-bite-gate`. **A bite harness with broken logic reports "all bit" and is believed** — these four certify every `crates/dp` guarantee, so an unproven bite harness is the single highest-leverage vacuity left in the tree | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
+| 2 | **`G3` continued** — the coverage ratchet reports **13 of 26**; the thirteen unread are named in the `slice 1` row. `11_access_pattern_rules`, `14_durable_subscribe`, `15_turn_boundary` and `18_causality_and_routing` are the ones slices 3–5 actually cited | coverage rises, the baseline records it, and each new oracle rule is bitten per the six steps — mutate one side, RED naming BOTH, restore, GREEN. **Do not add a rule whose subject has no producer** (§0.6c): `DP-Ch11`'s `turn_number` is the worked example — declared by a LOCKED doc, created by no migration, and correctly a register row rather than an orphan column |
+| 3 | **`3E-EPOCH-COMMIT-ADOPTION`'s last site** — `commit-service/src/bin/ceilings.rs`, a benchmark envelope builder holding the one remaining bare `reality: Uuid` | either it adopts a verified id, or it earns a **reasoned** exemption naming why a benchmark harness cannot bind. **Not a third category invented to make the number zero** — `BDR-55` |
+
+**Deliberately NOT in this list**, unchanged: `D-META-ERASURE-COVERAGE`'s two undecided tables
+(`session_cost_summary`, `service_to_service_audit` declare no erasure method at all). A GDPR
+product decision, for the PO, not an autonomous run.
 
 **Deliberately NOT in this list:** `D-META-ERASURE-COVERAGE`'s two undecided
 tables (`session_cost_summary`, `service_to_service_audit` declare no erasure
 method at all). That is a GDPR product decision, not engineering — it goes to the
 PO, not into an autonomous run.
 
-## 1 · MEASURED STATE — 2026-08-08, each with the command that produced it
+## 1 · MEASURED STATE — **re-measured 2026-08-10**, each with the command that produced it
 
-Re-measure rather than trust this table if more than a session has passed.
+Re-measure rather than trust this table if more than a session has passed. Two rows moved since
+2026-08-08 and both are recorded rather than overwritten: the meta database gained migrations
+`036`–`039` and the `session_registry` table with them.
 
 | fact | value | command |
 |---|---|---|
@@ -274,7 +305,7 @@ Re-measure rather than trust this table if more than a session has passed.
 | a reality's database | `lw_reality_cd0747d24b94`, **12 tables** — ~~13~~, a miscount in the first draft of this table, corrected 2026-08-08 when the second reality's schema was diffed against it and matched exactly | `SELECT count(*) FROM pg_tables WHERE schemaname='public'` |
 | its migration ledger | **15 applied** | `SELECT count(*) FROM schema_migrations` |
 | `channels` in a real reality | **exists, holds a root row, `REC-106` refuses a self-parent** | `SELECT to_regclass('public.channels')` |
-| meta database | **exists**, 28 tables, 35 migrations | `psql -d loreweave_meta` |
+| meta database | **exists**, **29 tables, 39 migrations** (was 28/35 on 2026-08-08 — `036`/`037` ownership, `038` orphan_scan_finding, `039` session_registry) | `psql -d loreweave_meta -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'"`; `ls migrations/meta/*.up.sql \| wc -l` |
 | registered shards | **1** — `pg-shard-0.internal`, cap 50 | `SELECT * FROM shard_utilization` |
 | meta bridge | **up, healthy, :8090** | `docker compose ps meta-bridge` |
 | `world-service` server binary | **none serving** — `src/main.rs` exists but is a 22-line `println!` scaffold; the 7 real bins are workers/drills | `ls services/world-service/src/bin/`; `cat src/main.rs` |
@@ -318,6 +349,9 @@ right**, the fourth finding that two of the third's fixes were regressions. Budg
 | `W6` | `owner_user_id` on `reality_registry` — ownership exists before users can request | ✅ column **and its producer**, live both tiers |
 | `W7` | a `CREATEDB`-only system role; stop provisioning as superuser | ✅ `loreweave_provisioner`, live |
 | `W8` | capacity: make the real path read `shard_utilization` (the drill fakes its snapshot) | ⬜ **subsumed by `W3`** |
+
+<details>
+<summary>W3 / W7 / W6 / W5 evidence — all four rows are CLOSED; this is how each was proven.</summary>
 
 ### `W3` — RESHAPED 2026-08-08 by Phase 0, and this is why the phase exists
 
@@ -618,22 +652,18 @@ not implement toward it.
 
 ---
 
+
+</details>
+
 ## 4 · OPEN, each with a trigger
 
 | id | what | trigger |
 |---|---|---|
-| ~~`G3-ORACLE-COVERAGE`~~ | **CLOSED 2026-08-10. 9 → 13 of 26**, ratchet built and bitten. `scripts/dp-oracle-coverage-gate.py` + `contracts/dp/oracle-coverage-baseline.json`: a document counts only when its name is a string literal in code (not a comment), in a function **reachable from a `#[test]`**, with an assertion **somewhere in that chain** — a grep would have scored 14/26 on day one and been wrong about five, because `spec_oracle`'s own docstring names documents it does not read. Four new oracle files: `dp-control-plane/tests/spec_oracle_cp.rs` (`DP-C2` tables · `DP-C3` RPC set · `DP-C8` TTL), `dp/tests/spec_oracle_sdk.rs` (`DP-K9` refresh lead · `DP-K11` lint set), `dp/tests/spec_oracle_channels.rs` (`DP-Ch11` columns + uniqueness triple · `DP-Ch31` states, incl. a doc↔doc arm). **`scripts/dp-oracle-bite-gate.py`: 19/19 legs, each mutating ONE side and requiring the red to NAME BOTH.** Three prose-only gaps became registers with a shrink arm: `CP_TABLES_WITHOUT_A_MIGRATION` (5), `DEFERRED_LINTS` (2), `DEFERRED_EVENT_COLUMNS` (1). **New finding: `DP-Ch11` declares `events.turn_number` and NO migration creates it** — registered, blocker named. See `BDR-57`..`BDR-60` | done |
-| ~~`3E-NAMING-INCONSISTENCY`~~ | **CLOSED 2026-08-10, and it was NOT latent.** The gate learned the property, nothing was renamed. **`commit-service` reported `0 adoptable, 0 exempt` — completely adopted — while carrying five real sites, four of them on the spine's LIVE WRITE PATH (`epoch_commit.rs`).** A whole in-scope service was invisible because its field is spelled `reality`. A second defect fell out in the opposite direction: the regex tail accepted `reality_id: Uuid::from_u128(0x42)`, a struct *literal*, so **eleven non-sites** were inflating `exempt` (63 → 52). Now three categories — `adoptable` (must reach zero) · `exempt` (the reality cannot be accepting commands) · **`boundary`** (the raw value a bind consumes) — each ratcheted against growth, with an `AMBIGUOUS` arm refusing a prefix in both tables. **The boundary category is detected by PROPERTY**, not a list: a `reality: Uuid` parameter of a function whose body reaches `SessionContext::bind`/`MetaControlPlane` is a bind input, and stops being one if the body stops binding — self-tested in both directions on a pair of sources differing by one line. Only `spine_args` (a struct field with no enclosing function to read) is curated, which is the *"or an explicit reasoned exemption"* half of the trigger. **Honest outcome per `BDR-55`: the number went UP, 0 → 5 adoptable.** New debt row below | done |
-| ~~`3E-EPOCH-COMMIT-ADOPTION`~~ | **PAID 2026-08-10, 5 → 1.** All four `epoch_commit` signatures (`drain_and_reconcile` / `reconcile_and_commit` / `activation_payload` / `envelope`) now take `&dp::RealityId`; `spine.rs` passes `session.reality_id()` — **taken from the `SessionContext` the loop already holds, never from a helper returning an id alone**, which is `BDR-54`'s shape and would have dropped the `plane` that keeps the capability refreshable. The two test callers bind through the existing `tests/support::verified_reality` double rather than a new one. Evidence: `cargo check` enumerated every call site; suite green (`epoch_event_contract` 4 passed, `epoch_activation_live` 4 passed — both *ran*, checked, because a test that quietly stops running is the red-for-the-wrong-reason mode); ratchet bitten 1 → 2 → 1 by reverting one signature. **Remaining: 1** — `bin/ceilings.rs`'s benchmark envelope builder, left ADOPTABLE rather than exempted on purpose: under-exempting leaves something to read, and it was outside this row's stated cell | ratcheted at 1 and cannot grow. `ceilings.rs` earns either an adoption or a *reasoned* exemption the next time that harness is touched — not a third category invented to make the number zero |
 | `FLOW-19` | `channel_writer_state` has no FK to `channels` | `flow19_trigger()` in `dp-channels-schema-gate` reds when `channels` gains a non-test writer. `W3` did NOT create one — it creates the *table*, per migration; the first row-writer is still ahead |
 | `W3-DEVKEY` | the dev stack's admin signing key is operator-env only, so `reality provision` reverts to unaudited-refused after a fresh clone | a second person needing to run an admin command here, or CI wanting one. Do **not** commit a key; a bootstrap script that generates one is the fix |
 | `W3-LOCKSPAN` | the advisory lock is held across the WHOLE 11-step provision (incl. migrations), not just through `register_pending` at step 3 | provisioning becoming frequent enough that per-shard serialisation hurts. Deliberate: correctness over throughput on an admin-gated action |
-| ~~`W5-REMEDIATE`~~ | **CLOSED.** `orphan_scanner --record` writes findings through a new bridge endpoint. **`reality_close_audit` turned out to be the WRONG sink** and R13 §12L has been wrong about it since migration 005: its `event_type` is a closed enum of six close-lifecycle values (no orphan class) and its `reality_id` is `NOT NULL`, which the untracked-database class by definition has none of. New table `orphan_scan_finding` (038), keyed by the database — the one field every class names | done |
-| ~~`W5-CRON`~~ | **CLOSED.** An `orphan-scanner` compose service runs it hourly and records through the bridge. Deliberately NOT another cron-manifest YAML: `scripts/archive-worker-cron.yaml` says of itself that its scheduler binding is deferred, so it is a schedule nothing reads — the same apparatus-without-a-subject shape this row exists to kill | done |
 | `W6-OWNER-UNVALIDATED` | **conscious decision, recorded because `V.1` found it undocumented.** Nothing checks that `owner_user_id` names a real user: there is no FK (cross-database), and neither the bridge nor the admin handler looks the user up. An admin CAN provision a reality owned by a UUID belonging to nobody. Acceptable for an admin-only tier-2 command where the operator supplies the id deliberately — **not** acceptable once users request their own | the user-facing request pipeline. It must resolve the owner from the authenticated caller, not from a typed parameter |
 | `D-META-ERASURE-COVERAGE` | **4 open, down from a reported 8** — the first count asked *"does PgMetaScrubber handle it"* rather than *"does ANY mechanism"*, and three (`pii_kek`, `pii_registry`, `user_consent_ledger`) turned out fully handled by admin-cli's crypto-shred / revoke path; `user_queue_metrics` is now implemented. Open: `user_cost_ledger` + `user_daily_cost` declare `pseudonymize_user_ref_at_2y`, a TIME-based retention job that is unbuilt; **`session_cost_summary` and `service_to_service_audit` declare NO method at all — a PO call, not an engineering one** | `TestMetaMigrationsDeclareAnImplementedErasure` — three registers (`implemented` / `handledElsewhere` / `knownUnhandled`), each must shrink, and a NEW user-referencing meta table cannot be added without a row in one of them |
-| ~~`W7-SHELL-UNCOVERED`~~ | **CLOSED 2026-08-10 — the shell-level bite harness exists: `scripts/db-ensure-bite-gate.py`, 4/4 bitten.** ~~036/037 down-migration guards~~ discharged by `META-DOWN-UNCOVERED` (both downs run and re-run; `036`'s data-loss guard bitten with a real user-owned reality). ~~The injection fix~~ — **the live leg is the strongest evidence in this run: with `:'pw'` in place the payload `x'; ALTER ROLE … SUPERUSER; --` is refused (`rolsuper = false`); with the binding removed THE SAME PAYLOAD GRANTED SUPERUSER.** The fix is proven load-bearing by making the vulnerability come back. It runs the pipeline **extracted from `db-ensure.sh` itself**, not a retyped copy, against a throwaway role — the real `loreweave_provisioner` owns the reality databases, so Postgres would refuse to drop it and the script's `if ! role exists` branch can never be reached on a booted cluster. ~~The column-level GRANT~~ and ~~the over-privilege assert~~ carry static paired-anchor legs, each bitten. ~~the `main.go` nil-owner guard~~ **also closed**, and it was the only one of the four with no witness at all: `TestProvisionRequest_RejectsNilUUID` covers the *reality* id, not the *owner*. `cmd/admin/provisionowner_test.go` adds the pair — the nil owner is refused, **and a real owner gets past the guard** (`NV-2`: a single-sided test proves the handler errors, not that the GUARD errored). Bitten by replacing `if owner == uuid.Nil` with `if false`: the nil owner then flowed past and died in the subprocess invoker instead, which the test caught and named. **The silent failure it prevents is a tenancy downgrade reported as success** — the invoker drops the flag when the value is nil, so the operator would get a platform-owned reality and a cheerful message | **all four covered.** The next shell/Go guard added to this path earns a leg in the same two harnesses |
-| ~~`META-DOWN-UNCOVERED`~~ | **CLOSED 2026-08-10.** The validator now walks **both** trees — `PASS — 116 file(s) across 2 tree(s)` (38 + 78) — and its logic moved to `migration-idempotency-validator.py` behind the existing `.sh`, which stays the entry point because two CI legs name it. **Pointing it at the meta tree was not enough**: every check was a `grep` anchored to one LINE, and 8 of 13 `ALTER TABLE … COLUMN` statements across both trees are multi-line, four in the tree it already walked. Statement-aware now, plus a per-tree file **floor** (a walk that finds nothing exits **2**, not 0) and a new check for the `DROP CONSTRAINT IF EXISTS` idiom that 7 of 9 sibling migrations already used. **8 real violations found and fixed, all in `036`/`037`.** Down migrations run and RE-run clean against a throwaway meta DB (39 ups applied, both downs ×2, exit 0, columns gone), the ups are retry-safe, and `036`'s data-loss guard still refuses when a user-owned reality exists — verified by inserting one. See `BDR-61`/`BDR-62` | done |
 | `W6-ERASURE-EVENT` | `reality_registry` + `OpUpdate` maps to `reality.status.changed` in the allowlist, so the erasure reassign would emit a status-changed event carrying no status change. **Latent only** — `main.go` builds the MetaWrite config with no `Outbox`, so nothing fires today | wiring an Outbox into the meta-worker erasure path |
 | `W7-TEMPLATE1` | the provisioner relies on `CREATE DATABASE`'s **implicit** `TEMPLATE template1` to inherit `vector`; a future `TEMPLATE template0` (the standard move for encoding control) silently returns provisioning to needing superuser. Also cluster-wide: every new database on this box now carries pgvector, and `infra/foundation-dev/` is a **second** cluster that never runs `db-ensure.sh` | anyone adding a TEMPLATE clause, or standing up the foundation-dev cluster for provisioning |
 | `1b7db-03` | ~~`loreweave` is the sole Postgres login and is superuser~~ **CLEARED by `W7`** — provisioning runs as `loreweave_provisioner` (`CREATEDB` only). Other services still connect as `loreweave`; narrowing those is a separate, larger sweep | the next service touched |
@@ -641,8 +671,31 @@ not implement toward it.
 | `1b7db-08` | `CREATE TABLE … INHERITS (channels)` bypasses constraints | conscious won't-fix; a non-SDK writer appearing |
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
 | `G-S3`/`G-S4` | lore bible has no schema; "pre-manifest stub" is not a named artifact | the BOOK_TO_GAME track |
-| slice 1 | `G4`/`G6`–`G13` open. **`G3` is CLOSED** (row above): re-measured 2026-08-10 by `dp-oracle-coverage-gate`, **13 of 26 read, 13 unopened** — `05_control_plane_spec.md` among the read ones, which was the point. The thirteen still unread are `00_preamble`, `01_scope_and_boundary`, `11_access_pattern_rules`, `14_durable_subscribe`, `15_turn_boundary`, `16_bubble_up_aggregator`, `18_causality_and_routing`, `19_privacy_redaction_policies`, `20_operational_residuals`, `21_llm_turn_slot`, `22_feature_design_quickstart`, `99_open_questions`, `_index` — **and the ratchet is what keeps that number honest now, so it is a worklist rather than an unknown.** `G4`'s stated blocker — *no dylint anywhere* — was discharged by slice 2; the specific aggregate-contract lint is still unwritten | `2026-08-06` run-state §6i |
+| `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND` | **promoted here 2026-08-10 from the post-slice-5 review**, which is now collapsed — an open row inside a closed section is a row nobody re-reads. `MetaControlPlane::verify_bind` records the capability before returning; `SessionContext::bind` can still reject afterwards on `now_ms >= expires_at_ms`, so a caller more than one TTL ahead of the CP's clock leaves a live row whose secret was dropped. Not a security hole — an unpresentable row — but the shape (a store write whose caller can still fail) is worth a name | `session_registry` carries `@retention_hot: 90d`, so these are already inside a retention regime. Wakes on the first retention sweep reporting a non-trivial count of never-validated rows — which needs a `last_validated_at` column, and that column arrives with the fix |
+| `GATE-TEETH-55` | **NEW 2026-08-10, and it is a worklist rather than a defect.** Widening `gate-teeth-gate`'s discovery to the runner (`BDR-70`) took it from 58 to **97** CI-invoked gates; **55 of them carry no red-ability proof** — no `--self-test`, no `test_<name>.py`. The HARD tier is green (every one *can* return non-zero); what is missing is the demonstration that it *does*. Before this the number was 45 out of a scope that could not see its own subject | ratcheted at 55 and cannot grow. Each gate that gains a `--self-test` lowers it; the constant records every move with its reason. `dp-slice1/5b/5c/5d-bite-gate` are the highest-value four — they are bite harnesses, so a broken one reports "all bit" vacuously |
+
+
+**Recently cleared (2026-08-10)** — moved out of the table because a closed row re-read at every PLAN is the register rot this file keeps finding in other people's lists. Evidence for each is in §5 and in the collapsed slice sections below: `G3-ORACLE-COVERAGE` · `3E-NAMING-INCONSISTENCY` · `3E-EPOCH-COMMIT-ADOPTION` · `W5-REMEDIATE` · `W5-CRON` · `W7-SHELL-UNCOVERED` · `META-DOWN-UNCOVERED` · `slice 1` · `slice 2`.
+
+<details>
+<summary>Recently cleared — the closed rows in full, with the evidence each carried</summary>
+
+| id | what | trigger |
+|---|---|---|
+| ~~`G3-ORACLE-COVERAGE`~~ | **CLOSED 2026-08-10. 9 → 13 of 26**, ratchet built and bitten. `scripts/dp-oracle-coverage-gate.py` + `contracts/dp/oracle-coverage-baseline.json`: a document counts only when its name is a string literal in code (not a comment), in a function **reachable from a `#[test]`**, with an assertion **somewhere in that chain** — a grep would have scored 14/26 on day one and been wrong about five, because `spec_oracle`'s own docstring names documents it does not read. Four new oracle files: `dp-control-plane/tests/spec_oracle_cp.rs` (`DP-C2` tables · `DP-C3` RPC set · `DP-C8` TTL), `dp/tests/spec_oracle_sdk.rs` (`DP-K9` refresh lead · `DP-K11` lint set), `dp/tests/spec_oracle_channels.rs` (`DP-Ch11` columns + uniqueness triple · `DP-Ch31` states, incl. a doc↔doc arm). **`scripts/dp-oracle-bite-gate.py`: 19/19 legs, each mutating ONE side and requiring the red to NAME BOTH.** Three prose-only gaps became registers with a shrink arm: `CP_TABLES_WITHOUT_A_MIGRATION` (5), `DEFERRED_LINTS` (2), `DEFERRED_EVENT_COLUMNS` (1). **New finding: `DP-Ch11` declares `events.turn_number` and NO migration creates it** — registered, blocker named. See `BDR-57`..`BDR-60` | done |
+| ~~`3E-NAMING-INCONSISTENCY`~~ | **CLOSED 2026-08-10, and it was NOT latent.** The gate learned the property, nothing was renamed. **`commit-service` reported `0 adoptable, 0 exempt` — completely adopted — while carrying five real sites, four of them on the spine's LIVE WRITE PATH (`epoch_commit.rs`).** A whole in-scope service was invisible because its field is spelled `reality`. A second defect fell out in the opposite direction: the regex tail accepted `reality_id: Uuid::from_u128(0x42)`, a struct *literal*, so **eleven non-sites** were inflating `exempt` (63 → 52). Now three categories — `adoptable` (must reach zero) · `exempt` (the reality cannot be accepting commands) · **`boundary`** (the raw value a bind consumes) — each ratcheted against growth, with an `AMBIGUOUS` arm refusing a prefix in both tables. **The boundary category is detected by PROPERTY**, not a list: a `reality: Uuid` parameter of a function whose body reaches `SessionContext::bind`/`MetaControlPlane` is a bind input, and stops being one if the body stops binding — self-tested in both directions on a pair of sources differing by one line. Only `spine_args` (a struct field with no enclosing function to read) is curated, which is the *"or an explicit reasoned exemption"* half of the trigger. **Honest outcome per `BDR-55`: the number went UP, 0 → 5 adoptable.** New debt row below | done |
+| ~~`3E-EPOCH-COMMIT-ADOPTION`~~ | **PAID 2026-08-10, 5 → 1.** All four `epoch_commit` signatures (`drain_and_reconcile` / `reconcile_and_commit` / `activation_payload` / `envelope`) now take `&dp::RealityId`; `spine.rs` passes `session.reality_id()` — **taken from the `SessionContext` the loop already holds, never from a helper returning an id alone**, which is `BDR-54`'s shape and would have dropped the `plane` that keeps the capability refreshable. The two test callers bind through the existing `tests/support::verified_reality` double rather than a new one. Evidence: `cargo check` enumerated every call site; suite green (`epoch_event_contract` 4 passed, `epoch_activation_live` 4 passed — both *ran*, checked, because a test that quietly stops running is the red-for-the-wrong-reason mode); ratchet bitten 1 → 2 → 1 by reverting one signature. **Remaining: 1** — `bin/ceilings.rs`'s benchmark envelope builder, left ADOPTABLE rather than exempted on purpose: under-exempting leaves something to read, and it was outside this row's stated cell | ratcheted at 1 and cannot grow. `ceilings.rs` earns either an adoption or a *reasoned* exemption the next time that harness is touched — not a third category invented to make the number zero |
+| ~~`W5-REMEDIATE`~~ | **CLOSED.** `orphan_scanner --record` writes findings through a new bridge endpoint. **`reality_close_audit` turned out to be the WRONG sink** and R13 §12L has been wrong about it since migration 005: its `event_type` is a closed enum of six close-lifecycle values (no orphan class) and its `reality_id` is `NOT NULL`, which the untracked-database class by definition has none of. New table `orphan_scan_finding` (038), keyed by the database — the one field every class names | done |
+| ~~`W5-CRON`~~ | **CLOSED.** An `orphan-scanner` compose service runs it hourly and records through the bridge. Deliberately NOT another cron-manifest YAML: `scripts/archive-worker-cron.yaml` says of itself that its scheduler binding is deferred, so it is a schedule nothing reads — the same apparatus-without-a-subject shape this row exists to kill | done |
+| ~~`W7-SHELL-UNCOVERED`~~ | **CLOSED 2026-08-10 — the shell-level bite harness exists: `scripts/db-ensure-bite-gate.py`, 4/4 bitten.** ~~036/037 down-migration guards~~ discharged by `META-DOWN-UNCOVERED` (both downs run and re-run; `036`'s data-loss guard bitten with a real user-owned reality). ~~The injection fix~~ — **the live leg is the strongest evidence in this run: with `:'pw'` in place the payload `x'; ALTER ROLE … SUPERUSER; --` is refused (`rolsuper = false`); with the binding removed THE SAME PAYLOAD GRANTED SUPERUSER.** The fix is proven load-bearing by making the vulnerability come back. It runs the pipeline **extracted from `db-ensure.sh` itself**, not a retyped copy, against a throwaway role — the real `loreweave_provisioner` owns the reality databases, so Postgres would refuse to drop it and the script's `if ! role exists` branch can never be reached on a booted cluster. ~~The column-level GRANT~~ and ~~the over-privilege assert~~ carry static paired-anchor legs, each bitten. ~~the `main.go` nil-owner guard~~ **also closed**, and it was the only one of the four with no witness at all: `TestProvisionRequest_RejectsNilUUID` covers the *reality* id, not the *owner*. `cmd/admin/provisionowner_test.go` adds the pair — the nil owner is refused, **and a real owner gets past the guard** (`NV-2`: a single-sided test proves the handler errors, not that the GUARD errored). Bitten by replacing `if owner == uuid.Nil` with `if false`: the nil owner then flowed past and died in the subprocess invoker instead, which the test caught and named. **The silent failure it prevents is a tenancy downgrade reported as success** — the invoker drops the flag when the value is nil, so the operator would get a platform-owned reality and a cheerful message | **all four covered.** The next shell/Go guard added to this path earns a leg in the same two harnesses |
+| ~~`META-DOWN-UNCOVERED`~~ | **CLOSED 2026-08-10.** The validator now walks **both** trees — `PASS — 116 file(s) across 2 tree(s)` (38 + 78) — and its logic moved to `migration-idempotency-validator.py` behind the existing `.sh`, which stays the entry point because two CI legs name it. **Pointing it at the meta tree was not enough**: every check was a `grep` anchored to one LINE, and 8 of 13 `ALTER TABLE … COLUMN` statements across both trees are multi-line, four in the tree it already walked. Statement-aware now, plus a per-tree file **floor** (a walk that finds nothing exits **2**, not 0) and a new check for the `DROP CONSTRAINT IF EXISTS` idiom that 7 of 9 sibling migrations already used. **8 real violations found and fixed, all in `036`/`037`.** Down migrations run and RE-run clean against a throwaway meta DB (39 ups applied, both downs ×2, exit 0, columns gone), the ups are retry-safe, and `036`'s data-loss guard still refuses when a user-owned reality exists — verified by inserting one. See `BDR-61`/`BDR-62` | done |
+| ~~slice 1~~ | **RE-MEASURED 2026-08-10 and the row was stale in almost every clause.** Each `G` claim checked against the tree rather than trusted: **`G4`** — `D-DP-CLIPPY-NOT-BUILT` was discharged by slice 2 (`dp-clippy`, two lints, ratcheted CI gate), and the aggregate contract is enforced by `tests/aggregate_contract.rs` over a real `syn` AST, which is stronger than the lint the row asked for. **`G7`** *"clippy has no CI home at all"* — false: `foundation-ci.yml` has a `dp-contract` job running `cargo clippy -p dp --all-targets -- -D warnings`. **`G8`** *"`cargo test -p dp` runs only on a PR to `main`"* — false: `dp-contract` is **unconditional**, and its own name says *"all branches"*. **`G9`** *"five `.stderr` pins float on `@stable` with no toolchain file"* — false: `rust-toolchain.toml` exists AND the job pins `toolchain: "1.89.0"` with a comment giving this exact reason. **`G10`–`G13`** — `DP-F7`'s second copy of `DP-S5`'s numbers is compared by `dp_f7_rate_limits_match_dp_s5_ceilings`; the `fifth_tier.stderr` misstatement and the `tier.rs`/`DP-A5` misattribution are both corrected in place. **`G6`** was the only live one, and its stated fix was wrong — see `BDR-70`. **`G3` is CLOSED** (row above): re-measured 2026-08-10 by `dp-oracle-coverage-gate`, **13 of 26 read, 13 unopened** — `05_control_plane_spec.md` among the read ones, which was the point. The thirteen still unread are `00_preamble`, `01_scope_and_boundary`, `11_access_pattern_rules`, `14_durable_subscribe`, `15_turn_boundary`, `16_bubble_up_aggregator`, `18_causality_and_routing`, `19_privacy_redaction_policies`, `20_operational_residuals`, `21_llm_turn_slot`, `22_feature_design_quickstart`, `99_open_questions`, `_index` — **and the ratchet is what keeps that number honest now, so it is a worklist rather than an unknown.** `G4`'s stated blocker — *no dylint anywhere* — was discharged by slice 2; the specific aggregate-contract lint is still unwritten | `2026-08-06` run-state §6i |
 | ~~slice 2~~ | **CLOSED 2026-08-09 (row was stale).** It said *"board not written"* and *"no dylint anywhere"*; the board IS written below and `2A`–`2G` are all ✅ — `lints/dp-clippy` ships two lints (`forbid_raw_kernel_client`, `forbid_swallowed_backpressure`) on a pinned nightly with a ratcheted CI gate. **The row outlived its subject by four slices**, which is the register rot this file keeps finding elsewhere | done |
+
+</details>
+
+<details>
+<summary>CLOSED SLICES 2-5 + the post-slice-5 review — the boards, the evidence and the refutations, kept whole. Read for a decision's history, not to find the next action.</summary>
 
 ## 4b · SLICE 2 — `DP-R3`'s lint. Board written at the slice's start (`BDR-26`).
 
@@ -1350,6 +1403,9 @@ its own, so the platform-plane crate stays platform-plane.
 
 ---
 
+
+</details>
+
 ## 5 · REGISTERS
 
 Decisions, parked, debt and **`BDR-1`..`BDR-48`** live in
@@ -1416,6 +1472,31 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-70` (2026-08-10) — the gate that exists to prove gates can fail could not see 40% of them.**
+`slice 1`'s `G6` said *"the gate is absent from `gate-bite-harness.MUTATIONS`"*. Checking it
+found something larger and different. `gate-teeth-gate` discovers its subjects by regexing
+`.github/workflows/` for a literal `scripts/<name>` path — complete only while every gate was
+named in a workflow. `gate-wiring-gate --run-all` ended that, and its own docstring says why the
+runner exists: *"a gate written tomorrow runs in CI the day it lands, with nobody remembering to
+add a line."* **Measured: 58 seen, 97 executed.** The ~40 gates riding the runner were not
+exempt and not failing — they were **invisible**, so the ratchet reported a subset as the whole,
+and the three gates added earlier the same day were outside its scope on arrival.
+
+**One mechanism's coverage upgrade silently narrowed another's.** Neither gate is wrong on its
+own; `NV-3`'s *"an adjacent decision defeats it"* is named as the hardest of the four shapes for
+exactly this reason, and here the adjacent decision was **the fix to the sibling gate**. Discovery
+is now delegated to `gate-wiring-gate`'s own list rather than re-implementing the predicate — two
+definitions of "what is a gate" is the drift this repo has a standard about.
+
+`NO_PROOF_BASELINE` 45 → **55**, the one direction a ratchet normally forbids. It is a scope
+correction, not new debt, and the constant carries the reason. Two things kept it from being
+worse and neither is bookkeeping: the three new gates all shipped a `--self-test`, and
+`migration-idempotency-validator.sh`'s proof turned out to be real but **delegated** to its `.py`
+by my own wrapper refactor — recorded as `DELEGATES_PROOF` with the target named, rather than
+adding a no-op line so the wrapper's text contains `--self-test`, which is the *"bolt on a proof
+to satisfy a regex"* pressure the file's own comment warns about. Bitten: disabling runner
+discovery drops the count to 44 and the ratchet reds.
 
 **`BDR-69` (2026-08-10) — I counted diacritics and called it a violation count, then deferred the
 work on the inflated figure.** `SESSION_HANDOFF.md` was reported as *"162 lines across ~120

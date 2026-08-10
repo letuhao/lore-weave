@@ -31,12 +31,16 @@ gates get commented out instead of fixed.
 """
 from __future__ import annotations
 
+import importlib.util
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
+
+#: Shown in place of a workflow name for gates the runner executes.
+RUNNER_LABEL = "gate-wiring-gate --run-all"
 
 #: Gates CI runs that carry no red-ability proof yet. Ratcheted — see the module docstring.
 #: 2026-07-31: 54 CI-invoked gates, 7 proven (4 selftest + 3 test files) ⇒ 47.
@@ -46,7 +50,22 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: that made it fast enough to run at all (74s -> 9.2s), and the new
 #: `tier-capability-gate.py` shipped with one. The ratchet asked for this itself
 #: ("Progress — lower NO_PROOF_BASELINE to 45"), which is the direction it exists to force.
-NO_PROOF_BASELINE = 45
+#:
+#: 2026-08-10: 45 -> 55, and this is the ONE direction this number is normally forbidden to
+#: move, so the reason has to carry it. **Nothing got worse; the scope got honest.** The gate
+#: discovered its subjects by regexing workflows for a literal `scripts/<name>` path, which
+#: was complete only while every gate was named in a workflow. `gate-wiring-gate --run-all`
+#: ended that, and this gate never learned — measured, 58 seen against ~100 executed. The
+#: ~40 gates riding the runner were not exempt and not proven; they were INVISIBLE, and the
+#: ratchet was reporting a subset as the whole. Widening discovery to the runner's own list
+#: (see `_runner_discovered`) is what moved 45 -> 55.
+#:
+#: Two things kept the number from being worse, and neither is bookkeeping: the three gates
+#: added the same day all shipped a `--self-test`, and `migration-idempotency-validator.sh`'s
+#: proof was found to be real but DELEGATED to its `.py` (see `DELEGATES_PROOF`). Every one
+#: of the 55 is now a gate CI genuinely runs whose red-ability nothing demonstrates — which
+#: is a worklist, where the old 45 was a number that could not see its own subject.
+NO_PROOF_BASELINE = 55
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
@@ -58,6 +77,19 @@ NOT_A_GATE = {
 #: Accepted as a failure path, but named here so it is a decision and not an accident.
 DELEGATES_FAILURE = {
     "lint-contract.sh": "spectral-cli returns non-zero on an error-severity finding",
+}
+
+#: A THIN WRAPPER whose red-ability proof lives in the file it execs, named here with the
+#: target so the claim is reviewable. The sibling of `DELEGATES_FAILURE`, and it exists for
+#: the same reason: the alternative was adding a no-op line to the wrapper so its executable
+#: text contains `--self-test`, which is precisely the "bolt on a second, redundant proof to
+#: satisfy a regex" pressure this file's own `_SELFTEST` comment warns about. A named row
+#: with a target is a decision; a no-op that games the detector is a silencer.
+DELEGATES_PROOF = {
+    "migration-idempotency-validator.sh":
+        "a 10-line wrapper around migration-idempotency-validator.py, which carries the "
+        "`--self-test` (8 checks, each proven to fire on its own bad shape) and is what "
+        "`$@` forwards to",
 }
 
 # A non-zero exit, in every form these scripts actually use. The first version of this
@@ -112,8 +144,61 @@ _IS_GATE = re.compile(r"(?:-|_)(?:lint|gate|validator|check|scan|enforcer|drift|
                       r"(?:-\w+)?\.(?:py|sh)$")
 
 
+def _runner_discovered() -> list[str]:
+    """Gates reachable through `gate-wiring-gate.py --run-all`.
+
+    # Why this exists — the scope was a NAME LIST while coverage had moved to a PREDICATE
+
+    `ci_invoked_scripts()` below finds a gate by regexing workflows for a literal
+    `scripts/<name>` path. That was complete when every gate was named in a
+    workflow. It has not been since `gate-wiring-gate` introduced `--run-all`,
+    whose own docstring says the runner exists precisely so *"a gate written
+    tomorrow runs in CI the day it lands, with nobody remembering to add a
+    line"* — and this gate kept counting the names.
+
+    Measured 2026-08-10: **58 gates seen here, ~100 discovered by the runner.**
+    Three gates added that same day (`dp-oracle-coverage-gate`,
+    `dp-oracle-bite-gate`, `db-ensure-bite-gate`) were invisible to the teeth
+    ratchet on arrival. `NV-3`, default-uncovered, in the gate whose entire job
+    is ensuring a gate can fail.
+
+    Discovery is DELEGATED to `gate-wiring-gate` rather than re-implementing its
+    predicate here: two copies of "what is a gate" is the drift this repo has a
+    standard about, and the runner's list is the authoritative one because it is
+    the list CI actually executes.
+    """
+    spec = importlib.util.spec_from_file_location(
+        "gate_wiring_gate", ROOT / "scripts" / "gate-wiring-gate.py"
+    )
+    if spec is None or spec.loader is None:
+        return []
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    if not mod.runner_in_ci():
+        # No workflow invokes the runner, so it grants no coverage. Falling back
+        # to name-matching alone is correct here, not a hole.
+        return []
+    skip = set(mod.EXEMPT) | set(mod.NEEDS_STACK) | set(mod.TOO_SLOW)
+    out = []
+    for n in mod.discovered():
+        if n in skip:
+            continue
+        rel = n[len("scripts/"):]
+        # A pytest target under scripts/ is a TEST OF a gate, not a gate — the
+        # same exclusion `ci_invoked_scripts` applies. `gate-wiring-gate`'s
+        # predicate accepts `_gate` as a separator, so `test_generation_guard_gate.py`
+        # is a gate to IT and a test to us. Omitting this filter reported two
+        # pytest files as "toothless": they assert rather than `sys.exit(1)`,
+        # which is correct for a test and meaningless as a gate verdict.
+        name = Path(rel).name
+        if name.startswith("test_") or "/tests/" in rel:
+            continue
+        out.append(rel)
+    return out
+
+
 def ci_invoked_scripts() -> dict[str, list[str]]:
-    """{script relpath: [workflow names]} for every enforcement gate a workflow runs."""
+    """{script relpath: [workflow names]} for every enforcement gate CI runs."""
     out: dict[str, list[str]] = {}
     for wf in sorted(WORKFLOWS.glob("*.yml")) + sorted(WORKFLOWS.glob("*.yaml")):
         text = wf.read_text(encoding="utf-8", errors="ignore")
@@ -128,6 +213,11 @@ def ci_invoked_scripts() -> dict[str, list[str]]:
             out.setdefault(rel, [])
             if wf.name not in out[rel]:
                 out[rel].append(wf.name)
+    # ...and everything the runner executes, which no workflow names.
+    for rel in _runner_discovered():
+        out.setdefault(rel, [])
+        if RUNNER_LABEL not in out[rel]:
+            out[rel].append(RUNNER_LABEL)
     return out
 
 
@@ -155,6 +245,14 @@ def teeth_proof(rel: str, path: Path) -> str | None:
     # on its own motivating example). A gate must never be its own witness.
     if path.name != Path(__file__).name and _SELFTEST.search(_executable_text(path, src)):
         return "built-in selftest"
+    if path.name in DELEGATES_PROOF:
+        target = ROOT / "scripts" / (path.stem + ".py")
+        # The claim must still be TRUE: the named target has to exist and carry the
+        # proof. A row here that outlived its target would be an exemption nobody
+        # could check, which is the shape every register in this repo reds on.
+        if target.exists() and _SELFTEST.search(_executable_text(target, target.read_text(
+                encoding="utf-8", errors="ignore"))):
+            return f"delegated selftest in {target.name}"
     stem = path.stem.replace("-", "_")
     for cand in (
         ROOT / "scripts" / f"test_{stem}.py",
