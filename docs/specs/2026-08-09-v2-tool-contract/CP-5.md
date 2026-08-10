@@ -410,7 +410,22 @@ every member must have a **subject** and a test that goes red if the member is d
 subject does not exist yet"* is how C-3…C-17 became permanent, and it is not an acceptable state to
 leave a clause in.
 
+⭐ **WHAT "ESSENTIAL" MEANS — PO, 2026-08-10.** *"essential tools is not only tool_list and
+tool_load, it should be considered as search tool and the important workflow is plan tools too, so
+we will ship that user can use to write book with co-writer agent."* So the term is defined by a
+**user journey**, not by a tool's novelty — and the exit is therefore **not circular**: these tools
+already exist and are federated; they have simply never been admitted *through* the contract.
+
+The set is **derived** (`scripts/cp5-essential-set.py`): roles from the journey, membership by
+session reach above a floor of 1% of tool-calling sessions. **10 tools — `tool_list` · `tool_load` ·
+`glossary_search` · `book_list` ✅ · `book_read` ✅ · `book_chapter_create` ·
+`book_chapter_save_draft` · `plan_propose_spec` · `glossary_book_ontology_read` ·
+`glossary_propose_entities`.** 🔴 The `compose` role has **no qualifying tool** —
+`composition_write_prose`/`composition_get_prose` have 0 sessions — so the step where the co-writer
+produces prose has never been taken in a recorded session. That is a gap, not coverage.
+
 **Exit:** a tool that does not implement the pattern **cannot be released**, proven by injection;
+**the ESSENTIAL SET above is admitted through the contract** (2/10 today);
 the residual (§1, 5.0%) is either classified or declared out of scope with a reason; and the first
 essential tool is admitted **through** the contract with QC evidence.
 

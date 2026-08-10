@@ -4628,12 +4628,53 @@ through the contract with QC evidence**."*
 tool is built until CP-5 closes*, and the exit would require a v2 tool to close it. A checkpoint
 cannot gate the only thing that can satisfy it.
 
-**Reading taken (delegated 2026-08-09, PENDING PO CONFIRMATION): the first clause is already met.**
-`book_list` and `book_read` were admitted **through** rung 2 with QC evidence — contract complete,
-refusal proven by injection, gate green. So CP-5 closes on **rows 5.3–5.10 + the residual**, and the
-essential *tools* are tool v2's first work, not CP-5's. **If the PO meant the other reading, say so
-and the exit needs rewording rather than more work** — no amount of building resolves a circular
-exit.
+⭐ **ANSWERED BY THE PO 2026-08-10, AND IT IS A THIRD READING — the useful one.**
+
+> *"essential tools is not only tool_list and tool_load, it should be considered as search tool and
+> the important workflow is plan tools too, so we will ship that user can use to write book with
+> co-writer agent."*
+
+**So "essential" is defined by a USER JOURNEY, not by a tool's novelty:** the set a person needs to
+actually write a book with the co-writer agent — **discovery · search · book read/write · the
+plan/compose path**. That reading is **not circular**, because those tools already exist and are
+already federated. They simply have not been admitted **through** the contract.
+
+**CP-5 therefore closes on:** rows 5.4 · 5.5 · 5.6 · 5.7 · 5.8 · 5.10 · the §1 residual · **and the
+essential SET admitted through rung 2** — not `book_list` + `book_read` alone, which is where the
+board stood when the question was asked.
+
+🔴 **The set itself is DERIVED, not typed** — `scripts/cp5-essential-set.py`, re-runnable. The
+ROLES come from the journey (the judgement, stated in the open); MEMBERSHIP is measured by **session
+reach** (never calls — ranking by calls ranks pathological loops). A member must clear a floor of
+**1% of the sessions that make tool calls at all**, derived from the corpus rather than typed:
+without it the rule admitted `plan_compile` on **1 session and 0% success**, noise wearing the shape
+of a member.
+
+**THE ESSENTIAL SET — 10 tools, and 2 of them are admitted:**
+
+| role | members (sessions · ok%) |
+|---|---|
+| discover | `tool_list` (91 · 34.7%) · `tool_load` (34 · 100%) |
+| search | `glossary_search` (18 · **38.2%**) |
+| read | `book_list` (122 · 93%) ✅ · `book_read` (85 · 52.1%) ✅ |
+| write | `book_chapter_create` (129 · 99.5%) · `book_chapter_save_draft` (122 · **40.6%**) |
+| plan | `plan_propose_spec` (142 · 97.4%) |
+| canon | `glossary_book_ontology_read` (173 · 78.4%) · `glossary_propose_entities` (168 · 62.3%) |
+
+**Admitted through the contract: 2/10.** Remaining for the exit: `tool_list` · `tool_load` ·
+`glossary_search` · `book_chapter_create` · `book_chapter_save_draft` · `plan_propose_spec` ·
+`glossary_book_ontology_read` · `glossary_propose_entities`.
+
+🔴 **AND THE `compose` ROLE HAS NO QUALIFYING TOOL — reported, not silently dropped.**
+`composition_write_prose` and `composition_get_prose` have **0 sessions and 0 calls**: the step
+where the co-writer actually produces prose has never been taken in a recorded session. Either the
+role maps to the wrong tools or that part of the product is not live yet. **It is not coverage**,
+and CP-5's exit cannot claim the journey is served until it is answered.
+
+🔴 **The set is also a defect list.** Four of the ten are below 65% success — `tool_list` **34.7%**
+(the repeat-loop, 5.7), `glossary_search` 38.2%, `book_chapter_save_draft` 40.6%,
+`glossary_propose_entities` 62.3% — so admitting them *through* the contract is not a formality:
+5.4–5.8 are what they will be admitted against.
 
 ### 🔴 The three lessons this spec cost, and they are about MEASUREMENT, not mechanism
 
