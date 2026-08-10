@@ -211,6 +211,17 @@
         "NO CODE CHANGE: the tool does exactly what its handler says. DQ-10 is about what its DESCRIPTION says, which is a different fix and partly a product decision"
       ],
       "admitted": false
+    },
+    "translation_coverage": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. All 22 calls are args:{} in ONE session on 2026-07-08, the same blank-argument day as jobs_get, translation_list_versions and settings_provider_inventory. MEASURED about that day rather than assumed: the top blank-args sessions each loop on a SINGLE tool (52 x find_tools, 52, 51, 30, 29, 23...), so it is not one session poisoning many tools -- it is several sessions each stuck on one, which is precisely the shape the repeated-failure breaker now caps. Given a real book_id the tool answered with a substantive, non-empty coverage report naming the book's chapter ids.",
+      "evidence": [
+        "PHASE 2: 22 calls / 1 session / 2026-07-08, all args:{}, one error naming the single missing book_id",
+        "LIVE: translation-service MCP :8210 with throwaway book 019fcaa4 -> a real coverage payload listing chapter ids (019fcabb-4f37..., 019fcac9-c563..., and more)",
+        "CONTROL: args:{} still answers 'invalid arguments for translation_coverage -- book_id: Field required', the recorded failure verbatim",
+        "CONTEXT, from iteration 10's trend: blank-arg failures per AFFECTED session fell from 9.5 in July to 1.06 in August, so this tool's 22-call loop is a shape that can no longer recur"
+      ],
+      "admitted": false
     }
   }
 }
