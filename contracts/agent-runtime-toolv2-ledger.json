@@ -35,6 +35,17 @@
         "PILOT CORRECTION, MINE: the first pilot ran on the LEGACY stream format and reported the tool 'not advertised'. Frontend tools are agui-only, so that was my harness, not a defect. Re-run with X-Loreweave-Stream-Format: agui it is advertised as documented"
       ],
       "admitted": true
+    },
+    "confirm_action": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and it needed NO code change -- iteration 3's fix was the whole of it. The record was 9 calls / 6 sessions / 0 ok, and 8 of the 9 carry pending:true. They are SUSPENSIONS, which is the entire job of this tool: it raises a human confirm card and waits. The 9th is one genuine validation failure in July (missing descriptor/title/domain, one call, one session, a correct and actionable message, never repeated). So there was never a defect here to fix -- only the same measurement hole iteration 3 closed: a frontend tool suspends, ok:true is written only where a dispatch returns, and until resolve_deferred nothing recorded what the human then decided. This iteration is therefore a PROOF, not a change, and the proof is what the loop owed: the tool was carried on the 'called and NEVER succeeded' list on the strength of a number that could not have been anything else.",
+      "evidence": [
+        "PHASE 2: 8 of 9 calls are pending:true suspensions (5 on 2026-07-25, 3 on 2026-08-04 stamped source=breaker); 1 is a July validation failure naming its three missing properties. All 9 predate CP-5.5, so none carries a typed call_outcome",
+        "LIVE: a REAL token, not a fabricated one. glossary_propose_curation minted descriptor=status_change on throwaway book 019fea46; a real agui turn then had the model call confirm_action with it, and the run SUSPENDED stamped deferred (run b02c53e2, call_4274648666863484)",
+        "DATA: POST /v1/glossary/actions/confirm returned {status: draft, updated: 1} and entity 019fea5a went active -> draft, measured either side. The resume with outcome=action_done recorded call_4274648666863484:resolved | confirm_action | done | resolves_deferred=true -- this tool's first recorded success. Falsifier: before iteration 3 the resume produced no row at all, so done was unreachable",
+        "NO NEW GUARD: the mechanism is already guarded by iteration 3's six resolution guards in the registered cp5_calloutcome suite (action_done is one of the mapped success outcomes). A tool-specific copy would assert the same code twice"
+      ],
+      "admitted": false
     }
   }
 }
