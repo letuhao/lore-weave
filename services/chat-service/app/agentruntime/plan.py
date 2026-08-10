@@ -151,6 +151,38 @@ def check_emit_path(declaration: str, name: str, path: str) -> None:
                 "wildcard or predicate syntax exists"))
 
 
+def check_emit_against_contract(declaration: str, name: str, path: str,
+                                declared_paths: tuple[str, ...] | list[str] | None) -> None:
+    """CP-5.6 · §2 — check the path against the tool's DECLARED OUTPUT, at PLAN-BUILD time.
+
+    🔴 **THIS IS THE INVERSION §6.2 NAMES, FINALLY TURNED BACK.** `check_emit_path` above can only
+    prove a path is *syntactically* a path; it cannot prove the path EXISTS, because until CP-5
+    no tool declared a result shape. So `EmitPathError` fired at **execution** — a runtime failure
+    that was built and written up as a feature, when §6.2's principle is *"a generation error, not
+    a runtime one"*. A tool that declares its `output_contract.emit_paths` can now be checked when
+    the plan is BUILT, which is the entire reason the output contract outranks its 1.7%.
+
+    **Absent declaration ⇒ no check, deliberately.** Six of eleven essential tools are not admitted
+    yet and 310 of the catalogue declare nothing; refusing their plans would make this member a
+    migration blocker rather than a contract. A tool that declares gets the earlier, better error —
+    which is the incentive doing the work.
+
+    🔴 **AND THE DECLARATION ITSELF MUST BE VERIFIED, WHICH IS THE LESSON THIS FUNCTION COST.** The
+    first five contracts authored for it declared shapes taken from each tool's DESCRIPTION, and
+    **four of the five were wrong** against recorded results — `book_list` returns `{books, total}`,
+    not `{items, page}`. A declared shape nobody checks is a lie that looks like a contract, and it
+    would have made this function reject the one path CP-3 actually uses.
+    """
+    if not declared_paths:
+        return
+    if path in tuple(declared_paths):
+        return
+    raise EmitPathError(path, path, (
+        f"{declaration} does not declare an output at {path!r}. Its contract declares "
+        f"{list(declared_paths)} — this is caught at PLAN-BUILD rather than at execution, which is "
+        f"the whole reason the tool declares a result shape (§2)"))
+
+
 def extract_emit(result, path: str):
     """The value at `path` in a tool result. Raises `EmitPathError` rather than returning None."""
     cur = result

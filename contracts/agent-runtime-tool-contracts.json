@@ -30,11 +30,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ items: [...], page: { total, returned, is_complete, guidance } }",
+        "shape": "{ books: [{book_id, title, access_level, chapter_count, lifecycle_state, original_language}], total }",
         "emit_paths": [
-          "items[].id"
+          "books[0].book_id"
         ],
-        "note": "Declared so a CP-3 `emits` path is checkable at PLAN-BUILD time rather than failing at execution (§2)."
+        "note": "Declared so a CP-3 `emits` path is checkable at PLAN-BUILD time rather than failing at execution (§2).",
+        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
       },
       "result_completeness": {
         "fields": [
@@ -86,11 +87,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ book | chapter | scene, page: { total, returned, is_complete, guidance } }",
+        "shape": "{ book: {...}, read: {...}, guidance }",
         "emit_paths": [
-          "book.id"
+          "book.book_id"
         ],
-        "note": "The DEEPEST id present decides which branch of the shape is returned."
+        "note": "The DEEPEST id present decides which branch of the shape is returned.",
+        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
       },
       "result_completeness": {
         "fields": [
@@ -129,11 +131,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ tools: [{name, description}], categories: [...] }",
+        "shape": "{ tools: [{name, description}], count, category }",
         "emit_paths": [
-          "tools[].name"
+          "tools[0].name"
         ],
-        "note": "Declared so a CP-3 emits path over this result is checkable at plan-build time."
+        "note": "Declared so a CP-3 emits path over this result is checkable at plan-build time.",
+        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
       },
       "closed_vocabulary": {
         "category": [
@@ -179,11 +182,12 @@
         "retryable_transient": false
       },
       "output_contract": {
-        "shape": "{ loaded: [{name, description, inputSchema}], unknown: [...] }",
+        "shape": "{ tools: [{name, description, inputSchema}] }",
         "emit_paths": [
-          "loaded[].name"
+          "tools[0].name"
         ],
-        "note": "`unknown` is part of the contract: a partially-satisfied load must say which names it could not find."
+        "note": "`unknown` is part of the contract: a partially-satisfied load must say which names it could not find.",
+        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
       },
       "closed_vocabulary": {
         "category": [
@@ -232,9 +236,10 @@
       "output_contract": {
         "shape": "{ entities: [{entity_id, cached_name, cached_aliases, kind_code, tier, rank_score}] }",
         "emit_paths": [
-          "entities[].entity_id"
+          "entities[0].entity_id"
         ],
-        "match_quality": "`tier` is a MATCH-QUALITY signal, not a score: `exact` means the name or an alias matched exactly after normalisation. CP-5.3 keys the resolver on it."
+        "match_quality": "`tier` is a MATCH-QUALITY signal, not a score: `exact` means the name or an alias matched exactly after normalisation. CP-5.3 keys the resolver on it.",
+        "_verified_against": "a RECORDED result in loreweave_chat, 2026-08-10. The first draft of this member was written from the tool's DESCRIPTION and was wrong for 4 of 5 tools — a declared shape nobody checks is a lie that looks like a contract, which is exactly what §2 says the emits check is for."
       },
       "result_completeness": {
         "declared_fields": [],

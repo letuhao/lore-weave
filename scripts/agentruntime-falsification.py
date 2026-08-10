@@ -95,6 +95,8 @@ SUITES = (
     "tests/test_cp5_namesource.py",
     # CP-5.8's precondition. Registered in the same change as the suite.
     "tests/test_cp5_precondition.py",
+    # CP-5.6's emits-at-plan-build. Registered in the same change as the suite.
+    "tests/test_cp5_emits.py",
 )
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import agentruntime_gatecache as _gatecache  # noqa: E402

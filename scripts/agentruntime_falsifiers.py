@@ -1065,6 +1065,53 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.6 second half: emits checked at PLAN-BUILD ---------------------------------------
+    "test_AN_UNDECLARED_PATH_IS_REFUSED_AT_PLAN_BUILD": [
+        # Back to §2's inversion: the path is only checked for SYNTAX, so a path that does not
+        # exist in the result fails at EXECUTION instead of when the plan is built.
+        (f"{PKG}/plan.py", "    if path in tuple(declared_paths):\n        return",
+                           "    if True:\n        return"),
+    ],
+    "test_THE_REFUSAL_SHOWS_WHAT_IS_DECLARED": [
+        # C-12 — a rejection the plan author cannot act on.
+        (f"{PKG}/plan.py", 'f"{list(declared_paths)} — this is caught at PLAN-BUILD rather than at execution, which is "',
+                           'f"— this is caught at PLAN-BUILD rather than at execution, which is "'),
+    ],
+    "test_A_TOOL_THAT_DECLARES_NOTHING_IS_NOT_BLOCKED": [
+        # Refuse every unmigrated tool's plans, turning the member into a migration blocker.
+        (f"{PKG}/plan.py", "    if not declared_paths:\n        return",
+                           "    if not declared_paths:\n        declared_paths = (\"__none__\",)"),
+    ],
+    "test_EVERY_DECLARED_EMIT_PATH_STARTS_INSIDE_THE_DECLARED_SHAPE": [
+        # Re-introduce the contradiction four of the first five contracts shipped with: a declared
+        # emit path whose root does not appear in the tool's own declared shape.
+        ("contracts/agent-runtime-tool-contracts.json", '"emit_paths": [\n          "books[0].book_id"',
+                                                        '"emit_paths": [\n          "items[0].id"'),
+    ],
+    "test_THE_SHAPES_RECORD_THAT_THEY_WERE_VERIFIED_AGAINST_REAL_RESULTS": [
+        # Anchored on ONE tool's block — `_verified_against` appears on all five, and an anchor
+        # matching five times is not an anchor. The guard reds on the first contract that stops
+        # saying what its shape was checked against.
+        # Anchored on ONE tool's block: `_verified_against` appears on all five, and an anchor
+        # that matches five times is not an anchor — the stale-anchor guard said so.
+        ("contracts/agent-runtime-tool-contracts.json",
+         'rather than failing at execution (§2).",\n        "_verified_against"',
+         'rather than failing at execution (§2).",\n        "_unchecked"'),
+    ],
+    "test_A_DECLARED_PATH_PASSES": [
+        # Refuse a path the tool DOES declare — the check inverted.
+        (f"{PKG}/plan.py", "    if path in tuple(declared_paths):", "    if path not in tuple(declared_paths):"),
+    ],
+    "test_THE_SYNTAX_CHECK_STILL_RUNS_FIRST": [
+        # Drop the syntax half, so `books[?title=~x].book_id` — a program, not a location —
+        # becomes an acceptable emit path.
+        (f"{PKG}/plan.py", "        if not _SEG.match(seg):", "        if False:"),
+    ],
+    "test_EVERY_DECLARED_EMIT_PATH_IS_SYNTACTICALLY_A_PATH": [
+        ("contracts/agent-runtime-tool-contracts.json", '"entities[0].entity_id"',
+                                                        '"entities[?tier=exact].entity_id"'),
+    ],
+
     # -- CP-5.8: the precondition --------------------------------------------------------------
     "test_THE_PROJECT_BOOTSTRAP_TOOLS_ARE_NOT_PROJECT_SCOPED": [
         # Make the bootstrap tool project-scoped in the catalogue itself: the gate would then
