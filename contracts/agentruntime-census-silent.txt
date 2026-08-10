@@ -64,8 +64,15 @@ surface.py::TakeWhileBudget.__post_init__::ValueError::1::3130a968
 # because a DIFFERENT invariant holds elsewhere, and deleting it turns a future P1 regression from
 # a named failure into a bare `StopIteration` three frames up. Kept, and the cost is this row.
 #
-# ✅ CLOSED 2026-08-10 (tool-v2 loop #2). The census reported it NOW GUARDED, and the row is
-# removed rather than left as stale debt. The id is UNCHANGED (`6b19409d`), which is what
-# distinguishes this from the failure mode the header above warns about: a row can also leave
-# because its digest CHURNED, and that case shows up as a NEW id arriving NEWLY SILENT. No
-# surface.py id did. The raise itself stays in the source for the reason argued above.
+# 🔴 REMOVED AND PUT BACK THE SAME DAY, 2026-08-10 (tool-v2 loop #2) — MY ERROR, AND IT IS THE
+# ONE THIS FILE'S HEADER ALREADY WARNS ABOUT, ARRIVING BY A ROUTE THE HEADER DOES NOT COVER.
+# A census run reported this row `NOW GUARDED`, I checked the id was unchanged (ruling out the
+# digest-churn case the header names) and deleted it. A CLEAN re-run — 159 sites, 12 workers,
+# nothing else competing — reports it `NEWLY SILENT` again. The first run had been racing a
+# background `agentruntime-falsification.py --run` for temp mirrors, so its suite result was not
+# about this tree at all.
+#
+# The lesson is not about this row. **A census or falsification verdict produced while another
+# mirroring gate is running is not evidence**, and it fails in the flattering direction: it says
+# a guard exists. Run the gates serially. Recorded as D-2 in the tool-v2 runbook.
+surface.py::SurfaceAssembler.assemble::AssertionError::1::6b19409d

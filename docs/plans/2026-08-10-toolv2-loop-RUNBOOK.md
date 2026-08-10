@@ -185,6 +185,16 @@ break until the variable turned out to be a background `--run` competing for tem
 passes clean (23.75s) once nothing else is running. Run the gates serially; a red here is a
 scheduling artefact before it is a defect.
 
+**And it cost me a wrong edit before I understood it.** The same racing run reported
+`surface.py::SurfaceAssembler.assemble::AssertionError::1` as `NOW GUARDED`, so I dropped it from
+the census allowlist — checking only the failure mode the allowlist's header names (digest churn),
+which this was not. A clean re-run (159 sites, 12 workers, nothing competing) reports it
+`NEWLY SILENT` again, and the row is restored. **A verdict from a gate that was racing another
+mirroring gate is not evidence, and it fails in the flattering direction — it claims a guard
+exists.** The two vocabulary rows in the same report were real: they are guarded now and gone
+from the clean run, which is how the corrupted and the genuine findings are told apart after
+the fact.
+
 ---
 
 ## Ledger
