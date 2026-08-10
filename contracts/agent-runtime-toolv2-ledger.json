@@ -319,6 +319,16 @@
         "NOT CLAIMED: my PRE/POST counts of kg_edge_types returned nothing usable (wrong table/column guess), so they are excluded rather than reported -- the mint and the confirm's own responses are the evidence"
       ],
       "admitted": false
+    },
+    "composition_motif_book_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Its single call is args:{} on 2026-07-08 -- the EIGHTH tool this loop has concluded out of that one blank-argument day. Given a real book_id it returns motifs with a count, a total and an explicit echo of the book_id it answered for. Verified on TWO different books rather than one, because a single sampled result cannot distinguish a real read from a constant.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-07-08, args:{}, one validation error naming the missing book_id",
+        "LIVE: composition-service MCP on two books -- throwaway 019fcaa4 and 019f9d2b -- each returning count 3, total 3, returned 3, truncated 0, and each echoing ITS OWN book_id in the payload",
+        "WHY TWO BOOKS: one sampled result cannot tell a real per-book read from a fixed answer. The echoed book_id differs between the two calls, which is the cheapest available falsifier for that"
+      ],
+      "admitted": false
     }
   }
 }
