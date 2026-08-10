@@ -360,6 +360,16 @@
         "NOT USED as evidence: a project with 110 edges in Neo4j whose knowledge_projects row no longer exists -- the tool correctly answers 'project not found' for it"
       ],
       "admitted": false
+    },
+    "kg_triage_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, cross-checked against its own store. Its single call is args:{} on 2026-08-04 answered 'no project in scope' -- scope=project with project_id OPTIONAL, the shape CP-5.8's gate now refuses before the wire, and the backend's own message already names both remedies (kg_project_list, or open the chat from a project). Given the throwaway project it returns the parked proposal iteration 2 created, with the actions a human can take on it.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-08-04, args:{}, 'no project in scope'",
+        "LIVE: kg_triage_list on project 019fec6c -> one group, item_type proposed_edge, count 1, status pending, suggested_actions ['dismiss','place_edge'], total 1",
+        "GROUND TRUTH, read independently of the tool: kg_triage_items for that project is exactly one row, item_type proposed_edge, status pending. The tool's summary matches the table"
+      ],
+      "admitted": false
     }
   }
 }
