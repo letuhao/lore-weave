@@ -310,6 +310,14 @@ class Settings(BaseSettings):
     coref_judge_user: str = ""
     coref_judge_model_source: str = "platform_model"
 
+    # T26 — whether the KG can honour a story-time `as_of`. This flag used to live in the
+    # GATEWAY's environment (`KG_TEMPORAL_ENABLED`), which meant a gateway could advertise
+    # `ordinal_valid_time` for a knowledge-service whose KG had not been migrated — two
+    # processes disagreeing about a boolean, and the disagreement leaks spoilers. It belongs
+    # to the service that owns the substrate. Same env-var name, so a deployment that
+    # already sets it keeps working; it is now read HERE.
+    kg_temporal_enabled: bool = True
+
     # T25a — the vector-store migration seam. UNSET (the default) means Neo4j alone and
     # byte-identical behaviour: no second database, no dual write, no new failure mode.
     # Setting it turns on dual-write to the pgvector store (T22's image), which is the

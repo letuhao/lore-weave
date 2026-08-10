@@ -33,6 +33,7 @@ command -v python >/dev/null 2>&1 || PY=python3
 # is about the file you are touching, and the tree already carries a baselined backlog
 # (T17 shrinks it), so a repo-wide run would fail every commit until that sweep lands.
 "$PY" "$ROOT/scripts/graph-port-gate.py" --staged
+"$PY" "$ROOT/scripts/gateway-domain-logic-gate.py"
 
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a

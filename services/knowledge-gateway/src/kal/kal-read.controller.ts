@@ -1,6 +1,6 @@
 import { Controller, Get, Param, Post, Query, Body, Req, UseGuards } from '@nestjs/common';
 import { ctxFromReq, glossary, knowledge } from './downstream.js';
-import { kgAsOfOrDrop, temporalCapability } from './temporal.js';
+import { temporalCapability } from './temporal.js';
 import { KalAuthGuard } from '../auth/kal-auth.guard.js';
 
 /** The inbound request shape ctxFromReq needs (identity headers + connection close event). */
@@ -76,7 +76,7 @@ export class KalReadController {
     )) as Record<string, unknown>;
     // Strict array coercion: a downstream object that lacks `items` must NOT pass through
     // whole as the bounded item array (the contract types items as array<Fact>). Never `?? data`.
-    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: temporalCapability() };
+    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
   }
 
   // timeline — windowed change history (newest-first page).
@@ -161,7 +161,7 @@ export class KalReadController {
       book_id: data?.book_id ?? bookId,
       as_of_ordinal: data?.as_of_ordinal ?? null,
       entities: Array.isArray(data?.entities) ? data.entities : [],
-      temporal_capability: temporalCapability(),
+      temporal_capability: await temporalCapability(ctxFromReq(req)),
     };
   }
 
@@ -191,14 +191,18 @@ export class KalReadController {
     if (hops) qs.set('hops', hops);
     if (cap) qs.set('cap', cap);
     // Guard parseInt: a non-numeric as_of must not forward literal "NaN" downstream — drop it.
+    // That is a PARSING guard, not a domain one. Whether the KG can honour a well-formed
+    // as_of is the owning service's call (T26); the gateway used to decide it from its own
+    // env var and could disagree with the substrate it was describing.
     const parsedAsOf = asOf !== undefined ? parseInt(asOf, 10) : undefined;
-    const effAsOf = kgAsOfOrDrop(Number.isFinite(parsedAsOf) ? parsedAsOf : undefined);
-    if (effAsOf !== undefined) qs.set('as_of_chapter', String(effAsOf));
+    if (parsedAsOf !== undefined && Number.isFinite(parsedAsOf)) {
+      qs.set('as_of_chapter', String(parsedAsOf));
+    }
     const data = (await knowledge.get(
       `/internal/books/${bookId}/kg/neighborhood?${qs.toString()}`,
       ctxFromReq(req),
     )) as Record<string, unknown>;
-    return { edges: Array.isArray(data?.edges) ? data.edges : [], temporal_capability: temporalCapability() };
+    return { edges: Array.isArray(data?.edges) ? data.edges : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
   }
 
   // retrieve — semantic top-K over embedded episodes/segments.
@@ -213,6 +217,6 @@ export class KalReadController {
       body,
       ctxFromReq(req),
     )) as Record<string, unknown>;
-    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: temporalCapability() };
+    return { items: Array.isArray(data?.items) ? data.items : [], temporal_capability: await temporalCapability(ctxFromReq(req)) };
   }
 }

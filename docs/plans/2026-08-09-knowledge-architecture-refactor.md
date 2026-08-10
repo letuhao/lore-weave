@@ -48,7 +48,10 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T25b — the READ cutover.** ⚠️ Two decisions are the PO's, listed at the bottom.
+**RESUME: T27 — outbox-in-transaction as part of the `*Core` contract.** T26 is done (see its
+entry). T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
+
+**T25b — the READ cutover.** ⚠️ Two decisions are the PO's, listed at the bottom.
 
 **T25a is DONE (write path wired).** `app/adapters/vector_store_provider.py` is the composition
 root Phase 3 never had. The three vector WRITE sites — `passage_ingester`, `glossary_passage`,
@@ -1680,11 +1683,43 @@ vectors and validity intervals live in different stores.
 **37 `*Core` functions already are the command layer** — documented as the shared SSOT for HTTP +
 MCP. What is missing is outbox-in-the-same-transaction as part of their contract.
 
-- [ ] **T26** — Move `temporalCapability()` out of the gateway
-  `services/knowledge-gateway/src/kal/temporal.ts` → the Python use-case layer
-  A domain rule in TypeScript that **D0.1 invalidates**. Gateway forwards what the service reports.
-  **Gate:** no conditional on substrate, capability, budget, salience or tenancy semantics inside
-  `knowledge-gateway/src`. **Bite:** put one back → red.
+- [x] **T26** — Move `temporalCapability()` out of the gateway ✅
+  `app/kal/temporal.py` + `GET /internal/kal/temporal-capability`; gateway fetches, caches 30s and
+  forwards. **4120 python + 25 gateway green.**
+
+  **The layering violation was a correctness bug, which is why it was worth moving.** The gateway
+  computed the KG's `as_of` honorability from its OWN `KG_TEMPORAL_ENABLED`, and nothing tied that
+  flag to the graph it described. A gateway with it on, in front of an unmigrated
+  knowledge-service, advertised `ordinal_valid_time` and forwarded `as_of` to a substrate answering
+  in transaction time — **a spoiler leak produced by two processes disagreeing about a boolean.**
+
+  **`kgAsOfOrDrop` is gone.** The gateway forwards `as_of` verbatim and the owner decides — the same
+  reason `state`'s `as_of` is forwarded unvalidated (decision B2). The parse guard stays: rejecting
+  literal `"NaN"` is a question about the wire, not about the substrate.
+
+  **`scripts/gateway-domain-logic-gate.py`**, wired into pre-commit + `foundation-ci.yml`. AST-ish,
+  comment- and string-blanked, so a doc comment describing the old rule is not reported as the rule.
+
+  **The bite failed twice before it fired, and both misses were the gate's fault.** (1) The
+  vocabulary matched `capability`/`substrate` but not `temporal`, so re-adding
+  `if (process.env.KG_TEMPORAL_ENABLED === 'false')` passed — its only domain word lived inside a
+  string literal, which the blanking removes. **A gate that cannot catch its own founding incident
+  certifies the absence it cannot see.** (2) After adding `temporal`, `[tT]emporal` still missed the
+  upper-case `TEMPORAL`. Now case-insensitive, and the rule is sharpened: handling an `as_of` VALUE
+  is forwarding; consulting LOCAL CONFIG alongside it is deciding.
+
+  **Its first clean run found a second instance I had missed** — `health/health.controller.ts:17`
+  computed the same capability from gateway config, in a **readiness probe operators trust to
+  describe the deployment.** Now forwards.
+
+  **Live smoke** (both images rebuilt): gateway `/health/ready` → `kgTemporal=ordinal_valid_time`,
+  which is *not* the `temporal_unsupported` fallback — so the value genuinely crossed the service
+  boundary. With `KG_TEMPORAL_ENABLED=false` on the SERVICE, the service reports
+  `temporal_unsupported` and drops `as_of`. The authority moved.
+
+  ⚠️ **Found in passing, not fixed:** the gateway's `neighborhood` read calls
+  `/internal/books/{id}/kg/neighborhood`, which **exists nowhere in the repo** — a dead upstream
+  that would 404, and the only consumer `kgAsOfOrDrop` ever had. Out of T26's scope; needs a task.
 
 - [ ] **T27** — Make outbox-in-transaction part of the `*Core` contract
   `services/glossary-service/internal/api/*.go` — 19 files write `glossary_entities`
