@@ -2695,6 +2695,31 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   key on `Entity.id`.
   **Test:** rename + re-kind → no stale node, no minted duplicate.
   (depends on T34)
+  ---
+  ⏸ **NOT STARTED — scoped and measured, handed off deliberately.** Recorded here so the next
+  session starts from evidence rather than from the plan's 2026-08-02 numbers.
+
+  **The premise is confirmed.** `entity_canonical_id(user_id, project_id, name, kind)` (in
+  `sdks/python/loreweave_extraction/canonical.py`, re-exported by
+  `app/db/neo4j_repos/canonical.py`) derives `Entity.id` as a truncated SHA-256 of the
+  canonicalised **name + kind**. `glossary_sync.py` computes it on every sync, but the MERGE's
+  `ON MATCH SET` never rewrites `e.id` — so a rename or a re-kind leaves a node whose derived
+  id contradicts its own properties, and the id is what 48 Cypher sites join on.
+
+  **Live scale, re-measured 2026-08-11** (the plan's figures are from 2026-08-02):
+  ```
+  MATCH (e:Entity) WHERE e.id IS NOT NULL                 → 6297 nodes
+  MATCH (e:Entity) WHERE e.glossary_entity_id IS NOT NULL → 5776 anchored
+  ```
+  So ~92 % already carry the stable glossary anchor that opaque identity would key on — the
+  migration target mostly exists; what is missing is retiring the derived id and repointing the
+  48 join sites.
+
+  **Why it was not started here rather than started badly:** this is a 48-site identity change
+  across a live graph, and the failure mode is a *silent* one — a stale id does not error, it
+  simply joins to nothing or to the wrong node. It needs a full context to do and to verify, and
+  beginning it at the tail of one would leave the graph half-migrated with no way to tell which
+  half. The measurements above are the head start.
 
 - [ ] **T36** — Roles as relation facts with story intervals (**M2**)
   Closes `D-CANON-CHECK-BLIND-TO-ROLE`, the refactor's stated acceptance case.
