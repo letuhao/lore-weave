@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: QC-6 — Phase 5 continues.**
+**RESUME: QC-5 — the acceptance test (blocked on T36; see D-T36-ROLE-FACTS).**
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -2781,11 +2781,51 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | T50's `command_transport.go` already logs the transport on every entity command, so a new producer arriving on that surface is visible in the parity suite rather than needing its own tracker. `scripts/entity-lifecycle-outbox-gate.py` covers the mutations it will call. |
   | **Retry when** | T36 closes. |
 
-- [ ] **QC-6** — Identity live proof
+- [~] **QC-6** — Identity live proof
   `/review-impl`. On a **live** stack: rename an entity, then re-kind it, then re-run extraction on a
   chapter that mentions it. Assert **no stale node**, **no minted duplicate**, and that the 77
   known-stale nodes from the 2026-08-02 backfill are reconciled.
   **Data:** a Cypher count of nodes whose `e.id` disagrees with a recomputed hash — **must be 0**.
+  ---
+  🔴 **THE DATA HALF IS RUN, AND THE PLAN'S NUMBER IS STALE BY 36x.**
+
+  Every `:Entity` with an id was pulled from the live graph and its id recomputed with the real
+  `entity_canonical_id` (from `sdks/python/loreweave_extraction/canonical.py`, the function the
+  writers call), 2026-08-11:
+
+  ```
+  nodes compared              : 6297
+  id MISMATCH                 : 2819   (44.8 %)
+  of which glossary-anchored  : 2818 / 5776 anchored
+  ```
+
+  **Not 77 - 2819.** The plan's figure is from the 2026-08-02 backfill and describes only what
+  *that* backfill left behind; the defect has been accumulating on every rename and re-kind since.
+
+  **The result is causally clean, not a measurement artefact.** **2818 of the 2819** are
+  glossary-**anchored** nodes - precisely the population `glossary_sync` MERGEs, and precisely
+  where `ON MATCH SET` recomputes `canonical_id` and then never writes it to `e.id`. One
+  unanchored mismatch in 521 unanchored nodes. The defect and its footprint agree.
+
+  WARNING - **guarded against the obvious false positive.** `glossary_sync` stores `project_id`
+  as `"global"` when the caller has none, while computing the id from the RAW value - so a naive
+  recompute would mismatch every synced node for the wrong reason. The count above accepts a
+  match against **any** project form (`None`, the stored value, `"global"`) and is unchanged at
+  2819. The 3478 nodes that DO match are the positive control: the recomputation is right.
+
+  **Consequences, both of which are the PO's to weigh:**
+  1. **T35 is 36x bigger than the plan prices it.** Not in call sites - in rows to reconcile.
+  2. **QC-6's own assertion ("must be 0") is currently 2819**, so QC-6 cannot pass before T35,
+     and no amount of live rename/re-kind proof changes that.
+
+  ### DEFERRAL `D-QC6-IDENTITY-LIVE-PROOF`
+
+  The live half (rename -> re-kind -> re-extract -> assert no stale node, no duplicate) is
+  deferred to `D-T35-OPAQUE-IDENTITY`, because it asserts a post-condition of a migration that
+  has not run. **Mechanism:** the measurement above is a one-command re-run and its output is
+  self-describing; `scripts/derived-entity-id-gate.py` keeps the caller set from growing
+  meanwhile. **Retry when** T35 lands - and re-run this count first, because *"must be 0"* is
+  the acceptance criterion and **2819** is where it starts.
 
 - [ ] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   `docs/specs/.../README.md`: *"Its shape is the design's own test: fix the design, then **re-run
