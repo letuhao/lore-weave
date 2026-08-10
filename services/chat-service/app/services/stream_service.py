@@ -3848,11 +3848,26 @@ async def _stream_with_tools(
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": _deny_err}),
                     })
-                    yield {"tool_call": {
+                    # 🔴 **THE SAME CONFLATION AS THE RESUME DENIAL, ONE SITE OVER.** Iteration 2
+                    # of the tool-v2 loop typed the human's "no" on the RESUME path
+                    # (`denied_by_user`); this is the human's PERMANENT no, and it was still
+                    # falling through to the chokepoint's fail-closed default — recorded `failed`
+                    # with `call_outcome_inferred`, as if the tool had broken.
+                    #
+                    # Measured 2026-08-11: 15 calls across 3 sessions, all `glossary_adopt_standards`,
+                    # every one typed as a failure. A user choosing "Never allow" is the consent
+                    # surface working exactly as designed — it is the clearest refusal in the
+                    # product — and it is the one the corpus called a defect.
+                    #
+                    # `denied_standing` keeps it separable from `denied_by_user`: a decision made
+                    # ONCE for all future turns and a decision made about THIS call are different
+                    # facts about the user, and merging them would hide which consent surface is
+                    # actually being used.
+                    yield {"tool_call": instrument.stamp_refused({
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": _parse_tool_args(c["arguments"]), "ok": False,
                         "result": None, "error": _deny_err,
-                    }}
+                    }, "denied_standing")}
                     continue
 
                 # D-TOOLCALL-GEMMA-INTERIOR-LEAK — the args STILL carry this model family's

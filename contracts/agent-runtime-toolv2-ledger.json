@@ -529,6 +529,18 @@
         "CONTRACT CHECKED, not assumed: the registry's four keyed fields (entities / entity_id / cached_name / tier=exact) are all present in the live result. CP-5.3's 'exactly one match at the declared quality substitutes' branch is therefore reachable"
       ],
       "admitted": true
+    },
+    "glossary_adopt_standards": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and it exposed the LAST untyped consent surface. 82 calls / 61 sessions / 47 ok. Of the 35 failures, 28 are human decisions: 13 pending approval cards and 15 calls across 3 sessions blocked by a STANDING DENY -- the user chose 'Never allow' in Settings. That block yielded a raw chunk with no stamp_refused, so it fell through to the chokepoint's fail-closed default and the clearest refusal in the product was counted against the tool the user had deliberately declined. FIX: the site now stamps refused/denied_standing, kept separable from loop #2's denied_by_user because 'I decided once for all future turns' and 'I declined this call' are different facts about the user. AND THE SHARP EDGE: CP-6.1's refusal names THIS TOOL as the remedy for an unknown kind. In those 3 sessions the user had permanently denied exactly the tool the runtime would tell them to use. A remedy a refusal names can itself be blocked, and nothing checks it.",
+      "evidence": [
+        "PHASE 2, split: 47 ok / 35 failed = 15 standing-deny + 13 approval suspensions + 3 malformed book_id + 2 not accessible + 2 argument problems",
+        "CODE: 2 guards in the REGISTERED cp5_calloutcome suite (the typing, and a source check that the site is wired); suite 2865 passed / 3 skipped",
+        "LIVE: deployed chat-service sha256:fc4b1b4304d6. With a standing deny set for this tool, a real agui turn produced glossary_adopt_standards | refused | denied_standing | NOT inferred. Before the fix the same call typed as failed",
+        "OBSERVED, not fixed: a standing deny does NOT de-advertise the tool -- the first live attempt showed it still in advertised_tools, so a model can pick it and spend a round trip discovering it is blocked",
+        "CLEANED UP: the standing deny was a real preference on the test account and was deleted after the proof"
+      ],
+      "admitted": false
     }
   }
 }

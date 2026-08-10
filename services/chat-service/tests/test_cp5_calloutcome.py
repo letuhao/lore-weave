@@ -193,6 +193,33 @@ class TestAUserDenialIsNotAFailureEither:
             "denied_by_user"))
         assert "error_class" not in got
 
+    def test_A_STANDING_NEVER_ALLOW_IS_REFUSED_AND_SEPARABLE(self):
+        """🔴 **THE SAME CONFLATION ONE SITE OVER, found in tool-v2 loop iteration 49.** Loop #2
+        typed the human's "no" on the RESUME path. The PERMANENT no — "Never allow" in Settings —
+        was still falling through to the fail-closed default: 15 calls across 3 sessions, all
+        `glossary_adopt_standards`, every one recorded as if the tool had broken.
+
+        `denied_standing` stays separable from `denied_by_user` because a decision made ONCE for
+        all future turns and a decision made about THIS call are different facts about the user.
+        """
+        standing = instrumented(**instrument.stamp_refused(
+            {"ok": False, "error": "blocked: you chose 'Never allow'"}, "denied_standing"))
+        this_call = instrumented(**instrument.stamp_refused(
+            {"ok": False, "error": "denied by user"}, "denied_by_user"))
+        assert standing["call_outcome"] == instrument.CALL_REFUSED
+        assert "error_class" not in standing, "a refusal is not a failure with a class"
+        assert standing["refusal_kind"] != this_call["refusal_kind"]
+
+    def test_THE_STANDING_DENY_SITE_ACTUALLY_STAMPS_IT(self):
+        """The wiring, at the source — the consent surface must not read as a tool defect."""
+        import pathlib
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert '}, "denied_standing")}' in src, (
+            "a standing 'Never allow' still records as a tool failure, so the clearest refusal "
+            "in the product is counted against the tool the user declined"
+        )
+
     def test_THE_DENIAL_SITE_ACTUALLY_STAMPS_IT(self):
         """The wiring, checked at the source — a mechanism nothing calls is the shape this run has
         now found six times, and the end-to-end proof lives in

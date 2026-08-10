@@ -1498,6 +1498,30 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/stream_service.py", '                }, "denied_by_user"),',
                                                  "                }),"),
     ],
+    # ── TOOL-V2 LOOP #49 · the PERMANENT no, which was still typed as a tool failure ─────────
+    "test_A_STANDING_NEVER_ALLOW_IS_REFUSED_AND_SEPARABLE": [
+        # Collapse the two consent surfaces into one label: "the user set Never allow once" and
+        # "the user declined this call" stop being tellable apart.
+        (f"{CS}/app/services/instrument.py", '    chunk["refusal_kind"] = kind',
+                                             '    chunk["refusal_kind"] = "denied"'),
+    ],
+    "test_THE_STANDING_DENY_SITE_ACTUALLY_STAMPS_IT": [
+        # The anchor spans the WHOLE yield, opening call included. Removing only the closing
+        # `, "denied_standing")` leaves unbalanced parens, and a SyntaxError reds the suite as a
+        # COLLECTION error whose stdout never names the test — which the harness scores as
+        # "RED, but a DIFFERENT test" (D-4). A falsifier must leave valid code.
+        (f"{CS}/app/services/stream_service.py",
+         '                    yield {"tool_call": instrument.stamp_refused({\n'
+         '                        "id": c["id"], "iteration": iteration, "tool": c["name"],\n'
+         '                        "args": _parse_tool_args(c["arguments"]), "ok": False,\n'
+         '                        "result": None, "error": _deny_err,\n'
+         '                    }, "denied_standing")}',
+         '                    yield {"tool_call": {\n'
+         '                        "id": c["id"], "iteration": iteration, "tool": c["name"],\n'
+         '                        "args": _parse_tool_args(c["arguments"]), "ok": False,\n'
+         '                        "result": None, "error": _deny_err,\n'
+         '                    }}'),
+    ],
     "test_AN_UNCLASSIFIED_FAILURE_GETS_C7S_FAIL_CLOSED_ANSWER": [
         (f"{CS}/app/services/instrument.py", '            chunk["error_class"] = CALL_UNCLASSIFIABLE',
                                              "            pass  # falsifier"),
