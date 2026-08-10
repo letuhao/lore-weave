@@ -420,9 +420,13 @@ The set is **derived** (`scripts/cp5-essential-set.py`): roles from the journey,
 session reach above a floor of 1% of tool-calling sessions. **10 tools — `tool_list` · `tool_load` ·
 `glossary_search` · `book_list` ✅ · `book_read` ✅ · `book_chapter_create` ·
 `book_chapter_save_draft` · `plan_propose_spec` · `glossary_book_ontology_read` ·
-`glossary_propose_entities`.** 🔴 The `compose` role has **no qualifying tool** —
-`composition_write_prose`/`composition_get_prose` have 0 sessions — so the step where the co-writer
-produces prose has never been taken in a recorded session. That is a gap, not coverage.
+`glossary_propose_entities`.** 🔴 **A first derivation reported the `compose` role as having no qualifying tool. That was WRONG
+and is corrected:** `compose_prose` serves it at **2 sessions / 4 calls / 100% ok**, and was
+invisible because the search ran over the FEDERATED snapshot alone — §4 scopes rung 2 to *"all
+324"*, and the 9 chat-service-local tools are not in that file. What remains is a **decision, not a
+gap**: `compose_prose` is the only tool for the role the PO named as the point of the journey, and
+it sits below the reach floor (2 vs 3). **Open: does a role's only tool join the set regardless of
+reach?**
 
 **Exit:** a tool that does not implement the pattern **cannot be released**, proven by injection;
 **the ESSENTIAL SET above is admitted through the contract** (2/10 today);

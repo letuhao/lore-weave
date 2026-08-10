@@ -4665,11 +4665,21 @@ of a member.
 `glossary_search` · `book_chapter_create` · `book_chapter_save_draft` · `plan_propose_spec` ·
 `glossary_book_ontology_read` · `glossary_propose_entities`.
 
-🔴 **AND THE `compose` ROLE HAS NO QUALIFYING TOOL — reported, not silently dropped.**
-`composition_write_prose` and `composition_get_prose` have **0 sessions and 0 calls**: the step
-where the co-writer actually produces prose has never been taken in a recorded session. Either the
-role maps to the wrong tools or that part of the product is not live yet. **It is not coverage**,
-and CP-5's exit cannot claim the journey is served until it is answered.
+🔴🔴 **THE `compose` FINDING WAS MINE, AND IT WAS WRONG — CORRECTED SAME DAY.** The first
+derivation reported *"the step where the co-writer produces prose has never been taken in a
+recorded session"*. **It has.** The tool is **`compose_prose` — 2 sessions, 4 calls, 100% ok** —
+and it was invisible because the role predicate named only `composition_*` **and because the
+catalogue being searched was the FEDERATED snapshot alone.** §4 scopes rung 2 to *"all 324"*: 315
+federated plus the **9 chat-service implements itself**, and the snapshot holds only the 315. So
+the derivation was measuring a population that structurally excluded the co-writer's own tool.
+`catalogue()` now unions the local tools and **raises rather than degrading** if it cannot read
+them, because a partial catalogue is exactly how this finding was manufactured.
+
+**What survives the correction is a real question, not a gap:** `compose_prose` is the ONLY tool
+serving the role the PO named as the point of the journey, it works (100%), and it sits **below the
+reach floor at 2 sessions vs 3**. The floor exists to reject noise — it caught `plan_compile` at 1
+session and 0% — and 2 sessions genuinely cannot distinguish a member from noise on reach alone.
+**Whether a role's ONLY tool joins the set regardless of reach is a product call, and it is open.**
 
 🔴 **The set is also a defect list.** Four of the ten are below 65% success — `tool_list` **34.7%**
 (the repeat-loop, 5.7), `glossary_search` 38.2%, `book_chapter_save_draft` 40.6%,

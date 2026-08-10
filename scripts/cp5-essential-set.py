@@ -49,8 +49,15 @@ ROLES: tuple[tuple[str, str, object], ...] = (
      lambda n: n in ("book_chapter_create", "book_chapter_save_draft")),
     ("plan", "turn a goal into an ordered, checkable spec",
      lambda n: n.startswith("plan_")),
+    # 🔴 **`compose_prose`, NOT `composition_write_prose` — and getting this wrong produced a false
+    # finding.** The first version named only `composition_*` tools and reported the compose role
+    # as having NO qualifying tool, i.e. *"the step where the co-writer produces prose has never
+    # been taken"*. It has: `compose_prose` runs it, at 100% success. It was invisible because it
+    # is a chat-service-LOCAL tool and the frozen snapshot holds only the 315 FEDERATED ones —
+    # so the derivation was reading a catalogue that excludes the 9 tools this service implements
+    # itself, which §4's *"all 324"* explicitly includes.
     ("compose", "the co-writer actually producing prose",
-     lambda n: n in ("composition_write_prose", "composition_get_prose")),
+     lambda n: n in ("compose_prose", "composition_write_prose", "composition_get_prose")),
     ("canon", "the glossary the co-writer must stay consistent with",
      lambda n: n.startswith("glossary_")),
 )
@@ -87,9 +94,26 @@ def usage() -> dict[str, dict]:
 
 
 def catalogue() -> set[str]:
+    """The FEDERATED snapshot **plus the tools chat-service implements itself.**
+
+    §4 scopes rung 2 to *"all 324"* — 315 federated and 9 local — and the snapshot holds only the
+    315. Deriving over the snapshot alone made `compose_prose` invisible and produced a false
+    finding that the co-writer's prose step had never been taken.
+    """
     doc = json.loads((ROOT / "contracts" / "agent-runtime-baseline"
                       / "tools-list.snapshot.json").read_text(encoding="utf-8"))
-    return {(t.get("function", t)).get("name") for t in doc["tools"]}
+    federated = {(t.get("function", t)).get("name") for t in doc["tools"]}
+    sys.path.insert(0, str(ROOT / "services" / "chat-service"))
+    try:
+        from app.services.composer import COMPOSE_PROSE_NAME
+        from app.services.tool_discovery import (
+            FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME,
+        )
+        local = {COMPOSE_PROSE_NAME, FIND_TOOLS_NAME, TOOL_LIST_NAME, TOOL_LOAD_NAME}
+    except Exception as exc:  # a partial catalogue is worse than a loud one
+        raise SystemExit(f"cannot read chat-service's local tools ({exc}); the derived set would "
+                         f"silently exclude them, which is how the compose role read as empty")
+    return federated | local
 
 
 def admitted() -> dict[str, str]:
