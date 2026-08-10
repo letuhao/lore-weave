@@ -40,6 +40,9 @@ __all__ = [
     "handle_chapter_deleted",
     "handle_glossary_entity_updated",
     "handle_glossary_entity_merged",
+    "handle_glossary_entity_deleted",
+    "handle_glossary_entity_restored",
+    "handle_glossary_entity_purged",
 ]
 
 logger = logging.getLogger(__name__)
@@ -1363,3 +1366,141 @@ def _uuid(val: str | None) -> UUID | None:
         return UUID(val)
     except (ValueError, AttributeError):
         return None
+
+
+# ── glossary entity LIFECYCLE (plan T27) ──────────────────────────────────────
+#
+# Delete, restore and purge were SILENT in glossary-service: each mutated
+# `glossary_entities` and emitted nothing, so the KG mirror never learned about any of
+# them. The machinery to act on them already existed here — `archive_entity`,
+# `restore_entity` — unused, because nothing ever told it.
+#
+# The restore half is the one that mattered most. A deleted-then-restored entity stayed
+# ARCHIVED in the KG forever while the glossary showed it live, and no retry converged that,
+# because the corrective event did not exist.
+
+
+async def _resolve_kg_project(pool: asyncpg.Pool, book_id) -> tuple | None:
+    """(project_id, user_id) for a book, or None when the book has no KG project.
+
+    None is the expected cold-start answer for most books, not an error — the same
+    convention `handle_glossary_entity_updated` uses.
+    """
+    row = await pool.fetchrow(
+        "SELECT project_id, user_id FROM knowledge_projects WHERE book_id = $1 LIMIT 1",
+        book_id,
+    )
+    return (row["project_id"], row["user_id"]) if row else None
+
+
+async def _lifecycle_preamble(event: EventData, pool: asyncpg.Pool, kind: str):
+    """Shared parse + project resolve + Track-1 guard. Returns (user_id, glossary_id) or None."""
+    payload = event.payload
+    book_id = _uuid(payload.get("book_id"))
+    glossary_entity_id = _uuid(payload.get("glossary_entity_id")) or _uuid(event.aggregate_id)
+    if book_id is None or glossary_entity_id is None:
+        logger.warning(
+            "glossary.entity_%s missing book_id/glossary_entity_id: %s", kind, event.message_id,
+        )
+        return None
+
+    resolved = await _resolve_kg_project(pool, book_id)
+    if resolved is None:
+        logger.debug("No knowledge project for book %s — skipping %s", book_id, kind)
+        return None
+
+    from app.config import settings
+
+    if not settings.neo4j_uri:
+        logger.debug(
+            "glossary.entity_%s: NEO4J_URI unset (Track 1) — skipping %s", kind, glossary_entity_id,
+        )
+        return None
+    _, user_id = resolved
+    return user_id, glossary_entity_id
+
+
+async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_deleted` → archive the KG node.
+
+    Archive rather than delete, because the glossary delete is SOFT: the entity can come
+    back, and `archive_entity` leaves evidence, relations and timeline intact so a restore
+    is a flag flip rather than a re-extraction.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "deleted")
+    if resolved is None:
+        return
+    user_id, glossary_entity_id = resolved
+
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import archive_entity, get_entity_by_glossary_id
+
+    # Exceptions propagate to the consumer's retry path: a transient Neo4j outage SHOULD
+    # redeliver rather than silently drop the propagation. Archiving is idempotent.
+    async with neo4j_session() as session:
+        entity = await get_entity_by_glossary_id(
+            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+        )
+        if entity is None:
+            logger.debug(
+                "glossary.entity_deleted: no KG node for %s — nothing to archive",
+                glossary_entity_id,
+            )
+            return
+        await archive_entity(
+            session, user_id=str(user_id), canonical_id=entity.id, reason="glossary_deleted",
+        )
+    logger.debug("glossary.entity_deleted archived KG entity %s", glossary_entity_id)
+
+
+async def handle_glossary_entity_restored(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_restored` → un-archive the KG node.
+
+    Matches on the archive BREADCRUMB as well as the live anchor: `archive_entity` clears
+    `glossary_entity_id`, so after a delete there is no anchor left to match — which is why
+    this uses `restore_entity_by_glossary_id` rather than the id-keyed `restore_entity`.
+    Written the other way it would find nothing, do nothing, and report success.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "restored")
+    if resolved is None:
+        return
+    user_id, glossary_entity_id = resolved
+
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import restore_entity_by_glossary_id
+
+    async with neo4j_session() as session:
+        entity = await restore_entity_by_glossary_id(
+            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+        )
+    if entity is None:
+        logger.debug(
+            "glossary.entity_restored: no KG node for %s — nothing to restore",
+            glossary_entity_id,
+        )
+        return
+    logger.debug("glossary.entity_restored un-archived KG entity %s", glossary_entity_id)
+
+
+async def handle_glossary_entity_purged(event: EventData, *, pool: asyncpg.Pool) -> None:
+    """`glossary.entity_purged` → hard-delete the KG node and its edges.
+
+    The one lifecycle transition that is not reversible. A Postgres purge does not cascade
+    to Neo4j on its own, so without this the node outlives the entity that justified it and
+    keeps answering RAG queries about something the author permanently removed.
+    """
+    resolved = await _lifecycle_preamble(event, pool, "purged")
+    if resolved is None:
+        return
+    user_id, glossary_entity_id = resolved
+
+    from app.db.neo4j import neo4j_session
+    from app.db.neo4j_repos.entities import purge_entity_by_glossary_id
+
+    async with neo4j_session() as session:
+        deleted = await purge_entity_by_glossary_id(
+            session, user_id=str(user_id), glossary_entity_id=str(glossary_entity_id),
+        )
+    logger.debug(
+        "glossary.entity_purged removed %d KG node(s) for %s", deleted, glossary_entity_id,
+    )

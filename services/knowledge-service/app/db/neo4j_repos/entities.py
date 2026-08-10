@@ -69,6 +69,8 @@ __all__ = [
     "find_gap_candidates",
     "archive_entity",
     "user_archive_entity",
+    "restore_entity_by_glossary_id",
+    "purge_entity_by_glossary_id",
     "restore_entity",
     "delete_entities_with_zero_evidence",
     "list_entities_filtered",
@@ -1164,15 +1166,56 @@ async def resolve_participant_anchors(
 # ── archive / restore ─────────────────────────────────────────────────
 
 
+# `prior_glossary_entity_id` is the BREADCRUMB that makes an archive undoable (plan T27).
+#
+# Clearing `glossary_entity_id` was correct when a glossary delete meant the entity was
+# gone. It is not correct now that delete is SOFT and `glossary.entity_restored` exists: the
+# restore event carries a glossary id, and with the anchor severed there is nothing left to
+# match it against. A restore handler written without this would find no node, do nothing,
+# and report success — the silent no-op this task exists to remove.
+#
+# The captured value is taken in a `WITH` before the SET so it cannot read back the NULL
+# this same clause writes.
 _ARCHIVE_CYPHER = """
 MATCH (e:Entity {id: $id})
 WHERE e.user_id = $user_id
+WITH e, e.glossary_entity_id AS prior_gid
 SET e.archived_at = datetime(),
     e.anchor_score = 0.0,
+    e.prior_glossary_entity_id = prior_gid,
     e.glossary_entity_id = NULL,
     e.archive_reason = $reason,
     e.updated_at = datetime()
 RETURN e
+"""
+
+# Restore by GLOSSARY id, matching either the live anchor or the archive breadcrumb. The
+# `OR` is not defensive padding: an entity archived by the glossary-deleted path has only
+# the breadcrumb, while one archived some other way (or never archived) has only the anchor,
+# and the restore event cannot know which it is looking at.
+_RESTORE_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND (e.glossary_entity_id = $glossary_entity_id
+       OR e.prior_glossary_entity_id = $glossary_entity_id)
+SET e.archived_at = NULL,
+    e.archive_reason = NULL,
+    e.glossary_entity_id = $glossary_entity_id,
+    e.prior_glossary_entity_id = NULL,
+    e.updated_at = datetime()
+RETURN e
+"""
+
+# Purge is permanent, so the node goes with its edges. Matches the breadcrumb too, because a
+# purge always follows a delete — by the time this runs the anchor has already been cleared
+# by the archive, and matching only `glossary_entity_id` would find nothing every time.
+_PURGE_BY_GLOSSARY_ID_CYPHER = """
+MATCH (e:Entity)
+WHERE e.user_id = $user_id
+  AND (e.glossary_entity_id = $glossary_entity_id
+       OR e.prior_glossary_entity_id = $glossary_entity_id)
+DETACH DELETE e
+RETURN count(*) AS deleted
 """
 
 _RESTORE_CYPHER = """
@@ -1302,6 +1345,62 @@ async def restore_entity(
     if record is None:
         return None
     return _node_to_entity(record["e"])
+
+
+# ── glossary lifecycle: restore / purge by glossary id (plan T27) ─────
+
+
+async def restore_entity_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    glossary_entity_id: str,
+) -> Entity | None:
+    """Un-archive the entity anchored to `glossary_entity_id`, re-attaching the anchor.
+
+    The counterpart of `archive_entity` for the `glossary.entity_restored` event. Returns
+    None when no node matches — which is normal, not an error: the book may have no KG
+    project, or the entity may never have been synced.
+
+    Anchor score is deliberately NOT recomputed here, matching `restore_entity`: that is the
+    anchor pass's job, and doing it inline would make one event handler responsible for a
+    scoring policy that has its own schedule.
+    """
+    result = await run_write(
+        session,
+        _RESTORE_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        glossary_entity_id=glossary_entity_id,
+    )
+    record = await result.single()
+    if record is None:
+        return None
+    return _node_to_entity(record["e"])
+
+
+async def purge_entity_by_glossary_id(
+    session: CypherSession,
+    *,
+    user_id: str,
+    glossary_entity_id: str,
+) -> int:
+    """Hard-delete the entity anchored to `glossary_entity_id`, with its edges.
+
+    For `glossary.entity_purged` — the one lifecycle transition that is not reversible, so
+    the KG node goes rather than being archived. A Postgres purge does NOT cascade to Neo4j
+    on its own; without this the node outlives the entity that justified it and keeps
+    answering RAG queries about a thing the author permanently removed.
+
+    Returns the number of nodes deleted (0 is normal — no KG project, or already purged).
+    """
+    result = await run_write(
+        session,
+        _PURGE_BY_GLOSSARY_ID_CYPHER,
+        user_id=user_id,
+        glossary_entity_id=glossary_entity_id,
+    )
+    record = await result.single()
+    return int(record["deleted"]) if record else 0
 
 
 # ── delete_entities_with_zero_evidence ────────────────────────────────

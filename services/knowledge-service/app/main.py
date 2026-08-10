@@ -235,6 +235,9 @@ async def lifespan(app: FastAPI):
             handle_chapter_scenes_reparsed,
             handle_chapter_deleted,
             handle_chat_message_feedback,
+            handle_glossary_entity_deleted,
+            handle_glossary_entity_purged,
+            handle_glossary_entity_restored,
             handle_glossary_entity_updated,
             handle_glossary_entity_merged,
             handle_translation_published,
@@ -292,6 +295,18 @@ async def lifespan(app: FastAPI):
         # :Entity into the winner + entity_alias_map (anti-resurrection).
         dispatcher.register(
             "glossary.entity_merged", handle_glossary_entity_merged,
+        )
+        # T27 — the entity lifecycle. Delete/restore/purge were silent in glossary-service,
+        # so the KG mirror never learned about any of them: a restored entity stayed
+        # archived here forever while the glossary showed it live.
+        dispatcher.register(
+            "glossary.entity_deleted", handle_glossary_entity_deleted,
+        )
+        dispatcher.register(
+            "glossary.entity_restored", handle_glossary_entity_restored,
+        )
+        dispatcher.register(
+            "glossary.entity_purged", handle_glossary_entity_purged,
         )
 
         consumer = EventConsumer(

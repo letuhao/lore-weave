@@ -48,8 +48,9 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T27 — outbox-in-transaction as part of the `*Core` contract.** T26 is done (see its
-entry). T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
+**RESUME: T28 — converge the `curation*Core` family.** T26 and T27 are done (see their entries).
+T27 leaves one deferral, `D-T27-LIVE-REPLAY`: the lifecycle events are proven as outbox rows on a
+live Postgres, but nothing has yet carried one through Redis into Neo4j. T25b (the READ cutover) is parked below on two PO decisions; Phase 4 needs none of them.
 
 **T25b — the READ cutover.** ⚠️ Two decisions are the PO's, listed at the bottom.
 
@@ -1721,12 +1722,54 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `/internal/books/{id}/kg/neighborhood`, which **exists nowhere in the repo** — a dead upstream
   that would 404, and the only consumer `kgAsOfOrDrop` ever had. Out of T26's scope; needs a task.
 
-- [ ] **T27** — Make outbox-in-transaction part of the `*Core` contract
-  `services/glossary-service/internal/api/*.go` — 19 files write `glossary_entities`
-  **Delete, restore AND purge are all silent today.** A design emitting only `entity_deleted` fixes
-  one third and leaves restored entities permanently archived downstream.
-  **Logging:** `DEBUG` command name + entity + emitted event type; `WARN` on a mutation with no
-  outbox row (that WARN is the gate's runtime twin).
+- [x] **T27** — Make outbox-in-transaction part of the `*Core` contract ✅
+  `internal/api/outbox_lifecycle.go` + 4 call sites + 3 consumers + a gate. **4120 python + the
+  full Go api suite (71 s, live DB) green**, 6 new lifecycle tests.
+
+  **Three events, not one — the plan's warning was the design.** `glossary.entity_deleted` /
+  `entity_restored` / `entity_purged`. Emitting only `deleted` would have fixed a third and left
+  the worst half: a deleted-then-restored entity stays **archived downstream forever** while the
+  glossary shows it live, and no retry converges that, because the corrective event does not exist.
+  `purged` is separate from `deleted` because it is a separate fact — soft-delete is reversible and
+  maps to archive, purge is not and maps to a cascading delete.
+
+  **Four silent sites, not three.** `softDeleteEntityCore`, `restoreEntityCore`, `purgeEntity`
+  **and `bulkDeleteEntities`**. Purge had no `*Core` at all, which is part of why it was
+  overlooked — a contract cannot be enforced on code that is not expressed as the thing being
+  contracted. Bulk now drives emission from `RETURNING entity_id`, so the count it reports and the
+  events it emits come from one list and cannot disagree.
+
+  **The downstream half already existed and had never been called.** `archive_entity` /
+  `restore_entity` sat in knowledge-service's Neo4j repo, unused, because nothing told them.
+  Handlers registered for all three.
+
+  ⚠️ **A latent bug the consumer work exposed: `archive_entity` sets `glossary_entity_id = NULL`.**
+  Correct when a glossary delete meant *gone*; wrong now that restore is an event, because the
+  restore payload carries a glossary id and the anchor it would match is severed. A restore handler
+  written the obvious way would find no node, do nothing, and report success — **the silent no-op
+  this task exists to remove**, reintroduced by the fix. Archive now leaves a
+  `prior_glossary_entity_id` breadcrumb and restore/purge match either property.
+
+  **The actor is a parameter, not read from ctx.** The only ctx identity available
+  (`userIDFromCtx`) is set by MCP middleware alone, so a REST delete would have silently recorded
+  itself as a pipeline write — an audit trail that mislabels who deleted an entity is worse than
+  one that says nothing.
+
+  **`scripts/entity-lifecycle-outbox-gate.py`**, wired into pre-commit + `foundation-ci.yml`.
+  Its first clean run flagged `mergeOne` / `revertMergeCore`; both were false positives (a merge
+  announces itself via `entity_merged`, which the KG already consumes), now an **allowlist with
+  stated reasons** where a stale entry is an error.
+
+  **The gate's bite failed twice, and both misses were the gate's own shape.** (1) `_EMITS` lists
+  the `*Core` names so a delegating handler counts — which made every `*Core` match its OWN
+  signature line, so a silenced `restoreEntityCore` still "emitted". (2) After trimming the
+  signature, each function's chunk still swallowed the **doc comment of the next function**, and
+  the comment above `purgeEntityCore` names a function in `_EMITS`. Bodies are now cut at their own
+  closing brace. The behavioural bite (remove the emit) reds 4 tests.
+
+  ⚠️ **Deferred: `D-T27-LIVE-REPLAY`** — the events are asserted as real `outbox_events` rows on a
+  live Postgres, and the consumers are unit-covered, but no run yet carries one end-to-end through
+  Redis into Neo4j. That is the leg where a payload-shape mismatch would first appear.
   (depends on T26)
 
 - [ ] **T28** — Converge the `curation*Core` family

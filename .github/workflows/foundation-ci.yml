@@ -205,6 +205,7 @@ jobs:
       # a stale baseline entry is only detectable against the whole tree.
       - run: python scripts/graph-port-gate.py
       - run: python scripts/gateway-domain-logic-gate.py
+      - run: python scripts/entity-lifecycle-outbox-gate.py
       - run: python scripts/knowledge-http-surface-gate.py
       - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh

@@ -164,7 +164,7 @@ func (s *Server) effectEntityDelete(w http.ResponseWriter, ctx context.Context, 
 		writeError(w, http.StatusUnprocessableEntity, "GLOSS_ACTION_TOKEN", "the entity no longer exists — propose again")
 		return
 	}
-	if _, err := s.softDeleteEntityCore(ctx, claims.BookID, entityID); err != nil {
+	if _, err := s.softDeleteEntityCore(ctx, claims.BookID, entityID, claims.UserID); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "delete failed")
 		return
 	}
@@ -244,7 +244,7 @@ func (s *Server) toolEntityRestore(ctx context.Context, _ *mcp.CallToolRequest, 
 	if err := s.checkGrant(ctx, bookID, userID, grantclient.GrantEdit); err != nil {
 		return nil, entityRestoreOut{}, uniformOwnershipError(err)
 	}
-	found, err := s.restoreEntityCore(ctx, bookID, entityID)
+	found, err := s.restoreEntityCore(ctx, bookID, entityID, userID)
 	if err != nil {
 		return nil, entityRestoreOut{}, errors.New("restore failed")
 	}
