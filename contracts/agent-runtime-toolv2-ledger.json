@@ -222,6 +222,16 @@
         "CONTEXT, from iteration 10's trend: blank-arg failures per AFFECTED session fell from 9.5 in July to 1.06 in August, so this tool's 22-call loop is a shape that can no longer recur"
       ],
       "admitted": false
+    },
+    "composition_get_mine_job": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. All 21 calls are BYTE-IDENTICAL -- one session, one job_id (019f7e7f-8805-...), 21 times, each answered 'not found or not accessible'. That is CP-5.7's repeat subject exactly, and the repeat breaker now short-circuits an unchanged repeat rather than letting it run 21 times. The job id resolves to nothing in generation_job today, so whether it was invented or deleted cannot be told at this remove and the note does not pick. Given a real job the caller owns, the tool returns the full record.",
+      "evidence": [
+        "PHASE 2: 21 calls / 1 session / 2026-07-20, one argument object, one error. The handler is owner-scoped (job.created_by != caller -> uniform_not_accessible), so 'not found' and 'not yours' are deliberately the same answer",
+        "LIVE: composition-service MCP with job 019fc63b-94c0-7ba4-be06-cdf7b8375a39 (status completed, created_by the test user) -> the full job record including params, cost_usd, grounding_available, created_at/updated_at",
+        "CONTROL: the exact job_id from the 21 recorded calls still answers 'not found or not accessible' -- the failure is the id, not the tool"
+      ],
+      "admitted": false
     }
   }
 }
