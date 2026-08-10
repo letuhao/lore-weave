@@ -21,17 +21,27 @@
         "signal_retained": "A repeat MAY be served from cache to remove its cost. It is still COUNTED and the breaker still escalates — removing a repeat's signal is what turned a 393-call loop into 393 silent successes (§3)."
       },
       "error_contract": {
-        "classes": ["invalid_argument", "not_found", "permission_denied"],
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied"
+        ],
         "message": "required on every failure; a failure carrying no message is unrepresentable",
         "retryable_transient": false
       },
       "output_contract": {
         "shape": "{ items: [...], page: { total, returned, is_complete, guidance } }",
-        "emit_paths": ["items[].id"],
+        "emit_paths": [
+          "items[].id"
+        ],
         "note": "Declared so a CP-3 `emits` path is checkable at PLAN-BUILD time rather than failing at execution (§2)."
       },
       "result_completeness": {
-        "fields": ["page.total", "page.returned", "page.is_complete"],
+        "fields": [
+          "page.total",
+          "page.returned",
+          "page.is_complete"
+        ],
         "surface": "The runtime must surface is_complete=false to the model. A truncated page read as the whole answer is the quiet failure this member exists for — it appears in no error bucket."
       },
       "preconditions": {
@@ -40,7 +50,12 @@
         "note": "kind=chapters|revisions|scenes additionally require book_id; kind=revisions requires chapter_id."
       },
       "closed_vocabulary": {
-        "kind": ["books", "chapters", "revisions", "scenes"]
+        "kind": [
+          "books",
+          "chapters",
+          "revisions",
+          "scenes"
+        ]
       }
     },
     "book_read": {
@@ -62,23 +77,175 @@
         "signal_retained": "Cached repeats are still counted and still escalate the breaker."
       },
       "error_contract": {
-        "classes": ["invalid_argument", "not_found", "permission_denied"],
+        "classes": [
+          "invalid_argument",
+          "not_found",
+          "permission_denied"
+        ],
         "message": "required on every failure",
         "retryable_transient": false
       },
       "output_contract": {
         "shape": "{ book | chapter | scene, page: { total, returned, is_complete, guidance } }",
-        "emit_paths": ["book.id"],
+        "emit_paths": [
+          "book.id"
+        ],
         "note": "The DEEPEST id present decides which branch of the shape is returned."
       },
       "result_completeness": {
-        "fields": ["page.total", "page.returned", "page.is_complete"],
+        "fields": [
+          "page.total",
+          "page.returned",
+          "page.is_complete"
+        ],
         "surface": "A chapter body is block-paged; a partially read chapter must not read as the whole chapter."
       },
       "preconditions": {
         "scope": "book",
         "unmet": "not advertised; the withholding is recorded",
         "note": "book_id is required; chapter_id/scene_id are optional and select a deeper read."
+      }
+    },
+    "tool_list": {
+      "_why": "THE most-repeated tool in the corpus: 1,180 repeat-breaker firings across 3 sessions, worst session 566. Its repeat_semantics member is where section 3's rule is most load-bearing.",
+      "identifier_resolution": {
+        "_none": "takes no ref-shaped input; nothing to resolve."
+      },
+      "argument_supplier": {
+        "category": "model — the caller chooses which namespace to list",
+        "include_deprecated": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "The breaker short-circuits before dispatch, so the COST is already gone. The repeat is still COUNTED (repeat_count) and the breaker still ESCALATES; the call records call_outcome=refused, never a silent success. Serving it quietly would turn 566 loud repeats into 566 invisible ones — the metric laundering section 3 exists to refuse."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ tools: [{name, description}], categories: [...] }",
+        "emit_paths": [
+          "tools[].name"
+        ],
+        "note": "Declared so a CP-3 emits path over this result is checkable at plan-build time."
+      },
+      "closed_vocabulary": {
+        "category": [
+          "book",
+          "catalog",
+          "composition",
+          "glossary",
+          "jobs",
+          "knowledge",
+          "meta",
+          "plan",
+          "registry",
+          "research",
+          "settings",
+          "story",
+          "translation",
+          "world",
+          "all"
+        ]
+      }
+    },
+    "tool_load": {
+      "_why": "The other half of discovery. 100% success across 34 sessions — the pair works.",
+      "identifier_resolution": {
+        "_none": "a tool NAME is not an opaque id; it is the registry key."
+      },
+      "argument_supplier": {
+        "name": "model — the tool the caller wants loaded",
+        "names": "model",
+        "category": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "A repeat is counted and escalates exactly as tool_list's does."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "terminal_permanent"
+        ],
+        "message": "required — and it must NAME the unknown tool, because the measured failure is a model loading a name that does not exist (5.10)",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ loaded: [{name, description, inputSchema}], unknown: [...] }",
+        "emit_paths": [
+          "loaded[].name"
+        ],
+        "note": "`unknown` is part of the contract: a partially-satisfied load must say which names it could not find."
+      },
+      "closed_vocabulary": {
+        "category": [
+          "book",
+          "catalog",
+          "composition",
+          "glossary",
+          "jobs",
+          "knowledge",
+          "meta",
+          "plan",
+          "registry",
+          "research",
+          "settings",
+          "story",
+          "translation",
+          "world",
+          "all"
+        ]
+      }
+    },
+    "glossary_search": {
+      "_why": "The search tool the PO named, AND the tool CP-5.3's resolver runs on — so its contract is load-bearing for identifier resolution, not just for its own 21 calls.",
+      "identifier_resolution": {
+        "book_id": "an opaque id, not a name. This tool is itself the RESOLVER for EntityRef (see contracts/agent-runtime-ref-resolvers.json); it does not consume entity names in id fields."
+      },
+      "argument_supplier": {
+        "book_id": "context | plan — the book whose glossary to search; the ambient book on a book-bound surface, otherwise supplied by the plan step that scoped the search",
+        "query": "model — the text to search for; only the caller knows what it is looking for",
+        "limit": "model"
+      },
+      "repeat_semantics": {
+        "kind": "idempotent_read",
+        "cost_removable": true,
+        "signal_retained": "A repeated identical search is counted and escalates; it is never served silently."
+      },
+      "error_contract": {
+        "classes": [
+          "invalid_argument",
+          "permission_denied",
+          "terminal_permanent"
+        ],
+        "message": "required on every failure",
+        "retryable_transient": false
+      },
+      "output_contract": {
+        "shape": "{ entities: [{entity_id, cached_name, cached_aliases, kind_code, tier, rank_score}] }",
+        "emit_paths": [
+          "entities[].entity_id"
+        ],
+        "match_quality": "`tier` is a MATCH-QUALITY signal, not a score: `exact` means the name or an alias matched exactly after normalisation. CP-5.3 keys the resolver on it."
+      },
+      "result_completeness": {
+        "declared_fields": [],
+        "_KNOWN_GAP": "🔴 THIS TOOL DOES NOT REPORT COMPLETENESS, and the contract records that rather than claiming a field that does not exist. Measured 2026-08-10: of 36 tools declaring paging, five never report it, and this is one of them — it returns at most `limit` rows with no is_complete, so a full page is indistinguishable from a truncated one.",
+        "runtime_compensation": "CP-5.3 treats a page whose EXACT matches fill it as `truncated` and REFUSES rather than substituting, because 'exactly one match' is only true if the list was whole.",
+        "closes_when": "glossary-service returns page{total,returned,is_complete}; the resolver then believes it and this gap entry is deleted."
+      },
+      "preconditions": {
+        "scope": "book",
+        "unmet": "not advertised; the withholding is recorded",
+        "note": "book_id resolves from the ambient book on a book-bound surface; without either it fails closed."
       }
     }
   }

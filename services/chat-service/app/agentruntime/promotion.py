@@ -99,8 +99,15 @@ def check_tool_contract(tool_def: dict, *, version: str | None = None,
     applicable = contract.required_for(tool_def)
     known = contract.by_name()
 
+    # 🔴 **A LEADING UNDERSCORE IS AN ANNOTATION, NOT A MEMBER — and rung 2 refusing `_why` is
+    # what surfaced the need.** A contract that cannot carry its own reasoning gets its reasoning
+    # kept somewhere else, which is how a declaration and the argument for it drift apart. The
+    # convention is narrow on purpose: `_`-prefixed keys are ignored, and **anything else unknown
+    # is still refused**, so a typo'd member name (`error_contact`) is caught exactly as before —
+    # that is the case the guard exists for, and it does not start with an underscore.
     declared = tuple(k for k in block if k in known)
-    unknown = tuple(sorted(k for k in block if k not in known))
+    unknown = tuple(sorted(k for k in block
+                           if k not in known and not k.startswith("_")))
     missing: list[str] = []
     for m in applicable:
         if m.name not in block:

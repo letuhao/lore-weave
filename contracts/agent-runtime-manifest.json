@@ -25,6 +25,42 @@
       "lane": "read",
       "tier": "R",
       "cost": 1210
+    },
+    {
+      "id": "glossary_search",
+      "kind": "tool",
+      "owning_service": "glossary-service",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 746
+    },
+    {
+      "id": "tool_list",
+      "kind": "tool",
+      "owning_service": "ai-gateway",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 1022
+    },
+    {
+      "id": "tool_load",
+      "kind": "tool",
+      "owning_service": "ai-gateway",
+      "lifecycle": "admitted",
+      "contract_version": "1.0.0",
+      "admitted_against": "1.0.0",
+      "members": [],
+      "lane": "read",
+      "tier": "R",
+      "cost": 785
     }
   ]
 }

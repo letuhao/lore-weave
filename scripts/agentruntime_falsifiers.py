@@ -1217,6 +1217,11 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_DOMINANT_REAL_FAILURE_IS_A_CONTEXT_VALUE": [
         # Declare the largest real failure class as the MODEL's job: 78 calls / 46 sessions told
         # to supply a value the runtime owes them and does not have.
+        # 🔴 This anchor went ambiguous the moment `glossary_search`'s contract was authored with
+        # the SAME `book_id` wording, and the stale-anchor guard caught it immediately. Anchoring
+        # on a neighbouring line would have reddened a different guard (the plan-bound one), so the
+        # fix was to make the two declarations say different things — which they should, since they
+        # describe different tools' arguments.
         ("contracts/agent-runtime-tool-contracts.json",
          '"book_id": "context | plan — the ambient book when the surface is book-bound, otherwise plan-bound",',
          '"book_id": "model — the caller types it",'),
@@ -1445,8 +1450,14 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     "test_AN_UNKNOWN_MEMBER_IS_REFUSED_RATHER_THAN_IGNORED": [
         # A typo silently satisfies nothing while the producer believes it declared the member.
-        (f"{PKG}/promotion.py", "    unknown = tuple(sorted(k for k in block if k not in known))",
-                                "    unknown = ()"),
+        (f"{PKG}/promotion.py", "if k not in known and not k.startswith(\"_\")))",
+                                "if False))"),
+    ],
+    "test_AN_UNDERSCORE_KEY_IS_AN_ANNOTATION_NOT_A_MEMBER": [
+        # Refuse annotations again, so a contract cannot carry its own reasoning — which is how a
+        # declaration and the argument for it end up in different files and drift.
+        (f"{PKG}/promotion.py", '                           if k not in known and not k.startswith("_")))',
+                                "                           if k not in known))"),
     ],
     "test_THE_CATALOGUE_HAS_NO_UNTYPED_PROPERTY_SO_5_3b_HAS_NO_SUBJECT": [
         # Restore the `.get("type")` artifact that invented 5.3b's 120 untyped properties: read a

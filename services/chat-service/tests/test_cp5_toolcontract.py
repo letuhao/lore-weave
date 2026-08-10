@@ -197,6 +197,15 @@ class TestRung2RefusesToPromoteAnIncompleteContract:
             with pytest.raises(ToolContractViolation, match="error_contract"):
                 promote(self._draft("book_list"), td)
 
+    def test_AN_UNDERSCORE_KEY_IS_AN_ANNOTATION_NOT_A_MEMBER(self):
+        """🔴 Rung 2 refused `_why` on the first real contract authored for `glossary_search`, and
+        it was right to ask. A contract that cannot carry its own reasoning gets that reasoning
+        kept somewhere else, and the declaration and the argument for it drift apart. The
+        convention is deliberately narrow — see the guard below, which still refuses a typo."""
+        td = _satisfying(tool("book_list"))
+        td.get("function", td)["_meta"]["contract"]["_why"] = "the rationale, for a human"
+        assert promote(self._draft("book_list"), td).lifecycle == "admitted"
+
     def test_AN_UNKNOWN_MEMBER_IS_REFUSED_RATHER_THAN_IGNORED(self):
         """A typo that silently satisfies nothing is worse than a rejection: the producer believes
         the member is declared."""

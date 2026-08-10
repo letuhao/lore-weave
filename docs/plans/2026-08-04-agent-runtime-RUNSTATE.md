@@ -4676,9 +4676,20 @@ of a member.
 | canon | `glossary_book_ontology_read` (173 · 78.4%) · `glossary_propose_entities` (168 · 62.3%) |
 | compose | `compose_prose` (2 · 100%) — **below the reach floor, in by the only-tool rule; gated on 5.11 ✅ CLOSED** |
 
-**Admitted through the contract: 2/11.** Remaining for the exit: `tool_list` · `tool_load` ·
-`glossary_search` · `book_chapter_create` · `book_chapter_save_draft` · `plan_propose_spec` ·
-`glossary_book_ontology_read` · `glossary_propose_entities` · `compose_prose` (5.11 ✅ closed — admissible).
+**Admitted through the contract: 5/11 (2026-08-10).** ✅ **`tool_list` · `tool_load` · `glossary_search` admitted 2026-08-10** — the discovery pair and
+the search tool the PO named. Remaining: `book_chapter_create` · `book_chapter_save_draft` ·
+`plan_propose_spec` · `glossary_book_ontology_read` · `glossary_propose_entities` · `compose_prose`
+(the last needs the producer to see chat-service-local tools — `derive.py` reads the FEDERATED
+snapshot, so `compose_prose` is not derivable today).
+
+⭐ **AND AUTHORING THE FIRST REAL CONTRACTS PAID IMMEDIATELY, TWICE.** Rung 2 refused `glossary_search`
+over a `_why` key — a contract that cannot carry its own reasoning gets that reasoning kept
+elsewhere, so `_`-prefixed ANNOTATIONS are now allowed while a typo'd member (`error_contact`) is
+still refused. And `glossary_search`'s `result_completeness` member records a **KNOWN GAP** rather
+than claiming a field that does not exist: it declares that the tool reports no completeness, names
+the runtime compensation (5.6's `truncated` refusal), and states what closes it. **A contract that
+can say *this is missing and here is what we do about it* is worth more than one that can only say
+*this is fine*.**
 
 🔴🔴 **THE `compose` FINDING WAS MINE, AND IT WAS WRONG — CORRECTED SAME DAY.** The first
 derivation reported *"the step where the co-writer produces prose has never been taken in a
