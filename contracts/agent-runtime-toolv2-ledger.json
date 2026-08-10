@@ -308,6 +308,17 @@
         "CORRECTION: the first check queried outline_node and reported 0 arcs before AND after. outline_node holds only kind scene (361) and chapter (228); arcs live in structure_node. The row was found by scanning every uuid id column for the id the tool returned"
       ],
       "admitted": false
+    },
+    "kg_adopt_template": {
+      "state": "proven",
+      "note": "PROVEN LIVE on its mint, which is this tool's job. Both recorded calls (2026-06-25) sent {source_schema_id: 'xianxia-harem'} with no project and were answered 'a project must be in scope for this tool'. The tool is scope=project with project_id OPTIONAL, which is the shape CP-5.8's precondition gate DOES cover -- so today that call is refused before the wire with a message naming kg_project_list/kg_project_create, instead of after it. AND I MADE THE SAME MISTAKE THE MODEL MADE: 'xianxia-harem' is the template's `code`, and the parameter wants the `schema_id` UUID. kg_list_templates returns BOTH fields, so the mapping is discoverable -- but the refusal only says 'source_schema_id must be a valid template id' and does not name which field of the listing to use. Two calls in one session in June is not a subject to build for; it is worth writing down that a human reading the listing reached for the same wrong field.",
+      "evidence": [
+        "PHASE 2: 2 calls / 1 session / 2026-06-25, identical args, 'a project must be in scope'. visibility=legacy (superseded by kg_ontology_propose op=adopt_template)",
+        "LIVE: with project_id AND the real schema_id (019f2713-74a1-778c-bb70-531ae17053c9, read from kg_list_templates) -> a confirm card: descriptor kg_adopt, summary \"adopt template 'Xianxia · Harem' (24 edge types, 8 node kinds, 9 fact types)\", expires_in_s 600, 'no change applied yet'",
+        "THE CONFIRM REFUSED, correctly and informatively: POST /v1/kg/actions/confirm -> KG_ADOPT_NEEDS_GLOSSARY, 'the project's glossary is missing required node-kinds', needs_glossary {book_id: null, kinds: ['concept']}. The throwaway project has no book bound, so there is no glossary to add the kind to -- DQ-8's project/book binding one layer over. NO DATA CHANGE IS CLAIMED for this row: the adopt did not apply",
+        "NOT CLAIMED: my PRE/POST counts of kg_edge_types returned nothing usable (wrong table/column guess), so they are excluded rather than reported -- the mint and the confirm's own responses are the evidence"
+      ],
+      "admitted": false
     }
   }
 }
