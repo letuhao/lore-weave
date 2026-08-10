@@ -329,6 +329,16 @@
         "WHY TWO BOOKS: one sampled result cannot tell a real per-book read from a fixed answer. The echoed book_id differs between the two calls, which is the cheapest available falsifier for that"
       ],
       "admitted": false
+    },
+    "composition_outline_node_create": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Its single call is 'denied by user' -- a human declining the approval card, which iteration 2 now types refused/denied_by_user. ZERO failures in the record; the model's arguments were well-formed (kind=chapter, a real Vietnamese chapter title, status=outline, a real project_id). Worth noting as a CONTRAST to iteration 23's plan_compile: this tool's reply explains the state it just created and what to do next -- 'chapter_id is null, so prose cannot be written into it and the compose panel will not list it. That is fine while outlining. Before drafting, materialise the chapter (PlanForge bootstrap: propose, approve, apply)'. That is what a well-formed answer looks like next to 'validation failed -- compile blocked'.",
+      "evidence": [
+        "PHASE 2: 1 call / 1 session / 2026-07-30, error 'denied by user', args well-formed",
+        "LIVE: composition-service MCP on the throwaway book's project 019fcaa4-864b-7a86-9390-819f5e012fc9 -> the node was created and the reply named the chapter_id=null consequence plus the remedy",
+        "DATA: outline_node rows for that project 2 -> 3, measured either side"
+      ],
+      "admitted": false
     }
   }
 }
