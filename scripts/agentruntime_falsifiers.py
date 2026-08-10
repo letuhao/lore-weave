@@ -1360,6 +1360,38 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{CS}/app/services/stream_service.py", "_pending_record = instrument.stamp_deferred({",
                                                  "_pending_record = ({"),
     ],
+    # ── TOOL-V2 LOOP #3 · a suspension that never resolves ───────────────────────────────────
+    # Each of these turns the resolution back into what it was: nothing, or a guess.
+    "test_AN_APPLIED_EDIT_RESOLVES_TO_DONE": [
+        (f"{CS}/app/services/instrument.py", '    "applied_saved": (CALL_DONE, None),',
+                                             '    "applied_saved": (CALL_FAILED, CALL_UNCLASSIFIABLE),'),
+    ],
+    "test_A_DISMISSAL_IS_REFUSED_NOT_FAILED": [
+        # The denial conflation of loop #2, arriving one path over: the user read the card and
+        # said no, and the row says the tool broke.
+        (f"{CS}/app/services/instrument.py", '    "dismissed": (CALL_REFUSED, "dismissed_by_user"),',
+                                             '    "dismissed": (CALL_FAILED, CALL_UNCLASSIFIABLE),'),
+    ],
+    "test_A_CONFLICT_IS_RETRYABLE_MODIFIED_NOT_TERMINAL": [
+        # Terminal contradicts the instruction the model is given ("propose afresh").
+        (f"{CS}/app/services/instrument.py", '    "applied_conflict": (CALL_FAILED, "retryable_modified"),',
+                                             '    "applied_conflict": (CALL_FAILED, CALL_UNCLASSIFIABLE),'),
+    ],
+    "test_AN_UNKNOWN_OUTCOME_IS_NOT_GUESSED_INTO_A_SUCCESS": [
+        (f"{CS}/app/services/instrument.py",
+         '            str(outcome or "dismissed"), (CALL_FAILED, CALL_UNCLASSIFIABLE))',
+         '            str(outcome or "dismissed"), (CALL_DONE, None))'),
+    ],
+    "test_A_STRUCTURED_RESULT_WITH_NO_OUTCOME_WORD_IS_DONE": [
+        (f"{CS}/app/services/instrument.py", "    if outcome is None and had_result:",
+                                             "    if False:  # falsifier"),
+    ],
+    "test_THE_RESUME_SITE_ACTUALLY_RECORDS_IT": [
+        # Build the row and drop it before persistence — which is worse than never building it,
+        # because the mechanism reads as done everywhere except the table it was for.
+        (f"{CS}/app/services/stream_service.py", "        _c for _c in (_fe_resolved_chunk, _task_chunk) if _c is not None",
+                                                 "        _c for _c in (_task_chunk,) if _c is not None"),
+    ],
     # ── TOOL-V2 LOOP #2 · the user-denial half of the same conflation ────────────────────────
     # Un-stamp the denial site and the chokepoint's fail-closed default takes over — which is
     # exactly what the 21 recorded rows say today.

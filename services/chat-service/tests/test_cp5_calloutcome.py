@@ -87,6 +87,72 @@ class TestASuspensionIsNotAFailure:
         )
 
 
+class TestADeferredCallIsEventuallyRESOLVED:
+    """TOOL-V2 LOOP #3 — the other half of 5.5, and the half that made a working tool unmeasurable.
+
+    5.5 stopped a suspension being recorded as a failure. It left the row saying `deferred`
+    FOREVER: the human's decision arrives on the resume, where it became a `working` tool message
+    the model reads and nothing measurable. "The user applied the edit" and "the user walked away"
+    were the same row — so §1's finding that 38 of 41 deferred calls sit in abandoned turns could
+    never be checked against what the other 3 did.
+
+    🔴 **AND IT MADE A PROVEN-WORKING TOOL READ AS TOTALLY BROKEN.**
+    `glossary_propose_entity_edit` was driven end to end on a throwaway book — glossary_search →
+    glossary_get_entity → propose with a real entity_id, attr_value_id and base_version →
+    apply-edit 200 → the description changed in the database. Its record: **0 successes in 101
+    calls**, because a frontend tool SUSPENDS and `ok:true` is written only where a dispatch
+    returns. A queue ranking tools by success rate therefore puts working tools at the top of its
+    broken list, which is exactly what this loop's own queue did with it.
+    """
+
+    def test_AN_APPLIED_EDIT_RESOLVES_TO_DONE(self):
+        got = instrumented(**instrument.resolve_deferred({"ok": True}, "applied_saved"))
+        assert got["call_outcome"] == instrument.CALL_DONE
+        assert got["resolves_deferred"] is True
+
+    def test_A_DISMISSAL_IS_REFUSED_NOT_FAILED(self):
+        """The user read the diff card and said no. That is the product working, and typing it
+        `failed` is the denial conflation of loop #2 arriving one path over."""
+        got = instrumented(**instrument.resolve_deferred({"ok": False}, "dismissed"))
+        assert got["call_outcome"] == instrument.CALL_REFUSED
+        assert got["refusal_kind"] == "dismissed_by_user"
+        assert "error_class" not in got
+
+    def test_A_CONFLICT_IS_RETRYABLE_MODIFIED_NOT_TERMINAL(self):
+        """The entity genuinely changed since it was read, and the tool's own contract already
+        tells the model to re-read and propose afresh — so this is the one failure here that a
+        retry can fix, and calling it terminal would contradict the instruction the model gets."""
+        got = instrumented(**instrument.resolve_deferred({"ok": False}, "applied_conflict"))
+        assert got["call_outcome"] == FAILED
+        assert got["error_class"] == "retryable_modified"
+        assert "error_class_inferred" not in got
+
+    def test_AN_UNKNOWN_OUTCOME_IS_NOT_GUESSED_INTO_A_SUCCESS(self):
+        got = instrumented(**instrument.resolve_deferred({"ok": False}, "something_new"))
+        assert got["call_outcome"] == FAILED
+
+    def test_A_STRUCTURED_RESULT_WITH_NO_OUTCOME_WORD_IS_DONE(self):
+        """The MCP fan-out shape: a `ui_*` nav resolve feeds a structured result back instead of
+        an outcome word. The call demonstrably completed."""
+        got = instrumented(**instrument.resolve_deferred({"ok": True}, None, had_result=True))
+        assert got["call_outcome"] == instrument.CALL_DONE
+
+    def test_THE_RESUME_SITE_ACTUALLY_RECORDS_IT(self):
+        """The wiring, at the source — the end-to-end proof is the live round trip recorded in
+        the tool-v2 ledger. A mechanism nothing calls is the shape this run keeps finding."""
+        import pathlib
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "instrument.resolve_deferred({" in src, (
+            "the frontend resume records no resolution, so every suspension stays `deferred` "
+            "forever and an applied edit is indistinguishable from an abandoned one"
+        )
+        assert "_fe_resolved_chunk, _task_chunk" in src, (
+            "the resolution row is built but never reaches pre_tool_chunks, so it is never "
+            "persisted — built and dropped is worse than absent, it reads as done"
+        )
+
+
 class TestAUserDenialIsNotAFailureEither:
     """TOOL-V2 LOOP #2 — the same conflation, a third population.
 

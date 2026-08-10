@@ -199,6 +199,58 @@ def stamp_deferred(chunk: dict) -> dict:
     return chunk
 
 
+#: How a FRONTEND tool's suspension RESOLVES, in C-14's vocabulary.
+#:
+#: 🔴 **A DEFERRED CALL IS NEVER UPDATED, SO EVERY SUSPENSION IS PERMANENTLY UNRESOLVED.** 5.5
+#: stopped a suspension being recorded as a failure — correct, and only half the sentence. The row
+#: it leaves says `deferred` forever: the human's decision arrives on the RESUME, where it becomes
+#: a `working` tool message the model reads and *nothing measurable*. So "the user applied the edit"
+#: and "the user walked away" are the same row, and §1's finding that **38 of 41 deferred calls sit
+#: in turns the human never returned to** cannot be checked against what the other 3 did.
+#:
+#: It also makes a whole class of tool unmeasurable. `glossary_propose_entity_edit` is proven to
+#: work end to end — read, propose, apply, 200, the description changes in the database — and it
+#: reads **0 successes in 101 calls**, because a frontend tool suspends and `ok:true` is set only
+#: where a dispatch returns. Any queue ranking tools by success rate puts working tools at the top
+#: of its broken list, which is what this loop's own queue did.
+#:
+#: `applied_conflict` is `retryable_modified`, not transient: the entity genuinely changed, and the
+#: tool's own contract already tells the model to re-read and propose afresh. Anything unrecognised
+#: is left to the chokepoint's fail-closed default rather than guessed into a success.
+FRONTEND_OUTCOME_RESOLUTION: dict[str, tuple[str, str | None]] = {
+    "applied_saved": (CALL_DONE, None),
+    "applied": (CALL_DONE, None),
+    "action_done": (CALL_DONE, None),
+    "accept": (CALL_DONE, None),
+    "confirmed": (CALL_DONE, None),
+    "dismissed": (CALL_REFUSED, "dismissed_by_user"),
+    "applied_conflict": (CALL_FAILED, "retryable_modified"),
+    "applied_error": (CALL_FAILED, CALL_UNCLASSIFIABLE),
+}
+
+
+def resolve_deferred(chunk: dict, outcome: str | None, *, had_result: bool = False) -> dict:
+    """Type the RESOLUTION of a suspended frontend call from the outcome the human produced.
+
+    ``had_result`` is the MCP fan-out shape (a `ui_*` nav resolve feeds a structured result back
+    instead of an outcome word): the call demonstrably completed, so it is `done`.
+    """
+    if outcome is None and had_result:
+        _call, _cls = CALL_DONE, None
+    else:
+        _call, _cls = FRONTEND_OUTCOME_RESOLUTION.get(
+            str(outcome or "dismissed"), (CALL_FAILED, CALL_UNCLASSIFIABLE))
+    chunk["call_outcome"] = _call
+    if _call == CALL_REFUSED:
+        chunk["refusal_kind"] = _cls
+    elif _cls is not None:
+        chunk["error_class"] = _cls
+    # The fact that makes this row joinable to the suspension it resolves. Without it the two are
+    # two independent calls of the same tool and no measurement can pair them.
+    chunk["resolves_deferred"] = True
+    return chunk
+
+
 def stamp_tool_call(
     chunk: dict,
     *,

@@ -8547,6 +8547,9 @@ async def resume_stream_response(
     # Like an approval, its tool result is the REAL execution (call the domain's
     # provide-input tool below once knowledge_client is in scope), NOT the outcome echo.
     is_task = (not is_approval) and bool(susp.pending_tool_call.get("task"))
+    #: The resolution row for a plain frontend suspension — see the block below. `None` on the
+    #: approval and task paths, which record their REAL execution instead.
+    _fe_resolved_chunk: dict | None = None
     if not is_approval and not is_task:
         if result is not None:
             # MCP fan-out (C-NAV): a ui_* nav resolve — feed the structured result
@@ -8561,6 +8564,31 @@ async def resume_stream_response(
             "tool_call_id": tool_call_id,
             "content": tool_result_content(result_payload),
         })
+        # ── TOOL-V2 LOOP #3 · THE OTHER HALF OF CP-5.5 ───────────────────────────────────
+        # 🔴 The human's decision arrived HERE and, until now, went only into `working` — prose
+        # for the model to read, and nothing a measurement can see. The suspension's own row
+        # stays `deferred` forever, so "the user applied the edit" and "the user walked away"
+        # are the same row.
+        #
+        # Measured on `glossary_propose_entity_edit`: proven end to end on a throwaway book —
+        # glossary_search → glossary_get_entity → propose with a real entity_id, attr_value_id
+        # and base_version → apply-edit 200 → the description changes in the database — and it
+        # reads **0 successes in 101 calls**, because a frontend tool suspends and `ok:true` is
+        # written only where a dispatch returns. Any queue ranking tools by success puts working
+        # tools at the top of its broken list. This loop's own queue did exactly that.
+        _fe_resolved_chunk = instrument.stamp_tool_call(
+            instrument.resolve_deferred({
+                "id": f"{tool_call_id}:resolved", "iteration": 0,
+                "tool": str(susp.pending_tool_call.get("name") or ""),
+                "args": susp.pending_tool_call.get("args") or {},
+                # `ok` mirrors the typed outcome for the readers that predate C-14. It is the
+                # derived field here, not the authority — that inversion is the whole row.
+                "ok": outcome in ("applied_saved", "applied", "action_done", "accept",
+                                  "confirmed") or (outcome is None and result is not None),
+                "result": None, "error": None,
+            }, outcome, had_result=result is not None),
+            source=instrument.SOURCE_TOOL,
+        )
 
     # Re-derive session gen_params + tool defs for the 2nd pass.
     session_row = await pool.fetchrow(
@@ -8670,7 +8698,9 @@ async def resume_stream_response(
     # CP-0.3 — carry the ext-task dispatch into the recorded history. `pre_tool_chunks` is the
     # existing channel for "a tool ran before the loop re-entered"; the task path simply never used
     # it, which is why its execution was invisible rather than mislabelled.
-    pre_tool_chunks: list[dict] | None = [_task_chunk] if _task_chunk is not None else None
+    pre_tool_chunks: list[dict] | None = [
+        _c for _c in (_fe_resolved_chunk, _task_chunk) if _c is not None
+    ] or None
     if is_approval:
         _appr = _approval_args if isinstance(_approval_args, dict) else {}
         _tool_name = str(_appr.get("tool") or susp.pending_tool_call.get("name") or "")

@@ -155,6 +155,36 @@ which §7 says is not a subject; weakening INV-K1 is a safety decision that is n
 *Would clear it:* traffic after the tool is actually reachable — the corpus cannot say how often
 this bites, because the tool has never been permitted to run.
 
+### DQ-4 · A resumed turn OVERWRITES its own first pass's tool calls
+
+*Raised by:* iteration 3 · *Observed directly*, not inferred: session
+`019fec80-…-e004` held three rows at `sequence_num 2` — `glossary_search` (done),
+`glossary_get_entity` (done), `glossary_propose_entity_edit` (deferred). After the resume it held
+**one**. The upsert does `tool_calls = EXCLUDED.tool_calls`, a straight overwrite, and a resumed
+turn builds a fresh `tool_calls_history`, so the first pass's calls are gone.
+
+**This corrupts the loop's own evidence, in a direction that flatters nothing and misleads
+everything.** Every suspension a human ACTUALLY CAME BACK TO has its `deferred` row erased by the
+resume; only the abandoned ones survive to be counted. So §1's *"38 of 41 deferred calls sit in
+turns the human never returned to"* is very likely an artefact of this, not a finding about users.
+
+The corpus is consistent with that and **cannot measure the size of it**, which is the worst
+property a data loss can have. 53 `deferred` rows survive across 6 tools (42 of them
+`glossary_propose_curation`); the resumed ones left no row to count, so the loss is invisible
+rather than merely large. The denominator here is not under-reported — it does not exist.
+It also means the reads that produced a call's arguments vanish from the record whenever the call
+suspended — which is exactly the sequence iteration 3 needed to see.
+
+**Why it is recorded and not fixed here:** the fix is a MERGE rather than an overwrite, and this
+row is upserted several times per turn *and* across turns. The file's own comment says both
+previous merge strategies for the sibling segment columns were wrong in opposite directions
+(*"COALESCE erased the resumed turn's earlier passes, and the concatenation that fixed it
+duplicated every pass a checkpoint had already written"*), which is why `segment_merge_sql` exists
+and is interpolated at both upsert sites. `tool_calls` needs the same treatment and the same
+dedupe-by-id care, and doing it badly silently duplicates or deletes recorded calls.
+*Would clear it:* an id-keyed merge with a test that a resumed turn keeps its first pass, both
+upsert sites covered.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
