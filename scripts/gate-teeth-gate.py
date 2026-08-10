@@ -31,6 +31,7 @@ gates get commented out instead of fixed.
 """
 from __future__ import annotations
 
+import ast
 import importlib.util
 import re
 import sys
@@ -96,7 +97,18 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: A fingerprint whose subject is gone is a standing exemption for a line nobody has written
 #: yet. Pruned to 37, and the same run surfaced that the gate had been RED on `main` since
 #: 2026-08-01 over two live ML-2 violations — fixed at the source rather than baselined.
-NO_PROOF_BASELINE = 48
+#:
+#: 2026-08-10 (fourth move): 48 -> 47, and NOT because a gate gained a proof. **A gate that
+#: already had one was being reported as unproven.** `deferral-gate.py` ships a `--self-test`
+#: with eleven bite cases, and the docstring stripper deleted 87% of its source (40246 -> 5421
+#: chars) before the search ran — `_PY_DOCSTRING` pairs up ANY two triple-quote marks, so the
+#: text between two unrelated ones vanishes with them. Python is now PARSED
+#: (`_py_selftest_proof`): the AST knows which strings are docstrings, so the same two shapes
+#: are decided correctly. Measured across all 97 — one gate GAINED certification, none lost.
+#: A detector that misses an existing proof is a false accusation, and this file's own
+#: `_SELFTEST` note says the cost: pressure to bolt on a second, redundant proof to satisfy a
+#: regex. It also inflates this baseline, so the worklist contained a gate already finished.
+NO_PROOF_BASELINE = 47
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
@@ -168,8 +180,97 @@ _SELFTEST = re.compile(
     r"|--self[-_]?test\b",                # either:  a CLI flag
     re.I,
 )
+#: Just the CLI flag, for the AST path where "is this a docstring" is already decided.
+_FLAG_ONLY = re.compile(r"--self[-_]?test\b", re.I)
+
 _PY_DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')
 _HASH_COMMENT = re.compile(r"(?m)^\s*#.*$")
+
+
+def _py_selftest_proof(src: str) -> bool:
+    """Does this Python source DEFINE or EXPOSE a self-test? Parsed, not regexed.
+
+    # Why the regex had to go
+
+    `_executable_text` strips docstrings with a non-greedy match between *any*
+    two triple-quote marks (see `_PY_DOCSTRING`), with no idea which ones open a
+    docstring. It pairs them up across the whole file, so the text between two
+    unrelated quotes disappears with them. On `deferral-gate.py`
+    that deleted **87% of the source** (40246 -> 5421 chars), `def self_test`
+    included, and the gate was reported as carrying no proof while shipping a
+    `--self-test` with eleven bite cases.
+
+    That is a FALSE ACCUSATION, and this file's own `_SELFTEST` comment names
+    the damage: *"the pressure it creates is to bolt on a second, redundant
+    proof to satisfy a regex."* It also inflates `NO_PROOF_BASELINE`, so the
+    worklist contains gates that are already done.
+
+    The AST knows what a docstring is, so ask it. A proof is either a
+    `def self_test` / `def selftest`, or a `--self-test` / `--selftest` string
+    that is **not** a docstring — the same two shapes as before, decided
+    correctly. Syntax errors fall back to the regex path rather than crashing
+    the gate on a file it merely cannot parse.
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return False
+
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and body and isinstance(body[0], ast.Expr) \
+                and isinstance(body[0].value, ast.Constant) \
+                and isinstance(body[0].value.value, str):
+            docstrings.add(id(body[0].value))
+
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and \
+                re.fullmatch(r"self[_-]?test", node.name, re.I):
+            return True
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and id(node) not in docstrings and _FLAG_ONLY.search(node.value):
+            return True
+    return False
+
+
+def _py_selftest_flag(src: str) -> str | None:
+    """The self-test flag this Python file actually ACCEPTS, from the AST.
+
+    Split from the proof check because `--verify-proofs` needs the spelling, not
+    a yes/no — and because reading it any other way put the two out of step the
+    moment the proof moved to the AST. `deferral-gate.py` was certified via the
+    parser while `_selftest_flag` still went through the corrupted stripper,
+    which had deleted the flag along with 87% of the file: certified as proven,
+    and reported as exposing nothing to run. **The proof and the runner have to
+    read the same thing**, which is the adjacent-decision shape — each half
+    correct on its own.
+
+    A docstring is excluded for the same reason as in the proof: a file
+    documenting `--self-test` while implementing `--selftest` would otherwise be
+    handed the wrong spelling and answer `exit 2`, which reads as a broken
+    self-test rather than a bad guess (`BDR-75`).
+    """
+    try:
+        tree = ast.parse(src)
+    except SyntaxError:
+        return None
+    docstrings: set[int] = set()
+    for node in ast.walk(tree):
+        body = getattr(node, "body", None)
+        if isinstance(node, (ast.Module, ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)) \
+                and body and isinstance(body[0], ast.Expr) \
+                and isinstance(body[0].value, ast.Constant) \
+                and isinstance(body[0].value.value, str):
+            docstrings.add(id(body[0].value))
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Constant) and isinstance(node.value, str) \
+                and id(node) not in docstrings:
+            m = _FLAG_ONLY.search(node.value)
+            if m:
+                return m.group(0)
+    return None
 
 
 def _executable_text(path: Path, src: str) -> str:
@@ -291,8 +392,14 @@ def teeth_proof(rel: str, path: Path) -> str | None:
     # `return "built-in selftest"` string and certified itself. Third instance of that shape in
     # one cycle (enforcement-claims-gate named contracts in its docstring; the S12 gate greened
     # on its own motivating example). A gate must never be its own witness.
-    if path.name != Path(__file__).name and _SELFTEST.search(_executable_text(path, src)):
-        return "built-in selftest"
+    # Python is PARSED (see `_py_selftest_proof`); shell still uses the regex,
+    # where there is no docstring notion to get wrong.
+    if path.name != Path(__file__).name:
+        if path.suffix == ".py":
+            if _py_selftest_proof(src):
+                return "built-in selftest"
+        elif _SELFTEST.search(_executable_text(path, src)):
+            return "built-in selftest"
     if path.name in DELEGATES_PROOF:
         target = ROOT / "scripts" / (path.stem + ".py")
         # The claim must still be TRUE: the named target has to exist and carry the
@@ -376,9 +483,12 @@ def verify_proofs(invoked: dict) -> int:
         run_path = path
         if proof.startswith("delegated"):
             run_path = ROOT / "scripts" / (path.stem + ".py")
-        flag = _selftest_flag(_executable_text(run_path,
-                                               run_path.read_text(encoding="utf-8",
-                                                                  errors="ignore")))
+        raw = run_path.read_text(encoding="utf-8", errors="ignore")
+        # Python via the AST, so the runner and `teeth_proof` read the SAME
+        # thing; shell via the regex over stripped text, where there is no
+        # docstring notion to get wrong.
+        flag = (_py_selftest_flag(raw) if run_path.suffix == ".py"
+                else _selftest_flag(_executable_text(run_path, raw)))
         if flag is None:
             print(f"FAIL — scripts/{rel} is certified '{proof}' and exposes no self-test "
                   f"flag to run. The certification matched text that is not a flag.")

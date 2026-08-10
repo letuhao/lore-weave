@@ -119,6 +119,53 @@ def test_only_enforcement_scripts_count_as_gates(name, is_gate):
     assert bool(gtg._IS_GATE.search(name)) is is_gate
 
 
+# ── the Python proof detector, PARSED rather than regexed ─────────────────────────────────
+
+def test_the_python_proof_detector_reads_the_ast_not_the_text():
+    """Each shape ALONE, which the real tree cannot test.
+
+    Every proven gate in the repo carries BOTH a `def self_test` and a
+    `--self-test` flag, so breaking either one on the live tree changes no
+    count — measured. The arms are only separable on synthetic source, and an
+    arm nothing can distinguish is an arm nobody has checked.
+    """
+    # each shape on its own
+    assert gtg._py_selftest_proof("def self_test():\n    return 0\n")
+    assert gtg._py_selftest_proof("def selftest():\n    return 0\n")
+    assert gtg._py_selftest_proof('import sys\nif "--self-test" in sys.argv:\n    pass\n')
+    assert gtg._py_selftest_proof('p.add_argument("--selftest", action="store_true")\n')
+    # and neither
+    assert not gtg._py_selftest_proof("def main():\n    return 0\n")
+
+
+def test_a_docstring_mention_is_not_a_proof_but_a_deep_definition_is():
+    """The exact defect the AST replaced, in both directions.
+
+    `_PY_DOCSTRING` matched between ANY two triple-quote marks, so it deleted
+    the text between two unrelated ones. On `deferral-gate.py` that removed 87%
+    of the file — `def self_test` included — and the gate was reported as
+    carrying no proof while shipping a `--self-test` with eleven bite cases.
+    """
+    claim = '"""This gate has a --self-test built in."""\ndef main():\n    return 0\n'
+    assert not gtg._py_selftest_proof(claim), "a docstring MENTION is a claim, not a proof"
+
+    # A real definition sitting AFTER a docstring that itself contains triple
+    # quotes — the shape that defeated the regex. The AST does not care.
+    tricky = (
+        '"""Module doc.\n\n'
+        "    Explains a pattern written as ''' in prose, which used to re-pair\n"
+        "    the quote marks and swallow everything below.\n"
+        '"""\n'
+        "def helper():\n    return 1\n\n"
+        "def self_test():\n    return 0\n"
+    )
+    assert gtg._py_selftest_proof(tricky), \
+        "a real `def self_test` below a quote-confusing docstring must still count"
+
+    # Unparseable source must not crash the gate on a file it merely cannot read.
+    assert not gtg._py_selftest_proof("def broken(:\n")
+
+
 # ── the live repo state this gate is asserting ────────────────────────────────────────────
 
 def test_every_ci_invoked_gate_in_this_repo_can_fail():
