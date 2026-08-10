@@ -145,6 +145,18 @@
         "WHAT WOULD UNBLOCK IT: a composition project the caller can edit, a compiled plan run in it, then op=create and op=start. Worth doing against the SUCCESSOR (composition_authoring_run_manage), since both legacy siblings are superseded by it"
       ],
       "admitted": false
+    },
+    "book_steering_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and the investigation produced a methodology correction that matters more than the row (D-7). Its 7 calls / 2 sessions / 2026-08-04 all sent book_id='all' -- a QUANTIFIER, which refresolve's own docstring already names as the class no resolver can serve 'because the parameter cannot express it (W3)'. Both sessions had NO BOOK IN SCOPE, so _inject_context_ids had nothing to inject: correct behaviour, not a defect. The session titles say what the user actually wanted -- 'list categories and count books' -- a cross-book question asked of a per-book tool. The repeated-failure breaker fired at 2, so the loop was capped rather than run to 19 the way jobs_get's did in July. THE CORRECTION (D-7): I started to read the wider population -- 214 calls / 12 tools / 44 sessions carry a non-UUID book_id, 144 of them 'current_book_id_placeholder' -- as a live defect. It is not. In August, in BOOK-SCOPED sessions, 121 of those calls SUCCEEDED: glossary_search x52, glossary_book_ontology_read x51, glossary_get_entity x13. Those tools cannot succeed on that string, so the injector replaced it on the wire and the record kept the model's original. The recorded args are what the MODEL sent, never necessarily what was DISPATCHED.",
+      "evidence": [
+        "PHASE 2: 7 calls / 2 sessions / 2026-08-04. 4 x book_id='all' -> 'book_id must be a UUID'; 2 x the repeated-failure breaker; 1 x a typo'd key ('booktext') -> missing required book_id. Neither session had a book in scope (chat_sessions.book_id IS NULL)",
+        "LIVE: book-service MCP :8205. book_steering_set created rule 019fed53-f8c6-7fdf-b478-f81ce68d4c1c on throwaway book 019fcaa4, then book_steering_list returned it -- total 0 before, total 1 after, with the row's body, name, enabled and inclusion_mode intact. An EMPTY read would not have proven anything, which is why the rule was written first",
+        "CONTROL: book_steering_list with book_id='all' still answers 'book_id must be a UUID', the recorded failure verbatim",
+        "D-7, measured: 121 August calls in book-scoped sessions recorded a placeholder book_id and SUCCEEDED. Every finding this loop has made so far reads an argument off a FAILED call whose error names that same argument, so they are unaffected -- but the caveat is now written down before it costs an iteration",
+        "NOT BUILT: refusing a non-UUID book_id pre-dispatch would be CP-5.8-shaped, but CP-5.8 deliberately does NOT gate scope=book -- book_list is itself scope=book and is how a model finds a book, so gating it would make books unreachable. The quantifier class is 36 calls / 7 tools / 6 sessions and has no expressible answer in a per-book parameter"
+      ],
+      "admitted": false
     }
   }
 }

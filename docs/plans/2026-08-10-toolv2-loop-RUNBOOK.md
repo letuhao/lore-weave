@@ -323,6 +323,30 @@ in favour of `confirm_action(domain="glossary")` — a consolidation decision, n
 
 ## Debt this loop surfaced but did not absorb
 
+### D-7 · The recorded `args` are what the MODEL sent, not what was DISPATCHED
+
+*Nearly corrupted iteration 13's reading, and would corrupt any phase 2 that does not know it.*
+
+`_inject_context_ids` replaces a malformed `book_id` with the session's real one, and the recorded
+`tool_calls` row keeps **the model's original string**. The repair is invisible in the corpus.
+
+The proof is unambiguous: in August, in book-scoped sessions, **121 calls recorded
+`book_id: "current_book_id_placeholder"` and SUCCEEDED** — `glossary_search` ×52,
+`glossary_book_ontology_read` ×51, `glossary_get_entity` ×13. Those tools cannot succeed on that
+string, so the value on the wire was not the value in the record.
+
+**What this means for every iteration's phase 2:** a claim of the form *"the model sent X"* read
+off `tc.args` is the model's ORIGINAL argument. Where the call FAILED with an error naming X the
+two agree — the repair either did not fire or did not help — and every finding this loop has made
+so far is of that form, so they stand. Where the call SUCCEEDED, the recorded argument may never
+have reached the tool, and counting those as "the model gets this wrong" over-counts the defect
+while under-counting the repair that already fixes it.
+
+*Would clear it:* record the dispatched arguments alongside the model's, the way `resolution` and
+`plan_supplied` already keep the substituted and the typed value apart — the same reasoning, one
+repair over. Until then, split phase-2 populations by outcome before drawing any conclusion from
+an argument value.
+
 ### D-6 · A `proven` row's LIVE evidence can stop being true without anyone touching the code
 
 *Found by tripping over it in iteration 11.* Iteration 1's fix
