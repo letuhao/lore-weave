@@ -264,6 +264,16 @@
         "DATA: plan_propose_spec (mode=rules) on throwaway book 019fcaa4 with markdown written from that message -> run 019fed7d-dab9, spec artifact parsing one arc and two events; plan_compile on it -> linked_versions {arc:arc_1: 1, chapter:arc_1_event_1: 1, chapter:arc_1_event_2: 1}. Falsifier: the same call against the old spec still blocks, and before this fix the message could not have told anyone why"
       ],
       "admitted": false
+    },
+    "plan_run_pass": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, on the very run iteration 23 had just created. Its 3 calls are 2 Tier-A approval cards (pending:true -- suspensions, not failures) and ONE genuine failure whose book_id, 019f9f41-5f71-75c5-b23f-18984376efe1, is a GLOSSARY ENTITY id -- checked against all three tables rather than guessed. That is a defect class distinct from the one iteration 5 gates: a single well-formed UUID of the WRONG KIND. The duplicate-identifier gate cannot see it, correctly -- only one field carries that value and the other id differs -- and nothing in the runtime can tell a book id from an entity id without a lookup. One of the approval cards also carried run_id='arc_1_setup_001', a synthetic name rather than an id, which is iteration 3's placeholder family.",
+      "evidence": [
+        "PHASE 2: 3 calls / 1 session / 2026-08-02. Two kind=tool_approval suspensions, one 'not found or not accessible'",
+        "ID CLASSIFIED: 019f9f41-5f71-75c5-b23f-18984376efe1 is 0 books, 0 composition projects, 1 glossary entity",
+        "LIVE: plan_run_pass on run 019fed7d-dab9 (created by iteration 23's proposal) with pass_id=motifs -> the full pass state: per-pass records with blockers ['scenes','cast'], pass_cursor 0, runnable_now ['motifs','cast']"
+      ],
+      "admitted": false
     }
   }
 }
