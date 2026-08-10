@@ -165,6 +165,32 @@ CALL_DONE = "done"
 CALL_DEFERRED = "deferred"
 
 
+#: A call the RUNTIME declined to make. `refused` is already a member of C-14's vocabulary and this
+#: is what it is for.
+CALL_REFUSED = "refused"
+
+
+def stamp_refused(chunk: dict, kind: str) -> dict:
+    """Mark a call a BREAKER short-circuited. The tool never ran and did not fail.
+
+    🔴 **MEASURED: 2,189 of 4,181 recorded tool failures — 52.4% — are our own breaker prose.**
+    §1's failure corpus is more than half runtime refusals wearing a tool's name, which is the
+    same conflation as a suspension recorded `ok:false` (5.5), a third time.
+
+    This is §3's rule made structural. The repeat breaker **already removes the COST** — it
+    short-circuits before the dispatch — so the only question left is the SIGNAL, and a refusal
+    typed as a failure is a signal pointing at the wrong thing. It is not silenced: the repeat
+    count keeps rising and the breaker keeps escalating. *The contract may remove a repeat's cost;
+    it may never remove its signal.*
+
+    `refusal_kind` keeps the breakers separable from each other, so "the model looped on an
+    unchanged read" and "the model re-ran a no-op write" never merge into one number either.
+    """
+    chunk["call_outcome"] = CALL_REFUSED
+    chunk["refusal_kind"] = kind
+    return chunk
+
+
 def stamp_deferred(chunk: dict) -> dict:
     """Mark a call that SUSPENDED awaiting a human. Called at the suspend sites, where the fact is
     structural — never inferred later from the absence of an error, which is what made a suspension

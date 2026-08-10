@@ -4639,10 +4639,10 @@ async def _stream_with_tools(
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": _noop_err}),
                     })
-                    yield {"tool_call": {
+                    yield {"tool_call": instrument.stamp_refused({
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": False, "result": None, "error": _noop_err,
-                    }}
+                    }, "idempotent_noop_write")}
                     continue
                 _prior = read_call_results.get(_read_key) if _read_key is not None else None
                 if _prior is not None and _prior[1] >= REPEAT_READ_CAP:
@@ -4661,10 +4661,14 @@ async def _stream_with_tools(
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": _repeat_err}),
                     })
-                    yield {"tool_call": {
+                    yield {"tool_call": instrument.stamp_refused({
                         "id": c["id"], "iteration": iteration, "tool": c["name"],
                         "args": args_obj, "ok": False, "result": None, "error": _repeat_err,
-                    }}
+                        # §3 — the COST is already gone (this short-circuits before dispatch).
+                        # The SIGNAL stays: the repeat count keeps rising and the breaker keeps
+                        # escalating. What changes is that it stops being typed as a TOOL failure.
+                        "repeat_count": _prior[1] + 1,
+                    }, "repeated_read")}
                     continue
 
                 # D-BLANK-TOOL-ARGS-LOOP — same cap as the find_tools breaker

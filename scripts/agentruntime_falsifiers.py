@@ -1065,6 +1065,52 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.7: repeat semantics --------------------------------------------------------------
+    "test_A_BREAKER_SHORT_CIRCUIT_IS_REFUSED": [
+        # Back to 52.4% of the failure corpus being our own breaker prose typed as tool failures.
+        (f"{CS}/app/services/instrument.py", '    chunk["call_outcome"] = CALL_REFUSED',
+                                             '    chunk["call_outcome"] = CALL_FAILED'),
+    ],
+    "test_REFUSED_IS_ALREADY_IN_THE_DECLARED_VOCABULARY": [
+        (f"{CS}/app/services/instrument.py", 'CALL_REFUSED = "refused"',
+                                             'CALL_REFUSED = "short_circuited"'),
+    ],
+    "test_THE_BREAKERS_STAY_SEPARABLE_FROM_EACH_OTHER": [
+        # Merge the breakers into one number, so a looping read and a re-run no-op write are the
+        # same defect again.
+        (f"{CS}/app/services/instrument.py", '    chunk["refusal_kind"] = kind',
+                                             '    chunk["refusal_kind"] = "breaker"'),
+    ],
+    "test_A_REFUSAL_CARRIES_NO_ERROR_CLASS": [
+        # Ask whether a refusal is retryable — where retrying is the thing being refused.
+        (f"{CS}/app/services/instrument.py", "    if _outcome == CALL_FAILED:",
+                                             "    if _outcome in (CALL_FAILED, CALL_REFUSED):"),
+    ],
+    "test_AN_ORDINARY_FAILURE_IS_STILL_FAILED": [
+        # Swallow real failures into the refusal bucket — removing the SIGNAL to remove the cost,
+        # which is precisely what §3 forbids.
+        (f"{CS}/app/services/instrument.py",
+         '        _outcome = CALL_DONE if chunk.get("ok") is True else CALL_FAILED',
+         "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else CALL_REFUSED"),
+    ],
+    "test_THE_REPEAT_COUNT_RIDES_THE_RECORD": [
+        (f"{CS}/app/services/stream_service.py", '                        "repeat_count": _prior[1] + 1,',
+                                                 "                        # count dropped"),
+    ],
+    "test_BOTH_NAMED_BREAKERS_ARE_WIRED": [
+        # Wire one of two sites — the shape this run keeps finding.
+        (f"{CS}/app/services/stream_service.py", '                    }, "idempotent_noop_write")}',
+                                                 "                    })}"),
+    ],
+    "test_THE_BREAKER_STILL_ESCALATES": [
+        (f"{CS}/app/services/stream_service.py", "if _prior is not None and _prior[1] >= REPEAT_READ_CAP:",
+                                                 "if False:"),
+    ],
+    "test_NOTHING_IS_SERVED_FROM_A_CACHE": [
+        (f"{CS}/app/services/stream_service.py", "read_call_results: dict[str, tuple[str, int]] = {}",
+                                                 "read_call_results: dict[str, object] = {}"),
+    ],
+
     # -- CP-5.4: the argument supplier ---------------------------------------------------------
     "test_THE_DOMINANT_REAL_FAILURE_IS_A_CONTEXT_VALUE": [
         # Declare the largest real failure class as the MODEL's job: 78 calls / 46 sessions told
