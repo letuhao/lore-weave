@@ -188,6 +188,17 @@
         "AND THE ROUND TRIP: resumed with outcome=applied_saved -> call_4274648666863492:resolved | propose_edit | done | resolves_deferred=true. That is iteration 3's resolution mechanism working on a THIRD tool (after glossary_propose_entity_edit and confirm_action), and this tool's first recorded success"
       ],
       "admitted": false
+    },
+    "translation_list_versions": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Both calls are args:{} on 2026-07-08 -- the same blank-argument class, on the same day, as jobs_get's 19-call loop in iteration 10, and capped since: blank-arg failures per AFFECTED SESSION went from 9.5 in July to 1.06 in August. Given its two required ids the tool answers with a well-formed result that ECHOES the chapter it was asked about and reports zero languages -- an `empty`, not a failure. No chapter that still has translation versions belongs to a book that still exists, so a non-empty read was not available; the defect under test is blank arguments, and a well-formed answer to correct arguments is what disproves it.",
+      "evidence": [
+        "PHASE 2: 2 calls / 2 sessions / 2026-07-08, both args:{}, one error naming both missing required ids",
+        "LIVE: translation-service MCP :8210 with throwaway book 019fcaa4 and its first active chapter -> {chapter_id: 019fcab8-8261..., languages: [], detail: summary, total: 0, returned: 0, truncated: 0}",
+        "CONTROL: args:{} still answers 'invalid arguments ... book_id: Field required ...; chapter_id: Field required ...', the recorded failure verbatim",
+        "CHECKED, not assumed: active_chapter_translation_versions has rows, but all three candidate chapters belong to books that no longer exist in loreweave_book, so the empty read is the environment's state rather than the tool's"
+      ],
+      "admitted": false
     }
   }
 }
