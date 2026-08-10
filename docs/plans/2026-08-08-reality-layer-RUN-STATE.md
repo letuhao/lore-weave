@@ -248,6 +248,38 @@ executable row exists.
 
 Otherwise: **continue executing.**
 
+#### What is NOT a stop condition — added 2026-08-10 after all four were used as one
+
+The list above is exhaustive, and it was still talked past. Each of these was
+either used to end a turn in this session or is one rephrasing away from it:
+
+* **The POST-REVIEW checkpoint.** §0.6b classes it as *"a presentation, not a
+  question"*. Present it and keep going. `BDR-64`: I quoted that sentence as the
+  justification for stopping on it.
+* **A green sweep, a passing suite, a completed row, a commit.** These are
+  reasons to advance to the next row, which is the opposite of a reason to stop.
+  A commit is a checkpoint, not a boundary.
+* **A turn boundary**, an arriving notification, or a long-running command
+  finishing. Read the result and continue in the same turn.
+* **"The work has reached a natural pause."** There is no such row. If the
+  continuation check in §0.6d has an executable answer, execute it.
+* **Uncommitted work piling up.** Commit it and continue; committing is
+  reversible and is phase 11, not an exit.
+* **Wanting a decision that this file can make.** §0.6b: seal the fork here,
+  with its reversal trigger, and act on it.
+
+**The tell, in one line:** if you are reaching for a section of this file to
+explain why stopping is allowed, you are already past the point where the
+continuation check answered *"execute it now."*
+
+#### Waiting is not stopping
+
+A long verification (`--run-all` is ~25 minutes) is *work in progress*, not a
+turn boundary. Launch it in the background, and while it runs do only what
+cannot collide with it — `BDR-53` — which in practice means documents no bite
+harness mutates. Do not idle, and do not end the run on "waiting for the
+sweep".
+
 ### 0.6e · NEXT SESSION — the three targets, in this order
 
 Mandatory, and they do **not** replace the remaining rows of §4; execute them at
@@ -281,7 +313,7 @@ deliberate: after this session the open items are all *numbers that can only fal
 | # | row | done = |
 |---|---|---|
 | 1 | ~~**`GATE-TEETH-55`**, the four bite harnesses~~ **✅ DONE 2026-08-10, 55 → 51.** All four now carry a `--self-test`; both arm families bitten (break `classify`'s `missing` branch → red; rot a leg anchor → red). `5d` still bites 8/8 end to end, so the proof did not cost the harness. **Continues as `GATE-TEETH-51`** in §4 — next are the gates that read a SoT and could silently read nothing | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
-| 2 | **`G3` continued** — the coverage ratchet reports **13 of 26**; the thirteen unread are named in the `slice 1` row. `11_access_pattern_rules`, `14_durable_subscribe`, `15_turn_boundary` and `18_causality_and_routing` are the ones slices 3–5 actually cited | coverage rises, the baseline records it, and each new oracle rule is bitten per the six steps — mutate one side, RED naming BOTH, restore, GREEN. **Do not add a rule whose subject has no producer** (§0.6c): `DP-Ch11`'s `turn_number` is the worked example — declared by a LOCKED doc, created by no migration, and correctly a register row rather than an orphan column |
+| 2 | **`G3` continued — 13 → 14 of 26, and THIS ROW WAS WRONG.** It named four candidates; **three have no producer**, measured before writing anything: `DurableEventStream` 0 files · `advance_turn` 0 · `TurnBoundary` 0 · `wait_for_token` 0 · `route_to_writer` 0 · `CausalityToken` twice, both DEFERRED-register rows recording it as unbuilt. Oracles for those would be the orphan shape §0.6c forbids — the row told me to avoid exactly the trap it was walking me into. Only `11_access_pattern_rules` had both sides, and it is now covered by `spec_oracle_rules.rs`, which **found `DP-R7` enforced by nothing** | coverage rises, the baseline records it, and each new oracle rule is bitten per the six steps — mutate one side, RED naming BOTH, restore, GREEN. **Do not add a rule whose subject has no producer** (§0.6c). Of the twelve still unread, `16_bubble_up_aggregator`, `19_privacy_redaction_policies`, `20_operational_residuals` and `21_llm_turn_slot` need the same producer check FIRST — `00_preamble`, `22_feature_design_quickstart`, `99_open_questions` and `_index` are prose with no code side and should be excluded from the denominator rather than faked into it |
 | 3 | **`3E-EPOCH-COMMIT-ADOPTION`'s last site** — `commit-service/src/bin/ceilings.rs`, a benchmark envelope builder holding the one remaining bare `reality: Uuid` | either it adopts a verified id, or it earns a **reasoned** exemption naming why a benchmark harness cannot bind. **Not a third category invented to make the number zero** — `BDR-55` |
 
 **Deliberately NOT in this list**, unchanged: `D-META-ERASURE-COVERAGE`'s two undecided tables
@@ -1472,6 +1504,31 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-72` (2026-08-10) — a LOCKED access-pattern rule is enforced by nothing, and the board row
+that sent me looking was itself the trap it warned about.** `§0.6e` row 2 named four documents to
+cover next and told me, in its own `done =` cell, *"do not add a rule whose subject has no
+producer"*. **Three of the four have no producer** — `DurableEventStream`, `advance_turn`,
+`TurnBoundary`, `wait_for_token`, `route_to_writer` are 0 files each, and `CausalityToken`'s two
+hits are both DEFERRED rows recording it as unbuilt. Writing those oracles would have produced
+three files of ceremony that cannot fail, over Phase-4 designs nothing implements. **I wrote that
+row yesterday.** A board row is not evidence, including one you wrote while holding the rule it
+violates.
+
+The one document with both sides paid for the trip. `11_access_pattern_rules` states `DP-R1`..`R8`,
+and **`DP-R7` — "no direct LLM-output-to-kernel-write" — is named by nothing in the tree.** Its own
+enforcement clause specifies *review* plus a *"compile (partial)"* `Validated<T>` wrapper; measured,
+`Validated<T>` has **0** definitions. Its stated violation mode is *"prompt-injection exploit writes
+directly to kernel. Catastrophic in a multi-user game economy."*
+
+**But the honest finding is narrower than "a security rule is unenforced", and the difference is
+the interesting part.** There is also **no subject**: `LlmResponse` / `llm_output` appear in **0**
+Rust files, so nothing today *can* take the shortcut. Unenforced-and-unviolatable is a different
+state from unenforced, and collapsing them would have overstated a security finding — the failure
+mode opposite to the one I keep hitting. So it is a register row with a **mechanical** wake-up: the
+oracle walks every `.rs` under `crates/` and `services/` (comment lines stripped — prose about LLM
+output is not LLM output) and reds the moment one appears, naming the file. Bitten by adding a
+`struct LlmResponse` to `read.rs`.
 
 **`BDR-71` (2026-08-10) — an unproven BITE HARNESS is worse than an unproven gate, and §0.6's
 oldest warning caught me again.** The four `dp-slice*-bite-gate` harnesses certify every

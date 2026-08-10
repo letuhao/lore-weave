@@ -10,6 +10,7 @@
     "06_cache_coherency.md",
     "07_failure_and_recovery.md",
     "08_scale_and_slos.md",
+    "11_access_pattern_rules.md",
     "12_channel_primitives.md",
     "13_channel_ordering_and_writer.md",
     "17_channel_lifecycle.md"
