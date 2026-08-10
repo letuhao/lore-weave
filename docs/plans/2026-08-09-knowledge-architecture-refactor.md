@@ -2862,6 +2862,42 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 ### Phase 6 · Consumers migrate onto the KAL *(S3)*
 
+### Phase 6 & 7 — tracked deferrals *(recorded 2026-08-11)*
+
+Every remaining task below is deferred with a mechanism rather than left silent, so the plan's
+state is *done-with-evidence* or *explicitly-tracked* with nothing in between. They fall into
+three groups, and the distinction matters because only one of them is waiting on a decision.
+
+**Group A — blocked by a dependency that is itself deferred.** `T39`, `T40` (behind T38),
+`T43` (behind T42), `QC-7` (behind T41 + T43), `T44`→`T45`→`T46` (a chain behind T43).
+Starting any of these before its predecessor means building against a shape that is still
+open. **Retry when** the predecessor closes; each already carries its `(depends on …)` line.
+
+**Group B — large, unblocked slices that need a dedicated session, not a tail of one.**
+`T38` (**186 routes**), `T51` (**31 frontend files** across nine feature folders), `T41`
+(rebuild-from-Postgres, which **does not exist** and which three separate claims depend on),
+`T42` (**two** graph adapters — decision X1 requires building both). Nothing external blocks
+these. They are deferred because each is multi-session work whose half-done state is
+indistinguishable from its done state at a glance, and this session's remaining capacity would
+buy a fraction of one. **Retry when** picked up as their own slices, in plan order.
+**Mechanism:** `scripts/knowledge-access-gate.py` + `knowledge-http-surface-gate.py` already
+enforce the allowlist T38 shrinks — the allowlist IS T38's checklist and can only shrink, the
+same shape as `D-T17-BACKFILL-CYPHER`, `D-T32-ALIVE-NO-FACTS` and `D-T35-OPAQUE-IDENTITY`.
+
+**Group C — the closing tasks, which are correctly last.** `T47` (documentation checkpoint),
+`T48` (`/aif-verify` — *"every QC task's evidence actually pasted"*), `T49` (handoff + archive).
+These certify the plan and **must not run before the plan is done**: T48's whole point is that
+the evidence gate is the point, not the checkbox, so running it against a plan with nine open
+deferrals would either fail by construction or, worse, pass and certify a half-finished
+refactor. **Retry when** Groups A and B close.
+
+⚠️ **The honest summary of this plan's state:** the *machinery* has moved a long way — lifecycle
+events now flow end-to-end and are proven live, the ledger exists, dedupe is in, the canon
+panel reads as-of, and six gates now make their respective debts shrink-only. The *acceptance
+case* has not moved, because `D-CANON-CHECK-BLIND-TO-ROLE` needs T36, T36 needs T35 and an
+answer to RT-2, and RT-2 is a scope decision the red team explicitly left with the PO. **No
+amount of further implementation closes that; it needs a decision first.**
+
 - [ ] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
