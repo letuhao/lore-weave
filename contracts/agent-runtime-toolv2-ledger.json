@@ -509,6 +509,16 @@
         "LIVE, arm 2 (chapter): read=chapter, the chapter's body with a COMPLETE page contract (has_more false, is_complete true, returned 2, total 2) and guidance 'Do NOT call again for this chapter'. This is one of the two tools CP-5 marked POLYMORPHIC, and both arms are now exercised rather than one sampled"
       ],
       "admitted": true
+    },
+    "glossary_extract_entities_from_doc": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 84 calls / 82 sessions / 80 ok (95.2%), and all 4 failures are 'book not accessible' with two book ids that no longer exist -- checked against loreweave_book rather than assumed. There is no defect here. The tool is _meta.paid, so the spend was weighed rather than waved through, as iteration 26 established for book_set_cover: the default model is the user's LOCAL LM Studio gemma, and the input was three sentences, so the run cost nothing real. Where a priced action would have meant actual money for evidence that changes no conclusion, this loop declines it -- and says so.",
+      "evidence": [
+        "PHASE 2, split: 80 ok / 4 failed, all 'book not accessible' in 2 sessions; both book ids return 0 rows from loreweave_book today",
+        "LIVE: a 3-sentence source_markdown on throwaway book 019fea46 -> 5 grounded candidates: Mira Vale (character, occupation=cartographer), Ys (location, type=city), drowned quarter (location, parent_location=Ys), Toran Belk (character), and a `relationship` kind linking the two rivals. The extraction is grounded in the BOOK'S ontology -- every kind returned is one this book actually has",
+        "COST WEIGHED: paid tool, local model, tiny input. Iteration 26 declined a ~$0.04 image generation on the same reasoning; here the run was free, so it was made"
+      ],
+      "admitted": false
     }
   }
 }
