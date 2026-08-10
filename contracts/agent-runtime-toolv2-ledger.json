@@ -581,6 +581,17 @@
         "LIVE: glossary_list_ai_suggestions on throwaway book 019fea46 -> total 1, item 'Thiên Cơ Lâu' (entity_id 019feda6-ccb8, kind_code power_system, status draft, tags ai-suggested + assistant), created 2026-08-10 21:49 -- iteration 37's entity"
       ],
       "admitted": false
+    },
+    "glossary_web_search": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it holds the loop's lowest headline: 122 calls / 28 sessions / 19 ok (15.6%). 99 of the 103 failures are ONE class -- a web search called with no `query` -- across 19 sessions in a THREE-DAY window (2026-07-06..08), the same blank-argument era as jobs_get, translation_coverage and the rest. Two more are the blank-args breaker; the last two are a missing provider credential and a provider error, both correct. There have been NO calls at all since 2026-07-08. MY FIRST LIVE ATTEMPT FAILED AND IT WAS MY ERROR: I called provider-registry-service, which answered 'unknown tool'. That service serves `web_search`, its SECOND namespace; `glossary_web_search` is a DIFFERENT tool served by glossary-service, and both are in the catalogue. The prefix-owner table was right and I was reading a memory about the wrong one.",
+      "evidence": [
+        "PHASE 2, split: 19 ok / 103 failed = 99 missing `query` (19 sessions, 2026-07-06..08) + 2 blank-args breaker + 1 'web search is not configured' + 1 provider error",
+        "LIVE: glossary-service MCP with query='Ys drowned city legend Brittany' -> real web results including a Celtic Countries article on drowned-city legends, with title, url and an extract",
+        "CONTROL: no query still answers 'required: missing properties: [\"query\"]', the recorded failure verbatim",
+        "CHECKED, not assumed: both glossary_web_search AND web_search are in the frozen catalogue -- two tools, two owners. Neither is retired"
+      ],
+      "admitted": false
     }
   }
 }
