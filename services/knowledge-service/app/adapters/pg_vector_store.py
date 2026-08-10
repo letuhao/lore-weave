@@ -234,13 +234,29 @@ class PgVectorStore:
     """Holds a pool, the way `Neo4jVectorStore` holds a session and the fake holds a dict —
     a caller of the port must not be able to tell which.
 
-    `query_rescore` is StreamingDiskANN's recall knob (`diskann.query_rescore`): how many
-    approximate candidates get their exact distance recomputed before the top-k is chosen.
-    It is a CONSTRUCTOR argument, not a port parameter, for the same reason
-    `oversample_factor` never reached the port — it is one index implementation's
-    recall/latency trade, and a caller that had to set it would be programming the backend.
-    T24 measures it; leaving it None keeps the server default.
+    ── THE SEARCH-EFFORT DEFAULTS ARE A CORRECTNESS SETTING, NOT A TUNING ONE ───────────
+    StreamingDiskANN's server defaults are `query_search_list_size=100`, `query_rescore=50`.
+    T24 measured them against exact cosine on the **real** passage corpus and they returned
+    **recall@10 = 0.715** — three of ten neighbours simply missing, on a semantic search
+    that reports no error. At `search_list=300, rescore=200` the same corpus returns
+    **1.000**, and the latency did not get worse (4.66 ms vs 5.97 ms p50 — the extra work is
+    lost in the noise at this scale).
+
+    So these defaults are set HERE rather than left to the server. T23 wired `query_rescore`
+    and deferred choosing a value, on the assumption it was an optimisation; the measurement
+    says it is the difference between correct results and quietly wrong ones. See
+    `docs/measurements/2026-08-10-vector-backend-recall.md`.
+
+    They are still constructor arguments, for the same reason `oversample_factor` never
+    reached the port — an index implementation's recall/latency trade is not something a
+    caller should be programming. `search_effort=False` opts out entirely, for a caller that
+    configures the setting on its own pool.
     """
+
+    # Measured, not guessed. Raising these is a decision with a benchmark attached
+    # (`app/benchmark/vector_backend_bench.py`), never a nudge.
+    DEFAULT_SEARCH_LIST_SIZE = 300
+    DEFAULT_QUERY_RESCORE = 200
 
     def __init__(
         self,
@@ -248,12 +264,38 @@ class PgVectorStore:
         *,
         entity_exists: EntityExists | None = None,
         query_rescore: int | None = None,
+        query_search_list_size: int | None = None,
+        search_effort: bool = True,
     ) -> None:
         self._pool = pool
         self._entity_exists = entity_exists
-        if query_rescore is not None and query_rescore <= 0:
-            raise ValueError(f"query_rescore must be positive, got {query_rescore!r}")
-        self._query_rescore = query_rescore
+        for label, value in (("query_rescore", query_rescore),
+                             ("query_search_list_size", query_search_list_size)):
+            if value is not None and value <= 0:
+                raise ValueError(f"{label} must be positive, got {value!r}")
+        if not search_effort:
+            if query_rescore is not None or query_search_list_size is not None:
+                # Found in review, same shape as T23's entity filters: a caller who passed
+                # a recall value AND opted out would have had the value silently dropped
+                # and run at the server default that measured 0.715 on real data.
+                raise ValueError(
+                    "search_effort=False discards query_rescore/query_search_list_size — "
+                    "pass one or the other, not both"
+                )
+            self._search_gucs: dict[str, int] = {}
+        else:
+            self._search_gucs = {
+                "diskann.query_search_list_size":
+                    query_search_list_size or self.DEFAULT_SEARCH_LIST_SIZE,
+                "diskann.query_rescore": query_rescore or self.DEFAULT_QUERY_RESCORE,
+            }
+
+    def setter_sql(self) -> str:
+        """The one statement that applies this store's search effort. Public so a test can
+        execute the REAL string: the failure this guards is `SET LOCAL` running outside a
+        transaction, where it warns and silently does nothing — and a test that re-typed the
+        statement would keep passing after the real one changed."""
+        return "; ".join(f"SET LOCAL {g} = {int(v)}" for g, v in self._search_gucs.items())
 
     def build_search_sql(
         self,
@@ -362,18 +404,18 @@ class PgVectorStore:
         table = passage_table(dim)  # entity scope raised in the builder above
 
         async with self._pool.acquire() as conn:
-            if self._query_rescore is None:
+            if not self._search_gucs:
                 rows = await conn.fetch(sql, *params)
             else:
                 # SET LOCAL inside an explicit transaction, NOT bare on a pooled
                 # connection. Bare, `SET LOCAL` warns "can only be used in transaction
-                # blocks" and does nothing — a recall knob that silently never applies —
-                # while plain `SET` would leak this query's setting to whichever request
-                # borrows the connection next.
+                # blocks" and does nothing — a recall setting that silently never applies,
+                # which the T24 measurement says costs a third of the results — while plain
+                # `SET` would leak into whichever request borrows the connection next.
+                # Both GUCs go in ONE statement: the transaction already costs a round
+                # trip, and there is no reason to pay a second.
                 async with conn.transaction():
-                    await conn.execute(
-                        f"SET LOCAL diskann.query_rescore = {int(self._query_rescore)}"
-                    )
+                    await conn.execute(self.setter_sql())
                     rows = await conn.fetch(sql, *params)
 
         out = [
@@ -390,7 +432,8 @@ class PgVectorStore:
             "vector search: backend=postgres partition=%s scope=%s dim=%d k=%d "
             "filters=%s hits=%d rescore=%s elapsed_ms=%d",
             table, scope, dim, k, ",".join(applied) or "none", len(out),
-            self._query_rescore if self._query_rescore is not None else "server-default",
+            ",".join(f"{g.split('.')[-1]}={v}" for g, v in self._search_gucs.items())
+            or "server-default",
             int((time.perf_counter() - started) * 1000),
         )
         return out

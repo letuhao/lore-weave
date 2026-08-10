@@ -48,13 +48,21 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T24** — dual-write + shadow-read with a recall gate. T23 landed the adapter and
-**proved the planner property with `EXPLAIN`**, so T24 now has both backends to compare and a
-measured baseline to compare them against. Read T23's evidence block first: it also hands T24 two
-pieces of owed work — the **entity read path** (`search(scope="entity")` refuses today, because
-`include_archived` and `project_id` describe lifecycle state a vector-only store does not hold, and
-T24's dual-write writer is where those columns get maintained) and the **`query_rescore`** knob,
-which is wired but unmeasured.
+**RESUME: T25** — cut over, drop the Neo4j vector indexes, **build the vector backup path**. Read
+T24's evidence block and [the recall measurement](../measurements/2026-08-10-vector-backend-recall.md)
+first; T25 inherits three obligations from it:
+
+1. **The cutover gate is a metric, not a checklist tick.**
+   `vector_dual_write_total{outcome="secondary_failed"}` must read **zero** before the primary's
+   indexes are dropped. A swallowed secondary failure is invisible by construction, so that counter
+   is the only evidence that the target is complete.
+2. **The search-effort defaults were measured at 181 rows.** 300/200 turned 0.715 into 1.000 there;
+   whether it holds at 63 M vectors is QC-3's to re-measure, and the fallback is named — pgvector's
+   HNSW hit 1.000 at the server's own defaults for dims ≤ 2000.
+3. **The entity read path is still owed.** `PgVectorStore.search(scope="entity")` refuses:
+   `include_archived` and `project_id` describe lifecycle state a vector-only store does not hold.
+   T24 built the dual-write writer but not those columns, so this moves to T25 — **the cutover
+   cannot land while the Postgres store cannot answer an entity search at all.**
 
 **Still open elsewhere:** 6 `db/migrations/` backfills carry Cypher (Phase 7 must port or retire),
 QC-2's rendered-block diff is owed once a consumer holds a port, and 283 Postgres-gated integration
@@ -1514,11 +1522,58 @@ vectors and validity intervals live in different stores.
   explicit transaction** — bare on a pooled connection it warns and does nothing, and plain `SET`
   would leak into the next borrower. **Unmeasured: T24 owns it.**
 
-- [ ] **T24** — Dual-write + shadow-read, with a recall gate
-  Extend `services/knowledge-service/app/benchmark/flat_knn_rawsearch.py`
-  Neo4j HNSW vs pgvector vs StreamingDiskANN vs halfvec, same corpus, **recall@k + latency**.
-  **Bite:** halfvec must measurably lose recall somewhere; if it never does, the harness is not
-  measuring.
+- [x] **T24** — Dual-write + shadow-read, with a recall gate ✅
+  `app/adapters/dual_write_vector_store.py` (15 tests) · `app/benchmark/vector_backend_bench.py` ·
+  **4132 green**. Full evidence: [`docs/measurements/2026-08-10-vector-backend-recall.md`](../measurements/2026-08-10-vector-backend-recall.md).
+
+  **The headline is a correctness bug, not a benchmark.** StreamingDiskANN's SERVER DEFAULTS return
+  **recall@10 = 0.715** on the real passage corpus — three of ten neighbours missing, from a search
+  that reports success. At `search_list=300, rescore=200` the same corpus returns **1.000**, and it
+  is not slower (4.66 ms vs 5.97 ms p50). T23 wired `query_rescore`, left the value to the server
+  and called it an optimisation; it is the difference between correct results and quietly wrong
+  ones. `PgVectorStore` now sets **both** knobs — `query_search_list_size` did not exist on it —
+  from measured defaults. ⚠️ Measured at 181 rows; **QC-3 must re-measure at scale.**
+
+  **The comparison the plan specified cannot be built.** The opclass catalogue says
+  `diskann → vector_cosine_ops | vector_ip_ops | vector_l2_ops` and nothing else:
+  **pgvectorscale 0.9.0 has no `halfvec` operator class for diskann.** Run naively (halfvec on
+  HNSW, `vector` on diskann) the number would have blamed fp16 for a difference between two index
+  ALGORITHMS. The cells were refactored to isolate one variable each, and a `halfvec_exact` cell
+  added — no index on either side, so the only difference is 16-bit storage.
+
+  **The bite fires, in that cell.** `halfvec_exact` **0.9950** (worst query **0.9000**) vs `exact`
+  **1.0000** at 10k × 1024, for **49 % less storage**. On the 181-row real corpus halfvec loses
+  nothing — which locates the cost rather than contradicting it: fp16 only scrambles orderings whose
+  margin is below its rounding error. halfvec stays **rejected for the default path**, documented as
+  available, and nothing in Phase 3 depends on it.
+
+  **The first numbers were the harness.** Every backend scored 0.2–0.7 — a devastating-looking
+  verdict on pgvector, and wrong. The queries were uniform random, and in 1024 dimensions a random
+  query is near-orthogonal to the whole corpus, so its true top-10 is ten near-ties separated by
+  float noise; no index can reproduce an ordering that is itself arbitrary. Queries are now drawn
+  from the corpus distribution. The random corpus is kept and **labelled a floor, not a verdict.**
+
+  **A defect in T23's own test helper.** `_seed_two_tenants` used an uncorrelated subquery under a
+  comment claiming `random()`'s volatility made it per-row. It does not — an uncorrelated subquery
+  is hoisted into an InitPlan and evaluated once: `count(*) = 3000`, `count(DISTINCT embedding) = 1`.
+  T23's planner assertions survive (plan shape does not depend on the data; the evidence line now
+  reads `removed_by_filter=10`), but any recall test on that helper would have measured nothing
+  while looking healthy. Fixed, and **the helper now asserts its own output is distinct.**
+
+  **Dual-write asymmetry:** writes go to both, reads come from the primary only — a read served from
+  a half-populated secondary is a correctness regression bought for nothing. A secondary write
+  failure is swallowed (it must not fail a user request) **and counted**:
+  `vector_dual_write_total{outcome="secondary_failed"}` **must read zero before T25** — that counter
+  is the deferral's mechanism, not a runbook sentence. A PRIMARY failure propagates. Shadow reads
+  are off by default, sampled, inline (a `create_task` would measure a load the request never saw),
+  and report **overlap, not recall** — neither backend is ground truth, so calling it recall would
+  assert the primary is correct, which is the thing being measured.
+
+  **Bite F took two attempts.** The first version asserted `SET LOCAL` behaviour on its own
+  connection; deleting the transaction from `search()` left it green, because it was testing
+  Postgres rather than the adapter. It now goes through `search()` and compares a starved store
+  against a generous one — if the setting never arrives both silently get the server default and
+  their answers become identical.
   (depends on T23)
 
 - [ ] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**

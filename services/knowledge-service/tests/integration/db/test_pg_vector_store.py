@@ -222,6 +222,68 @@ async def test_entity_search_refuses_rather_than_answering_without_its_filters(s
         await store.search(scope="entity", user_id=_USER, embedding=_axis(0), dim=_DIM, k=10)
 
 
+# ── search effort: a correctness setting, not a tuning one (T24) ─────────────
+
+
+async def test_the_search_effort_setting_reaches_the_query(store, vector_pool):
+    """T24 measured StreamingDiskANN's SERVER defaults at **recall@10 = 0.715** on the real
+    passage corpus — three of ten neighbours missing, reported as success. At this store's
+    defaults the same corpus returns 1.000, so the setting is load-bearing, and the way it
+    fails is silent: `SET LOCAL` outside a transaction warns and does nothing.
+
+    **The first version of this test asserted that on its own connection and the bite did
+    not fire** — removing the transaction from `search()` left it green, because it was
+    testing Postgres rather than the adapter. This one goes through `search()` and observes
+    the setting's EFFECT: two stores configured differently must return different results.
+    If the effort never reaches the query, both silently get the server default, their
+    answers become identical, and this goes red.
+    """
+    await _seed_two_tenants(vector_pool, 3000)
+    # The probe is a REAL ROW's vector, not a synthetic axis. A query that is out of the
+    # corpus's distribution is near-equidistant from everything in 384 dimensions, so its
+    # "top-10" is ten near-ties and recall measures float noise — the exact trap that made
+    # this benchmark's first numbers unreadable. Querying with a row that exists gives a
+    # nearest neighbour with a real margin: itself.
+    async with vector_pool.acquire() as conn:
+        probe = [float(x) for x in (await conn.fetchval(
+            f"SELECT embedding::text FROM {passage_table(_DIM)} WHERE user_id = $1 LIMIT 1",
+            _USER,
+        )).strip("[]").split(",")]
+
+    starved = PgVectorStore(vector_pool, query_search_list_size=1, query_rescore=1)
+    generous = PgVectorStore(vector_pool, query_search_list_size=500, query_rescore=400)
+
+    starved_hits = await starved.search(scope="passage", user_id=_USER, embedding=probe,
+                                        dim=_DIM, k=10)
+    generous_hits = await generous.search(scope="passage", user_id=_USER, embedding=probe,
+                                          dim=_DIM, k=10)
+
+    assert _source_ids(starved_hits) != _source_ids(generous_hits), (
+        "a deliberately starved search returned exactly what a generous one did — the "
+        "effort setting is not reaching the query, so every search is silently running at "
+        "the server default that measured 0.715 recall on real data"
+    )
+    # NO recall-ordering assertion here, deliberately. This corpus is uniform random in 384
+    # dimensions, where every point is near-orthogonal to every other and a top-10 is ten
+    # near-ties separated by float noise — measured, not assumed: on that corpus the
+    # benchmark scores EVERY backend between 0.2 and 0.4 and the ordering between them
+    # flips run to run. Asserting "more effort ranks better" here would be a flaky test
+    # dressed as a strong one.
+    #
+    # The VALUE of the setting is established where it can be: against the real passage
+    # corpus, 0.715 → 1.000, in docs/measurements/2026-08-10-vector-backend-recall.md.
+    # What this test owns is narrower and checkable — that the setting arrives at all.
+
+
+async def test_search_effort_can_be_declined_but_not_half_declined(vector_pool):
+    """A caller that configures the GUCs on its own pool must be able to opt out rather than
+    pay a transaction per search — but opting out AND passing a value is a contradiction
+    that would silently drop the value and run at the 0.715-recall server default."""
+    assert PgVectorStore(vector_pool, search_effort=False).setter_sql() == ""
+    with pytest.raises(ValueError, match="discards"):
+        PgVectorStore(vector_pool, search_effort=False, query_rescore=400)
+
+
 # ── the index lifecycle, and the prune-orphans path ──────────────────────────
 
 
@@ -293,7 +355,11 @@ def _nodes_filtering_on(node: dict, column: str) -> list[dict]:
 
 
 async def _seed_two_tenants(vector_pool, rows: int) -> None:
-    """Enough rows that an index path is worth choosing, split evenly between two users."""
+    """Enough rows that an index path is worth choosing, split evenly between two users.
+
+    Asserts its own output is DISTINCT — see the correlation comment below. A seed that
+    silently collapses to one repeated vector is invisible in every test that uses it.
+    """
     async with vector_pool.acquire() as conn:
         await conn.execute(
             f"""
@@ -302,17 +368,34 @@ async def _seed_two_tenants(vector_pool, rows: int) -> None:
                  embedding, embedding_model, canon)
             SELECT CASE WHEN g % 2 = 0 THEN $1 ELSE $2 END, $3, 'chapter', 'seed-' || g, 0,
                    'seeded row ' || g,
-                   -- `random()` is VOLATILE, so this subquery is re-evaluated per outer
-                   -- row rather than hoisted: 4000 DIFFERENT vectors, not one repeated
-                   -- 4000 times. Identical vectors would make any index look decisive.
+                   -- `+ 0 * g` CORRELATES the subquery, which is the whole point.
+                   --
+                   -- The first version of this said volatility was enough — "random() is
+                   -- VOLATILE, so this is re-evaluated per outer row" — and it was WRONG.
+                   -- An UNcorrelated subquery is hoisted into an InitPlan and evaluated
+                   -- ONCE however volatile its body is, so the seed produced 3000 rows
+                   -- holding ONE distinct vector (measured: `count(DISTINCT embedding)`
+                   -- = 1). Every distance was then zero, every ranking arbitrary, and a
+                   -- recall test built on this helper measured nothing at all while
+                   -- looking fine.
+                   --
+                   -- `g` appears in generate_series' ARGUMENT, not inside the aggregate:
+                   -- putting it inside raises "column g.g must appear in the GROUP BY".
                    (SELECT array_agg(random())::vector({_DIM})
-                      FROM generate_series(1, {_DIM})),
+                      FROM generate_series(1, {_DIM} + 0 * g)),
                    'model-a', true
             FROM generate_series(1, {rows}) g
             """,
             _USER, _OTHER_USER, _PROJECT,
         )
         await conn.execute(f"ANALYZE {passage_table(_DIM)}")
+        distinct = await conn.fetchval(
+            f"SELECT count(DISTINCT embedding::text) FROM {passage_table(_DIM)}"
+        )
+        assert distinct == rows, (
+            f"seed produced {distinct} distinct vectors for {rows} rows — the subquery was "
+            "hoisted again, and every test built on this helper is ranking identical points"
+        )
 
 
 async def test_the_tenant_filter_is_evaluated_by_the_scan_not_after_it(store, vector_pool):

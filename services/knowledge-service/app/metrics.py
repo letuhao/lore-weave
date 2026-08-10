@@ -47,6 +47,9 @@ __all__ = [
     "knowledge_extraction_filter_reload_total",
     "knowledge_extraction_status_effect_total",
     "correction_emit_failure_total",
+    "vector_dual_write_total",
+    "vector_shadow_read_overlap",
+    "vector_shadow_read_total",
 ]
 
 registry = CollectorRegistry()
@@ -666,3 +669,46 @@ for _role in ("subject", "object"):
         knowledge_extraction_writer_autocreate_total.labels(
             role=_role, outcome=_out,
         )
+
+
+# ── T24 · the vector dual-write and its shadow read ──────────────────────────
+#
+# These two carry the CUTOVER GATE. T25 drops the Neo4j vector indexes, and the
+# only thing standing between that and silent data loss is evidence that every
+# write reached the secondary. A swallowed secondary failure is invisible by
+# construction — the request succeeded — so the count IS the evidence, and
+# `outcome="secondary_failed"` must read zero before the cutover, not "low".
+vector_dual_write_total = Counter(
+    "knowledge_vector_dual_write_total",
+    "Vector upserts through the dual-write store, by outcome. "
+    "`secondary_failed` is swallowed at request time and MUST be zero before "
+    "the T25 cutover — a non-zero series means the target is missing rows.",
+    ["scope", "outcome"],
+    registry=registry,
+)
+for _scope in ("passage", "entity"):
+    for _outcome in ("both", "primary_only", "secondary_failed", "primary_failed"):
+        vector_dual_write_total.labels(scope=_scope, outcome=_outcome)
+
+vector_shadow_read_total = Counter(
+    "knowledge_vector_shadow_read_total",
+    "Shadow reads against the secondary vector store, by outcome. "
+    "`skipped_sampling` is expected; `failed` means the comparison produced no "
+    "measurement, which is NOT the same as agreement and must not be read as it.",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("compared", "failed", "skipped_sampling"):
+    vector_shadow_read_total.labels(outcome=_outcome)
+
+# Overlap, not "recall": neither backend is ground truth here. The exact
+# ground-truth comparison is the benchmark's job (app/benchmark/
+# vector_backend_bench.py); this is the production-traffic signal that the two
+# answer alike, bucketed so a distribution is visible rather than a mean that
+# an outlier can hide in.
+vector_shadow_read_overlap = Histogram(
+    "knowledge_vector_shadow_read_overlap",
+    "Fraction of the primary's top-k that the secondary also returned",
+    buckets=(0.0, 0.5, 0.8, 0.9, 0.95, 0.99, 1.0),
+    registry=registry,
+)
