@@ -4562,26 +4562,60 @@ moves with the corpus; a figure copied from here is stale the moment traffic lan
 | 5 | **`glossary_propose_entities`** | 172 sessions · 62.3% — admit |
 | 6 | **`compose_prose`** | 🔴 **BLOCKED, and the blocker is a real defect, not a chore** — see below |
 
-**Row 6 is blocked on `derive.py` reading the FEDERATED SNAPSHOT ALONE.** §4 scopes rung 2 to *all
-324* — 315 federated plus the **9 chat-service implements itself** — and the producer sees only the
-315, so the co-writer's own prose tool **cannot be derived, therefore cannot be admitted**. This is
-the same partial-catalogue defect that briefly made `compose_prose` look like a role nobody had ever
-used (5.11), and `cp5-essential-set.py`'s `catalogue()` **already** unions the local tools and
-**raises rather than degrading** when it cannot read them. The fix is that correction applied one
-file over — and it must raise, for the reason the comment there gives: *a partial catalogue is
-exactly how that false finding was manufactured.*
+### 🔴 ROW 6's BLOCKER — INVESTIGATED 2026-08-10, AND **THE FIX THIS SECTION FIRST PRESCRIBED WOULD NOT HAVE WORKED**
+
+This section originally said *"blocked on `derive.py` reading the FEDERATED SNAPSHOT ALONE — union
+the local tools."* **`derive.py` reads no file at all**; `derive_all(catalogue)` takes the catalogue
+as an argument and the SNAPSHOT is read by its callers (`agentruntime-admit.py`,
+`agentruntime-membrane-gate.py`). **And unioning the local tools would have changed nothing**,
+because derivation refuses them for two further reasons, both correctly:
+
+| refusal | why it fires | is the refusal right? |
+|---|---|---|
+| `Underivable(lane)` | **all four local tools carry NO `_meta` AT ALL** — no `tier`, so no lane. C-1: the lane is declared at registration and cannot be recovered from anything else | **yes** — guessing it is what C-1 forbids |
+| `Underivable(owning_service)` / **worse, a WRONG owner** | `resolve_service` is a NAME-PREFIX table. `compose_prose` matches nothing ⇒ refused. **`glossary_propose_entity_edit` matches `glossary_` ⇒ it would be admitted as owned by `glossary-service`, which does not serve it** | the refusal yes; **the misattribution is a defect** |
+
+**So the block is not a missing union. It is that chat-service serves four tools it has never
+registered** — `compose_prose` · `confirm_action` · `glossary_propose_entity_edit` ·
+`glossary_confirm_action` — with no tier, no scope and no owner, on the same wire as 315 tools that
+declare all three. 🔴 **And `declared_lane`'s own docstring states *"measured on the live catalogue:
+315/315 tools declare a tier, so nothing legitimate is demoted today"* — measured on a population
+that EXCLUDES the only four tools that do not.** Same partial-catalogue error, now inside the
+function that decides hot-set privilege.
+
+**⛔ STOPPED HERE FOR A PO DECISION, and it is a real fork, not a preference** — see *"who owns a
+consumer-local tool"* below. Both answers are defensible and they produce different manifests.
 
 ### The two questions — decide them, do not build past them
 
-**Q1 · does removal-without-supersession deserve its own row?** 5.10's flagship number was misread
-by me and corrected: `glossary_propose_entity_edit` — **101 dispatches / 12 sessions / 0% success**
-— is a **RETIRED tool still being called**, not an invented name (96 of 101 returned that tool's own
-validation prose; **zero** returned unknown-tool). It existed 2026-07-22 → 07-29. **A name check
-does not fix this and never would have** — the tool was real, so the model was right to call it and
-the catalogue was wrong to forget it. The mechanism that does fix it is **`WithSupersededBy`, which
-CP-4 already built and nothing enforces at removal.** 101 dispatches is larger than several members
-that did get rows. It is put as a question rather than a row because it is CP-4's surface, not
-CP-5's, and the PO owns that call.
+**Q0 · WHO OWNS A CONSUMER-LOCAL TOOL, AND MAY ITS NAME LIE ABOUT THAT?** ⛔ **THE BLOCKER. A PO
+DECISION, because the two answers produce different manifests and one of them changes a tool name
+users' sessions already reference.**
+
+`glossary_propose_entity_edit` is named into **glossary-service's namespace** and is served by
+**chat-service**. C-0 derives the owner from `source_path`; `derive.py` derives it from the name
+prefix, and that table is *a claim about the gateway's routing config* — which a consumer-local tool
+is not routed by at all. So the two disagree, and the disagreement is in the NAME.
+
+* **(A) The definition declares its owner.** Honour `_meta.served_by` over the prefix table, and
+  refuse (`Underivable`) when a *federated* tool's declaration disagrees with routing — fail-closed,
+  drift surfaced rather than silently resolved. **Cheapest, no rename, and CP-4's original objection
+  to `served_by` is already dead** (it was cost, and `token_cost` now measures the wire form). ✖ It
+  makes "the name says glossary, the owner says chat" a permanently legal state.
+* **(B) The name must not lie — rename to a chat-service namespace.** Structurally honest and the
+  prefix table keeps meaning what it says. ✖ **It is a tool RENAME with live traffic**, which is
+  precisely the supersession path CP-4 built (`WithSupersededBy`) and which nothing enforces — so
+  this answer creates the very case Q1 was withdrawn for lacking.
+
+**Recommendation: (A) now, and let (B) be the thing that gives supersession a real subject later.**
+A rename is a migration; the block only needs an owner that is true.
+
+**Q1 · WITHDRAWN, and the withdrawal is the finding.** This asked whether *removal-without-
+supersession* deserved a row, on the reading that `glossary_propose_entity_edit` was a retired tool
+still being called. **It is not retired — it is live and advertised at `HEAD`**, and I inferred
+otherwise from its last CALL date without opening the file. See the Open row. **The real subject is
+the 89 placeholders in `entity_id`** — 5.4's member, on a tool that **cannot carry 5.4's declaration
+because it cannot be admitted**, which is the block below and not a separate question.
 
 **Q2 · does CP-5 close on 11 of 11, or does the set move again?** The set is derived, so admitting
 six tools does not freeze it — new traffic can promote a twelfth. State the rule at entry: **CP-5
@@ -5042,7 +5076,8 @@ what `n` would be needed. Execution and proof, not planning.
 | ~~8 lifecycle guards declare no falsifier~~ | ✅ **WRITTEN 2026-08-10.** All eight now have falsifiers that re-inject the defect each guards: self-releasing derivation, serving every lifecycle, deprecation-as-removal, resurrection by status edit, a full-mesh move table, and withholding without recording. **CP-5.2 is the first consumer of this state machine, so it had been standing on unproven floor** | ✅ closed |
 | ~~`cost` counted bytes the model never receives — **kept for the record**~~ | ✅ **RESOLVED 2026-08-09 (CP-4.e), and it no longer blocks anything.** The row below is the state at discovery and is kept because the reasoning is the useful part. **BLOCKED the first migration, found by attempting it.** §4 puts the contract in the tool's `_meta`. `derive.py` refused to add even ONE `_meta` key for a measured reason: *"`_tool_tokens` serialises the whole definition including `_meta`, so one extra key changes every tool's cost, which changes the rank, which changes what the budget cuts — and the legacy arm is CP-2's control group."* Measured: a **minimal** contract block takes `book_list` from **1284 → 1998 (+56%), rank 191 → 262 of 315**, and `cost` is the sort key against a budget ending in a hard `break` (U-1). ⭐ **But it is not fundamental, and the measurement says why: `strip_tool_meta` removes `_meta` BEFORE the wire, so `_meta` costs the model ZERO tokens — while `token_cost` counts it anyway. 9.6% of the whole ranking key is bytes the model never receives; all 315 tools are inflated; median rank movement if cost were measured on what is SENT is 6, max 38 (`book_update_details`).** So the honest fix is that `cost` should measure the stripped definition. That changes every derived row and therefore CP-4's evidence — **a decision, not a tidy-up** | ✅ **closed** — PO took the decision; `token_cost` measures the wire form, 5.3 built and live |
 | ~~🔴 **the committed manifest is not reproducible by its own generator**~~ | ✅ **CLOSED 2026-08-09/10 — the decision above was taken, the promoter was built, and BOTH gates are green: the drift check re-derives *and re-runs the recorded release decision*, and the census RAN (its first run found 5 silent refusals). The row below is the state at discovery.** **PRE-EXISTING, red since derivation stopped self-releasing earlier 2026-08-09** — not introduced by CP-5. At `HEAD` the file says `lifecycle: admitted` for `book_list`/`book_read` while `derive.py` yields `draft`, so `agentruntime-membrane-gate` FAILS on manifest drift and `agentruntime-census` refuses to start (*"the suite is not green before any injection"*). The two rows are residue from before the change; nothing could promote them back, because `check_transition` had zero production callers. **CP-5.2 built the promoter, so the state is now reachable — but which state is the decision above.** Also pre-existing: **8 lifecycle guards from that same change declare no falsifier** | ✅ **closed** — all eight falsifiers written 2026-08-10 |
-| 🔴 **removal-without-supersession — 101 dispatches, and NO ROW OWNS IT** | **RAISED 2026-08-10 by correcting my own 5.10 headline.** `glossary_propose_entity_edit` was filed as *"a name the model invented, dispatched 101 times"*. **It is a RETIRED tool still being called** — of the 101, **zero** returned unknown-tool and **96 returned that tool's own validation prose**; it existed 2026-07-22 → 07-29. So the model was right to call it and the **catalogue was wrong to forget it**, which a name check cannot fix and never could. The mechanism that fixes it — **`WithSupersededBy` — CP-4 ALREADY BUILT, and nothing enforces it at removal.** 101 dispatches is larger than several classes that did get a spec row. **PO's call: CP-4's surface, not CP-5's** | **DECISION** |
+| 🔴🔴 **`glossary_propose_entity_edit` — 101 calls, 0%, AND IT IS NOT WHAT I SAID IT WAS. TWICE.** | **CORRECTED 2026-08-10 (second correction), by reading the code instead of the corpus.** Call 1: *"a name the model invented"* — **wrong**, zero of 101 returned unknown-tool. Call 2: *"a RETIRED tool still being called"* — **also wrong. IT IS LIVE AND ADVERTISED AT `HEAD`**: `GLOSSARY_PROPOSE_EDIT_TOOL` in `frontend_tools.py`, appended by `frontend_tool_defs(book_scoped=True)`. **I inferred retirement from the last CALL date (07-29) and never opened the file** — a fact about traffic read as a fact about the code. ⭐ **WHAT THE 101 ACTUALLY ARE, from the args: 89 are a model-invented PLACEHOLDER in `entity_id`** (`placeholder_id_1` ×60 · `placeholder_id` ×29 · `new_entity_id_placeholder`), the class 5.3-pilot separated out and 5.4 owns. **`result: null` and `error` is CHAT-SERVICE'S OWN VALIDATION PROSE — the tool never ran.** So this is a RUNTIME REFUSAL recorded as a tool failure: the same conflation as 5.5's suspensions, 5.4's owed arguments and 5.7's breakers, **a fifth time, and it is the single largest 0%-success tool in the corpus.** 🔴🔴 **AND THE REMEDY IT ALREADY GOT WAS PROSE, WHICH MEASURABLY FAILED.** The tool's own source comment records the same defect on 2026-07-22 (*"gemma called THIS tool 13× with entity_id='new_entity_id_placeholder'"*) and the fix was **more description text**, including *"do NOT call this with a made-up or placeholder entity_id"*. The corpus after that fix is **101 calls / 12 sessions / 0%**. **A control this board did not have to run: telling the model harder does not work, which is 5.3's and 5.4's whole thesis, with the counter-experiment already in the tree** | **BLOCKS — no row owns it** |
+| ~~removal-without-supersession~~ | 🔴 **WITHDRAWN THE DAY IT WAS RAISED — its subject does not exist.** It was raised on the *"retired tool"* reading, which the row above corrects: the tool was never removed, so there is no supersession to enforce. §7's own rule — *a clause whose subject does not exist must not be written* — applied to a row I wrote myself. **`WithSupersededBy` may still be unenforced at removal; that is now an UNMEASURED claim, not a finding, and it needs a real retirement to point at** | no |
 | 🔴 **the corpus cannot tell MEASUREMENT traffic from PRODUCT traffic** | **CREATED BY THIS RUN AND MEASURED BEFORE IT COULD MISLEAD ANYONE.** 50 of 703 tool-calling sessions were driven on 2026-08-10, 85 more on 08-09; the corpus is effectively **one account** (966 of 1,032 sessions), so no owner or title split exists. **And the distortion runs in BOTH directions, so no sign-correction fixes it:** `glossary_search` reads **34.6% organic → 82.2% blended** (162 driven calls at 97.5% — the board's *"38.2%, a defect"* would read as fixed), while `book_read` reads **80.0% organic → 51.5% blended**, because my probes were **seeded to the failing shape** and a deliberate failure injection is now recorded as product behaviour. ✔ `tool_list` (34.7% over 1,807 organic calls) and `book_chapter_save_draft` (40.6%) are untouched and remain the real defects. **The fix is a marker STAMPED AT CREATION — a date or a title list is a typed constant wearing a heuristic's clothes — and it must be built WITH its first producer**, or it is the zero-caller shape a seventh time | DEBT |
 | **duplicate entities defeat resolution in one book** | Found by 5.3-pilot, and it is a DEDUP defect, not a resolution one: query `Dracula` in book `019eef55` returns **4 `tier: exact` matches — THREE separate live entities literally named `Dracula`** plus `Count Dracula` aliasing it, all tied at `rank_score` 0.9. No resolver can pick correctly, and it should not try (§3a). Registered here rather than folded into 5.3, which must REFUSE these | DEBT |
 | **33 rows say `abandoned_by_user` AND `awaiting_input`** | **historical F-38 residue.** The resolver's own `outcome IS DISTINCT FROM` guard makes it unable to repair damage an earlier version of itself wrote — it only moves rows whose outcome has *not* already moved. Found while closing 3.6a; the sweeper now preserves them so a repair remains possible | DEBT |
