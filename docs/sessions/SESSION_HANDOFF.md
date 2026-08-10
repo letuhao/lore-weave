@@ -37,6 +37,12 @@
 >
 > </details>
 >
+> **…and the other live row: `GATE-TEETH-47`.** 47 of 97 CI-invoked gates still demonstrate
+> nothing about their own red-ability. The three corpus gates and the false accusation are done;
+> the next batch by blast radius is the **security-adjacent** set — `injection-coverage-lint`,
+> `meta-sensitive-read-bypass-lint`, `pii-classify-lint`, `test-dsn-coverage-gate` (that last one
+> is the same data-loss class as `db-safety-gate`). Give each a reach family, not just detectors.
+>
 > Also open: **`G4`/`G6`–`G13`** (slice 1). And **`D-META-ERASURE-COVERAGE`'s two undecided tables**
 > (`session_cost_summary`, `service_to_service_audit`) remain a **GDPR product decision for the
 > PO** — deliberately not in an autonomous run.
@@ -51,6 +57,7 @@
 > | `language-bias` **red for 9 days** | two live ML-2 violations since 2026-08-01, fixed at the source. The fold is a *symmetric* match key, so `Ｅｌａｒａ` and `Straße` were being reported to authors as **unanchored names** — false accusations |
 > | `D-GATE-ROT-LANGUAGE-BIAS` | mechanism moved from a `KNOWN_RED` row to the 37-row BASELINE. All ten of its named offenders were **already baselined**; the gate was red because of two *unrelated* lines — the register was satisfied by the wrong offenders |
 | `G3` **14/26 → 14/15** | the denominator split, both tables checked and bitten on the real tree. The worklist is now **one document**. A fourth self-test arm was written that **could not fail** (`NV-1`) and biting found it — see `BDR-79` |
+| `GATE-TEETH` **48 → 47** | **not progress — a false accusation corrected.** `deferral-gate.py` ships a `--self-test` with eleven bite cases and was reported unproven, because the docstring stripper pairs *any* two triple-quotes and deleted 87% of the file. Python is parsed now; one gate gained, none lost. `--verify-proofs` caught the follow-on itself: the proof moved to the AST while the runner still used the stripper (`BDR-80`). **43 self-tests now RUN in CI** |
 >
 > ### What shipped, 2026-08-10 (first half)
 >
