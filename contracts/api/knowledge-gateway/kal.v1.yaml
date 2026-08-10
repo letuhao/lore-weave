@@ -337,7 +337,10 @@ paths:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: entity_id, in: path, required: true, schema: { type: string, format: uuid } }
-      - { name: hops, in: query, required: false, schema: { type: integer, default: 1, maximum: 2 } }
+      # maximum 1, not 2: the graph port is one-hop by construction and always has been.
+      # The spec advertised 2 against an endpoint that did not exist at all; narrowing it to
+      # what is served beats leaving a promise the implementation rejects with 422.
+      - { name: hops, in: query, required: false, schema: { type: integer, default: 1, maximum: 1 } }
       - { name: cap, in: query, required: false, schema: { type: integer, default: 50, maximum: 200 } }
       - { name: as_of, in: query, required: false, schema: { type: integer, format: int64 } }
     get:

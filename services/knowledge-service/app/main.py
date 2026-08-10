@@ -34,6 +34,7 @@ from app.routers import (
     internal_enrichment,
     internal_extraction,
     internal_kal_temporal,
+    internal_kg_neighborhood,
     internal_kg_state,
     internal_parse,
     internal_parse_pdf,
@@ -780,6 +781,7 @@ app.include_router(internal_job_control.router)
 app.include_router(internal_enrichment.router)
 app.include_router(internal_extraction.router)
 app.include_router(internal_kal_temporal.router)
+app.include_router(internal_kg_neighborhood.router)
 app.include_router(internal_kg_state.router)
 app.include_router(internal_parse.router)
 app.include_router(internal_parse_pdf.router)

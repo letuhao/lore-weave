@@ -1720,9 +1720,24 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   boundary. With `KG_TEMPORAL_ENABLED=false` on the SERVICE, the service reports
   `temporal_unsupported` and drops `as_of`. The authority moved.
 
-  ⚠️ **Found in passing, not fixed:** the gateway's `neighborhood` read calls
-  `/internal/books/{id}/kg/neighborhood`, which **exists nowhere in the repo** — a dead upstream
-  that would 404, and the only consumer `kgAsOfOrDrop` ever had. Out of T26's scope; needs a task.
+  ✅ **Found in passing, now FIXED:** the gateway's `neighborhood` read called
+  `/internal/books/{id}/kg/neighborhood`, which **existed nowhere in the repo** — and it was
+  not a private detail: the route it backs is published in
+  `contracts/api/knowledge-gateway/kal.v1.yaml`, so **the spec advertised a 404** to every
+  reader. `app/routers/internal_kg_neighborhood.py` serves it, built on T18's one-hop graph
+  read with the project scope in the lookup (the FK is unique per *(user, project)*).
+  Cold start — no KG project, or an entity never synced — is a **200 with no edges**, the
+  convention `internal_kg_state` already uses; a 404 would make every caller treat a normal
+  state as failure. `as_of` is dropped, not raised, per T26, and the response says so.
+
+  **`hops` is refused, not silently narrowed.** The port is one-hop by construction, so
+  answering a 2-hop request with 1-hop edges returns a truthful-looking subgraph missing half
+  of what was asked for, with no way for the caller to notice. The contract advertised
+  `maximum: 2` against an endpoint that did not exist at all; it is now `maximum: 1` — the
+  spec narrowed to what is served rather than the endpoint pretending to meet it.
+
+  **Live** (rebuilt image): cold-start book → `200 {"edges":[],…}` where it was a 404;
+  `hops=2` → `422`. 8 new tests.
 
 - [x] **T27** — Make outbox-in-transaction part of the `*Core` contract ✅
   `internal/api/outbox_lifecycle.go` + 4 call sites + 3 consumers + a gate. **4120 python + the
