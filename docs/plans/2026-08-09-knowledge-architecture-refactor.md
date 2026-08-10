@@ -108,15 +108,29 @@ so the suite reported green over an assertion nobody had run since T23. It is re
 real ones. *(Bite: remove the `NOT archived` predicate → "an archived entity reached a default
 search".)*
 
-⚠️ **Deferred, tracked: `D-T25B-PG-ANCHOR-SCORE`.** The port promises entity hits carry
-`anchor_score` for two-layer ranking. This store holds vectors, and `anchor_score` is
-recomputed on its own schedule by the anchor pass — a copy on the vector row would be
-confidently STALE, which is worse than absent. It is left **out of the attributes dict** rather
-than set to `None`, so a consumer that ranks by it raises `KeyError` instead of silently
-multiplying every score by nothing. Pinned by
-`test_entity_hits_omit_anchor_score_rather_than_faking_it`. **This is a real gap in the entity
-read path and must be closed before the entity read cutover** — either by the caller joining
-the graph for scores, or by the anchor pass writing through the port.
+✅ **`D-T25B-PG-ANCHOR-SCORE` — CLOSED as a decision, with a guard.** It is not a gap to fill
+in the adapter, and the first framing of it here was too weak.
+
+`recompute_anchor_score` is `mention_count / max(mention_count)` **across a bucket**. The value
+therefore changes when a *different* entity's mention count moves, without the entity itself
+being touched — so a copy on the vector row would need rewriting for **every row in the bucket
+on every recompute**. That is a mirror which drifts *by construction*, which is precisely the
+failure T27, T28 and T29 each spent a task closing. **Write-through is the wrong fix, not a
+smaller one**, and "the caller joins" is no better: the follow-up fetch the consumer already
+makes goes to *glossary-service*, not the graph, so it cannot supply a KG-owned score.
+
+**The decision: the store that OWNS `anchor_score` serves the entity read path.** Today that
+holds for free — dual-write reads the primary, and the primary is Neo4j. The pg entity search
+built above is correct and proven for lifecycle-filtered retrieval; it is simply not the store
+that can rank two-layer.
+
+**The risk is not in today's code — it is in the change that makes Postgres primary**, which
+nobody writing that change would be reading this file to discover. So the mechanism is a test,
+not a note: `tests/unit/test_vector_primary_owns_anchor_score.py` asserts dual-write reads the
+primary, that the provider still composes Neo4j as primary, that `_ENTITY_ATTRS` still omits
+the score, and that this deferral is still recorded in the plan.
+*(Bite: swap the dual-write arguments — i.e. begin the read cutover — → "the dual-write
+argument order changed … close D-T25B-PG-ANCHOR-SCORE first".)* 4149 unit tests green.
 
 ⬜ **T25b PART 2, what remains:**
 2. The dual-write soak. `vector_dual_write_total{outcome="secondary_failed"}` must be watched
