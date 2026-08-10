@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T34 — Phase 5 continues.**
+**RESUME: T35 — Phase 5 continues.**
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -2641,12 +2641,51 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   inference had never run there, so the bite has to produce the first edges this graph will
   ever have. The target project held 27 events, none motif-tagged (hence `tagged_only=false`).
 
-- [ ] **T34** — Write-time dedupe (**D7**)
+- [x] **T34** — Write-time dedupe (**D7**) ✅
   `emitChapterFacts` — if the incoming `value_hash` equals the currently-open fact's, attach
   evidence instead of opening an interval. **11.7 % of rows carry no new information** (`gender`
   93.2 %), and that grows with chapter count.
   **Bite:** re-extract a processed chapter — fact count must not grow, evidence count must.
   (depends on T33)
+  ---
+  ✅ **DONE.** `appendFact` probes for an **open** fact on the chain with the same `value_hash`
+  before opening anything. If one exists, the chapter re-asserted something already true: it
+  records a **citation** and returns that fact, and no second interval is opened.
+
+  **The citation needed somewhere to go.** There was no fact→evidence link at all — `evidences`
+  hangs off `attr_value_id` (the EAV projection), not off a fact, and the two have different
+  lifetimes. Chain step **0065** adds `entity_fact_evidence (fact_id, episode_id,
+  chapter_ordinal)`, keyed `(fact_id, chapter_ordinal)`.
+
+  **Why a citation and not a counter.** A counter would say a fact was re-asserted 40 times and
+  not WHERE. The location is the useful half — it is what lets a reader jump to the chapter that
+  re-confirmed a value, and what keeps a fact's support auditable after the extraction that
+  produced it is superseded.
+
+  **Matched on open-ness + `value_hash`, not on cardinality**, so it serves both shapes: `single`
+  has one open fact to compare against, and for `multi` (aliases) a re-asserted alias matches its
+  own open row while a genuinely new alias does not. `valid_from_ordinal <= P < valid_to_eff`
+  keeps the direction honest — a fact opening LATER in the story is not evidence for an earlier
+  assertion, and treating it as one would let a backfill answer for a position it does not cover.
+
+  **The bite, exactly as the task words it** — *re-extract a processed chapter: fact count must
+  not grow, evidence count must*:
+  ```
+  disable the dedupe probe →
+    UnchangedValueAttachesEvidenceInsteadOfAnInterval  RED  ("opened a NEW interval")
+    ReExtractingTheSameChapterGrowsNeitherTable        RED  (fact count 2, want 1)
+  ```
+  Two controls stop it becoming data loss or a moved problem:
+  - **A CHANGED value still opens an interval.** Dedupe that swallowed a real change would make
+    the fact log claim a value held for the whole book — silently, because the chain would still
+    be well-formed.
+  - **Re-extracting the same chapter grows NEITHER table.** *"The fact count did not grow"* is
+    only half a claim; without `ON CONFLICT DO NOTHING` on the citation the unbounded growth
+    would simply have moved to a different table.
+
+  **Evidence:** 3 new tests + the **full Go api suite green (68.5 s, live Postgres)** with dedupe
+  active on every fact write — the broad regression surface, since this changes how every fact
+  is written.
 
 <!-- Commit checkpoint: T30–T34 — migration + event contract -->
 

@@ -185,6 +185,9 @@ var chain = []Step{
 	// set to admit 'status'. See entity_facts_status_kind.go for why this is a separate step
 	// rather than an edit to the CREATE TABLE block.
 	{"0064_entity_facts_status_kind", UpEntityFactsStatusKind},
+	// T34 / design D7 — write-time dedupe needs somewhere to put the re-assertion. 11.7% of
+	// fact rows carried no new information; they become citations on the open fact instead.
+	{"0065_entity_fact_evidence", UpEntityFactEvidence},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

@@ -169,6 +169,50 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 	}
 	var factID uuid.UUID
 	inserted := true
+
+	// ── WRITE-TIME DEDUPE (plan T34 / design D7) ────────────────────────────────────────
+	// If an OPEN fact on this chain already holds this exact value, the chapter re-asserted
+	// something already true. Record the citation and return that fact — do NOT open a second
+	// interval saying the same thing.
+	//
+	// Measured before this: **11.7 % of all fact rows carried no new information** (`gender`
+	// alone 93.2 %), and the share grows with chapter count because re-assertions scale with
+	// the book while real changes do not. The cost is not only storage: a chain of identical
+	// values makes "when did this change?" unanswerable without comparing every adjacent pair.
+	//
+	// Matched on `value_hash` and open-ness rather than on cardinality, so it serves BOTH
+	// shapes: for `single` there is one open fact to compare against; for `multi` (aliases)
+	// the same alias re-asserted matches its own open row while a genuinely new alias does not.
+	// `valid_from_ordinal <= $5` keeps it honest about direction — a fact that opens LATER in
+	// the story is not evidence for an earlier assertion, and treating it as such would let a
+	// back-fill silently answer for a position it does not cover.
+	if err := q.QueryRow(ctx, `
+		SELECT fact_id FROM entity_facts
+		 WHERE entity_id = $1 AND fact_kind = $2 AND attr_or_predicate = $3
+		   AND value_hash = md5($4)
+		   AND invalidated_at IS NULL
+		   AND valid_from_ordinal <= $5
+		   AND $5 < valid_to_eff
+		 ORDER BY valid_from_ordinal DESC
+		 LIMIT 1`,
+		p.EntityID, p.FactKind, p.Attr, p.Value, p.ValidFrom,
+	).Scan(&factID); err == nil {
+		// ON CONFLICT DO NOTHING so a re-extract of the same chapter grows NEITHER table.
+		// Without it "the fact count did not grow" would be true while the evidence count
+		// grew unboundedly — the same bug wearing a different column.
+		if _, e := q.Exec(ctx, `
+			INSERT INTO entity_fact_evidence (fact_id, episode_id, chapter_ordinal)
+			VALUES ($1, $2, $3)
+			ON CONFLICT (fact_id, chapter_ordinal) DO NOTHING`,
+			factID, p.SourceEpisodeID, p.ValidFrom,
+		); e != nil {
+			return uuid.Nil, false, fmt.Errorf("append_fact: attach evidence: %w", e)
+		}
+		return factID, false, nil
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, false, fmt.Errorf("append_fact: dedupe probe: %w", err)
+	}
+
 	// Targeted ON CONFLICT on the content-addressed natural key (NOT a bare DO NOTHING),
 	// so a future unique constraint on entity_facts can't be silently swallowed.
 	err := q.QueryRow(ctx, `
