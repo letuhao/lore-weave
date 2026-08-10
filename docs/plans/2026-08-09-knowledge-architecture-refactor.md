@@ -2820,12 +2820,13 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ### DEFERRAL `D-QC6-IDENTITY-LIVE-PROOF`
 
-  The live half (rename -> re-kind -> re-extract -> assert no stale node, no duplicate) is
-  deferred to `D-T35-OPAQUE-IDENTITY`, because it asserts a post-condition of a migration that
-  has not run. **Mechanism:** the measurement above is a one-command re-run and its output is
-  self-describing; `scripts/derived-entity-id-gate.py` keeps the caller set from growing
-  meanwhile. **Retry when** T35 lands - and re-run this count first, because *"must be 0"* is
-  the acceptance criterion and **2819** is where it starts.
+  | | |
+  |---|---|
+  | **Blocker** | The live half (rename -> re-kind -> re-extract -> assert no stale node and no minted duplicate) asserts a **post-condition of a migration that has not run**. T35 is deferred, so the assertion has nothing to be true of. |
+  | **Evidence** | The data half above, run today: **2819 of 6297** nodes already disagree with a recomputed id, and QC-6's own criterion is *"must be 0"*. A live rename would add one more mismatch to 2819 and prove nothing about the property being asserted. |
+  | **To unblock** | `D-T35-OPAQUE-IDENTITY` closes and the 2819 stale rows are reconciled. |
+  | **Mechanism** | The count above is a one-command re-run whose output is self-describing, and `scripts/derived-entity-id-gate.py` (pre-commit + CI) keeps the caller set from growing meanwhile, so the debt can only shrink between now and then. |
+  | **Retry when** | T35 lands — and **re-run the count FIRST**, because *"must be 0"* is the acceptance criterion and **2819** is where it starts. |
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   `docs/specs/.../README.md`: *"Its shape is the design's own test: fix the design, then **re-run
@@ -2842,6 +2843,37 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   *(moved here from Phase 5 by `/aif-improve +check`: the acceptance test was scheduled to run
   one commit BEFORE the task that makes it pass, so it would have failed and read as a regression.)*
   ---
+  ---
+  🔴 **QC-5 WAS RUN, 2026-08-11. RESULT: FAIL — and not for the reason the plan anticipated.**
+  Full evidence: [`docs/measurements/2026-08-11-qc5-acceptance-run.md`](../measurements/2026-08-11-qc5-acceptance-run.md).
+
+  The criterion is **inverted** (*"a pass here with 5/5 means the refactor has not landed"*),
+  which makes the substrate question decisive on its own. Measured on the acceptance book
+  `019f9f2d…` (13 chapters):
+
+  ```
+  glossary entities (live)              32
+  entity_facts — ANY kind                0
+  entity_facts — fact_kind='relation'    0
+  episodes                               0
+  ```
+
+  **The bi-temporal fact layer is completely empty for this book** — not just roles, *nothing*.
+  For contrast the layer is populated elsewhere (largest book **26 192** facts, next **18 620**),
+  so this is not "the feature is unbuilt": **this book was never run through the fact-producing
+  path.** With zero facts and zero episodes, `fact_for_check` assembles no story-position
+  information at all, the symbolic guard cannot flag anything, and the judge is handed an empty
+  context — so a `canon_consistency` of **5/5 is structurally guaranteed**, which is precisely
+  the signal the task names as the defect.
+
+  **Re-running the full end-to-end authoring flow would not have changed this verdict**, only
+  made it more expensive to reach: the flow re-drafts chapters, it does not backfill a fact
+  layer for a book that has never had one. Recording the measurement is the honest execution of
+  this test, and it yields a determinate answer rather than a deferral dressed as one.
+
+  **Preconditions, in order:** (1) populate the fact layer for this book; (2) **T36**; (3) RT-2
+  answered. Only then does re-running the flow measure anything.
+
   ### DEFERRAL `D-QC5-ACCEPTANCE-BLOCKED-ON-T36`
 
   | | |
