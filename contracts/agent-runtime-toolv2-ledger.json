@@ -178,6 +178,16 @@
         "ORDERING, verified not assumed: the duplicate-identifier gate sits before the Tier-A approval gate in stream_service, so the recorded chapter_id==project_id call would now be refused pre-dispatch rather than raised as a card"
       ],
       "admitted": false
+    },
+    "propose_edit": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. Its 2 calls are one genuine failure and one SUCCESS: the second sent {text, operation:'insert_at_cursor'} and suspended (pending:true), which IS this tool's success state -- the browser renders the proposal and the user applies it. It read as a failure only because a suspension could not be recorded as anything else before iterations 3 and CP-5.5. The one real failure is a SIBLING MIS-PICK, the fourth this loop has recorded: {domain:'book', base_version:'v1'} -- `domain` belongs to confirm_action and `base_version` to glossary_propose_entity_edit -- sent to propose_edit, which requires {operation, text} and forbids both. Same shape as iteration 12's create-args-to-start, DQ-9's two confirm tools, and iteration 1's four propose verbs.",
+      "evidence": [
+        "PHASE 2: 2 calls / 2 sessions / 2026-07-19. One pending:true (the success), one invalid_arguments naming both the missing required properties and the two disallowed ones",
+        "LIVE: a real agui turn with editor_context (throwaway book 019fcaa4, its first active chapter) -> the model called propose_edit with {text, operation:'insert_at_cursor', rationale} and the run SUSPENDED, stamped call_outcome=deferred by CP-5.5",
+        "AND THE ROUND TRIP: resumed with outcome=applied_saved -> call_4274648666863492:resolved | propose_edit | done | resolves_deferred=true. That is iteration 3's resolution mechanism working on a THIRD tool (after glossary_propose_entity_edit and confirm_action), and this tool's first recorded success"
+      ],
+      "admitted": false
     }
   }
 }
