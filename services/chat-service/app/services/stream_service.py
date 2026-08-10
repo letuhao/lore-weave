@@ -7466,14 +7466,27 @@ async def _emit_chat_turn(
             # 'stop' reply. finish_reason='awaiting_input' shows NO failure badge
             # (the card itself is the affordance); if the run is later abandoned the
             # resume-expired path flips it to 'interrupted'.
-            _pending_record = {
+            # 🔴 **CP-5.5 — THE TURN ALREADY GOT THIS RIGHT AND THE CALL INSIDE IT DID NOT.**
+            # Twelve lines below, `outcome=OUTCOME_AWAITING_INPUT` carries the note *"asking the
+            # user is a SUCCESS state (§0.5), not a stall … counting it as a failure would score
+            # the correct behaviour as the defect."* This record — the very call that did the
+            # asking — was written `ok: False` with no message, so the lesson held at the turn
+            # level and was inverted one field away.
+            #
+            # Measured: **all 41 of the "failures with no message" §1 files under the error
+            # contract are these**, not one of them a tier-R read, and 38 sit in turns the human
+            # never returned to. `stamp_deferred` makes the call say what the turn already says.
+            _pending_record = instrument.stamp_deferred({
                 "tool": pending.get("name"),
+                # `ok` is retained UNCHANGED: the FE and the resume driver read it, and this row
+                # is about adding the typed fact beside it, not about breaking every consumer to
+                # deliver it. `call_outcome` is what a measurement reads from here on.
                 "ok": False,
                 "pending": True,
                 "runId": run_id,
                 "toolCallId": pending.get("id"),
                 "args": pending.get("args"),
-            }
+            })
             # ext-tasks (T1c(3.e)) — carry the durable-task info so a reload renders
             # the confirm card (title/preview from inputRequests). None for a normal
             # frontend-tool suspend (omitted below), so this is dormant there.

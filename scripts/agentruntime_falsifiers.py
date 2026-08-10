@@ -1065,6 +1065,106 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
                               'pass  # unbound'),
     ],
 
+    # -- CP-5.5: the typed CALL outcome --------------------------------------------------------
+    "test_EVERY_PERSISTED_CALL_CARRIES_ONE": [
+        # Back to the state measured across 7,990 rows: the enum exists and nothing writes it.
+        (f"{CS}/app/services/instrument.py", '        chunk["call_outcome"] = _outcome',
+                                             "        pass  # falsifier"),
+    ],
+    "test_A_DEFERRED_CALL_IS_NOT_FAILED": [
+        # Un-stamp the suspend site, so a call that stopped to ask a human is a failure again --
+        # which is every one of §1's 41 "failures with no message".
+        (f"{CS}/app/services/instrument.py", '    chunk["call_outcome"] = CALL_DEFERRED',
+                                             '    chunk["call_outcome"] = CALL_FAILED'),
+    ],
+    "test_DEFERRED_IS_STAMPED_AT_THE_SITE_NOT_INFERRED_FROM_AN_EMPTY_ERROR": [
+        # Rebuild the conflation as a heuristic: guess `deferred` from a missing message.
+        (f"{CS}/app/services/instrument.py",
+         "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else CALL_FAILED",
+         "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else ("
+         "CALL_DEFERRED if not chunk.get(\"error\") else CALL_FAILED)"),
+    ],
+    "test_THE_SUSPEND_SITE_ACTUALLY_STAMPS_IT": [
+        (f"{CS}/app/services/stream_service.py", "_pending_record = instrument.stamp_deferred({",
+                                                 "_pending_record = ({"),
+    ],
+    "test_AN_UNCLASSIFIED_FAILURE_GETS_C7S_FAIL_CLOSED_ANSWER": [
+        (f"{CS}/app/services/instrument.py", '            chunk["error_class"] = CALL_UNCLASSIFIABLE',
+                                             "            pass  # falsifier"),
+    ],
+    "test_THE_FAIL_CLOSED_DIRECTION_IS_NOT_RETRYABLE": [
+        # The direction that feeds the measured 74% byte-identical repeat calls.
+        (f"{CS}/app/services/instrument.py", '            chunk["error_class"] = CALL_UNCLASSIFIABLE',
+                                             '            chunk["error_class"] = "retryable_transient"'),
+    ],
+    "test_A_DEFERRED_CALL_CARRIES_NO_ERROR_CLASS": [
+        # Let the class ride a non-failure, making "is this deferred call retryable?" answerable.
+        (f"{CS}/app/services/instrument.py", '        chunk.pop("error_class", None)',
+                                             "        pass  # falsifier"),
+    ],
+    "test_A_BOGUS_CLASS_IS_REPLACED_RATHER_THAN_TRUSTED": [
+        (f"{CS}/app/services/instrument.py", "        if chunk.get(\"error_class\") not in CALL_ERROR_CLASSES:",
+                                             "        if chunk.get(\"error_class\") is None:"),
+    ],
+    "test_A_FAILURE_WITH_NO_MESSAGE_IS_MARKED_NOT_SILENT": [
+        # Back to silence: a failure that says nothing and is counted as an ordinary failure.
+        (f"{CS}/app/services/instrument.py", '            chunk["error_message_missing"] = True',
+                                             "            pass  # falsifier"),
+    ],
+    "test_A_FAILURE_WITH_A_MESSAGE_IS_NOT_MARKED": [
+        # Mark every failure, so the count stops meaning "no message" and measures nothing.
+        (f"{CS}/app/services/instrument.py", '        if not str(chunk.get("error") or "").strip():',
+                                             "        if True:"),
+    ],
+    "test_A_DEFERRED_CALL_IS_NEVER_MARKED_MESSAGE_MISSING": [
+        # Recreate the conflation in a second field: a suspension owes no message.
+        (f"{CS}/app/services/instrument.py", "    if _outcome == CALL_FAILED:",
+                                             "    if _outcome in (CALL_FAILED, CALL_DEFERRED):"),
+    ],
+    "test_A_SUCCESSFUL_CALL_IS_DONE": [
+        (f"{CS}/app/services/instrument.py", 'CALL_DONE = "done"', 'CALL_DONE = "empty"'),
+    ],
+    "test_A_FAILED_CALL_IS_FAILED": [
+        # Record a real failure as a success — the untyped `ok` problem, restated.
+        (f"{CS}/app/services/instrument.py",
+         '        _outcome = CALL_DONE if chunk.get("ok") is True else CALL_FAILED',
+         "        _outcome = CALL_DONE"),
+    ],
+    "test_THE_OUTCOME_IS_A_MEMBER_OF_THE_DECLARED_VOCABULARY": [
+        # A value outside C-14's enum, which `Observation` would refuse and a column would keep.
+        (f"{CS}/app/services/instrument.py", 'CALL_DEFERRED = "deferred"',
+                                             'CALL_DEFERRED = "awaiting_input"'),
+    ],
+    "test_A_SITE_SUPPLIED_CLASS_IS_KEPT": [
+        # Overwrite what the RAISING SITE knew with the fail-closed default — C-7 says the site
+        # classifies, and this would throw that away on every classified failure.
+        (f"{CS}/app/services/instrument.py",
+         '        if chunk.get("error_class") not in CALL_ERROR_CLASSES:',
+         "        if True:"),
+    ],
+    "test_NOTHING_HERE_READS_THE_ERROR_TEXT": [
+        # Classify from prose — the regex V-METRIC proved insufficient over 834 rows.
+        (f"{CS}/app/services/instrument.py",
+         '            chunk["error_class"] = CALL_UNCLASSIFIABLE',
+         '            chunk["error_class"] = ("retryable_transient"\n'
+         '                                    if "retry" in str(chunk.get("error") or "")\n'
+         '                                    else CALL_UNCLASSIFIABLE)'),
+    ],
+    "test_THE_TURN_VOCABULARY_STILL_HAS_ITS_OWN_AWAITING_INPUT": [
+        # Leak the turn's name for the state into the CALL vocabulary.
+        (f"{PKG}/observation.py", '    "degraded", "deferred", "failed", "unknown_effect",',
+                                  '    "degraded", "deferred", "failed", "unknown_effect", "awaiting_input",'),
+    ],
+    "test_THE_ONLY_SHARED_MEMBER_IS_FAILED": [
+        # Merge the two vocabularies, so a query joining them by name compares two questions.
+        (f"{PKG}/observation.py", '    "degraded", "deferred", "failed", "unknown_effect",',
+                                  '    "degraded", "deferred", "failed", "unknown_effect", "crashed",'),
+    ],
+    "test_THE_CHUNK_KEY_IS_NOT_THE_TURN_KEY": [
+        # Collide the CALL vocabulary with the TURN vocabulary under one name.
+        (f"{CS}/app/services/instrument.py", '        chunk["call_outcome"] = _outcome',
+                                             '        chunk["outcome"] = _outcome\n        chunk["call_outcome"] = _outcome'),
+    ],
     # -- LIFECYCLE (landed 2026-08-09, unguarded until 2026-08-10) -----------------------------
     #
     # 🔴 These eight guards shipped with NO falsifier, which blocked `agentruntime-census` for

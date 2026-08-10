@@ -142,6 +142,37 @@ def tool_call_source(chunk: dict) -> str:
     return src if src in TOOL_CALL_SOURCES else SOURCE_UNCLASSIFIED
 
 
+#: CP-5.5 — the typed CALL outcome, imported rather than re-declared.
+#:
+#: 🔴 **NAMED `call_outcome` ON THE CHUNK, NOT `outcome`, ON PURPOSE.** `chat_messages.outcome` is
+#: the TURN vocabulary (`completed` · `awaiting_input` · `abandoned_by_user` · `failed` · `crashed`)
+#: and this is the CALL vocabulary (`done` · `deferred` · `failed` · …). They overlap only at
+#: `failed`, and a query that joined them by name would be comparing two different questions. The
+#: distinct key makes that mistake unwritable.
+from app.agentruntime.observation import (  # noqa: E402
+    ERROR_CLASSES as CALL_ERROR_CLASSES,
+    FAILED as CALL_FAILED,
+    OUTCOMES as CALL_OUTCOMES,
+    UNCLASSIFIABLE as CALL_UNCLASSIFIABLE,
+)
+
+CALL_DONE = "done"
+#: A call that stopped to ask a HUMAN. Measured 2026-08-10: **every one of the 41 "failures with no
+#: message" §1 files under the error contract is one of these** — not one is a tier-R read. They are
+#: consumer-local confirm/propose tools, tier `A` writes raising a mutation card, and tier `W`
+#: human-confirmed tools, and **38 of the 41 sit in turns the human never came back to**
+#: (`abandoned_by_user`). A deferred call is not a failure and must never be counted as one.
+CALL_DEFERRED = "deferred"
+
+
+def stamp_deferred(chunk: dict) -> dict:
+    """Mark a call that SUSPENDED awaiting a human. Called at the suspend sites, where the fact is
+    structural — never inferred later from the absence of an error, which is what made a suspension
+    and a broken tool the same row."""
+    chunk["call_outcome"] = CALL_DEFERRED
+    return chunk
+
+
 def stamp_tool_call(
     chunk: dict,
     *,
@@ -280,6 +311,45 @@ def ensure_tool_call_instrumented(chunk: dict) -> dict:
     chunk.setdefault("declaration", _tool)
     chunk.setdefault("runtime_variant", current_runtime_variant())
     chunk.setdefault("latency_ms", None)
+
+    # ── CP-5.5 · the typed CALL outcome ──────────────────────────────────────────────────────
+    # 🔴 **THE ENUM EXISTED AND HAD NEVER BEEN WRITTEN ONCE.** `observation.py` defines this
+    # vocabulary and says in its own comment that it *"replaces `ok: bool`"*, because *"ok=true is
+    # untyped and means seven different things"*. Measured across 7,990 recorded calls before this
+    # landed: `outcome` 0, `error_class` 0. A clause with a subject and no producer — the
+    # C-3…C-17 shape, inside the observation module CP-5 exists because of.
+    #
+    # EXPLICIT AT THE SITE, FAIL-CLOSED HERE. `deferred` is stamped where a call actually suspends
+    # (`stamp_deferred`), because *"it stopped to ask a human"* is a structural fact there and an
+    # inference here — inferring it from *"failed with no message"* is precisely the conflation
+    # this row exists to end, restated as a heuristic.
+    _outcome = chunk.get("call_outcome")
+    if _outcome not in CALL_OUTCOMES:
+        _outcome = CALL_DONE if chunk.get("ok") is True else CALL_FAILED
+        chunk["call_outcome"] = _outcome
+        chunk["call_outcome_inferred"] = True
+    if _outcome == CALL_FAILED:
+        # C-7: a failure carries a CLASS. The classes are set where the failure is RAISED, and
+        # nothing here reads the error text — V-METRIC proved the best possible regex insufficient
+        # over 834 rows. So an unclassified failure gets C-7's own answer for a site that cannot
+        # tell: `terminal_permanent`, the FAIL-CLOSED direction, because an unclassifiable failure
+        # reading as retryable is what feeds the 74% byte-identical repeat calls.
+        if chunk.get("error_class") not in CALL_ERROR_CLASSES:
+            chunk["error_class"] = CALL_UNCLASSIFIABLE
+            chunk["error_class_inferred"] = True
+        # C-7's other half: a failure carries a MESSAGE. This cannot raise — a turn must not die
+        # because a raising site was terse — so the residual is made COUNTABLE instead of invisible,
+        # which is the only honest option when the fix belongs at a site this code does not own.
+        # §1 filed 41 calls as "failures carrying no message at all"; every one turned out to be a
+        # suspension, so this field starts life measuring an EMPTY set and the number to watch is
+        # whether it stays empty.
+        if not str(chunk.get("error") or "").strip():
+            chunk["error_message_missing"] = True
+    elif chunk.get("error_class") is not None:
+        # §4.2 — the error class is a SUB-FIELD of `failed`, not a peer taxonomy. Asking whether a
+        # `deferred` call is retryable is a category error, and a field that answers it invites one.
+        chunk.pop("error_class", None)
+        chunk.pop("error_class_inferred", None)
     return chunk
 
 
