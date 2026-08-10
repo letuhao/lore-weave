@@ -297,6 +297,17 @@
         "NOT DONE, on purpose: the confirm. The token was left to expire rather than spending on image generation for evidence that would not change the conclusion"
       ],
       "admitted": false
+    },
+    "composition_arc_create": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and its record contains ZERO failures: both calls are kind=tool_approval suspensions carrying substantive authoring intent (a full arc `goal` paragraph each), so the model used the tool correctly and the run stopped for a human. Given a real book_id the tool created an arc and returned it with an undo_hint pointing at composition_arc_delete -- the Tier-A reversibility contract, stated by the tool itself rather than assumed. MY FIRST MEASUREMENT WAS WRONG AGAIN, and in the same way as iteration 5's trashed-row miscount: I counted arcs in `outline_node` and got 0 before and after. Arcs are not in that table -- it holds only scene and chapter -- they are in `structure_node`. Searching every uuid id column for the returned node_id found it, rather than trusting my predicate.",
+      "evidence": [
+        "PHASE 2: 2 calls / 1 session / 2026-07-25, both pending:true tool_approval cards, no error on either",
+        "LIVE: composition-service MCP on throwaway book 019fcaa4 -> node 019fed88-b4da-76cd-a13b-76ea36cf1c43, version 1, with _meta.undo_hint {tool: composition_arc_delete, args: {node_id: ...}}",
+        "DATA: structure_node row 019fed88-... exists with kind='arc', title='TOOLV2 LOOP probe arc', is_archived=false, version=1. Falsifier: no such row before the call",
+        "CORRECTION: the first check queried outline_node and reported 0 arcs before AND after. outline_node holds only kind scene (361) and chapter (228); arcs live in structure_node. The row was found by scanning every uuid id column for the id the tool returned"
+      ],
+      "admitted": false
     }
   }
 }
