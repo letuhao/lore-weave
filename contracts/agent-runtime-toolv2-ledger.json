@@ -60,6 +60,17 @@
         "AND ONE FALSIFIER OF MINE WAS GENUINELY WEAK: test_A_PLURAL_LIST_IS_OUT_OF_SCOPE passed a LIST value, which the type(val) is not str check stops before the key filter matters -- the guard was protected twice and tested neither protection. It now also passes a STRING-valued plural key, the only shape where that filter is load-bearing"
       ],
       "admitted": false
+    },
+    "kg_propose_fact": {
+      "state": "proven",
+      "note": "PROVEN LIVE with NO code change, and its record contains ZERO genuine failures. All 6 calls are one of the two populations this loop has already typed: 4 are 'denied by user' across 3 sessions -- a human declining the Tier-A approval card, now stamped refused/denied_by_user by iteration 2 -- and 2 are pending suspensions, now stamped deferred and resolvable by iteration 3. Nothing here ever broke. Like confirm_action in iteration 4, the tool sat on the 'called and NEVER succeeded' list on the strength of a number that could not have been anything else, and what it owed was a proof.",
+      "evidence": [
+        "PHASE 2: 6 calls / 5 sessions. 4 x 'denied by user' (2026-07-25/26, 3 sessions), 2 x pending:true (2026-08-04, 2 sessions). No error message appears anywhere in the population that is not one of those two",
+        "LIVE: real knowledge-service MCP boundary on the throwaway project created in iteration 2 (019fec6c-d421-77f0-b2f4-ab7c3ced3f67) -> {queued: true, pending_fact_id: 019fed27-df52-7830-81be-fc6b27b04943, fact_type: statement}",
+        "DATA: the row is in loreweave_knowledge.knowledge_pending_facts under that pending_fact_id, scoped to the throwaway project. Falsifier: a tool that only claimed to queue would leave the table unchanged. Note it goes to the PENDING-FACTS queue, not the triage inbox -- kg_triage_list still shows only iteration 2's edge, which is correct and is why the inbox was checked rather than assumed",
+        "NO NEW GUARD: both populations are already covered by the registered guards from iterations 2 (denial -> refused) and 3 (suspension -> resolved). A tool-specific copy would assert the same code a third time"
+      ],
+      "admitted": false
     }
   }
 }
