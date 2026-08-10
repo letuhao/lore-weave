@@ -77,7 +77,29 @@ not carry `block_index`, which `passage_to_hit` reads — a small, real gap to c
 **Before the read cutover can be argued for, the secondary must have been receiving writes long
 enough for the gate to mean something.** T25a made the gate real; it still has to be *watched*.
 
-**PO decisions still open:**
+**✅ T25b PART 1 IS DONE — both PO decisions implemented, no read switched.**
+`EntityVectorRecord` now carries `project_id` + `archived` (the T14 reopen), the Neo4j adapter
+carries `block_index` (the gap the plan named) plus the entity lifecycle pair, and
+`vector_hit_to_raw_hit` sits BESIDE `passage_to_hit` rather than replacing it. 4145 python
+tests green (+6). *Bite: drop `blockIndex` from the fork → the field-for-field agreement test
+and the block test both red.*
+
+The read sites are deliberately UNTOUCHED. This plan's own precondition — *"the secondary must
+have been receiving writes long enough for the gate to mean something"* — is not met:
+dual-write is default-off (`KNOWLEDGE_VECTOR_DB_URL` unset), so the secondary has received
+**zero** writes. Switching reads to a store nothing has fed would not be a cutover, it would be
+an outage with a port in front of it.
+
+⬜ **T25b PART 2, in order:**
+1. `PgVectorStore.search(scope="entity")` still raises. Its refusal names the T14 port gap as
+   the blocker, and that gap is now closed — so: add the two columns to the entity table, have
+   the entity upsert write them, and implement the filtered search.
+2. The dual-write soak. `vector_dual_write_total{outcome="secondary_failed"}` must be watched
+   with the secondary actually enabled before a read swap can be argued for at all.
+3. Only then the three read sites (`context/selectors/passages.py`,
+   `routers/public/drawers.py`, `search/retriever.py`).
+
+**PO decisions (both ANSWERED, kept for the record):**
 
 1. **The entity read path.** `PgVectorStore.search(scope="entity")` refuses, because
    `include_archived` and `project_id` describe lifecycle state a vector-only store does not hold.
