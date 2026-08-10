@@ -260,8 +260,14 @@ plan_propose_spec {book_id, source_markdown, mode: "llm"}
 ```
 
 `model_ref` is `anyOf [string, null], default null` — optional. This is not a probe: a real session
-hit it. So the traffic subject is now **two tools** (12 calls + 1) rather than one, and the shape
-holds on four. Still thin by §7's standard, and still recorded rather than built — but the next
+hit it. So the traffic subject is now **three tools** — `composition_conformance_run` 12 calls,
+`plan_propose_spec` 1, and `book_list` 3 (`kind=chapters needs book_id`, iteration 43, also
+organic) — and the shape holds on five tools.
+
+`book_list` is the sharpest of them, because its field description ALREADY says
+*"required for kind=chapters|revisions|scenes"*. The information was on the parameter the model
+was filling in, and it was omitted anyway. That is the conditional family's own *prose is not the
+lever* datum: the remaining fix is a checked declaration, not a better sentence. Still thin by §7's standard, and still recorded rather than built — but the next
 organic instance should tip it, and the declarations are now written down ready to become a member:
 `scope=arc ⇒ arc_id`, `scope=chapter ⇒ chapter_id`, `op=create ⇒ plan_run_id+budget_usd+
 pause_after_each_unit`, `op=list ⇒ chapter_id`, `mode=llm ⇒ model_ref`.

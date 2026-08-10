@@ -467,6 +467,16 @@
         "NOT FIXED, recorded as DQ-11: the Slate-vs-Tiptap body dialect"
       ],
       "admitted": true
+    },
+    "book_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 172 calls / 123 sessions / 160 ok (93%). Of the 12 failures, 5 are our own breakers (4 repeat-read, 1 repeated-failure), 5 are a transport 'provider error' across 4 sessions, and 3 are 'kind=chapters needs book_id'. That last one is DQ-6's conditional-optional shape on a FIFTH tool and the SHARPEST instance of it: book_id's own description already reads 'required for kind=chapters|revisions|scenes'. The information was on the very parameter the model was filling in, and it was omitted anyway -- the conditional family's own prose-is-not-the-lever datum.",
+      "evidence": [
+        "PHASE 2, split: 160 ok / 12 failed = 5 breakers + 5 provider error + 3 conditional",
+        "LIVE: book-service MCP -> 2 of 201 books with a COMPLETE paging contract (has_more true, is_complete false, next_offset 2, returned 2, total 201) and a guidance line telling the model when NOT to call again -- which is the very loop its 4 repeat-read refusals came from",
+        "NOTED: CP-5.6 measured that 5 of 36 paging tools never report completeness at all. book_list is not one of them; it reports is_complete explicitly"
+      ],
+      "admitted": true
     }
   }
 }
