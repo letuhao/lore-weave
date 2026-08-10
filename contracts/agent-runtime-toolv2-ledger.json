@@ -563,6 +563,15 @@
         "INSTRUMENTATION TIMELINE, read off this one tool: 33 unstamped (to 07-26), 24 with source=meta (08-03..04), 1 with source=meta + call_outcome=done (08-10)"
       ],
       "admitted": true
+    },
+    "kg_project_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 55 calls / 31 sessions / 52 ok (94.5%), and all 3 failures are correct behaviour: 2 are the repeat-read breaker (our own refusal) and 1 is a bounds check -- 'limit: Input should be less than or equal to 50', which names the bound and the value in one sentence. This tool is what CP-5.8's precondition refusal NAMES as the remedy when a scope=project tool has no project, so several earlier iterations' refusals point here. Unlike iteration 49's remedy, it is not deniable: it is a plain Tier-R read.",
+      "evidence": [
+        "PHASE 2, split: 52 ok / 3 failed = 2 repeat-read breaker + 1 limit bounds",
+        "LIVE: kg_project_list -> the caller's projects with more:true and a note naming what to do with a project_id. The first row is this loop's own throwaway from iteration 2, which is a small reminder that the corpus now contains the loop's traffic (DQ-12)"
+      ],
+      "admitted": false
     }
   }
 }
