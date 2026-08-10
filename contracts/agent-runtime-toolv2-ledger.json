@@ -553,6 +553,16 @@
         "LIVE: glossary_get_entity with a real id -> Mira Vale with 2 attribute values. The recorded duplicate shape (book_id == entity_id) still answers 'entity not accessible' at the service, and iteration 5's gate now refuses it in chat-service before the wire"
       ],
       "admitted": false
+    },
+    "tool_load": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and the FIRST PERFECT RECORD the loop has reached: 58 calls / 35 sessions / 58 ok, from 2026-07-09 to 2026-08-10, with ZERO failures of any kind -- no breakers, no argument errors, nothing. Its partner tool_list has zero genuine failures too (iteration 44), so the deterministic discovery pair is clean on both halves. Its history also happens to record the instrumentation checkpoints landing, visible in one tool: 33 calls to 2026-07-26 carry no source and no call_outcome; 24 calls on 2026-08-03..04 carry source=meta (CP-0.3 stamping live); the one call on 2026-08-10 carries source=meta AND call_outcome=done (CP-5.5 live). The instrument arriving is legible in the data it instruments.",
+      "evidence": [
+        "PHASE 2: 58 calls / 35 sessions / 58 ok. No error string appears anywhere in its history",
+        "LIVE: a real agui turn -> tool_load {name: 'book_list'} | done | source=meta | ok",
+        "INSTRUMENTATION TIMELINE, read off this one tool: 33 unstamped (to 07-26), 24 with source=meta (08-03..04), 1 with source=meta + call_outcome=done (08-10)"
+      ],
+      "admitted": true
     }
   }
 }
