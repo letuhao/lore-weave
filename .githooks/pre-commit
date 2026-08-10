@@ -43,6 +43,9 @@ command -v python >/dev/null 2>&1 || PY=python3
 # facts. Repo-wide: the point is that the reader set can only SHRINK, which is a property of
 # the tree rather than of the files in one commit.
 "$PY" "$ROOT/scripts/alive-column-deprecation-gate.py"
+# T35 — the derived `Entity.id = hash(name, kind)` gains no new callers while
+# D-T35-OPAQUE-IDENTITY is open. The baseline is the migration checklist.
+"$PY" "$ROOT/scripts/derived-entity-id-gate.py"
 
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a

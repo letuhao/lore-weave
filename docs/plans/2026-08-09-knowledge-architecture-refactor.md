@@ -48,7 +48,7 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T35 — Phase 5 continues.**
+**RESUME: T36 — Phase 5 continues.**
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -2689,15 +2689,16 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 <!-- Commit checkpoint: T30–T34 — migration + event contract -->
 
-- [ ] **T35** — Opaque identity; KG holds **mentions**; retire `e.id = hash(name, kind)`
+- [~] **T35** — Opaque identity; KG holds **mentions**; retire `e.id = hash(name, kind)`
   `app/extraction/glossary_sync.py` — `ON MATCH SET` never updates `e.id`, so the 2026-08-02 kind
   backfill left **77 nodes** whose derived id disagrees with their own properties. 48 Cypher sites
   key on `Entity.id`.
   **Test:** rename + re-kind → no stale node, no minted duplicate.
   (depends on T34)
   ---
-  ⏸ **NOT STARTED — scoped and measured, handed off deliberately.** Recorded here so the next
-  session starts from evidence rather than from the plan's 2026-08-02 numbers.
+  ⏸ **DEFERRED with a mechanism (below), not merely unstarted.** Scoped, measured, and the
+  blast radius frozen by a gate so the next session starts from evidence rather than from the
+  plan's 2026-08-02 numbers.
 
   **The premise is confirmed.** `entity_canonical_id(user_id, project_id, name, kind)` (in
   `sdks/python/loreweave_extraction/canonical.py`, re-exported by
@@ -2715,11 +2716,21 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   migration target mostly exists; what is missing is retiring the derived id and repointing the
   48 join sites.
 
-  **Why it was not started here rather than started badly:** this is a 48-site identity change
-  across a live graph, and the failure mode is a *silent* one — a stale id does not error, it
-  simply joins to nothing or to the wrong node. It needs a full context to do and to verify, and
-  beginning it at the tail of one would leave the graph half-migrated with no way to tell which
-  half. The measurements above are the head start.
+  ### 🔻 DEFERRAL `D-T35-OPAQUE-IDENTITY`
+
+  | | |
+  |---|---|
+  | **Blocker** | Retiring the derived id is an identity change across a **live graph** whose failure mode is silent: a stale `Entity.id` does not raise, it joins to nothing or to the wrong node. Done partially, it leaves the graph half-migrated with **no way to tell which half** — strictly worse than not starting, because every node still looks well-formed. |
+  | **Evidence** | `entity_canonical_id(user_id, project_id, name, kind)` hashes the canonicalised name+kind; `glossary_sync.py` recomputes it on every sync while the MERGE's `ON MATCH SET` never rewrites `e.id`. Live graph, re-measured 2026-08-11: **6297** `:Entity` nodes carry an id, **5776** already carry the stable glossary anchor (~92 % of the migration target already exists). |
+  | **To unblock** | A dedicated session with enough context to repoint every caller AND verify the graph afterwards — nothing external is missing, this is schedulable work. |
+  | **Mechanism** | **`scripts/derived-entity-id-gate.py`**, wired into pre-commit + `foundation-ci.yml`. It pins the caller set exactly, each entry annotated with what it does, so **a new caller fails the build** and a caller that migrates must be removed from the baseline. **The baseline can only shrink, and it IS the migration checklist.** *Bite: add a file calling `entity_canonical_id` → FAIL, exit 1, file named.* |
+  | **Retry when** | Picked up as its own slice. It is a **precondition of T36** (roles as relation facts key on entity identity) — so retry before T36 ships, not after. |
+
+  ⚠️ **The gate corrected this task's own sizing on its first run.** The baseline was seeded
+  from `grep entity_canonical_id` at **eleven** files; the gate — which blanks comments,
+  docstrings and bare imports — found **five** actual callers. Sizing T35 off the grep would
+  have over-stated the migration by **2.2×**, and an over-stated checklist hides the real
+  remainder inside noise, which is precisely the mistake T17's "still owed" paragraph made.
 
 - [ ] **T36** — Roles as relation facts with story intervals (**M2**)
   Closes `D-CANON-CHECK-BLIND-TO-ROLE`, the refactor's stated acceptance case.

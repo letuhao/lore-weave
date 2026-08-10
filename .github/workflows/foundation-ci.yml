@@ -212,6 +212,8 @@ jobs:
       # T32 — the deprecated `alive` column gains no new readers while D-T32-ALIVE-NO-FACTS
       # is open. The baseline is the migration checklist and can only shrink.
       - run: python scripts/alive-column-deprecation-gate.py
+      # T35 — derived Entity.id callers can only shrink (D-T35-OPAQUE-IDENTITY).
+      - run: python scripts/derived-entity-id-gate.py
       - run: python scripts/knowledge-http-surface-gate.py
       - run: python scripts/tier-tag-gate.py
       - run: bash scripts/dependency-registry-lint.sh
