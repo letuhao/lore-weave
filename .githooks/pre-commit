@@ -35,6 +35,10 @@ command -v python >/dev/null 2>&1 || PY=python3
 "$PY" "$ROOT/scripts/graph-port-gate.py" --staged
 "$PY" "$ROOT/scripts/gateway-domain-logic-gate.py"
 "$PY" "$ROOT/scripts/entity-lifecycle-outbox-gate.py"
+# Repo-wide, not --staged: a producer rename breaks CONSUMERS, and those files are exactly
+# the ones NOT in the commit that renames. Scoping this to the staged set would make it blind
+# to the only failure it exists to catch (plan T30 / D-GLOSSARY-EVENTS-NO-SOT).
+"$PY" "$ROOT/scripts/glossary-events-ssot-gate.py"
 
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a

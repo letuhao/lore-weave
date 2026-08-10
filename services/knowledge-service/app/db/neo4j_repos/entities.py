@@ -557,9 +557,15 @@ async def upsert_glossary_anchor(
     Used by the K13.0 Pass 0 anchor pre-loader to seed the graph
     with curated glossary entries before extraction begins. Setting
     `anchor_score = 1.0` makes these the highest-prior nodes during
-    fuzzy entity resolution. Also called on `glossary.entity_created`
-    / `glossary.entity_updated` events to keep the canonical fields
-    (name, kind, aliases) mirrored from glossary-service.
+    fuzzy entity resolution. Also called on `glossary.entity_updated`
+    events to keep the canonical fields (name, kind, aliases) mirrored
+    from glossary-service.
+
+    (This used to say "`glossary.entity_created` / `glossary.entity_updated`".
+    **No producer emits `glossary.entity_created`** — a create is announced as
+    `glossary.entity_updated` with `op:"created"`. Corrected under plan T30, whose
+    gate found it: a docstring naming a subscription that cannot exist sends the
+    next reader looking for a handler nobody can write.)
 
     `glossary.entity_updated` uses the same query — ON MATCH
     overwrites name/kind/aliases because glossary is the SSOT for
@@ -1820,9 +1826,10 @@ async def link_to_glossary(
     """Promote a discovered entity to a glossary anchor.
 
     Used on the K-G-P-1 promotion path (user clicks "Promote to
-    glossary" in the gap-report UI) and on the
-    `glossary.entity_created` event when a new glossary entry is
-    authored that matches an existing discovered entity.
+    glossary" in the gap-report UI) and when a new glossary entry is
+    authored that matches an existing discovered entity — which arrives as
+    `glossary.entity_updated` with `op:"created"`, NOT as a
+    `glossary.entity_created` event. No producer emits that name (plan T30).
 
     Sets `glossary_entity_id`, `anchor_score=1.0`, clears any
     archived state, and overwrites name/canonical_name/kind/

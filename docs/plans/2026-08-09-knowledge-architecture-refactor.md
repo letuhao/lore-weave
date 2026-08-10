@@ -2292,10 +2292,59 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 ### Phase 5 · The model
 
-- [ ] **T30** — Close `D-GLOSSARY-EVENTS-NO-SOT` **before any producer moves**
+- [~] **T30** — Close `D-GLOSSARY-EVENTS-NO-SOT` **before any producer moves**
   `contracts/events/_registry.yaml` — 0 `glossary.*` entries; the real list is a Go `const` block
   hand-mirrored by five consumers with no generator and no drift gate.
   (depends on T29)
+  ---
+  ✅ **The ENFORCEMENT half is closed.** `scripts/glossary-events-ssot-gate.py`, wired into
+  pre-commit and `foundation-ci.yml`. The producer's `const` declarations are the one owner;
+  every `glossary.entity_*` / `glossary.name_confirmed` literal in non-test code across
+  `services/` and `contracts/` must be one of them.
+
+  **Both bites fire, and the second is RT-10's founding scenario verbatim.**
+  - Typo a consumer's constant (`entity_updated` → `entity_update`) → FAIL, exit 1, one file
+    named.
+  - **Rename the event in the PRODUCER** — *"moving a producer under that is silent breakage
+    by construction"* — → FAIL naming **six consumer sites across four services**
+    (`revision_consumer.go`, `staleness_consumer.go`, `knowledge-service/main.py`,
+    `learning-service/{main,events/correction_contract}.py`,
+    `translation-service/events/glossary_consumer.py`). That is the "five consumers,
+    hand-mirrored" of the deferral, made visible at commit time instead of in production.
+  Repo-wide, **deliberately not `--staged`**: a producer rename breaks the files that are
+  *not* in the renaming commit, so scoping it to the staged set would blind it to the only
+  failure it exists to catch.
+
+  🐞 **Found on its first clean run: `glossary.entity_created` is emitted by nothing.**
+  Creation is announced as `glossary.entity_updated` with `op:"created"` (confirmed on the
+  live stream in QC-4). Two knowledge-service **docstrings** nevertheless say the upsert is
+  *"called on `glossary.entity_created` / `glossary.entity_updated` events"* — documentation
+  describing a subscription that cannot exist. Three further references are negative tests
+  ("this event must be ignored"), which are legitimate but pin a name that could silently
+  change meaning if it ever started being emitted. Tests are reported as a **note**, not
+  failed: failing them would push the next author to delete the assertion rather than the drift.
+
+  ⚠️ **THE REGISTRY HALF IS NOT DONE, AND IS NOT QUIETLY SUBSTITUTED — PO input wanted.**
+  The obvious reading of this task is "add the nine events to `_registry.yaml`". Measured, that
+  does **not** close the deferral, and the repo contains the proof:
+  - `contracts/events/registry.go:108` **requires a non-empty `go_struct`** per entry and
+    `tools/eventgen` generates Go/Rust/TS/Python bindings from it — there is no contract-only
+    entry. Registering means writing nine payload structs that already exist in
+    glossary-service.
+  - `contracts/events/canon.go` is the precedent and states it in capitals:
+    ***"THIS FILE DOES NOT MODIFY services/glossary-service/."*** The `canon.*` events are
+    registered, structs and all, while the producer keeps declaring its own strings.
+  - glossary-service does not import `contracts/events` at all.
+
+  So registering them the `canon.*` way would add **another parallel list** rather than remove
+  the five that exist — the deferral's own disease with a YAML file on top. Real adoption means
+  glossary-service importing the generated constants: a Go module dependency plus a rewrite of
+  every emit site, which `canon.go` itself records as a separate sub-program.
+
+  **What is delivered is the property RT-10 asks for** — a producer rename can no longer land
+  silently. **What is owed** is genuine registry adoption, and it is left `[~]` rather than
+  ticked so it cannot be mistaken for done. This is flagged rather than decided: the sealed
+  design says the registry is authoritative, and making it so is a scope call for the PO.
 
 - [ ] **T31** — Physical lifecycle ledger; emit on delete **and restore and purge**; wire
   `archive_entity(reason='glossary_deleted')` — built, correct, honoured at 38 sites, **only test
