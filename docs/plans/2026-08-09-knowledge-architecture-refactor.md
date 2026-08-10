@@ -48,33 +48,39 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: T25a — wire the `VectorStore` port into the read path. ⚠️ NEEDS A PO DECISION FIRST.**
+**RESUME: T25b — the READ cutover.** ⚠️ Two decisions are the PO's, listed at the bottom.
 
-T25 delivered and drilled the backup path, then found its other two parts blocked by something no
-task in this plan owns: **nothing constructs a `VectorStore`.** Phase 3 builds the image, the
-adapter, the dual-write and the cutover — and never wires the port into the three live call sites
-(`context/selectors/passages.py`, `routers/public/drawers.py`, `search/retriever.py`). See T25's
-entry for the evidence.
+**T25a is DONE (write path wired).** `app/adapters/vector_store_provider.py` is the composition
+root Phase 3 never had. The three vector WRITE sites — `passage_ingester`, `glossary_passage`,
+`entity_embedder` — now go through `VectorStore`, so
+`vector_dual_write_total{outcome="secondary_failed"}` **can move**, proven by a live test that makes
+it move. Default-off: with `KNOWLEDGE_VECTOR_DB_URL` unset the factory returns a plain
+`Neo4jVectorStore` and behaviour is unchanged.
 
-**Read this before treating any Phase 3 gate as green:**
-`vector_dual_write_total{outcome="secondary_failed"}` is the cutover gate, and it is currently stuck
-at zero **because no write reaches it** — indistinguishable, at a glance, from zero because nothing
-failed. Do not read it as a pass until something is wired.
+**T25b — what remains of the cutover.** Reads still call `find_passages_by_vector` directly from
+`context/selectors/passages.py`, `routers/public/drawers.py` and `search/retriever.py`. This is
+NOT a mechanical swap, and the reason is worth reading before planning it: those hits flow into
+`passage_to_hit`, which is **shared with the CJK lexical leg**. That leg is not a vector search and
+will never come through this port, so changing the shared hit shape to the port's `VectorHit` would
+rewrite a retrieval path this migration has no business touching. Also `VectorHit.attributes` does
+not carry `block_index`, which `passage_to_hit` reads — a small, real gap to close first.
 
-The three obligations from T24 still stand and now belong to T25a/QC-3:
+**Before the read cutover can be argued for, the secondary must have been receiving writes long
+enough for the gate to mean something.** T25a made the gate real; it still has to be *watched*.
 
-1. **The cutover gate must be able to move** before it can be trusted (above).
-2. **The search-effort defaults were measured at 181 rows** — 300/200 turned 0.715 into 1.000
-   there. QC-3 re-measures at scale; the fallback is named, pgvector's HNSW hit 1.000 at the
-   server's own defaults for dims ≤ 2000.
-3. **The entity read path is still owed.** `PgVectorStore.search(scope="entity")` refuses, because
+**PO decisions still open:**
+
+1. **The entity read path.** `PgVectorStore.search(scope="entity")` refuses, because
    `include_archived` and `project_id` describe lifecycle state a vector-only store does not hold.
    Closing it means adding those fields to `EntityVectorRecord` — **a T14 port change**, which is
-   why it is a PO decision and not a quiet fix.
+   why it is not a quiet fix.
+2. **Whether the read cutover keeps `passage_to_hit` shared** or forks a vector-specific mapper.
 
 Also owed for the RTO: **a diskann rebuild measured above 65 536 vectors**
 (`diskann.min_vectors_for_parallel_build`), since every number in the restore drill was taken below
-that threshold and is therefore single-threaded.
+that threshold and is therefore single-threaded. QC-3 owns it, along with the scale re-measure of
+the 300/200 search-effort defaults (measured at 181 rows; the named fallback is pgvector's HNSW,
+which hit 1.000 at the server's own defaults for dims ≤ 2000).
 
 **Still open elsewhere:** 6 `db/migrations/` backfills carry Cypher (Phase 7 must port or retire),
 QC-2's rendered-block diff is owed once a consumer holds a port, and 283 Postgres-gated integration
@@ -1624,12 +1630,40 @@ vectors and validity intervals live in different stores.
   is wired looks exactly like a gate that reads zero because nothing failed.** That is the most
   dangerous shape in this whole phase and it must not be read as a pass.
 
-  **Needed before T25 can finish (proposed T25a, for the PO):** replace the three direct
-  `find_passages_by_vector` call sites with a `VectorStore` injected at the composition root, then
-  run the dual-write in shadow long enough for the counter to mean something. Also still owed from
-  T23/T24: `PgVectorStore.search(scope="entity")` refuses outright, so the Postgres store cannot
-  serve entity search at all — the cutover cannot land over that either.
   (depends on T24)
+
+- [x] **T25a** — The composition root Phase 3 never had ✅ *(added after T25 measured the gap)*
+  `app/adapters/vector_store_provider.py`; **4135 green**.
+
+  **Writes are wired; reads are not — and that IS dual-write.** Write both, read the primary,
+  compare. The three vector write sites (`passage_ingester`, `glossary_passage`,
+  `entity_embedder`) now go through `VectorStore`. Swapping reads is the cutover itself and
+  cannot honestly happen until the secondary has been fed for a while.
+
+  **The gate can now move, and a test makes it move.**
+  `tests/integration/db/test_vector_dual_write_live.py` asserts with `SELECT`s against a real
+  Postgres, not mock call counts, because the entire failure mode is "the secondary is never
+  reached" and only the secondary's own database can testify to that. One test deliberately
+  drives `secondary_failed` up — a counter that cannot be made to move is not a gate.
+  **Bite:** delete the secondary write → two of the three go red.
+
+  **Default-off, and off means byte-identical.** With `KNOWLEDGE_VECTOR_DB_URL` unset the factory
+  returns a plain `Neo4jVectorStore` — same repo calls, one method deeper. No second database, no
+  new failure mode; turning the migration on is an explicit act of configuration.
+
+  **The composition root supplies the entity-existence oracle** that `PgVectorStore` refused to
+  guess at (T23), asking Neo4j through the *user-scoped* `get_entity` rather than
+  `get_entity_by_id_any_owner` — an any-owner read would let one tenant's write be authorised by
+  another's row. It is the only layer that can see both stores, which is exactly why the oracle
+  belongs here.
+
+  **Test seam:** `tests/unit/_vector_seam.py` forwards the record's fields to the same mock as
+  keyword arguments, so ~32 existing assertions keep testing what they tested rather than being
+  rewritten — and if `PassageVectorRecord` ever drifts from `upsert_passage`'s parameters the
+  names stop matching and they fail, which is what you want from a shim.
+
+  **Review of my own change** caught the store being constructed **per chunk** inside the ingest
+  loop (and per entity in the embedder); both are now resolved once per batch.
 
 - [ ] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
   `/review-impl` (data migration — deeper than `/aif-review`). Then **live**: re-run

@@ -41,15 +41,16 @@ from uuid import UUID
 
 from app.clients.book_client import BookClient
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
+from app.adapters.vector_store_provider import get_vector_store
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     delete_passages_for_source,
     get_source_ingest_state,
     set_source_lang_for_source,
-    upsert_passage,
 )
 from app.extraction.patterns import detect_primary_language
+from app.ports.vector_store import PassageVectorRecord
 from app.jobs.budget import record_spending
 from app.pricing import cost_per_token
 
@@ -460,6 +461,11 @@ async def ingest_chapter_passages(
     # side by side (canon search still sees the published revision; surface=all sees
     # the newer draft). A PUBLISH (canon=True) reaps BOTH buckets (canon=None) —
     # publishing establishes the new canon and supersedes any ahead-of-canon draft.
+    # T25a — resolved ONCE, not per chunk. Unset KNOWLEDGE_VECTOR_DB_URL keeps this the
+    # same `upsert_passage` it always was; set, it also writes the pgvector secondary.
+    # Building it inside the loop would re-resolve config and construct a dual-write
+    # wrapper for every chunk of every chapter.
+    store = await get_vector_store(session)
     await delete_passages_for_source(
         session,
         user_id=str(user_id),
@@ -486,8 +492,7 @@ async def ingest_chapter_passages(
             else None
         )
         try:
-            await upsert_passage(
-                session,
+            await store.upsert(PassageVectorRecord(
                 user_id=str(user_id),
                 project_id=str(project_id),
                 source_type="chapter",
@@ -504,7 +509,7 @@ async def ingest_chapter_passages(
                 source_lang=resolved_lang,
                 mixed=mixed,
                 content_hash=content_hash,
-            )
+            ))
             result.chunks_created += 1
         except Exception:
             logger.exception(

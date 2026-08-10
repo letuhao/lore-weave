@@ -6,6 +6,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from tests.unit._vector_seam import patch_vector_store
+
 from app.clients.embedding_client import EmbeddingError, EmbeddingResult
 from app.extraction.passage_ingester import (
     MIN_CHUNK_CHARS,
@@ -193,7 +195,7 @@ async def test_ingest_skips_unsupported_dim(monkeypatch):
     emb = _mk_embedding_client()
     upsert = AsyncMock()
     delete = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source", delete,
     )
@@ -243,7 +245,7 @@ async def test_ingest_skips_when_embed_fails(monkeypatch):
     )
     upsert = AsyncMock()
     delete = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source", delete,
     )
@@ -282,7 +284,7 @@ async def test_ingest_happy_path_upserts_per_chunk(monkeypatch):
 
     upsert = AsyncMock()
     delete = AsyncMock(return_value=0)
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source", delete,
     )
@@ -322,7 +324,7 @@ async def test_ingest_threads_canon_false_for_draft_indexing(monkeypatch):
     emb = MagicMock()
     emb.embed = fake_embed
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -354,7 +356,7 @@ async def _run_ingest_capturing_delete(monkeypatch, *, canon: bool):
     emb = MagicMock()
     emb.embed = fake_embed
     delete = AsyncMock(return_value=0)
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source", delete,
     )
@@ -404,7 +406,7 @@ async def test_ingest_skip_gate_reads_matching_bucket(monkeypatch, canon):
     emb = MagicMock()
     emb.embed = fake_embed
     state = AsyncMock(return_value=None)  # cache miss → ingest proceeds
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -439,7 +441,7 @@ async def test_ingest_maps_block_index_from_block_indices(monkeypatch):
         )
     emb.embed = fake_embed
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -472,7 +474,7 @@ async def test_ingest_disables_block_map_on_misalignment(monkeypatch):
         )
     emb.embed = fake_embed
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -531,7 +533,7 @@ async def test_ingest_stamps_declared_source_lang(monkeypatch):
     emb = MagicMock()
     emb.embed = fake_embed
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -567,7 +569,7 @@ async def test_ingest_meters_embedding_cost_when_pool_given(monkeypatch):
         )
     emb = MagicMock()
     emb.embed = fake_embed
-    monkeypatch.setattr(pi, "upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
     monkeypatch.setattr(pi, "cost_per_token", lambda _m: Decimal("0.0001"))
     rec = AsyncMock()
@@ -601,7 +603,7 @@ async def test_ingest_no_metering_without_pool(monkeypatch):
         )
     emb = MagicMock()
     emb.embed = fake_embed
-    monkeypatch.setattr(pi, "upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
     rec = AsyncMock()
     monkeypatch.setattr(pi, "record_spending", rec)
@@ -638,7 +640,7 @@ async def test_ingest_skip_gate_unchanged_text(monkeypatch):
     monkeypatch.setattr(pi, "set_source_lang_for_source", tag)
     upsert = AsyncMock()
     delete = AsyncMock()
-    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(pi, "delete_passages_for_source", delete)
     emb = MagicMock()
     emb.embed = AsyncMock()
@@ -678,7 +680,7 @@ async def test_skip_gate_does_not_skip_on_canon_flip(monkeypatch):
     )
     monkeypatch.setattr(pi, "set_source_lang_for_source", AsyncMock(return_value=0))
     upsert = AsyncMock()
-    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
 
     async def fake_embed(*, user_id, model_source, model_ref, texts):
@@ -727,7 +729,7 @@ async def test_skip_gate_does_not_skip_on_metadata_drift(monkeypatch, state_over
     monkeypatch.setattr(pi, "get_source_ingest_state", AsyncMock(return_value=state))
     monkeypatch.setattr(pi, "set_source_lang_for_source", AsyncMock(return_value=0))
     upsert = AsyncMock()
-    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(pi, "delete_passages_for_source", AsyncMock(return_value=0))
 
     async def fake_embed(*, user_id, model_source, model_ref, texts):
@@ -801,7 +803,7 @@ async def test_ingest_text_override_bypasses_book_fetch(monkeypatch):
     emb.embed = fake_embed
     upsert = AsyncMock()
     delete = AsyncMock(return_value=0)
-    monkeypatch.setattr(pi, "upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(pi, "delete_passages_for_source", delete)
 
     vi_text = "Bá tước Dracula bước vào lâu đài. " * 200
@@ -861,7 +863,7 @@ async def test_ingest_dim_mismatch_chunk_is_skipped(monkeypatch):
     emb = MagicMock()
     emb.embed = fake_embed
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -903,7 +905,7 @@ async def test_ingest_fetches_pinned_revision_when_revision_id_set(monkeypatch):
     rev = uuid4()
     book = _mk_book_client()
     emb = _mk_embedding_client(n_vectors=1, dim=1024)
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -1012,7 +1014,7 @@ async def test_backfill_ingests_every_kg_indexed_chapter(monkeypatch):
     book = _book_with_published(chapters)
     emb = _dyn_embed()
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -1063,7 +1065,7 @@ async def test_backfill_draft_indexed_chapter_is_pinned_and_NOT_canon(monkeypatc
     book = _book_with_published(chapters)
     emb = _dyn_embed()
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -1097,7 +1099,7 @@ async def test_backfill_no_published_chapters_is_noop(monkeypatch):
     """Empty (or None) published list → no ingest, no embed calls."""
     book = _book_with_published([])
     emb = _dyn_embed()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source", AsyncMock(),
     )
@@ -1129,7 +1131,7 @@ async def test_backfill_skips_malformed_chapter_but_processes_rest(monkeypatch):
     ]
     book = _book_with_published(chapters)
     emb = _dyn_embed()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", AsyncMock())
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", AsyncMock())
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -1156,7 +1158,7 @@ async def test_backfill_chapter_range_bounds_to_slice(monkeypatch):
     book = _book_with_published(chapters)
     emb = _dyn_embed()
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -1183,7 +1185,7 @@ async def test_backfill_inline_cap_skips_large_unscoped_book(monkeypatch):
     book = _book_with_published(chapters)
     emb = _dyn_embed()
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),
@@ -1209,7 +1211,7 @@ async def test_backfill_cap_does_not_apply_when_range_given(monkeypatch):
     book = _book_with_published(chapters)
     emb = _dyn_embed()
     upsert = AsyncMock()
-    monkeypatch.setattr("app.extraction.passage_ingester.upsert_passage", upsert)
+    patch_vector_store(monkeypatch, "app.extraction.passage_ingester", upsert)
     monkeypatch.setattr(
         "app.extraction.passage_ingester.delete_passages_for_source",
         AsyncMock(return_value=0),

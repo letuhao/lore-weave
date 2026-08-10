@@ -31,13 +31,14 @@ import json
 import logging
 from typing import Any
 
+from app.adapters.vector_store_provider import get_vector_store
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     get_passage_content_hash,
-    upsert_passage,
 )
+from app.ports.vector_store import PassageVectorRecord
 
 __all__ = ["render_glossary_passage", "sync_glossary_entity_passage"]
 
@@ -203,8 +204,11 @@ async def sync_glossary_entity_passage(
         )
         return "unsupported_dim"
 
-    await upsert_passage(
-        session,
+    # T25a — through the VectorStore port. With KNOWLEDGE_VECTOR_DB_URL unset this is the
+    # same `upsert_passage` as before, one method call deeper; set, it also writes the
+    # pgvector secondary.
+    store = await get_vector_store(session)
+    await store.upsert(PassageVectorRecord(
         user_id=user_id,
         project_id=project_id,
         source_type="glossary",
@@ -219,5 +223,5 @@ async def sync_glossary_entity_passage(
         canon=True,
         source_lang=source_lang or "unknown",
         content_hash=content_hash,
-    )
+    ))
     return "indexed"

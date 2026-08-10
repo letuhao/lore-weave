@@ -310,5 +310,18 @@ class Settings(BaseSettings):
     coref_judge_user: str = ""
     coref_judge_model_source: str = "platform_model"
 
+    # T25a — the vector-store migration seam. UNSET (the default) means Neo4j alone and
+    # byte-identical behaviour: no second database, no dual write, no new failure mode.
+    # Setting it turns on dual-write to the pgvector store (T22's image), which is the
+    # prerequisite for the T25 cutover — until writes land there,
+    # `vector_dual_write_total{outcome="secondary_failed"}` reads zero because nothing
+    # reaches it, which is indistinguishable from zero because nothing failed.
+    knowledge_vector_db_url: str = ""
+    # Fraction of searches that also query the secondary and report OVERLAP with the
+    # primary (not recall — neither backend is ground truth). 0.0 = off. Sampled because
+    # the comparison is inline: a fire-and-forget task would measure a load the request
+    # never saw.
+    knowledge_vector_shadow_read_rate: float = 0.0
+
 
 settings = Settings()
