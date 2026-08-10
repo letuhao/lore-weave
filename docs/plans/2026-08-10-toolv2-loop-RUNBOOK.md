@@ -299,9 +299,46 @@ silently; zero or many refuse and NAME the candidates. That is CP-5.3's contract
 ref type, and it belongs server-side with the other ambient resolution, not in a 37-way client
 table. *Would clear it:* a decision on what a book-scoped call means when the book has derivatives.
 
+### DQ-9 · The two confirm tools disagree about `domain`, and the model hit it on its first try
+
+*Raised by:* iteration 11, **live**. `confirm_action` REQUIRES `domain`
+(`enum: glossary|book|composition|translation|settings`). `glossary_confirm_action` has
+`additionalProperties: false` and no `domain` at all. A model that has learned either one gets the
+other wrong, and in the live run it did exactly that on attempt one:
+
+```
+invalid arguments for "glossary_confirm_action":
+  Additional properties are not allowed ('domain' was unexpected)
+```
+
+It recovered on the retry, so the cost is one round trip rather than a loop — which is why this is
+recorded and not built. But it is the same near-identical-siblings problem that produced
+`glossary_propose_curation` in the first place: that unification exists because *"a mid-tier model
+juggling four near-identical propose verbs mis-picks."* Two confirm verbs with contradictory
+schemas is the same shape, one layer down.
+*Would clear it:* either accept-and-ignore `domain` on the glossary variant, or retire the variant
+in favour of `confirm_action(domain="glossary")` — a consolidation decision, not a bug fix.
+
 ---
 
 ## Debt this loop surfaced but did not absorb
+
+### D-6 · A `proven` row's LIVE evidence can stop being true without anyone touching the code
+
+*Found by tripping over it in iteration 11.* Iteration 1's fix
+(`coalesceCurationEntityRef`) was committed, and its live proof was recorded against
+`infra-glossary-service` image `ce654254a69b`. Ten iterations later the same call failed again with
+the original error. The source was unchanged and committed; the **running container was image
+`21c088f0f375`** — something rebuilt or recreated glossary-service from a tree without the fix, and
+I did not observe what. A rebuild and `--force-recreate` restored it and the singular
+`entity_id` mints a token again.
+
+Nothing regressed in the repository. What regressed is the claim: **"proven LIVE" is a statement
+about a deployment, and deployments drift underneath a ledger that records them as settled.** The
+memory this repo already carries — *verify the deployed image matches source before diagnosing* —
+turns out to cut both ways: here the source was right and the deployment was stale.
+*Would clear it:* a cheap re-verification step that replays each proven row's live assertion against
+the current images, so drift is caught by the loop rather than by the next iteration stumbling.
 
 Recorded here rather than fixed inline, because the loop's whole design is one tool at a time and
 a run that absorbs every adjacent finding never reaches its second row.

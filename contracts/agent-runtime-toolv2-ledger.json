@@ -120,6 +120,18 @@
         "MINOR, recorded not fixed: the message says '(you sent a dict)' for a field that is MISSING -- the parenthetical describes the whole payload, not the field, and reads as if the field's value was a dict. Prose is not the lever and this changed no outcome"
       ],
       "admitted": false
+    },
+    "glossary_confirm_action": {
+      "state": "proven",
+      "note": "PROVEN LIVE end to end, and the iteration corrected TWO of my own claims. Its 3 calls / 3 sessions are all suspensions -- zero failures -- but all three carry an INVENTED confirm_token ('confirm_token_value' 19 chars; a 36-char fake UUID containing 'g' and 'h', which are not hex; a 38-char 'token_...' string). Each raised a Confirm card the human could never redeem. MY FIRST MEASUREMENT SAID '13 of 13 confirm calls carry a fabricated token' AND IT WAS WRONG, caught by my own iteration-4 token failing the regex I wrote: a real token here is payload.signature -- ONE dot, not two. Corrected split of the 13: 8 are the RUNTIME'S OWN batch-cap cards with an empty token (not a model failure at all), 1 is real (mine), 1 is a real token MANGLED with its dot lost in transcription -- the 519-char-token failure mode this codebase already documents -- and 3 are invented, all three of them this tool. LIVE: given a real 394-char token the tool suspends, the confirm redeems, and the entity moves. Recorded as DQ-9: the model's FIRST attempt was refused because it sent `domain`, which the generic confirm_action REQUIRES and this one forbids.",
+      "evidence": [
+        "PHASE 2: 3 calls / 3 sessions, all pending:true, zero errors. Tokens: 19, 36 and 38 chars, none starting eyJ. Two also carry KG descriptors (kg_propose_edge, kg_project_create) on the GLOSSARY confirm tool",
+        "CORRECTED DENOMINATOR: of 13 corpus confirm calls carrying a token -- 8 EMPTY (the runtime's own batch card, confirm_action), 1 REAL (iteration 4's), 1 real-but-MANGLED (starts eyJ, 422 chars, dot lost), 3 INVENTED (this tool). My first pass called all 13 fabricated because my JWT regex demanded two dots and these tokens have one",
+        "LIVE: minted a real token via glossary_propose_curation, drove a real agui turn -> first attempt REFUSED (invalid_arguments: \"Additional properties are not allowed ('domain' was unexpected)\"), retry SUSPENDED with the 394-char token intact",
+        "DATA: entity 019fea5a draft -> POST /v1/glossary/actions/confirm {status: active, updated: 1} -> active, measured either side. The resume recorded call_4274648666863491:resolved | glossary_confirm_action | done | resolves_deferred=true -- this tool's first recorded success",
+        "AND A REGRESSION OF MY OWN LEDGER (D-6): this iteration began by failing to mint a token at all, because the RUNNING glossary-service was image 21c088f0f375 rather than the ce654254a69b that iteration 1 verified. The source was committed and unchanged; the deployment had drifted. A rebuild + --force-recreate restored it and iteration 1's singular-entity_id fix was re-verified live before this iteration continued"
+      ],
+      "admitted": false
     }
   }
 }
