@@ -371,7 +371,13 @@ NO_PRODUCER: dict[str, tuple[str, ...]] = {
     "18_causality_and_routing.md": ("CausalityToken", "route_to_writer"),
     "19_privacy_redaction_policies.md": ("RedactionFilter", "RedactionPolicy"),
     "20_operational_residuals.md": ("cap_rotation_days", "subscription_grace_seconds"),
-    "21_llm_turn_slot.md": ("claim_turn_slot", "release_turn_slot"),
+    # `21_llm_turn_slot.md` LEFT THIS TABLE 2026-08-11, one commit after
+    # `15_turn_boundary.md`. `ChannelWriter::claim_turn_slot` /
+    # `release_turn_slot` are its producers and the arm named them in
+    # `src/channel.rs` — real code this time, not a test's assert message.
+    # DP-Ch52 (auto-timeout) and DP-Ch53 (the three patterns) remain unbuilt and
+    # are registered inside the oracle rather than here, because the DOCUMENT is
+    # now covered and only parts of it are outstanding.
 }
 
 #: A marker that is only ever a DEFERRED-register row — the repo recording that

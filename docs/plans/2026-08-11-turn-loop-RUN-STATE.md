@@ -92,6 +92,15 @@ unbuilt — tracked as `TL-SDK-FACADE`.
 **`SF-4` · DP-Ch53's three patterns are OUT of scope; DP-Ch51/52's primitives are IN.**
 The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md` says of its own primitives that they *"are not strictly required for any pattern to work"*. Building patterns on an unbuilt primitive is the orphan shape. **Reversal trigger:** `channel_pause` shipping.
 
+
+**`SF-6` · No `ActorId` type is introduced.**
+DP-Ch51 types the slot occupant as `ActorId` and no such type exists. Four spellings of "who is
+acting" already do: `sim-core::EntityId(u64)`, the meta audit tables’ `actor_id UUID`,
+`meta_write_audit.actor_id TEXT`, and `dp-kernel::pii_sdk`’s `actor_id: String`. A fifth, minted
+at the data plane, is the vocabulary proliferation §1.2 already caught once. The column is JSONB
+and DP does not interpret it — the same argument `turn_data` rests on. **Reversal trigger:** a
+single actor-identity type being adopted repo-wide, at which point the slot should hold it.
+
 ---
 
 ## 3 · THE BOARD

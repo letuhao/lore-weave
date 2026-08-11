@@ -344,3 +344,117 @@ async fn turn_allocation_survives_writer_handoff_without_duplicating() {
     let nums: Vec<i64> = turns.into_iter().map(|(t,)| t).collect();
     assert_eq!(nums, vec![1, 2, 3], "gap-free and duplicate-free across the handoff");
 }
+
+// ───────────────────────── DP-Ch51 — the advisory turn slot ─────────────────────────
+//
+// Requires per-reality migration 0021 in addition to the set named at the top.
+
+fn slot(reason: &str, secs: i64) -> dp_kernel::channel::TurnSlot {
+    let now = chrono::Utc::now();
+    dp_kernel::channel::TurnSlot {
+        actor: serde_json::json!({"kind": "npc", "id": 7}),
+        started_at: now,
+        expected_until: now + chrono::Duration::seconds(secs),
+        reason: reason.to_string(),
+    }
+}
+
+/// Claim / read / release, and the empty slot reads as `None` rather than as a
+/// zero-valued one.
+///
+/// Kill-mutations: `get_turn_slot` reconstructs a partial row with defaults ·
+/// `release_turn_slot` writes an empty string instead of NULL.
+#[tokio::test]
+async fn turn_slot_round_trips_and_releases_to_none() {
+    let Some(url) = dsn() else {
+        eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — turn slot suite skipped");
+        return;
+    };
+    let pool = pool(&url).await;
+    let reality = Uuid::new_v4();
+    let ch = ChannelId::unverified(51);
+    let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
+    let writer = ChannelWriter::new(pool.clone(), reality, lease);
+
+    // A fresh channel holds no slot — and that is None, not a default-filled
+    // TurnSlot. A caller asking "who is acting?" must be able to hear "nobody".
+    assert_eq!(writer.get_turn_slot().await.unwrap(), None, "a fresh channel holds no slot");
+
+    let s = slot("npc_llm_thinking", 30);
+    writer.claim_turn_slot(&s).await.unwrap();
+    let got = writer.get_turn_slot().await.unwrap().expect("slot held");
+    assert_eq!(got.actor, s.actor);
+    assert_eq!(got.reason, "npc_llm_thinking");
+    assert!(got.expected_until > got.started_at, "the soft deadline is in the future");
+
+    // Last writer wins — DP-Ch51 is a hint, not a mutex, so a second claim
+    // REPLACES rather than conflicting.
+    writer.claim_turn_slot(&slot("player_acting", 10)).await.unwrap();
+    assert_eq!(writer.get_turn_slot().await.unwrap().unwrap().reason, "player_acting");
+
+    writer.release_turn_slot().await.unwrap();
+    assert_eq!(writer.get_turn_slot().await.unwrap(), None, "release clears it to None");
+    // Idempotent: DP-Ch52's scheduler and the claimant may both release.
+    writer.release_turn_slot().await.unwrap();
+    assert_eq!(writer.get_turn_slot().await.unwrap(), None);
+}
+
+/// The slot is ADVISORY: holding one does not stop anybody committing.
+///
+/// This is the property most likely to be quietly "improved" into a lock, and
+/// `21_llm_turn_slot.md` says twice that it must not be. The test is here so
+/// that adding enforcement reds instead of looking like a feature.
+#[tokio::test]
+async fn a_held_turn_slot_does_not_block_writes() {
+    let Some(url) = dsn() else {
+        eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — advisory-slot test skipped");
+        return;
+    };
+    let pool = pool(&url).await;
+    let reality = Uuid::new_v4();
+    let ch = ChannelId::unverified(52);
+    let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
+    let writer = ChannelWriter::new(pool.clone(), reality, lease);
+
+    writer.claim_turn_slot(&slot("npc_llm_thinking", 60)).await.unwrap();
+
+    // Somebody else's event lands anyway — the slot is a hint about who is
+    // EXPECTED to act, not a permission check.
+    let a = writer
+        .append(&envelope(reality, "combat_session", "enc-1", 1, "npc.said"), &serde_json::json!([]))
+        .await
+        .expect("a held slot must NOT block a commit (DP-Ch51: advisory only)");
+    assert_eq!(a.channel_event_id, 1);
+
+    // ...and advancing the turn is not blocked either.
+    assert_eq!(append_turn(&writer, reality, 2).await.turn_number, 1);
+
+    // The slot survives both: nothing auto-releases it. DP-Ch52's timeout
+    // scheduler is what would, and it is unbuilt.
+    assert!(writer.get_turn_slot().await.unwrap().is_some(), "the slot is still held");
+}
+
+/// A writer fenced out by a handoff cannot leave a stale "thinking…" behind.
+#[tokio::test]
+async fn a_stale_writer_cannot_claim_the_turn_slot() {
+    let Some(url) = dsn() else {
+        eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — stale-slot test skipped");
+        return;
+    };
+    let pool = pool(&url).await;
+    let reality = Uuid::new_v4();
+    let ch = ChannelId::unverified(53);
+    let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
+    let old = ChannelWriter::new(pool.clone(), reality, old_lease);
+    let new_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
+    let new = ChannelWriter::new(pool.clone(), reality, new_lease);
+
+    new.claim_turn_slot(&slot("player_acting", 30)).await.unwrap();
+    let err = old.claim_turn_slot(&slot("npc_llm_thinking", 30)).await.unwrap_err();
+    assert!(matches!(err, ChannelError::WrongChannelWriter { .. }), "got: {err:?}");
+    assert_eq!(
+        new.get_turn_slot().await.unwrap().unwrap().reason,
+        "player_acting",
+        "the fenced-out writer did not overwrite the live slot"
+    );
+}

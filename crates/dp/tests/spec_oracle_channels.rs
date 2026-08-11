@@ -615,3 +615,137 @@ fn the_optional_turn_index_is_still_unbuilt_and_still_optional() {
          and retire SF-3 — or the table arrived without the decision being revisited."
     );
 }
+
+// ───────────────────── DP-Ch51..53 — 21_llm_turn_slot.md ──────────────────────
+
+/// `DP-Ch51`'s schema block against the migration that ships it, plus the
+/// property the whole document rests on.
+///
+/// This document left `NO_PRODUCER` on 2026-08-11 when
+/// `ChannelWriter::claim_turn_slot` shipped.
+#[test]
+fn dp_ch51_turn_slot_columns_are_shipped_and_the_slot_stays_advisory() {
+    let spec = doc("21_llm_turn_slot.md");
+    let migration_sql = migration("0021_turn_slot.up.sql");
+
+    let declared = added_columns(&spec);
+    assert!(
+        declared.len() >= 4,
+        "21_llm_turn_slot.md parsed only {} ADD COLUMN(s) {declared:?} — DP-Ch51's schema block \
+         moved and this oracle is reading nothing",
+        declared.len()
+    );
+    let shipped = added_columns(&migration_sql);
+    let mut problems: Vec<String> = Vec::new();
+    for col in &declared {
+        if !shipped.iter().any(|s| s == col) {
+            problems.push(format!(
+                "DP-Ch51 declares `channel_writer_state.{col}` and 0021_turn_slot.up.sql does not \
+                 add it."
+            ));
+        }
+    }
+    for col in &shipped {
+        if !declared.iter().any(|d| d == col) {
+            problems.push(format!(
+                "0021_turn_slot.up.sql adds `{col}` and 21_llm_turn_slot.md does not declare it."
+            ));
+        }
+    }
+
+    // THE LOAD-BEARING PROPERTY. DP-Ch51 says twice that the slot does not
+    // block writes, and it is the single most likely thing to be "improved"
+    // into a lock by someone who reads only the column names. If the document
+    // ever stops saying it, that is a design change and must not be inherited.
+    if !spec.contains("does **not** block other writes") {
+        problems.push(
+            "21_llm_turn_slot.md no longer states that the slot does NOT block other writes. \
+             Every consumer — and `a_held_turn_slot_does_not_block_writes` — depends on the slot \
+             being advisory; blocking is channel_pause's job (DP-Ch35)."
+                .to_string(),
+        );
+    }
+
+    // ...and the migration must not have grown a constraint that makes it one.
+    // A NOT NULL or a UNIQUE on the occupant would turn the hint into a mutex
+    // without anybody editing the prose.
+    for forbidden in ["current_turn_actor JSONB NOT NULL", "UNIQUE (current_turn_actor"] {
+        if migration_sql.contains(forbidden) {
+            problems.push(format!(
+                "0021_turn_slot.up.sql contains `{forbidden}` — that makes an ADVISORY hint behave \
+                 like a lock, which DP-Ch51 explicitly forbids."
+            ));
+        }
+    }
+
+    assert!(
+        problems.is_empty(),
+        "21_llm_turn_slot.md declares {declared:?}; 0021 ships {shipped:?}:\n  - {}",
+        problems.join("\n  - ")
+    );
+}
+
+/// `SF-4` — DP-Ch52's auto-timeout and DP-Ch53's three patterns are unbuilt,
+/// and the reason is a dependency the document itself names.
+///
+/// The register is prose-plus-a-shrink-arm: the day `channel_pause` exists, the
+/// patterns become buildable and this reds so the fork is re-decided rather
+/// than quietly inherited.
+#[test]
+fn the_unbuilt_half_of_dp_ch5x_still_has_its_reason() {
+    let spec = doc("21_llm_turn_slot.md");
+
+    // The document's own justification for shipping the primitives without the
+    // patterns. If this sentence goes, SF-4's scope decision has no source.
+    assert!(
+        spec.contains("not strictly required for any pattern to work"),
+        "21_llm_turn_slot.md no longer says the two primitives are optional to the patterns — \
+         SF-4 split the scope on that sentence"
+    );
+
+    // THE SHRINK ARM: `channel_pause` is what DP-Ch53's patterns compose.
+    let mut producers: Vec<String> = Vec::new();
+    let mut seen = 0usize;
+    for root in ["crates", "services"] {
+        let dir: PathBuf = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(root);
+        let mut stack = vec![dir];
+        while let Some(d) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&d) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if n != "target" && n != "node_modules" {
+                        stack.push(p);
+                    }
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    seen += 1;
+                    let Ok(src) = fs::read_to_string(&p) else { continue };
+                    // This file NAMES the symbol, so it would match itself.
+                    if p.ends_with("spec_oracle_channels.rs") {
+                        continue;
+                    }
+                    let code: String = src
+                        .lines()
+                        .filter(|l| !l.trim_start().starts_with("//"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if code.contains("fn channel_pause") || code.contains("channel_pause(") {
+                        producers.push(p.display().to_string());
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        seen > 200,
+        "the source walk found only {seen} .rs file(s) — pointed at nothing, and the arm below \
+         would report clean forever"
+    );
+    assert!(
+        producers.is_empty(),
+        "`channel_pause` (DP-Ch35) now exists in {producers:?}. SF-4 excluded DP-Ch53's three \
+         patterns BECAUSE it did not — that reason has expired, so re-decide the scope instead of \
+         inheriting it."
+    );
+}

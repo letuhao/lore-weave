@@ -179,3 +179,9 @@ migrations:
     breaking: false
     dependencies: ["0014_channel_ordering"]
     description: "DP-Ch22 per-channel turn counter: events.turn_number + channel_writer_state.last_turn_number + a non-unique partial index. Pays the DEFERRED_EVENT_COLUMNS register row, whose recorded reason named this work as its unblocking condition. Depends on 0014, which creates channel_writer_state and events.channel_id. NOT the dp-kernel TurnContext lifecycle - see the 2026-08-11 turn-loop run-state 1.1."
+
+  - id: "0021_turn_slot"
+    version: 21
+    breaking: false
+    dependencies: ["0014_channel_ordering"]
+    description: "DP-Ch51 advisory turn slot: four nullable columns on channel_writer_state (current_turn_actor JSONB, turn_started_at, turn_expected_until, turn_slot_reason). Advisory only - it does not block writes; that is channel_pause (DP-Ch35), unbuilt. No ActorId type is introduced (SF-6): four spellings of who-is-acting already exist, so the occupant is opaque JSON that DP does not interpret."

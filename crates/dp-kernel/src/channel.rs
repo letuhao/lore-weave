@@ -442,3 +442,109 @@ pub async fn release_writer_lease(
     .await?;
     Ok(res.rows_affected() == 1)
 }
+
+// ───────────────────────── DP-Ch51 — the advisory turn slot ─────────────────────────
+
+/// `DP-Ch51` — who is expected to act on this channel, and until when.
+///
+/// **Advisory.** `21_llm_turn_slot.md` says so twice: it *"does not block other
+/// writes from being committed at DP level"*. Blocking is `channel_pause`'s job
+/// (DP-Ch35, unbuilt). A reader who treats a held slot as a lock will be wrong.
+///
+/// `actor` is opaque JSON. DP-Ch51 types it `ActorId` and no such type exists —
+/// four spellings of "who is acting" already do (`sim-core::EntityId`, two meta
+/// `actor_id` columns, `pii_sdk`'s `actor_id: String`), so this does not add a
+/// fifth. See `SF-6` in the turn-loop run-state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TurnSlot {
+    pub actor: serde_json::Value,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    /// SOFT deadline. Passing it does not stop anything on its own; DP-Ch52's
+    /// auto-timeout scheduler is what would act on it, and it is unbuilt.
+    pub expected_until: chrono::DateTime<chrono::Utc>,
+    pub reason: String,
+}
+
+impl ChannelWriter {
+    /// `DP-Ch51` — claim the advisory slot. Last writer wins.
+    ///
+    /// Epoch-fenced like every other write to this row: a writer that has lost
+    /// the lease cannot leave a stale "NPC X is thinking…" behind it. Nothing
+    /// in DP-Ch51 requires that, but the alternative is an indicator no live
+    /// writer can clear, and the fence is free here because the state row is
+    /// already keyed by epoch.
+    pub async fn claim_turn_slot(&self, slot: &TurnSlot) -> Result<(), ChannelError> {
+        self.set_slot(Some(slot)).await
+    }
+
+    /// `DP-Ch51` — release the slot. Idempotent: releasing an empty slot is not
+    /// an error, because the auto-timeout scheduler (DP-Ch52) and the feature
+    /// that claimed it can both legitimately try.
+    pub async fn release_turn_slot(&self) -> Result<(), ChannelError> {
+        self.set_slot(None).await
+    }
+
+    async fn set_slot(&self, slot: Option<&TurnSlot>) -> Result<(), ChannelError> {
+        let n = sqlx::query(
+            r#"
+            UPDATE channel_writer_state
+               SET current_turn_actor  = $4,
+                   turn_started_at     = $5,
+                   turn_expected_until = $6,
+                   turn_slot_reason    = $7,
+                   updated_at          = NOW()
+             WHERE reality_id = $1 AND channel_id = $2 AND current_epoch = $3
+            "#,
+        )
+        .bind(self.reality_id)
+        .bind(self.lease.channel_id.get())
+        .bind(self.lease.epoch)
+        .bind(slot.map(|s| s.actor.clone()))
+        .bind(slot.map(|s| s.started_at))
+        .bind(slot.map(|s| s.expected_until))
+        .bind(slot.map(|s| s.reason.clone()))
+        .execute(&*self.pool)
+        .await?
+        .rows_affected();
+
+        if n == 0 {
+            return Err(ChannelError::WrongChannelWriter {
+                channel: self.lease.channel_id,
+                presented: self.lease.epoch,
+            });
+        }
+        Ok(())
+    }
+
+    /// `DP-Ch51` — read the slot. `None` = nobody holds it.
+    ///
+    /// NOT epoch-fenced: reading who is expected to act is what the UI does,
+    /// and a UI holds no writer lease. DP-Ch51 lists *"read by UI"* as the
+    /// primary consumer, so requiring a lease to read would make the primitive
+    /// unusable by the thing it was written for.
+    pub async fn get_turn_slot(&self) -> Result<Option<TurnSlot>, ChannelError> {
+        let row: Option<(
+            Option<serde_json::Value>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<chrono::DateTime<chrono::Utc>>,
+            Option<String>,
+        )> = sqlx::query_as(
+            "SELECT current_turn_actor, turn_started_at, turn_expected_until, turn_slot_reason \
+             FROM channel_writer_state WHERE reality_id = $1 AND channel_id = $2",
+        )
+        .bind(self.reality_id)
+        .bind(self.lease.channel_id.get())
+        .fetch_optional(&*self.pool)
+        .await?;
+
+        Ok(match row {
+            Some((Some(actor), Some(started_at), Some(expected_until), Some(reason))) => {
+                Some(TurnSlot { actor, started_at, expected_until, reason })
+            }
+            // A partially-populated slot is treated as absent rather than
+            // reconstructed with defaults: the four columns are written and
+            // cleared together, so a partial row means something else wrote it.
+            _ => None,
+        })
+    }
+}
