@@ -88,3 +88,55 @@ def test_reveal_all_means_a_CEILING_on_the_status_read_not_a_null():
     from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING
     assert isinstance(ORDINAL_OPEN_CEILING, int)
     assert ORDINAL_OPEN_CEILING > 10 ** 12, "must exceed any real event_order"
+
+
+# ── the five surfaces share the POSITION, not the DEFAULT ─────────────
+#
+# The deep dive that finished this migration found the surfaces are not uniform, and
+# flattening them would have broken two of them. These record the three axes of
+# difference so a later "simplification" has to argue with a test.
+
+
+def test_absent_means_different_things_by_surface_and_that_is_deliberate():
+    """`parse_reveal_at` returns `None` for absent — it does NOT decide what absent
+    MEANS. Each surface answers that for itself:
+
+        facts, statuses (reader-facing)  absent → FAIL-CLOSED   (see nothing)
+        browse list, raw search, timeline (author-facing)
+                                         absent → UNFILTERED    (see everything)
+
+    Collapsing them either empties every editor cast list or leaks later-introduced
+    characters into every reader one. The parser stays out of it on purpose.
+    """
+    assert _p() == (None, None)          # the parser reports ABSENT, not a policy
+    assert _p(reveal_at="all") == (REVEAL_ALL, None)   # explicit is distinguishable
+
+
+def test_the_two_axes_use_different_resolvers():
+    """`reveal_at=<chapter>` is one vocabulary over TWO scales, and mixing them is
+    wrong by a factor of the stride:
+
+        entity reads  → resolve_before_order      → (sort_order+1)*STRIDE-1  (event_order)
+        raw search    → resolve_before_sort_order → sort_order               (chapter_index)
+
+    Passages carry `chapter_index`; events and facts carry `event_order`. Feeding one
+    ceiling to the other filter silently returns the wrong window rather than failing.
+    """
+    from app.spoiler_window import (
+        FAIL_CLOSED_BEFORE_ORDER,
+        FAIL_CLOSED_BEFORE_SORT_ORDER,
+    )
+    # Both fail closed at -1, but they are separate constants for separate scales —
+    # a single shared one would invite exactly the mix-up above.
+    assert FAIL_CLOSED_BEFORE_ORDER == FAIL_CLOSED_BEFORE_SORT_ORDER == -1
+
+
+def test_the_timeline_keeps_a_raw_ceiling_that_outranks_reveal_at():
+    """Three spellings of one axis live on the timeline: a raw `before_order`, a
+    `before_chapter_id`, and now `reveal_at`. The raw ordinal still wins — a caller
+    that already HOLDS the ceiling (pagination) is not guessing, and demoting it
+    would break those callers to make a naming point."""
+    ch = uuid4()
+    # The parser has no opinion about `before_order`; the endpoint resolves it first
+    # and only consults the parser when it is absent. This pins the parser's half.
+    assert _p(reveal_at=str(ch)) == ("chapter", ch)

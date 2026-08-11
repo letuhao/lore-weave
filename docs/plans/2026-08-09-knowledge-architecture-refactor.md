@@ -2612,15 +2612,28 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `D-KG-FACT-VOCAB-DISJOINT`, and not a data-generation exercise. Sizing it as "run a backfill"
   would have been wrong by a whole feature.
 
-  ### 🟡 `D-T32-REVEAL-AXIS` — the parameter is BUILT and on 2 of 5 surfaces, 2026-08-11
+  ### ✅ `D-T32-REVEAL-AXIS` — all FIVE spoiler surfaces are on one position, 2026-08-11
 
-  **Corrected by `/review-impl` after I first marked this CLOSED.** Q8 seals that *"the
-  spoiler **surfaces** migrate onto it"* — plural. `reveal_at` now serves the facts read AND
-  the batch statuses read; **three surfaces still branch on `before_chapter_id` themselves**:
-  `entities.py:469` (the cast/browse list), `raw_search.py:161` (the passage axis, via
-  `resolve_before_sort_order`) and `timeline.py`. Nothing is broken — they behave exactly as
-  before — but claiming closure on a partial migration is the accounting-artifact failure this
-  plan has a verification script for, so the row stays amber until all five are on one axis.
+  **Marked CLOSED once prematurely** (`/review-impl` caught it at 1 of 5), then finished. Q8
+  seals that *"the spoiler **surfaces** migrate onto it"* — plural — and the deep dive found
+  they are **not uniform**, which is why a mechanical patch would have broken two of them:
+
+  | surface | axis | resolver | `absent` means |
+  |---|---|---|---|
+  | facts read | `event_order` | `resolve_before_order` | **fail-closed** |
+  | statuses read | `event_order` | `resolve_before_order` | **fail-closed** |
+  | browse list | `event_order` | `resolve_before_order` | **unfiltered** (editor view) |
+  | raw search | **`chapter_index`** | **`resolve_before_sort_order`** | unfiltered |
+  | timeline | `event_order` | `resolve_before_order` | unfiltered, **+ a raw `before_order`** |
+
+  **Two axes, two defaults, three spellings.** `reveal_at` unifies the POSITION and
+  deliberately does **not** unify the default: `parse_reveal_at` returns `None` for absent and
+  each surface answers what absent means for itself. Flattening that would either empty every
+  editor cast list or leak later-introduced characters into every reader one. The two
+  resolvers stay separate too — passages carry `chapter_index`, events carry `event_order`, and
+  feeding one ceiling to the other filter is wrong by a factor of the stride while failing
+  silently. On the timeline a raw `before_order` still outranks `reveal_at`: a caller that
+  already HOLDS the ordinal (pagination) is not guessing.
 
   The spoiler window and the author-curation opt-out were **two query flags saying one
   thing**: how far into the story may this reader see? That is how they drift — `curation=true`
@@ -2657,6 +2670,14 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   would read `active`: a fail-OPEN wearing an author view's clothes. **Bitten** — flip the
   fail-closed branch to `REVEAL_ALL` and only that test goes red. knowledge-service unit
   suite **4175 passed**.
+
+  **12 tests**, and three of them exist because the deep dive found a "simplification" would
+  regress a surface: absent means different things by surface *deliberately*; the two axes use
+  different resolvers; the timeline's raw ceiling outranks the new parameter. **Two bugs caught
+  on the way in**, both by existing tests rather than by inspection: `all` as a null ceiling on
+  the STATUS read (a fail-OPEN — every entity would have read `active`), and a local `mode`
+  in `raw_search` shadowed by `parse_reveal_at`'s return, which 500'd 28 tests on the response
+  model. Two different concepts had one obvious name.
 
   ~~### 🔻 DEFERRAL `D-T32-REVEAL-AXIS` — Q8's read parameter is not built~~
 

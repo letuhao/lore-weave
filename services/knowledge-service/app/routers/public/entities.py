@@ -388,10 +388,21 @@ async def list_entities(
     ),
     limit: int = Query(50, ge=1, le=ENTITIES_MAX_LIMIT),
     offset: int = Query(0, ge=0),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION. A book chapter UUID restricts the list to "
+            "entities the reader has met by that chapter; `all` is the explicit "
+            "whole-cast editor view. NOTE the default differs from the facts read: "
+            "omitting BOTH this and `before_chapter_id` leaves the list UNFILTERED "
+            "(the editor view), because that is what this surface has always meant. "
+            "Send `reveal_at=all` to say so explicitly."
+        ),
+    ),
     before_chapter_id: UUID | None = Query(
         default=None,
         description=(
-            "W11 reader SPOILER WINDOW. When set, the list is restricted to "
+            "DEPRECATED — use `reveal_at`. W11 reader SPOILER WINDOW. When set, the list is restricted to "
             "entities the reader has actually MET — those with at least one "
             "fact established by this chapter. FAIL-CLOSED: an unresolvable "
             "chapter returns an EMPTY list, never the full cast. Omit for the "
@@ -465,9 +476,19 @@ async def list_entities(
     # resolve_before_order FAILS CLOSED — an omitted/unresolvable chapter → -1, so the
     # windowed query keeps nothing. before_order stays None ONLY when the caller did not
     # ask for a window (editor/curation), which the repo reads as "unfiltered".
+    # Q8 — one POSITION vocabulary, but this surface keeps its own meaning for ABSENT,
+    # and that difference is a product decision rather than a parsing one:
+    #   facts / statuses (reader-facing)  absent → FAIL-CLOSED
+    #   this list (editor-facing)         absent → UNFILTERED, the whole-cast view
+    # Collapsing those two would either empty every editor cast list or leak later
+    # characters into every reader one. `parse_reveal_at` returns `None` for absent
+    # precisely so each caller can answer this for itself.
+    mode, chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=False)
     before_order: int | None = None
-    if before_chapter_id is not None:
-        before_order, _ = await resolve_before_order(book_client, before_chapter_id)
+    if mode == "chapter":
+        before_order, _ = await resolve_before_order(book_client, chapter)
+    # mode is REVEAL_ALL (explicit whole-cast) or None (legacy omission) → unfiltered.
 
     async with neo4j_session() as session:
         rows, total = await list_entities_filtered(

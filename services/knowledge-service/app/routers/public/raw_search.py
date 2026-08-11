@@ -37,7 +37,7 @@ from app.clients.grant_client import GrantClient, GrantLevel
 from app.extraction.patterns import detect_primary_language
 from app.middleware.jwt_auth import get_current_user
 from app.search.hybrid_fusion import language_coverage
-from app.spoiler_window import resolve_before_sort_order
+from app.spoiler_window import parse_reveal_at, resolve_before_sort_order
 from app.search.retriever import (
     MIN_RELEVANCE_DEFAULT,
     Granularity,
@@ -100,9 +100,19 @@ async def search_book(
         "not a filter. Omit to use the caller's stored reader-language for this book, "
         "else the detected query language.",
     ),
+    reveal_at: str | None = Query(
+        None,
+        description="Q8 — the REVEAL POSITION. A book chapter UUID restricts hits to "
+        "passages from chapters at or before it; `all` is the explicit no-cutoff author "
+        "read. This surface resolves the position on the PASSAGE axis (a chapter's own "
+        "sort_order), not the event_order axis the facts/statuses reads use — passages "
+        "are chapter-ordered, so the two ceilings are different numbers for the same "
+        "chapter. Omitting both this and `before_chapter_id` → no cutoff (author "
+        "behaviour), unchanged.",
+    ),
     before_chapter_id: UUID | None = Query(
         None,
-        description="W11 reader spoiler cutoff — restrict hits to passages from "
+        description="DEPRECATED — use `reveal_at`. W11 reader spoiler cutoff — restrict hits to passages from "
         "chapters at or before this one (by the chapter's sort_order). Omitted → no "
         "cutoff (author behavior). Unresolvable → fail-closed (no hits). The reader "
         "facade passes the reader's furthest-read chapter here (server-enforced).",
@@ -156,9 +166,19 @@ async def search_book(
     # W11 reader spoiler cutoff — resolve the caller-supplied chapter to its
     # sort_order (fail-closed to -1 if unresolvable → no passages pass). None when
     # no cutoff was supplied, so the author/wiki path is unchanged.
+    # Q8 — same position vocabulary, DIFFERENT axis. `resolve_before_sort_order` returns
+    # the chapter's own sort_order (the passage axis) rather than the event_order ceiling
+    # the entity reads use; passages carry `chapter_index`, events carry `event_order`, and
+    # feeding one ceiling to the other filter is off by a factor of the stride. Absent →
+    # no cutoff, which is this surface's long-standing author default.
+    # `reveal_mode`, not `mode`: this handler already owns a `mode` (the SEARCH mode, which
+    # ships in the response), and the first cut of this shadowed it with None — 28 tests went
+    # red on a 500 from `RawSearchResponse.mode`. Two different concepts had one obvious name.
+    reveal_mode, reveal_chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=False)
     before_sort_order: int | None = None
-    if before_chapter_id is not None:
-        before_sort_order, _ = await resolve_before_sort_order(book_client, before_chapter_id)
+    if reveal_mode == "chapter":
+        before_sort_order, _ = await resolve_before_sort_order(book_client, reveal_chapter)
 
     result = await run_hybrid_search(
         user_id=project.user_id,
