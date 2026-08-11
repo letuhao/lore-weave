@@ -1519,6 +1519,17 @@
         "NOT RUN, and stated rather than implied: the actual indexing. It is Tier-A immediate, paid, and explicitly has no cheap undo"
       ],
       "admitted": false
+    },
+    "book_media_generate": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever, and for a deprecated money-spending tool that is the intended outcome rather than a gap -- the twin of book_audio_generate (iteration 121), with the same explicit product decision in its description: 'DEPRECATED: spending money on media is a MANUAL UI action — the agent does not bill.' It is a propose, so the call mints a card and spends nothing. Its refusal path inherits iteration 129's fix -- the FIFTH call site of that false-noun class, and the first one I found already correct rather than having to fix.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. _meta read first: tier W, visibility legacy",
+        "FIRST INVOCATION: a confirm card, descriptor book.media, destructive:false, titled 'Generate chapter illustration (priced)', with a signed token. Nothing billed",
+        "CONTROL: an absent chapter_id -> 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'. Correct on arrival, because it shares the propose path iteration 86 fixed",
+        "TWIN of book_audio_generate: same descriptor family, same deprecation reason, same zero calls. Two deprecated billing tools, neither ever reached by an agent"
+      ],
+      "admitted": false
     }
   }
 }
