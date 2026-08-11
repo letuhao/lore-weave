@@ -1593,6 +1593,19 @@
         "POST-CONDITION through a different tool: book_steering_list returns {rules: [], total: 0}. The throwaway book is back to having no steering rules"
       ],
       "admitted": false
+    },
+    "book_steering_set": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. It is an upsert that SAYS WHICH IT DID: `replaced` is false on a create and true on an overwrite, and `prior` carries the whole previous row on a replace and null on a create. So a caller learns whether it clobbered something AND what it clobbered, in one response -- the pair of facts an upsert normally hides. Its enum refusal names the whole closed set, which corrected my own wrong guess immediately: I sent inclusion_mode 'match' and it answered '[always scene_match manual auto]'.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id, name, body]",
+        "CREATE: {replaced: false, prior: null, row: {...inclusion_mode 'always'...}}",
+        "REPLACE, same name: {replaced: true, prior: {body 'first body'}, row: {body 'second body'}} -- the previous row is returned, not just a flag",
+        "ENUM: inclusion_mode='match' -> 'enum: match does not equal any of: [always scene_match manual auto]'. The closed set is named, and it corrected my guess on the spot",
+        "VALID scene_match with match_pattern 'battle' accepted, and the row reflects both fields",
+        "CLEANUP verified through a different tool: deleted, and book_steering_list returns {rules: [], total: 0}"
+      ],
+      "admitted": false
     }
   }
 }
