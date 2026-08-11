@@ -46,6 +46,10 @@ command -v python >/dev/null 2>&1 || PY=python3
 # T35 — the derived `Entity.id = hash(name, kind)` gains no new callers while
 # D-T35-OPAQUE-IDENTITY is open. The baseline is the migration checklist.
 "$PY" "$ROOT/scripts/derived-entity-id-gate.py"
+# T38 — the authored-catalog readers can only shrink. The two knowledge gates deliberately
+# EXEMPT this surface (it is the authored source, not the bi-temporal substrate), so before
+# this gate existed T38 had no check that could fail — see D-T38-MECHANISM-IS-VACUOUS.
+"$PY" "$ROOT/scripts/authored-catalog-reader-gate.py"
 # A migration that shipped is not a migration that RAN. STATIC half only here (no DB
 # in a pre-commit): every Up* func is registered, ids unique + ascending. The LIVE
 # half — the one that catches 0063/0064/0065 sitting unapplied on a running Postgres,

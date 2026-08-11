@@ -214,6 +214,9 @@ jobs:
       - run: python scripts/alive-column-deprecation-gate.py
       # T35 — derived Entity.id callers can only shrink (D-T35-OPAQUE-IDENTITY).
       - run: python scripts/derived-entity-id-gate.py
+      # T38 — authored-catalog readers can only shrink. The other two knowledge gates
+      # exempt this surface by design, so this is the only check T38 can fail.
+      - run: python scripts/authored-catalog-reader-gate.py
       # A migration that shipped is not a migration that RAN. Static half: every Up*
       # func registered, ids unique + ascending. The live half (`--live`) needs a
       # database and is the one that catches a shipped-but-unapplied step — see the

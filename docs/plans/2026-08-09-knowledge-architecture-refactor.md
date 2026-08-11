@@ -35,9 +35,13 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: Phase 6, T38 — and its first unit is to give T38 a checklist that can fail.**
-See `D-T38-MECHANISM-IS-VACUOUS` below; the mechanism this plan claims for T38 does not cover
-T38. Until that is fixed, T38 has no way to report progress and no way to report regression.
+**RESUME: Phase 6, T38 — migrate the 9 pinned authored-catalog readers onto `KalClient.roster`.**
+Its first unit is done: `scripts/authored-catalog-reader-gate.py` now pins the reader set at
+**9 files / 10 call sites across 6 services** and fails when it grows *or* when the baseline goes
+stale. The migration order is in the gate's own BASELINE, each entry with its reason. Three of
+them are the core targets (`lore-enrichment` LIST · `translation` mention-backfill LIST ·
+`worker-ai` LIST + by-ids); two are eval scripts that migrate last; one is a bulk DELETE that is
+**not** T38's (writes are T47's scope growth, not this task's).
 
 ### The three decisions that are actually open
 
@@ -62,8 +66,8 @@ mechanism say the judge model is the limit, so it costs a stronger model or it s
 |---|---|---|
 | **DRIFT-1** | Four competing "next" pointers across three dates; the 283-skips paragraph appears **three** times (one copy congratulating itself for deleting a duplicate of itself); the throwaway-Neo4j recipe twice, verbatim. | **fixed** by this block + the `Superseded` heading. |
 | **DRIFT-2** | The plan told its own reader to run QC-5 with **`authoring_canon_role_check_enabled=true`** — a config key deleted in `96b5ebf2d` as a SET-1 abuse, with a test now asserting its **absence**. Anyone following the instruction sets an env var that does nothing, watches the role check not fire, and concludes the guard is broken. | **fixed** — 4 sites here + 1 measurement doc. |
-| **DRIFT-3** | T38's stated mechanism is **vacuous**. See `D-T38-MECHANISM-IS-VACUOUS`. | **recorded**, and it is T38's first unit. |
-| **DRIFT-4** | `186 routes` (T38) and `31 frontend files` (T51) carry **no reproducing command**, so they cannot be re-measured or shrunk against. This plan has already been wrong by 36× (77 → 2819 stale ids) and by 2× (485 → 1041 passages) on exactly this shape: a number with no command behind it. | **open** — closed by T38's first unit, which must emit both numbers from a script. |
+| **DRIFT-3** | T38's stated mechanism is **vacuous**. See `D-T38-MECHANISM-IS-VACUOUS`. | ✅ **closed** — `scripts/authored-catalog-reader-gate.py`, wired + bitten three ways. |
+| **DRIFT-4** | `186 routes` (T38) and `31 frontend files` (T51) carry **no reproducing command**, so they cannot be re-measured or shrunk against. This plan has already been wrong by 36× (77 → 2819 stale ids) and by 2× (485 → 1041 passages) on exactly this shape: a number with no command behind it. | **half closed.** T38's real figure is **9 files / 10 call sites across 6 services**, re-emitted by the gate on every run; `186` reproduces from nothing and is retired. **T51's `31` is still unbacked** and gets the same treatment when Phase 6 reaches the frontend. |
 | **DRIFT-5** | `[~]` now means two different things — *"blocked on someone else"* and *"just a lot of work"* — so 37/37 checkboxes are ticked and the plan can no longer answer *"what may I start right now?"*. Group A/B/C is the answer, but it lives 3 600 lines away from the checkboxes. | **fixed** — Group B is named in the RESUME line above. |
 
 ---
@@ -3780,9 +3784,55 @@ same shape as `D-T17-BACKFILL-CYPHER`, `D-T32-ALIVE-NO-FACTS` and `D-T35-OPAQUE-
 |---|---|
 | **Blocker** | The paragraph struck above is **false**, and it was written by me. Measured 2026-08-11: `knowledge-access-gate.py`'s allowlist holds **one** entry — an enrichment *maintenance script*, not a route. `knowledge-http-surface-gate.py`'s allowlist is **empty**, and its own pattern comment reads *"The authored entities-LIST endpoint is intentionally NOT here (authored catalog, see header)"*. **T38 is "migrate the authored-catalog readers."** The two gates therefore exclude precisely T38's scope by design. |
 | **Evidence** | Both gates PASS at HEAD: `[knowledge-access-gate] PASS — no direct EAV/Neo4j reads outside the owning services` · `[knowledge-http-surface-gate] PASS — no consumer hits the owning services' bi-temporal knowledge /internal endpoints`. They pass today, and they would pass unchanged with T38 **entirely undone**. That is NV-1 exactly: *a check that cannot fail is a claim in the costume of evidence.* The two gates are not wrong — they enforce a real and different invariant (the bi-temporal reads, which genuinely are migrated). The error is the sentence that borrowed their green for a scope they never covered. |
-| **To unblock** | Nothing external. T38's **first unit** is to build the checklist it was claimed to already have: a gate that enumerates the authored-catalog reader sites, prints the count, and refuses to let it grow. Only then does "186 routes" become a number that can shrink rather than a number in a paragraph. |
-| **Mechanism** | The gate itself, bitten both ways: it must go red when a new authored-catalog reader is added, and its count must fall when one is migrated. Until that script exists, T38 has **no** mechanism — which is what this row records rather than papers over. |
-| **Retry when** | Immediately. It is T38's first unit, not a wait. |
+| **To unblock** | ~~Nothing external. T38's **first unit** is to build the checklist it was claimed to already have.~~ ✅ **DONE 2026-08-11 — `scripts/authored-catalog-reader-gate.py`.** |
+| **Mechanism** | ✅ The gate, wired into `.githooks/pre-commit` + `foundation-ci.yml`, bitten in all three directions (below). |
+| **Retry when** | n/a — closed. T38's remaining work is the migration itself, now measurable. |
+
+#### ✅ CLOSED 2026-08-11 — T38 has a checklist that can fail
+
+`scripts/authored-catalog-reader-gate.py` pins the authored-catalog reader set and refuses to
+let it grow. **The real number is 9 files / 10 call sites, across 6 services** — not "186
+routes", which nothing in the repo reproduces (DRIFT-4 closed by measurement).
+
+**The gate corrected its own author twice, which is the argument for having built it:**
+
+1. The hand-built list **missed** `eval_narrative_thread.py:122`. The URL interpolates
+   `{ents[0]['entity_id']}` — **quotes inside the path segment** — and the first regex defined a
+   segment as "no quotes", so it stopped dead. A grep had found it and the gate had not; that
+   disagreement is the only reason it surfaced.
+2. The hand-built list wrongly **exempted knowledge-service** as an "owner". It owns the KG,
+   **not** the glossary — against the authored catalog it is a plain consumer, and
+   `app/clients/glossary_client.py:607` reads it by-ids. Exempting a service because its name
+   looks adjacent is how a gate acquires a blind spot.
+
+**Why the table half is deliberately NOT enforced.** `knowledge-access-gate` can grep
+`entity_attribute_values` because nothing else is called that. `glossary_entities` is *also an
+obvious variable name*: most matches across `services/` are identifiers and prose —
+`project_glossary_entities_to_nodes(...)`, a `glossary_entities: list[str]` parameter, a comment
+listing context sections — and knowledge-service reaches the catalog over HTTP, not the table.
+A gate that flagged those would be ~all false positives and would be silenced within a week,
+which is worth less than no gate. The HTTP half is precise, so the HTTP half is what is enforced.
+
+**Bites — all three, because a shrink-only gate has three failure modes:**
+
+```
+A · a new direct reader appears  → FAIL, exit 1
+    composition-service\app\services\bootstrap_service.py:555  /internal/books/{book_id}/entities
+B · a DOCSTRING naming the same endpoint → PASS, exit 0   (prose is not a call site)
+C · one reader migrates to the KAL → FAIL, exit 1  ("baseline names file(s) that no longer read…")
+    lore-enrichment-service\app\clients\glossary.py   (LIST read — a core T38 target)
+```
+
+Bite C is the one that matters most and the one a "no new violations" gate usually lacks: without
+it the baseline silently rots, and a slot freed by real migration is left open for a future
+reader to occupy unnoticed.
+
+**Scope: READS, not writes.** INV-KAL is a read invariant and `KalClient.roster` is the sanctioned
+replacement, so the three read shapes (LIST · `by-ids` · `canon-content`) are unambiguous. The
+write surface (`/enrichments`, `/canonical`, `/fold-snapshot`, and api-gateway-bff's bulk DELETE,
+which shares the LIST url exactly and cannot be told apart by path) has no KAL equivalent to
+migrate onto today. T47 records that INV-KAL's scope grows to cover writes; that is a separate
+slice, and the DELETE is pinned with its reason so it stays visible meanwhile.
 
 ⚠️ **`186 routes` and `31 frontend files` carry no reproducing command** (DRIFT-4). Neither
 number can be re-derived, so neither can be shrunk against. This plan has already been wrong by
