@@ -1901,6 +1901,10 @@
     "composition_motif_mine": {
       "state": "proven",
       "note": "PROVEN on the propose half (cost-gated; nothing runs until confirm). scope='book' without book_id is refused naming the conditional dependency; a bad scope is a schema rejection listing both values and echoing what was sent; a valid propose returns a confirm_token with a $ estimate. min_support IS UNBOUNDED and 0/-3 both mint a token -- the same shape as #178's branch_point, so I checked whether it reaches anything the way -5 did. It does not: the mining engine clamps at the point of use ('if min_support < 1: min_support = 1') and a separate rule already excludes length-1 patterns as 'a single beat, not a motif'. So an invalid threshold is normalised where it matters instead of being persisted as a meaningless value, which is exactly the difference from #178 -- there the negative index was WRITTEN to a real row on an expensive, only-archivable artefact. Nothing is stored here, and 0 versus 1 cannot flood the library because 1 is the floor either way. The clamp is silent, like #158's limit and #179's chapters_per_arc. #179 earned its silence with a dry-run that displays the consequence; this one has no dry-run, but the consequence is bounded to a single step of a threshold whose invalid values have no meaning. Recorded rather than fixed."
+    },
+    "composition_motif_patch": {
+      "state": "proven",
+      "note": "PROVEN on the path that distinguishes it from the user-tier edit: patching a BOOK_SHARED motif by passing book_id. Summary alone was changed and name, kind and the 2-element beats array all survived -- correct partial semantics, the same side of #155's divide as motif_edit (#201) and canon_rule_edit (#175). A stale expected_version returns applied_conflict with current_version, and expected_version is REQUIRED rather than optional, so a blind clobber is impossible by construction -- which matters more here than elsewhere, because the description says ANY collaborator with EDIT on the book may patch a shared row, so two people editing the same motif is the expected case rather than a corner."
     }
   }
 }
