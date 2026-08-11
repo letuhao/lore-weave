@@ -66,7 +66,26 @@ DEFAULT_TTL_MS = 600_000  # 10 min — mirrors the confirm-token DEFAULT_TTL_S.
 
 
 class TaskNotFound(KeyError):
-    """No task with that id (never minted, or swept after a terminal TTL)."""
+    """No task with that id (never minted, or swept after a terminal TTL).
+
+    Subclassing KeyError is load-bearing for callers that catch it, but KeyError.__str__
+    renders repr(args[0]) -- so raising TaskNotFound(task_id) produced a tool error whose
+    ENTIRE message was the id the caller had just sent:
+
+        Error executing tool composition_task_provide_input: '019f0000-0000-7000-8000-...'
+
+    That names no noun, no state and no next step (TOOLV2 LOOP #229). __str__ is overridden
+    rather than changing every raise site, so the id stays available as args[0] for code
+    that wants it while humans and models get a sentence.
+    """
+
+    def __str__(self) -> str:  # noqa: D105 — see the class docstring
+        task_id = self.args[0] if self.args else "(none given)"
+        return (
+            f"no pending task with id {task_id} — it was never created, was already "
+            "resolved, or expired (durable gate tasks are swept after their TTL). "
+            "Re-run the action that proposed it to get a fresh task."
+        )
 
 
 class TaskNotWaiting(RuntimeError):
