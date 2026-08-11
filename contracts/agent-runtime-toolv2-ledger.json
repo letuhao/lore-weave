@@ -1556,6 +1556,19 @@
         "CODE: the guard pins both directions on scene_tools.go and reds when reverted"
       ],
       "admitted": false
+    },
+    "book_scene_list": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. Every branch exercised against a book with 100 scenes: limit, offset into the tail, a text filter, and a chapter filter that matches nothing. `total` is the FILTERED total (29 under a q filter, not 100), which is the useful definition -- a caller paging a filtered set needs the filtered denominator. AND IT IS THE RIGHT CONTRAST TO ITERATION 132: a chapter_id matching nothing returns {scenes: [], total: 0}, an empty SET, because here it is a FILTER. book_scene_get returns an error for a missing scene_id because there it is a LOOKUP. Empty and not-found are distinct, and each tool uses the right one.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id]; optional chapter_id, source_scene_id, q, limit, offset",
+        "DENOMINATOR from the SSOT: the book holds 100 active scenes and the tool reports total 100",
+        "PAGING: limit 3 -> 3 returned, total 100. offset 98 -> 2 returned (the tail), total still 100",
+        "FILTER: q='殿下' -> total 29 with 20 returned, so the total tracks the filter and the page cap is derivable as total > returned",
+        "EMPTY-VS-MISSING, the contrast with iteration 132: a chapter_id matching nothing returns {scenes: [], total: 0} rather than an error -- correct for a filter, where book_scene_get's error is correct for a lookup",
+        "ROW SHAPE: scene_id, book_id, chapter_id, sort_order, title, path, content_hash, parse_version, lifecycle_state, source_scene_id"
+      ],
+      "admitted": false
     }
   }
 }
