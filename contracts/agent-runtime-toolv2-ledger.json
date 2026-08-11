@@ -1259,6 +1259,17 @@
         "NOT DRIVEN LIVE, and not for convenience: the durable gate emits a TASK only when the client declares task capability during initialize. A stateless curl performs no such handshake, so the same gated call returns a confirm CARD instead -- verified by asking for the task form explicitly and getting a card back. Driving this needs a real MCP session, which is what chat-service provides and the recorded call used"
       ],
       "admitted": false
+    },
+    "composition_conformance_status": {
+      "state": "proven",
+      "note": "PROVEN LIVE on the empty branch, with the empty CONFIRMED TRUE rather than assumed; the non-empty branch could not be reached. 1 call / 1 session / 1 ok. It returns {book_id, arcs, index.stale_chapter_count}, and the live call returns arcs [] for a book that genuinely has zero arc rows in structure_node -- so the empty answer is the correct answer, not a silent drop. Every book I own has 0 arcs; the two books that DO have arcs (10 and 7) belong to another user and answer 'not found or not accessible', which is the ownership gate working and the same wall iteration 87 hit.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE: {book_id, arcs: [], index: {stale_chapter_count: 0}}",
+        "THE EMPTY IS TRUE, checked in the SSOT rather than accepted: structure_node holds 0 rows with kind='arc' for that book. (Arcs live in structure_node, not outline_node -- a distinction this loop already had to learn once)",
+        "NOT REACHED: the non-empty branch. The two books with arcs (10 and 7) return 'not found or not accessible' for this caller, so the row shape inside `arcs` is unverified"
+      ],
+      "admitted": false
     }
   }
 }
