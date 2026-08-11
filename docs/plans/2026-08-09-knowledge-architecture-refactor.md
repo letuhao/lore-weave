@@ -3426,6 +3426,34 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   **The check remains off by default**, so none of this reaches an author. Baseline for the
   next attempt: `019ff034-…` at 7, on the same chapter.
 
+  #### ⛔ AND THE STRUCTURAL FIX I PROPOSED MAKES IT WORSE — measured, 2026-08-11
+
+  The paragraph above proposed *"a narrower question — ask about fewer statements per call
+  instead of handing 20 to one call and inviting conflation."* That hypothesis is **wrong**.
+  Tested directly: identical draft, identical snapshot, identical critic model, **only the
+  batch size changed**.
+
+  ```
+  20 statements / call  ->   0 affirmed
+   5 statements / call  ->   4 affirmed
+   1 statement  / call  ->  12 affirmed      <- the "narrow question" is the WORST
+  ```
+
+  Isolation does not help; it hurts. Given a single relation and a long passage, the model is
+  primed to find a contradiction — the fewer alternatives it is offered, the more often it
+  affirms. Conflation was never the mechanism.
+
+  **The variance IS the finding.** 0, 4 and 12 on *byte-identical input* means the check is not
+  measuring the prose — it is measuring the prompt shape. Some calls also returned no parseable
+  JSON at all (`finish_reason=stop`, empty verdicts), so the counts carry noise on top of the
+  bias. No prompt wording and no batching survives that.
+
+  **Conclusion, from three experiments rather than an opinion:** this check must not ship on
+  this judge model at any batch size or wording. It needs a **more capable judge**, and the next
+  attempt should re-run these three batch sizes on a stronger model **before** touching the
+  prompt again — if the spread collapses, the model was the variable; if it does not, the task
+  shape itself is wrong and the check should be reconsidered rather than tuned.
+
   #### ⚠️ ONE ARTEFACT QC-5 NAMES THAT THIS RUN DID NOT PRODUCE
 
   *"the critic's per-chapter scores"* — the canon envelope carries per-CHECK statuses
