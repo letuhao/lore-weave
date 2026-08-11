@@ -1092,6 +1092,18 @@
         "NOT CLAIMED: no live happy path. This creates an authoring RUN, which consumes budget (budget_usd is one of its required fields), so triggering one to prove a shape would spend the user's money for a test"
       ],
       "admitted": false
+    },
+    "compose_prose": {
+      "state": "proven",
+      "note": "PROVEN from the corpus with a full payload audit; NO live call, and the reason is structural. 4 calls / 2 sessions / 4 ok, no failures. This tool is served INSIDE chat-service -- it streams a SECOND model (the session's composer) and returns its prose -- so it appears on no MCP surface and cannot be called the way every other tool in this loop was. Driving it needs a real chat turn with composer_model_ref configured. What COULD be checked was the thing a clean ok-rate hides: all 4 payloads are {prose: <text>}, none empty, none truncated, none carrying a markdown fence or a 'Here is...' preamble -- which is exactly what its system prompt forbids, so the instruction is holding rather than merely being written.",
+      "evidence": [
+        "PHASE 2: 4 ok / 0 failed. No failure population exists",
+        "PAYLOAD AUDIT of all 4: key set is exactly ['prose'] each time; lengths 263, 135, 131, 180 chars; zero markdown fences; zero 'Here/Sure/Certainly' preambles; none empty",
+        "WHY THAT AUDIT IS THE TEST: the composer's system prompt says 'Produce only the requested narrative text — no preamble, no meta commentary, no markdown fences'. A system prompt is a request, not a guarantee, so the check is whether the OUTPUT obeyed it. On this population it did, 4 of 4",
+        "NOT CLAIMED: no live call. compose_prose is dispatched inside chat-service's tool loop, not exposed on an MCP endpoint, and it requires the session to have a composer model configured",
+        "CONTRACT, read rather than assumed: _meta tier R, scope none, served_by chat-service. Tier R is right -- it writes nothing; the orchestrator applies the text through propose_edit or book_chapter_save_draft, which carry the write and its confirmation"
+      ],
+      "admitted": true
     }
   }
 }
