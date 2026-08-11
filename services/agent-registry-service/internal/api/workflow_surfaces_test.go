@@ -2,6 +2,7 @@ package api
 
 import (
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -61,6 +62,44 @@ func TestWorkflowSurfaceEnumIsDerivedFromTheVocabulary(t *testing.T) {
 	for i, v := range validWorkflowSurfaces {
 		if enumWorkflowSurfaces[i] != any(v) {
 			t.Errorf("enumWorkflowSurfaces[%d] = %v, want %q", i, enumWorkflowSurfaces[i], v)
+		}
+	}
+}
+
+// #292 CORRECTION — #287 fixed the FILTER and left both WRITERS.
+//
+// registry_propose_workflow and registry_update_workflow pinned their surfaces[] to enumSurfaces
+// too, so after #287 the three workflow tools disagreed on the wire: the list tool offered
+// {book, editor, studio} while the two tools that WRITE surfaces offered
+// {chat, compose, translate, admin}. That is worse than the original bug — before, filter and
+// writers were consistently wrong; after a half-fix, a workflow proposed with surfaces=["chat"]
+// could never be found by the filter at all.
+//
+// So this asserts over EVERY workflow tool that touches surfaces, by name, rather than the one
+// that happened to be under test.
+func TestEveryWorkflowToolUsesTheWorkflowSurfaceEnum(t *testing.T) {
+	src := mustRead(t, "mcp_server.go")
+	for _, tool := range []string{
+		"registry_list_workflows",
+		"registry_propose_workflow",
+		"registry_update_workflow",
+	} {
+		start := strings.Index(src, `Name:        "`+tool+`"`)
+		if start < 0 {
+			t.Fatalf("tool %s not found", tool)
+		}
+		end := strings.Index(src[start+1:], "registerARTool(srv")
+		block := src[start:]
+		if end > 0 {
+			block = src[start : start+1+end]
+		}
+		if strings.Contains(block, "enumSurfaces") {
+			t.Errorf("%s pins a surface arg to enumSurfaces (the SKILL vocabulary); workflows "+
+				"live on book/editor/studio, and a writer disagreeing with the filter makes the "+
+				"workflow it writes unfindable", tool)
+		}
+		if !strings.Contains(block, "enumWorkflowSurfaces") {
+			t.Errorf("%s does not pin its surface arg to enumWorkflowSurfaces", tool)
 		}
 	}
 }

@@ -81,7 +81,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "PROPOSE a new curated multi-step workflow. Does NOT create or run it — it records a proposal the user must approve in the UI. Provide slug, title, a one-line description, and an ordered list of steps (each with a tool name and a gate: none | confirm | approval). Optionally declare inputs. By default it's saved as the user's own private workflow; pass book_id to share it with a book you can edit (book-tier). Use this to save a repeatable sequence of tool calls as a reusable workflow.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save workflow", "propose workflow", "create workflow", "remember this as a workflow", "make a recipe"}),
 		InputSchema: closedSetSchemaFor[proposeWorkflowIn](map[string][]any{
-			"surfaces[]":   enumSurfaces,
+			"surfaces[]":   enumWorkflowSurfaces,
 			"steps[].gate": enumWorkflowGates,
 		}),
 	}, s.toolProposeWorkflow)
@@ -91,7 +91,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "PROPOSE an update to one of the user's OWN workflows (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new title/description/inputs/steps.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update workflow", "edit workflow", "change workflow"}),
 		InputSchema: closedSetSchemaFor[updateWorkflowIn](map[string][]any{
-			"surfaces[]":   enumSurfaces,
+			"surfaces[]":   enumWorkflowSurfaces,
 			"steps[].gate": enumWorkflowGates,
 		}),
 	}, s.toolUpdateWorkflow)

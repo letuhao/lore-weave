@@ -79,7 +79,7 @@ type proposeWorkflowIn struct {
 	Slug        string            `json:"slug" jsonschema:"lowercase a-z0-9- slug, 2-64 chars (unique per tier)"`
 	Title       string            `json:"title" jsonschema:"human title (one line)"`
 	Description string            `json:"description" jsonschema:"one-line description shown in the L1 menu (required)"`
-	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
+	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this workflow is advertised (book, editor, studio)"`
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
 	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
 	NotesMD     string            `json:"notes_md,omitempty" jsonschema:"prose the agent reads (gotchas, plain-language framing) — NOT executed"`
@@ -96,9 +96,9 @@ type updateWorkflowIn struct {
 	Slug        string            `json:"slug" jsonschema:"the slug of the workflow to update (your own, or a book-tier one you can edit)"`
 	Title       string            `json:"title,omitempty" jsonschema:"new title"`
 	Description string            `json:"description,omitempty" jsonschema:"new description"`
-	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
+	Surfaces    []string          `json:"surfaces,omitempty" jsonschema:"surfaces where this workflow is advertised (book, editor, studio)"`
 	Inputs      map[string]string `json:"inputs,omitempty" jsonschema:"declared inputs: name -> 'required' | 'optional'"`
-	Steps       []workflowStepIn  `json:"steps" jsonschema:"ordered tool steps (C3) — at least one"`
+	Steps       []workflowStepIn  `json:"steps,omitempty" jsonschema:"ordered tool steps (C3) — omit to keep the current ones"`
 	NotesMD     string            `json:"notes_md,omitempty"`
 	BookID      string            `json:"book_id,omitempty" jsonschema:"set to update a BOOK-tier workflow of that book (needs ≥edit grant); omit to update your own personal workflow"`
 	SessionID   string            `json:"session_id,omitempty"`
@@ -449,8 +449,26 @@ func (s *Server) toolUpdateWorkflow(ctx context.Context, _ *mcp.CallToolRequest,
 		Surfaces: in.Surfaces, Inputs: in.Inputs, Steps: in.Steps, NotesMD: in.NotesMD,
 		BookID: in.BookID,
 	}
-	if pIn.Description == "" {
-		_ = s.db.QueryRow(ctx, `SELECT description FROM workflows WHERE workflow_id=$1`, id).Scan(&pIn.Description)
+	// Keep whatever the caller did not mention. The description promises "the new
+	// title/description/inputs/steps", i.e. a PARTIAL update, but only `description` was
+	// back-filled: a title-only update blanked the title it did not send, and `steps` was
+	// required outright, so the caller had to resend the whole step list to fix a typo.
+	// Same shape as registry_update_skill's body_md (#291), fixed the same way.
+	if pIn.Description == "" || pIn.Title == "" || len(pIn.Steps) == 0 {
+		var curDesc, curTitle string
+		var curSteps []workflowStepIn
+		_ = s.db.QueryRow(ctx,
+			`SELECT description, title, steps FROM workflows WHERE workflow_id=$1`, id).
+			Scan(&curDesc, &curTitle, &curSteps)
+		if pIn.Description == "" {
+			pIn.Description = curDesc
+		}
+		if pIn.Title == "" {
+			pIn.Title = curTitle
+		}
+		if len(pIn.Steps) == 0 {
+			pIn.Steps = curSteps
+		}
 	}
 	wfIn, msg := pIn.normalize()
 	if msg != "" {
