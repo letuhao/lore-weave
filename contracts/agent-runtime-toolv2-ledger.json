@@ -1456,6 +1456,18 @@
         "TWO CORRECT REFUSALS also proven: a mixed-language-track list -> 'chapter_ids must list every active chapter of this language track exactly once' (the throwaway book has an 'en' and an 'auto' track), and a repeated id -> 'chapter_ids must not repeat a chapter'"
       ],
       "admitted": false
+    },
+    "book_chapter_restore_revision": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. Its reversibility claim is not a promise in prose -- the RESPONSE carries the id that reverses it. The description says 'a new revision snapshots the current draft first, so it is reversible', and the result returns restored_revision_id, snapshot_revision_id (the newly created pre-restore snapshot) and new_draft_version. I REPLAYED the documented reverse against that snapshot id and it restored the chapter, returning a fresh snapshot of its own. Contrast iteration 122, where the undo hint named an argument the target tool rejected: here the caller is handed a usable id, in the result, with no template to misread.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Tier A, scope book. No failure population, no recorded shape",
+        "FIRST INVOCATION: {chapter_id, restored_revision_id, snapshot_revision_id, new_draft_version 3}",
+        "THE REVERSE PROVEN, not assumed: restoring to the returned snapshot_revision_id succeeded -> new_draft_version 4 with its own fresh snapshot_revision_id. The chapter is back to its pre-test draft, and the mechanism is self-sustaining",
+        "CONTROL: a revision_id that is not this chapter's -> 'revision not found'",
+        "CONTRAST recorded because this loop found the opposite three iterations ago: #122's undo hint named `chapter_ids` against a tool that takes `chapter_id`. This tool hands back a usable ID in the RESULT rather than an argument template that can be wrong"
+      ],
+      "admitted": false
     }
   }
 }
