@@ -1881,6 +1881,10 @@
     "composition_motif_get": {
       "state": "proven",
       "note": "PROVEN, and the ownership PROJECTION was proven by DIFFING THE FIELD SETS rather than by reading the allow-list constant. Reading my own motif returns owner_user_id, source_ref, examples, code and status; reading a SYSTEM motif I do not own returns only code and status -- owner_user_id, source_ref and examples are absent, and no embedding appears either way. That matches the _MOTIF_PUBLIC_FIELDS allow-list's stated intent ('NEVER the embedding vector, the raw source_ref lineage, the copied examples[], or owner_user_id') and, unlike quoting the constant, it proves the allow-list is actually APPLIED on this path. An allow-list defined and not wired is the exact failure #146 found elsewhere in this service. My own ARCHIVED motif is still readable in full, which it must be for op=restore to be usable -- the same property #157 established for arc templates. An unknown motif_id gives the uniform deny."
+    },
+    "composition_motif_link_create": {
+      "state": "proven",
+      "note": "PROVEN, with all four promised refusals exercised. A self-link is refused; a valid duel→ambush `precedes` edge is created; repeating it returns applied_conflict 'that edge already exists'; the reverse edge ambush→duel is refused as a CYCLE (a real 2-cycle, constructed rather than assumed); and an endpoint I do not own (a system motif) gives the uniform deny, so the system graph is genuinely read-only to a user. The self-link and cycle share one message that ENUMERATES its causes -- 'invalid edge (self-link, cycle, or cross-tier)'. That is the acceptable version of the shape #150 had to fix on composition_arc_move: there the message actively MISATTRIBUTED, reporting a cycle as a depth violation and sending the caller to fix the wrong thing. Listing three possibilities without claiming the wrong one is different in kind -- and here the caller holds both ids, so a self-link is self-evident from its own arguments and a cycle is discoverable with composition_motif_link_list."
     }
   }
 }
