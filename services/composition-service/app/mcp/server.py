@@ -3741,7 +3741,11 @@ class _MotifSearchArgs(ForbidExtra):
     description=(
         "Search the narrative motif library — reusable plot patterns, tropes, "
         "situations, hooks, emotion arcs, schemes (e.g. 套路 / 爽点 / 打脸). Filter by "
-        "genre, kind, free text (q), language, or status. `scope` narrows the tier: "
+        "genre, kind, language or status — these SUBTRACT. `q` is different: it RANKS "
+        "rather than filters (an exact name or code hit sorts first, then semantic "
+        "similarity), so a query that matches nothing literally still returns rows, "
+        "ordered by how close they are. Read the top of the list, not its length. "
+        "`scope` narrows the tier: "
         "'mine' (your motifs), 'public' (shared), 'system' (the seeded library), 'all'. "
         "Returns a list projection (no private internals). Pass `detail=summary` "
         "(default `full`) for a lightweight ref list ({id,code,name,kind,summary,...} — "
