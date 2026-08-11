@@ -405,3 +405,49 @@ def test_roles_in_draft_equal_tier_keeps_snapshot_order():
     hits = roles_in_draft("Alpha and Beta spoke.", snap)
     assert [h["tier"] for h in hits] == [0, 0]
     assert [h["predicate"] for h in hits] == ["knows", "trusts"]
+
+
+# ── D-QC5-ROLE-JUDGE-PRECISION — the rules the live run forced ──────────
+#
+# The first full-flow run returned 8 affirmed contradictions on a chapter whose
+# canon attribution is CORRECT. These pin the four exemptions that answers,
+# because a prompt rule with no test is a rule that gets edited away.
+
+
+def _role_system_prompt() -> str:
+    from app.engine.canon_check import _build_role_judge_messages
+    roles = [_rel("e-a", "Alpha", "cousin_of", "e-b", "Beta")]
+    return _build_role_judge_messages("Alpha spoke to Beta.", roles, "auto")[0]
+
+
+def test_role_prompt_exempts_a_passage_that_CONFIRMS_the_relationship():
+    """The worst of the 8: the judge said "Lam Trach reveals his betrayal to Lam
+    Uyen in the passage, not someone else" and returned violated=true. That is
+    canon being confirmed. Agreement is the opposite of a contradiction."""
+    p = _role_system_prompt().lower()
+    assert "confirm" in p
+    assert "agreement is the opposite" in p
+
+
+def test_role_prompt_exempts_conflict_from_ending_a_relationship():
+    """Three of the 8 reasoned "X betrayed Y, therefore their kinship is
+    contradicted". Betraying your cousin does not stop them being your cousin."""
+    p = _role_system_prompt().lower()
+    assert "betrayal" in p or "betray" in p
+    assert "does not end" in p or "does not\nend" in p
+
+
+def test_role_prompt_exempts_movement():
+    """One of the 8 flagged `located_at` because the scene happens elsewhere.
+    A character being somewhere else later is movement, not a contradiction."""
+    p = _role_system_prompt().lower()
+    assert "moving is not a contradiction" in p
+
+
+def test_role_prompt_asks_about_one_statement_and_prefers_false():
+    """Two of the 8 answered about a DIFFERENT relation than the one asked
+    (predicate married_to, reason about siblings). And the asymmetry is stated:
+    on correct prose a false alarm costs the author more than a miss."""
+    p = _role_system_prompt().lower()
+    assert "that statement only" in p
+    assert "prefer false when unsure" in p

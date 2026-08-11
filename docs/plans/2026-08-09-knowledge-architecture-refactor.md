@@ -3394,6 +3394,38 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | Job `019ff029-…` is the baseline: the same chapter, the same snapshot, the same critic. A re-run that drops below 8 is measurable, and 0-with-the-misattribution-still-caught is the target. The check is **off by default**, so this precision gap cannot reach an author meanwhile. |
   | **Retry when** | Immediately — it is the next unit of this task, not a wait. |
 
+  #### ▶ CALIBRATION ATTEMPTED 2026-08-11 — **8 → 7. The prompt is not the constraint.**
+
+  Rewrote `_build_role_judge_messages` against all four failure modes: agreement is not a
+  contradiction · conflict does not END a family tie, marriage or alliance · moving is not a
+  contradiction · answer about that statement only · prefer false when unsure. Four tests pin
+  each rule, because a prompt rule with no test is a rule that gets edited away.
+
+  Re-ran the **identical chapter, snapshot and critic** (job `019ff034-…` against baseline
+  `019ff029-…`). **8 → 7.** Marginal, and the residue shows why:
+
+  - **Every surviving finding is one reasoning error**, restated: *"X is described as betraying
+    Y, and NOT as their cousin / spouse / opponent."* The judge treats the presence of one
+    relation in the prose as EXCLUDING the others. My rule said conflict does not *end* a
+    relationship; the model's error is mutual exclusion, which is a different mistake and the
+    added sentence does not reach it.
+  - **One is self-refuting**: it flags `antagonist_of` with the reason *"…is described as
+    Lâm Uyên's opponent, not their opponent."* <!-- doc-language-gate: ok -- the judge's verbatim verdict on cited-corpus names -->
+  - **A regression the longer prompt caused**: the verdicts came back in **Chinese** on a
+    Vietnamese book, with the names garbled (`林trak`, `血非常常`). The first run answered in
+    English with clean names. Same model, same `source_language` — the only change was a
+    longer system prompt, and the model drifted off both the language instruction and the
+    name spellings.
+
+  **Two data points and a clear mechanism say the model is the limit, not the wording**, so
+  further prompt iteration would be guessing. The options that remain are structural: a
+  stronger judge model, or a narrower question — ask about the **tier-1** roles only (object
+  named, subject ABSENT — the misattribution shape `roles_in_draft` already ranks first)
+  instead of handing 20 relations to one call and inviting exactly this conflation.
+
+  **The check remains off by default**, so none of this reaches an author. Baseline for the
+  next attempt: `019ff034-…` at 7, on the same chapter.
+
   #### ⚠️ ONE ARTEFACT QC-5 NAMES THAT THIS RUN DID NOT PRODUCE
 
   *"the critic's per-chapter scores"* — the canon envelope carries per-CHECK statuses
