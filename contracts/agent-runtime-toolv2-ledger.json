@@ -1391,6 +1391,18 @@
         "D-9 CORROBORATED from a different direction: iteration 56 measured 980 orphaned ENTITIES via memory_recall_entity. The same deleted-project backlog also strands hundreds of EVENTS behind a project row that no longer exists"
       ],
       "admitted": false
+    },
+    "settings_model_set_default": {
+      "state": "proven",
+      "note": "PROVEN from its recorded call, its schema and the live state; NOT exercised, because it mutates the user's real account settings. 1 call / 1 session / 1 ok. The recorded call CLEARED the embedding default (capability given, user_model_id omitted -- the schema documents omit/null as 'CLEAR the default'), and its result carries a `_meta_undo_hint` holding the PREVIOUS user_model_id, so the clear is reversible in one call. Same undo discipline as composition_outline_node_update (iteration 105), and correct in the same way: it carries the OLD value, not the new one.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "SCHEMA: required ['capability']; user_model_id is nullable and its description states 'omit/null to CLEAR the default'. The clear is a documented mode, not an accident of a missing argument",
+        "RECORDED result: _meta_undo_hint {tool: settings_model_set_default, args: {capability 'embedding', user_model_id <the previous id>}} -- the OLD value, so replaying it restores rather than repeating the clear",
+        "LIVE STATE read (read-only): user_default_models holds chat and distill defaults for this owner; embedding has no row, consistent with the recorded clear having taken effect",
+        "NOT EXERCISED, and not for convenience: this writes the user's default model for a capability. Even with an immediate restore there is a window in which indexing or chat could resolve the wrong default, and a test is not worth that on a real account"
+      ],
+      "admitted": false
     }
   }
 }
