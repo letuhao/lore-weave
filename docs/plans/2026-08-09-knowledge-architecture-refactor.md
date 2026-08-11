@@ -35,7 +35,14 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T42 — the second `GraphStore` adapter, AGE first. 🔴 HIGHEST PRIORITY.**
+**RESUME: T42a — the conformance suite the port never had. Then T42b/c, then T42 (AGE). 🔴 HIGHEST PRIORITY.**
+
+⚠️ **Refined 2026-08-12 by `/aif-improve +check`, and the first unit changed.** RESUME pointed
+straight at the AGE adapter; the pass found **the port has no behavioural conformance suite** —
+14 tests instantiate `FakeGraphStore`, **zero** instantiate `Neo4jGraphStore`, and the one test
+naming it compares `inspect.signature` only. An AGE adapter with right signatures and wrong
+behaviour would pass everything. **Build the harness first (T42a), or "the adapter works" is
+unfalsifiable and T43 compares two unproven implementations.**
 
 > **PO, 2026-08-11:** *"The graph storage engine is essential/fundamental. Without it the
 > architecture is not complete and we cannot ship this PR."*
@@ -1363,6 +1370,14 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   stop counting as adapters.
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: 6 of 21 cleared**
+  🔴 **NOW ON THE CRITICAL PATH (X3, 2026-08-11).** This read as background cleanup while the
+  engine swap sat in the tail. With the engine moved to layer 1, **port adoption is what makes a
+  swap actually work** — an unmigrated module is one that breaks when the engine changes.
+  ⚠️ **Two different measures, do not conflate them** (this plan has been burned by exactly that
+  shape before): T17's `6 of 21` counts **Cypher strings** outside adapter dirs, which is what
+  `graph-port-gate` ratchets. **T42d's 78** counts modules that *import* `neo4j_repos` — a module
+  can be Cypher-free and still bound to the implementation. T17 shrinking to 0 does **not** close
+  B1. Sequence T17's remainder alongside T42.
   **Logging:** `DEBUG` adapter selection at construction; `INFO` the bound adapter at startup.
   (depends on T16)
   ---
@@ -4023,27 +4038,81 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
 <!-- Commit checkpoint: T38–T40 — migration -->
 
-### Phase 7 · Engine swap *(S4 — parallel to Phases 4–6)*
+### Phase 7 · Engine swap — 🔴 **NOW LAYER 1, RUNS FIRST** *(X3, PO 2026-08-11)*
 
-- [~] **T41** — Build the **rebuild-from-Postgres** path
-  **It does not exist** — the only sweepers are `reconcile_evidence_count` and `stats_updater`.
-  Three claims depend on it: graph HA is unnecessary, P3 rollback, DR. Must be **built**, then run.
-- [~] **T42** — Second `GraphStore` adapter (Postgres-relational recommended; Kuzu the alternative)
-  AGE is eliminated. Kuzu: ✅ `MERGE … ON CREATE/ON MATCH SET` · ✅ `current_timestamp()` ·
-  ❌ `CALL {}` (14 sites).
-  ⚠️ **Decision X1 (PO, 2026-08-09): build BOTH candidates and let T43's shadow comparison choose.**
-  Do **not** pre-narrow to Postgres-relational on the grounds that T6's re-open tripwires already
-  measure zero (p50 entity degree **0**; zero queries needing variable-length `RELATES_TO` past
-  depth 2). That workload is shallow *because relationship extraction is immature* — the design says
-  so itself, and T33 is in this plan precisely to change it. Deciding the engine from a
-  known-weak extractor's output would settle it on an artefact, which is the argument the sealed
-  design rejected. Cost accepted: ~14 `CALL {}` rewrites + 152 mechanical renames for an adapter
-  that may be discarded.
-  (depends on T41)
+> **Re-sequenced.** This phase was *"S4, parallel to Phases 4–6"* and effectively last. Per **X3**
+> it is the **first layer to refactor** and the PR does not ship without it. Four tasks were added
+> by `/aif-improve +check` on 2026-08-12 — **T42a–T42d** — because the adapter as written had no
+> harness to be judged against and no engine to run on.
+
+- [~] **T42a** — **Adapter-parameterised behavioural conformance suite** *(NEW — do this FIRST)*
+  ⚠️ **The port has no behavioural conformance today.** `tests/unit/test_graph_store_port.py` holds
+  **14 `FakeGraphStore()` instantiations and 0 of `Neo4jGraphStore`**; the single test naming
+  `Neo4jGraphStore` (`test_implementations_match_the_port_signatures`, ~`:238`) compares
+  `inspect.signature` only — parameter names, kinds, defaults. **Purely structural.**
+  So an AGE adapter with correct signatures and entirely wrong behaviour passes everything that
+  exists, and **T43 would then diff two adapters neither of which is proven against the port's
+  semantics.** That is the vacuity class this plan has already hit twice (T38's gate, the SQ3
+  bites).
+  **Do:** parameterise the 14 behavioural tests over `[FakeGraphStore, Neo4jGraphStore, AgeGraphStore]`.
+  **Bite:** break one adapter's `as_of` half-open interval → that adapter reds, the others stay green.
+  (blocks T42)
+- [~] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
+  The image **already exists** — `infra/postgres-knowledge/Dockerfile` (PG18 + pgvector +
+  pgvectorscale), pinned by `infra/docker-compose.knowledge-pg.yml:29`. Sealed **T5** already
+  accepted *"publish a prebuilt Postgres image; own the extension matrix"* and priced owning it.
+  **AGE belongs in that same matrix**, which makes standing it up far cheaper than new infra —
+  and, if AGE wins, means graph + vectors + truth share one engine, one backup, one ops surface.
+  **Do:** add the AGE build stage, version-pin it, extend `postgres-knowledge-image-smoke.sh` to
+  assert the extension loads.
+  (blocks T42)
+- [~] **T42c** — **AGE graph bootstrap / DDL** *(NEW)*
+  AGE needs per-database setup Neo4j does not: `LOAD 'age'`,
+  `SET search_path = ag_catalog, "$user", public`, `SELECT create_graph(<name>)`.
+  ⚠️ **AGE rejects single-character graph names** (`graph name is invalid`) — measured, and it
+  bites any graph-per-project naming scheme derived from a short id.
+  (blocks T42)
+- [~] **T42** — Second `GraphStore` adapter — **AGE FIRST**, then Kuzu / Postgres-relational
+  ⚠️ **Candidate set restored 2026-08-11**: **AGE · Kuzu · Postgres-relational**. The prior text
+  read *"Postgres-relational recommended; Kuzu the alternative — AGE is eliminated"*, which now
+  contradicts amended sealed rows **T1** and **T2**; an implementer following it would build the
+  wrong adapter.
+  **AGE, measured against a running AGE 1.7.0** (`docs/measurements/2026-08-11-age-construct-probe.md`):
+  `ON CREATE SET` → `SET x = coalesce(x, v)` · `ON MATCH SET` → unconditional `SET` ·
+  `datetime()` → `timestamp()` · `CALL {}` → SQL `CTE`/`LATERAL`. `__was_created` is exact via a
+  pre-`MATCH` count **in the same transaction** — ⚠️ *not* a single-statement CTE, whose evaluation
+  order Postgres does not guarantee (it returned `was_created=false` for an absent node).
+  **Kuzu:** ✅ `MERGE … ON CREATE/ON MATCH SET` · ✅ `current_timestamp()` · ❌ `CALL {}` (14 sites).
+  ⚠️ **X1 (PO): build BOTH candidates and let T43 choose.** Do not pre-narrow on T6's tripwires
+  reading zero (p50 entity degree **0**) — that workload is shallow *because relationship
+  extraction is immature*, so deciding from it settles the engine on an artefact.
+  ~~(depends on T41)~~ ⛔ **Dependency REMOVED per X3** — the engine is decided first; T41 is
+  re-scoped or dropped afterwards, because if AGE wins the graph already lives in Postgres and a
+  rebuild-from-Postgres path built now would target a topology about to change.
+  (depends on T42a, T42b, T42c)
+- [~] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
+  `scripts/graph-port-gate.py` walks `ast.Constant` strings and enforces that **Cypher** does not
+  appear outside adapter dirs. It **never inspects imports**. So it proves Cypher is *centralised*,
+  not that the code is *engine-swappable*: a module can call `neo4j_repos` functions, carry no
+  Cypher of its own, and still break the moment the engine changes.
+  **Measured 2026-08-12: 78 modules import `neo4j_repos`** (71 excluding `app/adapters/`, which is
+  legitimate adapter territory) against **15 importing `app.ports`**. ⚠️ A first count said 84 —
+  `/aif-improve +check` found **6 were comment/docstring-only mentions**, the same prose-vs-code
+  trap `derived-entity-id-gate` and `authored-catalog-reader-gate` both strip for.
+  **Sealed B1 — *"Ports (intra-service substitutability)"* — is therefore unguarded.**
+  **Do:** a shrink-only gate on the import count, so port adoption can only improve.
+- [~] **T41** — ⛔ **RE-SCOPE AFTER the engine decision, do not build first** *(was: build rebuild-from-Postgres)*
+  It does not exist — the only sweepers are `reconcile_evidence_count` and `stats_updater` — and
+  three claims depend on it (graph HA unnecessary, P3 rollback, DR). **But its shape depends on
+  the engine.** If AGE wins, the graph *is* Postgres and this becomes a different, smaller task or
+  none at all. Building it before the decision constructs a path for a topology about to change.
+  (depends on T43's outcome)
 - [~] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
   No cutover while any port operation has **zero shadow observations** — merge/split/restore/coref/
   triage are rare and would diverge silently, and the graph feeds canon checks.
-  (depends on T42)
+  ⚠️ **Rests on T42a**: a shadow comparison between two unproven adapters measures agreement, not
+  correctness. Two adapters can agree by sharing a bug.
+  (depends on T42, T42a)
 
 - [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
   `/review-impl`. **Actually run** rebuild-from-Postgres on a real book and time it — the path is
