@@ -50,9 +50,12 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 		Name: "glossary_ontology_delete",
 		Description: "Delete book- or user-tier ontology row(s). scope=book mints a confirm " +
 			"token — a human must approve before the delete executes; returns {confirm_token, " +
-			"preview}. scope=user executes immediately as a reversible soft-delete (undo via " +
-			"glossary_ontology_upsert to re-add); returns {results}. Deleting an already-deleted row is a " +
-			"no-op, not an error.",
+			"preview}. scope=user executes immediately as a soft-delete: the row is retained " +
+			"and stops applying, but it KEEPS ITS CODE reserved, so glossary_ontology_upsert " +
+			"cannot re-add the same code afterwards — it answers \"already exists\". Treat a " +
+			"user-tier delete as one-way from the tool surface. Returns {results} plus a " +
+			"{trashed, already_trashed, failed} summary. Deleting an already-deleted row is a " +
+			"no-op, not an error — it is counted under already_trashed, never under trashed.",
 		InputSchema: ontologyDeleteSchema(),
 		// _meta.tier is ONE value covering two behaviorally-different branches (book=confirm-
 		// gated, user=direct) — pick the more cautious bucket (W) uniformly; the actual
@@ -440,8 +443,9 @@ type ontologyDeleteItemResult struct {
 }
 
 type ontologyDeleteSummary struct {
-	Trashed int `json:"trashed"`
-	Failed  int `json:"failed"`
+	Trashed        int `json:"trashed"`
+	AlreadyTrashed int `json:"already_trashed"`
+	Failed         int `json:"failed"`
 }
 
 // ontologyDeleteOut's shape genuinely differs by `scope` (CAT-2: a merge across
@@ -483,9 +487,17 @@ func (s *Server) toolOntologyDelete(ctx context.Context, _ *mcp.CallToolRequest,
 		for _, it := range in.Items {
 			res := s.deleteOneUserOntologyItem(ctx, userID, it)
 			results = append(results, res)
-			if res.Status == "error" {
+			// TOOLV2 LOOP #237 — count by STATUS. The else-branch counted an `already_trashed`
+			// row as `trashed`, so deleting five codes of which four were typos reported
+			// {trashed: 5, failed: 0}: a summary that always reads "done" no matter how much
+			// work happened. The per-row status already distinguished them; only the summary
+			// flattened it. With the third counter the three now reconcile against len(items).
+			switch res.Status {
+			case "error":
 				summary.Failed++
-			} else {
+			case "already_trashed":
+				summary.AlreadyTrashed++
+			default:
 				summary.Trashed++
 			}
 		}
