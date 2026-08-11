@@ -789,6 +789,17 @@
         "DATA for D-10, measured before deciding not to act: union-path leakage appears on 10 calls / 1 tool / 5 sessions, none since 2026-07-14, against 188 clean messages across 14 tools"
       ],
       "admitted": false
+    },
+    "world_map_add_marker": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 8 calls / 8 sessions / 8 ok, no failure population. A clean ok-rate is not evidence on its own -- story_search was 9 for 9 and every result was a dead end -- so this was proven by POST-CONDITION rather than by the write's own return. It returns only {marker_id}, which is lean and correct for a create, and world_map_get then shows the marker with the exact label and coordinates that were sent. Written on a THROWAWAY world created for the purpose, because this tool creates content and smoke debris in real data reads as a product bug later.",
+      "evidence": [
+        "PHASE 2: 8 ok / 0 failed. No failure population exists",
+        "LIVE on a throwaway world + map: add_marker(label='Ironhold', x=0.5, y=0.5) -> {\"marker_id\": \"019feec4-43a3-...\"}",
+        "POST-CONDITION, the part a create's own return cannot prove: world_map_get returns markers [{marker_id: the SAME id, label 'Ironhold', x 0.5, y 0.5, entity_id null, marker_type null, updated_at}] — the write landed and the id round-trips",
+        "CONTROL: x=1.9, y=-3.2 -> 'x and y must be relative coords in [0,1]', a bounded refusal that names the range rather than the field alone"
+      ],
+      "admitted": false
     }
   }
 }
