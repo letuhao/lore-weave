@@ -3375,8 +3375,9 @@ async def composition_authoring_run_pause(ctx: MCPContext, args: _AuthoringRunId
     name="composition_authoring_run_close",
     description=(
         "Cancel / stop / close an autonomous authoring run (Agent Mode). This is the ONLY "
-        "tool that can stop a run — the generic jobs_cancel does NOT work on a run (a run is "
-        "not a background job; it silently no-ops). Allowed from every non-running state; "
+        "tool that can stop a run — a run is not a background job, so jobs_cancel cannot "
+        "reach it and answers 'not found or not accessible'. Allowed from every "
+        "non-running state; "
         "pause a RUNNING run first via composition_authoring_run_pause. No new spend, "
         "executes immediately. Closing a gated/paused run releases the book's active-run "
         "slot for a new one. The book's OWNER-grant holder may close ANY run on their book."
