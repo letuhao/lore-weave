@@ -1543,6 +1543,19 @@
         "LIVE A/B on the deployed image: the same call now returns 'book is not in the trash — purge only removes an ALREADY-TRASHED book; delete it first (book_delete), then purge'"
       ],
       "admitted": false
+    },
+    "book_scene_get": {
+      "state": "proven",
+      "note": "PROVEN, with a fix: the SIXTH site of the false-noun class this loop has been chasing since iteration 86. 0 calls ever. A missing scene_id returned 'book not accessible' on a book the same call had just read successfully. THE REPO ALREADY KNEW THE ANSWER: mcp_tools_read.go's chapter read returns errChapterNotInBook with a comment explaining exactly this reasoning -- including that it leaks no existence oracle, because a VIEW-granted caller can enumerate chapters anyway. scene_tools.go was simply never updated to match. Added errSceneNotInBook on the same pattern and wired it.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id, scene_id]",
+        "FIRST INVOCATION on a book with 100 scenes: the scene detail -- scene_id, chapter_id, sort_order, title, path 'book/part-1/chapter-1/scene-1', leaf_text, content_hash, parse_version, lifecycle_state, source_scene_id",
+        "THE DEFECT, live: an absent scene_id -> 'book not accessible', after the VIEW grant had already passed and the same book had just returned a scene",
+        "PRECEDENT IN-REPO, not invented: mcp_tools_read.go already returns errChapterNotInBook for the chapter equivalent, with a comment stating the H13 reasoning. The new errSceneNotInBook copies it one level down",
+        "LIVE A/B on the deployed image: 'no active scene with that scene_id in this book — check the scene_id (call book_scene_list for valid ids)'",
+        "CODE: the guard pins both directions on scene_tools.go and reds when reverted"
+      ],
+      "admitted": false
     }
   }
 }

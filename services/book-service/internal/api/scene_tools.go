@@ -168,7 +168,10 @@ func (s *Server) toolBookSceneGet(ctx context.Context, _ *mcp.CallToolRequest, i
 FROM scenes WHERE id=$1 AND book_id=$2 AND lifecycle_state='active'`, sceneID, bookID).
 		Scan(&id, &bookIDScan, &chID, &d.SortOrder, &d.Title, &d.Path, &d.LeafText, &sourceSceneID, &d.ContentHash, &d.ParseVersion, &d.LifecycleState)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, sceneGetOut{}, errBookNotAccessible
+		// The VIEW grant above already passed, so the book IS accessible and only the scene is
+		// missing. Mirrors the chapter read in mcp_tools_read.go, which has carried this
+		// reasoning in a comment for some time; the scene path was never updated to match.
+		return nil, sceneGetOut{}, errSceneNotInBook
 	}
 	if err != nil {
 		return nil, sceneGetOut{}, errors.New("failed to get scene")

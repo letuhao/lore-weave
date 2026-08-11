@@ -42,6 +42,12 @@ var (
 	// into thinking they lost book access (the observed failure: a mistranscribed chapter_id read
 	// as "no book access", so the agent gave up instead of fixing the id).
 	errChapterNotInBook = errors.New("no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)")
+	// errSceneNotInBook is the same reasoning one level down (TOOLV2 LOOP #132). The scene read
+	// returned errBookNotAccessible for a missing scene_id, on a book the same call had just
+	// proven readable — the sixth site of this class found in this loop. A VIEW-granted caller
+	// can already enumerate scenes via book_scene_list, so naming a bad scene_id leaks no
+	// existence oracle either.
+	errSceneNotInBook = errors.New("no active scene with that scene_id in this book — check the scene_id (call book_scene_list for valid ids)")
 )
 
 // mcpUserID lifts the caller's user id from the kit identity context (set by

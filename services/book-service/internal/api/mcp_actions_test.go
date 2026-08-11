@@ -81,6 +81,21 @@ func TestAnAbsentChapterIsNotReportedAsAnInaccessibleBook(t *testing.T) {
 	if !strings.Contains(body, "purge only removes an ALREADY-TRASHED book; delete it first (book_delete), then purge") {
 		t.Error("the book-purge refusal must name the precondition and its satisfier")
 	}
+
+	// TOOLV2 LOOP #132 — the sixth site of this class, on the scene read. mcp_tools_read.go has
+	// carried the correct reasoning for chapters in a comment for some time; scene_tools.go was
+	// never updated to match.
+	sc, serr := os.ReadFile("scene_tools.go")
+	if serr != nil {
+		t.Fatalf("read scene_tools.go: %v", serr)
+	}
+	scBody := strings.ReplaceAll(string(sc), "\r\n", "\n")
+	if strings.Contains(scBody, "sceneGetOut{}, errBookNotAccessible") {
+		t.Error("the scene read still blames the book for a missing scene_id")
+	}
+	if !strings.Contains(scBody, "sceneGetOut{}, errSceneNotInBook") {
+		t.Error("the scene read must name the scene")
+	}
 }
 
 // The two errors must stay distinguishable, and the chapter one must carry its satisfier —
