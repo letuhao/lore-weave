@@ -39,6 +39,7 @@ from __future__ import annotations
 from typing import Literal, Protocol, runtime_checkable
 
 from app.db.neo4j_repos.entities import Entity, EntityDetail
+from app.db.neo4j_repos.provenance import EvidenceWriteResult
 from app.db.neo4j_repos.events import Event
 from app.db.neo4j_repos.relations import Relation
 
@@ -166,6 +167,39 @@ class GraphStore(Protocol):
         ...
 
     # ── status ───────────────────────────────────────────────────────
+
+    async def add_evidence(
+        self,
+        *,
+        user_id: str,
+        target_label: str,
+        target_id: str,
+        source_id: str,
+        extraction_model: str,
+        confidence: float,
+        job_id: str,
+        quote: str | None = None,
+    ) -> EvidenceWriteResult | None:
+        """Attach an `EVIDENCED_BY` edge and atomically bump the target's counters.
+
+        **Added to the port 2026-08-12 by DEMAND, not inventory** (T17): 8 call sites across
+        3 modules — `pass2_writer`, `pattern_writer`, `backfill_status`. That is the rule the
+        port's own header states, and the measured tail behind it is why the rule matters:
+        106 distinct repo functions are still called, **64 % of them exactly once**. A port
+        that absorbed all of those would be `neo4j_repos` with an interface in front.
+
+        ⚠️ **The atomic counter increment is the whole point.** Writing the edge directly
+        would let `evidence_count`/`mention_count` drift, and the K11.9 reconciler is only the
+        offline net that catches drift — never producing it is the cheaper path. An adapter
+        that implements this as "write edge, then read-modify-write the counter" satisfies the
+        signature and breaks the invariant.
+
+        Returns `None` when the target or the source does not exist under this user: *"no
+        evidence to record"*, not an error. `quote` is the verbatim supporting span, and a
+        re-extraction that carries one **backfills** a previously quoteless edge rather than
+        wiping it.
+        """
+        ...
 
     async def status_at_order(
         self,

@@ -42,6 +42,8 @@ def _now() -> datetime:
 class FakeGraphStore:
     def __init__(self) -> None:
         self._entities: dict[str, Entity] = {}
+        self._evidence: dict[tuple, dict] = {}
+        self._evidence_counts: dict[str, int] = {}
         self._relations: list[Relation] = []
         self._events: list[Event] = []
         # (user, project, entity_id) -> [(from_order, status)], newest-wins at a position.
@@ -273,6 +275,49 @@ class FakeGraphStore:
         return out[:limit]
 
     # ── status ───────────────────────────────────────────────────────
+
+    async def add_evidence(
+        self,
+        *,
+        user_id: str,
+        target_label: str,
+        target_id: str,
+        source_id: str,
+        extraction_model: str,
+        confidence: float,
+        job_id: str,
+        quote: str | None = None,
+    ):
+        """In-memory evidence + counter bump.
+
+        Validation is copied from the repo deliberately: a fake that ACCEPTED an empty
+        `job_id` would let ~561 tests encode a call the real adapters reject, which is the
+        `fake-more-permissive-than-real` defect this suite already caught once on
+        archived-peer exclusion.
+        """
+        if not all((target_id, source_id, extraction_model, job_id)):
+            raise ValueError("target_id/source_id/extraction_model/job_id must be non-empty")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"confidence must be in [0,1], got {confidence}")
+
+        from app.db.neo4j_repos.provenance import EvidenceWriteResult
+
+        ent = self._entities.get(target_id)
+        if ent is None or ent.user_id != user_id:
+            return None
+        key = (target_id, source_id, job_id)
+        created = key not in self._evidence
+        if created:
+            self._evidence[key] = {"quote": quote, "model": extraction_model}
+            self._evidence_counts[target_id] = self._evidence_counts.get(target_id, 0) + 1
+        elif quote is not None:
+            # A quote-bearing re-extraction BACKFILLS a quoteless edge and never wipes one.
+            self._evidence[key]["quote"] = self._evidence[key]["quote"] or quote
+        return EvidenceWriteResult(
+            evidence_count=self._evidence_counts.get(target_id, 0),
+            mention_count=0,
+            created=created,
+        )
 
     async def status_at_order(
         self,

@@ -108,7 +108,14 @@ async def store(request):
     """
     if request.param == "fake":
         _EXERCISED.add("fake")
-        yield FakeGraphStore()
+        fake = FakeGraphStore()
+        # The fake has no ExtractionSource concept; evidence attaches by id alone. It must
+        # still be AWAITABLE — the rule awaits this uniformly across adapters.
+        async def _mk_fake_source(_u, _sid):
+            return None
+
+        fake._mk_source = _mk_fake_source                 # type: ignore[attr-defined]
+        yield fake
         return
 
     if request.param == "age":
@@ -127,7 +134,14 @@ async def store(request):
             async with pool.acquire() as conn:
                 gname = await ensure_graph(conn, uuid.uuid4())
             _EXERCISED.add("age")
-            yield AgeGraphStore(pool, gname)
+            age = AgeGraphStore(pool, gname)
+
+            async def _mk_age_source(u, sid):
+                await age._run(
+                    f"MERGE (s:ExtractionSource {{id: '{sid}', user_id: '{u}'}}) RETURN s")
+
+            age._mk_source = _mk_age_source                # type: ignore[attr-defined]
+            yield age
         finally:
             await pool.close()
         return
@@ -151,7 +165,15 @@ async def store(request):
         await driver.verify_connectivity()
         async with driver.session() as session:
             _EXERCISED.add("neo4j")
-            yield Neo4jGraphStore(session)
+            n4j = Neo4jGraphStore(session)
+
+            async def _mk_neo_source(u, sid):
+                await session.run(
+                    "MERGE (s:ExtractionSource {id: $sid, user_id: $u}) RETURN s",
+                    {"sid": sid, "u": u})
+
+            n4j._mk_source = _mk_neo_source                # type: ignore[attr-defined]
+            yield n4j
     finally:
         await driver.close()
 
@@ -351,3 +373,66 @@ def test_a_real_adapter_actually_ran():
             "to a THROWAWAY graph (the fixture refuses :7687/:7688). A green run here "
             "without a real adapter is the lie this assertion exists to prevent."
         )
+
+
+# ── evidence: the port's newest operation (T17, grown by demand) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_evidence_is_idempotent_on_the_job_and_bumps_the_counter(store):
+    """`add_evidence` must be idempotent on `(target, source, job_id)`.
+
+    ⚠️ **The atomic counter is the invariant, not the edge.** Re-running one extraction job
+    is a no-op against `evidence_count`; an adapter that incremented per call would inflate
+    every entity's evidence on every retry, and the K11.9 reconciler is only the offline net
+    that catches that drift. Never producing it is the cheaper path — so the rule lives here,
+    where all three adapters must satisfy it.
+    """
+    u, p, _ = _ids()
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    src = f"src-{uuid.uuid4().hex[:10]}"
+    job = f"job-{uuid.uuid4().hex[:8]}"
+
+    # ⚠️ The source node is CREATED rather than skipped over. An earlier cut of this test
+    # skipped when `add_evidence` returned None for want of an `:ExtractionSource`, which
+    # meant the idempotency rule ran on the FAKE only — the engines it exists to constrain
+    # were the two being skipped. That is the env-gated-skip trap inside a conformance suite.
+    await store._mk_source(u, src)
+
+    first = await store.add_evidence(
+        user_id=u, target_label="Entity", target_id=e.id, source_id=src,
+        extraction_model="m1", confidence=0.9, job_id=job)
+    assert first is not None, "the source node was created but add_evidence still returned None"
+
+    second = await store.add_evidence(
+        user_id=u, target_label="Entity", target_id=e.id, source_id=src,
+        extraction_model="m1", confidence=0.9, job_id=job)
+
+    assert second is not None
+    assert second.evidence_count == first.evidence_count, (
+        f"re-running one job moved evidence_count {first.evidence_count} -> "
+        f"{second.evidence_count}: the counter drifts on every retry"
+    )
+    assert second.created is False, "the second call reported a NEW edge"
+
+
+@pytest.mark.asyncio
+async def test_evidence_rejects_the_same_caller_errors_everywhere(store):
+    """A port whose implementations disagree about what is a CALLER error leaks its engine.
+
+    An empty `job_id` is what makes the operation idempotent, so accepting one is not a
+    lenient convenience — it silently removes the idempotency key. All three adapters must
+    refuse it identically.
+    """
+    u, p, _ = _ids()
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    with pytest.raises(ValueError):
+        await store.add_evidence(
+            user_id=u, target_label="Entity", target_id=e.id, source_id="s1",
+            extraction_model="m1", confidence=0.9, job_id="")
+    with pytest.raises(ValueError):
+        await store.add_evidence(
+            user_id=u, target_label="Entity", target_id=e.id, source_id="s1",
+            extraction_model="m1", confidence=9.0, job_id="j1")

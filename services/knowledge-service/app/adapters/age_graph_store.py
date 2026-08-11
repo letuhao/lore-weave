@@ -468,6 +468,91 @@ class AgeGraphStore:
                 rels.append(rel)
         return rels[:limit]
 
+    async def add_evidence(
+        self,
+        *,
+        user_id: str,
+        target_label: str,
+        target_id: str,
+        source_id: str,
+        extraction_model: str,
+        confidence: float,
+        job_id: str,
+        quote: str | None = None,
+    ):
+        """`EVIDENCED_BY` + an ATOMIC counter bump, in one statement.
+
+        ⚠️ **One statement is the invariant, not a style choice.** The port's docstring says
+        so: writing the edge and then read-modify-writing the counter would satisfy the
+        signature while letting `evidence_count` drift under concurrency, and the K11.9
+        reconciler is only the offline net that catches drift. Never producing it is cheaper.
+
+        Validation mirrors the repo's exactly — a port whose two implementations disagree
+        about what is a *caller* error is a port that leaks its engine.
+        """
+        if not all((target_id, source_id, extraction_model, job_id)):
+            raise ValueError("target_id/source_id/extraction_model/job_id must be non-empty")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"confidence must be in [0,1], got {confidence}")
+
+        # ⚠️ THE INCREMENT MUST HAPPEN ONLY ON CREATE, and AGE has no `ON CREATE SET` — so
+        # existence is checked and the counter bumped inside ONE TRANSACTION rather than in
+        # one statement. The first cut did `t.evidence_count = coalesce(...) + 1` on every
+        # call, which is the exact drift this operation's port docstring warns about: the
+        # conformance rule caught it on `[age]` while `[fake]` and `[neo4j]` passed.
+        #
+        # A transaction, not a single statement, is what makes it atomic here. Doing the
+        # check outside one would let two concurrent extractions both see "absent" and both
+        # increment — the read-modify-write the docstring rules out.
+        from app.db.neo4j_repos.provenance import EvidenceWriteResult
+
+        tag_probe = f"""
+        MATCH (t:{target_label} {{id: {_lit(target_id)}, user_id: {_lit(user_id)}}})
+              -[r:EVIDENCED_BY {{job_id: {_lit(job_id)}}}]->
+              (s:ExtractionSource {{id: {_lit(source_id)}, user_id: {_lit(user_id)}}})
+        RETURN r
+        """
+        merge = f"""
+        MATCH (t:{target_label} {{id: {_lit(target_id)}, user_id: {_lit(user_id)}}})
+        MATCH (s:ExtractionSource {{id: {_lit(source_id)}, user_id: {_lit(user_id)}}})
+        MERGE (t)-[r:EVIDENCED_BY {{job_id: {_lit(job_id)}}}]->(s)
+        SET r.extraction_model = {_lit(extraction_model)},
+            r.confidence       = {_lit(confidence)},
+            r.quote            = coalesce({_lit(quote)}, r.quote)
+        RETURN r
+        """
+        bump = f"""
+        MATCH (t:{target_label} {{id: {_lit(target_id)}, user_id: {_lit(user_id)}}})
+        SET t.evidence_count = coalesce(t.evidence_count, 0) + 1
+        RETURN t.evidence_count
+        """
+        read = f"""
+        MATCH (t:{target_label} {{id: {_lit(target_id)}, user_id: {_lit(user_id)}}})
+        RETURN coalesce(t.evidence_count, 0), coalesce(t.mention_count, 0)
+        """
+
+        def _wrap(cy: str, cols: str) -> str:
+            tag = self._dollar_tag(cy)
+            return f"SELECT * FROM cypher('{self._graph}', ${tag}${cy}${tag}$) as ({cols})"
+
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                existed = await conn.fetch(_wrap(tag_probe, "r agtype"))
+                merged = await conn.fetch(_wrap(merge, "r agtype"))
+                if not merged:
+                    # Target or source absent under this user: "no evidence to record", not
+                    # an error — the repo returns None here and the two must agree.
+                    return None
+                if not existed:
+                    await conn.fetch(_wrap(bump, "n agtype"))
+                counts = await conn.fetch(_wrap(read, "ev agtype, mn agtype"))
+
+        return EvidenceWriteResult(
+            evidence_count=int(_unwrap(counts[0]["ev"]) or 0),
+            mention_count=int(_unwrap(counts[0]["mn"]) or 0),
+            created=not existed,
+        )
+
     # ── the event surface — NOT implemented, and loudly ───────────────
 
     # ⚠️ These two signatures are copied from the port EXACTLY, including `min_evidence`,

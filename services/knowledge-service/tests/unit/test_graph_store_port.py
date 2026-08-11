@@ -245,6 +245,10 @@ def test_implementations_match_the_port_signatures(impl):
     # Protocol alone would have let a mis-shaped adapter into T43's comparison.
     for name in ("resolve_or_merge_entity", "find_entities_by_name", "neighborhood",
                  "archive_entity", "restore_entity", "upsert_relation", "relations_for",
+                 # T17 2026-08-12: the port grew by DEMAND. Adding the method to the port
+                 # without adding it HERE would leave the new operation unchecked in every
+                 # adapter -- the checklist is this tuple, so an omission is silent.
+                 "add_evidence",
                  "status_at_order", "events_in_window"):
         port_sig = inspect.signature(getattr(GraphStore, name))
         impl_sig = inspect.signature(getattr(impl, name))

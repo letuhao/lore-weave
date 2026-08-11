@@ -1825,6 +1825,46 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   **QC (a)** 4184 unit · `port-adoption-gate` PASS at the new ceiling. **(b) live** — both
   engines. **(c)** 429 integration.
 
+  ### ✅ BATCH 7 — 2026-08-12 · **the port grows by ONE operation, chosen by demand**
+
+  `add_evidence` joins `GraphStore` — **8 call sites across 3 modules** (`pass2_writer`,
+  `pattern_writer`, `backfill_status`), the top of the multi-module demand list. Implemented
+  on **all three** adapters, with two behavioural conformance rules and a signature-checklist
+  entry so the new operation cannot go unchecked.
+
+  *(`find_passages_by_vector` has more callers but belongs on `VectorStore`, not here — T25b's
+  territory. Growing the wrong port to move a number would be inventory, not demand.)*
+
+  🔴 **THE CONFORMANCE RULE CAUGHT MY OWN ADAPTER VIOLATING THE INVARIANT I HAD JUST WRITTEN
+  INTO THE PORT'S DOCSTRING.**
+  ```
+  FAILED test_evidence_is_idempotent_on_the_job_and_bumps_the_counter[age]
+      re-running one job moved evidence_count 1 -> 2: the counter drifts on every retry
+  ```
+  My AGE Cypher did `t.evidence_count = coalesce(t.evidence_count, 0) + 1` on **every** call,
+  including when the MERGE matched an existing edge. AGE has no `ON CREATE SET`, and I wrote
+  the increment as if it did. Every extraction retry would have inflated the count, and the
+  K11.9 reconciler is only the offline net that catches such drift.
+  **Fixed by checking existence and bumping inside ONE TRANSACTION** — a transaction rather
+  than a single statement is what makes it atomic here, because doing the check outside one
+  would let two concurrent extractions both see "absent" and both increment: the exact
+  read-modify-write the port forbids.
+
+  🐞 **AND THE RULE ALMOST DIDN'T RUN ON THE REAL ENGINES.** The first cut skipped when
+  `add_evidence` returned `None` for want of an `:ExtractionSource` node — so the rule
+  executed on the **fake only**, and the two engines it exists to constrain were the two being
+  skipped. **The env-gated-skip trap, inside a conformance suite.** The fixture now *creates*
+  the source per adapter, and the skip is gone:
+  ```
+  before:  38 passed, 2 skipped      <- [neo4j] and [age] skipped, the bug invisible
+  after :  40 passed, 0 skipped      <- [age] failed, then was fixed
+  ```
+
+  **BITE — restore the unconditional bump:** `FAILED …[age]`, `1 failed, 39 passed`.
+
+  **QC (a)** 4184 unit · gates green at ceiling 69 / floor 10. **(b) live** — both engines.
+  **(c) real data** — **435 integration**, up from 429.
+
   ### ✅ BATCH 5 — 2026-08-12 · **the port's covered surface reaches ZERO direct callers**
 
   ```

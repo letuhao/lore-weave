@@ -21,6 +21,7 @@ import logging
 import time
 
 from app.db.neo4j_helpers import CypherSession
+from app.db.neo4j_repos.provenance import EvidenceWriteResult, add_evidence
 from app.db.neo4j_repos.entities import (
     Entity,
     EntityDetail,
@@ -163,6 +164,25 @@ class Neo4jGraphStore:
         return out
 
     # ── status ───────────────────────────────────────────────────────
+
+    async def add_evidence(
+        self,
+        *,
+        user_id: str,
+        target_label: str,
+        target_id: str,
+        source_id: str,
+        extraction_model: str,
+        confidence: float,
+        job_id: str,
+        quote: str | None = None,
+    ) -> EvidenceWriteResult | None:
+        return await add_evidence(
+            self._session,
+            user_id=user_id, target_label=target_label, target_id=target_id,
+            source_id=source_id, extraction_model=extraction_model,
+            confidence=confidence, job_id=job_id, quote=quote,
+        )
 
     async def status_at_order(
         self,
