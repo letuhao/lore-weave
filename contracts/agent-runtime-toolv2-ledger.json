@@ -739,6 +739,18 @@
         "SMOKE DEBRIS CLEANED: a probe call succeeded and wrote a junk fact into the graph; memory_forget invalidated it, and I verified the node's valid_until is set rather than trusting the 'invalidated: true' response (my first check read the wrong property name)"
       ],
       "admitted": false
+    },
+    "world_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it is the first tool in this loop with a CLEAN population: 11 calls / 9 sessions / 11 ok, zero failures. Served by book-service. Its recorded results carry two shapes over time -- the older ones a bare `worlds` list, the newest (2026-08-04) the full pagination envelope -- so the envelope was added and the old rows are history, not drift. The pagination is coherent under test rather than merely present, and its total agrees with the database.",
+      "evidence": [
+        "PHASE 2: 11 ok / 0 failed. There is no failure population to split",
+        "LIVE page 1: page {total 28, offset 0, returned 20, has_more true, next_offset 20, is_complete false}; row keys world_id, name, description, book_count, bible_book_id, bible_chapter_id",
+        "LIVE page 2 at the offset the tool ITSELF named: returned 8, has_more false, is_complete true, and next_offset correctly ABSENT. 20 + 8 = 28 = the declared total",
+        "DENOMINATOR from the SSOT, not from the tool: loreweave_book.worlds holds exactly 28 rows for this owner. The tool's total is the real total",
+        "NOTED, not counted as product: most of the 28 are 'S10 World 2026-07-14-...' eval fixtures -- the measurement contamination DQ-12 describes, visible here in the data the tool returns rather than in its call counts"
+      ],
+      "admitted": false
     }
   }
 }
