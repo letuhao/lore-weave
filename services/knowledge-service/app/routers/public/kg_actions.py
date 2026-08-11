@@ -585,7 +585,8 @@ async def _confirm_build_graph(
 ) -> dict:
     """Cost-gated job trigger — start the extraction job via the shared core (grant
     authority; `owner` is the resolved project owner, never None here). The core's
-    HTTPExceptions (K17.9 benchmark 409, active-job 409, scope 422) propagate as-is —
+    HTTPExceptions (active-job 409, scope 422) propagate as-is — K17.9's benchmark is
+    advisory since 2026-07-27 and raises nothing —
     fail-closed (the consumed jti is not released; the human re-proposes after fixing).
 
     The extraction deps (jobs/benchmark repos, book client, wake) are built HERE rather

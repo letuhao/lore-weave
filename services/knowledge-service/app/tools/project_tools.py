@@ -264,7 +264,9 @@ async def _handle_kg_project_set_embedding_model(
         "embedding_model": updated.embedding_model,
         "embedding_dimension": updated.embedding_dimension,
         "changed": True,
-        "note": "next call kg_run_benchmark (required, cheap), then kg_build_graph",
+        "note": "kg_build_graph is now unblocked for this project. kg_run_benchmark is "
+                "OPTIONAL — a cheap retrieval-quality rating for this embedding model, not "
+                "a precondition for the build",
     }
 
 

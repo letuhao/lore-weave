@@ -11,7 +11,8 @@ Model resolution (the reason this isn't a blind direct trigger): the embedding m
 from the project (`project.embedding_model`, the canonical stored column — same source the
 campaign/internal-dispatch path uses); the extraction LLM is a required arg the agent picks
 via settings_list_models (there is no reliable project-stored LLM default). The K17.9
-benchmark gate is enforced at confirm (and warned in the preview card).
+benchmark is ADVISORY since 2026-07-27: the preview card warns when it has not passed, the
+confirm proceeds anyway. The one hard precondition is a configured embedding model.
 """
 
 from __future__ import annotations
@@ -84,7 +85,9 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
         raise ToolExecutionError(
             "this project has no embedding model configured — call "
             "kg_project_set_embedding_model first (pick one of your embedding models "
-            "with settings_list_models), then kg_run_benchmark, then retry this build"
+            "with settings_list_models), then retry this build. That is the ONLY "
+            "precondition: kg_run_benchmark rates the model's retrieval but does not "
+            "gate the build (advisory since 2026-07-27)"
         )
 
     # D-RE-OTHER-AGENTIC-EFFORT: clamp the requested effort to the caller's grant at MINT
@@ -263,7 +266,8 @@ class KgRunBenchmarkArgs(ProjectScopedArgs):
     """`kg_run_benchmark` — R4 (D-JOURNEY-KG-BENCHMARK-UX). Run the K17.9 golden-set
     embedding benchmark for the project's configured embedding model. No args — the
     model is read from the project; the run executes on a hidden sandbox (so it never
-    touches the real graph), and a pass enables Build-KG for that model."""
+    touches the real graph). ADVISORY since 2026-07-27: a pass rates the model's retrieval,
+    it does not unblock anything — Build-KG runs either way."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -321,9 +325,11 @@ async def _handle_kg_run_benchmark(ctx: "ToolContext", args: KgRunBenchmarkArgs)
         "runs": result.runs,
         "gate_failures": list(result.gate_failures),
         "summary": (
-            "benchmark PASSED — Build Knowledge Graph is now enabled for this embedding model"
+            "benchmark PASSED — retrieval quality is verified for this embedding model"
             if result.passed
-            else f"benchmark did NOT pass (gate_failures={list(result.gate_failures)})"
+            else f"benchmark did NOT pass (gate_failures={list(result.gate_failures)}) — "
+                 "Build-KG is NOT blocked by this (advisory since 2026-07-27); it means "
+                 "retrieval on this embedding model scored below the golden-set thresholds"
         ),
     }
 

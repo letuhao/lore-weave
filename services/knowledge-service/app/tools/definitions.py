@@ -500,8 +500,8 @@ TOOL_DEFINITIONS: list[dict] = [
         "extract the KG from the book's chapters (needs llm_model); 'wiki' = generate wiki "
         "articles for the book's entities (needs model_ref; omit entity_ids for all). "
         "target=graph requires an embedding model configured — if missing, call "
-        "kg_project_set_embedding_model then kg_run_benchmark first. Pick models from "
-        "settings_list_models.",
+        "kg_project_set_embedding_model (kg_run_benchmark is optional: it rates the model's "
+        "retrieval, it does not gate the build). Pick models from settings_list_models.",
         {
             "target": {
                 "type": "string",
@@ -560,8 +560,9 @@ TOOL_DEFINITIONS: list[dict] = [
         "the book's chapters. EXPENSIVE (LLM cost) so it does NOT run immediately — it "
         "returns a confirm_token + summary; a human confirms on the review surface, which "
         "shows the estimated cost, and the job starts then. Requires the project to have "
-        "an embedding model configured — if it does not, call kg_project_set_embedding_model "
-        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
+        "an embedding model configured — if it does not, call kg_project_set_embedding_model, "
+        "rather than sending the user to the UI (kg_run_benchmark is an optional quality "
+        "check, not a precondition). Pick "
         "the extraction llm_model from settings_list_models.",
         {
             "llm_model": {
@@ -629,15 +630,15 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         ["model_ref"],
     ),
-    # Direct action — run the embedding benchmark that gates Build-KG (R4).
+    # Direct action — the embedding-quality diagnostic. ADVISORY: it does NOT gate Build-KG.
     _tool(
         "kg_run_benchmark",
-        "Run the required embedding-quality benchmark for the current project's embedding "
-        "model. Build-KG (kg_build_graph) is BLOCKED until this passes — call this when a "
-        "build preview warns the benchmark is not passing, instead of sending the user to "
-        "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
-        "sandbox (it never touches the real graph). Returns passed + gate_failures; a pass "
-        "enables Build-KG for this embedding model.",
+        "Measure how well the current project's EMBEDDING MODEL retrieves — a quality "
+        "diagnostic, NOT a precondition: kg_build_graph runs whether or not this has passed. "
+        "Use it to answer 'is this embedding model any good for this project?' before "
+        "spending on a build, or when a build preview warns the benchmark is not passing. "
+        "Cheap (embeddings only, no LLM cost) and runs immediately on a hidden sandbox (it "
+        "never touches the real graph). Returns passed + gate_failures.",
         {"project_id": _PROJECT_ID_PROP},
         [],
     ),

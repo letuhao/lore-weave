@@ -1635,7 +1635,8 @@ async def kg_triage_schema_write(
         "'graph' = extract the KG from the book's chapters (needs llm_model); 'wiki' = "
         "generate wiki articles for the book's entities (needs model_ref; omit entity_ids "
         "for all). target=graph requires an embedding model configured — if missing, call "
-        "kg_project_set_embedding_model then kg_run_benchmark first. Pick models from "
+        "kg_project_set_embedding_model (kg_run_benchmark is optional: it rates the model's "
+        "retrieval, it does not gate the build). Pick models from "
         "settings_list_models."
     ),
     meta=require_meta(
@@ -1708,7 +1709,8 @@ async def kg_build(
         "returns a confirm_token + summary; a human confirms on the review surface (which "
         "shows the estimated cost) and the job starts then. Requires the project to have "
         "an embedding model configured — if it does not, call kg_project_set_embedding_model "
-        "then kg_run_benchmark first, rather than sending the user to the UI. Pick "
+        "rather than sending the user to the UI (kg_run_benchmark is an optional quality "
+        "check, not a precondition). Pick "
         "the extraction llm_model from settings_list_models."
     ),
     # LEGACY (catalog-unification 2026-07-22): superseded by kg_build (target=graph). Kept
@@ -1810,11 +1812,13 @@ async def kg_build_wiki(
 @mcp_server.tool(
     name="kg_run_benchmark",
     description=(
-        "Run the required embedding-quality benchmark for the current project's embedding "
-        "model. Build-KG (kg_build target=\"graph\") is BLOCKED until this passes — call this when a "
+        "Measure how well the current project's EMBEDDING MODEL retrieves — a quality "
+        "diagnostic, NOT a precondition: kg_build target=\"graph\" runs whether or not this has "
+        "passed. Use it to answer 'is this embedding model any good for this project?' before "
+        "spending on a build, or when a "
         "build preview warns the benchmark is not passing, instead of sending the user to "
         "the UI. Cheap (embeddings only, no LLM cost) and runs immediately on a hidden "
-        "sandbox. Returns passed + gate_failures; a pass enables Build-KG for this model."
+        "sandbox. Returns passed + gate_failures."
     ),
     meta=require_meta(
         "A", "project",
