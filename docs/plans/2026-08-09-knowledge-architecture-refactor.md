@@ -53,12 +53,22 @@ shadow comparison is a contest rather than a formality. T41 (rebuild-from-Postgr
 it **does not exist**, three claims depend on it (graph HA unnecessary · P3 rollback · DR), and it
 is stop condition 4.
 
-⚠️ **Apache AGE — the PO recalls it as the decision, and that memory is right about the original
-design.** It was eliminated 2026-08-09 by construct audit M2/O3/T1. The repo-side counts were
-re-verified 2026-08-11 and hold (`ON CREATE SET` 19 ✓ · `ON MATCH SET` 14 ✓ · `CALL {}` 14 ✓ ·
-`datetime()` 157 ✓). The **vendor-side** claim — that AGE lacks those constructs — is basis
-`audited`, not `measured`, and is the sole reason AGE is out. Re-opening it is the PO's call and is
-empirically settleable. See `docs/plans/2026-08-11-architecture-conformance-audit.md` § PO ruling.
+✅ **Apache AGE — SETTLED BY BUILDING IT, 2026-08-11** (`docs/measurements/2026-08-11-age-construct-probe.md`).
+The PO recalled AGE as the decision and was right about the original design. Rather than re-cite
+the 2026-08-09 documentation audit, AGE 1.7.0 was run on PostgreSQL 18.1 in a throwaway container:
+
+- ❌ `MERGE … ON CREATE SET` / `ON MATCH SET` → **`syntax error at or near "ON"`**. Fatal, no rename
+  fixes it, and it *is* the entity-anchoring pattern. **This alone keeps AGE out.**
+- ⚠️ `datetime()` absent — **but `timestamp()` works**, so those 157 sites are a *mechanical
+  rename*. That is the exact test that revived **Kuzu** (M8 found `current_timestamp()`). The
+  audit asked it of Kuzu and never of AGE, so **one of AGE's two disqualifiers does not hold.**
+- Controls passed (plain `MERGE` ✅, plain `SET` ✅), so the failures are the constructs, not the
+  harness.
+
+**AGE stays eliminated, now on `measured` basis rather than `audited`** — and the register's stated
+reason should be narrowed to the one construct that survives. If the PO wants it re-opened it is a
+costed question, not a capability unknown: *rewrite ~33 anchoring sites as MATCH-then-branch to
+gain in-Postgres colocation?*
 
 ### The graph: what is built, what is populated, what is neither
 

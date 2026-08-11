@@ -61,13 +61,48 @@ pattern, so *"AGE requires a full query rewrite and its single advantage evapora
 | `datetime()` | 152 | **157** repo-wide | ✓ |
 | `MERGE` | 131 | 83 | lower — consistent with T17/T35 consolidating MERGE sites since |
 
-**The repo-side half of the elimination holds.** What does **not** carry the same weight is the
-**vendor-side** claim — that AGE actually lacks those constructs. Its basis is recorded as
-`audited` (a documentation check), not `measured`, and **it is the sole load-bearing reason AGE is
-out.** If the PO wants AGE reconsidered, that is the one question to re-open, and it is empirically
-settleable — build an AGE container and run the four constructs against it — rather than a matter
-of judgement. **This is flagged for the PO, not decided here:** the register is sealed, and a
-sealed decision is re-opened by the PO with evidence, never worked around.
+**The repo-side half of the elimination holds.** The **vendor-side** claim — that AGE actually
+lacks those constructs — carried basis `audited` (a documentation check), not `measured`, and it
+was the sole load-bearing reason AGE is out.
+
+### ✅ SETTLED BY BUILDING IT — AGE 1.7.0 / PostgreSQL 18.1, 2026-08-11
+
+Per the PO (*"better than build and prove it work"*). Full write-up:
+`docs/measurements/2026-08-11-age-construct-probe.md`.
+
+| construct | AGE 1.7.0 | |
+|---|---|---|
+| `MERGE … ON CREATE SET` (19 sites) | `ERROR: syntax error at or near "ON"` | ❌ **fatal** |
+| `MERGE … ON MATCH SET` (14 sites) | `ERROR: syntax error at or near "ON"` | ❌ **fatal** |
+| `CALL { … }` (14 sites) | `ERROR: syntax error at or near "{"` | ❌ |
+| `datetime()` (157 sites) | `ERROR: function datetime does not exist` | ⚠️ **a rename — see below** |
+| **controls:** plain `MERGE` · plain `SET` · `timestamp()` | ✅ `"ctl"` · ✅ `"ok"` · ✅ `1786464248104` | harness sound |
+
+The controls are load-bearing: plain `MERGE` and `SET` both succeed, so the five errors are the
+constructs and not a misconfigured graph. Without them a bad `search_path` would produce identical
+output and read as confirmation.
+
+**⚠️ One of AGE's two stated disqualifiers dissolves.** AGE has **`timestamp()`**, so the 157
+`datetime()` sites are a *mechanical rename*. That is exactly the finding that **revived Kuzu's
+candidacy** — audit item **M8** looked for Kuzu's equivalent, found `current_timestamp()`, and
+concluded *"the 152 `datetime()` sites are a mechanical rename, not a blocker — the construct that
+killed AGE."* **The same question was never asked of AGE.** For Kuzu the audit sought an
+equivalent; for AGE it stopped at "unsupported" and counted it toward elimination. Two standards,
+one register.
+
+**What survives is enough, and it is one thing:** `MERGE … ON CREATE/ON MATCH SET` is a hard
+syntax error that no rename fixes, and it *is* the entity-anchoring pattern. Emulating it means
+MATCH-then-branch or an SQL-side upsert at every anchoring site — the "full query rewrite" the
+original audit named, which is real. Kuzu supports it. That single construct, not `datetime()` and
+not licensing or PG18 (AGE has both), is the entire difference.
+
+**Verdict: AGE stays eliminated, now on `measured` basis.** The conclusion was right; one of its
+two reasons was not, and the register should be amended to say so rather than keep a disqualifier
+that does not hold.
+
+**If the PO still wants AGE**, it is now one costed question rather than a capability unknown:
+*are ~33 anchoring sites worth rewriting as MATCH-then-branch to gain in-Postgres colocation?*
+The `datetime()` objection should be dropped from that argument either way.
 
 Whatever the answer, it does not change the ruling above: **an engine migration ships in this PR,
 and today there is exactly one adapter.**
