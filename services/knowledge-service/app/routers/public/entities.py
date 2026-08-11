@@ -84,7 +84,7 @@ from app.deps import (
     get_glossary_client,
     get_projects_repo,
 )
-from app.spoiler_window import resolve_before_order
+from app.spoiler_window import REVEAL_ALL, parse_reveal_at, resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
     emit_correction,
@@ -728,12 +728,20 @@ async def list_entity_facts(
     curation: bool = Query(
         default=False,
         description=(
-            "S-05 — AUTHOR-facing whole-book read (the studio entity-detail curation "
-            "view, NOT the reader codex). Skips spoiler-windowing so every known fact "
-            "shows regardless of chapter position — including user-authored facts that "
-            "carry no chapter `from_order`. Without it the fail-closed window (before_"
-            "order=-1) hides EVERY fact, so the curation list renders empty. When true, "
-            "`before_chapter_id` is ignored. Reader surfaces MUST NOT set this."
+            "DEPRECATED — use `reveal_at=all`. S-05 AUTHOR-facing whole-book read (the "
+            "studio entity-detail curation view, NOT the reader codex). Still accepted "
+            "and mapped onto the reveal position; `reveal_at` wins when both are given."
+        ),
+    ),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION, one parameter for what `before_chapter_id` and "
+            "`curation` said between them. A book chapter UUID reads through that "
+            "chapter; `all` is the unbounded author read and is the only mode that "
+            "includes facts carrying no story position at all. Omitted (and no legacy "
+            "flag) → fail-closed, no facts: a reader whose position is unknown sees "
+            "nothing rather than everything."
         ),
     ),
     user_id: UUID = Depends(get_current_user),
@@ -751,13 +759,18 @@ async def list_entity_facts(
         NULL `from_order`) is visible. This is what makes `POST /entities/{id}/facts`
         actually operable: an authored fact appears at once instead of being hidden
         by the fail-closed window."""
-    if curation:
-        # No spoiler window for the author view: before_order=None makes the
-        # projection's `($before_order IS NULL OR …)` branch pass every fact.
+    # Q8 — resolve ONE reveal position, then read. The two legacy flags are mapped
+    # rather than branched on, so the precedence rule lives in one function with tests
+    # instead of in an `if` here and a sentence in a docstring there.
+    mode, chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=curation)
+    if mode == REVEAL_ALL:
+        # before_order=None makes the projection's `($before_order IS NULL OR …)`
+        # branch pass every fact, INCLUDING the unplaced ones.
         before_order: int | None = None
         available = True
     else:
-        before_order, available = await resolve_before_order(book_client, before_chapter_id)
+        before_order, available = await resolve_before_order(book_client, chapter)
     async with neo4j_session() as session:
         facts = await list_facts_for_entity(
             session,

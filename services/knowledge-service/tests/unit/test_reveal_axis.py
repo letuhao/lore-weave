@@ -1,0 +1,72 @@
+"""Q8 / D-T32-REVEAL-AXIS — the reveal position is ONE parameter.
+
+The spoiler window and the author-curation opt-out were two query flags saying one
+thing: how far into the story may this reader see? Two parameters for one axis is how
+they drift — `curation=true` had to document *"when true, before_chapter_id is
+ignored"*, a precedence rule that exists only because there are two of them.
+
+These pin the collapse, including the case that makes `all` more than "+infinity":
+an author-written fact carries no `from_order`, so no finite ceiling ever admits it.
+"""
+
+from __future__ import annotations
+
+from uuid import UUID, uuid4
+
+from app.spoiler_window import REVEAL_ALL, parse_reveal_at
+
+
+def _p(reveal_at=None, before=None, curation=False):
+    return parse_reveal_at(reveal_at, before_chapter_id=before, curation=curation)
+
+
+# ── the three states of one parameter ─────────────────────────────────
+
+def test_absent_is_fail_closed():
+    """A reader whose position is unknown sees NOTHING. The whole spoiler gate
+    inverts book_client's fail-OPEN posture for exactly this reason."""
+    assert _p() == (None, None)
+
+
+def test_a_chapter_uuid_reads_through_that_chapter():
+    ch = uuid4()
+    assert _p(reveal_at=str(ch)) == ("chapter", ch)
+
+
+def test_all_is_the_unbounded_author_read():
+    assert _p(reveal_at="all") == (REVEAL_ALL, None)
+    assert _p(reveal_at="ALL") == (REVEAL_ALL, None)     # case-insensitive
+    assert _p(reveal_at="  all  ") == (REVEAL_ALL, None)  # and whitespace-tolerant
+
+
+def test_an_unparseable_position_fails_CLOSED_not_open():
+    """The one direction this must never get wrong. A malformed position is not a
+    licence to show everything."""
+    assert _p(reveal_at="not-a-uuid") == (None, None)
+    assert _p(reveal_at="") == (None, None)
+
+
+# ── the legacy flags are mapped, not branched on ──────────────────────
+
+def test_curation_true_maps_onto_all():
+    assert _p(curation=True) == (REVEAL_ALL, None)
+
+
+def test_before_chapter_id_maps_onto_a_chapter_position():
+    ch = uuid4()
+    assert _p(before=ch) == ("chapter", ch)
+
+
+def test_reveal_at_wins_over_both_legacy_flags():
+    """A caller that has migrated is STATING the position it means. Silently
+    preferring the old flag would make the migration unobservable."""
+    new, old = uuid4(), uuid4()
+    assert _p(reveal_at=str(new), before=old, curation=True) == ("chapter", new)
+    assert _p(reveal_at="all", before=old) == (REVEAL_ALL, None)
+
+
+def test_curation_still_beats_a_bare_chapter_window():
+    """The legacy precedence — "when true, before_chapter_id is ignored" — is
+    PRESERVED for callers that have not migrated, and now lives in one tested
+    function instead of a sentence in a docstring."""
+    assert _p(before=uuid4(), curation=True) == (REVEAL_ALL, None)

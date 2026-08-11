@@ -33,6 +33,62 @@ FAIL_CLOSED_BEFORE_ORDER = -1
 FAIL_CLOSED_BEFORE_SORT_ORDER = -1
 
 
+# ── Q8 / D-T32-REVEAL-AXIS — the reveal position, one concept ─────────────────
+#
+# The spoiler window and the author-curation opt-out were TWO query flags saying one
+# thing: how far into the story is this reader allowed to see?
+#
+#   before_chapter_id=<uuid>   reader — window through that chapter (fail-closed)
+#   curation=true              author — no window at all
+#
+# Two parameters for one axis is how they drift: `curation=true` had to document
+# *"when true, before_chapter_id is ignored"*, which is a precedence rule that exists
+# only because there are two of them. Q8 (SEALED 2026-08-09) collapses them into
+# **"read at reveal position P"**, and the register records the reason: it removes a
+# fail-open class — an author view that fails CLOSED renders empty, which is what made
+# the opt-out necessary in the first place.
+#
+# Three states, one parameter:
+#
+#   absent          → FAIL-CLOSED. A reader with no established position sees nothing.
+#   <chapter uuid>  → the reader window through that chapter.
+#   "all"           → the unbounded author read, INCLUDING facts with no position at
+#                     all. That last clause is why "all" is not simply "+infinity":
+#                     an author-written fact carries no `from_order`, so no finite
+#                     ceiling ever admits it. Unplaced means "no reveal point", and
+#                     only the unbounded read has room for it.
+REVEAL_ALL = "all"
+
+
+def parse_reveal_at(
+    reveal_at: str | None, *, before_chapter_id: UUID | None, curation: bool,
+) -> tuple[str | None, UUID | None]:
+    """Resolve the reveal position from the new parameter and the two legacy flags.
+
+    Returns ``(mode, chapter_id)`` where `mode` is ``"all"``, ``"chapter"`` or ``None``
+    (fail-closed).
+
+    The legacy flags are ACCEPTED and mapped rather than removed: the FE ships against
+    them today, and a hard cut would break a live surface to prove a point about naming.
+    `reveal_at` WINS when both are supplied — a caller that has migrated is stating the
+    position it means, and silently preferring the old flag would make the migration
+    unobservable.
+    """
+    if reveal_at is not None:
+        value = reveal_at.strip().lower()
+        if value == REVEAL_ALL:
+            return REVEAL_ALL, None
+        try:
+            return "chapter", UUID(reveal_at.strip())
+        except (ValueError, AttributeError):
+            return None, None          # unparseable ⇒ fail-closed, never fail-open
+    if curation:
+        return REVEAL_ALL, None
+    if before_chapter_id is not None:
+        return "chapter", before_chapter_id
+    return None, None
+
+
 async def resolve_before_order(
     book_client: BookClient, chapter_id: UUID | None,
 ) -> tuple[int, bool]:

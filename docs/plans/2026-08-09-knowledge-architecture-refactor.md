@@ -2584,7 +2584,40 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `D-KG-FACT-VOCAB-DISJOINT`, and not a data-generation exercise. Sizing it as "run a backfill"
   would have been wrong by a whole feature.
 
-  ### 🔻 DEFERRAL `D-T32-REVEAL-AXIS` — Q8's read parameter is not built
+  ### ✅ `D-T32-REVEAL-AXIS` — Q8's read parameter is BUILT, 2026-08-11
+
+  The spoiler window and the author-curation opt-out were **two query flags saying one
+  thing**: how far into the story may this reader see? That is how they drift — `curation=true`
+  had to document *"when true, `before_chapter_id` is ignored"*, a precedence rule that exists
+  only because there are two of them.
+
+  Collapsed into one parameter with three states, in `app/spoiler_window.py`:
+
+  ```
+  reveal_at absent          → FAIL-CLOSED. An unknown position sees nothing.
+  reveal_at=<chapter uuid>  → the reader window through that chapter.
+  reveal_at=all             → the unbounded author read.
+  ```
+
+  **`all` is not simply "+infinity", and that is the part worth stating.** An author-written
+  fact carries no `from_order`, so **no finite ceiling ever admits it** — unplaced means "no
+  reveal point", and only the unbounded read has room for it. That is precisely the fail-open
+  class Q8 says it removes: the author view failing CLOSED renders empty, which is what made
+  the opt-out necessary in the first place.
+
+  **Legacy flags are mapped, not removed.** `curation` and `before_chapter_id` are still
+  accepted and resolve through the same function; `reveal_at` wins when both are supplied,
+  because a caller that has migrated is STATING the position it means and silently preferring
+  the old flag would make the migration unobservable. The FE ships against the old names today,
+  and a hard cut would break a live surface to prove a point about naming — the seal accepts
+  the re-cut cost, not a gratuitous outage.
+
+  **8 tests** pin the three states, the two legacy mappings, the precedence, and the one that
+  matters most: an **unparseable** position fails CLOSED, never open. **Bitten** — flip that
+  branch to `REVEAL_ALL` and only that test goes red, which is the correct blast radius.
+  knowledge-service unit suite **4174 passed**.
+
+  ~~### 🔻 DEFERRAL `D-T32-REVEAL-AXIS` — Q8's read parameter is not built~~
 
   | | |
   |---|---|
