@@ -78,25 +78,20 @@ async def _traffic(store, user_id: str, project_id: str) -> None:
     await store.events_in_window(user_id=user_id, project_id=project_id)
 
 
-# ── what the FIRST run found, and it is a harness fact, not an engine fact ──────────────
+# ── the identity mapping closed the id-keyed gap ────────────────────────────────────────
 #
-# `archive_entity` / `restore_entity` / `upsert_relation` are keyed on a NODE ID. Each engine
-# mints its own, so the shadow hands the PRIMARY's id to a secondary that has never seen it:
-# Neo4j archives the entity and returns it, AGE matches nothing and returns None. That reads
-# as a divergence and is not one — the two stores were asked about different nodes.
+# The first shadow run reported `archive_entity`, `restore_entity`, `upsert_relation` and
+# `relations_for` as DIVERGED with `secondary=None`, and none of those was an engine
+# difference: each engine mints its OWN node id, so the shadow handed the secondary a node it
+# had never seen. `ShadowGraphStore` now learns a primary->secondary id mapping from
+# `resolve_or_merge_entity` — the one operation keyed on NATURAL identity, and therefore the
+# only place the two engines can be known to be discussing the same entity — and substitutes
+# it into every id-keyed replay.
 #
-# Recorded as `D-T43-ID-KEYED-OPS-NEED-A-MAPPING`. Calling it an engine difference would have
-# been the worst outcome available: a harness defect published as evidence about AGE, in the
-# document that decides the engine.
-# The first run named three; the second named a fourth, and the fourth is the one that makes
-# the finding structural. `relations_for` takes an `entity_id`, so AGE was asked for the edges
-# of a node it does not have — and because `upsert_relation` had already failed for the same
-# reason, AGE had no edge to return either way. **Most of this port is id-keyed**, so the
-# comparable surface is only what is keyed on NATURAL identity: `resolve_or_merge_entity`
-# (name+kind), `find_entities_by_name` (name), `neighborhood` (the glossary anchor, which IS
-# shared across engines because glossary-service mints it).
-_ID_KEYED = {"archive_entity", "restore_entity", "upsert_relation", "relations_for"}
-#: AGE raises here by design — `D-T42-AGE-EVENT-SURFACE`.
+# The exemption list this file used to carry is GONE, deliberately. An exemption would have
+# made the report look clean while 6 of 9 operations stayed uncompared;
+# `D-T43-ID-KEYED-OPS-NEED-A-MAPPING` asked for the mapping precisely so the comparison
+# becomes real rather than narrower.
 _UNIMPLEMENTED = {"status_at_order", "events_in_window"}
 
 
@@ -110,10 +105,7 @@ async def test_the_two_engines_agree_on_every_comparable_operation(shadow):
     await _traffic(shadow, user_id, project_id)
     report = shadow.coverage_report()
 
-    diverged = {
-        op: r for op, r in report["operations"].items()
-        if r["diverged"] and op not in _ID_KEYED
-    }
+    diverged = {op: r for op, r in report["operations"].items() if r["diverged"]}
     assert not diverged, (
         f"Neo4j and AGE disagreed on {sorted(diverged)} — samples: {report['samples']}"
     )
@@ -139,7 +131,7 @@ async def test_the_coverage_floor_names_every_unobserved_operation(shadow):
     await _traffic(shadow, user_id, project_id)
     report = shadow.coverage_report()
 
-    assert set(report["blocked_by"]) == _UNIMPLEMENTED | {"upsert_relation"}, (
+    assert set(report["blocked_by"]) == _UNIMPLEMENTED, (
         f"unexpected coverage floor: {report['blocked_by']}"
     )
     assert report["cutover_permitted"] is False, (

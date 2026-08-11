@@ -71,14 +71,17 @@ class ShadowStats:
     diverged: dict[str, int] = field(default_factory=dict)
     uncovered: dict[str, int] = field(default_factory=dict)
     errored: dict[str, int] = field(default_factory=dict)
+    #: id-keyed calls skipped because the primary node had no secondary twin yet
+    unmapped: dict[str, int] = field(default_factory=dict)
     samples: list[tuple[str, str]] = field(default_factory=list)
 
     def observations(self, op: str) -> int:
         """Comparisons that actually produced a verdict.
 
-        `uncovered` and `errored` are EXCLUDED: the secondary refused or blew up, so nothing
-        was compared. Counting them would let a method that has never once been compared
-        satisfy the coverage floor — which is precisely the lie the floor exists to catch.
+        `uncovered`, `errored` and `unmapped` are all EXCLUDED: the secondary refused, blew
+        up, or was never asked. Counting any of them would let a method that has never once
+        been compared satisfy the coverage floor — precisely the lie the floor exists to
+        catch.
         """
         return self.agreed.get(op, 0) + self.diverged.get(op, 0)
 
@@ -96,6 +99,45 @@ class ShadowGraphStore:
         self._primary = primary
         self._secondary = secondary
         self.stats = ShadowStats()
+        # ── the identity mapping (D-T43-ID-KEYED-OPS-NEED-A-MAPPING) ──────────────────
+        # primary node id -> secondary node id.
+        #
+        # WHY IT IS REQUIRED, measured rather than anticipated: the first shadow run
+        # reported `archive_entity`, `restore_entity`, `upsert_relation` and `relations_for`
+        # as DIVERGED with `secondary=None`. None of those was an engine difference. Each
+        # engine mints its OWN node id, so an id-keyed call handed the secondary a node it
+        # had never seen — the two stores were asked about different things and answered
+        # correctly.
+        #
+        # Publishing that as evidence about AGE, in the document that decides the engine,
+        # would have been the worst outcome available. Hence a mapping rather than an
+        # exemption list: an exemption would have made the report *look* clean while 6 of 9
+        # operations stayed uncompared.
+        self._ids: dict[str, str] = {}
+
+    def _map_id(self, primary_id: str | None) -> str | None:
+        """Translate a primary node id for the secondary, or None if unknown.
+
+        Returning None (rather than passing the primary id through) is deliberate: an
+        unmapped id would silently become a lookup for a node that cannot exist, and the
+        miss would be recorded as a divergence — re-creating the exact false signal this
+        mapping was built to remove.
+        """
+        return self._ids.get(primary_id) if primary_id else None
+
+    async def _shadow_by_id(self, op: str, primary_result: Any, primary_id: str | None,
+                            call) -> Any:
+        """Replay an id-keyed call, but only when the id is mapped.
+
+        An unmapped id is `unmapped`, NOT a divergence and NOT an agreement — a fourth
+        outcome for the same reason there is a third: the comparison did not happen, and a
+        report that cannot say so is a report that overstates its coverage.
+        """
+        secondary_id = self._map_id(primary_id)
+        if secondary_id is None:
+            self.stats.unmapped[op] = self.stats.unmapped.get(op, 0) + 1
+            return primary_result
+        return await self._shadow(op, primary_result, lambda s: call(s, secondary_id))
 
     # ── the comparison ───────────────────────────────────────────────
 
@@ -111,12 +153,24 @@ class ShadowGraphStore:
             return None
         if isinstance(value, list):
             return sorted(ShadowGraphStore._comparable(v) for v in value)
-        for attrs in (
-            ("canonical_name", "kind", "project_id", "archived_at"),   # Entity
-            ("predicate", "confidence", "valid_from_ordinal"),          # Relation
-        ):
-            if all(hasattr(value, a) for a in attrs):
-                return tuple(str(getattr(value, a)) for a in attrs)
+        if all(hasattr(value, a) for a in ("canonical_name", "kind", "project_id")):
+            # ⚠️ `archived_at` is compared as PRESENCE, not as an instant. Each engine stamps
+            # its own clock — Neo4j with Cypher's `datetime()`, AGE with Python's `now()` —
+            # so the two are never equal to the microsecond. The first mapped run reported
+            # exactly that as the sole divergence:
+            #     primary=(… '2026-08-11 20:18:04.446000+00:00')
+            #     secondary=(… '2026-08-11 20:17:56.949623+00:00')
+            # Same entity, both archived. **Whether an entity is archived is the semantic
+            # fact the caller acts on; when, to the microsecond, is engine-local bookkeeping.**
+            # Comparing the instant would report a permanent 100 % divergence on every
+            # lifecycle operation and drown any real difference in it.
+            return (
+                str(value.canonical_name), str(value.kind), str(value.project_id),
+                value.archived_at is not None,
+            )
+        if all(hasattr(value, a) for a in ("predicate", "confidence", "valid_from_ordinal")):
+            return (str(value.predicate), str(value.confidence),
+                    str(value.valid_from_ordinal))
         return str(value)
 
     async def _shadow(self, op: str, primary_result: Any, call) -> Any:
@@ -155,6 +209,7 @@ class ShadowGraphStore:
                 "diverged": self.stats.diverged.get(op, 0),
                 "uncovered": self.stats.uncovered.get(op, 0),
                 "errored": self.stats.errored.get(op, 0),
+                "unmapped": self.stats.unmapped.get(op, 0),
             }
             for op in OPERATIONS
         }
@@ -171,8 +226,17 @@ class ShadowGraphStore:
 
     async def resolve_or_merge_entity(self, **kw):
         out = await self._primary.resolve_or_merge_entity(**kw)
-        return await self._shadow("resolve_or_merge_entity", out,
-                                  lambda s: s.resolve_or_merge_entity(**kw))
+
+        async def _call(s):
+            twin = await s.resolve_or_merge_entity(**kw)
+            # THE mapping is learned here, and only here: this is the one operation keyed on
+            # NATURAL identity (user + project + canonical name + kind), so it is the only
+            # place the two engines can be known to be talking about the same entity.
+            if out is not None and twin is not None:
+                self._ids[out.id] = twin.id
+            return twin
+
+        return await self._shadow("resolve_or_merge_entity", out, _call)
 
     async def find_entities_by_name(self, **kw):
         out = await self._primary.find_entities_by_name(**kw)
@@ -185,19 +249,35 @@ class ShadowGraphStore:
 
     async def archive_entity(self, **kw):
         out = await self._primary.archive_entity(**kw)
-        return await self._shadow("archive_entity", out, lambda s: s.archive_entity(**kw))
+        return await self._shadow_by_id(
+            "archive_entity", out, kw.get("canonical_id"),
+            lambda s, sid: s.archive_entity(**{**kw, "canonical_id": sid}))
 
     async def restore_entity(self, **kw):
         out = await self._primary.restore_entity(**kw)
-        return await self._shadow("restore_entity", out, lambda s: s.restore_entity(**kw))
+        return await self._shadow_by_id(
+            "restore_entity", out, kw.get("canonical_id"),
+            lambda s, sid: s.restore_entity(**{**kw, "canonical_id": sid}))
 
     async def upsert_relation(self, **kw):
         out = await self._primary.upsert_relation(**kw)
-        return await self._shadow("upsert_relation", out, lambda s: s.upsert_relation(**kw))
+        # TWO endpoints, and BOTH must be mapped — a half-mapped edge would be written
+        # between one real node and one absent one, which is worse than not replaying it.
+        subj = self._map_id(kw.get("subject_id"))
+        obj = self._map_id(kw.get("object_id"))
+        if subj is None or obj is None:
+            self.stats.unmapped["upsert_relation"] = (
+                self.stats.unmapped.get("upsert_relation", 0) + 1)
+            return out
+        return await self._shadow(
+            "upsert_relation", out,
+            lambda s: s.upsert_relation(**{**kw, "subject_id": subj, "object_id": obj}))
 
     async def relations_for(self, **kw):
         out = await self._primary.relations_for(**kw)
-        return await self._shadow("relations_for", out, lambda s: s.relations_for(**kw))
+        return await self._shadow_by_id(
+            "relations_for", out, kw.get("entity_id"),
+            lambda s, sid: s.relations_for(**{**kw, "entity_id": sid}))
 
     async def status_at_order(self, **kw):
         out = await self._primary.status_at_order(**kw)

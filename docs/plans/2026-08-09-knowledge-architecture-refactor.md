@@ -35,23 +35,30 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T43 (continuing) — build the identity mapping so the id-keyed operations can be compared.**
+**RESUME: `D-T42-AGE-EVENT-SURFACE` — implement AGE's `status_at_order` + `events_in_window`.
+They are the ONLY two things between T43 and a complete comparison.**
 
-✅ **T43's harness is BUILT AND RUN 2026-08-12** — `shadow_graph_store.py`, Neo4j vs AGE on
-real traffic, 4 shadow tests + 410 integration + 4184 unit green.
+✅ **T43 IS BUILT AND MEASURED (2026-08-12).** `shadow_graph_store.py` with a
+primary→secondary identity mapping. **7 of 9 operations compared, ZERO divergences**, on
+real traffic against both live engines. 4 shadow · 410 integration · 4184 unit.
 
-🎯 **First measured evidence in the engine question: on the comparable surface, the two
-engines AGREE.** ⚠️ That surface is **3 of 9 operations** and is *not* a cutover
-recommendation.
+```
+blocked_by         : ['status_at_order', 'events_in_window']
+cutover_permitted  : False
+```
 
-🔴 **The first run found a defect in my harness, not in AGE** — the engines mint their own
-node ids, so the shadow asked the secondary about nodes it had never seen. Four operations
-reported `secondary=None`. Publishing that as an engine difference, in the document that
-decides the engine, would have been the worst outcome available.
-`D-T43-ID-KEYED-OPS-NEED-A-MAPPING` — **6 of 9 operations are unshadowable** until the shadow
-maintains a primary→secondary id mapping.
+🎯 **On everything comparable, Neo4j and Apache AGE agree.** That is the first measured
+evidence in the engine question — the contest **X1** asked for, settled by measurement rather
+than by argument, on an engine the 2026-08-09 audit had eliminated from a documentation check.
 
-**The coverage floor is working and blocks cutover** (`cutover_permitted: False`).
+⚠️ **Two harness defects were found and fixed before they could be published as engine
+differences**, which in the document that decides the engine would have been the worst outcome
+available: the engines mint their own node ids (fixed by the mapping), and each stamps its own
+`archived_at` clock (fixed by comparing presence, not the instant).
+
+⏸ **The engine CHOICE is not mine.** Sealed rows `T1`/`T2` were amended on refuted premises and
+are flagged for PO re-open; **QC-7** is the POST-REVIEW checkpoint that gates the swap. The
+data is now here to decide on.
 
 ✅ **T17's port-covered surface is COMPLETE (2026-08-12).** An AST sweep for direct calls to
 any port-covered repo function outside the adapters returns **zero**. Every
@@ -4847,7 +4854,62 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Evidence** | Two runs, four operations, each returning `secondary=None`/empty rather than a genuine difference. Samples pasted above. |
   | **To unblock** | An **identity mapping** the shadow maintains — primary id → secondary id, populated as `resolve_or_merge_entity` creates the pair, then substituted into every id-keyed call before replay. Real design work, not a parameter. |
   | **Mechanism** | `_ID_KEYED` in the test names the affected set explicitly, and the coverage floor keeps `upsert_relation` red — so the gap cannot be forgotten, and any operation added to the port inherits the same question. |
-  | **Retry when** | Before T43 can produce a verdict. ⚠️ **The current result covers 3 of 9 operations and must NOT be read as a cutover recommendation.** |
+  | **Retry when** | ~~Before T43 can produce a verdict.~~ ✅ **CLOSED 2026-08-12, same session** — see below. |
+
+  #### ✅ CLOSED — the mapping is built, and 7 of 9 operations now compare
+
+  `ShadowGraphStore` learns a **primary → secondary id mapping** from
+  `resolve_or_merge_entity` — the one operation keyed on NATURAL identity, and therefore the
+  only place the two engines can be *known* to be discussing the same entity — then
+  substitutes it into every id-keyed replay. `upsert_relation` requires **both** endpoints
+  mapped: a half-mapped edge would be written between one real node and one absent one, which
+  is worse than not replaying it.
+
+  **A mapping rather than an exemption list, deliberately.** An exemption would have made the
+  report *look* clean while 6 of 9 operations stayed uncompared — the shape of a metric that
+  improves by measuring less.
+
+  ```
+  operation                   obs  agr  div  unc unmap
+  resolve_or_merge_entity       2    2    0    0     0
+  find_entities_by_name         1    1    0    0     0
+  neighborhood                  1    1    0    0     0
+  archive_entity                1    1    0    0     0
+  restore_entity                1    1    0    0     0
+  upsert_relation               1    1    0    0     0
+  relations_for                 2    2    0    0     0
+  status_at_order               0    0    0    1     0
+  events_in_window              0    0    0    1     0
+
+  blocked_by         : ['status_at_order', 'events_in_window']
+  cutover_permitted  : False
+  ```
+
+  **🎯 7 of 9 operations compared, ZERO divergences.** The two blockers are exactly
+  `D-T42-AGE-EVENT-SURFACE` — AGE raises there by design — and nothing else.
+
+  ⚠️ **One more comparison artifact, found and fixed by the mapped run.** With ids translated,
+  the sole remaining divergence was a **timestamp**:
+  ```
+  primary  =(… '2026-08-11 20:18:04.446000+00:00')
+  secondary=(… '2026-08-11 20:17:56.949623+00:00')
+  ```
+  Same entity, both archived — Neo4j stamps with Cypher's `datetime()`, AGE with Python's
+  `now()`. `archived_at` is now compared as **presence**, not as an instant: whether an entity
+  is archived is the fact a caller acts on; *when*, to the microsecond, is engine-local
+  bookkeeping. Comparing the instant would report a permanent 100 % divergence on every
+  lifecycle operation and drown any real difference in it.
+
+  **BITE — bypass the mapping (pass the primary id straight through):**
+  ```
+  FAILED test_the_two_engines_agree_on_every_comparable_operation
+  FAILED test_the_coverage_floor_names_every_unobserved_operation
+      unexpected coverage floor: ['upsert_relation','status_at_order','events_in_window']
+  ```
+  It reproduces the original false divergences exactly, which is the proof the mapping is
+  what fixed them.
+
+  **QC** — 4 shadow · **410 integration** (both engines live) · **4184 unit**.
 
 - [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
   `/review-impl`. **Actually run** rebuild-from-Postgres on a real book and time it — the path is
