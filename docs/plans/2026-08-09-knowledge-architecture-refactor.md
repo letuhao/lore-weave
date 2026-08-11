@@ -35,7 +35,23 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T43 — the shadow comparison. 🔴 IT IS NOW RUNNABLE.**
+**RESUME: T43 (continuing) — build the identity mapping so the id-keyed operations can be compared.**
+
+✅ **T43's harness is BUILT AND RUN 2026-08-12** — `shadow_graph_store.py`, Neo4j vs AGE on
+real traffic, 4 shadow tests + 410 integration + 4184 unit green.
+
+🎯 **First measured evidence in the engine question: on the comparable surface, the two
+engines AGREE.** ⚠️ That surface is **3 of 9 operations** and is *not* a cutover
+recommendation.
+
+🔴 **The first run found a defect in my harness, not in AGE** — the engines mint their own
+node ids, so the shadow asked the secondary about nodes it had never seen. Four operations
+reported `secondary=None`. Publishing that as an engine difference, in the document that
+decides the engine, would have been the worst outcome available.
+`D-T43-ID-KEYED-OPS-NEED-A-MAPPING` — **6 of 9 operations are unshadowable** until the shadow
+maintains a primary→secondary id mapping.
+
+**The coverage floor is working and blocks cutover** (`cutover_permitted: False`).
 
 ✅ **T17's port-covered surface is COMPLETE (2026-08-12).** An AST sweep for direct calls to
 any port-covered repo function outside the adapters returns **zero**. Every
@@ -4777,6 +4793,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ⚠️ **Rests on T42a**: a shadow comparison between two unproven adapters measures agreement, not
   correctness. Two adapters can agree by sharing a bug.
   (depends on T42, T42a)
+  ---
+  ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**
+
+  `app/adapters/shadow_graph_store.py` + `tests/integration/db/test_shadow_comparison.py`.
+  ```
+  4 passed      (differential · coverage floor · three-outcome rule · caller-safety)
+  410 passed, 307 skipped   full integration suite, BOTH engines live
+  4184 passed              unit
+  ```
+
+  🔴 **THE FIRST RUN FOUND A HARNESS DEFECT — and calling it an engine difference would have
+  been the worst outcome available**: a defect of mine published as evidence about AGE, in
+  the document that decides the engine.
+  ```
+  shadow archive_entity DIVERGED: primary=('kai','character','p-287…',<ts>) secondary=None
+  shadow restore_entity DIVERGED: primary=('kai','character','p-287…','None') secondary=None
+  coverage floor: ['upsert_relation', 'status_at_order', 'events_in_window']
+  ```
+  The two engines **mint their own node ids**, so the shadow handed the PRIMARY's id to a
+  secondary that had never seen it. Neo4j archived the entity and returned it; AGE matched
+  nothing and returned `None`. **The stores were asked about different nodes.**
+
+  A second run named a fourth and made the finding structural: `relations_for` is also
+  id-keyed, and since `upsert_relation` had already failed the same way, AGE had no edge to
+  return either. **Most of this port is id-keyed**, so today's comparable surface is only what
+  is keyed on NATURAL identity — `resolve_or_merge_entity` (name+kind),
+  `find_entities_by_name` (name), `neighborhood` (the glossary anchor, which IS shared because
+  glossary-service mints it).
+
+  **On that comparable surface the two engines AGREE** — the first measured evidence in the
+  AGE-vs-Neo4j question. Deliberately not overstated: it covers **3 of 9** operations.
+
+  **The coverage floor works and currently BLOCKS cutover** (`cutover_permitted: False`), for
+  two reasons it does not conflate: `status_at_order`/`events_in_window` because AGE raises
+  (`D-T42-AGE-EVENT-SURFACE`), `upsert_relation` because of the id keying.
+
+  **BITE — let `uncovered` count toward the coverage floor:**
+  ```
+  FAILED test_the_coverage_floor_names_every_unobserved_operation
+  FAILED test_an_unimplemented_secondary_is_uncovered_not_agreed
+      "an uncovered call counted as an observation — it would satisfy the coverage floor
+       without any comparison having happened"
+  ```
+  The whole design in one assertion: an operation the secondary **cannot answer** must never
+  help satisfy a floor that exists to prove it *was* answered.
+
+  ### 🔻 DEFERRAL `D-T43-ID-KEYED-OPS-NEED-A-MAPPING` — 6 of 9 operations are unshadowable
+
+  | | |
+  |---|---|
+  | **Blocker** | `archive_entity`, `restore_entity`, `upsert_relation` and `relations_for` take an engine-minted **node id**, and the two engines mint different ones — so the secondary is asked about a node it does not have. With the two AGE-unimplemented methods, **6 of 9 port operations cannot currently be compared**. |
+  | **Evidence** | Two runs, four operations, each returning `secondary=None`/empty rather than a genuine difference. Samples pasted above. |
+  | **To unblock** | An **identity mapping** the shadow maintains — primary id → secondary id, populated as `resolve_or_merge_entity` creates the pair, then substituted into every id-keyed call before replay. Real design work, not a parameter. |
+  | **Mechanism** | `_ID_KEYED` in the test names the affected set explicitly, and the coverage floor keeps `upsert_relation` red — so the gap cannot be forgotten, and any operation added to the port inherits the same question. |
+  | **Retry when** | Before T43 can produce a verdict. ⚠️ **The current result covers 3 of 9 operations and must NOT be read as a cutover recommendation.** |
 
 - [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
   `/review-impl`. **Actually run** rebuild-from-Postgres on a real book and time it — the path is
