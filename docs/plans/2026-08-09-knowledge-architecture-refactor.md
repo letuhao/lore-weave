@@ -35,14 +35,21 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T42a — the conformance suite the port never had. Then T42b/c, then T42 (AGE). 🔴 HIGHEST PRIORITY.**
+**RESUME: T42b — add AGE to the `loreweave/postgres-knowledge:18` image. Then T42c, then T42. 🔴 HIGHEST PRIORITY.**
 
-⚠️ **Refined 2026-08-12 by `/aif-improve +check`, and the first unit changed.** RESUME pointed
-straight at the AGE adapter; the pass found **the port has no behavioural conformance suite** —
-14 tests instantiate `FakeGraphStore`, **zero** instantiate `Neo4jGraphStore`, and the one test
-naming it compares `inspect.signature` only. An AGE adapter with right signatures and wrong
-behaviour would pass everything. **Build the harness first (T42a), or "the adapter works" is
-unfalsifiable and T43 compares two unproven implementations.**
+✅ **T42a DONE 2026-08-12** — `tests/integration/db/test_graph_store_conformance.py`, **21 green
+against a live Neo4j**, both bites fired (break the real adapter → only `[neo4j]` reds;
+`CONFORMANCE_REQUIRE_REAL=1` with no real store → the control reds). The AGE adapter now has a
+correctness baseline to be judged against instead of a signature check.
+
+🐞 **It also found that the Neo4j integration tests have never run in CI** — the throwaway guard
+refuses port 7687, CI publishes on 7687, and nothing ever set `TEST_NEO4J_ALLOW_SHARED=1` even
+though the guard's own comment says the flag exists for CI. Wired, with
+`CONFORMANCE_REQUIRE_REAL=1` beside it.
+
+⚠️ Carrying forward into T42: `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` — the port can open a story
+interval but not close one, so the half-open **upper** bound is unconformable through it. AGE is
+the second implementation of that bound and the first chance to see it diverge.
 
 > **PO, 2026-08-11:** *"The graph storage engine is essential/fundamental. Without it the
 > architecture is not complete and we cannot ship this PR."*
@@ -4099,6 +4106,66 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **Do:** parameterise the 14 behavioural tests over `[FakeGraphStore, Neo4jGraphStore, AgeGraphStore]`.
   **Bite:** break one adapter's `as_of` half-open interval → that adapter reds, the others stay green.
   (blocks T42)
+  ---
+  ### ✅ DONE 2026-08-12 — `tests/integration/db/test_graph_store_conformance.py`
+
+  **10 rules × 2 adapters + 1 control = 21, all green against a live Neo4j.** The first time
+  `Neo4jGraphStore` has ever been checked behaviourally rather than by `inspect.signature`.
+
+  ```
+  TEST_NEO4J_URI=bolt://localhost:7999 CONFORMANCE_REQUIRE_REAL=1 pytest …conformance.py
+  21 passed in 5.80s
+  ```
+
+  **BITE 1 — break the real adapter's `as_of` passthrough** (`as_of_ordinal=as_of` → `None`).
+  The point is not that something reds; it is that **only the real adapter reds**:
+  ```
+  FAILED test_as_of_respects_the_interval_start[neo4j]
+  FAILED test_a_positionless_edge_is_excluded_by_a_timed_read_but_not_by_a_head_read[neo4j]
+  2 failed, 19 passed          ← both [fake] variants stayed GREEN
+  ```
+  Before this file that same break produced **zero** failures anywhere.
+
+  **BITE 2 — the anti-skip control.** `CONFORMANCE_REQUIRE_REAL=1`, no `TEST_NEO4J_URI`:
+  ```
+  AssertionError: CONFORMANCE_REQUIRE_REAL=1 but only the fake was exercised …
+  1 failed, 10 passed, 10 skipped
+  ```
+  This is the `env-gated-integration-tests-skip-and-the-green-suite-lies` trap closed at the
+  source: a suite that degrades to fake-only reports "conformance" while proving nothing.
+
+  **QC (a) gates** — `graph-port-gate` PASS (296 files scanned, 6 baselined); pre-existing
+  `tests/unit/test_graph_store_port.py` 16 passed; adapter restored byte-identical after the
+  bite (`git diff` empty).
+  ⚠️ **`graph-port-gate` is NOT hollow** — an earlier suspicion of mine, wrong. Pre-commit runs
+  it `--staged`, so *"0 file(s) scanned"* meant *"0 staged files outside adapter dirs"*, not
+  "this gate scans nothing". Run unstaged it scans **296**.
+  **QC (b) live** — ran against a real Neo4j 5 in a throwaway container on `:7999`, not a smoke
+  of a service seam because this crosses none. **QC (c) real data** — the suite creates and
+  reads real nodes; unique per-test ids, because Neo4j Community has no `TRUNCATE` and a
+  throwaway still carries residue between runs.
+
+  🐞 **FOUND, and it is bigger than this task: the Neo4j integration tests have never run in
+  CI.** `_guard_throwaway_neo4j` refuses ports 7687/7688 unless `TEST_NEO4J_ALLOW_SHARED=1`.
+  `python-integration-tests.yml` publishes its Neo4j service on **7687** and **never sets the
+  flag** — nothing in the repo does. So the guard *raises* there rather than skipping:
+  ```
+  RAISES as in CI: REFUSING: TEST_NEO4J_URI 'bolt://localhost:7687' looks like the shared DEV graph …
+  with TEST_NEO4J_ALLOW_SHARED=1 -> permitted (the CI fix)
+  ```
+  The guard's own comment calls that flag *"the escape hatch for CI, where the graph IS
+  disposable"* — **it was written for this job and never wired.** Fixed in the workflow, with
+  `CONFORMANCE_REQUIRE_REAL=1` beside it so the control has teeth where it matters.
+
+  ### 🔻 DEFERRAL `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` — the upper bound is unconformable
+
+  | | |
+  |---|---|
+  | **Blocker** | `upsert_relation` takes `valid_from_ordinal` and has **no `valid_to_ordinal`**. The port can OPEN a story interval and cannot CLOSE one — while `relations_for` documents the half-open convention `valid_from <= N < valid_to`. So an adapter must implement an upper bound **no port caller can produce**, and no conformance test can exercise it through the port. |
+  | **Evidence** | The first cut of the test asserted the upper bound and died on `TypeError: upsert_relation() got an unexpected keyword argument 'valid_to_ordinal'`. The Cypher does implement it (`r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal`, visible in the adapter's query) — it is simply unreachable from the port. |
+  | **Why it matters** | Closing intervals is exactly what **T36** was about: **175 relations that had already ended were served as currently true.** A second adapter (AGE) could get the upper bound wrong and this suite would not see it. |
+  | **Mechanism** | The test `test_as_of_respects_the_interval_start` names this deferral in its docstring and covers the lower bound only, so the gap is stated where a reader meets it rather than in a note elsewhere. |
+  | **Retry when** | T42 designs the AGE adapter — that is when a second implementation of the upper bound first exists, and when the port either grows a close operation or the write path is declared out of port scope deliberately. |
 - [~] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
   The image **already exists** — `infra/postgres-knowledge/Dockerfile` (PG18 + pgvector +
   pgvectorscale), pinned by `infra/docker-compose.knowledge-pg.yml:29`. Sealed **T5** already

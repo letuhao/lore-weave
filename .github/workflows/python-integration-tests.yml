@@ -291,4 +291,15 @@ jobs:
           TEST_NEO4J_URI: bolt://localhost:7687
           TEST_NEO4J_USER: neo4j
           TEST_NEO4J_PASSWORD: loreweave_dev_neo4j
+          # The throwaway guard REFUSES ports 7687/7688 (the dev graph's) unless this is set,
+          # and this job publishes its service container on 7687. Its own comment calls this
+          # flag "the escape hatch for CI, where the graph IS disposable" — it was written for
+          # exactly this job and never wired, so `_guard_throwaway_neo4j` has been RAISING
+          # here rather than skipping. Found by T42a, whose conformance suite would have died
+          # the same way. Safe: this is an ephemeral service container, not the dev stack.
+          TEST_NEO4J_ALLOW_SHARED: "1"
+          # T42a — a conformance run that quietly degrades to fake-only would report the word
+          # "conformance" while proving nothing about any real store. With this set, the suite
+          # FAILS instead of skipping when no real adapter was exercised.
+          CONFORMANCE_REQUIRE_REAL: "1"
         run: python -m pytest tests/integration -q -p no:cacheprovider
