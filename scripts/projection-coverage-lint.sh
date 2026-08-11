@@ -45,6 +45,22 @@ declare -A allow=(
   [admin.canon.override.consented]="by-design: meta-worker override writers (audit), not projected"
   [admin.canon.override.vetoed]="by-design: meta-worker override writers (audit), not projected"
   [admin.canon.override.compensating]="by-design: meta-worker force_propagate compensating writer"
+  # DP-Ch21's per-channel page-flip counter (turn-loop T2, 2026-08-11). NOT the
+  # dp-kernel TurnContext request lifecycle — four things in this repo are called
+  # a "turn"; see docs/plans/2026-08-11-turn-loop-RUN-STATE.md §1.1.
+  #
+  # No read-model projection by design: its consumer is the channel TIMELINE.
+  # DP-Ch21 says subscribers receive it "via subscribe_channel_events_durable
+  # like any other channel event", and the durable state it needs already exists
+  # as a column — channel_writer_state.last_turn_number, written in the same
+  # statement that allocates the event (0020). A projection would be a second
+  # SSOT for a number the writer already holds authoritatively.
+  #
+  # ⚠ This is NOT the same claim as "nothing consumes it". DP-Ch16's
+  # DurableEventStream is unbuilt, so today the event is written and read by
+  # nobody but its own tests. That gap belongs to 14_durable_subscribe, which is
+  # still in dp-oracle-coverage's NO_PRODUCER table and will red when it ships.
+  [channel.turn_boundary]="by-design: channel-timeline event delivered by durable subscribe (DP-Ch16); its durable state is channel_writer_state.last_turn_number, not a read model"
   # Arrived with the game-logic promotion (merge 2026-08-02) — registered with owner
   # commit-service and no projection arm, which reds this lint. Allowlisted after reading the
   # emitter, not to make the gate green: `epoch_commit.rs` calls it an EVT-T8 ADMINISTRATIVE

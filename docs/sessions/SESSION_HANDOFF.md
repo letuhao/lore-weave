@@ -1,28 +1,32 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the oracle worklist is empty, and the security gates prove themselves (2026-08-11, branch `feat/game-logic`)
+## ▶ GAME BUILD — the turn loop has a producer, and Phase 0 found four turns (2026-08-11, branch `feat/game-logic`)
 
-**HEAD:** `510275731`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-88`).
+**HEAD:** `2b228a8fd`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-88`).
 
-> **▶ DO NEXT — `GATE-TEETH-43`'s next batch, chosen worst-consequence-first.**
-> The two rows that were live on 2026-08-11 are both closed. **G3 reads 15/15 COVERABLE and its
-> worklist is EMPTY** — `01_scope_and_boundary` was split by language rather than faked into one
-> side: §2.4/§3b got a Rust oracle (`crates/dp/tests/spec_oracle_scope.rs`), and §4's boundary rule
-> is now checked beside the `IN_SCOPE` tuple it derives, inside `reality-id-adoption-gate.py`,
-> because a Rust test reading a Python constant is `BDR-79`. **`GATE-TEETH` is 47 → 43**, the
-> security-adjacent batch done, 15/15 arms bitten and the lowering itself bitten.
+> **▶ DO NEXT — the turn loop’s remaining half, or `GATE-TEETH-43`’s next batch.**
+> **ACTIVE run-state: [`docs/plans/2026-08-11-turn-loop-RUN-STATE.md`](../plans/2026-08-11-turn-loop-RUN-STATE.md)** — `T0`–`T7` are closed.
 >
-> The next batch is the **destructive / tenancy** set, picked the same way — by what a silent
-> failure costs, not by what is easy. Give each a **reach family**, not only detectors: the
-> remaining ones are corpus walkers, and a walk that reaches nothing is byte-identical to a clean
-> tree, including exit 0. That one property produced every real finding in the last two batches.
+> **What shipped:** `advance_turn` and the DP-Ch51 advisory slot both have real producers on
+> `ChannelWriter`, proven by **8/8 live** integration tests against a real Postgres (not drills —
+> rows committed through the epoch-fenced writer and read back). `dp-oracle-coverage` went
+> **15/15 → 17/17**: `15_turn_boundary` and `21_llm_turn_slot` both left `NO_PRODUCER`, each
+> because its shrink arm fired on its own.
 >
-> Two things this batch proved, worth carrying into the next. **Write the self-test cases from what
-> the gate's docstring CLAIMS**, not from its code — that is what exposed `os.environ[...]` never
-> matching in the gate whose subject is invisible test suites (`BDR-87`); cases written from the
-> code would have reproduced the bug. And **check every baseline/exemption register for a shrink
-> arm**: a 16-row list of tracked injection holes had none, so a module that adopted the sanitizer
-> kept its exemption (`BDR-88`).
+> **Read §1 of that run-state before touching anything nearby.** Phase 0 found **four** different
+> things called a “turn”, one of them built and a *different concept* with a mutator one word away
+> (`TurnContext::advance` vs `advance_turn`), plus `DpClient` and `ActorId` — both written into
+> LOCKED specs, neither existing. Six sealed forks record every reconciliation; `SF-1` was AMENDED
+> after building proved its own reasoning wrong.
+>
+> **Still open on this track:** DP-Ch52’s auto-timeout and DP-Ch53’s three patterns, both gated on
+> `channel_pause` (DP-Ch35, unbuilt) — `SF-4`, now with a shrink arm that reds the day it appears.
+> Also `TL-PGVECTOR` (the dev cluster’s `template1` claims an extension the cluster lacks, so
+> `0006` cannot run) and `TL-DOWN-GUARD` (`0020`’s down now destroys live turn history — it needed
+> no guard when nothing wrote a non-zero value, and that stopped being true at `T3`).
+>
+> **`GATE-TEETH-43`** is untouched and still the other live row — next batch is the
+> destructive/tenancy set, picked worst-consequence-first, each with a **reach family**.
 >
 > ⚠ **One unexplained RED is tracked, not closed:** `dp-oracle-bite-gate` failed once inside `--run-all` and is green on three runs since, including a second full sweep from a clean tree (85 green, rc=0). Nothing changed between, so nothing was fixed — see the `SWEEP-RED-UNEXPLAINED` row. It is currently **uninvestigable**: `gate-wiring-gate` keeps one summary line per gate and discards the captured output, so a one-off leaves no leg to read. Retaining the failing gate's output is the fix, and the row says so.
 >

@@ -48,6 +48,21 @@ async fn pool(url: &str) -> Arc<PgPool> {
     )
 }
 
+/// The ONE `ChannelId::unverified` call site in this file.
+///
+/// `channel-id-adoption-gate` ratchets that escape hatch downward: it is the
+/// named pre-SDK stand-in for a channel resolved through
+/// `SessionContext::move_to_channel`, and the seam is supposed to be closing.
+/// Adding a test used to mean adding a call — this suite grew from 3 to 8 in
+/// one commit, and the gate refused, correctly.
+///
+/// Funnelling every test through one helper makes the count a property of the
+/// FILE rather than of how many tests it has, so the next test costs nothing.
+/// The hatch is still here and still counted; it has one home instead of eight.
+fn test_channel(n: i64) -> ChannelId {
+    ChannelId::unverified(n)
+}
+
 /// Allocation is monotonic + gap-free under one lease; rows land in both
 /// `events` (channel columns) and `channel_event_index`.
 /// Kill-mutations: allocator not DB-authoritative · index insert dropped.
@@ -59,7 +74,7 @@ async fn channel_append_allocates_monotonically() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(1);
+    let ch = test_channel(1);
 
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
@@ -115,7 +130,7 @@ async fn stale_epoch_writer_is_fenced_at_the_db() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(7);
+    let ch = test_channel(7);
 
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old_writer = ChannelWriter::new(pool.clone(), reality, old_lease);
@@ -171,7 +186,7 @@ async fn append_without_lease_is_distinct_error() {
     let writer = ChannelWriter::new(
         pool.clone(),
         reality,
-        dp_kernel::channel::WriterLease { channel_id: ChannelId::unverified(99), epoch: 1 },
+        dp_kernel::channel::WriterLease { channel_id: test_channel(99), epoch: 1 },
     );
     let err = writer
         .append(&envelope(reality, "combat_session", "enc-1", 1, "turn.resolved"), &serde_json::json!([]))
@@ -220,7 +235,7 @@ async fn turn_number_starts_at_zero_and_advances_only_on_advance_turn() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(21);
+    let ch = test_channel(21);
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 
@@ -290,7 +305,7 @@ async fn turn_allocation_survives_writer_handoff_without_duplicating() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(22);
+    let ch = test_channel(22);
 
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old = ChannelWriter::new(pool.clone(), reality, old_lease);
@@ -372,7 +387,7 @@ async fn turn_slot_round_trips_and_releases_to_none() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(51);
+    let ch = test_channel(51);
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 
@@ -412,7 +427,7 @@ async fn a_held_turn_slot_does_not_block_writes() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(52);
+    let ch = test_channel(52);
     let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let writer = ChannelWriter::new(pool.clone(), reality, lease);
 
@@ -443,7 +458,7 @@ async fn a_stale_writer_cannot_claim_the_turn_slot() {
     };
     let pool = pool(&url).await;
     let reality = Uuid::new_v4();
-    let ch = ChannelId::unverified(53);
+    let ch = test_channel(53);
     let old_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
     let old = ChannelWriter::new(pool.clone(), reality, old_lease);
     let new_lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();

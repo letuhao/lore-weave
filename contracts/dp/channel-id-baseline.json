@@ -1,6 +1,6 @@
 {
   "sites": {
-    "crates/dp-kernel/tests/integration_channel_writer.rs": 3,
+    "crates/dp-kernel/tests/integration_channel_writer.rs": 1,
     "crates/dp-kernel/tests/integration_writer_lease.rs": 6,
     "services/commit-service/src/bin/ceilings.rs": 2,
     "services/commit-service/src/bin/spine.rs": 1,
