@@ -85,6 +85,10 @@ drive root returns itself. `TLD-11` again: a bite harness is an unverified check
 
 ---
 
+**Shipped: `e66eb7d9d`** — 5 files, +580/−17.
+
+---
+
 ## 3 · OPEN ROWS
 
 | id | what | why not here | mechanism |

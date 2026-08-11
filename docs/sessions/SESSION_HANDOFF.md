@@ -31,7 +31,7 @@
 > nothing compares a doc's "this is unbuilt" claim against the thing it names.
 >
 
-> ### ▶ CLAIM-ROT IS BUILT — board [`2026-08-16-claim-rot-RUN-STATE.md`](../plans/2026-08-16-claim-rot-RUN-STATE.md), rows `CR0`–`CR5` closed
+> ### ▶ CLAIM-ROT IS BUILT (`e66eb7d9d`) — board [`2026-08-16-claim-rot-RUN-STATE.md`](../plans/2026-08-16-claim-rot-RUN-STATE.md), rows `CR0`–`CR5` closed
 >
 > **The reality-layer MEASURED STATE table now checks itself.** Ten of its figures are measured on
 > every commit by `scripts/actor-hub-figures-gate.py`, widened in place per `CR-F1` — six ask a live
