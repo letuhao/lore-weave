@@ -572,6 +572,27 @@ async def _handle_memory_recall_entity(
         }
         for r in detail.relations
     ]
+    # `other_matches` used to be a list of NAMES, which by construction could not
+    # disambiguate anything: `find_entities_by_name` matches ON the name (canonical or
+    # alias), so every other match carries the same string. Measured on the corpus, all
+    # 13 calls that returned this field returned FIVE entries with ONE distinct value —
+    # the field never once carried information. It also truncated silently at 5 while
+    # `relations` next to it declares `relations_truncated`; the live probe that found
+    # this was 5 of 47 matches, all in different projects, with `entity` being an
+    # arbitrary one of them and nothing in the payload saying so.
+    #
+    # What distinguishes same-named matches is the project they live in, so each row now
+    # carries it — and `project_id` is a real argument of this tool, which makes the
+    # disambiguation ACTIONABLE: the model can re-call scoped to one project.
+    #
+    # `anchor_score` and `confidence` are the ACTUAL tiebreak: the find-by-name Cypher
+    # orders by anchor_score DESC, confidence DESC, name ASC. S1 row 11 records this pick
+    # as having "no declared tiebreak" — it has one, in the query, invisible to every
+    # caller. Returning the two sort keys states it in the payload rather than in a
+    # sentence, so the caller can see WHY this match won and not merely that it did.
+    # This is the candidate-set half of the unadmitted C-23; the `outcome: "ambiguous"`
+    # half is a contract change and is not smuggled in here.
+    others = matches[1 : 1 + _OTHER_MATCHES_CAP]
     return {
         "found": True,
         "entity": {
@@ -579,10 +600,25 @@ async def _handle_memory_recall_entity(
             "kind": detail.entity.kind,
             "aliases": detail.entity.aliases,
             "confidence": detail.entity.confidence,
+            "project_id": detail.entity.project_id,
+            "anchor_score": detail.entity.anchor_score,
         },
         "relations": relations,
         "relations_truncated": detail.relations_truncated,
-        "other_matches": [e.name for e in matches[1 : 1 + _OTHER_MATCHES_CAP]],
+        "other_matches": [
+            {
+                "name": e.name,
+                "kind": e.kind,
+                "project_id": e.project_id,
+                "confidence": e.confidence,
+                "anchor_score": e.anchor_score,
+            }
+            for e in others
+        ],
+        # A COUNT, not a bool, and derived from the match list rather than typed: the
+        # Cypher has no LIMIT, so this is the true residue. `> len(other_matches)` is the
+        # truncation signal, which is why no separate flag is added.
+        "other_matches_total": len(matches) - 1,
     }
 
 

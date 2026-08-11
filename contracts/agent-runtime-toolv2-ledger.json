@@ -604,6 +604,21 @@
         "DATA, corpus-wide not tool-wide: names in list-shaped *_id* params = 8 items / 3 calls / 2 sessions (7 entity_ids, 1 loser_ids). The gap is real and it is small"
       ],
       "admitted": false
+    },
+    "memory_recall_entity": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and it is the first tool whose SHAPE was the defect rather than its failures. 25 calls / 24 ok; the single failure is an HTTP 503 from 2026-05-18, the service being down. The successes were the problem: 13 of 13 calls that populated `other_matches` returned FIVE entries with ONE distinct value. The field listed the NAME of things matched BY name, so it could never disambiguate; it also truncated silently at 5 while `relations` beside it declares `relations_truncated`. This is S1 row 11, already written down as the unadmitted clause C-23. FIXED in knowledge-service: each row now carries project_id (a real ARGUMENT of this tool, so the disambiguation is actionable), kind, confidence and anchor_score (the two Cypher sort keys, which is the tiebreak S1 called undeclared -- it exists, in the query, invisible to callers), the chosen entity says which one it is, and `other_matches_total` derives the residue. FOLLOWING THE FALSIFIER FOUND A SECOND, LARGER DEFECT: scoping a recall to a listed project answered `project not found`, because the GDPR erasure endpoint DELETE /v1/knowledge/user-data deleted the Postgres rows and left the entire Neo4j graph -- entities, aliases, relations, facts -- standing, while logging a gdpr.erasure audit line claiming it was destroyed. Also fixed, with the receipt now reporting graph_nodes and admitting null on a failed purge. See D-9 for the 980-node backlog, which is NOT swept.",
+      "evidence": [
+        "PHASE 2: 24 ok / 1 failed; the failure is 'tool backend error (HTTP 503)' on 2026-05-18, one session. No argument defect in the population at all",
+        "DATA, from the corpus: found=true with other_matches -> 13 calls / 13 sessions, every one with n_other=5 and distinct_other=1. relations=[] in 24 of 24",
+        "DATA, from Neo4j (SSOT, not typed): 47 :Entity nodes named 'Lâm Uyên', in 47 DIFFERENT projects. The tool listed 5 identical strings out of 46 alternates",
+        "CODE: falsifier -- reverting other_matches to [e.name for e in others] reds test_THE_OTHER_MATCHES_LIST_DISTINGUISHES_THE_MATCHES_IT_LISTS with its own message; restored by the reverse edit, never git checkout. 4000 unit tests pass",
+        "LIVE (recall), deployed image verified byte-identical by whole-file sha256 and the container .Image == the built image id: other_matches rows are objects, 5 distinct project_ids, other_matches_total=46 -- which agrees with Neo4j's independent 47",
+        "LIVE (erasure) A/B on a THROWAWAY user, because this smoke DESTROYS: seeded one knowledge_projects row + one Entity node under a synthetic user id. OLD image -> {\"summaries\":0,\"projects\":1} and the entity SURVIVED. FIXED image, same user, same project -> {\"summaries\":0,\"projects\":1,\"graph_nodes\":1} and the entity was gone. Throwaway user verified to leave 0 rows and 0 nodes behind",
+        "CODE (erasure): two falsifiers -- disabling the purge reds test_THE_ERASURE_PURGES_EVERY_DELETED_PROJECTS_GRAPH (purged list empty) and test_THE_RECEIPT_ADMITS_A_FAILED_PURGE_INSTEAD_OF_REPORTING_ZERO (graph_nodes 0, not None)",
+        "SCOPE, checked not assumed: purge_project has ONE call site, so the 're-sweep' its comment promises does not exist; no integration test and no FE consumer reads the erasure receipt, so adding graph_nodes as an optional field breaks nothing"
+      ],
+      "admitted": false
     }
   }
 }

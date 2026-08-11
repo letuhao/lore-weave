@@ -466,6 +466,33 @@ afternoon; guessing between them would silently set the contract for every futur
 
 ## Debt this loop surfaced but did not absorb
 
+### D-9 · 980 entities stand in projects that no longer exist, and no re-sweep exists to reclaim them
+
+*Raised by:* iteration 56, from the live probe behind the `memory_recall_entity` fix.
+
+Measured from both SSOTs, never typed: Neo4j holds **1103** active `:Entity` nodes for the
+dogfood user across **200** distinct `project_id`s; `knowledge_projects` holds **24** of those
+200. The other **176** projects are gone, and **980 of the 1103 entities (88.8%)** belong to them.
+`memory_recall_entity` answered out of one: the chosen `Lâm Uyên` and all five listed alternates
+sit in projects that return `project not found` when you scope a call to them.
+
+**The ratio is contaminated and I will not defend it** — this is a dev database that has absorbed
+months of this loop's own eval traffic (DQ-12), and 176 deleted projects for one user is what
+repeated test runs look like. What is NOT contaminated is the mechanism, which is code:
+
+* `delete_project` purges the graph (`D-KNOWLEDGE-PROJECT-DELETE-NEO4J-ORPHAN`) — but
+  best-effort, and its comment says a failure "leaves an orphan to re-sweep".
+* **`purge_project` has exactly one call site.** There is no re-sweep. The reassurance in that
+  comment names a mechanism that was never built — so a purge failure orphans permanently.
+* The bulk GDPR erasure path did not purge at all. **That one is fixed in this iteration** and is
+  the likeliest producer of this backlog.
+
+*Not absorbed because deleting 980 nodes is destructive and irreversible, and it is not mine to
+decide.* Two things would clear it: a reclaim sweep (`project_id` present on the node, absent from
+`knowledge_projects`) run as an explicit operation with a receipt, and a decision on whether a
+read should filter orphans defensively or let them surface as the fix now makes visible.
+
+
 ### D-8 · A whole checkpoint shipped, closed, and never ran — one missing `COPY` line
 
 *Found by iteration 37, and it is the loop's most consequential result.*

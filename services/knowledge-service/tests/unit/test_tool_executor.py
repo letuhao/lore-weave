@@ -312,7 +312,8 @@ async def test_memory_search_chat_source_skips_manuscript_leg(monkeypatch):
 async def test_memory_recall_entity_happy(monkeypatch):
     entity = SimpleNamespace(
         id="e1", name="Kai", canonical_name="kai", kind="character",
-        aliases=["the swordsman"], confidence=0.9,
+        aliases=["the swordsman"], confidence=0.9, project_id=str(_PROJECT),
+        anchor_score=1.0,
     )
     detail = SimpleNamespace(
         entity=entity,
@@ -332,6 +333,57 @@ async def test_memory_recall_entity_happy(monkeypatch):
     assert res.result["found"] is True
     assert res.result["entity"]["name"] == "Kai"
     assert res.result["relations"][0]["predicate"] == "duels"
+
+
+@pytest.mark.asyncio
+async def test_THE_OTHER_MATCHES_LIST_DISTINGUISHES_THE_MATCHES_IT_LISTS(monkeypatch):
+    """`other_matches` must carry what tells the matches APART, not the name they share.
+
+    They are found BY name, so the name is the one field guaranteed to be identical across
+    every row — measured on the corpus, all 13 calls that populated this field returned
+    five entries with exactly one distinct value. The live probe behind this test found 5
+    listed out of 47 matches, every one in a different project, with `entity` an arbitrary
+    one of them and nothing in the payload admitting either fact.
+    """
+    def _e(pid: str, conf: float) -> SimpleNamespace:
+        return SimpleNamespace(id=f"e-{pid}", name="Lâm Uyên", canonical_name="lam uyen",
+                               kind="character", aliases=[], confidence=conf,
+                               project_id=pid, anchor_score=1.0)
+
+    matches = [_e(f"p{i}", 1.0 - i / 100) for i in range(9)]
+    detail = SimpleNamespace(entity=matches[0], relations=[],
+                             relations_truncated=False, total_relations=0)
+    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
+                        AsyncMock(return_value=matches))
+    monkeypatch.setattr("app.tools.executor.get_entity_with_relations",
+                        AsyncMock(return_value=detail))
+    res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Lâm Uyên"})
+    assert res.success
+    others = res.result["other_matches"]
+
+    # THE defect, stated so the red says what regressed: a row that is a bare NAME
+    # carries the one field every match shares, and is not a disambiguation at all.
+    assert all(isinstance(o, dict) for o in others), (
+        f"other_matches rows must be objects that can be told apart, got {others!r} — "
+        "a list of names cannot disambiguate matches that were found BY name")
+    assert len({o["project_id"] for o in others}) == len(others), (
+        f"every listed match must be distinguishable, got {others}")
+
+    # `project_id` specifically, because it is an ARGUMENT of this tool — the model can act
+    # on it by re-calling scoped to one project. A field it cannot act on is decoration.
+    assert set(others[0]) >= {"name", "kind", "project_id", "confidence", "anchor_score"}
+
+    # The tiebreak is real but lives in the Cypher (anchor_score DESC, confidence DESC).
+    # Returning both sort keys is what makes the pick legible instead of arbitrary-looking.
+    assert {"anchor_score", "confidence"} <= set(res.result["entity"])
+    assert "project_id" in res.result["entity"], (
+        "the CHOSEN match must say which one it is, or the caller cannot tell that a pick "
+        "was made at all")
+
+    # Truncation must be visible, the way `relations_truncated` next to it already is —
+    # and the total is DERIVED from the match list (the Cypher has no LIMIT), never typed.
+    assert len(others) == 5 and res.result["other_matches_total"] == len(matches) - 1
+    assert res.result["other_matches_total"] > len(others)
 
 
 @pytest.mark.asyncio

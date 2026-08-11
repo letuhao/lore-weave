@@ -118,6 +118,7 @@ class FakeUserDataRepo:
             raise RuntimeError("boom")
         s_before = len(self._summaries._rows)
         p_before = len(self._projects._rows)
+        removed = [p for p in self._projects._rows if p.user_id == user_id]
         self._summaries._rows = [
             s for s in self._summaries._rows if s.user_id != user_id
         ]
@@ -127,7 +128,40 @@ class FakeUserDataRepo:
         return {
             "summaries": s_before - len(self._summaries._rows),
             "projects": p_before - len(self._projects._rows),
+            # The real repo RETURNINGs the deleted ids so the route can purge each
+            # project's Neo4j partition; a fake that omits them would let the erasure
+            # guard below pass while the graph purge never ran.
+            "project_ids": [str(p.project_id) for p in removed],
         }
+
+
+class FakePurge:
+    """Records which projects were purged, so a test can assert the ERASURE reached
+    Neo4j and not merely that Postgres returned a number."""
+
+    def __init__(self) -> None:
+        self.purged: list[str] = []
+        self.fail = False
+
+    async def __call__(self, session, project_id: str) -> dict[str, int]:
+        if self.fail:
+            raise RuntimeError("neo4j down")
+        self.purged.append(project_id)
+        return {"nodes_deleted": 7, "indexes_dropped": 1}
+
+
+@pytest.fixture(autouse=True)
+def purge(monkeypatch: pytest.MonkeyPatch) -> FakePurge:
+    from contextlib import asynccontextmanager
+
+    @asynccontextmanager
+    async def _fake_session():
+        yield object()
+
+    fake = FakePurge()
+    monkeypatch.setattr("app.routers.public.user_data.neo4j_session", _fake_session)
+    monkeypatch.setattr("app.routers.public.user_data.purge_project", fake)
+    return fake
 
 
 # ── fixtures ─────────────────────────────────────────────────────────────
@@ -308,7 +342,8 @@ def test_delete_empty_user(
     with caplog.at_level(logging.INFO, logger="app.routers.public.user_data"):
         resp = client.delete("/v1/knowledge/user-data")
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": {"summaries": 0, "projects": 0}}
+    assert resp.json() == {
+        "deleted": {"summaries": 0, "projects": 0, "graph_nodes": 0}}
     # I2: GDPR audit trail — erasure is logged with user_id + counts.
     assert any(
         "gdpr.erasure" in rec.message and str(auth_user_id) in rec.message
@@ -330,10 +365,70 @@ def test_delete_returns_counts(
     summaries_repo.seed(_make_summary(auth_user_id, "project", uuid4()))
     resp = client.delete("/v1/knowledge/user-data")
     assert resp.status_code == 200
-    assert resp.json() == {"deleted": {"summaries": 3, "projects": 2}}
+    assert resp.json() == {
+        "deleted": {"summaries": 3, "projects": 2, "graph_nodes": 14}}
     # And the fakes are actually empty for this user now.
     assert summaries_repo._rows == []
     assert projects_repo._rows == []
+
+
+def test_THE_ERASURE_PURGES_EVERY_DELETED_PROJECTS_GRAPH(
+    client: TestClient,
+    projects_repo: FakeProjectsRepo,
+    auth_user_id: UUID,
+    purge: FakePurge,
+):
+    """"Delete my data" must delete the data, not only the rows that index it.
+
+    A knowledge project owns a Neo4j partition — its entities, aliases, relations and
+    facts. Deleting the Postgres rows makes that partition UNREACHABLE by enumeration
+    while leaving every name in it standing, which is the worst of both: the audit line
+    says destroyed, the graph says otherwise. The live probe behind this test read a
+    character's name, kind and confidence out of a project that no longer existed.
+    """
+    a, b = _make_project(auth_user_id), _make_project(auth_user_id)
+    projects_repo.seed(a)
+    projects_repo.seed(b)
+    other = uuid4()
+    projects_repo.seed(_make_project(other, name="safe"))
+
+    resp = client.delete("/v1/knowledge/user-data")
+    assert resp.status_code == 200
+
+    # EVERY deleted project, and ONLY those — a purge that reached another user's
+    # partition would be a far worse bug than the one being fixed.
+    assert sorted(purge.purged) == sorted([str(a.project_id), str(b.project_id)])
+    # The receipt counts the graph too, or an erasure can report success having
+    # destroyed nothing but rows.
+    assert resp.json()["deleted"]["graph_nodes"] == 14
+
+
+def test_THE_RECEIPT_ADMITS_A_FAILED_PURGE_INSTEAD_OF_REPORTING_ZERO(
+    client: TestClient,
+    projects_repo: FakeProjectsRepo,
+    auth_user_id: UUID,
+    purge: FakePurge,
+    caplog: pytest.LogCaptureFixture,
+):
+    """A purge that fell over must not look like a purge that had nothing to do.
+
+    The Postgres delete is authoritative and already committed, so the erasure still
+    succeeds — but `graph_nodes: 0` would tell the user their graph is gone when it is
+    not. `None` is the only honest answer, and the audit line has to say so too, because
+    this is the record a later erasure re-sweep is driven from.
+    """
+    import logging
+    projects_repo.seed(_make_project(auth_user_id))
+    purge.fail = True
+
+    with caplog.at_level(logging.WARNING, logger="app.routers.public.user_data"):
+        resp = client.delete("/v1/knowledge/user-data")
+
+    assert resp.status_code == 200  # the rows ARE gone; erasure does not roll back
+    assert resp.json()["deleted"]["projects"] == 1
+    assert resp.json()["deleted"]["graph_nodes"] is None, (
+        "a failed purge reported as 0 is a false erasure receipt")
+    assert any("graph orphaned" in r.message for r in caplog.records)
 
 
 def test_delete_isolates_other_users(
@@ -348,7 +443,8 @@ def test_delete_isolates_other_users(
     summaries_repo.seed(_make_summary(auth_user_id, "global", None))
     summaries_repo.seed(_make_summary(other, "global", None, "safe"))
     resp = client.delete("/v1/knowledge/user-data")
-    assert resp.json() == {"deleted": {"summaries": 1, "projects": 1}}
+    assert resp.json() == {
+        "deleted": {"summaries": 1, "projects": 1, "graph_nodes": 7}}
     # Other user's rows survive.
     assert len(projects_repo._rows) == 1
     assert projects_repo._rows[0].name == "safe"
