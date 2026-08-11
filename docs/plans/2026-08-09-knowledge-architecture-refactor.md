@@ -35,7 +35,18 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T42c — the AGE graph bootstrap (`LOAD` · `search_path` · `create_graph`). Then T42. 🔴 HIGHEST PRIORITY.**
+**RESUME: T42 — the AGE `GraphStore` adapter, conformed by T42a's suite. 🔴 HIGHEST PRIORITY.**
+
+✅ **T42c DONE 2026-08-12** — `app/db/age_bootstrap.py`, 10 tests green against a real AGE.
+`create_age_pool()` makes the session split once so no call site has to remember it:
+`search_path` in **`server_settings`** (survives asyncpg's `RESET ALL` on release),
+`LOAD 'age'` in **`init`** (a library, not a GUC). Graph naming is `g_` + UUID hex, both
+transformations load-bearing — a bare UUID is rejected by AGE for its leading digit *and* its
+dashes.
+
+**Everything the adapter needs now exists:** a correctness baseline (T42a), an engine that
+ships in one image with the vectors (T42b), and a session/naming bootstrap (T42c). T42 has no
+remaining precondition.
 
 ✅ **T42a DONE 2026-08-12** — `tests/integration/db/test_graph_store_conformance.py`, **21 green
 against a live Neo4j**, both bites fired (break the real adapter → only `[neo4j]` reds;
@@ -4250,6 +4261,69 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ⚠️ **AGE rejects single-character graph names** (`graph name is invalid`) — measured, and it
   bites any graph-per-project naming scheme derived from a short id.
   (blocks T42)
+  ---
+  ### ✅ DONE 2026-08-12 — `app/db/age_bootstrap.py` + 10 tests against a real AGE
+
+  ```
+  10 passed in 2.26s     (tests/integration/db/test_age_bootstrap.py, T42b image)
+  ```
+
+  🐞 **THE OBVIOUS DESIGN IS WRONG, and it was mine for an hour.** `LOAD 'age'` and
+  `SET search_path` are per-session, so both went on asyncpg's `init` hook — which runs once
+  per physical connection and looks exactly right. Measured:
+  ```
+  init hook, 1st acquire : ag_catalog, "$user", public
+  init hook, 2nd acquire : "$user", public          <- RESET ALL wiped it
+  server_settings, 1st   : ag_catalog, "$user", public
+  server_settings, 2nd   : ag_catalog, "$user", public
+  LOAD survives reset?   : True
+  ```
+  **asyncpg issues `RESET ALL` when a connection is RELEASED**, returning every GUC to its
+  startup value. So a `SET` in `init` survives exactly one acquire. The split that follows is
+  not stylistic — each half is placed where it actually survives:
+  * `search_path` → **`server_settings`** (a STARTUP parameter, so `RESET ALL` resets *to* it)
+  * `LOAD 'age'` → **`init`** (a loaded library, not a GUC — the reset leaves it alone)
+
+  The first symptom was `operator class "graphid_ops" does not exist for access method
+  "btree"` from `create_graph` — which reads like a broken AGE install, not a missing session
+  step. That is the whole reason this module exists rather than two lines at a call site.
+
+  **BITE — revert to the `init`-only shape:**
+  ```
+  AssertionError: search_path was '"$user", public' on first acquire and '"$user", public'
+  after a release — RESET ALL wiped it, so it must be a server_setting, not a SET
+  6 failed, 4 passed
+  ```
+  The bite also **corrected the docstring**: the broken shape fails on the *first* caller
+  acquire, not the second, because `create_age_pool` itself acquires and releases once to
+  create the extension. There is effectively no working state at all.
+  `test_an_init_only_pool_is_the_broken_shape_this_module_avoids` pins the trap so the design
+  cannot be "simplified" back into it — and it reds if a future asyncpg stops resetting GUCs,
+  which is the right time to re-read the reasoning.
+
+  **NAMING — measured against AGE 1.7.0, and a probe bug nearly encoded the wrong rule:**
+  ```
+  'q'                                    REJECT  graph name is invalid
+  'qq'                                   REJECT  graph name is invalid
+  'qqq'                                  OK      -> minimum is THREE characters
+  '2abc'                                 REJECT  -> must not start with a digit
+  '019f37f0-cb1c-70d1-9a3e-2c672b0086e5' REJECT  -> a bare UUID is BOTH of the above
+  'g_36ac14251224448eb6f71a7e42ff199c'   OK      -> the scheme
+  ```
+  ⚠️ The first probe reported `g_<hex>` as **REJECTED** and I nearly wrote that rule down. The
+  fault was the probe: the name existed from an earlier run, so the error was *"graph already
+  exists"* while the check counted any `ERROR` as invalid. Hence `ensure_graph` asks
+  `ag_catalog.ag_graph` rather than treating a failed `create_graph` as "already there" —
+  `create_graph` has **no `IF NOT EXISTS`**.
+  **~Half of all UUIDs start with a digit**, so a scheme that only stripped dashes would pass
+  in testing and fail for half of real projects.
+
+  **QC (a)** `graph-port-gate` PASS (297 scanned) · `knowledge-access-gate` PASS ·
+  `db-safety-gate` exit 0 · **4183 knowledge unit tests pass** (no regression).
+  **QC (b) live** — run against `loreweave/postgres-knowledge:18`; a graph created on one
+  pooled connection is queried from a *different* one, which is the cross-connection case the
+  session state governs.
+  **QC (c) real data** — 19 graphs created in `ag_catalog.ag_graph` across this cycle's runs.
 - [~] **T42** — Second `GraphStore` adapter — **AGE FIRST**, then Kuzu / Postgres-relational
   ⚠️ **Candidate set restored 2026-08-11**: **AGE · Kuzu · Postgres-relational**. The prior text
   read *"Postgres-relational recommended; Kuzu the alternative — AGE is eliminated"*, which now
