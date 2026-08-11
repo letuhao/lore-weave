@@ -67,6 +67,52 @@ which also records what the same run proved WORKS — a defect list with no base
 addressed the problem. 06 is small and self-contained (fix-now-shaped, one function); 07 needs the
 kind-typing this refactor is already re-cutting, so it waits on the design.
 
+### A-extra · ★ `D-KG-FACT-VOCAB-DISJOINT` — found 2026-08-11 by a live extraction run
+
+**The story extractor and the KG fact writer speak two vocabularies that share exactly one
+word, and the writer silently drops everything else.**
+
+| producer | vocabulary |
+|---|---|
+| `loreweave_extraction.extractors.fact.FactType` (what the LLM is prompted for) | `description` · `attribute` · `negation` · `temporal` · `causal` |
+| `neo4j_repos/facts.FactType` (what `merge_fact` accepts) | `decision` · `preference` · `milestone` · **`negation`** · `statement` · `commitment` |
+
+`pass2_writer` validates the first against the second. The intersection is `negation`.
+
+**The live graph shows the consequence exactly**, which is why this is a measurement and not a
+suspicion — 94 `:Fact` nodes, corpus-wide:
+
+```
+negation    64      <- the ONLY overlapping type
+preference  17  |
+decision    11  |-- chat-memory writes, a different producer entirely
+statement    2  |
+```
+
+Story extraction has contributed **only negations, ever**. Every `description`, `attribute`,
+`temporal` and `causal` fact it produced was dropped at
+`pass2_writer.py` (*"skipping fact with unknown type"*), and a run observed live logged
+`persist-pass2 done entities=4 relations=5 events=0 facts=0`.
+
+**Why this is NOT filed as a fix.** Two reasons, and both are about respecting a seal rather
+than working around it:
+
+1. **The enum is a documented 4-site lockstep with an incident behind it.** Its own comment:
+   *"Adding it here (the SoT) must move IN LOCKSTEP with the models.py mirror + the
+   `knowledge_pending_facts` CHECK x2 — the exact drift that 500'd a `statement` fact at
+   merge_fact."* Widening it is a migration, not an edit.
+2. **The sealed direction may make the destination wrong.** §9 **O1** consolidates on ONE
+   physical truth store and names `entity_facts` the working bitemporal SSOT. If story facts
+   belong there, widening the Neo4j chat-memory enum builds on the layer being retired.
+
+**The decision this needs:** do story facts go to Neo4j `:Fact` (widen the enum, 4 sites,
+one migration) or to `entity_facts` (pass2 gains a glossary write path, and needs book +
+chapter context it does not currently carry)? The second is the sealed direction; the first is
+what the code is one edit away from.
+
+**Reproduce:** `MATCH (f:Fact) RETURN f.type, count(*)` — an overlap-only distribution is the
+finding.
+
 ---
 
 ## B · chat-service control plane — [`D-CHAT-CONTROL-PLANE`](../2026-07-30-chat-service-control-plane-refactor.md)
