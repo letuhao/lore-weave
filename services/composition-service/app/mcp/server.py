@@ -5567,8 +5567,19 @@ async def plan_get_missing_material(
     tc = _ctx(ctx)
     bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
-    out = await _plan_svc().get_material_review(tc.user_id, bid, _uuid(run_id, "run_id"))
-    return out or {"packet": None, "note": "no material check has been run for this plan yet"}
+    rid = _uuid(run_id, "run_id")
+    out = await _plan_svc().get_material_review(tc.user_id, bid, rid)
+    if out is None:
+        # `get_material_review` reads the artifact and never looks the RUN up, so None meant two
+        # different things and this handler reported both as "no material check has been run for
+        # this plan yet" — asserting the plan exists. Measured: a fabricated run_id got that
+        # sentence, while plan_find_missing_material and plan_bootstrap_propose answer "not found
+        # or not accessible" for the same id. Three tools, one namespace, one run, two stories —
+        # and an agent that believes this one goes on to call the search, which then refuses.
+        if await _plan_svc().get_run_detail(tc.user_id, bid, rid) is None:
+            raise uniform_not_accessible()
+        return {"packet": None, "note": "no material check has been run for this plan yet"}
+    return out
 
 
 @mcp_server.tool(
