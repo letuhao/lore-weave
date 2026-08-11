@@ -1104,6 +1104,18 @@
         "CONTRACT, read rather than assumed: _meta tier R, scope none, served_by chat-service. Tier R is right -- it writes nothing; the orchestrator applies the text through propose_edit or book_chapter_save_draft, which carry the write and its confirmation"
       ],
       "admitted": true
+    },
+    "glossary_book_delete": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 3 calls / 2 sessions / 3 ok, no failure population, so the iteration went at the CARD -- because this is a destructive cascade and the card is the only thing a human sees before agreeing to it. It holds up: the preview adapts to the level and the counts are REAL, not decorative. Previewing a kind with 13 attributes and 7 genre links reports exactly 13 and 7; previewing a bare probe kind reports 0 and 0; the recorded attribute deletes carry a different shape entirely ('attribute removed: 1', note 'no cascade'). Its refusal also names the right noun, which iteration 86 found a sibling failing to do.",
+      "evidence": [
+        "PHASE 2: 3 ok / 0 failed. No failure population exists",
+        "LIVE: delete kind 'toolv2_i80_kind' -> a confirm card, destructive:true, titled 'Delete kind \"toolv2_i80_kind\" (and cascade)', preview 0 attributes / 0 genre links -- correct, it was created bare in iteration 80",
+        "THE COUNTS ARE REAL, proven by previewing a kind that is NOT bare: 'character' reports 'attributes deprecated: 13' and 'genre links removed: 7', matching the 13 attribute codes iteration 64 listed live for that kind. NOT confirmed, so nothing was deleted",
+        "SHAPE VARIES BY LEVEL, from the corpus rather than one sample: the 3 recorded calls are attribute deletes and carry a different preview -- 'attribute removed: 1' with the note 'no cascade'. The card describes the actual blast radius per level",
+        "CONTROL: a code that does not exist -> 'no live kind with that code in this book' -- scoped to the KIND, unlike the sibling iteration 86 fixed for blaming the book"
+      ],
+      "admitted": false
     }
   }
 }
