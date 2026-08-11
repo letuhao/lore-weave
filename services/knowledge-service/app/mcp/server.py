@@ -1231,8 +1231,10 @@ async def kg_create_node(
     description=(
         "Create, replace, or delete one of YOUR saved views (a named lens of edge-type + "
         "node-kind codes) for the current project. Owner-scoped (only ever your own view). "
-        "op=upsert creates/replaces it (needs code + name; optional description/edge_type_codes/"
-        "node_kind_codes); op=delete removes it (needs code; reversible — recreate with upsert)."
+        "op=upsert creates/replaces it WHOLE (needs code + name; description/edge_type_codes/"
+        "node_kind_codes are optional to SUPPLY but not preserved — anything you omit is "
+        "CLEARED, so send the full lens every time, not just the part you are changing); "
+        "op=delete removes it (needs code; reversible — recreate with upsert)."
     ),
     meta=require_meta(
         "A", "user",
