@@ -1344,6 +1344,18 @@
         "MY OWN ERROR, and worth stating for the next reader: I used `new_name` three times. It is the natural guess for a rename tool, and the schema uses `name`"
       ],
       "admitted": false
+    },
+    "glossary_list_unknown_entities": {
+      "state": "proven",
+      "note": "PROVEN LIVE on BOTH branches with no code change. 1 call / 1 session / 1 ok. The throwaway book returns {items: [], total: 0} and that empty is TRUE -- it holds only character and power_system entities, zero of kind 'unknown'. A book that HAS them returns 8, matching the database exactly. WHAT THE NON-EMPTY BRANCH SHOWS IS THE INTERESTING PART: every item comes back with name: \"\" and a source_kind_code of 'character'. These are extraction products that never got a usable name, which is what makes them 'unknown' -- so the tool is an inbox for nameless entities rather than for entities of an unknown KIND, and source_kind_code preserves what the extractor thought it was.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE empty: {items: [], total: 0} on the throwaway book",
+        "THE EMPTY IS TRUE, from the SSOT: that book's entities are character x2 and power_system x1 -- none of kind 'unknown'",
+        "LIVE non-empty, on a book that has them: 8 items, each {entity_id, name '', source_kind_code 'character', status 'draft', created_at}, total 8 -- matching the database's 8 for that book",
+        "THE SHAPE IS THE FINDING: name is EMPTY on every item. These are extraction products with no usable name, and source_kind_code records what the extractor believed the kind was. 29 such entities exist across all books"
+      ],
+      "admitted": false
     }
   }
 }
