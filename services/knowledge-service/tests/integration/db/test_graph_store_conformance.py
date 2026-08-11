@@ -88,7 +88,7 @@ def _ids() -> tuple[str, str, str]:
 # ── the adapters under test ──────────────────────────────────────────────────
 
 
-@pytest_asyncio.fixture(params=["fake", "neo4j"])
+@pytest_asyncio.fixture(params=["fake", "neo4j", "age"])
 async def store(request):
     """One GraphStore per param. `fake` always runs; `neo4j` skips only its own param when
     no throwaway is configured — and that skip is what `test_a_real_adapter_actually_ran`
@@ -109,6 +109,27 @@ async def store(request):
     if request.param == "fake":
         _EXERCISED.add("fake")
         yield FakeGraphStore()
+        return
+
+    if request.param == "age":
+        dsn = os.environ.get("TEST_AGE_DSN")
+        if not dsn:
+            pytest.skip("TEST_AGE_DSN not set — the AGE adapter is not being conformed")
+        from app.adapters.age_graph_store import AgeGraphStore
+        from app.db.age_bootstrap import create_age_pool, ensure_graph
+
+        # One graph per test run, not per project: these rules are about tenancy WITHIN a
+        # graph, and putting each test in its own graph would make the user_id predicates
+        # pass for the wrong reason — isolation by container rather than by the filter the
+        # adapter is supposed to apply.
+        pool = await create_age_pool(dsn, min_size=2, max_size=4)
+        try:
+            async with pool.acquire() as conn:
+                gname = await ensure_graph(conn, uuid.uuid4())
+            _EXERCISED.add("age")
+            yield AgeGraphStore(pool, gname)
+        finally:
+            await pool.close()
         return
 
     uri = os.environ.get("TEST_NEO4J_URI")

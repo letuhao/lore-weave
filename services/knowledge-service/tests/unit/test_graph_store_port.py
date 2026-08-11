@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 
 import pytest
 
+from app.adapters.age_graph_store import AgeGraphStore
 from app.adapters.fake_graph_store import FakeGraphStore
 from app.adapters.neo4j_graph_store import Neo4jGraphStore
 from app.db.neo4j_repos.events import Event
@@ -235,8 +236,13 @@ async def test_an_event_with_no_value_on_the_requested_axis_is_not_in_a_bounded_
 # ── structural conformance ───────────────────────────────────────────
 
 
-@pytest.mark.parametrize("impl", [FakeGraphStore, Neo4jGraphStore])
+@pytest.mark.parametrize("impl", [FakeGraphStore, Neo4jGraphStore, AgeGraphStore])
 def test_implementations_match_the_port_signatures(impl):
+    # ⚠️ T42: this caught the AGE adapter's two guessed signatures — `status_at_order` with
+    # `entity_id` singular instead of `entity_ids`, and `events_in_window` missing
+    # `include_archived` — while `isinstance(store, GraphStore)` reported **True** for the
+    # same object. `runtime_checkable` compares method NAMES, not parameters, so the
+    # Protocol alone would have let a mis-shaped adapter into T43's comparison.
     for name in ("resolve_or_merge_entity", "find_entities_by_name", "neighborhood",
                  "archive_entity", "restore_entity", "upsert_relation", "relations_for",
                  "status_at_order", "events_in_window"):

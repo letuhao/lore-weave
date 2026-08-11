@@ -35,7 +35,18 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T42 — the AGE `GraphStore` adapter, conformed by T42a's suite. 🔴 HIGHEST PRIORITY.**
+**RESUME: T42d — the port-adoption gate. Then T43's shadow comparison. 🔴 HIGHEST PRIORITY.**
+
+✅ **T42 — THE SECOND ADAPTER EXISTS.** `app/adapters/age_graph_store.py`, **31 conformance
+tests green across `{fake, neo4j, age}`**, 17 structural, 4184 unit. Both AGE-specific bites
+red only `[age]`. X1 required two candidates so T43 is a contest rather than a formality —
+one is now built and behaviourally conformant instead of argued about.
+Two methods raise by design (`D-T42-AGE-EVENT-SURFACE`): a silent empty answer would satisfy
+T43's coverage floor while proving nothing.
+
+🐞 **`isinstance(store, GraphStore)` was `True` for an adapter with two wrong signatures** —
+`runtime_checkable` checks method *names* only. **A Protocol is not a contract**; the
+signature test is, and it now covers AGE.
 
 ✅ **T42c DONE 2026-08-12** — `app/db/age_bootstrap.py`, 10 tests green against a real AGE.
 `create_age_pool()` makes the session split once so no call site has to remember it:
@@ -4342,6 +4353,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   re-scoped or dropped afterwards, because if AGE wins the graph already lives in Postgres and a
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
+  ---
+  ### ✅ AGE ADAPTER DONE 2026-08-12 — `app/adapters/age_graph_store.py`
+
+  **The second `GraphStore` adapter exists and passes the same conformance suite as the
+  first.** X1 required both candidates so T43 is a contest rather than a formality; one of
+  them is now built and tested rather than argued about.
+
+  ```
+  31 passed        10 rules x {fake, neo4j, age} + the real-adapter control
+  17 passed        structural signature conformance, now including AgeGraphStore
+  4184 passed      knowledge unit suite, no regression
+  ```
+
+  **The four AGE differences, each measured and each visible in the code:**
+  1. **No `ON CREATE SET` / `ON MATCH SET`** → `SET x = coalesce(x, v)` for create-only
+     fields, plain `SET` for always-write.
+  2. **"Did this MERGE create or match" is not observable in Cypher** → ask before the
+     merge in the same transaction; never the `created_at == updated_at` heuristic the
+     Neo4j adapter's own comment rejects.
+  3. **No `CALL { … }`** → `direction="both"` becomes two MATCHes UNIONed at the SQL level,
+     with an explicit dedupe because a **self-edge appears in both halves** and would
+     otherwise be reported twice, disagreeing with Neo4j for a reason that has nothing to
+     do with the data.
+  4. **Parameters do not reach Cypher** → values are interpolated, which makes `_lit()` the
+     tenancy boundary rather than a formatter. A `user_id` that escaped its quotes would let
+     one tenant's filter be rewritten by another tenant's data.
+
+  **BITES — both AGE-specific, and the point is that ONLY `[age]` reds:**
+  ```
+  1. drop user_id from archive_entity's MATCH (the "just filter the output" shape)
+     FAILED test_archiving_another_users_entity_is_a_miss_not_a_write[age]
+     1 failed, 30 passed          <- [fake] and [neo4j] stayed green
+
+  2. overwrite source_types instead of accumulating (breaks the coalesce upsert)
+     FAILED test_resolving_the_same_name_twice_returns_the_same_entity[age]
+     assert ['chat'] == ['chapter', 'chat']
+     1 failed, 30 passed
+  ```
+
+  🐞 **`isinstance(store, GraphStore)` returned `True` for an adapter with TWO WRONG
+  SIGNATURES.** The stubs were written with `entity_id` singular instead of `entity_ids`,
+  and `events_in_window` missing `include_archived` — and `runtime_checkable` compares
+  method **names** only. The Protocol alone would have admitted a mis-shaped adapter into
+  T43's comparison. Caught by `test_implementations_match_the_port_signatures`, which now
+  parameterises over AGE too. **A Protocol is not a contract.**
+
+  ### 🔻 DEFERRAL `D-T42-AGE-EVENT-SURFACE` — two methods raise, deliberately
+
+  | | |
+  |---|---|
+  | **Blocker** | `status_at_order` and `events_in_window` are not implemented on AGE. The event/status surface is a distinct subsystem (`:Event`, `:EntityStatus`, three time axes) and porting it is its own slice, not a tail of this one. |
+  | **Evidence** | Both raise `NotImplementedError` naming this deferral. The conformance suite covers the other 7 methods across all three adapters. |
+  | **Why raise instead of return empty** | **T43 compares this adapter against Neo4j.** A silent `[]`/`{}` would make a **coverage** gap look like a **data** difference — and worse, would satisfy the plan's own shadow-coverage floor (*"no cutover while any port operation has zero shadow observations"*) while proving nothing. An operation that answers wrongly is more dangerous than one that refuses. |
+  | **Mechanism** | The raise itself: T43 cannot record an observation for these two without failing loudly, so the coverage floor stays honest. |
+  | **Retry when** | T43 needs event-surface parity, or the engine decision selects AGE — whichever comes first. |
 - [~] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
   `scripts/graph-port-gate.py` walks `ast.Constant` strings and enforces that **Cypher** does not
   appear outside adapter dirs. It **never inspects imports**. So it proves Cypher is *centralised*,
