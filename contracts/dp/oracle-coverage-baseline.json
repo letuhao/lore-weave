@@ -1,5 +1,6 @@
 {
   "covered": [
+    "01_scope_and_boundary.md",
     "02_invariants.md",
     "03_tier_taxonomy.md",
     "04a_core_types_and_session.md",

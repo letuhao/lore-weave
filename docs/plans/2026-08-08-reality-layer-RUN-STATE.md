@@ -315,6 +315,7 @@ deliberate: after this session the open items are all *numbers that can only fal
 | 1 | ~~**`GATE-TEETH-55`**, the four bite harnesses~~ **✅ DONE 2026-08-10, 55 → 51.** All four now carry a `--self-test`; both arm families bitten (break `classify`'s `missing` branch → red; rot a leg anchor → red). `5d` still bites 8/8 end to end, so the proof did not cost the harness. **Continues as `GATE-TEETH-47`** in §4. **2026-08-10, 51 → 48:** `db-safety-gate`, `doc-language-gate`, `language-bias-gate` — the three that read a corpus and could silently read nothing. Each gained a **reach** family (every search dir must exist; the walk must clear a floor) beside its detectors, because a walk that reaches nothing is byte-identical to a clean tree. Found: 7 stale `language-bias` baseline rows and a gate RED on `main` for 9 days. **And a fourth thing that was not on the list** — `--verify-proofs` now RUNS the 42 advertised self-tests instead of matching their text, which caught `dp-oracle-bite-gate.py` certified on a string literal it uses to read *another* gate's output. See `BDR-74`, `BDR-75` | each gate gains a `--self-test` whose arms are proven on synthetic input, `NO_PROOF_BASELINE` lowered by the same number with the reason recorded, and the lowering **bitten** — remove one arm, watch the self-test red, restore |
 | 2 | **`G3` continued — 13 → 14 of 26, and THIS ROW WAS WRONG.** It named four candidates; **three have no producer**, measured before writing anything: `DurableEventStream` 0 files · `advance_turn` 0 · `TurnBoundary` 0 · `wait_for_token` 0 · `route_to_writer` 0 · `CausalityToken` twice, both DEFERRED-register rows recording it as unbuilt. Oracles for those would be the orphan shape §0.6c forbids — the row told me to avoid exactly the trap it was walking me into. Only `11_access_pattern_rules` had both sides, and it is now covered by `spec_oracle_rules.rs`, which **found `DP-R7` enforced by nothing** | coverage rises, the baseline records it, and each new oracle rule is bitten per the six steps — mutate one side, RED naming BOTH, restore, GREEN. **Do not add a rule whose subject has no producer** (§0.6c). Of the twelve still unread, `16_bubble_up_aggregator`, `19_privacy_redaction_policies`, `20_operational_residuals` and `21_llm_turn_slot` need the same producer check FIRST — `00_preamble`, `22_feature_design_quickstart`, `99_open_questions` and `_index` are prose with no code side and should be excluded from the denominator rather than faked into it |
 | 2b | ~~**`G3`'s PRODUCER AUDIT**~~ **✅ DONE 2026-08-10 — 14/26 → 14/15, and the worklist is now ONE document.** The denominator is split: `NOT_A_SPEC` (4, checked against *"declares zero `## DP-` headings"*) and `NO_PRODUCER` (7, each naming its marker symbols, checked against a comment-stripped walk of `crates` + `services`). Both bitten on the real tree: `pub struct RedactionFilter;` in `read.rs` reds naming the doc, the marker and the file; a `## DP-Ch99` appended to `99_open_questions.md` reds *"it became a specification"*; both restored byte-identically. Four arms added to `--selftest` (15 cases). **One of them was vacuous and biting caught it** — see `BDR-79`. Remaining: `01_scope_and_boundary.md`, whose boundary rule drives `reality-id-adoption-gate`'s `IN_SCOPE` with nothing comparing them | done |
+| 2c | ~~**`G3`'s LAST DOCUMENT**~~ **✅ DONE 2026-08-11 — 14/15 → 15/15, the worklist is EMPTY.** The document has two code sides and they are in different languages, which is the whole reason this row was left last. **§2.4/§3b (Rust ↔ Rust)** get `crates/dp/tests/spec_oracle_scope.rs`: the primitives the doc names must be exported by `crates/dp/src/lib.rs` or carry a `SPECIFIED_NOT_BUILT` row, every exported `tN_*` door must sit in a tier family §2.4 still declares, and the `(~20 methods)` ceiling is **parsed out of the document** so raising it is an edit to a LOCKED doc rather than a constant bump in a test. **New finding: two of the three primitives §3b advertises as shipping do not exist** — `query_scoped_reality` and `t3_write_multi` — now registered with a shrink arm instead of living in prose. **§4's boundary rule (doc ↔ Python) is checked where its consumer is**, beside `IN_SCOPE` in `reality-id-adoption-gate.py`, because a Rust test reading a Python tuple is `BDR-79` exactly. That check runs §4 in **both** directions: every `dp`-dependent service must be in `IN_SCOPE` (and vice versa, with a phantom arm), and — the antecedent spelled forward — a service naming a `reality_<id>_db` **without** the SDK is the second door Option (c) exists to forbid. It closes the silent narrowing this gate's own preamble named as the cheapest way to fake a clean run. **Bitten: 5 arms on the Rust side** (register both ways, tier family, ceiling, and the ratchet itself reds `COVERAGE LOST`), **6/6 on the Python side** against synthetic trees, all restores byte-exact. Three defects found by biting, none visible on green: `BDR-82`, `BDR-83`, `BDR-84`; plus `BDR-85` | done |
 | 2b-orig | **`G3`'s PRODUCER AUDIT — the measurement, kept because it is what the split rests on.** All twelve unread documents classified, measured the shrink arm's way (comment lines stripped, the recording file excluded — see `BDR-76`). **Eleven cannot honestly be covered.** *No producer, 7:* `14_durable_subscribe` · `15_turn_boundary` · `16_bubble_up_aggregator` · `18_causality_and_routing` · `19_privacy_redaction_policies` · `20_operational_residuals` · `21_llm_turn_slot` — every marker symbol 0 files; `BubbleUpAggregator`'s single hit is a `DEFERRED_RPCS` row recording it unbuilt, and the only `redact` code in the tree is log-field PII masking, a different subject. *Prose, no code side, 4:* `00_preamble` · `22_feature_design_quickstart` · `99_open_questions` · `_index`. **Coverable and uncovered: exactly one** — `01_scope_and_boundary`, whose boundary rule is what `reality-id-adoption-gate.py`'s `IN_SCOPE` is derived from, with nothing comparing them | **the denominator, not the numerator, is the remaining work.** Split it into `NOT_A_SPEC` and `NO_PRODUCER`, every row reasoned AND checked, each with a **shrink arm** returning a doc to the denominator the moment a marker symbol appears in non-comment source — the arm already built and bitten for `DP-R7`. Coverage then reads **14/15** with a one-item worklist instead of 14/26 with a number that cannot move. **Do not raise the numerator by writing an oracle over a producerless doc** (§0.6c) |
 | 3 | ~~**`3E-EPOCH-COMMIT-ADOPTION`'s last site**~~ **✅ DONE 2026-08-10, 1 → 0 adoptable.** A **checked** exemption, not prose: the reason is that the harness *mints* its reality and registers it nowhere, so `bind` would refuse it — and that claim is now mechanised (`SELF_MINTED` + `check_self_minted`, four arms, void the moment a `--reality`/`REALITY_ID`/`parse_str` appears). The gate refused the 1→0 / 0→1 reclassification until the baseline recorded it; total unchanged at 57. See the §4 row and `BDR-73` | either it adopts a verified id, or it earns a **reasoned** exemption naming why a benchmark harness cannot bind. **Not a third category invented to make the number zero** — `BDR-55` |
 
@@ -1507,6 +1508,54 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-85` (2026-08-11) — a module-level `const` holding the document's path made a real oracle
+score ZERO, and the ratchet was right.** `spec_oracle_scope.rs` opened `01_scope_and_boundary.md`
+through `const SCOPE_DOC: &str = "…"`, and `dp-oracle-coverage-gate` went on reporting the document
+unread. My first instinct was that the gate had a gap. It does not: the rule is *"the name appears
+in a function reachable from a `#[test]` whose chain asserts"*, and a module const is a string
+nothing necessarily reads — the exact difference between an oracle and a file that merely mentions
+a document. The idiom every earlier oracle uses (`rules_doc()`, a reader function holding the
+literal) is load-bearing, not stylistic. **Recorded because the tempting move was to widen the gate
+to accept consts, which would have admitted every file that names a doc in a comment-adjacent
+position** — `BDR-55`'s shape, moving the number instead of the property.
+
+**`BDR-84` (2026-08-11) — my bite harness reported 5 of 6 working arms as SURVIVED, and it read as
+a discovery.** `BDR-56` says a red for an unrelated reason is the failure mode that looks most like
+success. This is its mirror at the harness level: I compared each mutated run's output against the
+**gate's** problem strings (`"NOT IN SCOPE"`), while the thing actually printing was the
+**self-test's own** wording (*"absent from IN_SCOPE did NOT red"*). Every arm had fired correctly.
+For a few seconds the honest reading of the output was *"five of these arms are redundant"* — which
+would have led to deleting five working checks.
+
+Worse, the one arm scored **BITTEN** was scored on a **traceback**: removing the `doc.is_file()`
+guard makes the next line raise, and Python prints the offending source line, which contains
+`BOUNDARY RULE UNREADABLE`. A crash matched the string search. So the single "pass" was as wrong as
+the five "failures". The harness now requires a line starting `FAIL: ` **and** rejects any output
+containing a traceback. **Lesson: a bite harness asserts on the SELF-TEST's vocabulary, never the
+gate's, and a non-zero exit is not a verdict — it is a prompt to ask which failure it was.**
+
+**`BDR-83` (2026-08-11) — `pub use X as Y` was invisible, and the shrink arm stayed green while the
+crate exported the symbol it calls unbuilt.** `crate_root_exports` split the brace list on commas
+and kept a token only if every character was alphanumeric. `t3_write as t3_write_multi` contains
+spaces, so it was **dropped entirely** rather than read as an export named `t3_write_multi`. The
+bite is what found it: adding that alias — the precise event the register's shrink arm exists to
+catch — left the oracle perfectly green. **An adjacent-decision defeat in miniature**: the filter
+was individually correct (it rejects malformed tokens) and it defeated the arm that depended on it.
+
+**`BDR-82` (2026-08-11) — the non-vacuity floor made the arm it sits above UNREACHABLE.** The doc
+names exactly three primitives, so I wrote `assert!(named.len() >= 3)` as the "am I reading
+anything" guard. That guard and the register's *"the doc no longer names it"* arm have the same
+trigger: **drop any one primitive and the floor fires first**, so the arm could never run. It was
+vacuous from the moment it was written, and the GREEN run agreed with it completely — only the bite
+separated them.
+
+**The general rule, now that this has cost time twice** (`BDR-79` was the same family): a
+non-vacuity floor and the arms above it are only separable while **floor < the number of subjects**.
+Setting the floor *at* the subject count converts every arm above it into a floor test. The floor's
+job is *"the parse reached the table"*; the arm's job is *"an item vanished"* — and if one deletion
+cannot tell them apart, one of them is decoration. The floor is now 2 with a comment saying why it
+must not be "tightened" back to 3.
 
 **`BDR-81` (2026-08-10) — a hand-rolled bite printed "mutated" and had changed nothing.** Proving
 the two arms of the new AST proof-detector are independent, I mutated one with a `str.replace` in

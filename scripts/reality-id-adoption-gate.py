@@ -706,6 +706,96 @@ def self_test() -> int:
         SELF_MINTED.update(saved_sm)
         STRUCTURALLY_EXEMPT.pop("svc/bin/bench", None)
 
+    # ── `IN_SCOPE` vs §4, proven on a synthetic tree ──────────────────────────
+    #
+    # Every arm here is UNREACHABLE on the real repo: `IN_SCOPE` matches the
+    # dp-dependent set exactly today, so nothing in this tree can distinguish a
+    # working arm from a deleted one. That is precisely the condition under
+    # which an arm quietly stops working, so the arms are exercised against
+    # sources built to differ by one fact each.
+    saved_scope = IN_SCOPE
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            svc = root / "services"
+
+            def manifest(name: str, with_dp: bool) -> None:
+                d = svc / name
+                d.mkdir(parents=True, exist_ok=True)
+                dep = 'dp = { path = "../../crates/dp" }\n' if with_dp else 'serde = "1"\n'
+                (d / "Cargo.toml").write_text(
+                    f'[package]\nname = "{name}"\n\n[dependencies]\n{dep}',
+                    encoding="utf-8")
+
+            manifest("alpha", True)
+            manifest("beta", False)
+            manifest("gamma", False)
+            (root / SCOPE_DOC_REL).parent.mkdir(parents=True, exist_ok=True)
+            doc = root / SCOPE_DOC_REL
+            doc.write_text(
+                f"# 01\n\nBoundary rule: if a service touches a per-reality database, "
+                f"{BOUNDARY_RULE_ANCHOR}.\n",
+                encoding="utf-8")
+
+            def scope_problems(entries: tuple[str, ...]) -> list[str]:
+                globals()["IN_SCOPE"] = entries
+                return check_in_scope_matches_the_boundary_rule(root)
+
+            if scope_problems(("services/alpha",)):
+                fails.append(
+                    "the CLEAN synthetic tree reds — IN_SCOPE names exactly the dp-dependent "
+                    f"service: {scope_problems(('services/alpha',))}")
+
+            if not any("NOT IN SCOPE" in p for p in scope_problems(())):
+                fails.append(
+                    "a service depending on `dp` and absent from IN_SCOPE did NOT red — this is "
+                    "the arm that catches a new game-layer service inheriting zero enforcement")
+
+            if not any("NO LONGER USES THE SDK" in p for p in scope_problems(("services/beta",))):
+                fails.append(
+                    "an IN_SCOPE entry that exists but does not depend on `dp` did NOT red — "
+                    "this is the silent-narrowing arm the STRUCTURALLY_EXEMPT preamble warns of")
+
+            if not any("PHANTOM" in p for p in scope_problems(("services/nope",))):
+                fails.append("an IN_SCOPE entry matching no directory did NOT red")
+
+            # The doc side, both ways: reworded, then absent.
+            doc.write_text("# 01\n\nNo boundary rule here any more.\n", encoding="utf-8")
+            if not any("BOUNDARY RULE MOVED" in p for p in scope_problems(("services/alpha",))):
+                fails.append(
+                    "§4's clause was removed from the document and nothing red — the constant "
+                    "would go on enforcing a rule the LOCKED doc stopped making")
+            doc.unlink()
+            if not any("UNREADABLE" in p for p in scope_problems(("services/alpha",))):
+                fails.append("the document was deleted and nothing red")
+            doc.write_text(
+                f"# 01\n\nBoundary rule: {BOUNDARY_RULE_ANCHOR}.\n", encoding="utf-8")
+
+            # The antecedent, spelled forward: a per-reality DB without the SDK.
+            (svc / "beta" / "src").mkdir(parents=True, exist_ok=True)
+            leak = svc / "beta" / "src" / "conn.rs"
+            leak.write_text('fn c() { connect("reality_7f2a_db"); }\n', encoding="utf-8")
+            if not any("BOUNDARY RULE VIOLATED" in p for p in scope_problems(("services/alpha",))):
+                fails.append(
+                    "a service naming a per-reality database WITHOUT the `dp` SDK did NOT red — "
+                    "that is the second door into kernel state that Option (c) exists to forbid")
+
+            # ...and the same words in a comment are prose about the rule.
+            leak.write_text('// connects to reality_7f2a_db one day\nfn c() {}\n', encoding="utf-8")
+            if any("BOUNDARY RULE VIOLATED" in p for p in scope_problems(("services/alpha",))):
+                fails.append("a per-reality DB name in a COMMENT was treated as a connection")
+            leak.unlink()
+
+            # The reach floor, and that it is SEPARABLE from the arms above.
+            for name in ("beta", "gamma"):
+                (svc / name / "Cargo.toml").unlink()
+            if not any("REACH FLOOR" in p for p in scope_problems(("services/alpha",))):
+                fails.append(
+                    "the manifest walk fell to 1 and the floor did not red — a walk that reaches "
+                    "nothing is byte-identical to a clean tree")
+    finally:
+        globals()["IN_SCOPE"] = saved_scope
+
     for f in fails:
         print(f"FAIL: {f}")
     if fails:
@@ -809,6 +899,155 @@ def check_self_minted(root: Path = REPO) -> list[str]:
     return problems
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# `IN_SCOPE` vs THE RULE IT CLAIMS TO ENCODE
+#
+# `IN_SCOPE` is annotated *"the game-layer services, per DPA-SCOPE's reading of
+# the LOCKED §4"*, and until now **nothing compared it to §4**. That is the gap
+# `G3` named: a constant that cites a document is a citation, not a check, and
+# this gate's own `STRUCTURALLY_EXEMPT` preamble already says what the danger is
+# — *"the alternative on the table was editing `IN_SCOPE` to drop
+# `world-service`, which would have made the same 62 sites vanish with nothing
+# to read."* A narrowing of `IN_SCOPE` is the cheapest way to make this gate
+# report clean, and it was the one edit no mechanism could see.
+#
+# WHY THE CHECK LIVES HERE AND NOT IN THE RUST ORACLE
+# ---------------------------------------------------
+# `crates/dp/tests/spec_oracle_scope.rs` covers the same document, and covers
+# §2.4/§3b instead. `dp-oracle-coverage-gate` counts Rust readers, so a Rust
+# test reading THIS Python tuple would be an arm whose subject is not the thing
+# it names (`BDR-79`). The consumer of §4 is this file; the check belongs beside
+# the constant it guards.
+#
+# THE HONEST LIMIT
+# ----------------
+# §4's antecedent is *"reads or writes any aggregate in a per-reality
+# database"*, which is a runtime property. Two static proxies stand in, and
+# they are proxies:
+#   * declaring the `dp` SDK as a Cargo dependency — the consequent of §4, and
+#     the only door §2.1 permits;
+#   * naming a `reality_<id>_db` database — the antecedent, spelled directly.
+# A service that touched a per-reality database through neither would be
+# invisible. That service would also be violating §2.1's "the SDK is the only
+# door", which `dp-clippy`'s `forbid_raw_kernel_client` is the mechanism for.
+SCOPE_DOC_REL = "docs/03_planning/LLM_MMO_RPG/06_data_plane/01_scope_and_boundary.md"
+
+# The exact clause `IN_SCOPE` encodes. Anchored so that rewording §4 reds here
+# rather than leaving this gate quietly enforcing a rule the doc stopped making.
+BOUNDARY_RULE_ANCHOR = "it is a game-layer service and uses the DP SDK"
+
+# How a service says "I touch a per-reality database" without the SDK naming it.
+PER_REALITY_DB = re.compile(r"reality_[A-Za-z0-9_{}]*_db\b|reality_db_name")
+
+
+def dp_dependent_services(root: Path = REPO) -> tuple[set[str], int]:
+    """`({service dirs declaring the dp SDK}, manifests examined)`.
+
+    The count is returned so the caller can enforce a reach floor: a glob that
+    matches nothing and a tree with no game-layer services produce the same
+    empty set, which is `NV-3` — the scope never reaching its subject.
+    """
+    found: set[str] = set()
+    seen = 0
+    for manifest in sorted((root / "services").glob("*/Cargo.toml")):
+        seen += 1
+        try:
+            import tomllib
+            data = tomllib.loads(manifest.read_text(encoding="utf-8", errors="replace"))
+        except Exception:
+            continue
+        deps = {}
+        for table in ("dependencies", "dev-dependencies", "workspace"):
+            v = data.get(table)
+            if isinstance(v, dict):
+                deps.update(v if table != "workspace" else v.get("dependencies", {}) or {})
+        if "dp" in deps:
+            found.add(manifest.parent.relative_to(root).as_posix())
+    return found, seen
+
+
+def check_in_scope_matches_the_boundary_rule(root: Path = REPO) -> list[str]:
+    """Does `IN_SCOPE` still say what `01_scope_and_boundary.md` §4 says?
+
+    `root` is a parameter so the arms are provable on a synthetic tree rather
+    than on whatever this repo happens to contain (`BDR-71`).
+    """
+    problems: list[str] = []
+
+    doc = root / SCOPE_DOC_REL
+    if not doc.is_file():
+        problems.append(
+            f"BOUNDARY RULE UNREADABLE: `{SCOPE_DOC_REL}` does not exist. `IN_SCOPE` cites it as "
+            f"the authority for which services are game-layer; with the document gone the "
+            f"constant is an unsourced list.")
+    else:
+        text = doc.read_text(encoding="utf-8", errors="replace")
+        if BOUNDARY_RULE_ANCHOR not in text:
+            problems.append(
+                f"BOUNDARY RULE MOVED: `{SCOPE_DOC_REL}` no longer contains §4's clause "
+                f"\"{BOUNDARY_RULE_ANCHOR}\". `IN_SCOPE` is derived from that sentence, so it is "
+                f"now enforcing a rule the LOCKED document stopped making. Re-read §4 and "
+                f"re-derive the constant, or update this anchor deliberately.")
+
+    declared = set(IN_SCOPE)
+    dp_users, manifests = dp_dependent_services(root)
+
+    # REACH FLOOR. Separable from every arm below on purpose: the tree has 5
+    # service manifests, so a floor of 3 catches a glob pointed at nothing
+    # without ever pre-empting a real finding (the `BDR-56` collision).
+    if manifests < 3:
+        problems.append(
+            f"REACH FLOOR: examined only {manifests} `services/*/Cargo.toml` manifest(s) (floor 3, "
+            f"measured 5). The walk is pointed at nothing, and every arm below would report clean "
+            f"forever — a walk that reaches nothing is byte-identical to a clean tree.")
+
+    for svc in sorted(dp_users - declared):
+        problems.append(
+            f"GAME-LAYER SERVICE NOT IN SCOPE: `{svc}` declares the `dp` SDK as a dependency, so "
+            f"by §4 it is a game-layer service — and `IN_SCOPE` does not list it, so this gate "
+            f"has never counted a single adoption site in it. A service can be added to the "
+            f"kernel and inherit zero enforcement.")
+
+    for svc in sorted(declared - dp_users):
+        if not (root / svc).is_dir():
+            problems.append(
+                f"PHANTOM IN_SCOPE ENTRY: `{svc}` is listed as a game-layer service and no such "
+                f"directory exists. The service moved or was renamed and the constant outlived it.")
+        else:
+            problems.append(
+                f"IN_SCOPE ENTRY NO LONGER USES THE SDK: `{svc}` is listed as game-layer and its "
+                f"Cargo manifest does not depend on `dp`. Either it stopped being game-layer — in "
+                f"which case removing it is a deliberate, reviewable edit — or it is reaching the "
+                f"kernel by a door §2.1 forbids.")
+
+    # §4 SPELLED FORWARD, not just backward. The clause is an implication: touch
+    # a per-reality database ⇒ use the SDK. The arms above check the consequent;
+    # this one checks the antecedent, and it is the direction that catches a
+    # service quietly opening its own connection to `reality_<id>_db`.
+    for path in sorted((root / "services").rglob("*.rs")):
+        try:
+            rel = path.relative_to(root).as_posix()
+        except ValueError:
+            continue
+        # This gate NAMES the pattern, and comments about a rule are not code
+        # that breaks it — the distinction `deferral-gate` had to learn.
+        try:
+            body = blank_line_comments(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            continue
+        if not PER_REALITY_DB.search(body):
+            continue
+        svc = "/".join(rel.split("/")[:2])
+        if svc not in dp_users:
+            problems.append(
+                f"BOUNDARY RULE VIOLATED: `{rel}` names a per-reality database and `{svc}` does "
+                f"not depend on the `dp` SDK. §4: \"if a service reads or writes any aggregate in "
+                f"a per-reality database, {BOUNDARY_RULE_ANCHOR}\". This is the shape §2.1 locks "
+                f"Option (c) to prevent — a second door into kernel state.")
+
+    return problems
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--write-baseline", action="store_true")
@@ -848,7 +1087,8 @@ def main() -> int:
         sys.exit(f"no baseline at {BASELINE.relative_to(REPO)} — run --write-baseline once")
     known = json.loads(BASELINE.read_text(encoding="utf-8"))["sites"]
 
-    fails = check_exemption_hygiene(used) + check_self_minted()
+    fails = (check_exemption_hygiene(used) + check_self_minted()
+             + check_in_scope_matches_the_boundary_rule())
 
     for rel, counts in sorted(current.items()):
         prev = known.get(rel)
