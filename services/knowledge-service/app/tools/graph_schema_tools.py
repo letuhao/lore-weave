@@ -1177,9 +1177,13 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Resolve a triage signature group with a low-impact, reversible "
         "action: map (alias to a known code), re_target (fix an endpoint), "
         "drop_edge (discard), close_previous (close an open instance), or "
-        "dismiss. Schema-changing actions (add to vocab/schema, widen, "
-        "promote to glossary) are NOT available here — those need explicit "
-        "human confirmation via the review surface.",
+        "dismiss. "
+        "Schema-changing actions (add_to_vocab, add_to_schema, widen_target_kinds, "
+        "set_multi_active) ARE available to you — on kg_triage_schema_write, which "
+        "confirm-gates them. Only promote_to_glossary_kind and demote_to_attribute are "
+        "human-only: they are cross-service glossary writes the user initiates. kg_triage_list's "
+        "suggested_actions names actions from all three triage tools, so match the action to "
+        "the tool that accepts it.",
         {
             "signature": {
                 "type": "string",
