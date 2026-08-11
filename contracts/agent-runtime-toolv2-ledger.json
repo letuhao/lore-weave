@@ -838,6 +838,18 @@
         "CORRECTION to D-10, made from this control rather than from a re-read of the corpus: the union-arm duplication renders for ANY union-typed argument on any of the three services. Low recorded traffic on those arguments is not evidence the shape is rare"
       ],
       "admitted": false
+    },
+    "world_map_create": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 7 calls / 7 sessions / 7 ok, no failure population. Unlike its sibling writes it returns the WHOLE created object rather than an id alone, including a resolved image_url derived from the image_ref -- so the caller can render the map without a second call. world_map_list confirms the row independently. Proven on a throwaway world, deleted afterwards and verified at the database.",
+      "evidence": [
+        "PHASE 2: 7 ok / 0 failed. No failure population exists",
+        "LIVE: world_map_create(name='Northern Reaches', image_ref='maps/north.png') -> map {map_id, name, world_id, version 1, image_object_key 'maps/north.png', image_url resolved to a full media URL}",
+        "POST-CONDITION: world_map_list returns the same map_id, name, version and image_url -- the write is visible to a DIFFERENT tool, which is the only thing a create's own return cannot establish",
+        "CONTROL: a well-formed but absent world_id -> 'world not found', not a silent orphan map",
+        "CLEANUP verified rather than assumed: world_delete -> deleted:true, and 0 rows in both worlds and world_maps for that id"
+      ],
+      "admitted": false
     }
   }
 }
