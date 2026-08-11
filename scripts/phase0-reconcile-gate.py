@@ -140,6 +140,52 @@ def governed_specs() -> list[Path]:
     return sorted(out)
 
 
+#: Lines that start a NEW block, so the citation paragraph has ended.
+_BLOCK_START = re.compile(r"^\s*(#{1,6}\s|[-*+]\s|\d+\.\s|\||>)")
+
+
+def field_value(text: str) -> str | None:
+    """The WHOLE `Reconciles:` field, including continuation lines.
+
+    # Why this is not just `FIELD.search(...).group(1)`
+
+    `FIELD` is `re.MULTILINE` but not `re.DOTALL`, so `(.+?)$` stops at the
+    first newline — and a `Reconciles:` line long enough to be worth checking is
+    exactly the kind that gets wrapped. Measured on the day this was written,
+    against this repo's own new run-state:
+
+        read:    'Data Plane **DP-A1-A19 / ...** · Data Plane channels'
+        ignored: '**DP-Ch1-Ch37** · `contracts/events/_registry.yaml` - ...'
+
+    Half the citation list was invisible, and the visible half ended in the
+    dangling fragment `Data Plane channels`, which PASSED because matching is a
+    substring test and a real row starts with those words. So the gate accepted
+    a truncated list and never saw the one citation most specific to that track.
+
+    That is `NV-3` — the scope never reaches it — and it is silent in the worst
+    direction: the more prior art a spec cites, the longer the line, the more
+    likely it wraps, the less of it is checked. **The gate got weaker the more
+    conscientious the author was.**
+
+    A paragraph read rather than a one-line read fixes it. Existing specs are
+    unaffected in their VERDICT (names precede the em-dash either way), but
+    their full field is now actually parsed.
+    """
+    lines = text.splitlines()
+    head = re.compile(r"^\s*\**Reconciles:?\**\s*:?\s*(.*?)\s*$", re.IGNORECASE)
+    for i, ln in enumerate(lines):
+        m = head.match(ln)
+        if not m:
+            continue
+        parts = [m.group(1)]
+        for nxt in lines[i + 1:]:
+            if not nxt.strip() or _BLOCK_START.match(nxt):
+                break
+            parts.append(nxt.strip())
+        return " ".join(p for p in parts if p).strip()
+    return None
+
+
 def check(spec: Path, rows: list[str]) -> list[str]:
     text = spec.read_text(encoding="utf-8", errors="replace")
     rel = str(spec.relative_to(REPO)).replace("\\", "/")
@@ -152,7 +198,7 @@ def check(spec: Path, rows: list[str]) -> list[str]:
             f"      and name the row(s) this overlaps, or write\n"
             f"      `Reconciles: none — <why, and the command that showed it>`."
         ]
-    value = m.group(1).strip()
+    value = field_value(text) or m.group(1).strip()
     if NONE_FORM.match(value):
         return []
     if _norm(value) in ("none", ""):
@@ -201,6 +247,29 @@ def selftest(rows: list[str]) -> int:
         ("names, then an em-dash rationale", f"# X\n\nReconciles: {real} — this overlaps, and here is what it found\n", False),
         ("a phantom name BEFORE the em-dash still reds",
          "# X\n\nReconciles: Quantum Flux Standard — with a rationale attached\n", True),
+        # ── the WRAPPED field, both directions ────────────────────────────────
+        # A one-line read silently halved the citation list (see `field_value`).
+        # The arm that matters is the first: a phantom on the CONTINUATION line
+        # must red, because that is the half that used to be invisible — and it
+        # got more invisible the more prior art the author cited.
+        ("a phantom on the CONTINUATION line still reds",
+         f"# X\n\n**Reconciles:** {real} ·\nQuantum Flux Standard — and the rationale\n", True),
+        ("a real row on the CONTINUATION line does NOT red",
+         f"# X\n\n**Reconciles:** {real} ·\n{real} — and the rationale\n", False),
+        # ...and the paragraph must END, or the whole document becomes the field.
+        #
+        # ⚠ THE OBVIOUS FORM OF THESE TWO ARMS CANNOT FAIL, and the first draft
+        # shipped it. Writing the trailing text as plain prose (`Quantum Flux
+        # Standard is discussed below.`) makes the swallowed line join onto the
+        # real citation as ONE entry — and matching is a substring test, so the
+        # real row is still inside it and the entry passes. Removing the break
+        # changed nothing, measured. The trailing text must therefore contain a
+        # SEPARATOR so the swallowed half becomes an entry of its own; only then
+        # does the break have an observable effect.
+        ("a phantom in the NEXT paragraph is not part of the field",
+         f"# X\n\n**Reconciles:** {real}\n\nLater, Quantum Flux Standard appears\n", False),
+        ("a phantom in the next BLOCK (a list) is not part of the field",
+         f"# X\n\n**Reconciles:** {real}\n* Foo, Quantum Flux Standard\n", False),
     ]
     for label, text, want_finding in cases:
         tmp = REPO / f"__phase0_selftest_{abs(hash(label))}.md"
