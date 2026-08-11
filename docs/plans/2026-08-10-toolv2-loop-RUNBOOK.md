@@ -529,6 +529,25 @@ absent one.
 
 ---
 
+### Carry-forward · `story_search` suggests the mode it has just said it cannot run
+
+*Raised by:* iteration 63, while proving `memory_search`. **S1 row 12 files this defect under the
+wrong tool.** It describes `degraded: {"semantic": "not_indexed"}` arriving alongside `hits: []`
+and a note recommending `mode='semantic'` — and attributes it to the memory family. Every one of
+the 9 rows carrying that pair belongs to **`story_search`** (all 2026-07-15).
+
+`memory_search`'s own degraded note is coherent ("this project has no indexed memory yet"),
+verified live in that iteration. But
+`services/knowledge-service/app/tools/executor.py:392` still reads
+`"no matches — try mode='semantic' for ideas described in your own …"`, so this is **live debt, not
+history**, and it must be checked against the degraded branch when `story_search` comes up in the
+queue rather than assumed fixed.
+
+Recorded here instead of in the ledger: the ledger holds one conclusion per tool, and a note about
+a tool that has not had its iteration yet is not a conclusion.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-9 · 980 entities stand in projects that no longer exist, and no re-sweep exists to reclaim them

@@ -714,6 +714,5 @@
       ],
       "admitted": false
     }
-  },
-  "memory_search_note_for_story_search": "CARRIED FORWARD to story_search's iteration: S1 row 12's 'degraded semantic + a note suggesting the mode it cannot run' is NOT memory_search's. All 9 rows belong to story_search (2026-07-15), and executor.py:392 still contains \"no matches — try mode='semantic'\". Verify it there against the degraded branch."
+  }
 }
