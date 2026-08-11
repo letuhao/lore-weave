@@ -463,7 +463,7 @@ TOOL_DEFINITIONS: list[dict] = [
         },
         [],
     ),
-    # Project setup — the step BETWEEN kg_project_create and kg_run_benchmark that
+    # Project setup — the step BETWEEN kg_project_create and kg_build_graph that
     # used to exist only as a REST route behind the Build-KG dialog, dead-ending
     # every agent-created project (F6, Track D liveness eval).
     _tool(
@@ -474,7 +474,8 @@ TOOL_DEFINITIONS: list[dict] = [
         "the user to the UI. Pass a provider-registry user_model UUID for one of your "
         "own embedding models (find one with settings_list_models). The vector "
         "dimension is probed automatically. Free, reversible, owner-only. Then call "
-        "kg_run_benchmark, then kg_build_graph.",
+        "kg_build_graph — that is the only step it gates. kg_run_benchmark is OPTIONAL: it "
+        "rates this model's retrieval quality, it does not unblock the build.",
         {
             "embedding_model": {
                 "type": "string",

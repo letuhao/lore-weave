@@ -1279,3 +1279,44 @@ the container's copy for a phrase you just added must return 1. Single files (`d
 <container>:/app/app/.../x.py`) are safe to repeat, which is why the red-proof injections in this
 loop were never affected.
 
+## DQ-23 — `canEmbed` fails open at DISPATCH time; should it also fail open at CONFIGURATION time?
+
+Found while proving `kg_project_set_embedding_model` (#253). Recorded, not decided — the fail-open
+decision it rests on is deliberate, documented, and defensible.
+
+Measured: I passed the tool a model whose provider-registry `capability_flags` are
+`{"chat": true, "tool_calling": true}` — nvidia/nemotron-3-nano, the chat model this loop has been
+using as an LLM all session. It was ACCEPTED: `changed: true`, `embedding_dimension: 1024`, and
+the project's embedding model was set to it. A UUID I do not own is correctly refused
+(`EMBED_MODEL_NOT_FOUND`), so the probe is real — the upstream genuinely answered an embeddings
+request for a chat model with a 1024-dim vector.
+
+That is NOT a bug in the tool. provider-registry's `canEmbed` gate is deliberately fail-open on
+`chat`, and `embed_capability_test.go` says why in a case name: *"chat token fails open (not
+rejected) — 'chat' is the discovery DEFAULT, not an affirmative exclusion. A BYOK embedding model
+whose name misses the 'embed' heuristic is tagged chat; rejecting it would break a working
+embedding call (review-impl HIGH-2)."* Only affirmatively-other capabilities (rerank, stt,
+image_gen) are rejected. The tool's own comment inherits the assumption — "a probe failure means
+the ref is unreachable or is not an embedding model at all" — and the probe cannot tell.
+
+**Open question:** the fail-open trade was reasoned about for the DISPATCH path, where the cost of
+a false reject is breaking a call that works. Configuration is a different trade. Setting a
+project's embedding model is a one-time choice that then defines the vector space every future
+passage is embedded into; a wrong one is not a failed call but a silently useless graph, and
+correcting it later hits the orphaned-passage wall this same handler already refuses by name
+(D-EMB-MODEL-REF-04). A false reject at configuration costs one clear error message the user can
+route around by fixing their model's flags; a false accept costs a re-embed.
+
+So: should `kg_project_set_embedding_model` (and the REST branch it mirrors) apply a STRICTER
+capability check than the dispatch path — warn, or refuse, when the chosen model's flags carry no
+positive embedding signal?
+
+I did not change it. Deciding it needs the discovery-tagging accuracy I have not measured (how
+often IS a real BYOK embedding model tagged chat-only in practice?), and knowledge-service holds
+no provider-registry client today, so enforcing it here would introduce a cross-service dependency
+and a new failure mode — registry unreachable means no model can be configured at all.
+
+The tool's `embedding_model` parameter already tells the caller "pick one whose capability_flags
+include embedding", which under a fail-open platform is exactly the right guidance. What is
+missing is any signal when they do not.
+
