@@ -1139,6 +1139,18 @@
         "NOTED: an account at 206 books, mostly loop and eval debris, is DQ-12's measurement contamination turning into a hard blocker rather than just a noisy denominator"
       ],
       "admitted": false
+    },
+    "glossary_get_entity_evidence": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 2 calls / 2 sessions / 2 ok, no failure population. Both shapes covered: the live call returns {evidence: []} for an entity with none -- an empty SET, distinct from the not-found ERROR -- and the corpus supplies the non-empty row shape. THE SAMPLE NEARLY MISLED ME: both recorded calls captured the SAME evidence row, and that row has chapter_id, chapter_title and note all null, which reads like a field nothing populates. The table says otherwise -- 8407 of 8408 rows have a chapter_id and 8407 have a note. The corpus happened to capture the single outlier.",
+      "evidence": [
+        "PHASE 2: 2 ok / 0 failed. No failure population exists",
+        "LIVE: {evidence: []} for an entity with no evidence -- empty set, not an error",
+        "CONTROL: an absent entity_id -> 'entity not found in this book'. Empty and missing are not fused",
+        "SHAPE from the corpus: evidence rows carry evidence_id, attr_value_id, chapter_id, chapter_title, block_or_line, note",
+        "THE CHECK THAT CHANGED THE READING: judged from the 2 recorded calls, chapter_id looks like a field that is never set. From the SSOT, evidences holds 8408 rows of which 8407 have chapter_id and 8407 have note; block_or_line is populated in 4904 (58%) and is genuinely optional. Two samples of one row is not a shape"
+      ],
+      "admitted": false
     }
   }
 }
