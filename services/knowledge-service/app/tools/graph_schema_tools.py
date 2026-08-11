@@ -2216,8 +2216,15 @@ async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> 
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
     if current is None:
         raise ToolExecutionError(
-            "this project has no adopted ontology to edit — adopt a project schema "
-            "first (the System template is read-only and admin-managed)"
+            # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
+            # refusal must name the TOOLS that clear it, in order — the same discipline
+            # kg_build's "call kg_project_set_embedding_model first" follows. "Adopt a
+            # project schema first" describes the remedy without naming it, and the op
+            # that performs it lives on THIS tool.
+            "this project has no adopted ontology to edit — call kg_list_templates to "
+            "pick one, then this same tool with op='adopt_template' and its "
+            "source_schema_id, then retry this edit (the System template is read-only "
+            "and admin-managed, so it cannot be edited in place)"
         )
 
     label = args.label.strip() or args.code  # add needs a label; default to the code
@@ -2436,8 +2443,15 @@ async def _handle_kg_triage_schema_write(
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
     if current is None:
         raise ToolExecutionError(
-            "this project has no adopted ontology to edit — adopt a project schema "
-            "first (the System template is read-only and admin-managed)"
+            # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
+            # refusal must name the TOOLS that clear it, in order — the same discipline
+            # kg_build's "call kg_project_set_embedding_model first" follows. "Adopt a
+            # project schema first" describes the remedy without naming it, and the op
+            # that performs it lives on THIS tool.
+            "this project has no adopted ontology to edit — call kg_list_templates to "
+            "pick one, then this same tool with op='adopt_template' and its "
+            "source_schema_id, then retry this edit (the System template is read-only "
+            "and admin-managed, so it cannot be edited in place)"
         )
 
     token = mint_action_token(

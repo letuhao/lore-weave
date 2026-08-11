@@ -1244,3 +1244,38 @@ which is the case #249 measured.
 Not blocking #249: the description now states the cost and tells a caller not to make the
 defensive call, so the hazard is at least visible to whoever hits it.
 
+## METHOD — a second `docker cp` of the tests dir in one container's life runs STALE tests
+
+Hit during #252 and worth writing down, because the failure mode is a FALSE GREEN.
+
+`docker cp <host>/tests <container>:/app/tests` behaves differently depending on whether the
+target already exists:
+
+| state of `/app/tests` | what happens |
+|---|---|
+| absent (fresh container from the image) | created correctly |
+| already present | the source is NESTED as `/app/tests/tests` |
+
+The image carries no `tests/`, so the first copy after a `--force-recreate` is always correct. The
+trap is the SECOND copy within the same container's life — the one you make after editing a test
+file. It lands in `/app/tests/tests`, `pytest tests/unit/...` keeps reading the copy from before
+your edit, and the run is green against a test you have already changed.
+
+In #252 this showed up as a guard that stayed red after I had fixed it. That is the lucky
+direction. The same mechanism would just as easily have shown green on an assertion I had
+tightened, and I would have recorded a conclusion the tests did not support.
+
+`rm -rf /app/tests` first does NOT work — the copied files are root-owned and the app user gets
+permission-denied on every one.
+
+**The reliable sequence, and the only one to use:**
+
+    docker compose ... up -d --force-recreate --no-deps <service>   # fs comes fresh from the image
+    docker cp <host>/tests <container>:/app/tests                   # exactly ONE copy per container life
+    docker cp <host>/pytest.ini <container>:/app/pytest.ini
+
+Verify it worked rather than assuming — `ls -d /app/tests/tests` must find nothing, and grepping
+the container's copy for a phrase you just added must return 1. Single files (`docker cp x.py
+<container>:/app/app/.../x.py`) are safe to repeat, which is why the red-proof injections in this
+loop were never affected.
+
