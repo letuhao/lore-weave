@@ -52,6 +52,81 @@ rows of `fact_kind='relation'` **corpus-wide**, and
 datetime validity and being *"NOT position-windowed here"*. That is `D-CANON-CHECK-BLIND-TO-ROLE`
 unchanged, and it is what T36 exists to close.
 
+## UPDATE — the fact layer was populated, and the root cause was NOT "nobody ran it"
+
+Chasing the empty substrate produced a better answer than the deferral did.
+
+**The chapters were never published.** All 13 were `editorial_status='draft'`, and extraction
+gates on `published` — the start endpoint refuses with *"chapter_range [3,5] matches no
+published chapters in this book"*. The comparison book (26 192 facts) is 100/100 published.
+
+**Extraction HAD run on this book — three `chapters` jobs, 2026-07-27/28 — and produced the 32
+entities.** So "nobody ran extraction" was wrong. What it never produced was facts.
+
+**There are two writeback callers, and only one can emit facts.** Glossary's contract makes
+fact emission conditional: *"ChapterOrdinal … When present (with ChapterID + ContentHash), the
+writeback ALSO emits append-only bi-temporal facts … Omitted (legacy caller) → no fact
+emission."*
+
+| caller | sends chapter_id / content_hash / chapter_ordinal / writeback_key | can emit facts |
+|---|---|---|
+| `knowledge-service` `GlossaryClient.propose_entities` | **none of them** | **no** |
+| `translation-service` `extraction_worker` | all four | yes |
+
+`glossary_writeback.py` calls `propose_entities(book_id, entities, default_tags,
+park_unknown_kinds)` — no chapter context at all. It aggregates candidates **per project**, not
+per chapter, so it has no single ordinal to attribute. That is a design mismatch, not a missing
+argument.
+
+The correlation across books is exact — a writeback-log row is written on the same
+full-payload call:
+
+```
+book        writeback_log  episodes  facts
+封神演義              129        97   26192     <!-- doc-language-gate: ok -- book id shown as its stored title; the row is corpus evidence -->
+(second)               25         0   18620
+Mị Đế (before)          0         0       0
+```
+
+**A second, unrelated defect surfaced in the same run.** `pass2_writer` discarded every fact
+the LLM produced:
+
+```
+pass2_writer: skipping fact with unknown type 'description' (...)
+pass2_writer: skipping fact with unknown type 'attribute' (...)
+persist-pass2 done  entities=4 relations=5 events=0 facts=0 statuses=0
+```
+
+`'attribute'` is one of the six kinds `entity_facts_kind_chk` admits — but `pass2_writer`
+validates against the **Neo4j** `FactType` literal (`decision | preference | milestone |
+negation | statement | commitment`), a completely disjoint vocabulary for a different store.
+The two "fact" concepts share a name and nothing else.
+
+### What was run, and the result
+
+Published chapters 3–5 (the three with prose), then enqueued the fact-emitting path —
+`POST /v1/extraction/books/{book}/extract-glossary` with `reasoning_effort: "none"` to avoid
+the budget burn recorded in `D-T33-CORPUS-BITE-REASONING-MODEL`. Job `019fee56…` **completed**,
+3 chapters, no errors.
+
+| | before | after |
+|---|---|---|
+| `entity_facts` | 0 | **115** — attribute 101, name 13, alias 1 |
+| `episodes` | 0 | **3** |
+| `extraction_writeback_log` | 0 | **3** |
+| glossary entities | 32 | **46** |
+
+Quality, not just quantity:
+
+```
+valid_from_ordinal   3 → 41 facts    4 → 27    5 → 47      (all open intervals)
+episode citation     115 / 115
+```
+
+Every fact carries the story position of the chapter it came from and cites its immutable
+episode. **QC-5's substrate precondition is now met**; the remaining blockers are T36 (roles as
+relation facts) and RT-2.
+
 ## What would make this test meaningful
 
 In order — each is a precondition of the next:
