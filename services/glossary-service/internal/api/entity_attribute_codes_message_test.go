@@ -1,6 +1,7 @@
 package api
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -85,5 +86,59 @@ func TestAnOversizedCodeListIsCappedAndSaysHowManyItDropped(t *testing.T) {
 	// makes a repeated failure look like a different one.
 	if strings.Index(got, "a01") > strings.Index(got, "a02") {
 		t.Errorf("codes must be sorted for a stable message; got %q", got)
+	}
+}
+
+// TOOLV2 LOOP #88 — the same lever as the attribute-code message above, on the kind code.
+//
+// The bare form was "unknown kind: werewolf" — the category the caller cannot use, and nothing
+// else. Two lines up in the same function, the field_type rejection already names its whole
+// valid set. And the batch entity tool already does this properly for the SAME concept: it
+// explains what an unknown kind means and names the two tools that create one. This raise site
+// was the one left behind.
+func TestTheUnknownKindMessageNamesTheKindsTheBookHas(t *testing.T) {
+	kinds := map[string]uuid.UUID{
+		"character": uuid.New(), "place": uuid.New(), "faction": uuid.New(),
+	}
+	got := unknownKindMessage("werewolf", kinds)
+
+	if !strings.Contains(got, "unknown kind: werewolf") {
+		t.Fatalf("the original claim must survive: %q", got)
+	}
+	for _, k := range []string{"character", "place", "faction"} {
+		if !strings.Contains(got, k) {
+			t.Errorf("the book's kind %q must be named: %q", k, got)
+		}
+	}
+	// And the way to ADD one, because the caller's kind may be legitimately new.
+	if !strings.Contains(got, "glossary_adopt_standards") || !strings.Contains(got, "glossary_propose_kinds") {
+		t.Errorf("both satisfiers must be named: %q", got)
+	}
+}
+
+func TestABookWithNoKindsSaysSoInsteadOfListingNothing(t *testing.T) {
+	got := unknownKindMessage("werewolf", map[string]uuid.UUID{})
+	if !strings.Contains(got, "no kinds yet") {
+		t.Errorf("an empty book must say so rather than offer an empty list: %q", got)
+	}
+	if strings.Contains(got, "Kinds in this book:") {
+		t.Errorf("an empty list must not be presented as a set of options: %q", got)
+	}
+}
+
+// The helper is only worth anything if the raise site USES it. A guard that calls
+// unknownKindMessage directly stays green when the call site is reverted to the bare string —
+// that happened twice in this loop, so the wiring gets its own anchor.
+func TestTheRaiseSiteUsesTheUnknownKindHelper(t *testing.T) {
+	src, err := os.ReadFile("action_propose_tools.go")
+	if err != nil {
+		t.Fatalf("read source: %v", err)
+	}
+	body := strings.ReplaceAll(string(src), "\r\n", "\n")
+	if !strings.Contains(body, "errors.New(unknownKindMessage(kindCode, kindMap))") {
+		t.Error("the kind lookup must return the helper's message, not a bare concatenation")
+	}
+	if strings.Contains(body, `errors.New("unknown kind: " + kindCode)`) {
+		t.Error("the bare 'unknown kind: X' message is back at the raise site")
 	}
 }

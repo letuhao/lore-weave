@@ -1009,6 +1009,18 @@
         "OBSERVED while looking: book 019f6553 has TWO composition_work rows with different project_ids (one of them a d0000000-... fixture id). Neither resolved. A book mapping to two Works has no declared tiebreak in the scope resolution I exercised"
       ],
       "admitted": false
+    },
+    "glossary_propose_new_attribute": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix, and the measurement CORRECTED ITSELF mid-iteration. 14 calls / 7 ok. Failures: 2 missing book_id+code, 1 unexpected `type`, 1 missing `code` (2026-08-10, answered by CP-5.4's supplier message), and 2 'unknown kind' -- one 'werewolf', one a UUID sent where a kind CODE belongs. That raise site emitted the bare string 'unknown kind: X' while the line TWO ABOVE it already names the whole valid set for field_type, and while the batch entity tool explains the concept and names both satisfiers for the same failure. This site was the one left behind. FIXED: it now names the kinds the book actually has (from the map already loaded for the lookup that just failed) and both tools that add one.",
+      "evidence": [
+        "PHASE 2: 7 ok / 7 failed = 2 missing book_id+code + 2 unknown kind + 1 unexpected `type` + 1 missing `code` + 1 other",
+        "MEASUREMENT CORRECTED IN FLIGHT: my first query anchored 'unknown kind%' at the START of the error and found 2 calls on 1 tool. Unanchored, the class is 91 calls on TWO tools -- glossary_propose_entities carries 89 of them across 38 sessions, last seen 2026-08-10. An anchored LIKE under-counted by a factor of 45",
+        "CHECKED, so the fix went to the right place: glossary_propose_entities' message is ALREADY good -- it explains what an unknown kind means and names glossary_adopt_standards and glossary_propose_kinds. Its 89 failures are a model choosing unadopted categories, not a bad refusal. Recorded for that tool's own iteration rather than fixed from here",
+        "LIVE A/B on the deployed image: kind_code='werewolf' now returns 'unknown kind: werewolf. Kinds in this book: character, event, faction, generic, item, location, organization, plot_arc, power_system, relationship, social_setting, species, technique, terminology, toolv2_i80_kind, trope, unknown. To add a new one, use glossary_adopt_standards (system kinds) or glossary_propose_kinds (custom), then retry.'",
+        "CODE: three guards -- the named set, the empty-book branch, and a WIRING guard on the raise site, because a helper-level test stays green when the call site is reverted. That has happened twice in this loop. Reverting the call site reds it"
+      ],
+      "admitted": false
     }
   }
 }
