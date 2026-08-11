@@ -464,6 +464,39 @@ afternoon; guessing between them would silently set the contract for every futur
 
 ---
 
+### DQ-14 · The "placeholder IDs" headline is mostly a population the repair layer already fixes
+
+*Raised by:* iteration 59, and it corrects evidence **this runbook has been leaning on**. The
+goal's standing framing cites "101 placeholder IDs" as proof that actionable messages failed. The
+full population, measured — every call whose `book_id` argument is not a UUID, **214 calls**:
+
+| calls | sessions | outcome | last seen |
+|---|---|---|---|
+| **121** | 29 | **ok=true** — the repair substituted the session's book and the call SUCCEEDED | 2026-08-10 |
+| 67 | 16 | failed, and the session had **no book in scope** — the server could not know one | 2026-08-10 |
+| 10 | 7 | failed on a DIFFERENT argument (`entity_id`, `query`) with the placeholder merely recorded | 2026-08-10 |
+| 10 | 4 | failed for another reason, no book in scope | 2026-08-04 |
+| **6** | 1 | failed ON `book_id` while the server knew it — **the only real defect, and it is dated** | 2026-07-26 |
+
+The 121 are decisive: **a call cannot succeed with `book_id="current_book_id_placeholder"`
+reaching the service.** So the repair fires, and D-7 is now proven rather than suspected — the
+recorded `args` are the model's PRE-repair text. Any count taken from that column measures what
+the model typed, never what was dispatched.
+
+The last 6 ran 2026-07-22 → 2026-07-26 17:03 against `glossary_propose_entity_edit`, a
+consumer-local tool served by chat-service despite its glossary name. Frontend tools were
+validated BEFORE the backend dispatch's injection, so the session's book never reached them.
+`D-FE-TOOL-CONTEXT-IDS` fixed exactly that, committed **2026-07-27** — verified in git, not from
+the comment that claims it. Every one of the 6 predates its own fix.
+
+*What this changes:* a placeholder in the args column is not evidence of a failed call, and three
+iterations of this loop have now split a failure population and found the repair had already won.
+The open half is the 67 with no book in scope, and that is not a repair gap — the server has
+nothing to substitute. Whether an id field should say "call `book_list` first" when scope is
+absent is a message question, and **prose is not the lever**: the 67 are honest refusals today.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-9 · 980 entities stand in projects that no longer exist, and no re-sweep exists to reclaim them

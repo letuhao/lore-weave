@@ -647,6 +647,19 @@
         "LIVE (breaker): the deployed chat-service image is byte-identical to source by whole-file sha256 and container .Image == the built image id, and the escalation symbols are present IN the running image. The A/B a looping model would give is NOT claimed: I cannot force a real model to loop on demand. What IS proven end-to-end is the guard driving the real _stream_with_tools loop with a fake client, asserting the advertised set on the wire"
       ],
       "admitted": false
+    },
+    "book_list_chapters": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 168 calls / 60 ok, and 98 of the 108 failures are the blank-args era -- missing book_id, 4 sessions, ALL on 2026-07-08. 7 sent a non-UUID (6x the literal 'all', 1x 'book_list') and 3 are the repeated-failure breaker. Successful traffic runs to 2026-08-10. RAISED DQ-14, which CORRECTS EVIDENCE THIS LOOP HAS BEEN LEANING ON: chasing the non-UUID class corpus-wide showed that 121 of the 214 calls carrying a placeholder book_id SUCCEEDED, because the repair layer substitutes the session's book before dispatch and the recorded args are the model's PRE-repair text. That proves D-7 rather than assuming it. Of the 214, exactly 6 -- one session, 2026-07-22..26 -- failed ON book_id while the server knew it, and all 6 predate their own fix (D-FE-TOOL-CONTEXT-IDS, committed 2026-07-27, dated in git rather than read off the comment that claims it).",
+      "evidence": [
+        "PHASE 2: 60 ok / 108 failed = 98 missing book_id (4 sessions, all 2026-07-08) + 7 non-UUID book_id (4 sessions, 2026-08-03..04) + 3 repeated-failure breaker",
+        "LIVE: throwaway book -> {chapters:[{chapter_id, title 'Contract smoke', sort_order 1, draft_revision_count 3, editorial_status draft}], total 1}",
+        "CONTROL A: no book_id reproduces 'required: missing properties: [\"book_id\"]'",
+        "CONTROL B: book_id='all' reproduces 'book_id must be a UUID' -- the exact recent class",
+        "DATA (DQ-14), the whole 214-call placeholder population split by outcome AND by whether the session had a book: 121 ok / 67 failed with no book in scope / 10 failed on a different argument / 10 other / 6 the real defect. A call CANNOT succeed with 'current_book_id_placeholder' reaching the service, so the 121 are proof the repair fires",
+        "DATED, not assumed: the 6 real failures span 2026-07-22 16:01 to 2026-07-26 17:03; D-FE-TOOL-CONTEXT-IDS committed 2026-07-27. Frontend tools were validated BEFORE the backend injection, and glossary_propose_entity_edit is consumer-local despite its name"
+      ],
+      "admitted": false
     }
   }
 }
