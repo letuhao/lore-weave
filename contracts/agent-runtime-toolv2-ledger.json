@@ -1270,6 +1270,18 @@
         "NOT REACHED: the non-empty branch. The two books with arcs (10 and 7) return 'not found or not accessible' for this caller, so the row shape inside `arcs` is unverified"
       ],
       "admitted": false
+    },
+    "glossary_book_set_active_genres": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Both mutations and the refusal proven, and the state restored exactly. Its best property is that every call returns the FULL resulting set rather than a diff -- add 'mystery' and you get all seven active codes back, remove it and you get the six -- so a caller never has to re-read to learn the post-state, and a repeated add is self-evidently a no-op.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE add: add ['mystery'] -> active_codes [universal, fantasy, xianxia, romance, drama, historical, mystery]",
+        "LIVE remove: remove ['mystery'] -> the original six. The throwaway book is back exactly where it started, verified by the returned set rather than assumed",
+        "CONTROL: an unknown code -> 'no live genre with code \"no_such_genre_xyz\" in this book' -- names the code AND the scope, the pattern iteration 86 had to fix elsewhere",
+        "SHAPE: the response is the whole post-state, not a delta, so no follow-up read is needed"
+      ],
+      "admitted": false
     }
   }
 }
