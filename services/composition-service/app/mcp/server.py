@@ -45,7 +45,8 @@ from uuid import UUID
 
 import asyncpg
 from mcp.server.fastmcp import Context as MCPContext
-from pydantic import Field, field_validator
+from mcp.server.fastmcp.exceptions import ToolError
+from pydantic import Field, ValidationError, field_validator
 
 from loreweave_mcp import (
     ForbidExtra,
@@ -55,6 +56,7 @@ from loreweave_mcp import (
     apply_response_contract,
     build_tool_context,
     make_stateless_fastmcp,
+    validation_directive,
     mint_confirm_token,
     require_book_owner,
     require_meta,
@@ -125,6 +127,37 @@ logger = logging.getLogger(__name__)
 __all__ = ["mcp_server", "build_mcp_app"]
 
 mcp_server = make_stateless_fastmcp("composition")
+
+# W0 #4b — the one-line validation directive, absorbed into the kit as
+# `validation_directive`. THIS SERVICE NEVER HAD IT. Measured across the corpus, raw pydantic
+# dumps by owning service: composition 58 across 8 tools and 9 sessions (last 2026-07-30), kg 8,
+# translation 3, jobs 1, memory 1 — and every one of those others predates the rewriter shipping
+# in their service. Composition was the only producer still emitting them, complete with the
+# errors.pydantic.dev URL, which is noise a model cannot act on.
+#
+# The three siblings each carried a byte-identical copy of this wrapper and the same comment
+# saying the kit would absorb it. It did (iteration 65, which also fixed a type clause that was
+# false on every call it ever rendered). Installing it here is the fourth consumer of one
+# implementation rather than a fourth copy.
+def _install_validation_error_rewriter(server) -> None:
+    """Wrap the tool manager's dispatch so a ToolError CAUSED BY a pydantic ValidationError
+    re-raises as the one-line directive. Anything else passes through untouched."""
+    manager = server._tool_manager
+    original = manager.call_tool
+
+    async def call_tool(name, arguments, *args, **kwargs):
+        try:
+            return await original(name, arguments, *args, **kwargs)
+        except ToolError as e:
+            cause = e.__cause__
+            if isinstance(cause, ValidationError):
+                raise ToolError(validation_directive(name, cause)) from cause
+            raise
+
+    manager.call_tool = call_tool
+
+
+_install_validation_error_rewriter(mcp_server)
 
 # ext-tasks durable-gate (spec 2026-07-19-mcp-tasks-durable-gate) — makes this
 # server task-capable: tasks/get + tasks/cancel handlers, the task_provide_input

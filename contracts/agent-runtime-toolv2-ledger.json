@@ -1032,6 +1032,18 @@
         "CHECKED: glossary_propose_new_kind accepts precisely the flat form the model sent, so the capability was present under a different name -- this is a tool-choice error, not a missing feature"
       ],
       "admitted": false
+    },
+    "composition_package_tree": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix that closes the LAST service leaking raw pydantic dumps. 5 calls / 4 ok; the single failure is 'not found or not accessible'. The finding came from a control: passing project_id instead of book_id returned the RAW pydantic dump, errors.pydantic.dev URL and all. composition-service never received W0 #4b's one-line rewriter -- the three services that did (jobs, knowledge, translation) each carried a byte-identical copy, which iteration 65 absorbed into the kit. Composition is now the fourth CONSUMER of that one implementation rather than a fourth copy, so it also inherits 65's correction that a missing field is never described as a value the caller sent.",
+      "evidence": [
+        "PHASE 2: 4 ok / 1 failed -- 'not found or not accessible'",
+        "DATA, by owning service: raw pydantic dumps are composition 58 (8 tools, 9 sessions, last 2026-07-30), kg 8, translation 3, jobs 1, memory 1. Every one of the others predates the rewriter shipping in their own service; composition was the only LIVE producer",
+        "LIVE A/B on the deployed image: the same call that dumped '1 validation error for composition_package_treeArguments\nbook_id\n Field required [type=missing, input_value=...]\n For further information visit https://errors.pydantic.dev/...' now returns 'invalid arguments for composition_package_tree — `book_id`: Field required. Fix the argument and call the tool again.'",
+        "LIVE happy path with book_id: the package tree -- spec/arcs, manuscript.chapter_count, index staleness counters, coverage, runs.recent",
+        "CODE: three guards. The first two call the installer themselves, so they prove the WRAPPER and stayed green when I deleted the module-level install line -- the fourth time in this loop a guard passed over an unwired fix. The third asserts the manager's call_tool IS our closure at import, and reds with the install removed. 3589 tests pass"
+      ],
+      "admitted": false
     }
   }
 }
