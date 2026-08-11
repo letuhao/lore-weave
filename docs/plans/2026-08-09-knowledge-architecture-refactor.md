@@ -443,6 +443,48 @@ trashed entity **commits the write and then returns 500** from its own post-comm
 stashed, so it is pre-existing and orthogonal. Whether a trashed entity is editable at all is a
 command-contract decision, which is exactly what T27 is for.
 
+## 🎯 THE GOAL, and the loop that enforces it *(PO, 2026-08-12)*
+
+> **PO:** *"Don't run small steps on the run state. Make a goal with loop — each task in the run
+> state is a loop cycle with full QC control. Then we can enforce tasks by using the goal to run
+> the loop."*
+
+**THE GOAL:** *the architecture is implemented correctly and a live run proves it* — the PO's
+definition of session-done. Not a complete document, not a full set of checkboxes. The run state
+is the queue; **`RESUME` names the head of it.**
+
+### One task = one loop cycle. A cycle is not done until all six steps have output.
+
+| # | step | what makes it complete |
+|---|---|---|
+| **1 · READ** | The task entry, its deferrals, and the **sealed rows it touches**. Re-read the register rather than recalling it. | you can state which sealed decision this task serves |
+| **2 · BUILD** | Implement it. Whole task, not the easy half. | — |
+| **3 · BITE** | Revert the fix → watch the guard go red **for the right reason** → restore → **paste the output**. | red text pasted, naming the right failure |
+| **4 · QC** | Three independent controls: **(a)** gates green, *including any gate this task adds* — and a new gate needs a `--selftest`, because a hand-bite in a terminal is invisible to CI; **(b)** a **live smoke** if the task crosses a service seam, against rebuilt images; **(c)** **real-run data** if the task produces data. | each control either has output or an explicit "N/A because…" |
+| **5 · EVIDENCE** | Pasted into the task entry. **Never a ticked box.** Numbers carry the command that produced them. | a reader can re-derive every number |
+| **6 · ADVANCE** | Commit, push, move `RESUME` to the next task. | `RESUME` names a different task than at step 1 |
+
+### A cycle FAILS closed
+
+If bite, QC or evidence is missing, the task **stays `[~]`** and gets a tracked deferral with all
+five elements — blocker · evidence · unblock · mechanism · retry. **A partially-done task never
+gets `[x]`.** This is the rule that was broken three times this week: T32, T33 and T38 all read
+complete while the decision they implemented was absent.
+
+### The loop STOPS and hands back — it does not improvise
+
+- a **stop condition** fires (T8 · T21 · T33 · T41) — the design is wrong, not the work
+- a **⏸ POST-REVIEW** checkpoint is reached (QC-3 · QC-5 · QC-7)
+- a **sealed decision** turns out to be wrong — present evidence, the PO re-opens it
+- a decision is **owed by the PO** (OD-1 · OD-2 · OD-3)
+
+### What the loop must NOT do
+
+**No small steps on the run state.** Editing the plan is step 5 of a cycle, not a cycle of its own.
+A turn that only moves prose is not a cycle and does not count as progress toward the goal.
+
+---
+
 ## ▶ Run policy — read before executing, this plan RUNS, it does not report
 
 **Default: keep going.** Finish a task, paste its evidence into the task, start the next one. Do not
