@@ -1200,6 +1200,18 @@
         "DISTINCTNESS confirmed again: web_search is served by provider-registry and returns an answer/sources shape; glossary_web_search is served by glossary-service and returns title/url/snippet rows. Two tools, two owners, two shapes"
       ],
       "admitted": false
+    },
+    "composition_outline_node_edit": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 4 calls / 2 ok. One failure is a raw pydantic dump -- the class iteration 90 fixed, and this is the THIRD tool confirming it live. The other is CP-5.4's supplier message telling the model that the missing `op` carries CONTENT the server cannot fill. OBSERVED, and measured before deciding not to act: the refusal for a MISSING enum field names the field but not its five valid values, while a WRONG value does name them -- because pydantic's `missing` error carries no enum, only the type error does. A model that omitted a discriminator is exactly the one that would benefit from seeing the options, but the subject here is ONE call.",
+      "evidence": [
+        "PHASE 2: 2 ok / 2 failed = 1 raw pydantic dump + 1 CP-5.4 supplier message",
+        "LIVE, the recorded shape (content fields, no op): now 'invalid arguments for composition_outline_node_edit — `args.op`: Field required. Fix the argument and call the tool again.' -- iteration 90's rewriter on a third composition tool",
+        "SCHEMA: required ['op']; op is enum ['create','update','delete','restore','move'] -- a code-known closed set of five",
+        "CONTRAST, from tools already proven in this loop: jobs_list.status and kg_list_templates.scope both NAME their whole closed set when a bad value is sent. The difference is missing-vs-wrong, not tool quality: pydantic's `missing` error has no enum to report",
+        "NOT ACTED ON: naming a missing field's enum would mean threading the arg model into loreweave_mcp.validation_directive, and the measured subject is one call in one session"
+      ],
+      "admitted": false
     }
   }
 }
