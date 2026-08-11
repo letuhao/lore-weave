@@ -468,13 +468,22 @@ async def translation_set_active_version(
     name="translation_save_edited_version",
     description=(
         "Save a human-edited translation as a NEW version (authored_by='human'), "
-        "linked to the LLM version it was edited from. Auto-applies; reversible by "
-        "setting the prior active version back. Book-scoped (edit)."
+        "linked to the LLM version it was edited from. It saves without a confirm step, "
+        "but it does NOT make the new version active: readers keep seeing the version it "
+        "was edited from until you call translation_set_active_version with the returned "
+        "version_id. Book-scoped (edit)."
     ),
     meta=require_meta(
         "A", "book",
+        # The old hint said "re-activate the version edited from". Measured: saving does
+        # NOT change the active version (only set_active_version and patch_block do), so
+        # that hint described undoing something that never happened — following it would
+        # re-activate the version that was already active. The real follow-up is the
+        # opposite: the saved version is inert until someone activates it.
         undo_hint={"tool": "translation_set_active_version",
-                   "args": {"note": "re-activate the version edited from"}},
+                   "args": {"note": "saving did not change the active version; use this "
+                                    "to switch to the new version_id, or to switch back "
+                                    "if you already did"}},
         synonyms=["save edit", "save my translation", "human edit",
                   "save edited version"],
         tool_name="translation_save_edited_version",
