@@ -673,6 +673,20 @@
         "DATED, and the corpus agrees: chat-service's _strip_fastmcp_prefix shipped 2026-07-23 (K18). Of all 'no project in scope' rows corpus-wide, the 3 WRAPPED are 2026-07-14 and the 5 CLEAN are 2026-08-04 -- the split lands exactly on the fix"
       ],
       "admitted": false
+    },
+    "book_update_details": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 56 calls / 20 ok. The biggest failure class is a SINGLE incident: 16 identical 'no fields to update' calls in ONE turn across 15 iterations, at 2026-07-26 04:18 UTC. The repeated-failure breaker that would have stopped it after 2 was committed at 12:23 +0700 THE SAME DAY -- about an hour later -- so this loop is not a gap in the breaker, it is the incident that produced it. A second commit that day (D-FE-TOOL-LOOP, 23:26 +0700) closed the sibling hole where frontend tools bypassed both guards. The remaining failures are 9 'book not accessible' in one session (the H13 uniform refusal, correct) and 8 'book_id must be a UUID' on 2026-08-04 -- the same magic-word class as book_get, and here the breaker DID fire (3 recorded steers), which is the fix working on later traffic.",
+      "evidence": [
+        "PHASE 2: 20 ok / 36 failed = 16 'no fields to update' (1 turn) + 9 'book not accessible' (1 session) + 8 book_id-not-a-UUID (4 sessions) + 3 repeated-failure breaker",
+        "DATA: the 16 are one message_id, max iteration 15, all args {book_id} with no fields",
+        "DATED to the hour, not the day: the loop ran 2026-07-26 04:18:17 UTC = 11:18 +0700; the repeated-failure breaker committed 2026-07-26 12:23:32 +0700",
+        "LIVE: summary update on the throwaway book -> a confirm card (descriptor book.meta, destructive:false) with a signed token. NOT confirmed, so the book is unchanged",
+        "CONTROL A: book_id only reproduces 'no fields to update' verbatim",
+        "CONTROL B: book_id='all' reproduces 'book_id must be a UUID' verbatim",
+        "CHECKED: book-service's tools/list serves book_update_details, so it is a backend tool and the frontend-bypass hole is not the one that applies here"
+      ],
+      "admitted": false
     }
   }
 }
