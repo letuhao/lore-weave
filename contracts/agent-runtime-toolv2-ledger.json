@@ -885,6 +885,17 @@
         "FALSIFIER, and it caught a weak guard first: my initial test called planVocabularyHint DIRECTLY and stayed GREEN when the call site was reverted to the bare note -- it proved the helper, not its wiring. The replacement asserts the error that parseAndValidatePlan actually returns, and reds with the recorded message verbatim. Second time in this loop a helper-level guard passed under an unwired defect"
       ],
       "admitted": false
+    },
+    "settings_list_models": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 7 calls / 6 sessions / 7 ok, no failure population. Because a clean rate proves nothing on its own, the payload was audited field by field: the tool returns 18 models and the provider-registry database holds exactly 18 rows for this owner, so the list is complete rather than capped. Two fields are empty on all 18 -- `notes` and `tags` -- and that is NOT the DQ-15 shape: those are user-authored OUTPUT fields this user has not filled, not argument slots a model is asked to guess with no vocabulary. `pricing` is populated on 17 of 18, which matters because actual cost is supposed to be per-model rather than a flat rate.",
+      "evidence": [
+        "PHASE 2: 7 ok / 0 failed. No failure population exists",
+        "LIVE: settings_list_models -> 18 models with alias, provider_kind, provider_model_name, context_length, capability_flags, pricing, is_active, is_favorite, sort_order, provider_credential_id, timestamps",
+        "DENOMINATOR from the SSOT: loreweave_provider_registry.user_models holds 18 rows for this owner_user_id, all active. 18 of 18 returned -- nothing silently dropped",
+        "FIELD AUDIT, per the lesson that a clean ok-rate hides payload defects: notes 0/18 and tags 0/18 populated; everything else 14/18 or better. The two empties are optional user-authored metadata, which is a different thing from DQ-15's canon_rule.kind -- that one is an ARGUMENT advertised to the model with no declared vocabulary"
+      ],
+      "admitted": false
     }
   }
 }
