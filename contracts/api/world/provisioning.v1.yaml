@@ -1,0 +1,258 @@
+openapi: 3.1.0
+info:
+  title: world-service — reality provisioning (internal)
+  version: "1.0.0"
+  description: |
+    The internal HTTP surface of `services/world-service`. Frozen before the routes
+    were written (contract-first, CLAUDE.md), and machine-checked against the real
+    router by `route_conformance` in `services/world-service/tests/` — an
+    undocumented versioned route and a documented-but-unrouted path both fail the
+    build. That test exists because `contracts/.spectral.yaml` is NOT WIRED
+    (DEFERRED 078), so a frozen YAML on its own buys no enforcement.
+
+    **This surface is INTERNAL.** Invariant I1 puts all external traffic through
+    `api-gateway-bff`; every versioned route here is gated on the `X-Internal-Token`
+    header (`service_http::require_internal`) and is not reachable by an end user.
+    The probes are deliberately ungated — a docker healthcheck and a load balancer
+    hit them without credentials.
+
+    Provisioning is not a new capability. `admin-cli`'s `reality provision` command
+    already reaches the same library path by exec'ing the `provision` worker binary;
+    this route is a second invoker shape over `Provisioner::provision_reality`, not
+    a reimplementation of it.
+
+servers:
+  - url: http://world-service:7120
+    description: in-cluster, service-to-service only
+
+tags:
+  - name: probes
+    description: Liveness / readiness / metrics. Unauthenticated by design.
+  - name: realities
+    description: Per-reality database provisioning.
+
+paths:
+  /livez:
+    get:
+      tags: [probes]
+      summary: Process liveness
+      description: 200 for as long as the binary runs. Does not touch the database.
+      responses:
+        "200": { $ref: "#/components/responses/Health" }
+
+  /readyz:
+    get:
+      tags: [probes]
+      summary: Readiness
+      description: Pings the meta Postgres pool. 503 when the database is unreachable.
+      responses:
+        "200": { $ref: "#/components/responses/Health" }
+        "503": { $ref: "#/components/responses/Health" }
+
+  /metrics:
+    get:
+      tags: [probes]
+      summary: Prometheus text exposition
+      responses:
+        "200":
+          description: metrics
+          content:
+            text/plain:
+              schema: { type: string }
+
+  /internal/v1/realities:
+    post:
+      tags: [realities]
+      summary: Provision a reality
+      description: |
+        Runs the 11-step provisioning flow: validate → pick a shard under a
+        per-shard advisory lock → register pending → CREATE DATABASE → apply every
+        migration in `contracts/migrations/manifest.yaml` → pgbouncer → Prometheus →
+        backup policy → provisioning→seeding→active.
+
+        **Idempotent.** Re-posting the same `reality_id` re-enters the flow and
+        reports each already-complete step as `skipped` rather than failing. This is
+        the property `1b14-01` was filed against, so it is asserted against the live
+        path rather than a fake.
+
+        Capacity is read live from `shard_utilization` + `reality_registry`; the
+        pick→register critical section holds an advisory lock, which is what closes
+        the TOCTOU that the `provision-drill` binary never exercised because it
+        fabricated its snapshot.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProvisionRequest" }
+      responses:
+        "201":
+          description: |
+            `outcome: provisioned` — no registry row existed, so the reality was
+            placed under the advisory lock and all 11 steps ran.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionResponse" }
+        "200":
+          description: |
+            Nothing was created. Either `outcome: resumed` — a row existed in a
+            live state (`provisioning`/`seeding`) and the flow re-entered pinned
+            to the shard the registry names, reporting each already-complete step
+            as `skipped` — or `outcome: already_provisioned`, where the reality
+            has moved past provisioning and no steps ran at all.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ProvisionResponse" }
+        "400":
+          description: The request failed validation (nil `reality_id`, empty `locale` or `reason`, `deploy_cohort` > 99), or the body was not readable JSON.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "401":
+          description: Missing or mismatched `X-Internal-Token`.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "409":
+          description: No shard has capacity, or a concurrent transition means the caller must reload and decide rather than blind-retry.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "422":
+          description: The body was valid JSON but not a `ProvisionRequest` (a missing or mistyped field).
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "500":
+          description: A provisioning effect failed (bridge, shard, or migration). The detail is logged, not returned.
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/ProblemDetails" }
+        "504":
+          description: The request exceeded the 300s ceiling.
+
+components:
+  securitySchemes:
+    internalToken:
+      type: apiKey
+      in: header
+      name: X-Internal-Token
+      description: Shared service-to-service token. Byte-exact match; see `service_http::require_internal`.
+
+  responses:
+    Health:
+      description: probe result
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [status, endpoint]
+            properties:
+              status: { type: string, enum: [ok, degraded] }
+              endpoint: { type: string, enum: [livez, readyz] }
+
+  schemas:
+    ProvisionRequest:
+      type: object
+      required: [reality_id, locale, deploy_cohort, reason]
+      description: Mirrors `world_service::provisioner::ProvisionRequest` field-for-field.
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+          description: |
+            Caller-generated, so the audit chain stays coherent across the retry of a
+            request whose response was lost. The nil UUID is refused.
+        locale:
+          type: string
+          description: BCP-47 (`en`, `en-US`, `ja-JP`). Must be non-empty.
+          example: en-US
+        deploy_cohort:
+          type: integer
+          minimum: 0
+          maximum: 99
+          description: Deploy canary cohort (SR05 §12AH.4).
+        reason:
+          type: string
+          description: Written into the MetaWrite audit trail. Must be non-empty.
+          example: operator provisioned via world-service HTTP
+        owner_user_id:
+          type: [string, "null"]
+          format: uuid
+          description: |
+            The user who owns this reality, or `null` for a platform-owned one. `null`
+            is a real category, not "unknown" — the bridge derives `owner_kind` from
+            it, so the registry's (kind, owner) pair is consistent by construction.
+            The nil UUID is refused; use `null`.
+
+    ProvisionResponse:
+      type: object
+      required: [outcome, reality_id, shard_id, db_name]
+      description: |
+        Mirrors `world_service::server::handlers::ProvisionResponse`, which wraps
+        `provisioner::ProvisionReport` with the outcome discriminant. The three
+        outcomes are the three states a caller can be in and **none of them is an
+        error** — re-posting the same `reality_id` is safe.
+      properties:
+        outcome:
+          type: string
+          enum: [provisioned, resumed, already_provisioned]
+        reality_id: { type: string, format: uuid }
+        shard_id:
+          type: string
+          description: The shard the reality lives on.
+          example: pg-shard-0.internal
+        db_name:
+          type: string
+          description: "Convention: `lw_reality_<first-12-hex>`."
+          example: lw_reality_cd0747d24b94
+        status:
+          type: string
+          description: |
+            Present **only** for `already_provisioned` — the lifecycle status that
+            is the reason nothing was done.
+          example: active
+        steps:
+          type: array
+          description: |
+            All 11 steps in order. **Absent** for `already_provisioned`, because no
+            steps ran; an empty array would claim a run that did not happen.
+          items: { $ref: "#/components/schemas/StepOutcome" }
+
+    StepOutcome:
+      type: object
+      required: [outcome, step]
+      description: |
+        Serde-tagged enum (`tag = "outcome"`, `content = "step"`). `skipped` means an
+        idempotent re-entry found the step already complete; `done` means it executed
+        on this call.
+      properties:
+        outcome: { type: string, enum: [done, skipped] }
+        step:
+          type: string
+          enum:
+            - validate
+            - pick_shard
+            - register_pending
+            - create_database
+            - apply_migrations
+            - register_with_pgbouncer
+            - register_prometheus_scrape
+            - register_backup_policy
+            - transition_to_seeding
+            - transition_to_active
+            - emit_reality_created
+
+    ProblemDetails:
+      type: object
+      description: RFC 7807, as rendered by `service_http::ProblemDetails`.
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        message:
+          type: string
+          description: Frontend-readable message; the repo's RFC 7807 extension.

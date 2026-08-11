@@ -104,6 +104,13 @@ pgvector = { workspace = true }
 axum = { workspace = true }
 prometheus = { workspace = true }
 tracing-subscriber = { workspace = true }
+# WS2 — the shared axum kit: serve + graceful shutdown, DB-aware health probes,
+# X-Internal-Token middleware, RFC 7807, trace/metrics layers. Its own module
+# doc names this migration: "tilemap/world migrate opportunistically when next
+# touched". The embedding worker's older hand-rolled probe router stays as it is
+# — it belongs to a different binary on a different port.
+service-http = { path = "../../crates/service-http" }
+tower-http = { workspace = true }
 # 089 D-EMBEDDING-PROVIDER-WIRING — reqwest client to the BYOK gateway
 # (provider-registry POST /internal/embed). First reqwest in world-service; calls
 # OUR gateway, NOT a vendor SDK (provider-gateway invariant). Workspace-pinned.
@@ -132,6 +139,16 @@ world-service = { path = ".", features = ["testkit"] }
 # traits; the live-smoke integration test (tests/embedding_live.rs) is gated
 # on LOREWEAVE_TEST_PG_URL + LOREWEAVE_TEST_META_URL.
 tokio = { workspace = true }
+# WS2 — `tower::ServiceExt::oneshot` drives the router in-process for the
+# auth-gate and probe tests (the roleplay-service pattern).
+tower = { workspace = true }
+# WS4 — route conformance parses the OpenAPI contract. A REAL parser, not the
+# four-line reader `provisioner_live::manifest_ids` uses: that one reads a shape
+# stated in its own file's header, whereas this reads a document whose nesting a
+# hand-rolled scanner could silently mis-walk — and a conformance gate that
+# reaches nothing is byte-identical to one that passes. Same version as
+# meta-rs/contracts-prompt so the workspace stays on one serde_yaml.
+serde_yaml = "0.9"
 # 089: pins the BYOK-gateway request shape (HttpEmbeddingProvider) against a stub
 # server without needing provider-registry up (the real round-trip is the deferred
 # live-smoke). Workspace-pinned.

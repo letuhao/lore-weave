@@ -29,10 +29,19 @@
 # image, same libc, same data directory semantics — the ONLY change is that
 # `CREATE EXTENSION vector` now works.
 #
-# `0008_pgvector_setup` is unregistered from `contracts/migrations/manifest.yaml`
-# while this is unbuilt (`1b14-05`); `scripts/migration-manifest-gate.py` holds
-# that row and its shrink rule reds the moment it is re-registered, which is the
-# signal to delete the exclusion.
+# `0008_pgvector_setup` was unregistered from `contracts/migrations/manifest.yaml`
+# while this was unbuilt (`1b14-05`). It was RE-REGISTERED the same day this file
+# was written, and the exclusion in `scripts/migration-manifest-gate.py` deleted
+# with it — so the sentence that used to stand here (describing the migration as
+# still unregistered) was stale from the hour it was committed.
+#
+# BUILDING THE IMAGE IS NOT RUNNING IT. Corrected 2026-08-11: the image existed
+# and `docker-compose.yml` named it, but the running container was still
+# `postgres:18-alpine` for three days, so every provision died at `0006` on
+# `could not access file "vector"` and the compose file said otherwise. Nothing
+# compares a declared image against a running one. `docker compose up -d postgres`
+# is the whole fix; the named volume `loreweave_pg` survives it (161 databases,
+# verified). See `WSD-3` in `docs/plans/2026-08-13-world-service-server-RUN-STATE.md`.
 
 ARG PG_IMAGE=postgres:18-alpine
 ARG PGVECTOR_VERSION=v0.8.1

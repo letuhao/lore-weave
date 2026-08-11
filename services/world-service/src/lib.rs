@@ -60,11 +60,13 @@ pub mod deprovisioner;
 pub mod embedding_queue;
 pub mod errors;
 pub mod orphan_scan;
+pub mod provision_flow;
 pub mod provisioner;
 pub mod provisioner_live;
 pub mod reality_seeder;
 pub mod rebuild;
 pub mod replay_aggregate;
+pub mod server;
 
 pub use capacity_glue::{live_snapshot, place_reality, LIVE_STATES};
 pub use capacity_planner::{CapacityPlanner, CapacityThresholds, ShardCapacity, ShardId};
@@ -85,6 +87,12 @@ pub use embedding_queue::live::{
 pub use errors::ProvisionerError;
 // W5 — orphan classification for the reality reaper.
 pub use orphan_scan::{classify as classify_orphans, Finding, RegistryRow, ScanThresholds};
+// WS3 — the end-to-end flow, shared by the `provision` worker and the HTTP
+// surface so neither restates the other (`WS-F1`).
+pub use provision_flow::{
+    EffectsConfig, Registration, SETTLED_STATUSES, existing_registration, place_and_provision,
+    resume_on_registered_shard,
+};
 pub use provisioner::{ProvisionReport, ProvisionRequest, Provisioner};
 pub use provisioner_live::{BridgeClient, LiveEffects};
 // L5.G cycle 26 — reality seeder + supporting traits.

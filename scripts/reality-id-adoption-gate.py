@@ -170,6 +170,25 @@ STRUCTURALLY_EXEMPT: dict[str, str] = {
     "services/world-service/src/bin/provision": (
         "the provisioner's CLI entry point; same subject, same reason."
     ),
+    # `.rs` ON PURPOSE, like the `ceilings.rs` row below: these reason about one
+    # FILE's subject, not a directory's. `src/server/` will hold the GEO_001
+    # routes, which act on realities that ARE open and bindable and must be held
+    # to `dp::RealityId` — a directory prefix here would exempt them in advance.
+    "services/world-service/src/provision_flow.rs": (
+        "the provisioning FLOW, shared by the CLI worker and the HTTP route; same "
+        "subject as `provisioner`, extracted so neither restates the other. Its "
+        "`existing_registration` READS `reality_registry` to discover whether the "
+        "reality exists at all and in what state — a question that necessarily "
+        "precedes any bind, since `SessionContext::bind` needs the answer."
+    ),
+    "services/world-service/src/server/handlers/realities.rs": (
+        "the provisioning route's handler. Its request is `ProvisionRequest`, "
+        "already exempt for creating the reality; its response reports realities "
+        "in states `bind` REFUSES — the `already_provisioned` arm returns whatever "
+        "status the registry holds, including `archived` and `soft_deleted`. A "
+        "`RealityId` there would assert the control plane accepts commands for a "
+        "world that was torn down, which is the forged assertion, not the fix."
+    ),
     "services/world-service/src/rebuild": (
         "rebuilds projections against realities in ANY state, deliberately. "
         "`rebuild/mod.rs`: \"the reality MUST stay frozen and an operator "

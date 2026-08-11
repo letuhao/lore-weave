@@ -1,29 +1,45 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the turn loop has a producer, and Phase 0 found four turns (2026-08-11, branch `feat/game-logic`)
+## ▶ GAME BUILD — world-service is a running process, and a reality can be created over HTTP (2026-08-11, branch `feat/game-logic`)
 
-**HEAD:** `2b228a8fd`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-88`).
+**HEAD:** `ff55a2ac5`+ · **ACTIVE run-state: [`docs/plans/2026-08-13-world-service-server-RUN-STATE.md`](../plans/2026-08-13-world-service-server-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — the turn loop’s remaining half, or `GATE-TEETH-43`’s next batch.**
-> **ACTIVE run-state: [`docs/plans/2026-08-11-turn-loop-RUN-STATE.md`](../plans/2026-08-11-turn-loop-RUN-STATE.md)** — `T0`–`T7` are closed.
+> **▶ DO NEXT — `GATE-TEETH-43`'s next batch, or the gateway's world route.**
 >
-> **What shipped:** `advance_turn` and the DP-Ch51 advisory slot both have real producers on
-> `ChannelWriter`, proven by **8/8 live** integration tests against a real Postgres (not drills —
-> rows committed through the epoch-fenced writer and read back). `dp-oracle-coverage` went
-> **15/15 → 17/17**: `15_turn_boundary` and `21_llm_turn_slot` both left `NO_PRODUCER`, each
-> because its shrink arm fired on its own.
+> **What shipped, in three consecutive tracks.** The turn loop
+> ([run-state](../plans/2026-08-11-turn-loop-RUN-STATE.md), `T0`–`T8`): `advance_turn` + the DP-Ch51
+> advisory slot on `ChannelWriter`, live-tested. Durable subscribe
+> ([run-state](../plans/2026-08-12-durable-subscribe-RUN-STATE.md), `D0`–`D5`):
+> `read_channel_events_durable` over DP-Ch17's canonical Postgres tier, so something can read what
+> the writer commits. **`dp-oracle-coverage` went 15/15 → 18/18** — three documents left
+> `NO_PRODUCER`, each because its own shrink arm fired.
 >
-> **Read §1 of that run-state before touching anything nearby.** Phase 0 found **four** different
-> things called a “turn”, one of them built and a *different concept* with a mutator one word away
-> (`TurnContext::advance` vs `advance_turn`), plus `DpClient` and `ActorId` — both written into
-> LOCKED specs, neither existing. Six sealed forks record every reconciliation; `SF-1` was AMENDED
-> after building proved its own reasoning wrong.
+> **And then world-service stopped being a scaffold.** `src/main.rs` was a 22-line `println!` whose
+> header said the HTTP server *"awaits the DP-kernel (cycle 17)"* — a dependency that had already
+> landed in its own `Cargo.toml`. It now boots on `crates/service-http` and serves
+> `POST /internal/v1/realities`. **A reality is created by an HTTP request**, proven LIVE against a
+> running process: `201`, then `SELECT datname FROM pg_database` showing `lw_reality_44b0d1a3d845`
+> with 12 tables and an `active` registry row. All three outcomes are real — `provisioned`,
+> `already_provisioned`, and `resumed` (exercised on a genuinely stranded reality, not a
+> synthesised one).
 >
-> **Still open on this track:** DP-Ch52’s auto-timeout and DP-Ch53’s three patterns, both gated on
-> `channel_pause` (DP-Ch35, unbuilt) — `SF-4`, now with a shrink arm that reds the day it appears.
-> Also `TL-PGVECTOR` (the dev cluster’s `template1` claims an extension the cluster lacks, so
-> `0006` cannot run) and `TL-DOWN-GUARD` (`0020`’s down now destroys live turn history — it needed
-> no guard when nothing wrote a non-zero value, and that stopped being true at `T3`).
+> **Read §1 of the world-service run-state before touching anything nearby.** Its Phase 0
+> falsified **two of the four claims the goal asserted**, both of them mine: world-service already
+> served HTTP (the embedding worker's axum router), and the contract home `contracts/api/world/`
+> had existed since Cycle 0. Both errors were the same move — grepping for the name I expected
+> instead of the concept.
+>
+> **`TL-PGVECTOR` is DISCHARGED**, and the lesson is not about pgvector. The image
+> `loreweave/postgres-pgvector:18` was declared in compose *and already built*; the running
+> container was still `postgres:18-alpine` for three days. **Nothing compares a declared image
+> against a running one.** `docker compose up -d postgres` was the whole fix (161 databases intact).
+>
+> **Still open:** `WS-GATEWAY-CONSUMER` — `api-gateway-bff` has no world route, so `I1`'s
+> player-facing path to reality creation does not exist yet; that is the natural next build.
+> `WS-COMPOSE` (world-service has no compose service block or general Dockerfile).
+> `TL-DOWN-GUARD` (`0020`'s down migration now destroys live turn history — it needed no guard
+> when nothing wrote a non-zero value, and that stopped being true at `T3`). DP-Ch52/Ch53 remain
+> gated on `channel_pause` (`SF-4`, with a shrink arm).
 >
 > **`GATE-TEETH-43`** is untouched and still the other live row — next batch is the
 > destructive/tenancy set, picked worst-consequence-first, each with a **reach family**.

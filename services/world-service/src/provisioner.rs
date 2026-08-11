@@ -69,7 +69,16 @@ pub struct ProvisionRequest {
 }
 
 impl ProvisionRequest {
-    fn validate(&self) -> Result<(), ProvisionerError> {
+    /// Reject a request the flow cannot act on.
+    ///
+    /// **Public because the HTTP boundary must run it BEFORE the flow.**
+    /// `ProvisionerError` cannot distinguish "your input is bad" from "our
+    /// machinery failed" — `InvalidState` carries both — so a handler that only
+    /// mapped the error would answer 500 for a caller's typo. Running it up
+    /// front lets the boundary that owns the status code make the distinction.
+    /// `provision_reality` still calls it, so this is a second check and not a
+    /// relocated one.
+    pub fn validate(&self) -> Result<(), ProvisionerError> {
         if self.reality_id.is_nil() {
             return Err(ProvisionerError::InvalidState(
                 "reality_id must not be nil".into(),
