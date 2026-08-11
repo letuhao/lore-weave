@@ -1953,6 +1953,10 @@
     "composition_scene_link_edit": {
       "state": "proven",
       "note": "PROVEN across all three ops, and the CONFLICT claim -- restore 'FAILS if that same edge has since been re-declared' -- was proven by building the race rather than reading it: delete an edge, create the SAME (from, to, kind) triple again, then restore the archived one. It refused, the old edge stayed archived, and the newly declared one was untouched. Identical discipline to #185's entity_override_edit: a unique constraint resolved by REFUSAL rather than by clobbering, so recovering an old row can never destroy a newer deliberate decision. The refusal names both possible causes ('it was never deleted, or the same edge has since been re-declared') because from the caller's side they are indistinguishable and picking one would be a guess. All three ops name their missing companions. This unified tool is also the only surface with op=restore -- the legacy composition_scene_link_delete (#219) can soft-archive but offers no way back, so the recoverability its corrected description now promises is reachable only from here."
+    },
+    "composition_scene_link_restore": {
+      "state": "proven",
+      "note": "PROVEN, and it completes #220 into a real proof of the conflict rule. In #220 THIS EXACT edge could not be restored because the same (from, to, kind) triple had been re-declared. Here, with that rival archived, the SAME link_id restores successfully -- restored:true, is_archived back to false, and the authored label 'i219' intact through the whole delete → conflict → restore cycle. That pairing proves the check is DYNAMIC: it asks whether a live rival exists right now, rather than stamping the archived row as permanently unrestorable at delete time. A one-shot mark would have failed identically in both iterations and looked just as correct in either one alone -- it took the two states to tell them apart. Restoring an already-live link and an unknown link_id both give the same combined refusal ('it was never deleted, or the same edge has since been re-declared'), which is honest for a caller that cannot distinguish those from outside."
     }
   }
 }
