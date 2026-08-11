@@ -1356,3 +1356,33 @@ Not blocking #268: no leak was demonstrated. Every entity I read was `active`, s
 a status that would disclose anything, and the fact axis — the part carrying narrative content —
 is provably correct.
 
+## DQ-25 — should `registry_propose_workflow` check that a step's tool exists?
+
+Found while proving the tool (#289). Everything else about it is sound and recorded there; this is
+one question I will not answer by guessing.
+
+Measured: a proposal whose only step names `no_such_tool_289` was accepted without comment and
+recorded as `pending`, identical in every respect to a proposal naming a real tool. A user opening
+the "Workflow Proposals" panel is therefore asked to approve a workflow that cannot run, and
+nothing on the propose path tells either of them.
+
+**Open question:** should propose validate each step's `tool` against the live tool catalogue?
+
+For: the step's `gate` IS validated against a closed enum, with a self-correcting "not one of:
+[...]" error, so the tool already draws a line between "a value I can check" and "a value I
+cannot". A tool NAME is equally checkable in principle, and a workflow that names a tool nobody
+serves is dead on arrival — catching it costs one refusal instead of a human review cycle.
+
+Against: the agent-registry does not currently know the tool catalogue. Validating would couple it
+to the federated MCP surface at propose time, adding a cross-service dependency and a new failure
+mode (catalogue unreachable ⇒ no workflow can be proposed) to a path that today has neither. It
+would also make a proposal's validity depend on WHEN it was made, which is awkward for a record
+the user approves later.
+
+A middle answer exists — record the unknown tool but flag it on the proposal so the review panel
+can show it — and choosing between the three is a product decision about where that check belongs,
+not something the code implies.
+
+Not blocking #289: the tool's own contract (propose, never create) is verified, and the human
+review step is exactly where a bogus tool would be caught today.
+
