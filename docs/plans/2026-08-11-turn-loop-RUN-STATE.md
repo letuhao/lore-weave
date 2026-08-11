@@ -63,8 +63,25 @@ The LOCKED design is sound; what is stale is its **surface assumptions**. This t
 
 ## 2 · SEALED FORKS — decided here, so nobody re-asks
 
-**`SF-1` · `advance_turn` is a free function in `crates/dp`, not a method, and not in `dp-kernel`.**
-DP-Ch21 writes `impl DpClient`. There is no `DpClient`; the SDK is free functions taking `&SessionContext`, and `dp::t3_write` is the shape to mirror. Putting it in `dp-kernel` would collide with `turn.rs` (§1.2). **Reversal trigger:** a `DpClient` struct actually appearing in `crates/dp`.
+**`SF-1` · `advance_turn` is `ChannelWriter::advance_turn` in `dp-kernel::channel`. AMENDED
+2026-08-11 at `T3`, and the original was wrong on its own reasoning.**
+
+As first sealed it read: *"a free function in `crates/dp`, not a method, and **not in `dp-kernel`**
+— putting it in `dp-kernel` would collide with `turn.rs`."* Two errors, found by building it:
+
+* **The collision argument was too broad.** The clash is with the *module* `dp-kernel::turn`, not
+  the crate. `channel.rs` is a different module, and it is where `ChannelWriter::append` — the
+  thing that actually commits a channel event — already lives. Siting the turn allocation anywhere
+  else would mean a second writer path.
+* **`crates/dp` cannot do it.** The SDK has no database. Its `WriteBackend` trait has exactly one
+  implementation, `KernelWriteBackend`, and **nothing uses it** — measured. A `dp::advance_turn`
+  today would be a facade over nothing, which is the orphan shape §0.6c forbids.
+
+What survives from the original: **not `impl DpClient`** (there is no such type), and **not
+`dp-kernel::turn`**. The SDK-facing facade waits on DP-Ch14 cross-node write routing, which is
+unbuilt — tracked as `TL-SDK-FACADE`.
+
+**Reversal trigger:** DP-Ch14 shipping, or a production `WriteBackend` implementation appearing.
 
 **`SF-2` · The two turn concepts get distinguishing names in prose at every definition site, and are NOT renamed.**
 `BDR-55`: renaming moves the number, not the property — and #1 is a Go↔Rust mirror pair with a parity test, so renaming it would break a cross-language contract to solve a readability problem. Instead each definition site states which turn it is and links the other. **Reversal trigger:** a third consumer confusing them in review.
@@ -84,8 +101,8 @@ The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md
 | `T0` | this file + the audit above | `phase0-reconcile-gate.py` passes on it, with pasted output |
 | `T1` | **schema**: per-reality migration adding `events.turn_number` + `channel_writer_state.last_turn_number` | the migration runs AND re-runs clean against a throwaway DB (pasted); the `DEFERRED_EVENT_COLUMNS` shrink arm **FIRES** and is paid by removing the row; migration-manifest + idempotency validators green |
 | `T2` | **event type**: register `turn_boundary` in `contracts/events/_registry.yaml` | eventgen regenerated, `eventgen-validate.sh` green, envelope-mirror gate green — all pasted |
-| `T3` | **`advance_turn` producer** in `crates/dp` (`SF-1`) + writer-side allocation in `dp-kernel::channel` | the symbol exists in non-comment source; unit tests for the allocation algorithm incl. the `MAX(turn_number)` reseed; `cargo test -p dp -p dp-kernel` green, pasted |
-| `T4` | **end to end against the real commit spine** | a test that RUNS and commits a `TurnBoundary` through the existing `ChannelWriter` epoch-fenced path, with the row read back. **State explicitly whether it is a live test or a drill** (§0.5) — a drill does not satisfy the goal |
+| ~~`T3`~~ ✅ **DONE 2026-08-11.** `ChannelWriter::advance_turn` in `dp-kernel::channel` — the module the spine already writes through, so no collision with `turn.rs` (`SF-1` amended: the writer-side lands here; the SDK facade waits on DP-Ch14 cross-node routing, unbuilt). The turn increment rides the SAME statement as the `channel_event_id` CAS, so the epoch fence covers it for free and DP-Ch22’s `MAX(turn_number)` reseed is unnecessary — there is no in-memory counter to drift. 3/3 bitten. **`advance_turn` producer** in `crates/dp` (`SF-1`) + writer-side allocation in `dp-kernel::channel` | the symbol exists in non-comment source; unit tests for the allocation algorithm incl. the `MAX(turn_number)` reseed; `cargo test -p dp -p dp-kernel` green, pasted |
+| ~~`T4`~~ ✅ **DONE 2026-08-11 — and it is a LIVE test, not a drill.** 5/5 in `integration_channel_writer` against a real Postgres: rows committed through the real epoch-fenced `ChannelWriter`, then READ BACK from `events` and `channel_writer_state`. Covers turn 0 as the never-advanced state, the boundary carrying the NEW number, ordinary appends riding the current turn, and a writer handoff continuing the sequence without duplication — the property DP-Ch22’s reseed was written for, proven against an implementation that deliberately does not reseed. **end to end against the real commit spine** | a test that RUNS and commits a `TurnBoundary` through the existing `ChannelWriter` epoch-fenced path, with the row read back. **State explicitly whether it is a live test or a drill** (§0.5) — a drill does not satisfy the goal |
 | `T5` | **oracle for `15_turn_boundary`** | `dp-oracle-coverage-gate`'s `NO_PRODUCER` arm fires for it; the row is removed; the doc enters the coverable denominator with a live asserting oracle; **bitten** per the six steps; baseline recorded |
 | `T6` | **`ActorId` + DP-Ch51 slot primitive** — schema columns, `claim_turn_slot`/`release_turn_slot`/`get_turn_slot` | same evidence shape as `T1`+`T3`; `ActorId` defined once, with its home justified against the actor-hub prior art |
 | `T7` | **oracle for `21_llm_turn_slot`** | as `T5` |
@@ -100,6 +117,7 @@ The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md
 | `TL-PAUSE` | `channel_pause` (DP-Ch35) is unbuilt, so DP-Ch53's Strict/Concurrent/Cancellable patterns cannot be built | `SF-4`'s reversal — `channel_pause` shipping |
 | `TL-DPCLIENT` | two LOCKED docs specify `impl DpClient` and no such type exists; `SF-1` routes around it rather than fixing the docs | a third doc specifying `DpClient`, or the type actually being introduced |
 | `TL-TURN-VOCAB` | four concepts named "turn"; `SF-2` documents rather than renames | a review in which two of them are confused |
+| `TL-SDK-FACADE` | **`dp::advance_turn` does not exist and deliberately should not yet.** `crates/dp`’s `WriteBackend` has one implementation (`KernelWriteBackend`) and **nothing uses it** — measured. A facade over that today is a door onto nothing. The producer therefore lives on `ChannelWriter`, which is what the commit spine already drives | DP-Ch14 cross-node write routing shipping, or any production `impl WriteBackend`. See `SF-1` as amended |
 | `TL-PGVECTOR` | **`template1` on the dev cluster records `vector 0.8.1` as INSTALLED while the cluster has no pgvector files** (PG 18.1 / Alpine), so every database `CREATE DATABASE` makes from it inherits a `pg_extension` row pointing at a missing shared library. `0006_projections` dies on `could not access file "vector"`. This is `W7-TEMPLATE1`'s hazard arriving by its **inverse**: that row warns the template silently *carries* pgvector into every new DB; the live failure is that it silently *claims* to, after the image stopped providing it — so provisioning yields databases that look correct and break on the first vector DDL. Not this track's subject and not fixed here | anyone provisioning a reality that needs embeddings on this cluster, or CI adopting this image. The fix is infra: install pgvector in the image, or drop the stale `pg_extension` row from `template1`. **Do not paper over it in a migration** |
 | `TL-CWC-A2-CHANNEL-ID` | **two load-bearing documents disagree about the same field.** `contracts/game-wire/README.md` lists `channel_id` among the 64-bit ids that MUST cross as a decimal string (CWC-A2); `tools/eventgen/field_map.go` says it is *"NOT a CWC-A2 decimal-string case"* and argues that a channel id is a small per-reality index. Only one can be right, and today the emitted TS says `number` | the first client that reads a `channel_id` above 2^53, or anyone touching CWC-A2. Cheap to settle, and it should be settled by whoever owns the wire contract rather than by a turn-loop slice |
 | `TL-DOWN-GUARD` | `0020`'s down migration discards every channel's turn history with no refuse-if-populated guard, unlike `036` in the meta tree. Correct today — nothing writes a non-zero value | **`T3`.** The moment `advance_turn` has a producer, this down migration can destroy live game state. Revisit it in the same change |
@@ -109,6 +127,27 @@ The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md
 ## 5 · REGISTERS — decisions · parked · debt · drift
 
 **An empty drift log is not evidence of a clean run** (§0.6d). Append as you go.
+
+**`TLD-12` (2026-08-11) — a test file's setup instructions are a claim nothing checks.**
+`integration_channel_writer.rs`'s header says it *"requires per-reality migrations 0002 + 0005 +
+0013 + 0014"*. It also needs **0016** (`ruleset_digest`), and has since that column was added to
+`ChannelWriter::append` — the header was never updated. Built a DB from the list, ran, and all
+five tests failed on `column "ruleset_digest" of relation "events" does not exist`, including the
+three that pre-date this track. Nobody noticed because whoever runs this suite runs it against a
+DB that already has everything. Header corrected to name 0016 and 0020.
+
+**`TLD-11` (2026-08-11) — the harness classifier was wrong for the THIRD time in one session.**
+`T3`'s harness treats a compile failure as a wrong-reason red and scores it SURVIVED. It detected
+one with `grep -E "^error(\[|:)"` — and `error: test failed, to rerun pass …` is what cargo prints
+for an **ordinary test failure**. So every successful bite was classified as a build error: 0/3
+against three arms that all work.
+
+Three times now, in one session, the harness has been the thing that was broken (`BDR-84`
+expectations, `TLD-10`'s git-checkout restore, this). The pattern is worth naming: **a bite harness
+is itself an unverified check**, and its failure mode is symmetric — it can report a working arm
+dead, or a dead arm working. Only the first is self-announcing. The discipline that catches the
+second is the one already written down: the red must NAME the specific thing, never merely be
+non-zero.
 
 **`TLD-10` (2026-08-11) — a bite harness that restores with `git checkout` DELETES the fix under
 test.** Two arms of `T2`'s harness restored the mutated file with `git checkout -- <file>`, which

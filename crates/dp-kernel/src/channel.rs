@@ -108,10 +108,18 @@ pub struct ChannelWriter {
     lease: WriterLease,
 }
 
-/// A successful channel append: the allocated position.
+/// A successful channel append: the allocated position, and the turn it landed in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChannelAppended {
     pub channel_event_id: i64,
+    /// `DP-Ch22`. For an ordinary append this is the channel's CURRENT turn —
+    /// the value every event carries until the next boundary. For
+    /// [`ChannelWriter::advance_turn`] it is the NEW turn, i.e. previous + 1.
+    ///
+    /// 0 means the channel has never advanced a turn, which DP-Ch24 makes a
+    /// legitimate steady state rather than an uninitialised one: a feature that
+    /// does not use turn semantics leaves it at 0 forever.
+    pub turn_number: i64,
 }
 
 impl ChannelWriter {
@@ -140,25 +148,75 @@ impl ChannelWriter {
         env: &EventEnvelope,
         causal_refs: &serde_json::Value,
     ) -> Result<ChannelAppended, ChannelError> {
+        self.append_inner(env, causal_refs, false).await
+    }
+
+    /// `DP-Ch21` / `DP-Ch22` — advance this channel's turn counter by one and
+    /// commit the caller's `channel.turn_boundary` event at the new turn.
+    ///
+    /// # Which "turn" this is
+    ///
+    /// The per-channel page-flip counter every member of the channel shares —
+    /// **not** [`crate::turn::TurnContext`], which is one REQUEST's lifecycle
+    /// (`pending → validating → … → completed`) and whose mutator is
+    /// `TurnContext::advance`. The two carry the same scope keys and their
+    /// names are one word apart; nothing mechanical separates them, so this
+    /// paragraph and its twins in `0020_turn_boundary.up.sql` and
+    /// `contracts/events/channel.go` are the separation.
+    ///
+    /// # Why it is the SAME statement as the allocation
+    ///
+    /// DP-Ch22 requires the `last_turn_number` update to be in the same
+    /// transaction as the event insert, so no partial state is observable. It
+    /// goes further here and puts it in the same *statement* as the
+    /// `channel_event_id` CAS — which also makes the epoch fence cover the turn
+    /// allocation for free. A separate `UPDATE … SET last_turn_number` would be
+    /// a second write that a stale writer could land after losing the fence.
+    ///
+    /// This is why DP-Ch22's `MAX(turn_number)` reseed-on-takeover is
+    /// unnecessary, exactly as `append`'s doc says of DP-Ch11's: allocation is
+    /// DB-authoritative, so there is no in-memory counter to drift. The spec's
+    /// failover race — *"N2 queries MAX, gets 4, allocates 5 again"* — cannot
+    /// occur, because no one ever queries `MAX`.
+    pub async fn advance_turn(
+        &self,
+        env: &EventEnvelope,
+        causal_refs: &serde_json::Value,
+    ) -> Result<ChannelAppended, ChannelError> {
+        self.append_inner(env, causal_refs, true).await
+    }
+
+    async fn append_inner(
+        &self,
+        env: &EventEnvelope,
+        causal_refs: &serde_json::Value,
+        advance_turn: bool,
+    ) -> Result<ChannelAppended, ChannelError> {
         let mut tx = self.pool.begin().await?;
 
         // ── 1: allocate + fence, one atomic statement ──
-        let allocated: Option<(i64,)> = sqlx::query_as(
+        //
+        // `$4` decides whether this append OPENS a new turn or rides the
+        // current one. Both branches are the same UPDATE so the epoch fence
+        // covers the turn allocation too — see `advance_turn`'s doc.
+        let allocated: Option<(i64, i64)> = sqlx::query_as(
             r#"
             UPDATE channel_writer_state
-               SET last_event_id = last_event_id + 1,
-                   updated_at    = NOW()
+               SET last_event_id    = last_event_id + 1,
+                   last_turn_number = last_turn_number + CASE WHEN $4 THEN 1 ELSE 0 END,
+                   updated_at       = NOW()
              WHERE reality_id = $1 AND channel_id = $2 AND current_epoch = $3
-            RETURNING last_event_id
+            RETURNING last_event_id, last_turn_number
             "#,
         )
         .bind(self.reality_id)
         .bind(self.lease.channel_id.get())
         .bind(self.lease.epoch)
+        .bind(advance_turn)
         .fetch_optional(&mut *tx)
         .await?;
 
-        let Some((channel_event_id,)) = allocated else {
+        let Some((channel_event_id, turn_number)) = allocated else {
             tx.rollback().await.ok();
             // Distinguish "stale epoch" from "no state row" for the caller.
             let exists: Option<(i64,)> = sqlx::query_as(
@@ -184,7 +242,7 @@ impl ChannelWriter {
                 event_id, reality_id, aggregate_type, aggregate_id, aggregate_version,
                 event_type, event_version, payload, metadata, occurred_at, recorded_at,
                 content_sha256, channel_id, channel_event_id, writer_epoch, causal_refs,
-                ruleset_digest
+                ruleset_digest, turn_number
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7, $8, $9,
@@ -193,7 +251,12 @@ impl ChannelWriter {
                     jsonb_build_object('p', $8::jsonb, 'm', $9::jsonb)::text, 'UTF8')), 'hex'),
                 $12, $13, $14, $15,
                 -- RLS-A13, NULL when the producer had no pin. See event_store_pg.
-                $16
+                $16,
+                -- DP-Ch22: every channel event carries the turn it landed in.
+                -- For an ordinary append that is the CURRENT turn; for
+                -- advance_turn it is the new one, and both come from the same
+                -- CAS above so the value cannot disagree with the state row.
+                $17
             )
             "#,
         )
@@ -213,6 +276,7 @@ impl ChannelWriter {
         .bind(self.lease.epoch)
         .bind(causal_refs)
         .bind(env.ruleset_digest.as_ref())
+        .bind(turn_number)
         .execute(&mut *tx)
         .await?;
 
@@ -242,7 +306,7 @@ impl ChannelWriter {
             .await?;
 
         tx.commit().await?;
-        Ok(ChannelAppended { channel_event_id })
+        Ok(ChannelAppended { channel_event_id, turn_number })
     }
 }
 
