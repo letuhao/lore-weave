@@ -1969,6 +1969,10 @@
     "composition_structure_template_create": {
       "state": "proven",
       "note": "PROVEN. A template with two beats is created and owned by the caller; a template with an EMPTY beats array is also accepted, despite the description defining a structure as 'a named ordered list of beats you can decompose a book against'. SAME OBSERVATION AS #173 AND #183, OPPOSITE CONCLUSION, and the difference is the denominator. There the empty case had ZERO organic occurrences, so accepting it was an untested corner. Here 3 of 23 non-archived structure templates organically have no beats -- 13% -- which is evidence the empty state is USED, most plausibly as create-then-fill. Adding a non-empty constraint would break an existing workflow rather than close a gap, so the same measurement that would have justified tightening elsewhere argues against it here. Measuring the population before proposing a constraint is the whole point; the shape of the anomaly said nothing on its own. Both test templates were archived afterwards."
+    },
+    "composition_structure_template_edit": {
+      "state": "proven",
+      "note": "PROVEN across its six ops, and the BUILT-IN guard was tested properly on the second attempt. My first probe omitted expected_version, so it was refused for THAT and never reached the ownership check -- a refusal that would have looked like the guard working while proving nothing. Retried with the built-in's real version: still the uniform deny, and 'Save the Cat' is unchanged in the database. So 'built-ins are never edited in place' holds on ownership, not merely on a missing argument. Every op names its missing companions ('op=update requires template_id and expected_version'). op=list returns the built-ins with their beats, which is what makes the description's advice -- 'use it to find the template_id to pass to plan_compile' -- followable in one call. The clone/archive/restore ops delegate to the paths proven in #222 and #223, including #223's deep-copy check that a cloned built-in carries its beats rather than referencing them."
     }
   }
 }
