@@ -2,6 +2,7 @@ package api
 
 import (
 	"errors"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -136,5 +137,31 @@ func TestTheHintIsSortedSoTheSameRefusalReadsTheSameTwice(t *testing.T) {
 	s := &Server{}
 	if a, b := s.planVocabularyHint("x"), s.planVocabularyHint("x"); a != b {
 		t.Fatalf("map iteration leaked into the message:\n%q\n%q", a, b)
+	}
+}
+
+// TOOLV2 LOOP #82 — a model sent type="edit_kind" to glossary_propose_batch (4 calls, 3
+// sessions, the last on 2026-07-29). The enum rejection lists the nine valid op types, which
+// says what the model cannot do and leaves it to guess where the capability went. It is
+// glossary_book_patch, and the op-type schema now says so BEFORE the call is composed.
+func TestTheOpTypeSchemaNamesTheToolThatEditsAnExistingRow(t *testing.T) {
+	f, ok := reflect.TypeOf(proposeBatchOpIn{}).FieldByName("Type")
+	if !ok {
+		t.Fatal("proposeBatchOpIn has no Type field")
+	}
+	desc := f.Tag.Get("jsonschema")
+
+	// Every op the registry declares must still be listed — the pointer must not replace the
+	// vocabulary, only follow it.
+	for op := range (&Server{}).planRegistry() {
+		if !strings.Contains(desc, op) {
+			t.Errorf("op %q is in the registry but missing from the schema description", op)
+		}
+	}
+	if !strings.Contains(desc, "glossary_book_patch") {
+		t.Errorf("the schema must name where a single-field edit actually lives: %q", desc)
+	}
+	if !strings.Contains(desc, "edit_kind") {
+		t.Errorf("the op the model actually invented must be named as absent: %q", desc)
 	}
 }

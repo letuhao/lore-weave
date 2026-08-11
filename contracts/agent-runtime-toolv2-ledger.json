@@ -934,6 +934,17 @@
         "MEASURED BUT NOT CLAIMED AS A DEFECT: 2 of the 6 recorded cards quoted llm_calls 0 and 0 tokens, both in one session on 2026-06-21. A chapter with nothing extractable would correctly estimate zero, today's call quotes real numbers, and no other tool has ever produced a zero-estimate card. Two calls from June is not enough to call it wrong"
       ],
       "admitted": false
+    },
+    "glossary_propose_batch": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix that finishes iteration 77's on the path that bypasses the planner. 15 calls / 5 ok. The failures split into a shape class -- an invented `target` sibling to `params`, and an ops list that failed the item schema -- and the interesting one: type='edit_kind', an op that does not exist (4 calls / 3 sessions, the last on 2026-07-29). The enum rejection already lists all nine valid types, so the model is told what it CANNOT do and left to guess where the capability went. It went to glossary_book_patch. Iteration 77 added that pointer to the PLANNER's refusal; this adds it to the op-type SCHEMA, which is what the model reads before composing the call rather than after being rejected -- and a schema-level enum violation never reaches handler code, so the schema is the only place the correction can live.",
+      "evidence": [
+        "PHASE 2: 5 ok / 10 failed = 4 'at least one kind is required' (an empty create_kinds op) + 4 ops-item schema failures + 1 unexpected 'type' at root + 1 unexpected 'target' inside an op",
+        "DATA: the invented op is edit_kind, and the rejection enumerates the nine real ones -- a code-known enum named inline, which is the C-20 pattern already working",
+        "CODE: the guard asserts every op the REGISTRY declares still appears in the schema description (so the pointer follows the vocabulary rather than replacing it), plus the pointer and the named-absent op. Removing the clause reds it. Whole glossary-service suite green",
+        "LIVE on the deployed image: the advertised inputSchema for ops[].type now ends '...There is NO edit_kind / edit_genre op: to change a field (name, description, color, icon, sort_order) on an EXISTING genre, kind or attribute, call glossary_book_patch instead — it needs no plan and no confirm.'"
+      ],
+      "admitted": false
     }
   }
 }

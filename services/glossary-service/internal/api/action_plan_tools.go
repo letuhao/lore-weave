@@ -145,7 +145,14 @@ func (s *Server) toolPlan(ctx context.Context, req *mcpsdk.CallToolRequest, in p
 // writes under ONE human confirm.
 
 type proposeBatchOpIn struct {
-	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate"`
+	// The trailing clause is not decoration. Measured: a model sent type="edit_kind" (4 calls,
+	// 3 sessions, the last on 2026-07-29). There is no such op and there is not going to be —
+	// editing one field on an existing row is glossary_book_patch's job, not a plan's. The enum
+	// rejection lists the nine valid types, which tells the model what it CANNOT do and leaves
+	// it to guess where the capability went; naming the tool here puts that in front of the
+	// model BEFORE it composes the call rather than after. Same correction iteration 77 made to
+	// the planner's own refusal, on the path that bypasses the planner.
+	Type string `json:"type" jsonschema:"op type — one of: adopt_genres, create_kinds, add_attributes, edit_attribute, delete_genre, delete_kind, delete_attribute, merge_candidate, dismiss_candidate. There is NO edit_kind / edit_genre op: to change a field (name, description, color, icon, sort_order) on an EXISTING genre, kind or attribute, call glossary_book_patch instead — it needs no plan and no confirm."`
 	// Params is the op's typed params object. Shapes mirror the planner vocabulary
 	// (see glossary_propose_batch's tool description), e.g. create_kinds →
 	// {"kinds":[{"code","name","description","attributes":[...]}]}.
