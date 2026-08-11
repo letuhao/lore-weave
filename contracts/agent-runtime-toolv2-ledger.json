@@ -1403,6 +1403,17 @@
         "NOT EXERCISED, and not for convenience: this writes the user's default model for a capability. Even with an immediate restore there is a window in which indexing or chat could resolve the wrong default, and a test is not worth that on a real account"
       ],
       "admitted": false
+    },
+    "book_audio_generate": {
+      "state": "proven",
+      "note": "PROVEN by CONSTRUCTING ITS FIRST INVOCATION -- the first tool in this loop with zero recorded calls, so there was no population to split and no recorded shape to check against. It works: a propose returning a signed token, descriptor book.media, titled 'Generate chapter audio (priced)'. THE ZERO IS THE POINT AND IT IS A SUCCESS, NOT A GAP: the tool is visibility:legacy and its own description says 'DEPRECATED: spending money on narration is a MANUAL UI action — the agent does not bill.' A deprecated money-spending tool that no agent has ever called is the deprecation working. Its refusal path also inherits iteration 86's fix -- a third tool on the shared chapter-action path now naming the chapter instead of blaming the book.",
+      "evidence": [
+        "PHASE 2: 0 calls. There is no failure population and no recorded result -- the live call is the only evidence, which is why the schema was read first",
+        "FIRST INVOCATION: a confirm card with a signed token, descriptor book.media, destructive:false, title 'Generate chapter audio (priced)'. A propose, so nothing was billed",
+        "CONTROL: an absent chapter_id -> 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'. Iteration 86's fix reaching a third tool on the shared proposeChapterAction path",
+        "THE ZERO READ CORRECTLY: _meta visibility 'legacy'; the description states the product decision outright -- narration spend is a manual UI action and the agent does not bill. Zero agent calls is the intended outcome"
+      ],
+      "admitted": false
     }
   }
 }
