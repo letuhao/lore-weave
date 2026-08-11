@@ -1606,6 +1606,21 @@
         "CLEANUP verified through a different tool: deleted, and book_steering_list returns {rules: [], total: 0}"
       ],
       "admitted": false
+    },
+    "book_structure_edit": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever, which is notable because this is the SUCCESSOR that supersedes three legacy tools this loop already proved (book_chapter_reorder #124, book_chapter_set_part #127, and the parts ops). Four of its five ops exercised, including home_chapter INTO a part -- the case #127 could not reach because that book had no parts. TWO DESIGN DETAILS WORTH RECORDING: every response carries a `guidance` string ending 'Done — do NOT call again', an explicit anti-loop affordance in the RESULT rather than in a breaker; and `scope_source: 'arg'` tells the caller whether the book came from the argument or from the ambient studio, which is C-4 provenance answered in the response.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [op]; book_id is optional because _meta.ambient_book is true",
+        "create_part -> {op, part {part_id, title, sort_order}, scope_source 'arg', guidance}",
+        "home_chapter INTO the new part -> 'chapter homed into the part'. This is the branch iteration 127 explicitly recorded as unreachable on its book",
+        "rename_part -> the part row with the new title",
+        "home_chapter with part_id 'unassigned' -> 'chapter un-homed into the flat manuscript (no part)'. The sentinel string is a documented mode",
+        "CONTROL: op='nonsense' -> 'enum: nonsense does not equal any of: [create_part rename_part reorder_parts home_chapter reorder_chapters]'. The whole closed set named",
+        "ANTI-LOOP IN THE RESULT: each guidance ends 'Done — do NOT call again.' Given this loop measured 198 identical calls in one turn on another tool, a tool that tells the model it is finished is answering a real failure mode",
+        "CLEANUP: the probe part archived via book_structure_part_archive, whose own guidance explains that its chapters keep their text and read as Unassigned, and that the trash is restorable"
+      ],
+      "admitted": false
     }
   }
 }
