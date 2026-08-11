@@ -41,7 +41,7 @@ from typing import Awaitable, Callable
 from pydantic import BaseModel
 
 from app.db.neo4j_helpers import CypherSession, run_read
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entity_status import STATUS_VALUES, merge_entity_status
 from app.db.neo4j_repos.provenance import add_evidence
 from app.llm_budget import unusable, max_tokens_for

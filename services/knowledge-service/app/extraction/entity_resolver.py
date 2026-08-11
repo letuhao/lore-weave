@@ -26,7 +26,7 @@ from uuid import UUID
 
 from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import Entity, merge_entity, merge_entity_at_id
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 from app.extraction.anchor_loader import Anchor

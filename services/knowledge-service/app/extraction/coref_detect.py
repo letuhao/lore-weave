@@ -30,7 +30,7 @@ from itertools import combinations
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos import coref as coref_repo
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)

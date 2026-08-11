@@ -47,7 +47,7 @@ from app.db.neo4j_repos.enrichment import (
     upsert_enriched_anchor,
     upsert_enriched_fact,
 )
-from app.db.neo4j_repos.canonical import canonicalize_entity_name, entity_canonical_id
+from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
 from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)

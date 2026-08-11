@@ -1235,7 +1235,7 @@ async def handle_glossary_entity_merged(
         return
 
     from app.db.neo4j import neo4j_session
-    from app.db.neo4j_repos.canonical import canonicalize_entity_name
+    from loreweave_extraction.canonical import canonicalize_entity_name
     from app.db.neo4j_repos.entities import (
         MergeEntitiesError,
         get_entity_by_glossary_id,

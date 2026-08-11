@@ -26,7 +26,7 @@ from typing import Any
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.db.repositories.entity_alias_map import EntityAliasMapRepo
 
 logger = logging.getLogger(__name__)

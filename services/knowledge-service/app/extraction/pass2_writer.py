@@ -58,7 +58,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
     get_glossary_anchor_id,
     resolve_participant_anchors,

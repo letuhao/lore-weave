@@ -33,7 +33,7 @@ from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.entities import sync_glossary_entity_node
-from app.db.neo4j_repos.canonical import canonicalize_entity_name, entity_canonical_id
+from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
 
 __all__ = ["sync_glossary_entity_to_neo4j"]
 

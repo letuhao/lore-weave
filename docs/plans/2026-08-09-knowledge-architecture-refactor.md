@@ -74,6 +74,14 @@ SQL string early and reached the parser *as SQL*. Fixed (tag widened until absen
 test added, bite fires. Tenancy verified on all 9 AGE methods by AST; provider, secrets and
 destructive-ops gates clean.
 
+📊 **T17 measured 2026-08-12: the remaining 69 modules are a LONG TAIL.** 106 distinct repo
+functions across 180 call sites, **64 % of them called exactly once**; the top 5 account for
+17 %. **106 functions is not a port, it is a repository** — absorbing them all would make
+`GraphStore` a second copy of `neo4j_repos` with an interface in front, which is the opposite
+of substitutability and against the port's own rule (*"grows by demand, not by inventory"*).
+**So "the ceiling reaches zero" is the wrong target**, and chasing it would produce a worse
+architecture than stopping short. See `D-T17-CEILING-ZERO-IS-THE-WRONG-TARGET`.
+
 ⏸ **ALL THREE QC-7 INPUTS ARE NOW PRESENT — rebuild drill · shadow-coverage report ·
 `/review-impl`. THIS IS THE WAIT.**
 
@@ -1762,6 +1770,60 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
   **QC (a)** 4184 unit · `port-adoption-gate` PASS at floor 6. **QC (b) live** — throwaway
   Neo4j 5. **QC (c) real data** — 24 integration tests through both paths.
+
+  ### ✅ BATCH 6 — 2026-08-12 · ceiling `70 → 69`, and the DEMAND is measured
+
+  10 modules moved off `app.db.neo4j_repos.canonical` onto
+  `loreweave_extraction.canonical`. That shim's own docstring says *"New code should import
+  from the library directly"* — it is a pure **string** function, not a storage operation, and
+  importing it through the Neo4j package made those modules count as concrete binders for no
+  storage reason at all.
+
+  **Behaviour-identical by IDENTITY, not merely by equality:**
+  ```
+  from app.db.neo4j_repos.canonical import canonicalize_entity_name as shim
+  from loreweave_extraction.canonical    import canonicalize_entity_name as sdk
+  same object: True
+  ```
+
+  ⚠️ **My own demand reading overstated this, and the gate corrected it.** The signal said
+  *18 calls across 9 modules*, which sounded like a 9-module ceiling drop. Only **1** of them
+  imported the shim *alone*; the other 9 bind `neo4j_repos` for real reasons too. **The
+  ceiling fell by exactly 1.** A call-count is not a module-count, and conflating them is the
+  same shape as every other over-stated number this plan has recorded.
+
+  **BITE — make the shim diverge from the SDK** (return a constant):
+  ```
+  25 failed, 4159 passed
+  ```
+  Which also proves the shim is still live for the `neo4j_repos` modules that legitimately use
+  it — those were deliberately left alone.
+
+  ### 📊 THE REMAINING 69 ARE A LONG TAIL, and that changes what "T17 complete" means
+
+  ```
+  distinct repo functions still called : 106
+  total call sites                     : 180
+  called EXACTLY ONCE                  :  68   (64 % of the surface)
+  top 5 functions                      :  31/180 calls (17 %)
+     8  find_passages_by_vector (7 modules)   8  add_evidence (3)
+     5  list_events_in_order (2)              5  merge_fact (5)
+     5  list_events_filtered (4)
+  ```
+
+  **106 distinct functions is not a port; it is a repository.** Absorbing all of them would
+  make `GraphStore` a second copy of `neo4j_repos` with an interface in front — the opposite
+  of substitutability, and flatly against the port's own rule that *"a port grows by demand,
+  not by inventory"*. **64 % of that surface is called exactly once.**
+
+  So **"T17 complete" should NOT mean "the ceiling reaches zero"**, and pursuing zero would
+  produce a worse architecture than stopping short of it. The defensible target is the
+  operations with genuine multi-module demand — the top of that list — with the single-caller
+  tail left on the repo, where a direct call is honest. Recorded as
+  `D-T17-CEILING-ZERO-IS-THE-WRONG-TARGET`.
+
+  **QC (a)** 4184 unit · `port-adoption-gate` PASS at the new ceiling. **(b) live** — both
+  engines. **(c)** 429 integration.
 
   ### ✅ BATCH 5 — 2026-08-12 · **the port's covered surface reaches ZERO direct callers**
 

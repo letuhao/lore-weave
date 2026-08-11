@@ -24,7 +24,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
-from app.db.neo4j_repos.canonical import canonicalize_entity_name, entity_canonical_id
+from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
 from app.db.neo4j_repos.entities import Entity, EntityDetail
 from app.db.neo4j_repos.events import Event
 from app.db.neo4j_repos.relations import Relation

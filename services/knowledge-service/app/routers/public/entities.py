@@ -26,7 +26,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
-from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entities import (
     AUTHORABLE_KINDS,
     find_alias_collision,

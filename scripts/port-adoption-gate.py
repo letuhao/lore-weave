@@ -65,7 +65,7 @@ EXEMPT_DIRS = (
 
 # The ceiling can only fall. Raising it is a deliberate act with a reason, not a fix for a
 # red build — that is the whole contract of a shrink-only gate.
-MAX_CONCRETE_IMPORTERS = 70
+MAX_CONCRETE_IMPORTERS = 69
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
