@@ -1817,6 +1817,10 @@
     "composition_entity_override_restore": {
       "state": "proven",
       "note": "PROVEN on the HAPPY path that #185's conflict test could not reach: with no rival override, restore returns {restored: true}, is_archived flips to false, AND overridden_fields survives intact ({'name': 'NEWER'}). That last part is the one worth checking -- a restore that recovered the row but not its content would look identical in the response and be useless in effect. Re-restoring an already-live override and an unknown override_id both give the same combined refusal ('it was never deleted, or a newer override for that entity...'). For the unknown id that sentence is technically loose -- the id does not exist at all, which is a third case -- but the looseness is deliberate: naming which of the three applies would confirm whether an override_id exists. The anti-oracle posture costs a little precision here and buys the same protection the rest of this service applies."
+    },
+    "composition_entity_override_update": {
+      "state": "proven",
+      "note": "PROVEN, and it is REPLACE rather than merge -- measured: {name:A, role:villain} updated with {name:B} became {name:B}, dropping role. The description says so plainly ('the whole overridden_fields JSON is replaced -- the override IS the delta') and the parenthetical is the justification, not decoration: if updating merged, there would be no way to REMOVE a field from the delta, so a role override applied once could never be taken back. This completes a consistent picture across the service that is worth stating as a rule: SCALAR fields are partial (omit one and it is unchanged -- canon_rule_update #177, arc_update #160, derivative update_spec #180), while COLLECTION and delta fields are replaced wholesale (canon_rule[] in #182, overridden_fields here). Every tool that does the latter says so in its description. An agent asked to 'also override role' must therefore read the current fields and send the union -- the same trap #182 records for canon_rule."
     }
   }
 }
