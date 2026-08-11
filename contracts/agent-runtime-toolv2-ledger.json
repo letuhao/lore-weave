@@ -1569,6 +1569,18 @@
         "ROW SHAPE: scene_id, book_id, chapter_id, sort_order, title, path, content_hash, parse_version, lifecycle_state, source_scene_id"
       ],
       "admitted": false
+    },
+    "book_search": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. THE CHECK WORTH DOING WAS THE ESCAPING CLAIM: the description says 'LIKE metacharacters are escaped', so I searched for a bare `%` and for a bare `_`. Both return ZERO hits. Unescaped, `%` alone would have matched every scene in the book -- so this is the difference between a literal grep and a wildcard that quietly returns the whole manuscript. Verified rather than trusted. The envelope also declares truncation explicitly with has_more, which scene_list (iteration 133) leaves to be derived.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id, q]; optional surface, granularity, limit, offset. Tier R",
+        "FIRST INVOCATION q='殿下' -> 20 results, has_more true, mode 'lexical', rows carrying chapterId, chapterTitle, sortOrder, surface, matchType, score, snippet, highlights, location, relevance, sourceLang",
+        "ESCAPING PROVEN, both metacharacters: q='%' -> 0 hits, has_more false; q='_' -> 0 hits. An unescaped % would have matched the entire manuscript",
+        "SURFACE and GRANULARITY both accepted and answered: surface='canon' and granularity='block' each return results with the same envelope",
+        "TRUNCATION is declared (has_more) rather than left to a total-vs-returned comparison"
+      ],
+      "admitted": false
     }
   }
 }
