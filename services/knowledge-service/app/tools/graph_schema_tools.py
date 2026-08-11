@@ -182,7 +182,13 @@ TIMELINE_INSTANCE_REF_FIELDS = ("target_id", "target_label", "valid_from", "vali
 # (small + ACTIONABLE — OUT-1 keeps what the caller acts on to resolve); DROP only the
 # heavy `sample_payload` blob. (K37 first dropped suggested_actions too, which forced a
 # second detail=full call just to resolve — a pre-merge integration test caught it.)
-TRIAGE_GROUP_REF_FIELDS = ("signature", "item_type", "count", "status", "suggested_actions")
+TRIAGE_GROUP_REF_FIELDS = (
+    "signature", "item_type", "count", "status", "suggested_actions",
+    # An id is a reference, not a body: §6b exists to hand back cheap ids the agent can act
+    # on. kg_triage_place_edge needs this one, and `summary` is the DEFAULT detail, so
+    # dropping it here would leave the tool as unreachable as it was before it was emitted.
+    "sample_triage_id",
+)
 
 
 def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: bool = False) -> dict:
@@ -1899,6 +1905,10 @@ async def _handle_kg_triage_list(ctx: "ToolContext", args: KgTriageListArgs) -> 
             "count": g.count,
             "status": g.status,
             "sample_payload": g.sample_payload,
+            # kg_triage_place_edge requires a triage_id and its description (and its refusal,
+            # "use kg_triage_list to find one") names THIS tool as the source. A grouped view
+            # has no single id, so it emits the sample's — the item whose payload is shown.
+            "sample_triage_id": g.sample_triage_id,
             "suggested_actions": g.suggested_actions,
         }
         for g in groups
