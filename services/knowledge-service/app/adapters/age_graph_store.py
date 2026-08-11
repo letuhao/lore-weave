@@ -198,8 +198,35 @@ class AgeGraphStore:
         self._pool = pool
         self._graph = graph_name
 
+    @staticmethod
+    def _dollar_tag(body: str) -> str:
+        """A dollar-quote tag that does not occur in `body`.
+
+        🔴 **THIS IS AN INJECTION FIX, found by `/review-impl` attacking this adapter.**
+        `_lit` escapes correctly for the CYPHER layer — quotes, backslashes and newlines all
+        survive, verified — but `$` is not a JSON escape, so a value containing the delimiter
+        terminated the SQL dollar-quote early:
+
+            name = 'evil$CY$ ) as (v agtype); DROP TABLE IF EXISTS pwned; --'
+            -> PostgresSyntaxError: syntax error at or near "canonical_name"
+
+        It errored rather than executing, but that is luck rather than design: the payload
+        reached the SQL parser as SQL. Two layers of quoting were in play and only one was
+        being escaped.
+
+        Widening the tag until it is absent makes the delimiter unforgeable by construction —
+        a value cannot contain a tag that was chosen *because* the value does not contain it.
+        Preferred over rejecting `$` in input: the graph stores prose, and a rule banning a
+        common character from names would be worked around rather than obeyed.
+        """
+        tag = "CY"
+        while f"${tag}$" in body:
+            tag += "X"
+        return tag
+
     async def _run(self, cypher: str, *, columns: str = "v agtype") -> list:
-        sql = f"SELECT * FROM cypher('{self._graph}', $CY${cypher}$CY$) as ({columns})"
+        tag = self._dollar_tag(cypher)
+        sql = f"SELECT * FROM cypher('{self._graph}', ${tag}${cypher}${tag}$) as ({columns})"
         async with self._pool.acquire() as conn:
             return await conn.fetch(sql)
 

@@ -183,3 +183,58 @@ async def test_an_init_only_pool_is_the_broken_shape_this_module_avoids():
         )
     finally:
         await pool.close()
+
+
+# ── injection: the second quoting layer (found by /review-impl, QC-7) ────────
+
+
+async def test_a_value_containing_the_dollar_quote_tag_cannot_escape_the_sql(age_pool):
+    """🔴 REGRESSION for a real injection vector in `AgeGraphStore._run`.
+
+    AGE cannot take query parameters, so values are interpolated into Cypher, and that Cypher
+    is itself wrapped in a SQL dollar-quoted string. TWO layers of quoting — and only the
+    inner one was being escaped. `_lit` handles quotes, backslashes and newlines correctly
+    (each verified), but `$` is not a JSON escape, so a value carrying the delimiter closed
+    the SQL string early:
+
+        name = 'evil$CY$ ) as (v agtype); DROP TABLE IF EXISTS pwned; --'
+        -> PostgresSyntaxError: syntax error at or near "canonical_name"
+
+    It errored rather than executing — luck, not design. The payload reached the SQL parser
+    AS SQL.
+
+    The fix widens the tag until it is absent from the body, so the delimiter cannot be
+    forged. This test drives the exact payload end-to-end and then reads the value back:
+    **storing it intact is the assertion**, because an adapter that silently mangled or
+    dropped the value would also "not be injectable" while being wrong.
+    """
+    import uuid as _uuid
+
+    from app.adapters.age_graph_store import AgeGraphStore
+    from app.db.age_bootstrap import ensure_graph as _ensure
+
+    async with age_pool.acquire() as conn:
+        gname = await _ensure(conn, _uuid.uuid4())
+    store = AgeGraphStore(age_pool, gname)
+
+    payloads = [
+        "evil$CY$ ) as (v agtype); DROP TABLE IF EXISTS pwned; --",
+        "$CY$",
+        "$CYX$ and $CYXX$ too",   # the widening must survive being anticipated
+        'a" OR 1=1 //',
+        "back\slash",
+        "line1\nline2",
+    ]
+    for payload in payloads:
+        e = await store.resolve_or_merge_entity(
+            user_id=f"u-{_uuid.uuid4().hex[:8]}", project_id="p-inject",
+            name=payload, kind="character", source_type="chapter")
+        assert e.name == payload, (
+            f"payload was not stored intact: {e.name!r} != {payload!r} — an adapter that "
+            "mangles input is not 'safe', it is silently lossy"
+        )
+
+    # The database is still there. A successful breakout of the earlier payload would have
+    # run its trailing statements.
+    async with age_pool.acquire() as conn:
+        assert await conn.fetchval("SELECT 1") == 1

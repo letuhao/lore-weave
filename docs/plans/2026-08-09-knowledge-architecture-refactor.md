@@ -66,11 +66,21 @@ engine decision after all. **Stop condition 4 does not fire:** a 5 000-entity bo
 correctness one. ⚠️ `D-T41-RELATIONS-NOT-REBUILDABLE`: a rebuild restores **identity**, not the
 extracted edge set.
 
-⏸ **WHAT REMAINS AT QC-7 IS NOT MINE:**
-1. **`/review-impl` on this arc** — QC-7's own words: *"present evidence and WAIT"*.
-2. **The engine choice is a sealed-row decision.** `T1`/`T2` are amended on refuted premises
-   and flagged for PO re-open. `cutover_permitted: True` is the shadow reporting **no
-   objection** — it is data, not authorisation.
+✅ **`/review-impl` RUN 2026-08-12 — QC-7's third input.** 15 commits, 35 files, +3052/−179.
+🔴 **It found a HIGH in my own code: SQL injection in `AgeGraphStore._run`.** AGE takes no
+query parameters, so values are interpolated into Cypher — and that Cypher sits inside a SQL
+dollar-quoted string. Two quoting layers, one escaped. A value containing `$CY$` closed the
+SQL string early and reached the parser *as SQL*. Fixed (tag widened until absent), regression
+test added, bite fires. Tenancy verified on all 9 AGE methods by AST; provider, secrets and
+destructive-ops gates clean.
+
+⏸ **ALL THREE QC-7 INPUTS ARE NOW PRESENT — rebuild drill · shadow-coverage report ·
+`/review-impl`. THIS IS THE WAIT.**
+
+**The one decision left is yours: the engine.** `T1`/`T2` are amended on refuted premises and
+flagged for re-open. `cutover_permitted: True` is the shadow reporting **no objection** — data,
+not authorisation. ⚠️ And a self-review is exactly that: finding a HIGH in my own code shows
+the pass had teeth, **not** that a second reader would find nothing.
 
 ✅ **T43 IS NOW COMPLETE ON ALL THREE OF ITS PARTS** — shadow comparison · **property-based
 differential suite** · coverage floor. The suite (5 seeds × 25 randomised operations) is what
@@ -5110,6 +5120,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Publish the shadow-comparison ratios doc-21 style, and the **shadow-coverage report**: every port
   operation with its observation count. **Any operation at zero blocks cutover.**
   ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
+  ---
+  ### ✅ QC-7's THREE INPUTS ARE COMPLETE 2026-08-12 — evidence presented, WAITING
+
+  **1 · Rebuild drill, actually run and timed** (T41) — 120 entities on all three adapters:
+  `neo4j 49/s · age 254/s`; projected 5 000 entities → **102s / 20s**. **Stop condition 4 does
+  not fire.**
+  **2 · Shadow-coverage report** — every port operation with its observation count:
+  **9/9 compared, 0 diverged, `blocked_by: []`**, plus 125 randomised operations across 5
+  replayable seeds.
+  **3 · `/review-impl` over the arc** — below.
+
+  ### `/review-impl` — 15 commits, 35 files, +3052/−179 (`4c895a7cc~1..HEAD`)
+
+  🔴 **HIGH · SQL INJECTION in `AgeGraphStore._run` — found, fixed, regression-tested.**
+  `[Security Standard]` `app/adapters/age_graph_store.py`
+
+  AGE cannot take query parameters, so values are interpolated into Cypher — and that Cypher
+  is itself wrapped in a **SQL dollar-quoted string**. *Two* layers of quoting, and only the
+  inner one was escaped. `_lit` handles quotes, backslashes and newlines correctly (each
+  verified below), but **`$` is not a JSON escape**, so a value carrying the delimiter closed
+  the SQL string early:
+  ```
+  name = 'evil$CY$ ) as (v agtype); DROP TABLE IF EXISTS pwned; --'
+  RAISE dollar-quote breakout  PostgresSyntaxError: syntax error at or near "canonical_name"
+  SAFE  quote escape · cypher comment · backslash · newline
+  ```
+  It **errored rather than executed — luck, not design**: the payload reached the SQL parser
+  *as SQL*. Fixed by widening the dollar-quote tag until it is absent from the body, which
+  makes the delimiter unforgeable by construction — a value cannot contain a tag chosen
+  *because* the value does not contain it. Preferred over banning `$` from input: the graph
+  stores prose, and a rule banning a common character gets worked around rather than obeyed.
+  **Regression:** `test_a_value_containing_the_dollar_quote_tag_cannot_escape_the_sql` drives
+  6 payloads end-to-end and asserts each is **stored intact** — an adapter that silently
+  mangled input would also "not be injectable" while being wrong.
+  **Bite:** pin the tag back to a fixed `"CY"` → that test reds (`1 failed, 10 passed`).
+
+  **The rest of the standards gate — checked, not assumed:**
+  | standard | result |
+  |---|---|
+  | **Security · injection** | 🔴 the HIGH above. Other vectors probed and **SAFE**: quote escape · Cypher comment · backslash · newline |
+  | **User Boundaries & Tenancy** | ✅ all **9** `AgeGraphStore` methods filter on `user_id` — verified by AST walk, not by reading |
+  | **Provider-gateway** | ✅ clean — this arc makes no LLM/embed/rerank call |
+  | **Destructive data ops** | ✅ `db-safety-gate` exit 0; every new test uses throwaway containers, and the Neo4j guard refuses `:7687/:7688` |
+  | **No hardcoded secrets** | ✅ nothing outside throwaway fixture creds |
+  | **Non-Vacuity (NV-1..6)** | ✅ every gate added this arc carries a `--selftest`; every cycle carries a bite with pasted output |
+  | **Artifact language** | ✅ `doc-language-gate` clean on every commit |
+
+  **QC (a)** `429 integration` (both engines live) · `4184 unit` · 98 gates wired and green.
+  **(b) live** — Neo4j 5 + `postgres-knowledge:18` in throwaway containers.
+  **(c) real data** — the injection probe wrote its payloads into a real AGE graph.
+
+  ⚠️ **WHAT THIS DOES NOT DISCHARGE.** A self-review is exactly that: it found a HIGH in my own
+  code, which is evidence the pass **had teeth** — not evidence that a second reader would
+  find nothing. And the **engine choice remains the PO's**: `T1`/`T2` are amended on refuted
+  premises and flagged for re-open. **This is the WAIT.**
 
 <!-- Commit checkpoint: T41–T43 -->
 
