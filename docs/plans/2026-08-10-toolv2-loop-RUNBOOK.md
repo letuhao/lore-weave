@@ -1023,3 +1023,28 @@ Scope of the doubt, stated rather than waved away: the earlier sites in this cla
 #132, and the four swept here) were argued from the CODE — each raise sits downstream of a grant
 check that has already passed, so the message is false regardless of which user called. The bad
 header can invalidate a TRIGGER, not those fixes.
+
+## DQ-18 — apply drops the template's `tracks`/`roster` onto the arc node, so extract cannot return them
+
+Measured in #146 on a clean apply→extract round trip. The source template
+(`019f0d28-…`, "W10 FE Smoke Arc") carries `tracks: 2` and `roster: 2`. The arc node
+`apply_arc_to_spec` created carries `tracks: []` and `roster: []`, and the template extracted back
+out therefore carries `tracks: 0` — while its placements still reference `thread: "combat"` and
+`"romance"`, tracks that no longer exist anywhere in the template.
+
+The extractor is not at fault: it faithfully copied what the arc node holds. The loss is upstream,
+in what apply writes onto `structure_node`.
+
+**The open question is which behaviour is intended**, and it is a product decision rather than
+something the code settles:
+
+- If an arc is meant to be a full instance of its template, apply should copy `tracks`/`roster`
+  onto the node, and the round trip becomes lossless.
+- If tracks are meant to live only on the template and be referenced by name, then `layout`
+  placements naming a `thread` that the template does not define is the real inconsistency, and
+  extract should either carry the threads it observed or drop them.
+
+Both readings are defensible from the current code, `composition_arc_edit` accepts `tracks` and
+`roster` as first-class create arguments (so an arc CAN hold them), and #146's fix — which closed
+the `motif_code` half of the round trip — does not depend on the answer. Recorded rather than
+guessed; the placements' `thread` values survive either way, so nothing is lost by waiting.
