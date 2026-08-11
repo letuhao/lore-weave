@@ -5487,7 +5487,12 @@ async def plan_propose_spec(
 
 @mcp_server.tool(
     name="plan_validate",
-    description="PlanForge: run the S1–S8 golden linter (+ fidelity report) on a run's spec. VIEW required.",
+    description="PlanForge: run the S1–S8 golden linter (+ fidelity report) on a run's spec. `passed` "
+        "reflects the HARD rules only, so it can be true while advisory rules fail — read "
+        "`rules[]` before telling the author the plan is clean. Each rule also carries "
+        "`applicable`: false means the rule had nothing to check here (a rule about a named "
+        "entity says nothing about a book without one), so neither its ✓ nor its ✗ is a "
+        "verdict. VIEW required.",
     meta=require_meta("R", "book", synonyms=["validate plan", "check spec", "golden rules"], tool_name="plan_validate"),
 )
 async def plan_validate(
