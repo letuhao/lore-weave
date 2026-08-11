@@ -1127,6 +1127,18 @@
         "OBSERVED, not filed as a defect: `active` fuses pending, running and paused, so a reader asking 'what is running' would over-read it by 11. The field name is honest and the per-job status is available from jobs_list"
       ],
       "admitted": false
+    },
+    "book_create": {
+      "state": "proven",
+      "note": "PROVEN on its refusal path live; the happy path was NOT exercised because doing so would mean deleting one of the user's real books. 2 calls / 2 sessions / 2 ok, no failure population -- the finding came from the live attempt: 'book limit reached (200) — delete or purge a book first'. That is a quota refusal naming the limit AND the remedy. I checked whether soft-deleted books wrongly consume the quota and they do NOT: the account holds 206 ACTIVE, 77 trashed and 3 purge_pending, so the cap counts active only and my hypothesis was wrong. The account being over its cap is itself DQ-12's contamination reaching a hard stop -- most of those 206 are loop and eval debris.",
+      "evidence": [
+        "PHASE 2: 2 ok / 0 failed. The recorded successes return {book_id}",
+        "LIVE: book_create -> 'book limit reached (200) — delete or purge a book first'. The limit is stated as a number and the remedy names both ways out",
+        "HYPOTHESIS CHECKED AND WRONG, recorded because the wrong version was the interesting one: trashed books do NOT consume quota. books for this owner are 206 active / 77 trashed / 3 purge_pending, and 206 > 200 is what refused the call",
+        "NOT EXERCISED: the happy path. Creating a book requires first deleting one of the user's 206 real books, which is not mine to do for a test",
+        "NOTED: an account at 206 books, mostly loop and eval debris, is DQ-12's measurement contamination turning into a hard blocker rather than just a noisy denominator"
+      ],
+      "admitted": false
     }
   }
 }
