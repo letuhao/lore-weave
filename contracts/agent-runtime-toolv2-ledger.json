@@ -1176,6 +1176,18 @@
         "DEBRIS: the alias 'The Bell-Reader' remains on the throwaway book's entity. Additive metadata on a disposable book"
       ],
       "admitted": false
+    },
+    "glossary_propose_reassign_kind": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it has ZERO real failures. 2 calls / 2 sessions / 1 ok -- but the ok=false row is a PENDING confirm card (task status input_required), the turn-outcome vs call-outcome split again, not a failure. Its card carries exactly the no-op warning DQ-16 says glossary_propose_new_kind lacks: 'the entity is already kind \"character\" — this will change nothing'. Proven CONDITIONAL live rather than assumed: reassigning to a different kind returns warning null, reassigning to the current kind returns the warning. That makes THREE sibling paths with the check and leaves propose_new_kind the odd one out.",
+      "evidence": [
+        "PHASE 2: 1 ok / 1 'failed' -- and the failed row carries task.status input_required with a full inputRequests card, so it is deferred, not failed",
+        "LIVE, a real change: reassign to 'organization' -> card, destructive:true, warning NULL, preview rows 'new kind: organization' and 'attributes dropped: 0' noted 'all attribute values carry over'",
+        "LIVE, a no-op: reassign to 'character', the kind it already is -> the SAME card shape plus warning 'the entity is already kind \"character\" — this will change nothing'",
+        "THE CONDITIONALITY IS THE POINT: the warning is absent on the real change and present on the no-op, so it is computed from current state rather than pasted on every card",
+        "DQ-16 sharpened: propose_status_change (iteration 55), this tool, and the direct book_create path (iteration 80) all check. glossary_propose_new_kind is alone"
+      ],
+      "admitted": false
     }
   }
 }

@@ -582,6 +582,20 @@ DIRECT create path in the same service, on the same rows, already does it — an
 The create refuses, names the code, and names the tool that does what the caller wanted. The
 propose, for the same conflict, mints a confirm card. One of these two paths has the check.
 
+**Third example, iteration 102 — and it shows the warning is conditional, not decorative.**
+`glossary_propose_reassign_kind` returns:
+
+| call | card |
+|---|---|
+| reassign to a DIFFERENT kind | `warning: null` |
+| reassign to the kind it already is | `warning: "the entity is already kind \"character\" — this will change nothing"` |
+
+So **three** glossary propose tools inspect current state and say when the change is a no-op —
+`propose_status_change` (iteration 55), `propose_reassign_kind` (here), and the direct
+`book_create` path (iteration 80) — and each fires only when the condition holds. The gap is
+`glossary_propose_new_kind` alone, which is now the odd one out among its own siblings rather
+than an example of a house style.
+
 ---
 
 ### D-11 · A duplicate propose escapes every breaker, because a confirm card is never identical
