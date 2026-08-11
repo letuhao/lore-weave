@@ -1918,11 +1918,39 @@ vectors and validity intervals live in different stores.
   cache fills at **14 717** vectors regardless of corpus size). That is the run that makes both
   halves of QC-3 answerable on real data.
 
-  **Recipe:** create a `knowledge_projects` row for book `019fb89f-…`, then
-  `POST /internal/knowledge/projects/{id}/dispatch-extraction {"scope":"chapters"}`. **Cost is
-  the reason this is written down rather than done:** 484 026 words of LLM extraction plus
-  embedding, hours of wall-clock and real BYOK spend on a dev stack. It is a PO call, not a
-  side effect of clearing a deferral.
+  #### ▶ RUN 2026-08-11 — corpus **485 → 1041**, and both halves of my own estimate were wrong
+
+  **The mechanism was wrong first.** `dispatch-extraction {"scope":"chapters"}` does **not**
+  create passages. Ran it over 10 chapters: 1018 `:Entity`, 207 `:Fact`, 97 `:Event`, $0.04 —
+  and **0 `:Passage`**. Passage ingest is **event-driven on publish**
+  (`handle_chapter_published` / `translation.published` → `ingest_chapter_passages`), so a book
+  whose chapters were published BEFORE its knowledge project existed has permanently zero
+  passages and no amount of extraction will create them. That is the real reason the two
+  biggest books had none, and it is sharper than "never put through KG extraction".
+
+  **The cost was wrong too, in the useful direction.** The sanctioned backfill —
+  `app.benchmark.ingest_rawsearch_corpus` — is **embedding-only, NOT the LLM path**. So the run
+  this deferral called "hours of LLM spend and a PO call" is neither:
+
+  ```
+  cat chapters.json | docker exec -i infra-knowledge-service-1       python -m app.benchmark.ingest_rawsearch_corpus --book-id … --project-id …       --user-id … --embedding-model … --embedding-dim 1024
+
+  {"chapters_ingested": 100, "chapters_total": 100, "passages_total": 556, "errors": []}
+  ```
+
+  **Corpus now 1041 passages, 1041 with a real `embedding_1024`** (was 485). The new project is
+  the largest at 556.
+
+  **And the projection above was wrong by 20×** — it said ≈11 000 and the answer is 556. The
+  error was mine: I derived ~44 words/passage from the Vietnamese acceptance book and applied it
+  to a Chinese one. `word_count` is not comparable across scripts. The measured driver is
+  characters: **avg 1179 chars/passage, max 1702** — chunking is char-based, and CJK packs many
+  more `word_count` units into the same chunk.
+
+  **So the threshold is still not met, and it is further away than it looked.** 1041 of 5 000,
+  at a measured **5.6 passages/chapter** for this book. No single remaining book closes the gap;
+  reaching 5 000 needs roughly 700 more chapters of comparable length. What HAS changed is that
+  the run is cheap and repeatable, so this is now a question of available corpus, not of budget.
 
   **Still owed by QC-3:** `/review-impl`, and the recall comparison on the real corpus — which is
   the deferral above. The restore drill is done (T25 built it; QC-3a re-ran it at 100 000).
