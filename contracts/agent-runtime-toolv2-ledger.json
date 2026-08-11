@@ -813,6 +813,20 @@
         "CLEANUP, verified rather than assumed: world_delete -> {deleted:true}; world_map_get -> 'map not found'; 0 rows in worlds and world_maps. The world's auto-created bible book is lifecycle_state='purge_pending' with world_id NULL -- I checked that column before calling it an orphan, which is the same check that already caught me once in this loop"
       ],
       "admitted": false
+    },
+    "glossary_book_patch": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 44 calls / 17 ok. The dominant failure is 17 optimistic-concurrency 409s in ONE session on 2026-06-21, and every one of them carries the IDENTICAL fabricated base_version '2025-02-11T14:30:00Z' -- a date more than a year before the data existed. The trace shows the model DID follow the advice: it called glossary_book_ontology_read (twice) and retried anyway with the same invented string, 8 times each round. So the old message ('re-read and retry') was advice the model had already taken, and re-reading could never change an invented value. That incident is the origin of the W0 #1 hallucination shim, which quotes THIS EXACT LITERAL in its code comment, and it shipped 2026-07-03 -- after the failures. Both halves verified live, because a shim that skips a correctness check has to be shown NOT to disable it.",
+      "evidence": [
+        "PHASE 2: 17 ok / 27 failed = 17 x 409 (1 session) + 3 'no live row with that code' + 2 missing `code` + 3 schema-shape + 1 'no live attribute \"leader\" under kind \"faction\" in genre \"xianxia\" — attributes are keyed by (kind, genre)' + 1 pending",
+        "DATA: all 17 409s corpus-wide carry base_version='2025-02-11T14:30:00Z'. One value, one session, one tool -- 100%",
+        "TRACE: the session shows glossary_book_ontology_read at seq 28 and 40, each followed by 8 identical 409s. The model obeyed the instruction and the instruction could not help",
+        "CHECKED: glossary_book_ontology_read DOES return a per-row base_version ('2026-08-10T06:04:50.541005Z'), so the re-read partner really can supply the value. The failure was transcription, not a missing mechanism",
+        "LIVE HALF ONE: patching with the fabricated '2025-02-11T14:30:00Z' now SUCCEEDS -- the shim treats a version older than the row's created_at as never-read and skips the OCC check, because such a value cannot have come from this row",
+        "LIVE HALF TWO, the control that matters: a PLAUSIBLE stale version (the row's own previous base_version) still returns 'the row changed since you read it (409) — its current base_version is ...; retry the same patch with base_version=\"...\"'. The lock is intact, and the current version is now inlined so the retry is ONE step",
+        "DATED: the shim and the inlined-version message shipped 2026-07-03 (W0 MCP reliability hardening); the 409 storm is 2026-06-21"
+      ],
+      "admitted": false
     }
   }
 }
