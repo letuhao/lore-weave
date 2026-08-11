@@ -1,5 +1,33 @@
 #!/usr/bin/env python3
-"""actor-hub-figures — every number the actor-hub docs claim, MEASURED.
+"""actor-hub-figures — every number a TRACK RUN-STATE claims, MEASURED.
+
+WHAT IT GOVERNS, AND WHY THE NAME IS NARROWER THAN THE JOB
+-----------------------------------------------------------
+**This docstring is the contract; the filename is history.** The gate governs
+figures inside a marker-delimited window of a track run-state:
+
+  * the **actor substrate** (`docs/plans/2026-08-02-actor-substrate-RUN-STATE.md`,
+    the handoff, `_index.md`) — first, and the reason for the name;
+  * the **reality layer** (`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`
+    `## 1 · MEASURED STATE`) — second, added 2026-08-11.
+
+It was NOT renamed, and that was measured rather than preferred: `actor-hub-figures`
+has **279 textual references across 14 files**, four of them scripts
+(`gate-bite-harness`, `gate-self-tests`, `gate-teeth-gate`), plus run-state history
+that is a record and must not be rewritten. Renaming to fix a filename is worse
+than the filename. `gate-wiring-gate` keys on the `-gate.py` suffix, which is
+untouched. **A third consumer is rule-of-three — extract then, not before**
+(`CR-F1`, `docs/plans/2026-08-16-claim-rot-RUN-STATE.md`).
+
+Adding a track is three lines per figure: a `measure()` entry, a `CLAIMS` regex,
+a `SCOPES` window. That ratio is why a second gate was not built.
+
+**What it does NOT govern, said out loud.** Behaviours, live-process state and
+history are out by name (`CR-F3`): the unit is the FIGURE. A gate promising to
+check *"SERVING"* would be wrong on any box with nothing running. Sub-claims of
+that kind carry a visible `[NC:…]` tag in the document, because a table where
+checked figures sit beside unchecked prose, indistinguishable, is this same
+defect one level down.
 
 WHY THIS EXISTS
 ---------------
@@ -51,6 +79,7 @@ from __future__ import annotations
 import argparse
 import json
 import functools
+import os
 import re
 import shutil
 import subprocess
@@ -89,6 +118,9 @@ ESCAPE_DOCS = (
 RUN_STATE = "docs/plans/2026-08-02-actor-substrate-RUN-STATE.md"
 HANDOFF = "docs/sessions/SESSION_HANDOFF.md"
 INDEX = "docs/specs/2026-08-02-actor-hub/_index.md"
+# The SECOND track. Defined here, above `SCOPES`, because module-level order is
+# execution order -- and it is read by the measurements much further down.
+REALITY_RUN_STATE = "docs/plans/2026-08-08-reality-layer-RUN-STATE.md"
 
 # The blocks whose figures are CURRENT-STATE claims. A decision record is
 # supposed to contain the numbers that were true when it was written, so the
@@ -151,6 +183,17 @@ SCOPES: tuple[tuple[str, str, str, frozenset[str]], ...] = (
      frozenset({"max_decision_id", "max_seam_id", "contract_hub_lines",
                 "contract_substrate_lines", "contract_seams_lines",
                 "contract_total_lines"})),
+    # **The second track.** Thirteen rows stating facts about a running system,
+    # each printed beside the command that produced it, and for three days
+    # nothing ran any of them. The experiment in
+    # `docs/specs/2026-08-15-claim-rot.md` §4c attempted all thirteen: every one
+    # carries a measurable sub-claim and all thirteen agreed -- which is the
+    # moment to lock a table down, not the moment to relax.
+    (REALITY_RUN_STATE, "## 1 · MEASURED STATE", END("reality-measured-state"),
+     frozenset({"rl_realities", "rl_reality_tables", "rl_reality_migrations",
+                "rl_meta_tables", "rl_meta_migrations", "rl_shards",
+                "rl_world_service_bins", "rl_admin_registries",
+                "rl_compose_game_tier", "rl_pg_login_roles"})),
 )
 
 
@@ -236,6 +279,189 @@ def _hook_gate_scripts(read=None) -> int:
     return len(set(re.findall(r"scripts/([A-Za-z0-9_-]+\.(?:py|sh))", body)))
 
 
+# ---------------------------------------------------------------------------
+# THE SECOND TRACK. See the module docstring: this gate governs figures inside a
+# marker-delimited window of a TRACK RUN-STATE, and the actor substrate was
+# merely the first one to need it.
+#
+# The reality layer's MEASURED STATE table states thirteen facts about a running
+# system, each with the command that produced it, and until now nothing ran any
+# of them. Measured 2026-08-11: **eight** stale claims in one run, four of them
+# created by the run that found the other four -- and the two that survived
+# longest were the ones no reader happened to open.
+# ---------------------------------------------------------------------------
+
+COMPOSE = "infra/docker-compose.yml"
+
+# A connection attempt against a server that is not there, on Windows, is about
+# a second. Six of them is not a budget anyone should pay in a pre-commit hook,
+# so the first failure short-circuits the rest -- see `_PG_STATE`.
+PSQL_TIMEOUT_S = 15
+
+
+def _dev_pg(read=None) -> tuple[str, str, str, str]:
+    """(host, port, user, password) for the dev Postgres, READ FROM COMPOSE.
+
+    **Not restated here, and that is the whole point.** A port and a password
+    copied into this file are a second SSOT that rots -- which is the defect
+    this widening exists to catch. Writing one INSIDE the mechanism would be
+    `D-353` again: a remedy that commits the disease it names.
+
+    Raises `Unmeasurable`, never `OSError`: a contributor with no compose file
+    is not a commit to refuse.
+    """
+    try:
+        text = read() if read else (REPO / COMPOSE).read_text(
+            encoding="utf-8", errors="replace")
+    except Exception as e:  # noqa: BLE001 - a measurement never blocks a commit
+        raise Unmeasurable(f"{COMPOSE}: {e}")
+    # The service's own indented body, and nothing below it: the next service
+    # sits at two spaces, so it ends the run.
+    m = re.search(r"^  postgres:\n(?P<body>(?:(?:    .*)?\n)+)", text, re.M)
+    if not m:
+        raise Unmeasurable(f"{COMPOSE} declares no `postgres:` service")
+    body = m.group("body")
+
+    def one(pat: str, what: str) -> str:
+        mo = re.search(pat, body, re.M)
+        if not mo:
+            raise Unmeasurable(f"{COMPOSE}'s postgres service declares no {what}")
+        return mo.group(1)
+
+    return ("localhost",
+            one(r'^\s*-\s*"(\d+):5432"', "host port mapping"),
+            one(r"^\s*POSTGRES_USER:\s*(\S+)", "POSTGRES_USER"),
+            one(r"^\s*POSTGRES_PASSWORD:\s*(\S+)", "POSTGRES_PASSWORD"))
+
+
+# Keyed on (database, sql). `"down"` is a WHOLE-SERVER verdict: once one
+# connection is refused the rest cannot succeed, and paying six timeouts to
+# learn that twice over is the cost this key avoids.
+_PG_STATE: dict[object, object] = {}
+
+
+def _psql(db: str, sql: str, run=None, which=None) -> int:
+    """One scalar from the dev Postgres, or `Unmeasurable`.
+
+    **Never a refusal, and never a zero.** Both are the failure this gate has
+    already committed once with `cargo`: a raw traceback out of a hook that
+    fires on the repo-wide handoff, and a broken run reported as the number 0,
+    after which the script tells the developer to rewrite the document to match
+    a dead server. A missing Postgres is the NORMAL state of a machine that
+    touches this repo -- 46 of the 47 services do not need one.
+
+    As with `_cargo_passed`, an INJECTED runner never reads and never writes the
+    cache: `--self-test` drives this to assert which query each measurement
+    asks for on a box with no server, and a shared cache would hand one case
+    another case's answer.
+    """
+    cacheable = run is None and which is None
+    key = (db, sql)
+    if cacheable:
+        if "down" in _PG_STATE:
+            raise Unmeasurable(_PG_STATE["down"])
+        if key in _PG_STATE:
+            kind, payload = _PG_STATE[key]
+            if kind == "unmeasurable":
+                raise Unmeasurable(payload)
+            return payload
+
+    def fail(reason: str, whole_server: bool = False) -> "Unmeasurable":
+        if cacheable:
+            _PG_STATE["down" if whole_server else key] = (
+                reason if whole_server else ("unmeasurable", reason))
+        return Unmeasurable(reason)
+
+    if (which or shutil.which)("psql") is None:
+        raise fail("psql is not on PATH", whole_server=True)
+    host, port, user, password = _dev_pg()
+    argv = ["psql", "-h", host, "-p", port, "-U", user, "-d", db, "-tAc", sql]
+    # **The spawn is INSIDE this function's `try`, not behind a helper.** It was
+    # a module-level `_psql_runner`, which put the `subprocess.run` in a function
+    # with no `except subprocess.TimeoutExpired` of its own -- so the bound
+    # existed and its expiry was an uncaught traceback out of a pre-commit hook.
+    # `gate-bite-harness`'s `unbounded_children` rule caught it and refused the
+    # commit; `_cargo_passed` twenty lines up already spawns through an inline
+    # lambda for exactly this reason, and I wrote a second shape instead of
+    # reading the first.
+    try:
+        out = (run(argv, password) if run else subprocess.run(
+            argv, cwd=REPO, capture_output=True, text=True,
+            timeout=PSQL_TIMEOUT_S,
+            env={**os.environ, "PGPASSWORD": password}))
+    except subprocess.TimeoutExpired:
+        raise fail(f"psql did not answer within {PSQL_TIMEOUT_S}s",
+                   whole_server=True)
+    except OSError as e:
+        raise fail(f"psql could not be run: {e}", whole_server=True)
+    if out.returncode != 0:
+        err = " ".join((out.stderr or "").split())[:160] or f"exit {out.returncode}"
+        # A REFUSED CONNECTION is a fact about the server; a missing relation is
+        # a fact about one query. Only the first one licenses skipping the rest,
+        # and conflating them would make a single typo'd table name silence
+        # every remaining measurement.
+        down = any(s in err for s in (
+            "could not connect", "connection to server", "Connection refused",
+            "server closed the connection", "no pg_hba.conf entry"))
+        raise fail(f"{db}: {err}", whole_server=down)
+    scalar = (out.stdout or "").strip()
+    if not re.fullmatch(r"\d+", scalar):
+        raise fail(f"{db}: `{sql}` returned {scalar!r}, which is not a count")
+    value = int(scalar)
+    if cacheable:
+        _PG_STATE[key] = ("ok", value)
+    return value
+
+
+def _exemplar_reality_db(read=None) -> str:
+    """The reality database the document itself names as its exemplar.
+
+    **Read out of the document, not restated here.** The table's row is *"a
+    reality's database `lw_reality_…`, 12 tables"*: WHICH database is the
+    document's claim, HOW MANY TABLES is Postgres's. Pinning the name in this
+    file would make the gate measure a different subject from the one the
+    sentence is about the day the exemplar changes -- and it would rot exactly
+    like every figure in the table it is here to guard.
+    """
+    text = _read_doc(REALITY_RUN_STATE, read=read)
+    if text is None:
+        raise Unmeasurable(f"{REALITY_RUN_STATE} cannot be read")
+    names = re.findall(r"`(lw_reality_[0-9a-f]+)`", text)
+    if not names:
+        raise Unmeasurable(
+            f"{REALITY_RUN_STATE} names no `lw_reality_…` exemplar database")
+    return names[0]
+
+
+def _count_glob(pattern: str, what: str) -> int:
+    """How many files match, or `Unmeasurable` when the glob reaches NOTHING.
+
+    Zero is never returned. A glob whose directory moved matches nothing, and a
+    walk that reaches nothing is byte-identical to a clean tree -- so reporting
+    `0` here would red the document with a confident wrong number instead of
+    saying the measurement stopped working (`BDR-82`).
+    """
+    hits = sorted(REPO.glob(pattern))
+    if not hits:
+        raise Unmeasurable(f"`{pattern}` matches no file, so {what} is unknown")
+    return len(hits)
+
+
+def _compose_game_tier(read=None) -> int:
+    """Game-tier services declared in compose. **Zero is a real answer here.**
+
+    Unlike `_count_glob`, this counts matches INSIDE one file that must exist:
+    if the file is gone the measurement is unmeasurable, but if the file is
+    there and declares none of the three, `0` is the truth and the document
+    saying `1` should go red.
+    """
+    text = _read_doc(COMPOSE, read=read)
+    if text is None:
+        raise Unmeasurable(f"{COMPOSE} cannot be read")
+    return len(re.findall(
+        r"^  (?:world-service|commit-service|game-server):", text, re.M))
+
+
 def measure(cargo=None) -> dict[str, object]:
     """`cargo` is injectable so `--self-test` can assert WHICH ARGUMENTS the
     measurements ask for, on a machine with no toolchain.
@@ -254,6 +480,33 @@ def measure(cargo=None) -> dict[str, object]:
         ("max_decision_id", lambda: _max_id(RUN_STATE, "D")),
         ("max_seam_id", lambda: _max_id(SEAMS, "S")),
         ("hook_gate_scripts", _hook_gate_scripts),
+        # --- the reality layer's MEASURED STATE table ---------------------
+        # Six ask a live Postgres and four ask the tree. The split matters: on
+        # a machine with no server the four still check, so the table is not
+        # all-or-nothing governed. An enumeration that degrades WHOLESALE is a
+        # check that is off by default on most machines.
+        ("rl_realities", lambda: _psql(
+            "loreweave_meta", "SELECT count(*) FROM reality_registry")),
+        ("rl_meta_tables", lambda: _psql(
+            "loreweave_meta",
+            "SELECT count(*) FROM pg_tables WHERE schemaname='public'")),
+        ("rl_shards", lambda: _psql(
+            "loreweave_meta", "SELECT count(*) FROM shard_utilization")),
+        ("rl_pg_login_roles", lambda: _psql(
+            "postgres", "SELECT count(*) FROM pg_roles WHERE rolcanlogin")),
+        ("rl_reality_tables", lambda: _psql(
+            _exemplar_reality_db(),
+            "SELECT count(*) FROM pg_tables WHERE schemaname='public'")),
+        ("rl_reality_migrations", lambda: _psql(
+            _exemplar_reality_db(), "SELECT count(*) FROM schema_migrations")),
+        ("rl_meta_migrations", lambda: _count_glob(
+            "migrations/meta/*.up.sql", "the meta migration count")),
+        ("rl_world_service_bins", lambda: _count_glob(
+            "services/world-service/src/bin/*.rs",
+            "the world-service worker-binary count")),
+        ("rl_admin_registries", lambda: _count_glob(
+            "contracts/admin/registry/*.yaml", "the admin domain-registry count")),
+        ("rl_compose_game_tier", _compose_game_tier),
     ):
         try:
             out[name] = fn()
@@ -345,6 +598,39 @@ CLAIMS: tuple[tuple[str, str, str], ...] = (
     (r"\(2026-08-02-seams-and-triggers\.md\)\s*\|\s*(\d+)\s*\|", "contract_seams_lines",
      "the seams register's lines, in the index table"),
     (r"\*\*(\d+) lines total\.\*\*", "contract_total_lines", "the three contracts' total lines"),
+
+    # --- the reality layer's MEASURED STATE table -------------------------
+    # **Anchored on the row's own subject, not on the bold alone.** These live
+    # in a markdown TABLE and several of them are bare `**N**`, so a pattern
+    # like `\*\*(\d+)\*\*` would match in any block in any governed document and
+    # compare an actor-hub figure against a Postgres count. Every row below
+    # names the sentence it belongs to; if one ever does leak into another
+    # block, the `must_claim` SURPLUS arm reports it by key rather than
+    # silently mis-comparing.
+    (r"\| realities in existence \| \*\*(\d+)\*\*", "rl_realities",
+     "realities in the registry"),
+    (r"`lw_reality_[0-9a-f]+`, \*\*(\d+) tables\*\*", "rl_reality_tables",
+     "tables in the exemplar reality's database"),
+    (r"\*\*(\d+) applied\*\*", "rl_reality_migrations",
+     "the exemplar reality's migration ledger"),
+    # ONE bolded span, TWO governed figures. `re.findall` returns tuples the
+    # moment a pattern has two groups, and `int(claimed)` would then raise a
+    # raw `TypeError` out of the pre-commit hook -- this file's oldest failure
+    # shape (`D-364`'s cargo crash, the positional unpack). So it is two
+    # patterns over the same span, each with exactly one group.
+    (r"\*\*(\d+) tables, \d+ migrations\*\*", "rl_meta_tables",
+     "tables in the meta database"),
+    (r"\*\*\d+ tables, (\d+) migrations\*\*", "rl_meta_migrations",
+     "the meta database's migration count"),
+    (r"\| registered shards \| \*\*(\d+)\*\*", "rl_shards", "registered shards"),
+    (r"there are \*\*(\d+)\*\* other bins", "rl_world_service_bins",
+     "world-service's other binaries"),
+    (r", (\d+) domain registries", "rl_admin_registries",
+     "admin domain registries"),
+    (r"→ \*\*(\d+)\*\* of 3", "rl_compose_game_tier",
+     "game-tier services declared in compose"),
+    (r"\| Postgres login roles \| \*\*(\d+)\*\*", "rl_pg_login_roles",
+     "Postgres login roles"),
 )
 
 
@@ -2255,8 +2541,26 @@ def self_test() -> int:
         failures += 1
         print(f"  FAIL {name}: no Unmeasurable raised")
 
+    class _Fast:
+        """A runner that must never be REACHED, only proven unreachable."""
+        returncode = 0
+        stdout = "test result: ok. 1 passed; 0 failed\n"
+
+    # **The runner is injected precisely so it is not called.** With the guard
+    # present, `which` returning None short-circuits and `_Fast` never runs;
+    # with the guard REMOVED, `_Fast` answers instantly and the case fails in
+    # milliseconds.
+    #
+    # Without it this case fell through to REAL `cargo test` with no filter --
+    # the whole workspace. Measured 2026-08-11: a WARM `cargo test` here is
+    # >400s against the mutation harness's 300s child bound, so the mutation
+    # `the cargo-absent guard removed` could not red **on any machine where the
+    # workspace takes over five minutes**, and the harness scored it a survivor.
+    # This gate's own docstring says a rule whose coverage depends on the
+    # developer's machine is not covered; this was one, in the file that says so.
     guard("an absent cargo is Unmeasurable, never a crash",
-          lambda: _cargo_passed([], which=lambda _: None), "not on PATH")
+          lambda: _cargo_passed([], which=lambda _: None,
+                                run=lambda _a: _Fast()), "not on PATH")
 
     class _Red:
         returncode = 101
@@ -2293,6 +2597,139 @@ def self_test() -> int:
         print("  FAIL a FAILED line among green ones must not be counted as passes")
     except Unmeasurable:
         print("  ok  a FAILED line among green ones is Unmeasurable, not 45")
+
+    # --- the reality-layer measurements' guards -----------------------------
+    # Every one of these degrades a DIFFERENT dependency. They are driven with
+    # injected runners for the same reason the cargo cases are: CI is the only
+    # automatic runner of the mutation harness and has neither a Rust toolchain
+    # nor a Postgres, so a rule assertable only on a developer's box is a rule
+    # covered nowhere.
+    # Same shape, same reason: with the guard present `_PgOkFast` is never
+    # reached, and with it removed the case fails instantly instead of dialling
+    # a Postgres that may not be there.
+    class _PgOkFast:
+        returncode = 0
+        stdout = "7\n"
+        stderr = ""
+
+    guard("an absent psql is Unmeasurable, never a crash",
+          lambda: _psql("d", "s", which=lambda _: None,
+                        run=lambda _a, _p: _PgOkFast()), "psql is not on PATH")
+
+    class _PgErr:
+        returncode = 2
+        stdout = ""
+        stderr = 'psql: error: connection to server at "localhost" failed'
+
+    guard("a refused connection is Unmeasurable, never a count",
+          lambda: _psql("loreweave_meta", "SELECT 1", which=lambda _: "psql",
+                        run=lambda _a, _p: _PgErr()), "connection to server")
+
+    class _PgMissing:
+        returncode = 1
+        stdout = ""
+        stderr = 'ERROR:  relation "nope" does not exist'
+
+    guard("a missing relation is Unmeasurable, never a count",
+          lambda: _psql("loreweave_meta", "SELECT count(*) FROM nope",
+                        which=lambda _: "psql", run=lambda _a, _p: _PgMissing()),
+          "does not exist")
+
+    class _PgWords:
+        returncode = 0
+        stdout = "t\n"
+        stderr = ""
+
+    # **A non-numeric answer is not zero.** `SELECT to_regclass(...)` returns
+    # `t`, and `int("t")` is a raw `ValueError` out of a pre-commit hook — this
+    # file's oldest failure shape, three helpers along.
+    guard("a non-count scalar is Unmeasurable, never int()-crashed",
+          lambda: _psql("d", "SELECT to_regclass('x')", which=lambda _: "psql",
+                        run=lambda _a, _p: _PgWords()), "is not a count")
+
+    class _PgOk:
+        returncode = 0
+        stdout = " 42 \n"
+        stderr = ""
+
+    got = _psql("d", "s", which=lambda _: "psql", run=lambda _a, _p: _PgOk())
+    if got != 42:
+        failures += 1
+        print(f"  FAIL a scalar answer must parse: got {got!r}, want 42")
+    else:
+        print("  ok  a scalar answer parses, whitespace and all")
+
+    # **THE REACH FAMILY.** A glob whose directory moved matches nothing, and a
+    # walk that reaches nothing is byte-identical to a clean tree — so returning
+    # `0` here would red the document with a confident wrong number instead of
+    # admitting the measurement stopped working (`BDR-82`).
+    guard("a glob that reaches NOTHING is Unmeasurable, never 0",
+          lambda: _count_glob("migrations/meta/*.nonesuch", "a probe"),
+          "matches no file")
+
+    for pattern, want_at_least in (("migrations/meta/*.up.sql", 1),
+                                   ("contracts/admin/registry/*.yaml", 1)):
+        n = _count_glob(pattern, "a probe")
+        if n < want_at_least:
+            failures += 1
+            print(f"  FAIL `{pattern}` must reach a real subject: got {n}")
+    print("  ok  both governed globs reach a live, non-empty subject")
+
+    # `_compose_game_tier` is deliberately NOT `_count_glob`: it counts matches
+    # inside a file that must exist, so ZERO is a real answer there and must red
+    # the document rather than skip it. Both directions, or the distinction is
+    # a comment rather than a behaviour.
+    # `read` here takes the PATH: `_compose_game_tier` goes through `_read_doc`,
+    # while `_dev_pg` reads one fixed file and takes none. The first version of
+    # these cases passed a zero-arg lambda to both; the one OUTSIDE `guard()`
+    # raised a bare `TypeError` that escaped the whole self-test and truncated
+    # it at 139 cases -- a suite that stops early still prints every case it did
+    # reach, so it looks like a pass with a smaller number.
+    guard("an unreadable compose file is Unmeasurable",
+          lambda: _compose_game_tier(read=lambda _: None), "cannot be read")
+    if _compose_game_tier(read=lambda _: "services:\n  redis:\n") != 0:
+        failures += 1
+        print("  FAIL a compose declaring no game-tier service must measure 0")
+    else:
+        print("  ok  a compose with no game-tier service measures 0, not Unmeasurable")
+    if _compose_game_tier(
+            read=lambda _: "  world-service:\n  redis:\n  game-server:\n") != 2:
+        failures += 1
+        print("  FAIL the game-tier scan must count every declared service")
+    else:
+        print("  ok  the game-tier scan counts each declared service once")
+
+    # **Read from compose, never restated.** A port or password pinned in this
+    # file is a second SSOT that rots — the exact defect the widening exists to
+    # catch, committed inside the mechanism.
+    host, port, user, pw = _dev_pg(read=lambda: (
+        "  postgres:\n    environment:\n      POSTGRES_USER: probeuser\n"
+        "      POSTGRES_PASSWORD: probepass\n    ports:\n      - \"5999:5432\"\n"))
+    if (port, user, pw) != ("5999", "probeuser", "probepass"):
+        failures += 1
+        print(f"  FAIL the dev DSN must come from compose: got {(port, user, pw)}")
+    else:
+        print("  ok  the dev Postgres DSN is read from compose, not restated here")
+    guard("a compose with no postgres service is Unmeasurable",
+          lambda: _dev_pg(read=lambda: "services:\n  redis:\n"),
+          "declares no `postgres:` service")
+    guard("a postgres service with no port mapping is Unmeasurable",
+          lambda: _dev_pg(read=lambda: "  postgres:\n    image: x\n"),
+          "host port mapping")
+
+    # The exemplar database is the DOCUMENT's claim; how many tables it holds is
+    # Postgres's. Pinning the name here would measure a different subject from
+    # the sentence the day the exemplar changes.
+    guard("a document naming no exemplar reality is Unmeasurable",
+          lambda: _exemplar_reality_db(read=lambda _: "no database here"),
+          "names no `lw_reality_")
+    if _exemplar_reality_db(
+            read=lambda _: "see `lw_reality_deadbeef01` for the shape") != \
+            "lw_reality_deadbeef01":
+        failures += 1
+        print("  FAIL the exemplar database must be read out of the document")
+    else:
+        print("  ok  the exemplar reality database is read out of the document")
 
     calls: list[list[str]] = []
     measure(cargo=lambda a: calls.append(list(a)) or 1)

@@ -346,16 +346,36 @@ Re-measure rather than trust this table if more than a session has passed. Two r
 | realities in existence | **10** (was 7 on 2026-08-10, 0 at session start) — three added 2026-08-11 by the world-service live smoke, one of them recovered from a half-provisioned state through the resume path | `psql -d loreweave_meta -tAc "SELECT count(*) FROM reality_registry"` |
 | a reality's database | `lw_reality_cd0747d24b94`, **12 tables** — ~~13~~, a miscount in the first draft of this table, corrected 2026-08-08 when the second reality's schema was diffed against it and matched exactly | `SELECT count(*) FROM pg_tables WHERE schemaname='public'` |
 | its migration ledger | **15 applied** | `SELECT count(*) FROM schema_migrations` |
-| `channels` in a real reality | **exists, holds a root row, `REC-106` refuses a self-parent** | `SELECT to_regclass('public.channels')` |
+| `channels` in a real reality | **exists, holds a root row, `REC-106` refuses a self-parent** `[NC:behaviour]` | `SELECT to_regclass('public.channels')` |
 | meta database | **exists**, **29 tables, 39 migrations** (was 28/35 on 2026-08-08 — `036`/`037` ownership, `038` orphan_scan_finding, `039` session_registry) | `psql -d loreweave_meta -tAc "SELECT count(*) FROM pg_tables WHERE schemaname='public'"`; `ls migrations/meta/*.up.sql \| wc -l` |
-| registered shards | **1** — `pg-shard-0.internal`, cap 50 | `SELECT * FROM shard_utilization` |
+| registered shards | **1** — `pg-shard-0.internal`, cap 50 `[NC:row-contents]` | `SELECT * FROM shard_utilization` |
 | meta bridge | **up, healthy, :8090** | `docker compose ps meta-bridge` |
-| `world-service` server binary | **SERVING, since 2026-08-11** — `POST /internal/v1/realities` + `/livez` `/readyz` `/metrics` on `crates/service-http`; a reality was created over a socket and confirmed in `pg_database`. Was *"none serving — a 22-line `println!` scaffold; the 7 real bins are workers/drills"*, which is now wrong on all three counts (it serves, it is not a scaffold, and there are **8** other bins). **Corrected by the audit that falsified it, not by the track that did** — see `BDR-91` | `ls services/world-service/src/bin/`; `cat src/main.rs` |
-| admin command surface | **33 commands, live and dispatched**, 10 domain registries | `go run ./cmd/admin --list` |
+| `world-service` server binary | **SERVING, since 2026-08-11** `[NC:live-process]` — `POST /internal/v1/realities` + `/livez` `/readyz` `/metrics` on `crates/service-http`; a reality was created over a socket and confirmed in `pg_database`. Was *"none serving — a 22-line `println!` scaffold; the 7 real bins are workers/drills"*, which is now wrong on all three counts (it serves, it is not a scaffold `[NC:no-predicate]`, and there are **8** other bins). **Corrected by the audit that falsified it, not by the track that did** — see `BDR-91` | `ls services/world-service/src/bin/`; `cat src/main.rs` |
+| admin command surface | **33 commands, live and dispatched** `[NC:toolchain]`, 10 domain registries | `go run ./cmd/admin --list` |
 | a command that CREATES a reality | **`reality provision`**, shipped by `W3` (was: none — all 8 `reality` commands required one to exist) | `--list` |
-| admin issuance on the dev stack | **was disabled** (`POST /internal/admin/token` → 404, no signing key). `W3` enabled it; the key lives in the operator's env, **not** the repo — regenerate + `export ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM=<base64 PKCS#8>` then `docker compose up -d auth-service` | `curl -o /dev/null -w '%{http_code}' -XPOST …/internal/admin/token` |
+| admin issuance on the dev stack | **was disabled** `[NC:history]` (`POST /internal/admin/token` → 404, no signing key). `W3` enabled it; the key lives in the operator's env, **not** the repo — regenerate + `export ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM=<base64 PKCS#8>` then `docker compose up -d auth-service` | `curl -o /dev/null -w '%{http_code}' -XPOST …/internal/admin/token` |
 | game-tier services in compose | `game-server` only; `world-service`, `commit-service` absent — **still true**, and now a gap rather than a non-event: world-service has a server binary with no compose entry and no general `Dockerfile` (`WS-COMPOSE`) | `grep -cE '^  (world-service|commit-service|game-server):' infra/docker-compose.yml` → **1** of 3 |
 | Postgres login roles | **3** — `loreweave` (`rolsuper`+`rolbypassrls`), **`loreweave_provisioner`** (`CREATEDB` only, `W7`), `w1p_foreign` (a drill fixture) | `SELECT rolname, rolsuper, rolcreatedb FROM pg_roles WHERE rolcanlogin` |
+
+**Every figure above is measured by `scripts/actor-hub-figures-gate.py`, which `--check`s it against
+the artifacts on every commit** — ten of them: the reality count, the exemplar's tables and migration
+ledger, the meta database's tables and migrations, the shard count, world-service's other binaries,
+the admin domain registries, the game-tier services in compose, and the Postgres login roles.
+
+**`[NC:…]` marks a sub-claim that is NOT checked, and why.** A table where checked figures sit beside
+unchecked prose, indistinguishable, is the same defect one level down — so the unchecked half says so
+in the cell rather than borrowing the credibility of the row it lives in.
+
+| tag | why no command yields it |
+|---|---|
+| `[NC:behaviour]` | needs an attempted WRITE, not a read — `REC-106`'s refusal is a rejection, and a gate that provokes one on every commit is a gate that writes to a live database |
+| `[NC:live-process]` | needs a RUNNING process. False on any box with nothing up, so the honest answer is *skip and say so*, never *the document is wrong* |
+| `[NC:no-predicate]` | **nobody has said what would falsify it.** This is the honest core of the whole thread: *"not a scaffold"* is unfalsifiable as written, and marking it is the only available remedy |
+| `[NC:toolchain]` | needs `go run ./cmd/admin --list`. A naive file count answers 34 against a claimed 33, which is precisely why a wrong measurement is worse than an admitted gap |
+| `[NC:history]` | a claim about a PAST state. No present measurement confirms one |
+| `[NC:row-contents]` | a row's contents rather than a count — the gate governs figures (`CR-F3`), and `cap 50` is a column value |
+
+<!-- actor-hub-figures:end reality-measured-state -->
 
 ---
 

@@ -31,7 +31,29 @@
 > nothing compares a doc's "this is unbuilt" claim against the thing it names.
 >
 
-> ### ▶ CLARIFY IS CLOSED — the board is [`2026-08-16-claim-rot-RUN-STATE.md`](../plans/2026-08-16-claim-rot-RUN-STATE.md)
+> ### ▶ CLAIM-ROT IS BUILT — board [`2026-08-16-claim-rot-RUN-STATE.md`](../plans/2026-08-16-claim-rot-RUN-STATE.md), rows `CR0`–`CR5` closed
+>
+> **The reality-layer MEASURED STATE table now checks itself.** Ten of its figures are measured on
+> every commit by `scripts/actor-hub-figures-gate.py`, widened in place per `CR-F1` — six ask a live
+> Postgres, four ask the tree, and with `psql` off `PATH` the six say why they were skipped while the
+> four still check. The dev DSN is read out of `infra/docker-compose.yml` and the exemplar reality
+> database out of the document itself; pinning either would plant a second SSOT inside the mechanism
+> built to kill second SSOTs.
+>
+> **Six sub-claims cannot be measured and now say so in the cell** — `[NC:behaviour]`,
+> `[NC:live-process]`, `[NC:toolchain]`, `[NC:history]`, `[NC:row-contents]`, `[NC:no-predicate]`.
+> The last is *"not a scaffold"*, which has **no predicate at all**; marking it is the only remedy
+> available, and `CR-PROSE-CLAIMS` stays open with the honest note that nothing mechanises prose.
+>
+> **Bitten five ways** and then made permanent: 7 new rows in `gate-bite-harness` behind 15 new
+> self-test cases (141 → 156). A case says the rule works today; a mutation says the case would
+> notice if it stopped.
+>
+> **Read the drift register before the next round** — it holds three self-inflicted findings,
+> including `CR3`'s own `done=` cell shipping a stale figure inside the board written to kill stale
+> figures.
+>
+> ### ⏸ WAS: CLARIFY IS CLOSED
 >
 > The spec was audited (§4b) and then **the experiment overturned both the spec and its audit**
 > (§4c): 13 of 13 measured-state rows carry a measurable sub-claim and all 13 match. The unit is the

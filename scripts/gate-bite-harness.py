@@ -122,6 +122,41 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the red-build guard removed",
          '    if "test result: FAILED" in out.stdout or out.returncode != 0:',
          "    if False:"),
+        # --- the reality-layer widening (2026-08-11) ------------------------
+        # The second track this gate governs. Its rules had a self-test and no
+        # MUTATION rows, which is half a proof: a case asserts the rule works
+        # TODAY, a mutation asserts the case would notice if it stopped.
+        ("the reality-layer scope row deleted",
+         '    (REALITY_RUN_STATE, "## 1 · MEASURED STATE", END("reality-measured-state"),\n'
+         '     frozenset({"rl_realities", "rl_reality_tables", "rl_reality_migrations",\n'
+         '                "rl_meta_tables", "rl_meta_migrations", "rl_shards",\n'
+         '                "rl_world_service_bins", "rl_admin_registries",\n'
+         '                "rl_compose_game_tier", "rl_pg_login_roles"})),', ""),
+        ("the psql-absent guard removed",
+         '    if (which or shutil.which)("psql") is None:', "    if False:"),
+        ("the psql error branch removed",
+         "    if out.returncode != 0:", "    if False:"),
+        # `int("t")` is a raw ValueError out of a pre-commit hook -- this file's
+        # oldest failure shape, three helpers along.
+        ("the non-count scalar guard removed",
+         '    if not re.fullmatch(r"\\d+", scalar):', "    if False:"),
+        # THE REACH FAMILY. A glob whose directory moved matches nothing, and a
+        # walk that reaches nothing is byte-identical to a clean tree.
+        ("the empty-glob reach guard removed",
+         "    hits = sorted(REPO.glob(pattern))\n    if not hits:",
+         "    hits = sorted(REPO.glob(pattern))\n    if False:"),
+        # A port or password PINNED here instead of read from compose is a
+        # second SSOT that rots -- the exact defect the widening exists to
+        # catch, committed inside the mechanism.
+        ("the dev DSN pinned instead of read from compose",
+         '    return ("localhost",',
+         '    return ("localhost", "5555", "loreweave", "loreweave_dev")\n'
+         '    return ("localhost",'),
+        # WHICH database is the document's claim; how many tables it holds is
+        # Postgres's. Pinning the name measures a different subject from the
+        # sentence the day the exemplar changes.
+        ("the exemplar reality database pinned instead of read",
+         "    return names[0]", '    return "lw_reality_cd0747d24b94"'),
         ("the cargo-absent guard removed",
          '    if (which or shutil.which)("cargo") is None:', "    if False:"),
         ("the empty-id guard removed", "    if not ids:", "    if False:"),
@@ -304,9 +339,19 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # path+mtime+size) was REMOVED instead of cased: nothing could tell it
         # apart, because the documents do not change while the process runs, and
         # measured best-of-three it was worth 0.04s of 2.94s.
+        # **The anchor carries its `key =` line, and that is not decoration.**
+        # `_psql` (2026-08-11) copied this bypass verbatim, so the one-line
+        # anchor started matching TWICE and the harness reported table drift.
+        # It reported rather than guessed, which is the whole design — but the
+        # lesson is the older one this file keeps relearning: **a rule written
+        # twice is a rule with half a test**, so the copy gets its own row below
+        # instead of sharing this one.
         ("the cargo memo forgets that an injected runner is not the real one",
-         "    cacheable = run is None and which is None",
-         "    cacheable = True"),
+         "    cacheable = run is None and which is None\n    key = tuple(args)",
+         "    cacheable = True\n    key = tuple(args)"),
+        ("the psql memo forgets that an injected runner is not the real one",
+         "    cacheable = run is None and which is None\n    key = (db, sql)",
+         "    cacheable = True\n    key = (db, sql)"),
         ("the blanking cache drops an argument from its key",
          "@functools.lru_cache(maxsize=4096)\ndef _claimable(",
          "@functools.lru_cache(maxsize=4096)\n"
