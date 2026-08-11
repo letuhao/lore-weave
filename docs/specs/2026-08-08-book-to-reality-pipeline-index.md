@@ -89,15 +89,24 @@ dependency is real and it has a concrete artifact at its centre.
 
 ## 4 · The gaps, named so they can be chosen
 
+> **⚠ RE-MEASURED 2026-08-11 — five of the seven rows below had gone stale, all in the
+> same direction: claiming blocked what had since been built.** Four were discharged by the
+> reality-layer / turn-loop / durable-subscribe / world-service tracks without anyone coming back to
+> this table, and the fifth by the track that re-measured it. **Every one of them is a `SELECT` or an
+> `ls` away**, which is what makes the rot worth recording rather than merely fixing: nothing here
+> compares a "this is unbuilt" claim against the thing it names, so the table could only ever be as
+> current as the last person who happened to re-read it. Tracked as `AS-PIPELINE-INDEX-ROT` in
+> [`2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md).
+
 | id | gap | why it blocks | size |
 |---|---|---|---|
 | `G-S3` | **Lore bible has no schema and no producer.** 17 documents describe the tier; nothing writes or stores one. | `S4` and `S5` have no input | large — a tier |
 | `G-S4` | **"Pre-manifest stub" is undefined.** No name, no shape, no owner, no doc. | It is the join between an *unstructured* concept and a *structured* manifest — the one conversion `BOOK_TO_GAME` says is the generators' job | unknown until `S3` has a shape |
-| `G-S5a` | **The engine's supported surface is not enumerated for authors.** `engine_default.toml` declares it in engine terms; there is no derived statement of "what an author may say". | A manifest builder cannot be specified without it | medium — derive from existing types |
-| `G-S7a` | **Zero realities have ever existed.** | Nothing downstream of `S5` has been exercised end to end | small to prove, if `L4` lands |
-| `G-S7b` | **The meta database does not exist**, and `migrations/meta/` is a second migration tree at repo root with no manifest and no gate. | The provisioner's first action writes `reality_registry` | small–medium |
-| `G-S8a` | **`reality_registry` has no owner**, and the `db_host` CHECK rejects the dev host. | Any user-owned reality | small schema, large decision |
-| `G-S8b` | **`loreweave` is the only login role and it is `rolsuper` + `rolbypassrls`.** | A user-reachable `CREATE DATABASE` path | medium, and it is a prerequisite not a nicety |
+| ~~`G-S5a`~~ | ✅ **DISCHARGED 2026-08-11.** `contracts/ruleset/authorable-surface.v1.yaml` — 8 patch types reachable from `RulesetPatch`, 72 authored keys, the 6 refused keys with the reason each author is told, and the `Floor`/`Mutability`/`Strategy` class of all 20 classified rows. **The answer already existed in executable form**: `RulesetPatch` is `deny_unknown_fields`, so the loader could already say yes or no to any key — it had simply never been written down. This row's own objection to candidate A (*"produces a document, not a running thing"*) was the design constraint: the enumeration is checked from two directions by two methods (`scripts/authorable-surface-gate.py` against the source, `crates/ruleset-loader/tests/authorable_surface.rs` against the real loader), because a hand-written list of a code-derived set is `closed-set-gate`'s drift one level up. 9/9 bitten | — | done |
+| ~~`G-S7a`~~ | ✅ **DISCHARGED.** Was *"zero realities have ever existed"*; **10 exist**, and one was created over HTTP through `POST /internal/v1/realities` on 2026-08-11. `SELECT count(*) FROM reality_registry` | — | done |
+| ~~`G-S7b`~~ | ✅ **DISCHARGED.** The meta database exists with **39 migrations**, and `migrations/meta/` is governed by `migration-manifest-gate` | — | done |
+| ~~`G-S8a`~~ | ✅ **DISCHARGED** by `W6`: `reality_registry` carries `owner_user_id` **and** `owner_kind`. The `db_host` CHECK still requires `^pg-shard-[0-9]+\.(internal\|prod\|staging)$` and the dev host still does not match it — resolved by an **alias** rather than a widened constraint (`pg-shard-0.internal` genuinely resolves inside the compose network), so `db_host` stays a real connectable host | — | done |
+| ~~`G-S8b`~~ | ✅ **DISCHARGED** by `W7`. Was *"`loreweave` is the only login role and it is `rolsuper` + `rolbypassrls`"*; there are **three**, and `loreweave_provisioner` is `rolsuper=f rolcreatedb=t` — `CREATEDB` and nothing else. `SELECT rolname, rolsuper, rolcreatedb FROM pg_roles WHERE rolcanlogin` | — | done |
 
 ---
 
@@ -112,6 +121,26 @@ bounds the manifest is the current priority.
 **Wake it up when:** `G-S5a` is answered (the authorable surface is known) **and** `G-S7b` + `G-S8b`
 are done (meta exists; a `CREATEDB`-only role exists).
 
+> ### ⚠ ALL THREE CONDITIONS ARE NOW MET (2026-08-11) — and that is a PO decision, not an agent's
+>
+> `G-S5a` ✅ (`authorable-surface.v1.yaml`) · `G-S7b` ✅ (meta, 39 migrations) · `G-S8b` ✅
+> (`loreweave_provisioner`, `CREATEDB` only). The condition this document wrote for itself is
+> satisfied, so **`S8` is no longer blocked by the gates it named.**
+>
+> It does **not** follow that `S8` is next, and this note exists so nobody reads it that way. The
+> parking reason was never only the gates — it was **build order**, in the PO's words: *"we are
+> going to the game engine first, because you cannot give a user a manifest builder if you do not
+> know what the game engine can support."* `S3` (lore bible) and `S4` (pre-manifest stub) are still
+> undesigned, and this document's own §5 says the parked spec got **scope and timing** wrong by
+> modelling a terminal stage as a standalone feature. Nothing about that has changed.
+>
+> It also carries a correction it must not be resumed without: it treats creation as ONE operation,
+> and the PO's framing is that a user **requests**, and the request runs a multi-function pipeline.
+>
+> **What has changed is that the blocker is now a product decision rather than an engineering one.**
+> Recorded here because the previous state — three unmet gates — was doing the deciding, and it
+> stopped being true without anyone noticing.
+
 ---
 
 ## 6 · Candidates for "choose one", each independently valuable
@@ -120,11 +149,13 @@ Not a plan. A menu, with the dependency each one clears.
 
 | candidate | clears | why it might go first | why it might not |
 |---|---|---|---|
-| **A · Enumerate the engine's authorable surface** — derive, from `ruleset-core`'s types and `engine_default.toml`, the exact set an author may declare | `G-S5a` | Directly serves "engine first". Reads existing code; invents nothing. It is the input every later stage needs. | Produces a document, not a running thing |
-| **B · Stand up meta + one reality end to end** | `G-S7a`, `G-S7b` | The whole per-reality tier has never executed once; this is the DATA/LIVE-RUN axis `1b` never had. Would have caught three of this session's findings in a minute. | Needs `G-S8b` (the role) to be honest about the security shape |
-| **C · The `CREATEDB`-only role** | `G-S8b` | Prerequisite for anything user-facing; also removes the superuser bypass a refuter used to defeat constraints. | Infrastructure work with no visible product |
-| **D · Give the lore bible a shape** | `G-S3` | Unblocks the whole middle. | Largest, least defined; `BOOK_TO_GAME` says it is authored and unstructured **by nature**, so "a shape" may be the wrong ask |
-| **E · Continue slices 2–5** (`crates/dp` SDK) | the tier boundary | Already boarded and sealed as the build order. | Does not touch this pipeline's gaps |
+| ~~**A · Enumerate the engine's authorable surface**~~ | ~~`G-S5a`~~ | ✅ **DONE 2026-08-11.** And its stated objection was answered rather than accepted: it is not a document. The enumeration is a contract checked from two directions by two methods, because a hand-written list of a code-derived set drifts silently — `closed-set-gate`'s failure one level up. **It also found something the survey framing would have missed**: the answer already existed in executable form and only the prose was absent | — |
+| ~~**B · Stand up meta + one reality end to end**~~ | ~~`G-S7a`, `G-S7b`~~ | ✅ **DONE.** 10 realities; one created over HTTP | — |
+| ~~**C · The `CREATEDB`-only role**~~ | ~~`G-S8b`~~ | ✅ **DONE** (`W7`) — `loreweave_provisioner`, `rolsuper=f rolcreatedb=t` | — |
+| **D · Give the lore bible a shape** | `G-S3` | Unblocks the whole middle, and is now the **only** remaining candidate on this menu | Largest, least defined; `BOOK_TO_GAME` says it is authored and unstructured **by nature**, so "a shape" may be the wrong ask |
+| ~~**E · Continue slices 2–5** (`crates/dp` SDK)~~ | ~~the tier boundary~~ | ✅ **DONE** | — |
 
-**A is the one this document was written to make possible**, and it is the cheapest: it reads code
-that already exists and produces the input `S4` and a future manifest builder both require.
+**A was the one this document was written to make possible.** Four of the five candidates are now
+done, and `D` is what is left — together with `G-S4`, which cannot be scoped until `D` has an answer.
+Both are design work on the pipeline's undesigned middle, which is precisely where the PO's
+build-order reasoning pointed.

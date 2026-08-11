@@ -72,6 +72,17 @@ sh "$ROOT/scripts/language-rule-lint.sh"
 "$PY" "$ROOT/scripts/zero-digest-gate.py" --staged
 "$PY" "$ROOT/scripts/pin-resolution-gate.py"
 
+# WHAT AN AUTHOR MAY DECLARE must match the types that accept it. `G-S5a` asked for a derived
+# statement of the engine's authorable surface; the answer already existed in executable form
+# (`RulesetPatch` is deny_unknown_fields, so the loader can already say yes or no to any key) and
+# had never been written down. `contracts/ruleset/authorable-surface.v1.yaml` writes it down, and
+# this keeps it true — it is a list that must contain every member of a set the compiler knows,
+# which is `closed-set-gate`'s drift one level up. Scope is the transitive closure of
+# `RulesetPatch`'s field types, so a nested table added tomorrow is in scope the day it lands
+# rather than being default-uncovered. Not `--staged`: the contract and the types live in
+# different crates and a change to either can break the pair.
+"$PY" "$ROOT/scripts/authorable-surface-gate.py"
+
 # NO STRING-KEYED LOOKUP on the island step path (IMP-D4 / QTY-A9). Q1 introduces author-declared
 # quantities, which arrive as NAMES in TOML, and the shortest path from `name = "qi"` to a working
 # Q2 is `resources: BTreeMap<String, ResourceState>` on the actor — after which `evaluate_outcome`'s

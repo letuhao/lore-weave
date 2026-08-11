@@ -1,11 +1,36 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — world-service is a running process, and a reality can be created over HTTP (2026-08-11, branch `feat/game-logic`)
+## ▶ GAME BUILD — a reality is created over HTTP, and the engine's authorable surface is finally stated (2026-08-11, branch `feat/game-logic`)
 
-**HEAD:** `ff55a2ac5`+ · **ACTIVE run-state: [`docs/plans/2026-08-13-world-service-server-RUN-STATE.md`](../plans/2026-08-13-world-service-server-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `cdfadfc61`+ · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — `GATE-TEETH-43`'s next batch, or the gateway's world route.**
+> **▶ DO NEXT — `GATE-TEETH-43`'s next batch, or `G-S3` (give the lore bible a shape).**
 >
+> **⚠ READ THIS BEFORE PICKING UP THE GATEWAY'S WORLD ROUTE.** I recommended it, and it was
+> **wrong**: it is stage `S8` of a pipeline the PO parked the day it was designed, for build-order
+> reasons — *"you cannot give a user a manifest builder if you do not know what the game engine can
+> support."* Its three stated wake-up gates are now ALL met, so what parks it is a **product
+> decision**, not an engineering blocker — see the ⚠ note in
+> [the pipeline index](../specs/2026-08-08-book-to-reality-pipeline-index.md) §5. `S3` and `S4`
+> remain undesigned, and that is where the build order points.
+>
+> **`G-S5a` is discharged.** The engine's authorable surface is stated for the first time:
+> [`contracts/ruleset/authorable-surface.v1.yaml`](../../contracts/ruleset/authorable-surface.v1.yaml)
+> — 8 patch types reachable from `RulesetPatch`, 72 authored keys, the 6 keys an author is
+> **refused** with the reason each is told, and the `Floor`/`Mutability`/`Strategy` class of all 20
+> classified rows. **The answer already existed in executable form** (`RulesetPatch` is
+> `deny_unknown_fields`) and had simply never been written down. It is checked from two directions
+> by two methods — `authorable-surface-gate.py` against the source, `tests/authorable_surface.rs`
+> against the real loader — because a hand-written list of a code-derived set is `closed-set-gate`'s
+> drift one level up. **9/9 bitten**, and the two arms only the behavioural half can see (remove
+> `deny_unknown_fields`; skip the per-verb refusal) leave the source gate perfectly green.
+>
+> **Four of the pipeline index's five blocking gates were stale**, all claiming blocked what had
+> been built — `G-S7a` said zero realities had ever existed (there are 10), `G-S8b` said `loreweave`
+> was the only login role (there are three). Corrected, and tracked as `AS-PIPELINE-INDEX-ROT`:
+> nothing compares a doc's "this is unbuilt" claim against the thing it names.
+>
+
 > **What shipped, in three consecutive tracks.** The turn loop
 > ([run-state](../plans/2026-08-11-turn-loop-RUN-STATE.md), `T0`–`T8`): `advance_turn` + the DP-Ch51
 > advisory slot on `ChannelWriter`, live-tested. Durable subscribe
@@ -889,11 +914,11 @@ the two design contracts that are its only specification are in
 | `U-10` — the citations in this round's own contracts now resolve mechanically | `scripts/citation-gate.py`, wired pre-commit |
 
 **Evidence:** `cargo test -p actor-hub -p entity-existence -p ruleset-core -p game-rules -p ruleset-loader`
-= **328 passed, 0 failed** · `dp-kernel --lib` **319** passed (was 315; `5-WIRE` + the subkey regression added four `dp_backend` tests), unchanged by the `GoneState`
+= **332 passed, 0 failed** · `dp-kernel --lib` **319** passed (was 315; `5-WIRE` + the subkey regression added four `dp_backend` tests), unchanged by the `GoneState`
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
-PRODUCTION RULE, run it rather than trust this sentence) · the **50**
+PRODUCTION RULE, run it rather than trust this sentence) · the **51**
 gate scripts the pre-commit hook
 wires all green, and every `--self-test` among them runs pre-commit via
 `scripts/gate-self-tests.py`, which DISCOVERS them rather than naming them.

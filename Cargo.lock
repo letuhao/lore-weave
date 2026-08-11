@@ -3055,6 +3055,7 @@ version = "0.1.0"
 dependencies = [
  "ruleset-core",
  "serde",
+ "serde_yaml",
  "toml",
 ]
 
