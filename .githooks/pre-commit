@@ -46,6 +46,11 @@ command -v python >/dev/null 2>&1 || PY=python3
 # T35 — the derived `Entity.id = hash(name, kind)` gains no new callers while
 # D-T35-OPAQUE-IDENTITY is open. The baseline is the migration checklist.
 "$PY" "$ROOT/scripts/derived-entity-id-gate.py"
+# A migration that shipped is not a migration that RAN. STATIC half only here (no DB
+# in a pre-commit): every Up* func is registered, ids unique + ascending. The LIVE
+# half — the one that catches 0063/0064/0065 sitting unapplied on a running Postgres,
+# which is the incident this gate is named for — needs `--live` and a reachable DB.
+"$PY" "$ROOT/scripts/migration-drift-gate.py"
 
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a

@@ -2646,6 +2646,31 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   ordinals. Corpus-wide the vocabulary is now `attribute` 41536 · `name` 5202 · `alias` 1869 ·
   **`status` 3** — a kind that had been 0 since the CHECK first admitted it.
 
+  **AND THE CLASS NOW HAS A DETECTOR.** `scripts/migration-drift-gate.py`, pre-commit + CI.
+  Nothing caught this for days because **no other code had ever tried to use those three
+  steps** — a migration's absence is invisible until a feature depends on it, so the first
+  thing to notice is always a user-facing 500.
+
+  Two checks, and the cheap one alone would have been worse than nothing:
+
+  - **STATIC** (always, no DB) — every `Up*` func is registered in `chain`, ids unique and
+    ascending. Catches "wrote it, forgot to wire it".
+  - **LIVE** (`--live`) — diffs `chain` against a database's `schema_migrations`. **This is
+    the half that catches the incident**, and the static half would not have: all three steps
+    were correctly registered. The gap was between the repo and one running Postgres.
+
+  A gate that shipped with only the static half would report green on the exact failure it is
+  named for — a check with the authority of coverage and none of it.
+
+  **Both halves bitten.** Against a database whose ledger stops at 0062:
+  ```
+  glossary: 3 registered step(s) have NEVER RUN on <db>:
+      0063_entity_lifecycle_ledger, 0064_entity_facts_status_kind, 0065_entity_fact_evidence
+  ```
+  and an unregistered `Up*` func: `1 migration func(s) defined but NOT registered in chain —
+  they will never run`. An unreachable database reports SKIPPED rather than "all missing":
+  conflating "cannot see" with "not there" is how a gate teaches people to ignore it.
+
   **What this does NOT yet unblock:** the seven `alive`-column readers. Three facts on one book
   is a producer proven, not a corpus. The gate baseline stays the migration checklist until a
   reader has real liveness to read on the book it serves.
