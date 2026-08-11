@@ -1905,6 +1905,10 @@
     "composition_motif_patch": {
       "state": "proven",
       "note": "PROVEN on the path that distinguishes it from the user-tier edit: patching a BOOK_SHARED motif by passing book_id. Summary alone was changed and name, kind and the 2-element beats array all survived -- correct partial semantics, the same side of #155's divide as motif_edit (#201) and canon_rule_edit (#175). A stale expected_version returns applied_conflict with current_version, and expected_version is REQUIRED rather than optional, so a blind clobber is impossible by construction -- which matters more here than elsewhere, because the description says ANY collaborator with EDIT on the book may patch a shared row, so two people editing the same motif is the expected case rather than a corner."
+    },
+    "composition_motif_restore": {
+      "state": "proven",
+      "note": "PROVEN as #197's inverse, and the tenancy guard was again checked on the VICTIM row: restoring a SYSTEM motif gives the uniform deny and that motif's status was still 'active' afterwards, so the deny is a real no-op rather than a deny after a write. Restoring my own archived motif returns it to active with its content intact. Restoring an ALREADY-active motif gives the uniform deny rather than an idempotent success -- the opposite of the archive side (#197), where re-archiving IS idempotent. That asymmetry is consistent across this repo's whole archive family (arc_template_restore #159 behaves the same way) and it is defensible: 'archive' asks for a state that already holds, while 'restore' asks to reverse an action that never happened. It is also the same actionability cost DQ-19 records -- the deny is false about a row the caller can read one tool away -- and it stays recorded there rather than being re-litigated here."
     }
   }
 }
