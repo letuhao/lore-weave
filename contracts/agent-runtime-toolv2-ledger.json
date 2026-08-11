@@ -1021,6 +1021,17 @@
         "CODE: three guards -- the named set, the empty-book branch, and a WIRING guard on the raise site, because a helper-level test stays green when the call site is reverted. That has happened twice in this loop. Reverting the call site reds it"
       ],
       "admitted": false
+    },
+    "glossary_propose_kinds": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 6 calls / 3 sessions / 5 ok. The single failure is a SHAPE error: the model sent one kind FLAT ({code, name, attributes}) to the plural tool, which wants {kinds: [...]}. Its singular sibling glossary_propose_new_kind takes exactly the flat form, so the model used the right shape on the wrong tool. NOT FIXED, and the reason is structural rather than a judgement about effort: the rejection is 'unexpected additional properties' from the JSON-schema boundary, which runs BEFORE handler code, so the singular/plural coalesce that worked for curation in iteration 1 cannot run here. The only lever would be the schema itself, and the measured subject is ONE call in one session on 2026-07-05.",
+      "evidence": [
+        "PHASE 2: 5 ok / 1 failed -- 'unexpected additional properties [\"attributes\" \"code\" \"name\"]', one session, 2026-07-05",
+        "LIVE plural shape: kinds=[{code, name}] -> a confirm card, descriptor schema_create_kinds, with a preview row reading 'Toolv2 i89 · 0 attribute(s)'. Nothing created -- it is a propose",
+        "CONTROL, the recorded flat shape: reproduces 'unexpected additional properties [\"name\" \"code\"]' verbatim",
+        "CHECKED: glossary_propose_new_kind accepts precisely the flat form the model sent, so the capability was present under a different name -- this is a tool-choice error, not a missing feature"
+      ],
+      "admitted": false
     }
   }
 }
