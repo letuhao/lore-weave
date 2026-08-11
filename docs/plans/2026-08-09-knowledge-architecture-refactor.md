@@ -54,7 +54,7 @@ dev graph (`infra-neo4j-1`, read-only):
 |---|---|
 | **The graph MODEL is built and populated** | `Entity` 4813 · `Event` 1184 · `Passage` 1041 · `Fact` 341 · `ExtractionSource` 172 · `EntityStatus` 35 · edges `EVIDENCED_BY` 2803 · `RELATES_TO` 1142 · `ABOUT` 248. This refactor's new graph shape is real and carrying data. |
 | **The second graph DATABASE does not exist** | Only `neo4j_graph_store.py` (+ `fake_graph_store.py`, a test double). **No Kuzu, no AGE, no Memgraph anywhere in the repo.** That is **T42**, and decision X1 requires building **both** candidates. `D-T17-BACKFILL-CYPHER` (6 migration files) is blocked on it, then T43 → QC-7. |
-| **⚠️ The CAUSAL layer is empty in practice** | **4 of 1184 `Event` nodes (0.34 %) touch any causal edge** — 2 `CAUSES` + 2 `PRECEDES` in the entire graph, all from T33's single-book corpus bite (31 events considered, 5 edges written). Events span **at least 8 projects**; the producer has run on ~2.6 % of them. |
+| ~~**The CAUSAL layer is empty in practice**~~ ⛔ **WITHDRAWN** | The dev store holds **4** causal edges over **1184** `Event` nodes. That proves the writer executes end-to-end; it proves **nothing** about `MD10`'s conformance. **There is no production corpus** — the dev database is residue from ad-hoc development runs, so a low ratio there is explained by *"nobody ran the pipeline over that data"*. Using it as a denominator was a methodology error (PO, 2026-08-11), and the conclusion is withdrawn rather than softened. The real finding is that **no instrument exists** to settle the question: see `docs/plans/2026-08-11-architecture-conformance-audit.md` § the methodology rule. |
 
 ### ⚠️ Stop condition 3 is UN-EVALUATED, and it names an edge type that does not exist
 
@@ -3013,11 +3013,11 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   | | |
   |---|---|
-  | **Blocker** | The corpus bite below is real and it passes — but it ran over **31 events in one book**. The live graph holds **1184 `Event` nodes across at least 8 projects**, and **4 of them (0.34 %) touch any causal edge**: 2 `CAUSES` + 2 `PRECEDES` in total, all from that one bite. The producer is proven; the corpus is not populated. **This is the same shape as `D-T32-ALIVE-NO-FACTS`** — a producer proven on one book and read as a populated corpus — and here the plan's **highest-risk stop condition** turns on it. |
-  | **Evidence** | Live dev graph, read-only, 2026-08-11: `MATCH (e:Event) WHERE (e)-[:CAUSES\|PRECEDES]-() RETURN count(DISTINCT e)` → **4**; `MATCH (e:Event) RETURN count(e)` → **1184**. Node census: `Entity` 4813 · `Event` 1184 · `Passage` 1041 · `Fact` 341 · `EntityStatus` 35. Edge census: `EVIDENCED_BY` 2803 · `RELATES_TO` 1142 · `ABOUT` 248 · `CAUSES` **2** · `PRECEDES` **2**. |
+  | **Blocker** | ⛔ **Re-framed 2026-08-11 (PO).** The first version of this row argued from dev-store coverage — *"4 of 1184 events, the corpus is not populated"*. **That reasoning is invalid and is withdrawn.** There is no production system and no production corpus; the dev database holds residue from ad-hoc development runs, so a low ratio there is explained by *"nobody ran the pipeline over that data"* and says nothing about whether `MD10` is implemented. The real blocker is one level up: **no instrument exists that could settle the question.** Every measurement in this refactor has been taken against whatever data happened to exist. |
+  | **Evidence** | What the dev store legitimately proves is an **existence result**: the causal writer executes end-to-end and persists both relationship types (`CAUSES` 2, `PRECEDES` 2, from T33's single-book bite over 31 events). The surrounding census — `Entity` 4813 · `Event` 1184 · `Passage` 1041 · `Fact` 341 · `EntityStatus` 35 — is recorded as context, **not as a denominator**. |
   | **Also fixed here** | Stop condition 3 was written against **`HAPPENS_BEFORE`**, a relationship type that exists in **neither the code nor the graph** — T33 deliberately persists `CAUSES` and `PRECEDES` as distinct types. A literal check of the old wording returns 0, which is indistinguishable from a broken query. The stop condition now pins the *query*, not a name. |
-  | **To unblock** | Nothing external, and no decision. Run the causal extractor across the event corpus (or a representative slice of the 8 projects) and re-measure both counts. Only then can *"few or low-quality"* be judged — today it cannot be judged at all, in either direction. |
-  | **Mechanism** | The two Cypher counts, pinned verbatim in **Stop conditions § 3** so the next reader measures rather than quotes. They are cheap, read-only, and answer the question directly. A prose note would not have done that: this exact stop condition sat unexamined precisely because it named a symbol nobody could grep for and no command reproduced it. |
+  | **To unblock** | Build a **reference corpus with known ground truth** — a fixture book with a known cast, a known event chain and known role changes — then state the expected output and the pass criterion **before** running, and run on a **throwaway** store. Re-counting the dev database is not a smaller version of this; it is a different and invalid experiment. Tracked as Phase A of `docs/plans/2026-08-11-architecture-conformance-audit.md`. |
+  | **Mechanism** | Two parts, and only one of them is data. **(a)** The wording fix in **Stop conditions § 3** is repo-grounded and stands on its own: the condition named `HAPPENS_BEFORE`, which exists in neither the code nor the graph, so a literal check returned 0 and was indistinguishable from a broken query. **(b)** The reference corpus is what makes the condition falsifiable at all. Until (b) exists, `MD5`, `MD9`, `MD10` and this stop condition are **unfalsifiable — which is not the same as passing**. |
   | **Retry when** | Before Phase 7 opens. T42's engine choice is argued partly from *"the workload is shallow because relationship extraction is immature"* (decision X1) — deciding an engine while the causal layer sits at 0.34 % coverage would settle it on an artefact, which is the argument X1 exists to reject. |
 
   ### ✅ THE CORPUS BITE PASSES — 2026-08-11. Two causes, and the deferral named one.
@@ -4067,9 +4067,12 @@ Any of these means **stop and re-open the design**, not work around it:
    MATCH (e:Event) WHERE (e)-[:CAUSES|PRECEDES]-() RETURN count(DISTINCT e) AS covered;
    MATCH (e:Event) RETURN count(e) AS total;
    ```
-   **Measured 2026-08-11: covered 4 / total 1184 (0.34 %).** That is not yet a fired stop
-   condition — T33's producer has only ever run over **31 events in one book** — but it is no
-   longer an unknown that can be left un-examined. See `D-T33-CAUSAL-COVERAGE-UNMEASURED`.
+   Observed on the dev store 2026-08-11: covered 4 / total 1184. ⛔ **That ratio does NOT evaluate
+   this stop condition, in either direction.** There is no production corpus; the dev database is
+   residue from ad-hoc runs, so its denominator is not a population the design chose. The condition
+   can only be settled by a **designed run on a reference corpus with known ground truth**, which
+   does not yet exist — that is the actual blocker. See `D-T33-CAUSAL-COVERAGE-UNMEASURED` and
+   `docs/plans/2026-08-11-architecture-conformance-audit.md` § the methodology rule.
 4. **T41** shows rebuild-from-Postgres is impractical at book scale → graph HA returns as a
    requirement and Phase 7's rollback story fails.
 
