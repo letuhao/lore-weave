@@ -67,7 +67,14 @@ func TestTheDescriptionDoesNotPromiseAnUndoThatCannotHappen(t *testing.T) {
 	if !strings.Contains(desc, "KEEPS ITS CODE reserved") {
 		t.Error("the description must state why a re-add fails, not merely drop the false claim")
 	}
-	if !strings.Contains(desc, "one-way from the tool surface") {
-		t.Error("the consequence a caller acts on — do not run this casually — must be stated")
+	// #241 CORRECTION: an earlier version of this guard demanded the description call a user-tier
+	// delete "one-way from the tool surface". That was wrong — glossary_user_restore revives the
+	// row (measured: status "restored", deleted_at cleared). Only ontology_upsert cannot, because
+	// the code stays reserved. The description must name the recovery tool that WORKS.
+	if !strings.Contains(desc, "glossary_user_restore") {
+		t.Error("the description must name the recovery tool that actually works")
+	}
+	if strings.Contains(desc, "one-way") {
+		t.Error("a user-tier delete is NOT one-way; glossary_user_restore undoes it")
 	}
 }

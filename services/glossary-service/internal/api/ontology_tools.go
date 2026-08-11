@@ -51,11 +51,12 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 		Description: "Delete book- or user-tier ontology row(s). scope=book mints a confirm " +
 			"token — a human must approve before the delete executes; returns {confirm_token, " +
 			"preview}. scope=user executes immediately as a soft-delete: the row is retained " +
-			"and stops applying, but it KEEPS ITS CODE reserved, so glossary_ontology_upsert " +
-			"cannot re-add the same code afterwards — it answers \"already exists\". Treat a " +
-			"user-tier delete as one-way from the tool surface. Returns {results} plus a " +
-			"{trashed, already_trashed, failed} summary. Deleting an already-deleted row is a " +
-			"no-op, not an error — it is counted under already_trashed, never under trashed.",
+			"and stops applying, but it KEEPS ITS CODE reserved — so glossary_ontology_upsert " +
+			"CANNOT re-add the same code (it answers \"already exists\"). To undo, use " +
+			"glossary_user_restore (level + code), which revives the existing row. Returns " +
+			"{results} plus a {trashed, already_trashed, failed} summary. Deleting an " +
+			"already-deleted row is a no-op, not an error — counted under already_trashed, " +
+			"never under trashed.",
 		InputSchema: ontologyDeleteSchema(),
 		// _meta.tier is ONE value covering two behaviorally-different branches (book=confirm-
 		// gated, user=direct) — pick the more cautious bucket (W) uniformly; the actual
