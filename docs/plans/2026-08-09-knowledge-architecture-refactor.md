@@ -35,7 +35,21 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T17 — migrate the graph call sites onto `GraphStore`. 🔴 IT IS NOW THE CRITICAL PATH TO T43.**
+**RESUME: T17 (continuing) — migrate the next graph call sites onto `GraphStore`. 🔴 CRITICAL PATH TO T43.**
+
+✅ **First call site migrated 2026-08-12** — `wiki/context.py::gather_kg_facts`, through the
+new `graph_store_provider` composition root. **GraphStore adopters `0 → 1`; concrete binders
+`71 → 70`.** T43 is no longer structurally blocked; it is now merely *thin*.
+
+🔴 **The lesson to carry into every remaining migration:** the unit tests **cannot** prove a
+migrated call site is behaviour-identical — they patch the port wholesale, and a
+`min_confidence` change that would corrupt a hashed set left **14 tests green**. Each batch
+needs an **equivalence check against a real graph**, comparing old path vs new path as an
+ordered list. `tests/integration/db/test_port_migration_equivalence.py` is the pattern.
+
+**Next batch, chosen for clean 1:1 port mappings:** `routers/public/entities.py`
+(archive/restore), `events/handlers.py` (archive/restore), `context/selectors/facts.py`
+(`find_relations_for_entity` + `find_entities_by_name`).
 
 ✅ **T42d DONE 2026-08-12** — `scripts/port-adoption-gate.py`, wired, selftested, bitten in
 three directions with verified exit codes.
@@ -1477,6 +1491,66 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   B1. Sequence T17's remainder alongside T42.
   **Logging:** `DEBUG` adapter selection at construction; `INFO` the bound adapter at startup.
   (depends on T16)
+  ---
+  ### ✅ FIRST CALL SITE MIGRATED 2026-08-12 — the port has a caller
+
+  ```
+  [port-adoption-gate] 70 module(s) bind `neo4j_repos` directly (ceiling 70);
+                       4 import a port; **1 import GraphStore** (floor 1)
+  ```
+  **`0 → 1`.** `app/wiki/context.py::gather_kg_facts` now reads the graph through
+  `get_graph_store(session).relations_for(...)`. `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` is no
+  longer *"structurally unreachable"* — T43 has a path to real observations.
+
+  **Built the composition root the graph never had:** `app/adapters/graph_store_provider.py`,
+  mirroring T25a's `vector_store_provider`. Default is `Neo4jGraphStore` wrapping the session
+  the caller already holds, so a migrated call site reaches the same Cypher through one extra
+  method call — **nothing to configure, no second database**. That property is what lets the
+  remaining 70 modules migrate as ordinary reviewable changes rather than as a cutover.
+  `KNOWLEDGE_GRAPH_BACKEND=age` **raises** rather than falling back: a shadow comparison that
+  quietly ran Neo4j against Neo4j would agree perfectly and prove nothing.
+
+  🐞 **THE MIGRATION BROKE 9 TESTS AND I ALMOST MISSED IT.** `test_context.py` patches
+  `app.wiki.context.find_relations_for_entity`, which no longer exists there — the recorded
+  *adding-a-hook-to-a-reused-component-breaks-consumer-test-mocks* class. It stayed hidden
+  because my first run used `-k wiki`, which does **not** select `test_context.py`. Both
+  patch sites repointed at the port.
+
+  🔴 **AND THE UNIT TESTS CANNOT PROVE THIS MIGRATION IS SAFE.** They patch `get_graph_store`
+  wholesale, so no argument the call site passes ever reaches a store. Measured — changing
+  the migrated call's `min_confidence` from `0.8` to `0.0`, which lets low-confidence edges
+  into a set **hashed into `build_inputs.kg_neighborhood_hash`**:
+  ```
+  14 passed        <- the bite did NOT fire. The mocks are blind to it.
+  ```
+  That is *mocked-client-hides-server-side-filters* exactly: those tests prove the WIRING and
+  cannot prove the BEHAVIOUR — and behaviour-identity is T17's whole safety argument.
+
+  **So the bite moved to where a difference is visible.**
+  `tests/integration/db/test_port_migration_equivalence.py` runs the OLD path and the NEW
+  path with identical arguments against a real Neo4j and compares them as an **ordered** list
+  (the wiki path hashes sorted output, so set-equality would miss a reordering that still
+  moves the hash). Fixture confidences straddle `0.8` on both sides, so a default drifting in
+  *either* direction changes the result.
+
+  **BITE — make the adapter drop the caller's `min_confidence`:**
+  ```
+  unit tests (mocked)            : 9 passed    <- blind
+  equivalence test (real graph)  : 2 failed    <- catches it
+      assert {'ally_of', 'maybe', 'rival_of'} == {'ally_of', 'rival_of'}
+  ```
+
+  **QC (a)** `port-adoption-gate` PASS at the new ceiling/floor + selftest PASS ·
+  `graph-port-gate` PASS (297 scanned) · `knowledge-access-gate` PASS · **4184 unit tests**.
+  **QC (b) live** — throwaway Neo4j 5; equivalence + 21 conformance green against it.
+  **QC (c) real data** — the fixture writes 2 entities and 3 edges and reads them back
+  through both paths.
+
+  ⚠️ **The gate's own detector was wrong first.** It counted only direct `ports.graph_store`
+  imports, so it read **0** for a call site that had genuinely migrated — and would have
+  pushed callers to import the port directly and construct their own adapter, **bypassing the
+  composition root**. `graph_store_provider` now counts as adoption, which is the shape T17
+  is migrating *to*.
   ---
   **Evidence (batch 1).** Gate baseline **21 → 15**. Six runtime paths moved into adapter
   territory; knowledge suite **4040 passed**; 5 bites, each red then green.

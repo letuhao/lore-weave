@@ -65,27 +65,24 @@ EXEMPT_DIRS = (
 
 # The ceiling can only fall. Raising it is a deliberate act with a reason, not a fix for a
 # red build — that is the whole contract of a shrink-only gate.
-MAX_CONCRETE_IMPORTERS = 71
+MAX_CONCRETE_IMPORTERS = 70
 
-# ── THE NUMBER THAT MATTERS, and it is ZERO ─────────────────────────────────────────────
+# ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
 #
-# Measured 2026-08-12: **no module under `app/` imports `app.ports.graph_store`, and none
-# constructs any GraphStore adapter.** The port has THREE conforming implementations —
-# fake, Neo4j, and now AGE (T42) — and zero call sites. The four modules that do import a
-# port are all `VectorStore` consumers from T25a.
+# It was **ZERO** when this gate was written (2026-08-12): three conforming adapters —
+# fake, Neo4j, AGE (T42) — and not one call site. The four modules importing a port were
+# all `VectorStore` consumers from T25a.
 #
-# The consequence lands on T43. Its shadow comparison compares two adapters **on real
-# traffic**, and no traffic reaches the port: every operation sits at zero observations,
-# and the plan's own coverage floor (*"no cutover while any port operation has zero shadow
-# observations"*) can never be satisfied by waiting. It is not a slow number, it is a
-# structurally unreachable one.
+# That is what blocks T43. Its shadow comparison compares two adapters **on real traffic**,
+# and with no callers every operation sits at zero observations, so the plan's coverage
+# floor (*"no cutover while any port operation has zero shadow observations"*) cannot be
+# satisfied by waiting — only by adoption. T17's migration is therefore the precondition
+# for choosing an engine by measurement at all, which is what X3 implied by making the
+# engine layer 1. See `D-T42D-GRAPHSTORE-HAS-NO-CALLERS`.
 #
-# So T17's remaining migration is not cleanup that can trail the engine work — it is the
-# precondition for being able to CHOOSE an engine at all, which is what X3 implied by making
-# the engine layer 1 and what this floor makes measurable. See
-# `D-T42D-GRAPHSTORE-HAS-NO-CALLERS`.
-MIN_GRAPHSTORE_ADOPTERS = 0
+# **1 as of the first migrated call site** (`wiki/context.py`, the KG-facts read).
+MIN_GRAPHSTORE_ADOPTERS = 1
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"
@@ -130,7 +127,15 @@ def scan() -> tuple[list[str], list[str], list[str]]:
                 concrete.append(rel)
             if any(m == "app.ports" or ".ports." in m or m.endswith(".ports") for m in mods):
                 ported.append(rel)
-            if any("ports.graph_store" in m for m in mods):
+            # Adoption is "reaches the graph through the port BOUNDARY", which includes the
+            # sanctioned composition root — `graph_store_provider` is where the adapter is
+            # chosen, and a call site importing it is exactly the shape T17 is migrating to.
+            #
+            # ⚠️ Counting only direct `ports.graph_store` imports (this gate's first cut)
+            # reported ZERO for a call site that had genuinely migrated, and would have
+            # pushed callers to import the port directly and construct their own adapter —
+            # bypassing the composition root, which is worse than what it measures.
+            if any("ports.graph_store" in m or "graph_store_provider" in m for m in mods):
                 graphstore.append(rel)
     return sorted(concrete), sorted(ported), sorted(graphstore)
 

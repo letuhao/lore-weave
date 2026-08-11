@@ -1,7 +1,8 @@
 """Unit tests for per-entity wiki context gathering (wiki-llm M2 / §C4).
 
 Isolates `gather_entity_context` from the retriever + Neo4j: `run_hybrid_search`
-and `find_relations_for_entity` are patched with canned results (each is covered
+and the graph PORT (`get_graph_store(...).relations_for`) are patched with canned
+results (each is covered
 by its own tests). Pins: cite-label assignment (G/K/P), injection sanitization of
 ALL untrusted text, graceful not_indexed/KG-down degradation, and skip-on-missing.
 """
@@ -10,6 +11,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -77,8 +79,8 @@ def _glossary(entities):
 async def _gather(*, entities, relations, retrieval):
     g = _glossary(entities)
     with patch("app.wiki.context.neo4j_session", new=lambda: _noop_session()), \
-         patch("app.wiki.context.find_relations_for_entity",
-               new=AsyncMock(return_value=relations)), \
+         patch("app.wiki.context.get_graph_store",
+               new=lambda _s: SimpleNamespace(relations_for=AsyncMock(return_value=relations))), \
          patch("app.wiki.context.run_hybrid_search",
                new=AsyncMock(return_value=retrieval)):
         return await gather_entity_context(
@@ -180,8 +182,8 @@ async def test_not_indexed_degrades_keeps_brief_and_kg():
 async def test_kg_down_degrades():
     g = _glossary([_entity()])
     with patch("app.wiki.context.neo4j_session", new=lambda: _noop_session()), \
-         patch("app.wiki.context.find_relations_for_entity",
-               new=AsyncMock(side_effect=RuntimeError("neo4j down"))), \
+         patch("app.wiki.context.get_graph_store",
+               new=lambda _s: SimpleNamespace(relations_for=AsyncMock(side_effect=RuntimeError("neo4j down")))), \
          patch("app.wiki.context.run_hybrid_search",
                new=AsyncMock(return_value=RetrievalResult(hits=[_passage_hit()]))):
         ctx = await gather_entity_context(
