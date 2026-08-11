@@ -701,6 +701,19 @@
         "DQ-15 measurement: canon_rule.kind is NULL in 45/45 rows / 45 projects; the repo layer accepts `kind: str | None = None` and every caller leaves it None; the advertised schema is {anyOf:[string,null], default:null, title:'Kind'} with no description and no enum"
       ],
       "admitted": false
+    },
+    "memory_search": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 17 calls / 12 ok, successes running 2026-06-04 to 2026-08-10. Five failures: 2 are the repeat-read breaker (the population fixed in iteration 58), 1 is 'mcp tool backend unavailable: ExceptionGroup' from 2026-06-04, and 2 are 'a project must be in scope to search passages' -- dated 2026-05-18 and 2026-06-25, BOTH predating the 2026-06-26 commit that made a projectless search return an empty SUCCESS instead of a failed step. Proven live: it now does. The degraded envelope is the C-24 pattern actually implemented -- the result names the part that did not run rather than looking complete.",
+      "evidence": [
+        "PHASE 2: 12 ok / 5 failed = 2 repeat-read breaker + 2 'project must be in scope' + 1 backend-unavailable",
+        "DATED: the two scope failures are 2026-05-18 13:27 and 2026-06-25 17:14; the fix 'memory_search no-project returns empty, not a failed step' committed 2026-06-26",
+        "LIVE with a project: an empty SUCCESS carrying degraded {semantic: not_indexed}, total/returned/truncated counters, and the note 'this project has no indexed memory yet' -- the degradation and the note AGREE",
+        "CONTROL with no project: still isError=false, hits [], and an actionable note naming kg_project_list and the settings path. The post-2026-06-26 behaviour, verified live",
+        "MISATTRIBUTION AVOIDED, and it was the spec's: S1 row 12 files 'degraded semantic + a note suggesting mode=semantic' under this family, but all 9 such rows are STORY_SEARCH (2026-07-15). Carried forward to that tool's iteration rather than answered here; executor.py:392 still holds the string, so it is live debt, not history"
+      ],
+      "admitted": false
     }
-  }
+  },
+  "memory_search_note_for_story_search": "CARRIED FORWARD to story_search's iteration: S1 row 12's 'degraded semantic + a note suggesting the mode it cannot run' is NOT memory_search's. All 9 rows belong to story_search (2026-07-15), and executor.py:392 still contains \"no matches — try mode='semantic'\". Verify it there against the degraded branch."
 }
