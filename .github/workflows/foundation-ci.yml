@@ -217,6 +217,9 @@ jobs:
       # T38 — authored-catalog readers can only shrink. The other two knowledge gates
       # exempt this surface by design, so this is the only check T38 can fail.
       - run: python scripts/authored-catalog-reader-gate.py
+      # B1 substitutability: call sites through the port, not neo4j_repos. Separate from
+      # graph-port-gate (Cypher location) -- see the script header.
+      - run: python scripts/port-adoption-gate.py
       # A migration that shipped is not a migration that RAN. Static half: every Up*
       # func registered, ids unique + ascending. The live half (`--live`) needs a
       # database and is the one that catches a shipped-but-unapplied step — see the

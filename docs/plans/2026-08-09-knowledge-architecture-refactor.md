@@ -35,7 +35,22 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T42d — the port-adoption gate. Then T43's shadow comparison. 🔴 HIGHEST PRIORITY.**
+**RESUME: T17 — migrate the graph call sites onto `GraphStore`. 🔴 IT IS NOW THE CRITICAL PATH TO T43.**
+
+✅ **T42d DONE 2026-08-12** — `scripts/port-adoption-gate.py`, wired, selftested, bitten in
+three directions with verified exit codes.
+
+🔴 **AND IT FOUND THAT T43 CANNOT RUN YET.** **Zero** application modules import
+`GraphStore` or construct an adapter; **71** bind `neo4j_repos` directly. The port has three
+conforming implementations and no call sites. A shadow comparison needs real traffic through
+the port, so every operation sits at zero observations and the coverage floor is
+**structurally unreachable** — not slow, unreachable. See
+`D-T42D-GRAPHSTORE-HAS-NO-CALLERS`.
+
+⚠️ **T43 is therefore NOT the next task**, despite being next in plan order. Building the
+comparison before anything flows through the port would produce a harness that measures
+nothing — the exact vacuity class this arc has already hit three times (T38's gate, SQ3's
+missing bites, the port's signature-only "contract"). **T17 first.**
 
 ✅ **T42 — THE SECOND ADAPTER EXISTS.** `app/adapters/age_graph_store.py`, **31 conformance
 tests green across `{fake, neo4j, age}`**, 17 structural, 4184 unit. Both AGE-specific bites
@@ -4419,6 +4434,70 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   trap `derived-entity-id-gate` and `authored-catalog-reader-gate` both strip for.
   **Sealed B1 — *"Ports (intra-service substitutability)"* — is therefore unguarded.**
   **Do:** a shrink-only gate on the import count, so port adoption can only improve.
+  ---
+  ### ✅ DONE 2026-08-12 — `scripts/port-adoption-gate.py`, and it found something worse
+
+  ```
+  [port-adoption-gate] 71 module(s) bind `neo4j_repos` directly (ceiling 71);
+                       4 import a port; **0 import GraphStore** (floor 0)
+    ⚠️  GraphStore has ZERO callers. T43's shadow comparison has nothing to shadow.
+  ```
+
+  🔴 **NOTHING IN THE APPLICATION USES THE `GraphStore` PORT.** Not one module imports
+  `app.ports.graph_store`; not one constructs any adapter. The port has **three conforming
+  implementations** — fake, Neo4j, and AGE as of this cycle — and **zero call sites**. The
+  four modules that do import a port are all `VectorStore` consumers from T25a.
+
+  **This lands directly on T43.** Its shadow comparison compares two adapters *on real
+  traffic*, and no traffic reaches the port — so **every** port operation sits at zero
+  observations. The plan's own coverage floor (*"no cutover while any port operation has
+  zero shadow observations"*) is therefore not a slow number waiting to fill; it is
+  **structurally unreachable** until adoption happens. T17's remaining migration is not
+  cleanup trailing the engine work — it is the precondition for being able to *choose* an
+  engine at all, which is what **X3** implied and what this gate now measures.
+
+  **Two thresholds, opposite directions**, because the two facts move opposite ways:
+  a **ceiling** on concrete importers (71, can only fall) and a **FLOOR** on GraphStore
+  adopters (0, can only rise). A stale threshold in either direction fails — silence would
+  let a freed slot be reoccupied, or let real progress go unrecorded.
+
+  ⚠️ **Counted by AST, and the number moved twice before it settled.** `grep -l` for the
+  same token reported **84**, then **75**; the AST count is **71** because the rest are
+  comments, docstrings and prose *about* the migration. `/aif-improve +check` caught the
+  first of those. This repo has already been wrong by **36×** (77 → 2819 stale ids) on a
+  number of exactly that shape, and `derived-entity-id-gate`'s baseline fell from ELEVEN to
+  FIVE when it started stripping comments.
+
+  **Why this is not `graph-port-gate`.** That gate enforces Cypher-in-adapters and passes.
+  A module can call `neo4j_repos.merge_entity(...)`, contain no Cypher of its own, satisfy
+  it completely — and still break the moment the engine changes. Cypher being centralised
+  says the *queries* live in one place; substitutability says the *call sites* go through
+  the port. **Sealed B1 requires the second, and nothing was checking it.**
+
+  **BITES — three directions, exit codes verified** *(the first attempt read `tail`'s exit
+  code instead of the gate's and reported a false `exit=0` for both — an exit code is the
+  only thing CI reads, so it is the only thing worth asserting)*:
+  ```
+  A  a new module imports neo4j_repos      -> 72 > ceiling 71   exit=1
+  B  a module adopts GraphStore            -> 1 > floor 0       exit=1
+  C  restored                              -> at the ceiling    exit=0
+  ```
+
+  **QC (a)** gate wired into pre-commit + `foundation-ci`; `gate-wiring-gate` **98 gates,
+  all wired**; `gate-teeth-gate` records it `[OK] built-in selftest` — its 50-vs-44 red is
+  pre-existing and unchanged by this cycle (stop condition 2, already flagged).
+  **QC (b) live — N/A**: static analysis over the source tree, crosses no service seam.
+  **QC (c) real data — N/A**: produces no data; the measurement *is* the output.
+
+  ### 🔻 DEFERRAL `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` — the port is unreachable
+
+  | | |
+  |---|---|
+  | **Blocker** | Zero application modules import `GraphStore` or construct an adapter, while 71 bind `neo4j_repos` directly. Three conforming adapters exist and none is reachable. |
+  | **Evidence** | `port-adoption-gate` (above). `grep` for `ports.graph_store` and for any adapter constructor outside `app/adapters/` both return empty. |
+  | **Why it blocks T43** | A shadow comparison needs real traffic through the port. With no callers, every operation has zero observations and the coverage floor cannot be satisfied by waiting — the engine cannot be chosen on measurement, which is the method X1 insisted on. |
+  | **Mechanism** | The **floor** in `port-adoption-gate`: the moment a module adopts `GraphStore`, the gate reds demanding the floor be raised, so adoption is recorded rather than drifting. |
+  | **Retry when** | T17's migration reaches the graph read/write sites. **This is now the critical path to T43**, not background cleanup. |
 - [~] **T41** — ⛔ **RE-SCOPE AFTER the engine decision, do not build first** *(was: build rebuild-from-Postgres)*
   It does not exist — the only sweepers are `reconcile_evidence_count` and `stats_updater` — and
   three claims depend on it (graph HA unnecessary, P3 rollback, DR). **But its shape depends on

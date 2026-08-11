@@ -50,6 +50,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # EXEMPT this surface (it is the authored source, not the bi-temporal substrate), so before
 # this gate existed T38 had no check that could fail — see D-T38-MECHANISM-IS-VACUOUS.
 "$PY" "$ROOT/scripts/authored-catalog-reader-gate.py"
+# B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
+# Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
+# call neo4j_repos with no Cypher of its own, pass that gate, and still break on an engine
+# swap. Also tracks GraphStore adopters as a FLOOR -- currently ZERO, which is what T43's
+# shadow comparison is blocked on.
+"$PY" "$ROOT/scripts/port-adoption-gate.py"
 # A migration that shipped is not a migration that RAN. STATIC half only here (no DB
 # in a pre-commit): every Up* func is registered, ids unique + ascending. The LIVE
 # half — the one that catches 0063/0064/0065 sitting unapplied on a running Postgres,
