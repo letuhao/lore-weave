@@ -682,6 +682,16 @@ decide.* Two things would clear it: a reclaim sweep (`project_id` present on the
 `knowledge_projects`) run as an explicit operation with a receipt, and a decision on whether a
 read should filter orphans defensively or let them surface as the fix now makes visible.
 
+**Corroborated independently in iteration 119, and it raises the severity.** `lore_timeline`
+found the same backlog from the other side: the user holds **452 `:Event` nodes across 10
+project_ids**, and `knowledge_projects` contains **none** of the two largest (139 and 120 events).
+The tool answers `project not found` for every one of them.
+
+So the cost is not only stale rows that read oddly. It is **lost read access to real data**:
+entities surface through a name lookup (iteration 56) because that path searches across projects,
+but anything scoped BY project — timelines, and every other project-scoped read — cannot reach
+them at all. Two tools, two data types, one cause.
+
 
 ### D-8 · A whole checkpoint shipped, closed, and never ran — one missing `COPY` line
 
