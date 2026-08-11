@@ -2381,17 +2381,28 @@ async def _stream_with_tools(
                     # a mechanism that runs and changes nothing, which is worse than one that
                     # was never written because it reads as covered. The discovery path records
                     # the drop in the withheld column; this one has no such column, so it logs.
-                    if repeat_read_suppress:
+                    #
+                    # BOTH breakers, not just the read one. Measured: one session on 2026-07-26
+                    # shows the repeated-FAILURE breaker starting mid-session — the 04:47 turn
+                    # emitted 30 `book_get_chapter` failures with ZERO steers, and the 05:04 turn
+                    # emitted 2 failures then 22 steers. The breaker was working. The
+                    # de-advertise beside it was not: 22 blocked emissions across 23 iterations
+                    # means the tool never left the wire. `failure_suppress` was discovery-only,
+                    # and the earlier fix here covered `repeat_read_suppress` alone — which made
+                    # the asymmetry mine. A breaker that says "I took it off the wire" and did
+                    # not is the same silent seam either way.
+                    _plain_suppress = repeat_read_suppress | failure_suppress
+                    if _plain_suppress:
                         _before = len(advertised)
                         advertised = [
                             td for td in advertised
                             if (td.get("function") or {}).get("name")
-                            not in repeat_read_suppress
+                            not in _plain_suppress
                         ]
                         if len(advertised) != _before:
                             logger.info(
-                                "repeated-read breaker: de-advertised %s on the plain path",
-                                sorted(repeat_read_suppress),
+                                "breaker de-advertise on the plain path: %s",
+                                sorted(_plain_suppress),
                             )
                     # P5 REG-P5-01 — a nested subagent sub-run advertises its scoped
                     # set, which carries `_meta` (read by the tier filter just above /

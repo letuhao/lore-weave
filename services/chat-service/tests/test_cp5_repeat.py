@@ -29,6 +29,8 @@ from __future__ import annotations
 
 import pathlib
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 
 from app.agentruntime.observation import FAILED, OUTCOMES
@@ -194,3 +196,64 @@ class TestTheBreakerActuallyEscalates:
         tc = _tool_calls(chunks)
         assert len(tc) == 1 and tc[0]["ok"] is True
         assert not any(t.get("deadvertised") for t in tc)
+
+
+class TestBothBreakersDeAdvertiseOnThePlainPath:
+    """TOOLV2 LOOP #84 — the repeated-FAILURE breaker's de-advertise was discovery-only.
+
+    Measured, in ONE session 17 minutes apart, which is why this is not a guess about commit
+    dates: the 04:47 turn emitted 30 `book_get_chapter` failures with ZERO breaker steers, and
+    the 05:04 turn emitted 2 failures then 22 steers. The breaker started working mid-session.
+    The de-advertise beside it did not: 22 blocked emissions across 23 iterations means the tool
+    was still being offered every pass.
+
+    `failure_suppress` fed only the discovery chokepoint, and iteration 58's fix here covered
+    `repeat_read_suppress` alone — so the asymmetry was mine.
+    """
+
+    @pytest.mark.asyncio
+    async def test_A_REPEATEDLY_FAILING_TOOL_LEAVES_THE_WIRE_ON_THE_PLAIN_PATH(self):
+        """Asserted on the WIRE, not on the source. A guard that greps for the fix would pass
+        over a fix that is never reached — which is exactly the failure this iteration found in
+        the product code, so it must not be the failure in its guard."""
+        import app.services.stream_service as ss
+
+        from tests.test_repeated_read_breaker import _fake_client_repeating, _read_tool
+        from tests.test_spend_gate import _kc
+
+        tool = _read_tool("book_get_chapter")
+        name = tool["function"]["name"]
+        kc = _kc()
+        # Every dispatch fails with the SAME error — the repeated-failure breaker's subject.
+        kc.mcp_execute_tool = AsyncMock(return_value={
+            "success": False,
+            "error": "no active chapter with that chapter_id in this book",
+        })
+        # A SECOND, innocent tool. Without it the final pass offers nothing at all (the forced
+        # answer pass drops tools), and `name not in []` would pass over any defect — the guard
+        # would be green for the wrong reason, which is the whole subject of this iteration.
+        bystander = _read_tool("book_list")
+        offered: list[list[str]] = []
+        with patch.object(ss, "Client", _fake_client_repeating(name, 8, offered)):
+            async for _ in ss._stream_with_tools(
+                model_source="user_model", model_ref="00000000-0000-0000-0000-0000000000aa",
+                user_id="u", messages=[{"role": "user", "content": "read chapter 3"}],
+                gen_params={"max_tokens": 100}, tools=[tool, bystander],
+                knowledge_client=kc, session_id="s", project_id=None,
+                permission_mode="write",
+            ):
+                pass
+
+        assert any(name in p for p in offered), "sanity: it must be offered before it can go"
+        dropped = [p for p in offered if "book_list" in p and name not in p]
+        assert dropped, (
+            "a tool the repeated-failure breaker gave up on must leave the advertised set on "
+            "the plain path too — no pass ever offered the bystander WITHOUT it, so it never "
+            f"left the wire. offered per pass: {offered}")
+
+    def test_BOTH_SETS_STILL_REACH_THE_DISCOVERY_CHOKEPOINT(self):
+        """The plain-path fix must not be a REPLACEMENT for the discovery wiring."""
+        src = STREAM.read_text(encoding="utf-8")
+        assert "_suppress = set(_suppress) | failure_suppress" in src
+        assert "_suppress = set(_suppress) | repeat_read_suppress" in src
+

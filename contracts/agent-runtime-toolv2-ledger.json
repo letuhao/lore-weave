@@ -959,6 +959,19 @@
         "MY OWN ERROR, recorded because it briefly read as a tool defect: the first read-back reused a scratch file my control loop had overwritten with an ABSENT entity id, so it answered 'entity not found'. The file was stale, not the tool"
       ],
       "admitted": false
+    },
+    "book_get_chapter": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix -- and the fix is one I broke myself. 65 calls / 10 ok, and all 55 failures are ONE session on 2026-07-26, in two turns 17 minutes apart that form a natural experiment: 04:47 emitted 30 real failures and ZERO breaker steers; 05:04 emitted 2 failures then 22 steers. The repeated-failure breaker started working between them. The DE-ADVERTISE beside it did not -- 22 blocked emissions across 23 iterations means the tool was still offered every pass. Cause: `failure_suppress` fed only the discovery chokepoint, and iteration 58's plain-path filter covered `repeat_read_suppress` ALONE, which made the asymmetry mine. Both sets now filter the plain path. The tool itself is healthy: its refusal already names its satisfier.",
+      "evidence": [
+        "PHASE 2: 10 ok / 55 failed = 33 'no active chapter with that chapter_id in this book' + 22 repeated-failure breaker steers, all one session",
+        "DATA, the natural experiment, from the ROWS rather than from commit dates: turn A (04:47 UTC) 30 failures / 0 steers / 29 iterations; turn B (05:04 UTC) 2 failures / 22 steers / 23 iterations. A commit timestamp says when code was recorded, not when it ran, so the steers themselves are the evidence the breaker went live mid-session",
+        "ROOT CAUSE in code: failure_suppress was unioned into _suppress only inside the `if discovery:` branch. The plain path filtered repeat_read_suppress only",
+        "CODE: the guard asserts the WIRE -- a bystander tool (book_list) offered on some pass WITHOUT the failing one. My first version asserted `name not in offered[-1]`, which passed over the defect because the final answer pass offers NOTHING and `not in []` is vacuously true. The bystander removes that. Reverting to the one-set union reds it. 2869 chat-service tests pass; harness 363/368 falsifiers red the guard they name (was 361/366), 0 stale anchors",
+        "LIVE on the deployed image (stream_service.py byte-identical by sha256): book_get_chapter returns the chapter with title, sort_order, editorial_status, draft_revision_count",
+        "CONTROL: an absent chapter_id reproduces 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)' -- the C-22 satisfier pattern, already right"
+      ],
+      "admitted": false
     }
   }
 }

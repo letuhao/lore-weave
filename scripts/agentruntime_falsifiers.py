@@ -1278,6 +1278,20 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          "                    _attempts = _prior[1] + _blocks",
          "                    _attempts = _prior[1] + 1"),
     ],
+    # TOOLV2 LOOP #84 — the repeated-FAILURE breaker's de-advertise was discovery-only, so on a
+    # plain turn it took the tool off no wire at all. Reverting to the one-set union is the exact
+    # regression, and the guard asserts the WIRE (a bystander tool offered without the failing
+    # one), not the source.
+    "test_A_REPEATEDLY_FAILING_TOOL_LEAVES_THE_WIRE_ON_THE_PLAIN_PATH": [
+        (f"{CS}/app/services/stream_service.py",
+         "                    _plain_suppress = repeat_read_suppress | failure_suppress",
+         "                    _plain_suppress = repeat_read_suppress"),
+    ],
+    "test_BOTH_SETS_STILL_REACH_THE_DISCOVERY_CHOKEPOINT": [
+        (f"{CS}/app/services/stream_service.py",
+         "                        _suppress = set(_suppress) | failure_suppress",
+         "                        pass"),
+    ],
     "test_THE_LOOPED_TOOL_LEAVES_THE_ADVERTISED_SET": [
         (f"{CS}/app/services/stream_service.py",
          "                    _deadvertise = _blocks >= REPEAT_READ_DEADVERTISE_CAP",
