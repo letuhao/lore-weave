@@ -687,6 +687,20 @@
         "CHECKED: book-service's tools/list serves book_update_details, so it is a backend tool and the frontend-bypass hole is not the one that applies here"
       ],
       "admitted": false
+    },
+    "composition_list_canon_rules": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 46 calls / 12 ok. 15 failures are the blank-args era (1 session, 2026-07-08). The other 19, across 6 sessions on 2026-07-15, are all H13's fused 'not found or not accessible' -- and I checked the ids against the composition SSOT rather than guessing: one is a BOOK id passed as project_id (the confusion S1 row 5 records verbatim) and the rest exist nowhere -- not a work, not a project, not a book, not a chapter. The session that sent one contains ONLY those four failed calls, so no prior tool handed the model that id; it was carried in or invented. The refusal is correct and its fusion is a KNOWN open contract question (C-17, unadmitted), not a defect for me to answer. RAISED DQ-15: chasing the result shape found that `kind` is advertised on two canon-rule WRITE tools as a bare untyped string and is NULL in 45 of 45 rows across 45 projects -- an argument no model can fill correctly.",
+      "evidence": [
+        "PHASE 2: 12 ok / 34 failed = 19 'not found or not accessible' (6 sessions, 2026-07-15) + 15 validation errors (1 session, 2026-07-08)",
+        "DATA, ids classified against loreweave_composition rather than assumed: of the four distinct failing project_ids, one matches composition_work.book_id (a book id in a project_id slot) and three match no work_id, project_id, book_id or chapter id anywhere",
+        "LIVE: a project I own -> {\"rules\": []} -- an empty SET, distinct from not-found, which is an error. The two are not fused",
+        "CONTROL: the EXACT id from the corpus failure reproduces 'not found or not accessible'",
+        "SHAPE, from real successes rather than one sample: 4 of the 12 returned {\"rules\": []} and 8 returned rows carrying id, kind, text, scope, active, version, entity_id, created_at, created_by",
+        "OWNERSHIP, checked: a project that HAS a rule but belongs to another user also answers 'not found or not accessible' -- the gate is doing its job, which is why I could not prove the non-empty shape live and used the corpus successes instead",
+        "DQ-15 measurement: canon_rule.kind is NULL in 45/45 rows / 45 projects; the repo layer accepts `kind: str | None = None` and every caller leaves it None; the advertised schema is {anyOf:[string,null], default:null, title:'Kind'} with no description and no enum"
+      ],
+      "admitted": false
     }
   }
 }

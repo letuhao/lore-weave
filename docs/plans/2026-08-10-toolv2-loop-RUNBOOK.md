@@ -497,6 +497,38 @@ absent is a message question, and **prose is not the lever**: the 67 are honest 
 
 ---
 
+### DQ-15 · An argument the model cannot possibly fill, advertised on two write tools
+
+*Raised by:* iteration 62. `composition_canon_rule_create` and `composition_canon_rule_edit` both
+advertise `kind`, and this is its entire declared schema:
+
+```json
+{"anyOf": [{"type": "string"}, {"type": "null"}], "default": null, "title": "Kind"}
+```
+
+A free string, no description, no enum, no example — the title merely repeats the name. There is
+nothing in it from which a model could derive a correct value.
+
+**Measured from the SSOT:** `canon_rule.kind` is NULL in **45 of 45 rows, across 45 projects**.
+The repository layer accepts it (`kind: str | None = None`) and every caller leaves it None. So
+the field has never carried a value, from any writer, ever.
+
+This is S1 row 8's shape — a value the code cannot enumerate — except worse, because here nothing
+populates it at all, so there is not even a data-valued set to point at. Two answers are
+defensible and they are opposite: **drop it from the advertised schema** (an argument with no
+information content is a slot for a hallucination — the model has to invent something or omit it,
+and 45/45 says it omits), or **declare its vocabulary** and name the tool that lists it, which is
+the unadmitted C-20.
+
+*Would clear it:* someone saying what `kind` is for. If the answer is "nothing yet", the schema
+should not offer it until it is.
+
+*Deliberately not guessed:* inventing an enum here would write a contract for a field whose
+purpose is not recorded anywhere I can find, and a wrong vocabulary is harder to remove than an
+absent one.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-9 · 980 entities stand in projects that no longer exist, and no re-sweep exists to reclaim them
