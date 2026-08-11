@@ -1379,6 +1379,18 @@
         "DEBRIS: a Vietnamese translation 'Mira Vale (vi)' now exists on the throwaway entity"
       ],
       "admitted": false
+    },
+    "lore_timeline": {
+      "state": "proven",
+      "note": "PROVEN LIVE on the empty branch with the empty CONFIRMED TRUE; the non-empty branch is unreachable, and WHY is a corroboration of D-9 from a new angle. 1 call / 1 session / 1 ok. It returns {events, total, window_available}. The live project returns 0 events and Neo4j confirms it has exactly 0 Event nodes. The user DOES have 452 events across 10 project_ids -- but every one of those projects is ORPHANED: zero of them exist in knowledge_projects, so lore_timeline answers 'project not found' and the events are unreachable through the tool. That is iteration 56's D-9 backlog showing up as lost READ ACCESS rather than just as stale rows.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE: {events: [], total: 0, window_available: false}",
+        "THE EMPTY IS TRUE: Neo4j holds 0 Event nodes for the live project",
+        "NOT REACHABLE, and this is the finding: the user has 452 Event nodes across 10 distinct project_ids, and knowledge_projects contains NONE of the two largest (139 and 120 events). lore_timeline answers 'project not found' for them",
+        "D-9 CORROBORATED from a different direction: iteration 56 measured 980 orphaned ENTITIES via memory_recall_entity. The same deleted-project backlog also strands hundreds of EVENTS behind a project row that no longer exists"
+      ],
+      "admitted": false
     }
   }
 }
