@@ -1168,3 +1168,41 @@ both is redundant, and doing neither leaves a studio that can resolve to somethi
 panel denies exists. Recorded rather than chosen for the same reason as the first half — the
 listing's blindness comes from a shared resolution primitive (`resolve_by_book`, filtered to
 `status='active'`), so the two halves want one decision, not two edits.
+
+## DQ-21 — the wiki job pays to write articles about entities a human REJECTED
+
+Found while proving `kg_build_wiki` (#248). The label defect on that card is fixed; this is the
+behaviour underneath it, which I am recording rather than deciding.
+
+`_resolve_entity_ids` passes `status_filter=None` to known-entities, deliberately and for a good
+reason spelled out in its own comment: both entity creation paths insert `status='draft'`, so an
+active-only filter would produce an empty wiki. The consequence is that NO status is excluded —
+including `rejected`.
+
+Measured across the instance, `glossary_entities` where `deleted_at IS NULL`:
+
+| status | rows |
+|---|---|
+| draft | 6393 |
+| active | 925 |
+| rejected | 10 |
+
+So a "generate for all" wiki build on a book containing rejected entities spends caller money
+drafting and revising articles about entities a human already declined. The count is small today
+(10 rows instance-wide), which is exactly why it is worth recording now rather than after it is
+not: nothing about the resolver bounds it, and `rejected` is a triage outcome users produce by
+using the product as intended.
+
+**Open question:** should `_resolve_entity_ids` exclude `rejected` specifically — `status != 'rejected'`
+rather than the active-only filter that was correctly rejected — or is a rejected entity still a
+legitimate wiki subject (rejected *as an extraction suggestion*, not necessarily as lore)?
+
+I cannot answer this from the code. The two readings of `rejected` lead to opposite edits, and the
+distinction lives in what the triage UI tells a user they are doing when they reject something. The
+glossary status vocabulary is shared with the suggestion-triage rail (`queryAISuggestions` treats
+`draft` as the pending pile), which is evidence for the second reading but not proof of it.
+
+Not blocking #248: the card now states the set truthfully in either case, so a human confirming a
+wiki build is no longer told a false denominator. Whichever way this resolves, the fix is one
+predicate in `_resolve_entity_ids` plus the card note that #248 anchored to it.
+
