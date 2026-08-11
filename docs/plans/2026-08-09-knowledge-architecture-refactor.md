@@ -37,11 +37,14 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 
 **RESUME: T17 (continuing) — migrate the next graph call sites onto `GraphStore`. 🔴 CRITICAL PATH TO T43.**
 
-✅ **Batches 1–3 migrated 2026-08-12** — `wiki/context.py` (KG facts) · `events/handlers.py`
-(lifecycle archive) · `routers/public/entities.py` (user restore) ·
-`context/selectors/facts.py` (**5** call sites), through the new `graph_store_provider`
-composition root. **GraphStore adopters `0 → 4`; concrete binders `71 → 70`.** T43 is no
-longer structurally blocked; it is now merely *thin*.
+✅ **Batches 1–4 migrated 2026-08-12** — `wiki/context.py` · `events/handlers.py` ·
+`routers/public/entities.py` · `context/selectors/facts.py` (5 sites) · `tools/executor.py`
+(2) · `routers/internal_admin.py` (3), through the new `graph_store_provider` composition
+root. **GraphStore adopters `0 → 6`; concrete binders `71 → 70`.**
+
+🎯 **`find_relations_for_entity` has ZERO direct callers outside the adapters** — the first
+port operation to reach *complete* adoption, and the first T43 can observe on all of its
+traffic rather than a sample. T43 is no longer structurally blocked.
 
 🔴 **THE RULE FOR EVERY REMAINING BATCH, proven twice:** the unit tests **cannot** prove a
 migrated call site correct. They patch the port wholesale, so a wrong `min_confidence`
@@ -1645,6 +1648,37 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   local fakes still declared the repo's leading `session` parameter the port does not pass.
 
   **QC (a)** 4184 unit · `port-adoption-gate` PASS at floor 4. **QC (b) live** — throwaway
+  Neo4j 5. **QC (c) real data** — 24 integration tests through both paths.
+
+  ### ✅ BATCH 4 — 2026-08-12 · adopters `4 → 6`, and one half of the migration is DONE
+
+  `tools/executor.py` (2 sites) · `routers/internal_admin.py` (3 sites).
+  ```
+  [port-adoption-gate] 70 bind neo4j_repos (ceiling 70); **6 import GraphStore** (floor 6)
+  4184 unit · 24 integration against a live Neo4j
+  ```
+
+  🎯 **`find_relations_for_entity` now has ZERO direct callers outside the adapters.** That
+  operation is fully behind the port — the first port method to reach complete adoption, and
+  the first that T43 can observe on *all* of its traffic rather than a sample.
+
+  **BITE — drop the D16 diary exclusion from a migrated call:**
+  ```
+  FAILED test_memory_recall_entity_excludes_diary_projects_when_projectless
+      KeyError: 'exclude_project_ids'
+  1 failed, 59 passed
+  ```
+  ⚠️ **This one bit at UNIT level, unlike batches 1 and 3** — because that test asserts on the
+  mock's `await_args.kwargs` rather than only on the return value. That is the distinction
+  worth carrying: a mocked test can check *what was passed* even when it cannot check *what
+  the store does with it*. The blind cases were blind because they asserted only on results.
+
+  🐞 **A second `executor.py` call site surfaced only when a test failed** — the timeline
+  path, 46 lines below the one I migrated, with different formatting. Same shape as batch 3's
+  hidden fifth site. **Formatting-sensitive edits keep missing call sites, and only the tests
+  find them**; a future batch should enumerate sites with the AST rather than by eye.
+
+  **QC (a)** 4184 unit · `port-adoption-gate` PASS at floor 6. **QC (b) live** — throwaway
   Neo4j 5. **QC (c) real data** — 24 integration tests through both paths.
   ---
   **Evidence (batch 1).** Gate baseline **21 → 15**. Six runtime paths moved into adapter

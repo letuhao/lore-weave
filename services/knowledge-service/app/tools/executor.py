@@ -49,9 +49,9 @@ if TYPE_CHECKING:  # deps used only as ToolContext type hints (lane LF + story_s
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.config import settings
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import (
-    find_entities_by_name,
     get_entity_with_relations,
 )
 from app.db.neo4j_repos.events import list_events_filtered
@@ -548,8 +548,7 @@ async def _handle_memory_recall_entity(
     project_id = str(ctx.project_id) if ctx.project_id else None
     exclude = await _diary_exclusion(ctx)  # D16 — no diary leak into a non-assistant session
     async with neo4j_session() as session:
-        matches = await find_entities_by_name(
-            session,
+        matches = await get_graph_store(session).find_entities_by_name(  # T17
             user_id=str(ctx.user_id),
             project_id=project_id,
             name=args.entity_name,
@@ -595,8 +594,7 @@ async def _handle_memory_timeline(
     async with neo4j_session() as session:
         participant_candidates: list[str] | None = None
         if args.entity_name:
-            matches = await find_entities_by_name(
-                session,
+            matches = await get_graph_store(session).find_entities_by_name(  # T17
                 user_id=str(ctx.user_id),
                 project_id=project_id,
                 name=args.entity_name,

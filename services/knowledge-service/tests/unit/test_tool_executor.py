@@ -322,8 +322,8 @@ async def test_memory_recall_entity_happy(monkeypatch):
         relations_truncated=False,
         total_relations=1,
     )
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[entity]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[entity])))
     monkeypatch.setattr("app.tools.executor.get_entity_with_relations",
                         AsyncMock(return_value=detail))
     res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Kai"})
@@ -336,8 +336,8 @@ async def test_memory_recall_entity_happy(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_memory_recall_entity_not_found(monkeypatch):
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     res = await execute_tool(_ctx(), "memory_recall_entity", {"entity_name": "Nobody"})
     assert res.success
     assert res.result["found"] is False
@@ -366,8 +366,8 @@ async def test_memory_timeline_unknown_entity_returns_empty(monkeypatch):
     """An entity_name with no match must pass participant_candidates=[]
     (not None) so the timeline is empty rather than unfiltered — and
     "this entity doesn't exist" is never leaked."""
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     lef = AsyncMock(return_value=([], 0))
     monkeypatch.setattr("app.tools.executor.list_events_filtered", lef)
     res = await execute_tool(_ctx(), "memory_timeline", {"entity_name": "Ghost"})
@@ -655,8 +655,8 @@ async def test_memory_tools_reject_unowned_project(monkeypatch, tool, args):
     # Patch the repos so that, if the gate ever let execution through, the call
     # would 'succeed' — proving the rejection comes from the owner gate, not a
     # downstream empty result.
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     monkeypatch.setattr("app.tools.executor.list_events_filtered",
                         AsyncMock(return_value=([], 0)))
     monkeypatch.setattr("app.tools.executor.merge_fact",
@@ -671,8 +671,8 @@ async def test_memory_tools_reject_unowned_project(monkeypatch, tool, args):
 async def test_memory_recall_no_project_skips_owner_gate(monkeypatch):
     """A no-project (global personal memory) call is inherently self-owned, so the
     owner gate is a no-op and the tool runs against the caller's own user_id."""
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     res = await execute_tool(_ctx(project_id=None), "memory_recall_entity",
                              {"entity_name": "Nobody"})
     assert res.success
@@ -700,7 +700,8 @@ async def test_hi_project_id_arg_supplies_scope_for_public_call(monkeypatch):
     project_id ARG supplies the scope, the owner gate validates it (owned), and
     the handler runs against THAT project."""
     fe = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=fe))
     arg_pid = uuid4()
     ctx = _ctx(project_id=None, project_owner=_USER)  # owner gate will pass
     res = await execute_tool(ctx, "memory_recall_entity",
@@ -714,7 +715,8 @@ async def test_hi_envelope_project_wins_over_arg(monkeypatch):
     """First-party: the trusted envelope project is authoritative — a project_id
     arg cannot redirect the call to a different project (D3 preserved)."""
     fe = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=fe))
     ctx = _ctx(project_id=_PROJECT, project_owner=_USER)  # envelope set
     res = await execute_tool(ctx, "memory_recall_entity",
                              {"entity_name": "Kai", "project_id": str(uuid4())})
@@ -748,8 +750,8 @@ async def test_hi_memory_search_arg_owner_checked_via_get():
 async def test_hi_project_id_arg_for_unowned_project_rejected(monkeypatch):
     """The owner gate still applies to an arg-supplied project — a public agent
     can only address a project it owns (H-U + OD-8 hold over the H-I path)."""
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name",
-                        AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     ctx = _ctx(project_id=None, project_owner=_OTHER_USER)  # arg project not owned
     res = await execute_tool(ctx, "memory_recall_entity",
                              {"entity_name": "Kai", "project_id": str(uuid4())})
@@ -966,7 +968,8 @@ async def test_memory_recall_entity_excludes_diary_projects_when_projectless(mon
     # THE leak test: a projectless (novel-writing) session recalling an entity must pass the user's
     # assistant project ids as exclude_project_ids, so a work-diary entity can't be resolved.
     fe = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", fe)
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=fe))
     ctx = _ctx(project_id=None)
     ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
     res = await execute_tool(ctx, "memory_recall_entity", {"entity_name": "Sarah"})
@@ -983,7 +986,8 @@ async def test_memory_timeline_excludes_diary_projects_when_projectless(monkeypa
     # to the events read, or diary events leak into a novel-writing session.
     lef = AsyncMock(return_value=([], 0))
     monkeypatch.setattr("app.tools.executor.list_events_filtered", lef)
-    monkeypatch.setattr("app.tools.executor.find_entities_by_name", AsyncMock(return_value=[]))
+    monkeypatch.setattr("app.tools.executor.get_graph_store",
+                        lambda _s: SimpleNamespace(find_entities_by_name=AsyncMock(return_value=[])))
     ctx = _ctx(project_id=None)
     ctx.projects_repo.list_assistant_project_ids = AsyncMock(return_value=["assistant-proj-1"])
     res = await execute_tool(ctx, "memory_timeline", {"limit": 10})

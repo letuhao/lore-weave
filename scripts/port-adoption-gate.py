@@ -83,8 +83,10 @@ MAX_CONCRETE_IMPORTERS = 70
 #
 # **4** as of T17 batch 3: `wiki/context.py` (KG facts) · `events/handlers.py`
 # (lifecycle archive) · `routers/public/entities.py` (user restore) ·
-# `context/selectors/facts.py` (5 call sites: name resolution + 1-hop expansion).
-MIN_GRAPHSTORE_ADOPTERS = 4
+# `context/selectors/facts.py` (5 sites) · `tools/executor.py` (2) ·
+# `routers/internal_admin.py` (3).  **`find_relations_for_entity` now has ZERO direct
+# callers outside the adapters** — that half of the migration is complete.
+MIN_GRAPHSTORE_ADOPTERS = 6
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

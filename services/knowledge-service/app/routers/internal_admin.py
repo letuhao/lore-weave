@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field, model_validator
 from uuid import UUID
 
 from app.config import settings
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos import maintenance
 from app.db.neo4j_repos.passages import (
@@ -406,8 +407,10 @@ async def merge_assistant_entities(body: _MergeEntitiesIn) -> dict:
     pid = str(project.project_id)
     async with neo4j_session() as session:
         # Resolve within the assistant project only (D16 — never fold a novel entity into a diary one).
-        src = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=from_name)
-        dst = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=into_name)
+        src = await get_graph_store(session).find_entities_by_name(  # T17
+            user_id=str(body.user_id), project_id=pid, name=from_name)
+        dst = await get_graph_store(session).find_entities_by_name(  # T17
+            user_id=str(body.user_id), project_id=pid, name=into_name)
         if not src:
             raise HTTPException(status_code=404, detail={"error_code": "from_not_found",
                                 "message": f"no assistant entity named {from_name!r}"})
@@ -540,7 +543,8 @@ async def forget_assistant_entity(body: _ForgetEntityIn) -> dict:
     project, _ = await ProjectsRepo(pool).get_or_create_assistant_project(body.user_id, body.book_id)
     pid = str(project.project_id)
     async with neo4j_session() as session:
-        matches = await find_entities_by_name(session, user_id=str(body.user_id), project_id=pid, name=name)
+        matches = await get_graph_store(session).find_entities_by_name(  # T17
+            user_id=str(body.user_id), project_id=pid, name=name)
         if not matches:
             # Nothing in the KG under that name; still tombstone any pending proposals so a forget of a
             # not-yet-confirmed person also can't resurrect.
