@@ -945,6 +945,20 @@
         "LIVE on the deployed image: the advertised inputSchema for ops[].type now ends '...There is NO edit_kind / edit_genre op: to change a field (name, description, color, icon, sort_order) on an EXISTING genre, kind or attribute, call glossary_book_patch instead — it needs no plan and no confirm.'"
       ],
       "admitted": false
+    },
+    "glossary_entity_get_genres": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it is the RIGHT WAY to return an empty set. 5 calls / 5 sessions / 5 ok, and all five returned genre_ids [] -- the 100%-identical shape that has been a defect three times in this loop. Here it is not, because the empty list ships with `uses_book_default: true`, which says WHY it is empty. Compare story_search, whose empty result carried advice that could not work, and canon_rule's `kind`, which is null in 45 of 45 rows with nothing explaining it. BOTH branches were proven rather than the one the corpus happened to contain: setting an explicit genre flips the flag to false, and clearing it flips it back.",
+      "evidence": [
+        "PHASE 2: 5 ok / 0 failed. No failure population exists",
+        "LIVE default branch: {genre_ids: [], uses_book_default: true} -- the empty set is explained by its companion flag rather than left ambiguous",
+        "LIVE other branch, created on the throwaway rather than assumed from one sample: glossary_entity_set_genres(genre_codes=['fantasy']) -> {genre_ids: [fantasy, universal], uses_book_default: false}, and the reader returns the same",
+        "RESTORED: genre_codes=[] returns the entity to {genre_ids: [], uses_book_default: true}, verified by a second read",
+        "NOTED: setting 'fantasy' alone yields TWO ids -- fantasy and universal. universal is implied rather than dropped",
+        "CONTROL: a name in entity_id -> 'entity_id must be a UUID'; an absent id -> 'entity not found in this book'",
+        "MY OWN ERROR, recorded because it briefly read as a tool defect: the first read-back reused a scratch file my control loop had overwritten with an ABSENT entity id, so it answered 'entity not found'. The file was stale, not the tool"
+      ],
+      "admitted": false
     }
   }
 }
