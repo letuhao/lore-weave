@@ -568,6 +568,10 @@ async def test_create_work_no_project_id_auto_creates_default_project():
     async with _patched(grant_level=2, works_get=no_existing_work) as s:
         works = s.WorksRepo(None)
         works.resolve_by_book = AsyncMock(return_value=[])  # no marked Work
+        # ...and no PENDING one either, which is what "greenfield" means here. Left to the
+        # bare AsyncMock this returns a truthy auto-child, and the adopt-a-pending-Work
+        # branch (TOOLV2 LOOP #142) swallows the create this test exists to assert.
+        works.get_pending_for_book = AsyncMock(return_value=None)
         works.create = AsyncMock(return_value=created_work)
         with patch.object(srv, "get_knowledge_client", return_value=knowledge), \
              patch.object(srv, "get_book_client", return_value=book), \

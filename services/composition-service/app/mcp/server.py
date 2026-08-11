@@ -471,6 +471,36 @@ async def _book_or_deny(works: WorksRepo, tc: ToolContext, project_id: UUID, lev
     return meta
 
 
+def _require_project(meta) -> UUID:
+    """Re-bind the caller's `pid` from the canonicalized meta AND refuse a Work that has
+    no knowledge project bound yet.
+
+    `_book_or_deny` resolves a Work from any of the book's three uuids, but a Work created
+    while knowledge-service was unreachable carries `project_id=NULL` and
+    `pending_project_backfill=true` (C16/WG-3). Nothing stopped that NULL from being
+    re-bound as `pid` and handed to the engines, where it became a dangling reference:
+    measured live on composition_arc_apply, the answer was
+
+        {"code": "BAD_REFERENCE", "detail": "project None has no composition_work row"}
+
+    which is false twice over — the composition_work row exists, it is the PROJECT that is
+    absent — and it leaks a Python None into a caller-facing string while naming no way
+    out. 82 of 516 Works are in this state (TOOLV2 LOOP #142), so it is not a corner.
+
+    This is a helper rather than a check inside `_book_or_deny` because ~27 of the 37
+    gate call sites need only `meta.book_id` and are perfectly valid against a pending
+    Work; only the sites that re-bind `pid` consume the project.
+    """
+    pid = meta.project_id
+    if pid is None:
+        raise ValueError(
+            "this book's Work is not bound to a knowledge project yet (it was created "
+            "while the knowledge service was unavailable) — call composition_create_work "
+            "with this book_id to bind it, then retry"
+        )
+    return pid
+
+
 async def _gate(tc: ToolContext, book_id: UUID, level: GrantLevel) -> None:
     """Run the book-ownership guard at the operation's tier (VIEW read / EDIT
     write). Raises the H13 uniform error on denial. A fresh guard per call keeps
@@ -1082,6 +1112,25 @@ async def composition_create_work(
         out = existing.model_dump(mode="json")
         out["_meta"] = {"undo_hint": None}  # idempotent get → nothing to undo
         return out
+    # TOOLV2 LOOP #142 — adopt this book's PENDING Work before creating a new one.
+    #
+    # `works.get` keys on project_id, so it cannot see a Work whose project_id is still
+    # NULL (C16/WG-3: created while knowledge-service was down). Without this, the create
+    # below hits the one-Work-per-book constraint, the re-get by project_id misses for the
+    # same reason, and the caller is told "not found or not accessible" — permanently, on
+    # every retry, for the tool that is supposed to be the REMEDY for a pending Work.
+    #
+    # It only bit when the book's knowledge project ALREADY existed: the backfill that
+    # `_resolve_or_create_default_project` performs lives on its project-CREATE branch, so
+    # a book resolving to an existing project skipped it entirely. Measured: 5 of 80 pending
+    # Works are in that state, and for those five the workspace could never be opened.
+    pending = await works.get_pending_for_book(bid)
+    if pending is not None and pending.id is not None:
+        adopted = await works.backfill_project(pending.id, pid, created_by=tc.user_id)
+        if adopted is not None:
+            out = adopted.model_dump(mode="json")
+            out["_meta"] = {"undo_hint": None}  # adopting an existing row is not a create
+            return out
     try:
         work = await works.create(tc.user_id, pid, bid)
     except asyncpg.UniqueViolationError as exc:
@@ -1758,7 +1807,7 @@ async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> d
     pid = UUID(args.project_id)
     # Gate EDIT on the source's book — the SAME gate the REST route + the confirm re-check use.
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     source = await works.get(pid)
     if source is None:
         raise uniform_not_accessible()
@@ -2532,7 +2581,7 @@ async def composition_write_prose(ctx: MCPContext, args: _WriteProseArgs) -> dic
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     book: BookClient = get_book_client()
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
     chap = UUID(args.chapter_id)
@@ -2609,7 +2658,7 @@ async def composition_publish(
     pid = UUID(project_id)
     # Publishing is an authoring (write) action → EDIT.
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     # Surface the publish-gate up front so the LLM/user sees WHY if it isn't
     # publishable (the confirm route re-checks it at execute time).
     outline = OutlineRepo(get_pool())
@@ -2753,7 +2802,7 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     pid = UUID(args.project_id)
     # Generation is a write/spend → EDIT (mirrors the engine's E0-4c pack tier).
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
 
     target_kind = "scene" if has_scene else "chapter"
     target_id = args.outline_node_id if has_scene else args.chapter_id
@@ -3822,7 +3871,7 @@ async def composition_motif_suggest_for_chapter(
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
-    pid = meta.project_id
+    pid = _require_project(meta)
     outline = OutlineRepo(get_pool())
     node = await outline.get_node(UUID(node_id))
     # Per-tool IDOR: the node must be in the gated Work's project (a node from
@@ -3896,7 +3945,7 @@ async def composition_arc_suggest(
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
-    pid = meta.project_id
+    pid = _require_project(meta)
     retriever = MotifRetriever(get_pool())
     # Arc retrieval (D-ARC-RETRIEVE) ranks the caller-visible arc_template set under the
     # read predicate (book gate only; arc_template is a deps/ registry table, so tc.user_id
@@ -4441,7 +4490,7 @@ async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     outline = OutlineRepo(get_pool())
     node_id = UUID(args.node_id)
     # IDOR #1: the chapter node is in the gated Work's project.
@@ -4529,7 +4578,7 @@ async def composition_motif_unbind(
     works = WorksRepo(get_pool())
     pid = UUID(project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     outline = OutlineRepo(get_pool())
     nid = UUID(node_id)
     node = await outline.get_node(nid)
@@ -5140,7 +5189,7 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     if args.scope == "chapter":
         if not args.chapter_id:
             return {"success": False, "error": "chapter_id is required when scope='chapter'"}
@@ -6876,7 +6925,7 @@ async def composition_arc_apply(ctx: MCPContext, args: _ArcApplyArgs) -> dict:
     works = WorksRepo(get_pool())
     pid = UUID(args.project_id)
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
-    pid = meta.project_id
+    pid = _require_project(meta)
     # IDOR: the source template must be visible to the caller (H13 on foreign/missing).
     arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
     if arc_tmpl is None:
