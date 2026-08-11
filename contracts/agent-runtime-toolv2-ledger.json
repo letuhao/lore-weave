@@ -1080,6 +1080,18 @@
         "DEBRIS: the probe entity's delete is a confirm-gated propose (destructive:true, preview naming the entity, its 2 attributes and 0 chapter links), so it could not be completed from the MCP surface. One draft entity remains on the disposable book"
       ],
       "admitted": false
+    },
+    "composition_authoring_run_create": {
+      "state": "proven",
+      "note": "PROVEN on its failure population and its refusal path; the happy path is NOT claimed and the reason is that starting an authoring RUN spends the user's money. 6 calls / 2 ok. All 4 failures are raw pydantic dumps from 2026-07-15 -- the class iteration 90 fixed by installing the kit's rewriter in composition-service, and this is the second tool confirming it. The underlying shape errors are real and unchanged: one call sent `args` as a 1-ELEMENT LIST rather than an object, the other omitted required nested fields. `args` is genuinely this tool's parameter name, so this is not the {\"args\":{…}} envelope class -- it is a list wrapped around a real object.",
+      "evidence": [
+        "PHASE 2: 2 ok / 4 failed, all four raw pydantic dumps, 2026-07-15, before the rewriter",
+        "LIVE A/B, the EXACT recorded list-wrapped shape: now 'invalid arguments for composition_authoring_run_create — `args.book_id`: Field required; `args.plan_run_id`: Field required; `args.budget_usd`: Field required; (+1 more). Fix the argument and call the tool again.' Dotted paths into the nested object, and the overflow declared",
+        "LIVE A/B, the other recorded shape (args as an object, missing ids): '`args.book_id`: Field required; `args.plan_run_id`: Field required'",
+        "NUANCE, recorded rather than smoothed: for the list-wrapped call the directive reports `args.budget_usd` missing even though the model DID supply it inside the list element. The message describes what the VALIDATOR saw, which is correct but could puzzle a model that knows it sent the field. The list is not unwrapped -- _coerce_listed_scalar_ids covers scalar IDs, not an object parameter",
+        "NOT CLAIMED: no live happy path. This creates an authoring RUN, which consumes budget (budget_usd is one of its required fields), so triggering one to prove a shape would spend the user's money for a test"
+      ],
+      "admitted": false
     }
   }
 }
