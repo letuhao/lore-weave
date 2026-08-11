@@ -282,7 +282,42 @@ def _node_to_entity(node: Any) -> Entity:
 # a real extractor hit on a previously-auto-created entity promotes
 # it (cycle 73e M1 fold).
 _MERGE_ENTITY_CYPHER = """
-MERGE (e:Entity {id: $id})
+// T35 — resolve an EXISTING node before minting one.
+//
+// `$id` is `entity_canonical_id(user, project, name, kind)` — a hash of the
+// canonicalised name and kind. MERGEing straight onto it means the id stops
+// matching the node the moment its name or kind changes, and the glossary
+// rename path (which correctly MERGEs on `glossary_entity_id`) deliberately
+// leaves `e.id` alone. So the next extraction that reads the NEW name computes
+// a NEW hash, finds nothing, and mints a SECOND node for the same character.
+// Nothing raises; both nodes are well-formed; every later edge attaches to
+// whichever one its writer happened to compute.
+//
+// The stable key is what the node currently SAYS it is — (user, project,
+// canonical_name, kind) — so look there first and reuse that node's id.
+// Falling back to `$id` keeps the create path byte-identical for a genuinely
+// new entity.
+//
+// THE SORT IS THE SAFETY PROPERTY, not a detail. `prior.id = $id` first means:
+// when a node at the derived id already exists, it still wins, so this change
+// is a strict no-op for every write that works today. Resolution only decides
+// anything when NO node sits at the derived id — which is exactly the rename /
+// re-kind case, and exactly where a duplicate used to be minted.
+//
+// That mattered more than it looks. Measured on the dev graph 2026-08-11 there
+// are 17 groups sharing (user, project, canonical_name, kind), and ALL 17 are
+// multi-ANCHORED — two distinct glossary entities whose names canonicalise
+// together (every one of them CJK, i.e. the simplified/traditional dedup
+// class), each faithfully mirrored to its own node. A bare "oldest wins" would
+// have silently moved extraction writes between those nodes. It does not.
+OPTIONAL MATCH (prior:Entity {user_id: $user_id})
+WHERE prior.canonical_name = $canonical_name
+  AND prior.kind = $kind
+  AND (($project_id IS NULL AND prior.project_id IS NULL)
+       OR prior.project_id = $project_id)
+WITH prior ORDER BY (prior.id = $id) DESC, prior.created_at ASC
+WITH collect(prior.id)[0] AS priorId
+MERGE (e:Entity {id: coalesce(priorId, $id)})
 ON CREATE SET
   e.user_id = $user_id,
   e.project_id = $project_id,

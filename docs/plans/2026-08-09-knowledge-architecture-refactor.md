@@ -2716,7 +2716,61 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   migration target mostly exists; what is missing is retiring the derived id and repointing the
   48 join sites.
 
-  ### 🔻 DEFERRAL `D-T35-OPAQUE-IDENTITY`
+  ### ✅ THE MINTING DEFECT IS FIXED — and the plan was counting the wrong thing
+
+  **The defect is real and is now closed at the writer.** `merge_entity` MERGEd on the derived
+  id, so after a glossary rename (which correctly updates in place and leaves `e.id` alone) the
+  next extraction computed a fresh hash, found nothing, and **minted a second node for the same
+  character**. Nothing raised; both nodes well-formed.
+
+  Proven as a test BEFORE it was fixed — rename → duplicate, re-kind → duplicate — with two
+  controls a collapse-everything "fix" would fail (distinct entities stay distinct; projects
+  stay isolated). `tests/integration/db/test_t35_identity_rename.py`.
+
+  The fix resolves by what the node currently SAYS it is, and **the sort is the safety
+  property**:
+  ```cypher
+  WITH prior ORDER BY (prior.id = $id) DESC, prior.created_at ASC
+  ```
+  A node already at the derived id still wins — so this is a strict no-op for every write that
+  works today, and resolution decides something only when nothing sits at the derived id, i.e.
+  exactly the rename/re-kind case. A fifth test pins that, and it is the one that matters.
+
+  **Bitten** (`coalesce(priorId, $id)` → `$id` → 2 red, restored → 5 green).
+  knowledge-service: **4555 passed, 314 skipped**; integration-db **359 passed**.
+
+  ### ⚠️ QC-6's CRITERION MEASURES A QUANTITY OPAQUE IDENTITY GUARANTEES IS NON-ZERO
+
+  QC-6 asks for *"a Cypher count of nodes whose `e.id` disagrees with a recomputed hash —
+  **must be 0**"*. Under opaque identity an id that survives a rename **is supposed to** stop
+  matching a recompute; that divergence is the design working. The criterion cannot pass, and
+  passing it would mean the derived id is still live. **2819 is not a debt — it is 2819 nodes
+  that were renamed or re-kinded.**
+
+  The criterion that carries the same intent and can actually be met is duplicate-freedom:
+  no two nodes sharing `(user, project, canonical_name, kind)`. Measured:
+
+  ```
+  duplicate_groups 17 · nodes_in_groups 34 · redundant_nodes 17
+  anchored_plus_minted 0 · none_anchored 0 · multi_anchored 17
+  ```
+
+  **All 17 are multi-ANCHORED** — every node carries a `glossary_entity_id`. So they are not
+  rename-minted at all; they are two distinct glossary entities faithfully mirrored, and the KG
+  is reporting a glossary problem accurately. Full write-up:
+  `docs/measurements/2026-08-11-t35-identity-damage.md`.
+
+  ### 🔻 DEFERRAL `D-T35-COLLISION-GROUPS-ARE-GLOSSARY-DEBT`
+
+  | | |
+  |---|---|
+  | **Blocker** | The 17 remaining collision groups are **not this task's to fix**, and merging them is destructive — it moves edges and deletes nodes on a graph holding real books. Doing it as a side effect of an identity refactor would be an irreversible write nobody asked for. |
+  | **Evidence** | All 17 groups are multi-anchored (0 of 17 involve an unanchored, extraction-minted node). Two causes, both visible in the raw names: CJK simplified/traditional pairs folded together by ML-2's T2S normalisation **after** both nodes already existed (retroactive — they were genuinely distinct when written), and plain authoring duplicates with identical raw names. Both are glossary-level. |
+  | **To unblock** | A PO decision to run the existing remediation. It already exists and is not new work: `POST /internal/books/{book_id}/dedup-name-variants` (`D-GLOSSARY-ST-DEDUP` M3b) groups by the folded key and merges each group into one winner, **dry-run unless `?apply=true`**. |
+  | **Mechanism** | The duplicate-group count is a one-command re-run and self-describing, and the writer-side fix above means the number can no longer GROW from renames. It can only shrink, and only deliberately. |
+  | **Retry when** | The PO approves running the dedup remediation, on a book at a time, dry-run first. |
+
+  ### ~~DEFERRAL~~ `D-T35-OPAQUE-IDENTITY` — the minting half is closed; kept for the record
 
   | | |
   |---|---|
