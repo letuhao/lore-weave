@@ -42,6 +42,21 @@ def _body() -> str:
     return SRC.read_text(encoding="utf-8").replace("\r\n", "\n")
 
 
+def _indices(hay: str, needle: str) -> list[int]:
+    out, i = [], hay.find(needle)
+    while i != -1:
+        out.append(i)
+        i = hay.find(needle, i + 1)
+    return out
+
+
+def _flat() -> str:
+    """`_body()` with adjacent-string-literal joins collapsed — the message as the CALLER reads
+    it, not as the file wraps it. Same helper as #253/#255, for the same reason."""
+    import re
+    return re.sub(r'"\s*\n\s*"', "", _body())
+
+
 def test_the_refusal_names_both_tools_needed_to_clear_it():
     body = _body()
     assert "adopt a project schema \"\n            \"first" not in body, (
@@ -51,8 +66,37 @@ def test_the_refusal_names_both_tools_needed_to_clear_it():
         "adopt_template needs a source_schema_id; without naming where ids come from, the "
         "instruction dead-ends one step later"
     )
-    assert "op='adopt_template'" in body, "the op that clears this lives on this same tool"
     assert "then retry this edit" in body, "a refusal needs its final step, or the agent stops"
+
+
+def test_the_refusal_is_true_from_every_caller_that_raises_it():
+    """#260 CORRECTION. This guard originally required the phrase "this same tool with
+    op='adopt_template'", which #252 shipped after verifying it through kg_ontology_propose.
+
+    The raise is SHARED. It is reached from `_handle_kg_schema_edit` (the legacy kg_schema_edit,
+    which takes verb/level/code and has no `op`) and from `_handle_kg_triage_schema_write` (which
+    takes signature/action and has no `op`), as well as from kg_ontology_propose op=schema_edit.
+    So two of its three callers were told to pass an argument that does not exist — a message
+    tested through one caller and shipped for three.
+
+    A shared message must be true from EVERY caller, so it names the tools."""
+    flat = _flat()
+    # Scoped to the MESSAGE, not the file: the comment above the raise quotes the bad phrase in
+    # order to explain it, and a whole-file match would go red on the explanation itself.
+    messages = [
+        flat[i: flat.index('"', i + 60)]
+        for i in _indices(flat, "this project has no adopted ontology to edit")
+    ]
+    assert messages, "the refusal text is gone entirely"
+    for msg in messages:
+        assert "this same tool with op=" not in msg, (
+            "the shared refusal points at 'this tool' again; that is false from two of its "
+            "three callers, neither of which has an `op` parameter"
+        )
+    assert "kg_adopt_template" in flat, "name the standalone tool — it works from every caller"
+    assert "kg_ontology_propose with op='adopt_template'" in flat, (
+        "and the unified route, named rather than implied"
+    )
 
 
 def test_both_copies_were_fixed():
@@ -69,9 +113,9 @@ def test_the_read_only_fact_survives():
     """The original said the System template is read-only and admin-managed. That is true and is
     the reason the remedy is 'adopt a copy' rather than 'edit the template' — dropping it would
     make the instruction look arbitrary."""
-    body = _body()
-    assert "System template is read-only " in body
-    assert "cannot be edited in place" in body
+    flat = _flat()
+    assert "System template is read-only " in flat
+    assert "cannot be edited in place" in flat
 
 
 def test_the_sibling_refusal_that_sets_the_standard_still_names_its_tool():

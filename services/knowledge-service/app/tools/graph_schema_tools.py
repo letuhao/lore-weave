@@ -2253,13 +2253,20 @@ async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> 
         raise ToolExecutionError(
             # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
             # refusal must name the TOOLS that clear it, in order — the same discipline
-            # kg_build's "call kg_project_set_embedding_model first" follows. "Adopt a
-            # project schema first" describes the remedy without naming it, and the op
-            # that performs it lives on THIS tool.
+            # kg_build's "call kg_project_set_embedding_model first" follows.
+            #
+            # #260 CORRECTION: #252 wrote "this same tool with op='adopt_template'" here.
+            # That is true only via kg_ontology_propose. This raise is SHARED by
+            # _handle_kg_schema_edit and _handle_kg_triage_schema_write, and neither the
+            # legacy kg_schema_edit nor kg_triage_schema_write has an `op` parameter at
+            # all — so two of the three callers were told to pass an argument that does
+            # not exist. Name the TOOLS instead of "this tool": a shared message must be
+            # true from every caller, and only one of the three was ever tested.
             "this project has no adopted ontology to edit — call kg_list_templates to "
-            "pick one, then this same tool with op='adopt_template' and its "
-            "source_schema_id, then retry this edit (the System template is read-only "
-            "and admin-managed, so it cannot be edited in place)"
+            "pick one, then kg_adopt_template (or kg_ontology_propose with "
+            "op='adopt_template') with its source_schema_id, then retry this edit (the "
+            "System template is read-only and admin-managed, so it cannot be edited in "
+            "place)"
         )
 
     label = args.label.strip() or args.code  # add needs a label; default to the code
@@ -2480,13 +2487,20 @@ async def _handle_kg_triage_schema_write(
         raise ToolExecutionError(
             # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
             # refusal must name the TOOLS that clear it, in order — the same discipline
-            # kg_build's "call kg_project_set_embedding_model first" follows. "Adopt a
-            # project schema first" describes the remedy without naming it, and the op
-            # that performs it lives on THIS tool.
+            # kg_build's "call kg_project_set_embedding_model first" follows.
+            #
+            # #260 CORRECTION: #252 wrote "this same tool with op='adopt_template'" here.
+            # That is true only via kg_ontology_propose. This raise is SHARED by
+            # _handle_kg_schema_edit and _handle_kg_triage_schema_write, and neither the
+            # legacy kg_schema_edit nor kg_triage_schema_write has an `op` parameter at
+            # all — so two of the three callers were told to pass an argument that does
+            # not exist. Name the TOOLS instead of "this tool": a shared message must be
+            # true from every caller, and only one of the three was ever tested.
             "this project has no adopted ontology to edit — call kg_list_templates to "
-            "pick one, then this same tool with op='adopt_template' and its "
-            "source_schema_id, then retry this edit (the System template is read-only "
-            "and admin-managed, so it cannot be edited in place)"
+            "pick one, then kg_adopt_template (or kg_ontology_propose with "
+            "op='adopt_template') with its source_schema_id, then retry this edit (the "
+            "System template is read-only and admin-managed, so it cannot be edited in "
+            "place)"
         )
 
     token = mint_action_token(
