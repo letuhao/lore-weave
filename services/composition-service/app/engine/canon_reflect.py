@@ -18,6 +18,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 from uuid import UUID
 
+from app.config import settings
 from app.engine.critic_policy import resolve_critic_refs
 from app.engine.canon_check import (
     CanonViolation,
@@ -296,6 +297,9 @@ async def run_canon_reflect(
             model_ref=str(judge_ref) if distinct else "",
             source_language=source_language, trace_id=trace_id,
             cancel_check=cancel_check,
+            # T36 — the role-attribution check. Off by default (it adds a judge
+            # call to most scenes); see config.authoring_canon_role_check_enabled.
+            role_check=settings.authoring_canon_role_check_enabled,
         )
 
     revise_out_tokens = 0

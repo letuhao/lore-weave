@@ -2825,15 +2825,57 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   Tests were run against a **throwaway Neo4j** (`lw-t36-neo4j`, port 7999). The suite's own
   guard refuses the dev graph's ports; that guard was respected, not bypassed.
 
-  ### 🔻 DEFERRAL `D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES` — the half nobody had located
+  ### ✅ HALF 2 — THE CONSUMPTION. The guard now asks the role question. **DONE.**
+
+  **The half nobody had located.** Half 1 made the relation payload *correct*; it did not make
+  it *read*. The guard consumed only `entities` + `status` — `check_canon` → `gone_cast_in_draft`
+  → `gone_entities_referenced` — and the judge prompt was built from the draft plus the *gone*
+  candidates. The snapshot's `relations` reached **no prompt and no symbolic rule**; grepping
+  composition-service for a consumer of `FactForCheck.relations` returned nothing outside tests.
+
+  So `D-CANON-CHECK-BLIND-TO-ROLE` was blind **twice**, and the plan named only the axis half.
+  The register's Q2 says roles are *"plan-authored, not extracted"*, which is why the gap looked
+  like a writer problem — but a writer feeding a reader that never reads still scores 5/5.
+
+  **Shipped** in `app/engine/canon_check.py`:
+  - `roles_at_position(snapshot)` — a defensive projection of the snapshot's relations, carrying
+    the interval that answered so a `why` can place a role instead of asserting a timeless fact.
+  - `roles_in_draft(draft, snapshot, limit=20)` — the symbolic **relevance** filter, matching on
+    **either** endpoint (misattribution reads both ways; filtering on the subject alone misses
+    half the acceptance case). Over-inclusive by design, exactly as `gone_cast_in_draft` is. The
+    cap is **logged when it bites** — a silently truncated role set reads like a book with few roles.
+  - `judge_role_attribution(...)` — a third distinct prompt, multilingual-safe. It returns **only
+    what the judge affirmed**, the opposite convention from `judge_canon`, and deliberately: there
+    the symbolic layer already found something suspicious, here it established only relevance, so
+    an unconfirmed role is not a finding.
+
+  **The default is the decision, not an oversight.** `role_check` defaults **False**
+  (`config.authoring_canon_role_check_enabled`). The gone-cast judge fires only when a gone
+  character is named in prose — rare. Roles in force are **common**, so enabling this adds a
+  second judge call to most scenes. A token-spending toggle fails closed and the operator opts in.
+
+  **Bitten twice**, because there are two things worth breaking:
+  ```
+  # wiring removed from check_canon
+  FAILED test_check_canon_runs_the_role_check_when_enabled
+  FAILED test_role_check_never_suppresses_a_gone_cast_finding
+  # spend default flipped to True
+  FAILED test_check_canon_does_not_run_the_role_check_by_default
+  # restored
+  31 passed · full composition suite 3681 passed, 403 skipped
+  ```
+  The second bite is the one that matters: it proves the spend default is *enforced by a test*,
+  not merely written in a comment.
+
+  ### 🔻 DEFERRAL `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` — the data, not the code
 
   | | |
   |---|---|
-  | **Blocker** | Half 1 makes the relation payload **correct**. It does not make it **read**. The canon check consumes only `entities` + `status` from the snapshot: `check_canon` → `gone_cast_in_draft` → `gone_entities_referenced(draft, snapshot)`, and the judge prompt is built by `_build_judge_messages(draft, candidates, source_language)` — the snapshot's `relations` reach **no** prompt and **no** symbolic rule. Grepping composition-service for a consumer of `FactForCheck.relations` returns nothing outside tests. |
-  | **Evidence** | `services/composition-service/app/engine/canon_check.py` — the guard asks exactly one question, *"is a `gone` entity being treated as present?"*. QC-5's criterion is a **different** question: *"the trap must be attributed to the cast-designated antagonist."* That is relational, and no code path poses it. So `D-CANON-CHECK-BLIND-TO-ROLE` was blind in **two** ways, and the plan (and my own deferral) named only the axis one. The register's Q2 says roles are *"plan-authored, not extracted"*, which is why the missing piece looked like a writer problem — but a writer feeding a reader that never reads would still score 5/5. |
-  | **To unblock** | Nothing external. This is implementation in composition-service: a symbolic role rule over the now-windowed relations (subject/predicate/object at P), and the role set in the judge's context so misattribution is answerable. T37 (composition as KAL command producer) supplies **author-declared** roles; extracted relations already exist and are now correctly windowed, so the guard can be built and tested before T37 lands. |
-  | **Mechanism** | `FactCheckRelation` now carries `valid_from_ordinal`/`valid_to_ordinal`, so a consumer arriving later inherits the interval rather than re-deriving it — and the three tests above pin the windowing the consumer will depend on. The absence itself is asserted nowhere yet; the first role rule is what turns that from a note into a gate. |
-  | **Retry when** | Immediately — it is the next unit of T36, not a wait. **QC-5 still cannot certify the acceptance case**, and the reason has changed: not "no relation facts exist" (they do, 619 positioned) but "the guard does not consult them." |
+  | **Blocker** | The guard can now ask the role question, but on the acceptance book it would ask it of the wrong set. Measured on the dev graph 2026-08-11 for project `019f9f41-…`: **25 `:RELATES_TO` edges, only 13 carrying a story position.** The as-of read excludes the other 12 by design (T18's rule), so they are invisible to the check. |
+  | **Evidence** | The acceptance case's OWN betrayal edge is one of the unplaced twelve, and it is malformed in a second, worse way: `"Sự phản bội tại khởi đầu" -[betrayed]-> "Lâm Uyên"`, `valid_from_ordinal=NULL`. <!-- doc-language-gate: ok -- these are stored node names from the cited corpus; translating them would break the identity the evidence turns on --> The subject is **the phrase "the betrayal at the beginning" promoted to an entity** — an event treated as a character. So the betrayal is attributed to a nominalisation rather than to any antagonist. QC-5 asks whether the trap is attributed to the cast-designated antagonist; on this data the answer cannot be right for the right reason. Two neighbours share the shape: `"Ma đạo" -[enemy_of]->` and `"Huyết Chủ" -[related_to]->`, both positionless. |
+  | **To unblock** | Two independent things, neither of which is this task. **(a)** Relations must be written WITH a story position — the extraction path stamps `valid_from_ordinal` only on some edges, and which ones is not yet characterised. **(b)** Event-phrase-as-entity is the over-extraction class already recorded against the extractor; a `betrayed` edge whose subject is an event is a symptom of it, not of the guard. |
+  | **Mechanism** | The count is a one-command re-run and self-describing (`count(r)` vs `count(r.valid_from_ordinal)` for the project). The role check itself is inert on unplaced edges rather than wrong about them — the as-of read drops them — so this degrades coverage visibly rather than producing false verdicts. |
+  | **Retry when** | (a) lands. QC-5 can then run with `authoring_canon_role_check_enabled=true` and measure what the task names. **Until then a 5/5 on this book still means nothing**, and the reason has moved once more: not "no facts", not "the guard does not look", but "the roles it would look at are unplaced and one of them names an event as the betrayer." |
 
 - [~] **T37** — composition-service becomes a KAL **command producer**
   Roles are plan-authored, not extracted — this is the scope widening M2 implies.
@@ -2956,7 +2998,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   |---|---|
   | **Blocker** | QC-5 proves the case **T36 closes**, and T36 is deferred (`D-T36-ROLE-FACTS`). Running it now would re-run the dogfood book against a system where a role is still handed to the canon check as *currently true regardless of reading position* — so it would reproduce the original failure and report it as a **regression of this refactor**, which is the precise mistake `/aif-improve +check` already moved this task to avoid. |
   | **Evidence** | The plan's own dependency line: *"depends on **T36** — it is T36 that closes the case this test proves"*, and the note recording that QC-5 was previously scheduled one commit BEFORE the task that makes it pass. `entity_facts` holds **0** rows of `fact_kind='relation'`, so there is no role fact for the check to window. `fact_for_check.py` still documents relations as not position-windowed. |
-  | **To unblock** | ~~`D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2.~~ **Superseded 2026-08-11:** that deferral is retracted (both its blockers were false — see T36). What QC-5 now waits on is `D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES`: the relations handed to the check are position-windowed as of this session, but the guard consults only `entities` + `status`, so a misattribution question has no code path to reach. No PO decision is outstanding. |
+  | **To unblock** | ~~`D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2.~~ **Superseded twice on 2026-08-11.** That deferral is retracted (both blockers were false). T36 then shipped both halves: relations are position-windowed, and the guard asks the role question behind `authoring_canon_role_check_enabled`. What QC-5 now waits on is **data**, not code — `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`: 12 of the book's 25 relations carry no story position, and the betrayal edge the acceptance case turns on is one of them, with an event phrase as its subject. No PO decision is outstanding at any point in this chain. |
   | **Mechanism** | The task's own pass/fail rule is the tracker and it is unusually sharp: *"a pass here with `canon_consistency` 5/5 means the refactor has NOT landed."* That inverted criterion cannot be satisfied by accident — a green run is the failure signal — so QC-5 cannot be quietly marked done. |
   | **Retry when** | T36 closes. Capture what the task names: the plan artifact, the drafted chapters, the critic's per-chapter scores, and the glossary delta (entity count before/after the cast pass). |
 

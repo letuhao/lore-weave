@@ -338,6 +338,18 @@ class Settings(BaseSettings):
     authoring_critic_severe_score: int = 1
     authoring_critic_warn_score: int = 2
     authoring_critic_estimate_usd: float = 0.01
+    # T36 (D-CANON-CHECK-BLIND-TO-ROLE) — the canon guard's role-attribution
+    # check: "does this passage give an established relationship to the wrong
+    # character?" It is the question the refactor's acceptance case asks, and
+    # until T36 no code path posed it.
+    #
+    # DEFAULTS FALSE, and the default is the decision, not an oversight. The
+    # gone-cast judge fires only when a gone character is actually named in the
+    # prose, which is rare; roles in force at a position are COMMON, so enabling
+    # this adds a second judge call to most scenes. A token-spending toggle
+    # defaults closed and the operator opts in — the same rule every other
+    # spend-causing setting in this repo follows.
+    authoring_canon_role_check_enabled: bool = False
     # D5b — autonomous critic remediation. On a 'severe' verdict the default is to
     # PAUSE for a human (07S). But an UNATTENDED run (background, no human) never
     # gets that review, so the flawed chapter ships and later chapters stack on it

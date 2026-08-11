@@ -95,6 +95,7 @@ import pytest
 from types import SimpleNamespace
 from app.engine.canon_check import (
     judge_canon, check_canon, reflect_revise, ReflectResult,
+    judge_role_attribution, roles_at_position, roles_in_draft,
 )
 
 
@@ -201,3 +202,156 @@ async def test_reflect_stops_when_reviser_gives_up():
     async def revise(_t, _v): return None   # reviser failed
     r = await reflect_revise(draft="bad", check_fn=check, revise_fn=revise, max_iters=3)
     assert not r.resolved and r.iterations == 1 and r.text == "bad"  # kept original
+
+
+# ── T36 · role attribution (D-CANON-CHECK-BLIND-TO-ROLE) ──────────────
+#
+# The guard used to consume only `entities` + `status`; the snapshot's
+# `relations` reached no prompt and no rule. These pin the question it can now
+# ask, and the one it must NOT answer on its own.
+
+
+def _role_snap(*relations, entities=()):
+    return {"at_order": 5_000_000, "entities": list(entities),
+            "relations": list(relations)}
+
+
+def _rel(subject_id, subject_name, predicate, object_id, object_name,
+         valid_from_ordinal=1_000_000, valid_to_ordinal=None):
+    return {"subject_id": subject_id, "subject_name": subject_name,
+            "predicate": predicate, "object_id": object_id,
+            "object_name": object_name,
+            "valid_from_ordinal": valid_from_ordinal,
+            "valid_to_ordinal": valid_to_ordinal}
+
+
+def test_roles_at_position_projects_the_snapshot_relations():
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    roles = roles_at_position(snap)
+    assert len(roles) == 1
+    assert roles[0]["subject_name"] == "Kai" and roles[0]["object_name"] == "Bob"
+    # T36 — the interval that answered rides along, so a `why` can place the role.
+    assert roles[0]["valid_from_ordinal"] == 1_000_000
+
+
+def test_roles_at_position_tolerates_a_malformed_payload():
+    """The snapshot crosses a service boundary, so junk is input, not an error."""
+    assert roles_at_position(None) == []
+    assert roles_at_position({}) == []
+    assert roles_at_position({"relations": None}) == []
+    # a row missing an endpoint NAME cannot be judged or matched — dropped.
+    assert roles_at_position(_role_snap(
+        {"subject_id": "e-kai", "predicate": "serves", "object_id": "e-bob"})) == []
+    assert roles_at_position({"relations": ["not-a-dict"]}) == []
+
+
+def test_roles_in_draft_selects_only_roles_this_passage_could_contradict():
+    snap = _role_snap(
+        _rel("e-kai", "Kai", "serves", "e-bob", "Bob"),
+        _rel("e-zed", "Zed", "rules", "e-far", "Farland"),
+    )
+    hits = roles_in_draft("Kai knelt before the throne.", snap)
+    assert len(hits) == 1 and hits[0]["subject_name"] == "Kai"
+
+
+def test_roles_in_draft_matches_on_EITHER_endpoint():
+    """Misattribution reads both ways — a passage naming only the role's OBJECT
+    can still give that role to the wrong character."""
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    hits = roles_in_draft("Bob's champion stepped forward.", snap)
+    assert len(hits) == 1 and hits[0]["object_name"] == "Bob"
+
+
+def test_roles_in_draft_empty_without_a_snapshot():
+    assert roles_in_draft("Kai knelt.", None) == []
+    assert roles_in_draft("", _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))) == []
+
+
+@pytest.mark.asyncio
+async def test_role_judge_affirms_a_misattribution():
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,'
+                       '"why":"the passage has Zed in Kai\'s role"}]}')
+    roles = [_rel("e-kai", "Kai", "serves", "e-bob", "Bob") | {"span": "s", "matched": "Kai"}]
+    out = await judge_role_attribution(
+        judge, user_id="u", model_source="user_model", model_ref="m",
+        draft="Zed served Bob loyally.", roles=roles)
+    assert len(out) == 1
+    assert out[0].kind == "role_contradiction"
+    assert out[0].entity_id == "e-kai"
+    assert out[0].confirmed is True
+    assert out[0].source == "llm_judge"
+    # NOT "gone" — this candidate says nothing about liveness.
+    assert out[0].status == "role"
+    assert "Kai" in out[0].why
+
+
+@pytest.mark.asyncio
+async def test_role_judge_reports_nothing_when_it_does_not_affirm():
+    """The inverse of `judge_canon`'s convention, on purpose: the symbolic layer
+    established only RELEVANCE, so an unconfirmed role is not a finding."""
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":false,"why":"consistent"}]}')
+    roles = [_rel("e-kai", "Kai", "serves", "e-bob", "Bob") | {"span": "s", "matched": "Kai"}]
+    out = await judge_role_attribution(
+        judge, user_id="u", model_source="user_model", model_ref="m",
+        draft="Kai served Bob.", roles=roles)
+    assert out == []
+
+
+@pytest.mark.asyncio
+async def test_role_judge_invents_nothing_when_it_fails():
+    """CC4 — a judge that is down must not block a generate, and must not
+    manufacture a violation either. Both failure shapes yield no findings."""
+    from loreweave_llm.errors import LLMError
+    roles = [_rel("e-kai", "Kai", "serves", "e-bob", "Bob") | {"span": "s", "matched": "Kai"}]
+    kwargs = dict(user_id="u", model_source="user_model", model_ref="m",
+                  draft="Zed served Bob.", roles=roles)
+    assert await judge_role_attribution(_FakeJudge(raise_exc=LLMError("down")), **kwargs) == []
+    assert await judge_role_attribution(_FakeJudge("{}", status="failed"), **kwargs) == []
+    # completed-but-useless (the truncated-reply case judge_plan_conflicts records)
+    assert await judge_role_attribution(_FakeJudge("no json here"), **kwargs) == []
+
+
+@pytest.mark.asyncio
+async def test_check_canon_does_not_run_the_role_check_by_default():
+    """THE SPEND DEFAULT. Roles in force are common, so an always-on role check
+    adds a judge call to most scenes. `role_check` defaults False and the caller
+    opts in — a token-spending toggle fails closed."""
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,"why":"x"}]}')
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    out = await check_canon("Zed served Bob.", snap, judge=judge,
+                            user_id="u", model_source="user_model", model_ref="m")
+    assert out == []
+    assert judge.calls == 0, "no judge call may happen with the role check off"
+
+
+@pytest.mark.asyncio
+async def test_check_canon_runs_the_role_check_when_enabled():
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,"why":"misattributed"}]}')
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    out = await check_canon("Zed served Bob.", snap, judge=judge, user_id="u",
+                            model_source="user_model", model_ref="m", role_check=True)
+    assert [c.kind for c in out] == ["role_contradiction"]
+    assert judge.calls == 1
+
+
+@pytest.mark.asyncio
+async def test_role_check_never_suppresses_a_gone_cast_finding():
+    """The two checks are additive. A scene with both must report both, or
+    turning the role check on would silently weaken the gate that already ships."""
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,"why":"both"}]}')
+    snap = {"at_order": 5_000_000,
+            "entities": [_ent("e-kai", "Kai", "gone")],
+            "relations": [_rel("e-kai", "Kai", "serves", "e-bob", "Bob")]}
+    out = await check_canon("Kai served Bob.", snap, judge=judge, user_id="u",
+                            model_source="user_model", model_ref="m", role_check=True)
+    assert {c.kind for c in out} == {"gone_entity_present", "role_contradiction"}
+
+
+@pytest.mark.asyncio
+async def test_role_check_needs_a_judge_and_stays_silent_without_one():
+    """Symbolic relevance is not evidence — with no distinct judge configured
+    there is nothing to report, and nothing may be reported."""
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    out = await check_canon("Zed served Bob.", snap, judge=None, user_id="u",
+                            model_source="", model_ref="", role_check=True)
+    assert out == []

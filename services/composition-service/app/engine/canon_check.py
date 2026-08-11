@@ -36,6 +36,7 @@ from loreweave_canon_check import (
     apply_verdicts,
     build_judge_request,
     extract_judge_text,
+    find_span,
     gone_entities_referenced,
     parse_judge_verdicts,
 )
@@ -49,7 +50,10 @@ __all__ = [
     "scene_at_order",
     "CanonViolation",
     "gone_cast_in_draft",
+    "roles_at_position",
+    "roles_in_draft",
     "judge_canon",
+    "judge_role_attribution",
     "judge_plan_conflicts",
     "check_canon",
     "ReflectResult",
@@ -111,6 +115,209 @@ def gone_cast_in_draft(
         )
         for r in rows
     ]
+
+
+# ── T36 · roles at the reading position (D-CANON-CHECK-BLIND-TO-ROLE) ───
+#
+# The guard above asks ONE question: "is a `gone` entity being treated as
+# present?" The register's acceptance case asks a different one — *"is the trap
+# attributed to the cast-designated antagonist?"* — and until now no code path
+# posed it. The snapshot has carried a `relations` list all along; nothing in
+# this service read it.
+#
+# Two things had to be true before that could be fixed, and the first was not:
+#
+#   1. The relations must be POSITION-WINDOWED. They were not — `fact_for_check`
+#      served every relation as currently-true regardless of reading position,
+#      so 175 of the dev graph's 619 positioned edges were already-ended roles
+#      presented as live. Fixed in knowledge-service (T36 axis half); the
+#      snapshot's relations are now the roles in force AT `at_order`, each
+#      carrying the interval that answered.
+#   2. Something must READ them. That is this block.
+#
+# The symbolic layer here is a RELEVANCE filter, deliberately over-inclusive in
+# the same way `gone_cast_in_draft` is: it decides which roles this passage
+# could possibly contradict, and the judge decides whether it does. A role is
+# relevant when either endpoint is named in the draft — misattribution reads
+# both ways ("the wrong character does X to the role's object" and "the role's
+# bearer does something the role forbids"), so filtering on the subject alone
+# would miss half the case the acceptance test is about.
+
+
+def roles_at_position(snapshot: dict[str, Any] | None) -> list[dict[str, Any]]:
+    """The roles in force at the snapshot's reading position, normalised.
+
+    A thin, defensive projection of `snapshot["relations"]` — the payload
+    crosses a service boundary, so a missing key or a non-dict row is expected
+    input, not an error. Rows without both endpoint names are dropped: a role
+    the guard cannot NAME cannot be put to a judge or matched against prose.
+    """
+    out: list[dict[str, Any]] = []
+    for rel in (snapshot or {}).get("relations") or []:
+        if not isinstance(rel, dict):
+            continue
+        subj, obj = rel.get("subject_name"), rel.get("object_name")
+        pred = rel.get("predicate")
+        if not (isinstance(subj, str) and subj and isinstance(obj, str) and obj):
+            continue
+        if not (isinstance(pred, str) and pred):
+            continue
+        out.append({
+            "subject_id": rel.get("subject_id"), "subject_name": subj,
+            "predicate": pred,
+            "object_id": rel.get("object_id"), "object_name": obj,
+            # T36 — the interval that answered, carried through from the
+            # snapshot so a `why` can say "in force since ch.N" rather than
+            # asserting a timeless fact the reader has no way to place.
+            "valid_from_ordinal": rel.get("valid_from_ordinal"),
+            "valid_to_ordinal": rel.get("valid_to_ordinal"),
+        })
+    return out
+
+
+def roles_in_draft(
+    draft: str, snapshot: dict[str, Any] | None, *, limit: int = 20,
+) -> list[dict[str, Any]]:
+    """The roles in force at P that this passage could contradict: those with
+    at least one endpoint named in `draft`.
+
+    Over-inclusive on purpose (see the block comment above). `limit` caps how
+    many reach the judge; the cap is LOGGED when it bites, because a silently
+    truncated role set reads to every downstream layer exactly like a book with
+    few roles.
+    """
+    if not draft or not snapshot:
+        return []
+    hits: list[dict[str, Any]] = []
+    for role in roles_at_position(snapshot):
+        subj_hit = find_span(draft, role["subject_name"])
+        obj_hit = find_span(draft, role["object_name"])
+        if subj_hit is None and obj_hit is None:
+            continue
+        hit = subj_hit or obj_hit
+        hits.append({**role, "matched": hit[0], "span": hit[1]})
+    if len(hits) > limit:
+        logger.info(
+            "canon role check: %d roles in force at this position are named in "
+            "the draft; sending the first %d to the judge",
+            len(hits), limit,
+        )
+        return hits[:limit]
+    return hits
+
+
+def _build_role_judge_messages(
+    draft: str, roles: list[dict[str, Any]], source_language: str,
+) -> tuple[str, str]:
+    """(system, user) for the role-attribution judge.
+
+    A THIRD distinct question, and it gets its own prompt for the same reason
+    `judge_plan_conflicts` does: the other two ask about a character's presence,
+    this one asks about a RELATIONSHIP's holder. Kept free of English-only
+    illustrative phrasing (the multilingual-judge lesson) — the description of
+    what counts is abstract so it does not bias a Vietnamese or CJK judge.
+    """
+    lang = "" if source_language in ("", "auto") else (
+        f" Write each `why` in the language with code '{source_language}'."
+    )
+    system = (
+        "You verify story continuity. Each listed statement is an established "
+        "relationship that is TRUE at this point in the story. For each, decide "
+        "whether the passage CONTRADICTS it — by giving the relationship to a "
+        "different character, by having a character act in a role the "
+        "relationship assigns to someone else, or by asserting the opposite "
+        "relationship as currently true. A passage that simply does not mention "
+        "the relationship is NOT a contradiction, and neither is a character "
+        "doubting, concealing, or being wrong about it in their own words. "
+        "Return ONLY a JSON object "
+        '{"verdicts":[{"entity_id":str,"violated":bool,"why":str}]}, using the '
+        "entity_id given for each statement." + lang
+    )
+    listed = "\n".join(
+        f'- entity_id={r["subject_id"]} "{r["subject_name"]}" '
+        f'{r["predicate"]} "{r["object_name"]}"'
+        for r in roles
+    )
+    user = f"ESTABLISHED RELATIONSHIPS AT THIS POINT:\n{listed}\n\nPASSAGE:\n{draft}"
+    return system, user
+
+
+async def judge_role_attribution(
+    judge, *, user_id: str, model_source: str, model_ref: str,
+    draft: str, roles: list[dict[str, Any]], source_language: str = "auto",
+    max_tokens: int | None = None, trace_id: str | None = None,
+    cancel_check: Callable[[], Awaitable[bool]] | None = None,
+) -> list[CanonViolation]:
+    """Ask whether the passage contradicts any role in force at P.
+
+    Returns only the roles the judge AFFIRMED, as `role_contradiction`
+    candidates. That is the opposite convention from `judge_canon`, and
+    deliberately so: there the symbolic layer already found something suspicious
+    (a gone character named in the prose) and the judge narrows it, so an
+    unjudged candidate is still worth surfacing as advisory. Here the symbolic
+    layer only established RELEVANCE — "this role is mentioned" is not evidence
+    of anything — so an unconfirmed role is not a finding and must not be
+    reported as one.
+
+    CC4: every LLM/parse failure returns `[]` (nothing affirmed) rather than
+    raising. A judge that is down must not block a generate, and must not invent
+    a violation either.
+    """
+    if not roles:
+        return []
+    from loreweave_llm.errors import LLMError
+
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_canon", target=len(roles), language=source_language)
+    system, user = _build_role_judge_messages(draft, roles, source_language)
+    req = build_judge_request(
+        [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        usage_purpose="canon_check", extractor="judge_role_attribution",
+        max_tokens=max_tokens,
+    )
+    try:
+        job = await judge.submit_and_wait(
+            user_id=user_id, operation="chat", model_source=model_source,
+            model_ref=model_ref, trace_id=trace_id, cancel_check=cancel_check, **req,
+        )
+    except LLMError as exc:
+        logger.warning("judge_role_attribution degraded (LLM error): %s — no role findings", exc)
+        return []
+    if getattr(job, "status", None) != "completed":
+        logger.info("judge_role_attribution status=%s → no role findings",
+                    getattr(job, "status", None))
+        return []
+    verdicts = parse_judge_verdicts(extract_judge_text(job.result))
+    if not verdicts:
+        # A COMPLETED job whose text yielded nothing — the same
+        # completed-and-useless case `judge_plan_conflicts` documents, logged
+        # with `finish_reason` so an operator sees "length" rather than silence.
+        logger.warning(
+            "judge_role_attribution produced NO verdicts for %d role(s) "
+            "(finish_reason=%s) — the role check did not run",
+            len(roles), (job.result or {}).get("finish_reason"),
+        )
+        return []
+    # `parse_judge_verdicts` returns `{entity_id: {violated, why}}`, not a list.
+    out: list[CanonViolation] = []
+    for r in roles:
+        v = verdicts.get(str(r["subject_id"]))
+        if v is None or v.get("violated") is not True:
+            continue
+        out.append(CanonViolation(
+            kind="role_contradiction",
+            source="llm_judge",
+            entity_id=str(r["subject_id"]),
+            name=r["subject_name"],
+            # NOT "gone" — this candidate says nothing about liveness, and
+            # inheriting the base default would make it read as if it did.
+            status="role",
+            span=r.get("span", ""),
+            matched=r.get("matched", ""),
+            confirmed=True,
+            why=str(v.get("why") or ""),
+        ))
+    return out
 
 
 # ── LLM-judge: confirm acting-vs-mentioned (A2-S3b, spec §9 D2) ─────────
@@ -295,17 +502,36 @@ async def check_canon(
     judge=None, user_id: str = "", model_source: str = "", model_ref: str = "",
     source_language: str = "auto", trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    role_check: bool = False,
 ) -> list[CanonViolation]:
     """Full canon check on a draft: SCORE symbolic pre-filter → (if any
     candidates AND a distinct judge is configured) LLM-judge confirmation.
     Returns ALL candidates with `confirmed` set (True/False by the judge, or
-    None when no judge ran). The caller treats `confirmed is True` as HARD."""
+    None when no judge ran). The caller treats `confirmed is True` as HARD.
+
+    T36 — when `role_check` is on, ALSO asks whether the passage contradicts a
+    role in force at this position, and appends any affirmed contradictions.
+    That is a SECOND judge call on scenes that have roles but no gone-cast
+    candidate, i.e. new spend on the common path, so it is off by default and
+    the caller opts in (`spend-causing-setting-fails-closed`). The role check
+    never suppresses a gone-cast finding; it only adds.
+    """
     candidates = gone_cast_in_draft(draft, snapshot)
-    if not candidates or judge is None or not model_ref:
+    judged = judge is not None and bool(model_ref)
+    if candidates and judged:
+        candidates = await judge_canon(
+            judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
+            draft=draft, candidates=candidates, source_language=source_language,
+            trace_id=trace_id, cancel_check=cancel_check,
+        )
+    if not role_check or not judged:
         return candidates
-    return await judge_canon(
+    roles = roles_in_draft(draft, snapshot)
+    if not roles:
+        return candidates
+    return candidates + await judge_role_attribution(
         judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
-        draft=draft, candidates=candidates, source_language=source_language,
+        draft=draft, roles=roles, source_language=source_language,
         trace_id=trace_id, cancel_check=cancel_check,
     )
 
