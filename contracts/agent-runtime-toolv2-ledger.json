@@ -1306,6 +1306,19 @@
         "DEBRIS: one chapter link remains on the disposable book, joining that entity to its single chapter"
       ],
       "admitted": false
+    },
+    "glossary_create_evidence": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Evidence attaches to a specific ATTRIBUTE VALUE, not merely to an entity -- attr_value_id and original_text are both required, which my first call learned the hard way. The create returns the whole evidence object and a different tool confirms it landed: glossary_get_entity_evidence now returns the same evidence_id, joined to attribute_code 'name'. That also gives iteration 99 its non-empty branch on THIS book, which it could only see empty. ONE THING WORTH FLAGGING: original_language came back 'zh' for the English sentence 'She reads the drowned bells.' -- a short-string language detection that looks wrong.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "SCHEMA learned from a refusal: omitting attr_value_id and original_text -> 'required: missing properties: [\"attr_value_id\" \"original_text\"]'. Evidence is per attribute VALUE",
+        "LIVE: the evidence object -- evidence_id, evidence_type 'quote', original_text, chapter_id, created_at, translations []",
+        "POST-CONDITION through another tool: glossary_get_entity_evidence returns the same evidence_id with attribute_code 'name' and attribute_name 'Name'",
+        "FLAGGED, not chased: original_language was detected as 'zh' for a plain English sentence. One short string is not a population, but a mis-detected language on evidence would matter for the translation caches, so it is recorded rather than dropped",
+        "MY OWN SLIP, and the SECOND time: the first post-condition reused a scratch file an earlier control had overwritten with an absent entity id, so it answered 'entity not found'. I recorded this same mistake in iteration 83 and repeated it anyway"
+      ],
+      "admitted": false
     }
   }
 }
