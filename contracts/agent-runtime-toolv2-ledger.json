@@ -1237,6 +1237,17 @@
         "PARTIAL-BATCH shape: every outcome is per item with a summary of created/updated/failed -- C-19 again, and a failed item does not fail the call"
       ],
       "admitted": false
+    },
+    "book_chapter_unpublish": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it CONFIRMS ITERATION 86's FIX ON A SECOND TOOL. 1 call / 1 session / 1 ok, no failure population. It shares proposeChapterAction with book_chapter_publish, so the chapter-existence branch I fixed in iteration 86 serves this tool too -- verified rather than assumed: an absent chapter_id now returns 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)' instead of the false 'book not accessible'. Its card title has also improved since the recorded call: 'Unpublish chapter (revert canon)' is now 'Unpublish chapter (revert canon → draft)', which names the destination state.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE: a confirm card, descriptor book.publish, destructive:false, titled 'Unpublish chapter (revert canon → draft)' with a signed token. Not confirmed, so nothing changed",
+        "CONTROL, and it is iteration 86's regression check on a tool that iteration did not touch directly: an absent chapter_id -> the chapter message, not the book one. The shared proposeChapterAction path carries the fix to both siblings",
+        "TITLE: the recorded 2026-06-20 card read 'Unpublish chapter (revert canon)'; today it reads 'revert canon → draft'. The end state is now stated rather than implied"
+      ],
+      "admitted": false
     }
   }
 }
