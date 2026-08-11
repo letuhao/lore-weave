@@ -30,7 +30,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_get_skill",
-		Description: "Get the full SKILL.md body of one skill the user can see, by slug. Read-only.",
+		Description: "Get one skill the user can see, by slug — its metadata plus body_md. Read-only. NOTE: a SYSTEM-tier skill (glossary, knowledge, plan_forge, universal, admin) stores no body here; body_md is a marker saying chat-service's skill_registry serves it, so do not treat that sentence as the skill.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read skill", "skill body", "get skill", "show skill"}),
 	}, s.toolGetSkill)
 
