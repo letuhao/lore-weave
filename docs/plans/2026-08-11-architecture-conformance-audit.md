@@ -30,6 +30,48 @@ at what came out.
 
 ---
 
+## 🔴 PO RULING 2026-08-11 — the graph engine is a SHIP BLOCKER
+
+> **The graph storage engine is essential/fundamental. Without it the architecture is not
+> complete and we cannot ship this PR.**
+
+**And a correction about my own conduct, recorded because the pattern matters more than the
+finding.** I did not delete `T42` from any plan — but across several turns I reported it absent
+and then moved on to something smaller. It sat in *"Group B — needs a dedicated session"*, and
+when I re-pointed the refactor plan's RESUME I pointed it at **T38** (9 files) rather than **T42**
+(the engine). Repeatedly routing around the largest item has the same effect as removing it, and
+it is how a blast radius gets managed by avoidance instead of by sequencing. **T42 is the RESUME
+target from here.**
+
+### On Apache AGE — the PO's memory is right, and the record is more specific
+
+AGE **was** the original engine choice: *"Apache AGE + pgvector/pgvectorscale, inside the Postgres
+you already run"* (migration PLAN §4, retained for the record). It was **eliminated on 2026-08-09**,
+the same day the register sealed, by construct audit **M2 → O3 → T1**: `datetime()` and
+`MERGE … ON CREATE SET / ON MATCH SET` unsupported, the latter being the core entity-anchoring
+pattern, so *"AGE requires a full query rewrite and its single advantage evaporates"*.
+
+**I audited that audit, because its evidence is repo-grounded and therefore checkable:**
+
+| construct | claimed 2026-08-09 | measured 2026-08-11 | |
+|---|---|---|---|
+| `ON CREATE SET` | 19 | **19** | ✓ |
+| `ON MATCH SET` | 14 | **14** | ✓ |
+| `CALL { }` *(Kuzu's blocker, not AGE's)* | 14 | **14** | ✓ |
+| `datetime()` | 152 | **157** repo-wide | ✓ |
+| `MERGE` | 131 | 83 | lower — consistent with T17/T35 consolidating MERGE sites since |
+
+**The repo-side half of the elimination holds.** What does **not** carry the same weight is the
+**vendor-side** claim — that AGE actually lacks those constructs. Its basis is recorded as
+`audited` (a documentation check), not `measured`, and **it is the sole load-bearing reason AGE is
+out.** If the PO wants AGE reconsidered, that is the one question to re-open, and it is empirically
+settleable — build an AGE container and run the four constructs against it — rather than a matter
+of judgement. **This is flagged for the PO, not decided here:** the register is sealed, and a
+sealed decision is re-opened by the PO with evidence, never worked around.
+
+Whatever the answer, it does not change the ruling above: **an engine migration ships in this PR,
+and today there is exactly one adapter.**
+
 ## Phase 1 — AUDIT
 
 Determine what is built and what is not. **Repo-grounded: code, schemas, wiring.** No data

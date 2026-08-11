@@ -35,13 +35,30 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: Phase 6, T38 — migrate the 9 pinned authored-catalog readers onto `KalClient.roster`.**
-Its first unit is done: `scripts/authored-catalog-reader-gate.py` now pins the reader set at
-**9 files / 10 call sites across 6 services** and fails when it grows *or* when the baseline goes
-stale. The migration order is in the gate's own BASELINE, each entry with its reason. Three of
-them are the core targets (`lore-enrichment` LIST · `translation` mention-backfill LIST ·
-`worker-ai` LIST + by-ids); two are eval scripts that migrate last; one is a bulk DELETE that is
-**not** T38's (writes are T47's scope growth, not this task's).
+**RESUME: Phase 7, T41 → T42 — the graph engine. 🔴 PO ruling 2026-08-11: this is a SHIP BLOCKER.**
+
+> *"The graph storage engine is essential/fundamental. Without it the architecture is not complete
+> and we cannot ship this PR."*
+
+⛔ **This pointer previously read "Phase 6, T38", and that was my error — not a typo but a
+pattern.** T42 has been reported ABSENT for several turns and deferred each time: it sat in
+*"Group B — needs a dedicated session"*, and when this line was rewritten it was pointed at T38
+(9 files) instead of the engine. **Repeatedly routing around the largest item has the same effect
+as deleting it.** T38 is real work and stays queued behind this, with its gate already pinning the
+9 readers; it is not what the PR ships on.
+
+**State:** exactly **one** `GraphStore` adapter exists (`neo4j_graph_store.py`, plus
+`fake_graph_store.py`, a test double). Decision **X1** requires **both** candidates so that T43's
+shadow comparison is a contest rather than a formality. T41 (rebuild-from-Postgres) comes first —
+it **does not exist**, three claims depend on it (graph HA unnecessary · P3 rollback · DR), and it
+is stop condition 4.
+
+⚠️ **Apache AGE — the PO recalls it as the decision, and that memory is right about the original
+design.** It was eliminated 2026-08-09 by construct audit M2/O3/T1. The repo-side counts were
+re-verified 2026-08-11 and hold (`ON CREATE SET` 19 ✓ · `ON MATCH SET` 14 ✓ · `CALL {}` 14 ✓ ·
+`datetime()` 157 ✓). The **vendor-side** claim — that AGE lacks those constructs — is basis
+`audited`, not `measured`, and is the sole reason AGE is out. Re-opening it is the PO's call and is
+empirically settleable. See `docs/plans/2026-08-11-architecture-conformance-audit.md` § PO ruling.
 
 ### The graph: what is built, what is populated, what is neither
 
