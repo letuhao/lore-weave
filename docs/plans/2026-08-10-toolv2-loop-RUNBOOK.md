@@ -721,6 +721,30 @@ why nobody had hit this.
 
 ---
 
+### Audited and CONTAINED — `uuid.UUID` on an MCP output struct (iteration 124)
+
+The `book_chapter_reorder` defect (schema says `array`, JSON is a string, every successful
+response rejected) is a **class**, not a typo, so it was swept rather than assumed unique.
+
+| sweep | result |
+|---|---|
+| struct fields typed `uuid.UUID` carrying a `json` tag, all services | **59** |
+| …of those, reachable from an **MCP tool output type** (transitive, incl. nested structs) | **1** |
+| …of that one, genuinely on the wire | **0** |
+
+The 59 are overwhelmingly REST-only structs, where no schema is generated and nothing validates.
+The single transitive hit — `chapterSummary.ChapterID` in glossary-service — is a
+**deserialization target** for an internal HTTP client (`fetchBookChapters`), never an MCP output;
+the closure matched it by type name, not by a real output path. **Verified by reading its call
+sites rather than trusting the sweep**, which is the same discipline that caught my first sweep
+returning a false `0` because it did not follow nested types.
+
+*Method worth reusing:* the naive sweep (top-level output structs only) returns **0 and would have
+missed the very defect that prompted it** — `reorderedChapter` is nested inside
+`chapterReorderOut.Chapters`. Any audit of an output-shape defect has to close over field types.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-10 · A union-typed argument reports itself twice, in pydantic's internal path language
