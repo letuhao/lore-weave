@@ -35,10 +35,40 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: Phase 7, T41 → T42 — the graph engine. 🔴 PO ruling 2026-08-11: this is a SHIP BLOCKER.**
+**RESUME: T42 — the second `GraphStore` adapter, AGE first. 🔴 HIGHEST PRIORITY.**
 
-> *"The graph storage engine is essential/fundamental. Without it the architecture is not complete
-> and we cannot ship this PR."*
+> **PO, 2026-08-11:** *"The graph storage engine is essential/fundamental. Without it the
+> architecture is not complete and we cannot ship this PR."*
+> **PO, 2026-08-11 (re-order):** *"make this AGE task high priority because we have avoided it
+> almost all of the time. In my architecture, it is the **first layer** that needs to refactor,
+> not deferred to the latest one."*
+
+⚠️ **PHASE 7 IS NO LONGER LAST — the engine is layer 1.** See
+`ARCHITECTURE-OVERVIEW.md` §6 for the amended order. Building the substrate swap last meant every
+slice above it was verified against **one** engine, with the swap re-opening all of them at the
+point of least remaining capacity. Doing it first makes everything after engine-agnostic *because
+it was built against two engines*.
+
+**The precondition is already met, so the deferral had no dependency behind it.** A shadow
+comparison needs the port — and `GraphStore` shipped in **T18**: 10 methods, domain-shaped, no
+query language in the signature (`resolve_or_merge_entity(user_id=, project_id=, name=, kind=…)`).
+A second adapter is unblocked *today*. It was deferred for size, not for sequence.
+
+⚠️ **T41 is NO LONGER a prerequisite, and may not survive contact with the answer.** The plan has
+T42 depending on T41 (rebuild-from-Postgres). But if the engine lands in **AGE**, the graph *is* in
+Postgres and T41 changes shape entirely rather than needing to be built as written. Building a
+rebuild path for a topology that is about to change is the ordering error this re-sequencing
+exists to fix. **Decide the engine first; then T41 is either simpler or unnecessary.**
+
+**No EF-style layer is needed, and this was checked rather than assumed.** Different engines have
+different dialects, but the substitutability boundary is the **port**, not a portable query
+language. A query-level abstraction would have to target the intersection of engine capabilities
+(degrading to the weakest — AGE has no `ON CREATE SET`, Kuzu no `CALL {}`) or emulate the
+difference, which hides that one engine needs two statements in a transaction where another needs
+one. **A port abstracts operations; an EF abstracts queries** — and the dialect difference belongs
+inside the adapter where it is visible, testable and priced. TinkerPop/Gremlin is the nearest
+off-the-shelf option and would trade three known dialect gaps for unknown provider gaps on AGE and
+Kuzu, plus a total rewrite. Sealed **B1** already chose this shape.
 
 ⛔ **This pointer previously read "Phase 6, T38", and that was my error — not a typo but a
 pattern.** T42 has been reported ABSENT for several turns and deferred each time: it sat in
@@ -451,6 +481,8 @@ Recorded here so they are not re-derived, and not "optimised" away by a later re
 |---|---|---|
 | **X1** | **Phase 7 builds BOTH graph adapters; the engine is chosen by P2 shadow comparison** — as sealed (T2). The fact that T6's re-open tripwires already measure **zero** (p50 entity degree 0, no query needing variable-length `RELATES_TO` past depth 2) is **not** grounds to pre-narrow to Postgres-relational and skip Kuzu | the shallow workload is shallow *because relationship extraction is immature* (3 of 8 edges defensible) — the sealed design says so itself. Choosing on that basis would decide the engine by an artefact of a known-weak extractor rather than by measurement. The plan's method is shadow comparison; a cheaper argument does not replace it |
 | **X2** | **The four gate measurements stay at their scheduled slices** — T8, T10, T21, T41 are **not** front-loaded | they are already sequenced immediately before the work they gate, and each carries a stop condition. Pulling T21 or a T41 spike forward buys earlier warning at the cost of context-switching out of a phase that is not finished |
+| **X3** *(2026-08-11)* | 🔴 **THE GRAPH ENGINE IS LAYER 1. Phase 7's engine work moves to the FRONT, at highest priority, and this PR does not ship without it.** T42 starts now with **AGE** as the first adapter built. ⚠️ **This partially supersedes X2 for T41:** T41 is no longer a prerequisite of T42 — the engine is decided first, and T41 is re-scoped or dropped afterwards | *"In my architecture, it is the first layer that needs to refactor, not deferred to the latest one"* — and the substrate was **avoided almost every session**. Building the swap last verifies every slice above it against **one** engine, then re-opens all of them when the least capacity remains. The stated dependency was already discharged: `GraphStore` shipped in **T18**, so a second adapter was unblocked and merely large. And if AGE wins, the graph lives in Postgres, so **T41's rebuild-from-Postgres changes shape entirely** — building it first would have been a path constructed for a topology about to change |
+| **X4** *(2026-08-11)* | **No EF-style portable query layer. The port is the substitutability boundary; adapters own the dialect** | a query abstraction must target the *intersection* of engine capabilities (degrading to the weakest — AGE lacks `ON CREATE SET`, Kuzu lacks `CALL {}`) or emulate the difference, which hides that one engine needs two statements in a transaction where another needs one — a silently different guarantee, the worst kind of leak. **A port abstracts operations; an EF abstracts queries.** `GraphStore` is already domain-shaped with no query language in its signatures. TinkerPop/Gremlin, the nearest off-the-shelf option, would trade three *known* dialect gaps for *unknown* provider gaps on AGE and Kuzu plus a total rewrite. Sealed **B1** chose this shape; nothing new is needed |
 | **X3** | **QC-0 runs before Commit 1**, and the same rule holds at every later checkpoint | option 1 of the resume question; it is also what the QC spine already says |
 
 ## Settings

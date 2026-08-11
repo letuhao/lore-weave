@@ -238,6 +238,36 @@ flowchart LR
 
 ## 6 · Order — **revised 2026-08-09 after [RED TEAM](2026-08-09-architecture-RED-TEAM.md)**
 
+> ## 🔴 RE-ORDERED 2026-08-11 (PO) — **the graph engine is LAYER 1, not the tail**
+>
+> **PO ruling, verbatim:** *"in my architecture, it is the first layer that needs to refactor, not
+> defer to the latest one"* — and *"we have avoided it almost all of the time."*
+>
+> **S4 (engine swap) moves to the FRONT.** The diagram below still shows it last; that ordering is
+> superseded and the diagram is kept for the red team's reasoning, not its sequence.
+>
+> **Why the old order was wrong.** Putting the substrate swap last means every slice above it is
+> built and verified against **one** engine, and the swap then re-opens all of them at the moment
+> the plan has the least remaining capacity. That is maximum risk at the point of minimum slack.
+> Doing it first inverts the property: everything built afterwards is engine-agnostic **because it
+> was built against two engines from the start**, and the shadow comparison (T43) has real traffic
+> to compare instead of a retrofit.
+>
+> **The precondition is already met.** The old ordering had a genuine dependency — a shadow
+> comparison needs the port to exist. **`GraphStore` shipped in T18** (10 methods, domain-shaped,
+> zero query language in the signature). Nothing blocks a second adapter today. The engine work was
+> not waiting on a dependency; it was being deferred because it is large.
+>
+> **This ruling is also a correction of my own conduct.** Across several sessions T42 was reported
+> ABSENT and then routed around — parked in *"Group B, needs a dedicated session"*, and when the
+> RESUME pointer was rewritten it was aimed at **T38** (9 files) rather than the engine.
+> Repeatedly avoiding the largest item has the same effect as deleting it.
+>
+> **Consequence worth naming:** if the engine lands in **AGE**, the graph lives in Postgres — so
+> **T41** (*rebuild-from-Postgres*, which does not exist and which three claims depend on) changes
+> shape entirely rather than needing to be built as specified. The old order could not see that,
+> because it decided the engine after building the rebuild path for a different topology.
+
 > **What the red team changed.** The original order put the PO's two acceptance cases in the **last**
 > slice, behind ~22k LOC of substrate work (**RT-1**), and made S0 a single all-or-nothing refactor of
 > the kind this repo has already stalled on once — **the KAL reached 18 of 204 routes** (**RT-12**).
@@ -371,8 +401,8 @@ check), or `PO` (a product decision). Rows without a basis do not exist — that
 
 | # | decision | basis |
 |---|---|---|
-| **T1** | **⛔ Apache AGE eliminated** — `datetime()` (152 uses) and `MERGE … ON CREATE/ON MATCH SET` (164) unsupported; the latter is the core anchoring pattern | audited |
-| **T2** | **Target is Postgres-relational (recommended) vs Kuzu, decided by P2 shadow comparison.** Kuzu viable: ~14 `CALL {}` rewrites + 152 mechanical renames | audited |
+| ~~**T1**~~ | ~~**⛔ Apache AGE eliminated** — `datetime()` (152 uses) and `MERGE … ON CREATE/ON MATCH SET` (164) unsupported; the latter is the core anchoring pattern~~ ⚠️ **RE-OPENED 2026-08-11 (PO) — the premise is refuted.** The elimination rested on a **documentation** check (basis `audited`). Re-tested against a running **AGE 1.7.0 / PostgreSQL 18.1**, every construct is expressible in AGE's own idiom: `ON CREATE SET` → `SET x = coalesce(x, v)` · `ON MATCH SET` → unconditional `SET` · `datetime()` → **`timestamp()`** · `CALL { … }` → SQL `CTE`/`LATERAL`. Even `__was_created` is exact via a pre-`MATCH` count in the same transaction. ⚠️ **The first re-test was ALSO wrong** — it ran *Neo4j* Cypher against AGE and read the syntax errors as missing capability, which measures **portability, not capability**. Evidence: `docs/measurements/2026-08-11-age-construct-probe.md`. **What survives:** AGE needs a query-layer rewrite (~33 anchoring sites + 157 renames + 14 `CALL{}`). **What does not:** *"so its only advantage evaporates"* — that assumed the advantage was Cypher portability; the real advantage is **colocation** with the vectors T3 already sends to pgvector, and it was never priced | ~~audited~~ **measured** |
+| ~~**T2**~~ | ~~**Target is Postgres-relational (recommended) vs Kuzu, decided by P2 shadow comparison.**~~ ⚠️ **AMENDED 2026-08-11 (PO).** The candidate set was narrowed on T1's refuted premise, so it is restored: **AGE · Kuzu · Postgres-relational**, still decided by shadow comparison (**T43**) rather than by argument, per **X1**. Kuzu's dialect cost is smaller (~14 `CALL{}` + 152 renames); AGE's operational story is better (one engine for graph + vectors + truth, one backup, one ops surface). That is a real trade and the design's own method is to measure it | **measured** |
 | **T3** | **Vectors leave the graph**, to pgvector / pgvectorscale (StreamingDiskANN, PG18 ✅, Postgres-OSS licensed) | measured: ~30k per-tenant HNSW indexes at 10k projects; 390–780 GB |
 | **T4** | **Vectors are durable primary data, backed up — never recomputed.** Embedding models are per-project **BYOK**, so re-embedding on DR spends the *user's* budget without consent | measured + PO |
 | **T5** | **Publish a prebuilt Postgres image; own the extension matrix** — the alternative destroys the operability argument for leaving Neo4j | PO |
