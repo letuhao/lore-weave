@@ -660,6 +660,19 @@
         "DATED, not assumed: the 6 real failures span 2026-07-22 16:01 to 2026-07-26 17:03; D-FE-TOOL-CONTEXT-IDS committed 2026-07-27. Frontend tools were validated BEFORE the backend injection, and glossary_propose_entity_edit is consumer-local despite its name"
       ],
       "admitted": false
+    },
+    "kg_schema_read": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 35 calls / 9 sessions / 20 ok, and the 15 failures are exactly two classes, both already answered. FIVE sent project_id=[0, 0] -- a list of integers, not a wrapped id, so _coerce_listed_scalar_ids correctly leaves it alone -- and the refusal names the argument, the type it got, and what to do. TEN are 'no project in scope', across THREE message shapes that show the message improving over time; the newest names its satisfier (kg_project_list), which is the C-22 pattern working. MY LIVE CONTROL REPRODUCED AN UGLY SHAPE AND IT WAS THE WRONG BOUNDARY: calling the MCP surface directly returns the good message buried in FastMCP's own 'Error executing tool <name>: {\"message\": \"...—...\"}' wrapper, which the library adds to any handler that RAISES (mcp/server/fastmcp/tools/base.py:117) and not to one that returns a validation error. chat-service strips that prefix and decodes the body (K18), so the model never sees it -- and the corpus proves the boundary rather than assuming it.",
+      "evidence": [
+        "PHASE 2: 20 ok / 15 failed = 5 project_id=[0,0] (4 sessions) + 10 'no project in scope' (3 message shapes: 2026-06-25, 2026-07-14, 2026-08-04)",
+        "LIVE: kg_schema_read with a real project_id -> the full schema, including schema_node_kinds rows (person, place) with strength and deprecated_at",
+        "CONTROL A: no project -> 'no project in scope — pass the optional `project_id` argument (list your projects with kg_project_list), or open this chat from a project'",
+        "CONTROL B: project_id=[0,0] -> 'invalid arguments ... `project_id`: Input should be a valid string (you sent a list). Fix the argument and call the tool again.' Verbatim",
+        "SHAPE, chased to its owner: the 'Error executing tool' wrapper is the MCP library's, at mcp/server/fastmcp/tools/base.py:117, not this repo's -- which is why Control B (a validation return) is clean and Control A (a raise) is not",
+        "DATED, and the corpus agrees: chat-service's _strip_fastmcp_prefix shipped 2026-07-23 (K18). Of all 'no project in scope' rows corpus-wide, the 3 WRAPPED are 2026-07-14 and the 5 CLEAN are 2026-08-04 -- the split lands exactly on the fix"
+      ],
+      "admitted": false
     }
   }
 }
