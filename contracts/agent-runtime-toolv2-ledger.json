@@ -1929,6 +1929,10 @@
     "composition_outline_node_move": {
       "state": "proven",
       "note": "PROVEN on both axes it claims to maintain, which is the whole risk in this tool. Moving 'Opening' after 'The turn' swapped their story_order (1000↔1001) AND recomputed the fractional rank ('i' → 'v', which sorts after 'r'). Reparenting it to the other chapter reset it to story_order 1000 and rank 'i' -- first child of its new parent. This is the DUAL-ORDER-AXIS trap done right. rank is the UI tree's fractional string and story_order is the integer narrative position; a move that updated one and left the other stale would give a screen order and a reading order that silently disagree, and nothing in either value alone would reveal it. The description promises 'computes the fractional rank + renumbers scene story_order server-side, atomically', and both were measured moving together. One thing worth stating so a future reader does not mis-read the data: after a reparent two scenes under DIFFERENT parents both showed story_order 1000. That is correct -- the ordinal is per-parent, and each was first in its own chapter."
+    },
+    "composition_outline_node_restore": {
+      "state": "proven",
+      "note": "PROVEN directly (it was already exercised as #213's cascade half). Archiving a single scene and restoring it returns is_archived to false. Restoring an ALREADY-live node and an unknown node_id both give the uniform deny -- the same asymmetry as every restore in this repo (#159 arc templates, #209 motifs): archive is idempotent, restore is not, because archive asks for a state that already holds while restore asks to reverse something that never happened. #213 proved the harder property on this same tool -- restoring a CHAPTER brings its descendant scenes back with it, so the cascade is symmetric in both directions and a restored chapter is not left with stranded children."
     }
   }
 }
