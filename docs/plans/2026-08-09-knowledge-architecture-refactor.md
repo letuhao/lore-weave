@@ -2947,7 +2947,38 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   repaired them. So the 1632 are the backlog accumulated while the handler was dead. **The
   events are long gone; a working handler will never revisit them.** Nothing reconciles history.
 
-  ### 🔻 DEFERRAL `D-KG-ORPHAN-ANCHOR-BACKLOG` — 1632 KG nodes anchored to deleted glossary rows
+  ### ✅ `D-KG-ORPHAN-ANCHOR-BACKLOG` — RECONCILED 2026-08-11. **1632 → 0, and 17 → 0.**
+
+  `scripts/kg-orphan-anchor-reconcile.py` (dry-run by default, `--apply` to delete). It asks
+  one question per node — *does this glossary id still exist?* — answered by a join, not a
+  heuristic, and deletes with the same `DETACH DELETE` shape
+  `purge_entity_by_glossary_id` uses, so there is ONE delete semantic for an orphaned anchor
+  rather than a second that drifts from it.
+
+  ```
+  dry run    anchors 6747 · resolve 5115 · DANGLING 1632 (24.2 %)
+                 019effe4-…  1535        ← one project holds 94 % of them
+  apply      deleted 1632 node(s)
+  re-run     anchors 5115 · resolve 5115 · DANGLING 0 (0.0 %)   clean
+  ```
+
+  Spot-checked two of the exact node ids before deleting: both glossary ids returned
+  **0 rows**. Entity count 7312 → 5680, i.e. exactly 1632.
+
+  **THE DIAGNOSIS IS CONFIRMED BY THE OUTCOME, and this is the part worth keeping.**
+  `D-T35-COLLISION-GROUPS` measured **17 duplicate groups** on
+  `(user, project, canonical_name, kind)`. After removing only the orphans — **merging
+  nothing, renaming nothing** — the count is **0**. The pairs were a live node plus a
+  tombstone-less orphan, exactly as re-diagnosed, and the glossary-side dedup remediation
+  (`dedup-name-variants`) would have run, reported nothing, and left all 17 in place.
+
+  **So QC-6's reframed criterion is now MET.** The original *"nodes whose `e.id` disagrees
+  with a recomputed hash must be 0"* is unsatisfiable under opaque identity; the criterion
+  that carries the same intent — **no two nodes share `(user, project, canonical_name,
+  kind)`** — reads **0** as of this run, and `merge_entity`'s T35 fix keeps it there by
+  preventing new minting on rename.
+
+  ~~### 🔻 DEFERRAL `D-KG-ORPHAN-ANCHOR-BACKLOG` — 1632 KG nodes anchored to deleted glossary rows~~
 
   | | |
   |---|---|
