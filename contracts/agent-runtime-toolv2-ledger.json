@@ -1925,6 +1925,10 @@
     "composition_outline_node_delete": {
       "state": "proven",
       "note": "PROVEN including the DESCENDANT CASCADE its description promises. Archiving a chapter node with two scene children set is_archived on the node AND took its children from 2 live to 0, with the total row count unchanged at 2 -- so the cascade reaches descendants and archives rather than deletes, the same invariant as #198's motif re-bind. An unknown node_id gives the uniform deny. The cascade RESTORES symmetrically, which is the half that could silently not work: composition_outline_node_restore brought the node back to is_archived=false AND its two children back to live. A cascade that archives descendants but restores only the root would leave a chapter with its scenes stranded -- exactly the orphan shape #151 checked for on arcs -- and that is not what happens here."
+    },
+    "composition_outline_node_move": {
+      "state": "proven",
+      "note": "PROVEN on both axes it claims to maintain, which is the whole risk in this tool. Moving 'Opening' after 'The turn' swapped their story_order (1000↔1001) AND recomputed the fractional rank ('i' → 'v', which sorts after 'r'). Reparenting it to the other chapter reset it to story_order 1000 and rank 'i' -- first child of its new parent. This is the DUAL-ORDER-AXIS trap done right. rank is the UI tree's fractional string and story_order is the integer narrative position; a move that updated one and left the other stale would give a screen order and a reading order that silently disagree, and nothing in either value alone would reveal it. The description promises 'computes the fractional rank + renumbers scene story_order server-side, atomically', and both were measured moving together. One thing worth stating so a future reader does not mis-read the data: after a reparent two scenes under DIFFERENT parents both showed story_order 1000. That is correct -- the ordinal is per-parent, and each was first in its own chapter."
     }
   }
 }
