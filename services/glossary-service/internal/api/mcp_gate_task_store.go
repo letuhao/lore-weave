@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -243,10 +244,29 @@ func (s *PgTaskStore) notWaitingOrNotFound(ctx context.Context, taskID string) (
 	if err != nil {
 		return nil, err
 	}
+	// TOOLV2 LOOP #239 — an ALREADY-lapsed task must say so too. The wire handler runs an
+	// ownership pre-check via Get(), whose own lazy sweep has usually already stamped
+	// error='task_expired' and status='failed' by the time we get here -- so the branch below
+	// (which requires a NON-terminal row) never fires on the path a real caller takes. That is
+	// why the first version of this fix measured no change live. Read the recorded reason.
+	if cur.ErrorMsg == "task_expired" {
+		return nil, fmt.Errorf(
+			"%w — it EXPIRED (its %dms TTL lapsed before anyone answered it); re-run the action "+
+				"that proposed it to get a fresh task", lwmcp.ErrTaskNotWaiting, cur.TTLMs)
+	}
 	if !lwmcp.IsTaskTerminal(cur.Status) && cur.Expired(time.Now()) {
 		_, _ = s.pool.Exec(ctx, `
 			UPDATE mcp_gate_tasks SET status='failed', error='task_expired', updated_at=now()
 			WHERE task_id=$1 AND status NOT IN ('completed','failed','cancelled')`, taskID)
+		// TOOLV2 LOOP #239 — say WHY. This branch has just written error='task_expired' to the
+		// row and then returned the generic "task is not awaiting input", so the reason was
+		// computed, persisted, and withheld from the only party that needed it. Measured: a task
+		// still listed as input_required (its 10-minute TTL lapsed 17 days ago) answered the
+		// generic message, leaving a caller to wonder why a pending task refused. Wrapped rather
+		// than replaced so errors.Is(err, ErrTaskNotWaiting) keeps working for existing callers.
+		return nil, fmt.Errorf(
+			"%w — it EXPIRED (its %dms TTL lapsed before anyone answered it); re-run the action "+
+				"that proposed it to get a fresh task", lwmcp.ErrTaskNotWaiting, cur.TTLMs)
 	}
 	return nil, lwmcp.ErrTaskNotWaiting
 }
