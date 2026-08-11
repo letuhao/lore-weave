@@ -1493,6 +1493,18 @@
         "NOT EXERCISED: moving a chapter INTO a part, or between parts. This book has no parts, so only the un-home direction had a live subject"
       ],
       "admitted": false
+    },
+    "book_chapter_update_meta": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. Rename and restore both proven, the title verified back in the database, and an empty update refused with 'no fields to update' rather than silently succeeding -- the same refusal book_update_details gives (iteration 61), which is the consistency worth having between a book-level and a chapter-level meta update. The response reports `updated_fields`, so the caller learns WHICH of the three optional fields actually changed rather than inferring it, and the undo hint carries the previous title, replayable verbatim.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id, chapter_id]; title, sort_order and original_language are all nullable optionals",
+        "FIRST INVOCATION: title -> 'Contract smoke (i128)' returns {chapter_id, updated_fields ['title']} with an undo_hint carrying the PREVIOUS title",
+        "RESTORE: back to 'Contract smoke', verified by reading the database, not by trusting the response",
+        "CONTROL: neither title nor sort_order nor original_language -> 'no fields to update'. An empty update is refused, matching book_update_details",
+        "SHAPE: updated_fields names what changed, so a caller does not have to diff the three optionals to find out"
+      ],
+      "admitted": false
     }
   }
 }
