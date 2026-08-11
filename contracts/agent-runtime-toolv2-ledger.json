@@ -1837,6 +1837,10 @@
     "composition_get_generation_job": {
       "state": "proven",
       "note": "PROVEN against the REAL job #189 created rather than a synthetic id -- the two iterations are the two halves of one flow, and polling a job you did not produce proves much less. It returns everything the description promises: status completed, the generated `result` (the pack, including its grounding warnings), model_ref, and cost_usd 0.0000 -- which independently confirms that routing #189's W-tier proof through a local lm_studio model cost nothing, rather than my having assumed it. SCOPING is the pair, proven by attempting the miss: an unknown job_id AND the real job addressed under a DIFFERENT project_id both give the uniform deny. So job ids are not probeable across projects, and a caller holding a job id from elsewhere learns nothing by pointing it at a project it can read. The result also carries a per-stage status (skipped_no_cast) alongside the job-level one, so 'the job completed' and 'every stage ran' stay separable -- a job that completed with stages skipped is exactly the case a single status field would hide."
+    },
+    "composition_get_prose": {
+      "state": "proven",
+      "note": "PROVEN, and it CROSS-CONFIRMS #189: the chapter body now opens 'The incense smoke curled in the air, thick and grey...' -- prose the cowrite engine generated two iterations ago. The generate→job→prose chain is therefore proven end to end across three tools, each verified against the artefact the previous one produced rather than against a fixture. detail=summary does exactly what it claims: 1069 bytes with no `body` versus 3107 with it, and CRUCIALLY the same draft_version (4) in both. That is the whole point of the mode -- its stated use is 'when you only need the version to prep a write', so a summary that dropped the concurrency token would be pure cost with no benefit. Checking that the token survives the projection is the only thing that makes the mode worth having. A chapter addressed under the wrong project_id gives the uniform deny, so the pair is the scope here as elsewhere in this service."
     }
   }
 }
