@@ -108,7 +108,33 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: A detector that misses an existing proof is a false accusation, and this file's own
 #: `_SELFTEST` note says the cost: pressure to bolt on a second, redundant proof to satisfy a
 #: regex. It also inflates this baseline, so the worklist contained a gate already finished.
-NO_PROOF_BASELINE = 47
+#: 2026-08-11 (fifth move): 47 -> 43, the SECURITY-ADJACENT batch —
+#: `injection-coverage-lint`, `meta-sensitive-read-bypass-lint`, `pii-classify-lint`,
+#: `test-dsn-coverage-gate`. All four are corpus walkers, so each got a REACH family beside
+#: its detectors: the silent-nothing path is the whole risk here and it is different in each
+#: one. `pii-classify` grandfathers every migration below 018, so a renumbering leaves it
+#: inspecting zero files and printing `PASS`. `test-dsn-coverage` derives its unarmed set from
+#: the gating set, so an empty walk yields no gating variables, no unarmed ones, and the line
+#: *"every gating variable is armed in CI"* — the exact false clean it exists to prevent, one
+#: level up. `injection-coverage` skips a missing `SCAN_DIRS` entry with a bare `continue`, so
+#: renaming a service directory retires the lint over that whole service silently. And
+#: `meta-sensitive-read` already guarded the zero-tables case but not its grep ROOTS.
+#:
+#: Two real defects fell out, neither visible on a green run:
+#:   * `test-dsn-coverage`'s `READ` regex put `os\.environ\[` in the list of function NAMES and
+#:     then demanded another bracket, so it required `os.environ[[`. **`os.environ["X_TEST_Y"]`
+#:     was never detected** — a subscript-gated suite was invisible to the gate whose subject
+#:     is invisible suites. Found by the self-test on its first run, because the case was
+#:     written from the docstring's CLAIM rather than from the code.
+#:   * `injection-coverage`'s BASELINE — a list of tracked injection holes — had no shrink arm.
+#:     A row whose file is deleted, or whose module has since adopted the sanitizer, stood as a
+#:     security exemption over nothing. Both directions now red.
+#:
+#: Also pinned rather than fixed: `RETRIEVED_TEXT`'s markers are `\b`-anchored and `_` is a
+#: word character, so `retrieved_docs` / `retrieved_chunks` do not match. Widening is a
+#: heuristic decision whose false positives become BASELINE rows — i.e. exemptions — so the
+#: limit is now a measured self-test case instead of a surprise.
+NO_PROOF_BASELINE = 43
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {

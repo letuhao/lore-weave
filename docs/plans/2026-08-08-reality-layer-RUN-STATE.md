@@ -707,7 +707,7 @@ not implement toward it.
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
 | `G-S3`/`G-S4` | lore bible has no schema; "pre-manifest stub" is not a named artifact | the BOOK_TO_GAME track |
 | `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND` | **promoted here 2026-08-10 from the post-slice-5 review**, which is now collapsed — an open row inside a closed section is a row nobody re-reads. `MetaControlPlane::verify_bind` records the capability before returning; `SessionContext::bind` can still reject afterwards on `now_ms >= expires_at_ms`, so a caller more than one TTL ahead of the CP's clock leaves a live row whose secret was dropped. Not a security hole — an unpresentable row — but the shape (a store write whose caller can still fail) is worth a name | `session_registry` carries `@retention_hot: 90d`, so these are already inside a retention regime. Wakes on the first retention sweep reporting a non-trivial count of never-validated rows — which needs a `last_validated_at` column, and that column arrives with the fix |
-| `GATE-TEETH-47` | **47 of 97 CI-invoked gates carry no red-ability proof** — no `--self-test`, no `test_<name>.py`. The HARD tier is green (every one *can* return non-zero); what is missing is the demonstration that it *does*. Opened at **55** on 2026-08-10 when `BDR-70` widened the teeth gate's scope from 58 to 97; **55 -> 51 the same day**, taking the four `dp-slice{1,5b,5c,5d}-bite-gate` harnesses first because a bite harness with broken machinery prints `bitten: N/N` and is believed. Each now proves the MACHINERY — the four-way verdict on synthetic transcripts, byte-exact CRLF round-trip, the restore check firing on a corrupted file, and every leg anchor still present — not the guards it bites | ratcheted at 51 and cannot grow; `NO_PROOF_BASELINE` records every move with its reason. **51 -> 48 (2026-08-10):** `db-safety-gate`, `doc-language-gate`, `language-bias-gate` — the three that read a corpus and could silently read nothing; each gained a REACH family, and the run found 7 stale baseline rows plus a gate red on `main` for 9 days. **48 -> 47:** not progress — `deferral-gate.py` already had a proof and was being FALSELY ACCUSED, its `def self_test` deleted by a docstring stripper that pairs any two triple-quotes (`BDR-80`). Python is parsed now. **Next: `--verify-proofs` RUNS 43 of them in CI, so the remaining 47 are gates whose red-ability nothing demonstrates AT ALL** — take the security-adjacent ones first (`injection-coverage-lint`, `meta-sensitive-read-bypass-lint`, `pii-classify-lint`, `test-dsn-coverage-gate`) |
+| `GATE-TEETH-43` | **43 of 97 CI-invoked gates carry no red-ability proof** — no `--self-test`, no `test_<name>.py`. The HARD tier is green (every one *can* return non-zero); what is missing is the demonstration that it *does*. Opened at **55** on 2026-08-10 when `BDR-70` widened the teeth gate's scope from 58 to 97; **55 -> 51 the same day**, taking the four `dp-slice{1,5b,5c,5d}-bite-gate` harnesses first because a bite harness with broken machinery prints `bitten: N/N` and is believed. Each now proves the MACHINERY — the four-way verdict on synthetic transcripts, byte-exact CRLF round-trip, the restore check firing on a corrupted file, and every leg anchor still present — not the guards it bites | ratcheted at 51 and cannot grow; `NO_PROOF_BASELINE` records every move with its reason. **51 -> 48 (2026-08-10):** `db-safety-gate`, `doc-language-gate`, `language-bias-gate` — the three that read a corpus and could silently read nothing; each gained a REACH family, and the run found 7 stale baseline rows plus a gate red on `main` for 9 days. **48 -> 47:** not progress — `deferral-gate.py` already had a proof and was being FALSELY ACCUSED, its `def self_test` deleted by a docstring stripper that pairs any two triple-quotes (`BDR-80`). Python is parsed now. **Next: `--verify-proofs` RUNS 43 of them in CI, so the remaining 47 are gates whose red-ability nothing demonstrates AT ALL** **47 -> 43 (2026-08-11): the security-adjacent batch is DONE** — `injection-coverage-lint`, `meta-sensitive-read-bypass-lint`, `pii-classify-lint`, `test-dsn-coverage-gate`, each with a REACH family beside its detectors because all four are corpus walkers and each had a different silent-nothing path: `pii-classify` grandfathers everything below 018 (a renumbering leaves it inspecting zero and printing PASS), `test-dsn` derives its unarmed set FROM its gating set (an empty walk prints *"every gating variable is armed"*, the exact false clean it exists to prevent one level up), `injection-coverage` skips a missing `SCAN_DIRS` entry with a bare `continue` (renaming a service directory retires it over that whole service), and `meta-sensitive-read` guarded its zero-tables case but not its grep ROOTS. **15/15 arms bitten, all four files restored byte-exact; the lowering itself bitten** — removing one proof reds `grew to 44 (baseline 43)`. `--verify-proofs` now RUNS 47 (was 43). Two real defects found, neither visible on green: `os.environ["X_TEST_Y"]` was NEVER matched by the gate whose subject is invisible suites (`BDR-87`), and a 16-row list of tracked injection holes had no shrink arm (`BDR-88`). Plus `BDR-86`. **Next batch by blast radius: the destructive/tenancy set** — `meta-write-discipline-lint`, `tenancy-scope-lint`, `secret-scan`-adjacent gates; pick them the same way, worst-consequence-first |
 
 
 **Recently cleared (2026-08-10)** — moved out of the table because a closed row re-read at every PLAN is the register rot this file keeps finding in other people's lists. Evidence for each is in §5 and in the collapsed slice sections below: `G3-ORACLE-COVERAGE` · `3E-NAMING-INCONSISTENCY` · `3E-EPOCH-COMMIT-ADOPTION` · `W5-REMEDIATE` · `W5-CRON` · `W7-SHELL-UNCOVERED` · `META-DOWN-UNCOVERED` · `slice 1` · `slice 2`.
@@ -1508,6 +1508,57 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-88` (2026-08-11) — a list of tracked SECURITY holes had no shrink arm.**
+`injection-coverage-lint`'s `BASELINE` is sixteen modules that assemble an LLM prompt from
+retrieved text without sanitising it. Every row is an exemption from a security check, and
+nothing checked the rows: a module that adopted the sanitizer kept its row, and a row whose file
+was deleted kept excusing whatever next took that path. Both directions red now. Measured before
+adding, so the arms are separable from today: all 16 files exist and all 16 are still flagged, so
+neither arm fires on this tree — which is exactly the state in which an arm can be deleted and
+nobody notices.
+
+Recorded alongside it, a decision NOT taken: `RETRIEVED_TEXT`'s markers are `\b`-anchored and `_`
+is a word character, so `retrieved_docs` and `retrieved_chunks` do not match. The tempting fix is
+to widen the markers. **On this gate a false positive becomes a BASELINE row — an exemption** — so
+widening trades a missed module for a standing excuse, and the evidence to justify it would be a
+real unsanitised module of that shape. The limit is now a pinned self-test case rather than a
+surprise, per `BDR-55`: state the property, do not move the number.
+
+**`BDR-87` (2026-08-11) — the gate that exists to find invisible test suites could not see a
+whole read form.** `test-dsn-coverage-gate`'s docstring lists five env-read spellings. Its `READ`
+regex put `os\.environ\[` in the list of function NAMES and then required `\s*[(\[]` after it —
+so it demanded `os.environ[[`, and **`os.environ["X_TEST_Y"]` had never matched, in every run
+since the gate was written.** A suite gated by a subscript read was invisible to the gate whose
+entire subject is invisible suites.
+
+**The method that found it is the transferable part:** the self-test cases were written from what
+the docstring CLAIMS the gate covers, one case per claimed form, before looking at whether the
+regex implements them. Writing cases from the *code* would have reproduced the bug — I would have
+written the four forms it does match. A gate's own documentation is an independent oracle, and it
+is free.
+
+**`BDR-86` (2026-08-11) — a Python rewrite silently turned a shell gate into CRLF, and a manual
+green did not catch it.** Quieting `pii-classify-lint.sh`'s self-test output, I round-tripped the
+file through `pathlib.Path.write_text`, which on Windows translates `\n` to `\r\n`. `bash` then
+read `set -euo pipefail\r` and answered `set: pipefail\r: invalid option name`, exit 2.
+
+The measured part worth keeping: **running `bash scripts/pii-classify-lint.sh --selftest` by hand
+reported PASS; the same file, same flag, invoked as `subprocess.run(["bash", rel, flag],
+cwd=ROOT)` reported exit 2.** So the corruption was invisible to the check I would naturally have
+called sufficient, and it was caught by `--verify-proofs` — the mode added the day before on the
+argument that a string-match proof is not a proof. It paid for itself in one day, on a defect it
+was not designed for. **Use byte-level I/O (`read_bytes`/`write_bytes`) for anything a shell will
+execute, and never treat a hand-run green as the environment CI will use.**
+
+**And it happened a second time in the same hour, on a document rather than a script** — the same
+`write_text` round-trip rewrote every line of `docs/sessions/SESSION_HANDOFF.md`
+(`10986` added / `10969` removed for a twenty-line edit), because that file is LF in the working
+copy. The consequence was not cosmetic: `citation-gate --staged` checks **added lines**, so a
+whole-file rewrite handed it ten thousand lines of historical archive and it correctly refused the
+commit over `file:line` citations written months ago. **A line-ending change is a semantic change
+to every added-lines gate in the repo** — it does not merely produce noise, it re-opens the entire
+history of a document to a check scoped to new work.
 
 **`BDR-85` (2026-08-11) — a module-level `const` holding the document's path made a real oracle
 score ZERO, and the ratchet was right.** `spec_oracle_scope.rs` opened `01_scope_and_boundary.md`

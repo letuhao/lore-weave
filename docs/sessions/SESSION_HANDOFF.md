@@ -1,18 +1,34 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — adoption reaches zero, and three corpus gates learn to see themselves (2026-08-10, branch `feat/game-logic`)
+## ▶ GAME BUILD — the oracle worklist is empty, and the security gates prove themselves (2026-08-11, branch `feat/game-logic`)
 
-**HEAD:** `fb199ef5f`+ (UNCOMMITTED — see below) · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-75`).
+**HEAD:** `510275731`+ · **ACTIVE run-state: [`docs/plans/2026-08-08-reality-layer-RUN-STATE.md`](../plans/2026-08-08-reality-layer-RUN-STATE.md)** — start there; §0.6d is the execution contract, §0.6c the sealed forks, §5 the drift log (`BDR-57`..`BDR-88`).
 
-> **▶ DO NEXT — one document. `01_scope_and_boundary.md`.**
-> Coverage now reads **14 of 15 COVERABLE** (26 in the corpus). The denominator was split
-> 2026-08-10 and both exclusion tables are checked, so the remaining worklist is a single item:
-> `01_scope_and_boundary`'s boundary rule — *"if a service reads or writes an aggregate in a
-> per-reality database it is game-layer"* — is what `reality-id-adoption-gate.py`'s `IN_SCOPE`
-> tuple is derived from, and **nothing compares them.** Note the shape before starting: the
-> consumer is a **Python gate**, while this coverage ratchet counts **Rust** readers only
-> (`rglob("*.rs")` over `crates` + `services`). So it is either a Rust oracle against a Rust code
-> side, or a deliberate widening of the ratchet — decide that first, and do not fake it.
+> **▶ DO NEXT — `GATE-TEETH-43`'s next batch, chosen worst-consequence-first.**
+> The two rows that were live on 2026-08-11 are both closed. **G3 reads 15/15 COVERABLE and its
+> worklist is EMPTY** — `01_scope_and_boundary` was split by language rather than faked into one
+> side: §2.4/§3b got a Rust oracle (`crates/dp/tests/spec_oracle_scope.rs`), and §4's boundary rule
+> is now checked beside the `IN_SCOPE` tuple it derives, inside `reality-id-adoption-gate.py`,
+> because a Rust test reading a Python constant is `BDR-79`. **`GATE-TEETH` is 47 → 43**, the
+> security-adjacent batch done, 15/15 arms bitten and the lowering itself bitten.
+>
+> The next batch is the **destructive / tenancy** set, picked the same way — by what a silent
+> failure costs, not by what is easy. Give each a **reach family**, not only detectors: the
+> remaining ones are corpus walkers, and a walk that reaches nothing is byte-identical to a clean
+> tree, including exit 0. That one property produced every real finding in the last two batches.
+>
+> Two things this batch proved, worth carrying into the next. **Write the self-test cases from what
+> the gate's docstring CLAIMS**, not from its code — that is what exposed `os.environ[...]` never
+> matching in the gate whose subject is invisible test suites (`BDR-87`); cases written from the
+> code would have reproduced the bug. And **check every baseline/exemption register for a shrink
+> arm**: a 16-row list of tracked injection holes had none, so a module that adopted the sanitizer
+> kept its exemption (`BDR-88`).
+>
+> ⚠ `pathlib.Path.write_text` on Windows rewrites newlines and will break any shell gate you
+> round-trip through it — use `read_bytes`/`write_bytes`. A hand-run `bash script --selftest`
+> reported PASS on the corrupted file; `--verify-proofs`, a fresh subprocess, reported exit 2. It
+> also silently rewrote every line of THIS file, which turned the staged citation gate into a scan
+> of ten thousand lines of archive. `BDR-86`.
 >
 > <details><summary>Why 11 documents left the denominator (the producer audit, 2026-08-10)</summary>
 >
