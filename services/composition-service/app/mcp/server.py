@@ -1588,8 +1588,10 @@ async def composition_scene_link_create(ctx: MCPContext, args: _SceneLinkCreateA
 @mcp_server.tool(
     name="composition_scene_link_delete",
     description=(
-        "Delete a scene-link edge (hard delete — edges have no children). EDIT "
-        "required (auto-applied)."
+        "Delete a scene-link edge — a SOFT archive: the row is kept with "
+        "is_archived=true and stops being listed, so an accidental unlink has not "
+        "destroyed the author's declared connection or its label. EDIT required "
+        "(auto-applied; the Undo hint names a real reverse op)."
     ),
     meta=require_meta(
         "A", "book",
