@@ -37,10 +37,18 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 
 **RESUME: T17 (continuing) — migrate the next graph call sites onto `GraphStore`. 🔴 CRITICAL PATH TO T43.**
 
-✅ **Batches 1–2 migrated 2026-08-12** — `wiki/context.py` (KG-facts read) ·
-`events/handlers.py` (lifecycle archive) · `routers/public/entities.py` (user restore),
-through the new `graph_store_provider` composition root. **GraphStore adopters `0 → 3`;
-concrete binders `71 → 70`.** T43 is no longer structurally blocked; it is now merely *thin*.
+✅ **Batches 1–3 migrated 2026-08-12** — `wiki/context.py` (KG facts) · `events/handlers.py`
+(lifecycle archive) · `routers/public/entities.py` (user restore) ·
+`context/selectors/facts.py` (**5** call sites), through the new `graph_store_provider`
+composition root. **GraphStore adopters `0 → 4`; concrete binders `71 → 70`.** T43 is no
+longer structurally blocked; it is now merely *thin*.
+
+🔴 **THE RULE FOR EVERY REMAINING BATCH, proven twice:** the unit tests **cannot** prove a
+migrated call site correct. They patch the port wholesale, so a wrong `min_confidence`
+(batch 1) and a wrong `user_id` (batch 3) each left the whole suite green. **Every batch
+needs an equivalence check against a real graph** —
+`tests/integration/db/test_port_migration_equivalence.py` is the pattern, and it now covers
+`relations_for` and `find_entities_by_name` including tenancy.
 
 ⚠️ **The two counters move independently, and that is the design.** The ceiling stayed at 70
 because batch 2's modules still call things the port does not have
@@ -1601,6 +1609,43 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   migration did not break the outbox contract).
   **QC (b) live** — throwaway Neo4j 5. **QC (c) real data** — 23 integration tests, the
   equivalence pair writing and reading real nodes through both paths.
+
+  ### ✅ BATCH 3 — 2026-08-12 · adopters `3 → 4`, and the mock blindness is now a PATTERN
+
+  `context/selectors/facts.py` — **five** call sites (name resolution ×2, 1-hop expansion ×3)
+  onto `find_entities_by_name` / `relations_for`. `find_relations_for_entity` is no longer
+  imported there at all.
+  ```
+  [port-adoption-gate] 70 bind neo4j_repos (ceiling 70); **4 import GraphStore** (floor 4)
+  4184 unit · 24 integration against a live Neo4j
+  ```
+
+  🔴 **THE BITE COULD NOT FIRE AT UNIT LEVEL — AGAIN, AND THAT IS THE FINDING.** Pointing a
+  migrated call site at a **different tenant** (`user_id='nobody-else'`) left all **25**
+  facts-selector tests green: their fake store ignores the argument. Batch 1 saw the same
+  blindness on `min_confidence`. **Twice is a pattern, not an incident — no unit test in this
+  repo can prove a migrated call site passes the right tenant.**
+
+  So rather than accept a bite that cannot fail, the equivalence suite grew a third test
+  covering `find_entities_by_name` **including the tenancy case**. Re-bitten cleanly, with
+  the adapter substituting a wrong `user_id`:
+  ```
+  unit tests (mocked)           : 25 passed   <- blind to a wrong tenant
+  equivalence test (real graph)  :  1 failed   <- "the port returned a different entity set"
+  ```
+  ⚠️ The *first* attempt at that bite mangled the call's other kwargs and failed with a
+  `TypeError` — which proves *a* failure, not the assertion being claimed. Redone precisely,
+  because a bite that reds for the wrong reason is worth no more than one that does not red.
+
+  🐞 **A FIFTH call site was hidden by formatting.** Four migrated cleanly; the fifth used
+  single-line arguments, my edit missed it, and I had already dropped the import — so the
+  module raised `NameError` at runtime. **Caught by the tests, not by reading.** Two further
+  self-inflicted traps in the test rewrite: a `setattr(...)` → `= (...)` conversion turned
+  trailing commas into **1-tuples** (`'tuple' object is not callable`, 21 lines), and three
+  local fakes still declared the repo's leading `session` parameter the port does not pass.
+
+  **QC (a)** 4184 unit · `port-adoption-gate` PASS at floor 4. **QC (b) live** — throwaway
+  Neo4j 5. **QC (c) real data** — 24 integration tests through both paths.
   ---
   **Evidence (batch 1).** Gate baseline **21 → 15**. Six runtime paths moved into adapter
   territory; knowledge suite **4040 passed**; 5 bites, each red then green.

@@ -35,7 +35,7 @@ import uuid
 import pytest
 
 from app.adapters.graph_store_provider import get_graph_store
-from app.db.neo4j_repos.entities import merge_entity
+from app.db.neo4j_repos.entities import find_entities_by_name, merge_entity
 from app.db.neo4j_repos.relations import create_relation, find_relations_for_entity
 
 pytestmark = pytest.mark.asyncio
@@ -85,6 +85,35 @@ async def test_the_port_returns_exactly_what_the_repo_call_returned(neo4j_driver
             "here false-flags every wiki page as stale instead of raising"
         )
         assert before, "the fixture produced no relations — the comparison was vacuous"
+
+
+async def test_find_entities_by_name_is_equivalent_through_the_port(neo4j_driver):
+    """The other method T17 migrated (`context/selectors/facts.py`, 3 call sites).
+
+    Includes the TENANCY case, because that is the one the unit tests provably cannot see:
+    changing a migrated call site's `user_id` to a different tenant left all 25 facts-selector
+    tests **green** — their fake store ignores the argument entirely. Here a wrong tenant
+    returns nothing, which is the whole point of the filter.
+    """
+    user_id, project_id = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
+    async with neo4j_driver.session() as session:
+        await _fixture_graph(session, user_id, project_id)
+        store = get_graph_store(session)
+
+        kwargs = dict(user_id=user_id, project_id=project_id, name="Kai")
+        before = await find_entities_by_name(session, **kwargs)
+        after = await store.find_entities_by_name(**kwargs)
+        assert [e.id for e in after] == [e.id for e in before], (
+            "the port returned a different entity set than the repo call it replaced"
+        )
+        assert before, "the fixture resolved no entity — the comparison was vacuous"
+
+        other = await store.find_entities_by_name(
+            user_id=f"other-{uuid.uuid4().hex[:8]}", project_id=project_id, name="Kai")
+        assert other == [], (
+            "another tenant's name lookup returned rows — the user_id predicate is not "
+            "reaching the query, and no unit test in this repo can see that"
+        )
 
 
 async def test_the_confidence_default_is_the_one_that_filters(neo4j_driver):

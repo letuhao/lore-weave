@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock
 
+from types import SimpleNamespace
+
 import pytest
 
 from app.context.intent.classifier import Intent, IntentResult
@@ -76,6 +78,23 @@ def _fact(content: str) -> Fact:
     )
 
 
+# ── T17: the selector reaches the graph through the port ────────────────────
+# These tests used to patch `find_entities_by_name` / `find_relations_for_entity` as module
+# symbols. The selector now calls `get_graph_store(session).<method>`, so the fake moves to a
+# store object and the fixture installs it. Each test still assigns its own mocks onto
+# `_STORE`, so the arrange/assert shape is unchanged — only the seam moved.
+_STORE = SimpleNamespace()
+
+
+@pytest.fixture(autouse=True)
+def _install_graph_store(monkeypatch):
+    """Fresh defaults per test, so one test's mocks cannot leak into the next."""
+    _STORE.find_entities_by_name = AsyncMock(return_value=[])
+    _STORE.relations_for = AsyncMock(return_value=[])
+    monkeypatch.setattr(
+        "app.context.selectors.facts.get_graph_store", lambda _s: _STORE)
+    return _STORE
+
 def test_format_relation_standard():
     r = _relation("r1", "Arthur", "e1", "trusts", "Lancelot", "e2")
     assert format_relation(r) == "Arthur — trusts — Lancelot"
@@ -130,8 +149,8 @@ async def test_select_1hop_for_specific_entity(monkeypatch):
     find_2hop = AsyncMock(return_value=[])
     list_facts = AsyncMock(return_value=[])
 
-    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", find_by_name)
-    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", find_1hop)
+    _STORE.find_entities_by_name = (find_by_name)
+    _STORE.relations_for = (find_1hop)
     monkeypatch.setattr("app.context.selectors.facts.find_relations_2hop", find_2hop)
     monkeypatch.setattr("app.context.selectors.facts.list_facts_by_type", list_facts)
 
@@ -158,13 +177,9 @@ async def test_select_2hop_for_relational_intent(monkeypatch):
         via_id="e-lan", via_name="Lancelot", via_kind="character",
     )
 
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[arthur]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[arthur])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[r1]),
+    _STORE.relations_for = (AsyncMock(return_value=[r1])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.find_relations_2hop",
@@ -219,13 +234,9 @@ async def test_select_2hop_passes_required_hop1_types(monkeypatch):
         captured["hop1_types"] = hop1_types
         return [hop]
 
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[arthur]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[arthur])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[r1]),
+    _STORE.relations_for = (AsyncMock(return_value=[r1])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.find_relations_2hop",
@@ -262,13 +273,9 @@ async def test_select_2hop_failure_degrades_to_1hop(monkeypatch):
     arthur = _entity("Arthur", "e-arthur")
     r1 = _relation("r1", "Arthur", "e-arthur", "trusts", "Lancelot", "e-lan")
 
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[arthur]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[arthur])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[r1]),
+    _STORE.relations_for = (AsyncMock(return_value=[r1])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.find_relations_2hop",
@@ -298,10 +305,8 @@ async def test_select_dedupes_relations_across_entities(monkeypatch):
     shared = _relation("r1", "Arthur", "e-arthur", "trusts", "Lancelot", "e-lan")
 
     find_by_name = AsyncMock(side_effect=[[arthur], [lancelot]])
-    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", find_by_name)
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[shared]),
+    _STORE.find_entities_by_name = (find_by_name)
+    _STORE.relations_for = (AsyncMock(return_value=[shared])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.find_relations_2hop",
@@ -326,13 +331,9 @@ async def test_select_negations_filtered_to_mentioned_entities(monkeypatch):
     """Only negative facts that name at least one resolved entity surface."""
     arthur = _entity("Arthur", "e-arthur")
 
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[arthur]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[arthur])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[]),
+    _STORE.relations_for = (AsyncMock(return_value=[])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.find_relations_2hop",
@@ -359,14 +360,10 @@ async def test_select_negations_filtered_to_mentioned_entities(monkeypatch):
 async def test_select_returns_empty_when_name_unresolved(monkeypatch):
     """Entity name doesn't resolve → skip gracefully (absence handler
     K18.5 will record it)."""
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[])
     )
     # Other repo fns should never be called.
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(side_effect=AssertionError("should not be called")),
+    _STORE.relations_for = (AsyncMock(side_effect=AssertionError("should not be called"))
     )
 
     result = await select_l2_facts(
@@ -440,13 +437,9 @@ async def test_tool_fact_failure_does_not_nuke_entity_anchored_l2(monkeypatch):
             raise RuntimeError("neo4j hiccup on the tool-fact query")
         return []
 
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[arthur]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[arthur])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[r1]),
+    _STORE.relations_for = (AsyncMock(return_value=[r1])
     )
     monkeypatch.setattr("app.context.selectors.facts.list_facts_by_type", boom)
 
@@ -467,9 +460,7 @@ async def test_tool_facts_zero_limit_is_skipped_not_fatal(monkeypatch):
     """REGRESSION — an operator setting CONTEXT_L2_TOOL_FACTS_LIMIT=0 to 'disable'
     the feature must not kill L2: list_facts_by_type raises on limit<=0."""
     list_facts = AsyncMock(side_effect=AssertionError("must not query with limit<=0"))
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.list_facts_by_type", list_facts,
@@ -489,9 +480,7 @@ async def test_tool_facts_zero_limit_is_skipped_not_fatal(monkeypatch):
 async def test_tool_facts_disabled_by_flag(monkeypatch):
     """tool_facts=False skips the branch entirely (kill-switch)."""
     list_facts = AsyncMock(side_effect=AssertionError("must not query tool facts"))
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[])
     )
     monkeypatch.setattr(
         "app.context.selectors.facts.list_facts_by_type", list_facts,
@@ -549,13 +538,9 @@ async def test_expand_from_passages_happy_path(monkeypatch):
     )
     harker = _entity("Harker", "e-harker")
     r1 = _relation("r1", "Harker", "e-harker", "works_for", "Hawkins", "e-hawk")
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[harker]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[harker])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[r1]),
+    _STORE.relations_for = (AsyncMock(return_value=[r1])
     )
     out = await expand_facts_from_passages(
         MagicMock(),
@@ -577,13 +562,9 @@ async def test_expand_dedups_against_existing_facts(monkeypatch):
     harker = _entity("Harker", "e-harker")
     r1 = _relation("r1", "Harker", "e-harker", "works_for", "Hawkins", "e-hawk")
     r2 = _relation("r2", "Harker", "e-harker", "knows", "Mina", "e-mina")
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[harker]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[harker])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=[r1, r2]),
+    _STORE.relations_for = (AsyncMock(return_value=[r1, r2])
     )
     out = await expand_facts_from_passages(
         MagicMock(),
@@ -606,8 +587,8 @@ async def test_expand_dedups_by_entity_id(monkeypatch):
     r1 = _relation("r1", "Harker", "e-harker", "works_for", "Hawkins", "e-hawk")
     find_by_name = AsyncMock(return_value=[harker])  # both names → same entity
     find_1hop = AsyncMock(return_value=[r1])
-    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", find_by_name)
-    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", find_1hop)
+    _STORE.find_entities_by_name = (find_by_name)
+    _STORE.relations_for = (find_1hop)
     out = await expand_facts_from_passages(
         MagicMock(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -626,12 +607,10 @@ async def test_expand_skips_unresolved_names(monkeypatch):
         "app.context.selectors.facts.extract_candidates",
         lambda text, **kw: ["Ghost"],
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[]),  # no match
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[])  # no match
     )
     find_1hop = AsyncMock(return_value=[])
-    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", find_1hop)
+    _STORE.relations_for = (find_1hop)
     out = await expand_facts_from_passages(
         MagicMock(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -653,13 +632,9 @@ async def test_expand_caps_total_new_facts(monkeypatch):
         _relation(f"r{i}", "Harker", "e-harker", f"pred{i}", f"Obj{i}", f"e{i}")
         for i in range(10)
     ]
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_entities_by_name",
-        AsyncMock(return_value=[harker]),
+    _STORE.find_entities_by_name = (AsyncMock(return_value=[harker])
     )
-    monkeypatch.setattr(
-        "app.context.selectors.facts.find_relations_for_entity",
-        AsyncMock(return_value=many),
+    _STORE.relations_for = (AsyncMock(return_value=many)
     )
     out = await expand_facts_from_passages(
         MagicMock(),
@@ -717,18 +692,18 @@ async def test_expand_resolve_then_cap_junk_does_not_starve(monkeypatch):
     lin = _entity("Lin", "e-lin")
     kai = _entity("Kai", "e-kai")
 
-    async def _resolve(session, *, user_id, project_id, name):
+    async def _resolve(*, user_id, project_id, name):  # T17: the port passes no session
         return {"Lin": [lin], "Kai": [kai]}.get(name, [])  # only Lin/Kai resolve
 
-    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", _resolve)
+    _STORE.find_entities_by_name = (_resolve)
     r_lin = _relation("r1", "Lin", "e-lin", "mentor_of", "Kai", "e-kai")
     r_kai = _relation("r2", "Kai", "e-kai", "member_of", "Sect", "e-sect")
     rels = {"e-lin": [r_lin], "e-kai": [r_kai]}
 
-    async def _one_hop(session, *, user_id, project_id, entity_id, min_confidence, limit):
+    async def _one_hop(*, user_id, project_id, entity_id, min_confidence, limit):  # T17
         return rels.get(entity_id, [])
 
-    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", _one_hop)
+    _STORE.relations_for = (_one_hop)
     out = await expand_facts_from_passages(
         MagicMock(),
         user_id=USER_ID, project_id=PROJECT_ID,
@@ -750,12 +725,12 @@ async def test_expand_resolved_anchor_cap_bounds_expansion(monkeypatch):
     )
     ents = {n: [_entity(n, f"e-{n}")] for n in cands}
 
-    async def _resolve(session, *, user_id, project_id, name):
+    async def _resolve(*, user_id, project_id, name):  # T17: the port passes no session
         return ents.get(name, [])
 
     one_hop = AsyncMock(return_value=[_relation("r", "X", "e-x", "knows", "Y", "e-y")])
-    monkeypatch.setattr("app.context.selectors.facts.find_entities_by_name", _resolve)
-    monkeypatch.setattr("app.context.selectors.facts.find_relations_for_entity", one_hop)
+    _STORE.find_entities_by_name = (_resolve)
+    _STORE.relations_for = (one_hop)
     out = await expand_facts_from_passages(
         MagicMock(),
         user_id=USER_ID, project_id=PROJECT_ID,
