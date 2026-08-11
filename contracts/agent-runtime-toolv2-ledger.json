@@ -972,6 +972,18 @@
         "CONTROL: an absent chapter_id reproduces 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)' -- the C-22 satisfier pattern, already right"
       ],
       "admitted": false
+    },
+    "glossary_list_entity_revisions": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 29 calls / 2 ok, and 24 of the 27 failures are the same class iteration 68 found: a NAME in entity_id. Here it is 'Count Dracula' 12 times and 'Dracula' 12 times, across two turns of ONE session on 2026-07-09 -- the model trying both spellings of the same character, twelve times each. CP-5.3 binds this tool's entity_id to EntityRef and the binding is present in the RUNNING chat-service image, so a name now resolves before dispatch; the registry shipped 2026-08-10, a month after these calls. The remaining 3 are 'entity not found in this book'.",
+      "evidence": [
+        "PHASE 2: 2 ok / 27 failed = 24 'entity_id must be a UUID' (1 session, 2 turns) + 3 'entity not found in this book'",
+        "DATA: the 24 are exactly two values -- 'Count Dracula' x12 and 'Dracula' x12",
+        "CHECKED IN THE RUNNING IMAGE, not the repo: chat-service's baked resolver registry binds glossary_list_entity_revisions.entity_id -> EntityRef",
+        "LIVE: a real entity_id returns its revision history -- revision_num, op, actor_type, actor_id, created_at -- including the edits this loop itself made earlier today, so the history is real and current rather than a fixture",
+        "CONTROL: 'Count Dracula' reproduces 'entity_id must be a UUID' verbatim at the glossary boundary, which is where a direct MCP call lands (CP-5.3 lives in chat-service)"
+      ],
+      "admitted": false
     }
   }
 }
