@@ -1315,6 +1315,7 @@ ON CREATE SET
   r.source_chapter = $source_chapter,
   r.valid_from = datetime(),
   r.valid_until = NULL,
+  r.valid_from_ordinal = $valid_from_ordinal,
   r.pending_validation = false,
   r.created_at = datetime(),
   r.updated_at = datetime()
@@ -1322,6 +1323,11 @@ ON MATCH SET
   r.confidence = 1.0,
   r.pending_validation = false,
   r.valid_until = NULL,
+  // T36 — an author supplying a position PLACES an edge that had none, and may
+  // move one that was placed. coalesce(...) rather than a bare SET so an author
+  // editing an edge WITHOUT a position does not silently strip the story axis
+  // off an edge that had one.
+  r.valid_from_ordinal = coalesce($valid_from_ordinal, r.valid_from_ordinal),
   r.updated_at = datetime()
 RETURN properties(r) AS rel,
        properties(subj) AS subj,
@@ -1337,13 +1343,32 @@ async def recreate_relation(
     predicate: str,
     object_id: str,
     source_chapter: str | None = None,
+    valid_from_ordinal: int | None = None,
 ) -> Relation | None:
     """User-authored relation (the "correct" path). Creates the
     `(subject)-[predicate]->(object)` edge with confidence 1.0 and, crucially,
-    **resurrects `valid_until` to NULL** if the tuple was previously
+    **resurrects `valid_until` to NULL` if the tuple was previously
     invalidated (F5). This is a separate primitive from `create_relation` so
     the extraction writers can never accidentally revive a user-invalidated
     edge on re-extraction.
+
+    `valid_from_ordinal` (T36) is the STORY position the author is asserting the
+    relation from, on the `event_order` axis (chapter ordinal × stride) — the
+    same axis `create_relation` stamps and the canon check windows on.
+
+    It exists because this path had NO story axis at all, and that turned out to
+    be the binding constraint on the refactor's acceptance case. Q2 says roles
+    are *"plan-authored, not extracted"*; the extraction writer has stamped a
+    position since F3, but every relation an AUTHOR created came out
+    positionless — and an as-of read excludes positionless edges by design. So
+    author-declared roles, which are exactly the ones the canon check most needs,
+    were the ones it could never see. Measured on the dogfood book: of 12
+    unplaced relations, the antagonist edges (`enemy_of`, `betrayed`) were all
+    author/plan-written.
+
+    ADDITIVE: `None` (the default) reproduces the previous behaviour exactly,
+    and on an existing edge it LEAVES a position already there rather than
+    clearing it.
 
     Returns the edge, or `None` if either endpoint is missing for this user.
     """
@@ -1366,6 +1391,7 @@ async def recreate_relation(
         object_id=object_id,
         predicate=predicate,
         source_chapter=source_chapter,
+        valid_from_ordinal=valid_from_ordinal,
     )
     record = await result.single()
     if record is None:

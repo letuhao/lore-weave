@@ -27,6 +27,7 @@ from app.db.neo4j_repos.relations import (
     Relation,
     create_relation,
     find_relations_2hop,
+    recreate_relation,
     find_relations_for_entity,
     get_project_subgraph,
     get_relation,
@@ -1393,3 +1394,66 @@ async def test_c18_subgraph_excludes_inactive_edges(neo4j_driver, test_user):
     ids = {n.id for n in sg.nodes}
     assert good.id in ids
     assert quarantined.id not in ids, "node reachable only via a low-conf edge is excluded"
+
+
+# ── T36 · the author-declared relation carries a story position ──────────
+
+
+@pytest.mark.asyncio
+async def test_recreate_relation_stamps_the_authors_story_position(neo4j_driver, test_user):
+    """The path Q2 calls plan-authored had no story axis, so every role an
+    author declared was excluded from the as-of read that most needed it."""
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(session, user_id=test_user, project_id="p-1",
+                               name="Kai", kind="character", source_type="manual")
+        b = await merge_entity(session, user_id=test_user, project_id="p-1",
+                               name="Bob", kind="character", source_type="manual")
+        rel = await recreate_relation(
+            session, user_id=test_user, subject_id=a.id,
+            predicate="enemy_of", object_id=b.id,
+            valid_from_ordinal=3_000_000,
+        )
+        assert rel is not None and rel.valid_from_ordinal == 3_000_000
+
+        # ...and the as-of read can now SEE it, which is the whole point.
+        at_3m = await find_relations_for_entity(
+            session, user_id=test_user, entity_id=a.id, project_id="p-1",
+            as_of_ordinal=3_000_000, min_confidence=0.0)
+        assert any(r.predicate == "enemy_of" for r in at_3m)
+        # and correctly does NOT see it before it begins.
+        at_2m = await find_relations_for_entity(
+            session, user_id=test_user, entity_id=a.id, project_id="p-1",
+            as_of_ordinal=2_000_000, min_confidence=0.0)
+        assert not any(r.predicate == "enemy_of" for r in at_2m)
+
+
+@pytest.mark.asyncio
+async def test_recreate_relation_without_a_position_is_unchanged(neo4j_driver, test_user):
+    """ADDITIVE — the default reproduces the previous behaviour exactly."""
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(session, user_id=test_user, project_id="p-1",
+                               name="Kai", kind="character", source_type="manual")
+        b = await merge_entity(session, user_id=test_user, project_id="p-1",
+                               name="Bob", kind="character", source_type="manual")
+        rel = await recreate_relation(session, user_id=test_user, subject_id=a.id,
+                                      predicate="knows", object_id=b.id)
+        assert rel is not None and rel.valid_from_ordinal is None
+
+
+@pytest.mark.asyncio
+async def test_recreate_relation_never_strips_a_position_it_was_not_given(
+    neo4j_driver, test_user,
+):
+    """An author re-asserting an edge WITHOUT a position must not silently
+    un-place an edge that had one — that would delete story time by omission."""
+    async with neo4j_driver.session() as session:
+        a = await merge_entity(session, user_id=test_user, project_id="p-1",
+                               name="Kai", kind="character", source_type="manual")
+        b = await merge_entity(session, user_id=test_user, project_id="p-1",
+                               name="Bob", kind="character", source_type="manual")
+        await recreate_relation(session, user_id=test_user, subject_id=a.id,
+                                predicate="serves", object_id=b.id,
+                                valid_from_ordinal=1_000_000)
+        again = await recreate_relation(session, user_id=test_user, subject_id=a.id,
+                                        predicate="serves", object_id=b.id)
+        assert again is not None and again.valid_from_ordinal == 1_000_000

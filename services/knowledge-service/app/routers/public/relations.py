@@ -176,6 +176,12 @@ class CreateRelationRequest(BaseModel):
     subject_id: str = Field(min_length=1, max_length=200)
     object_id: str = Field(min_length=1, max_length=200)
     predicate: str = Field(min_length=1, max_length=100)
+    # T36 — the STORY position this relation holds from, on the `event_order`
+    # axis (chapter ordinal × 1_000_000), the same axis extraction stamps and
+    # the canon check windows on. OPTIONAL and defaulting to None so existing
+    # callers are unchanged — but omitting it makes the edge invisible to every
+    # as-of read, which is the defect this field exists to let a caller avoid.
+    valid_from_ordinal: int | None = Field(default=None, ge=0)
 
 
 @relations_router.post(
@@ -207,14 +213,26 @@ async def create_relation_endpoint(
             subject_id=body.subject_id,
             predicate=body.predicate,
             object_id=body.object_id,
+            valid_from_ordinal=body.valid_from_ordinal,
         )
     if rel is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="subject or object entity not found for this user",
         )
+    if body.valid_from_ordinal is None:
+        # T36 — not an error, but worth saying once per write: a positionless
+        # edge is excluded from every as-of read, so it will never reach the
+        # canon check. Silence here is what let a whole book's author-declared
+        # roles sit invisible to the guard that most needed them.
+        logger.info(
+            "T2.5: relation created WITHOUT a story position — it will not "
+            "appear in any as-of read (user_id=%s %s -[%s]-> %s)",
+            user_id, body.subject_id, body.predicate, body.object_id,
+        )
     logger.info(
-        "T2.5: user created relation user_id=%s %s -[%s]-> %s",
+        "T2.5: user created relation user_id=%s %s -[%s]-> %s @%s",
         user_id, body.subject_id, body.predicate, body.object_id,
+        body.valid_from_ordinal,
     )
     return rel

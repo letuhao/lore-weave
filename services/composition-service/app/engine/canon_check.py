@@ -181,10 +181,33 @@ def roles_in_draft(
     """The roles in force at P that this passage could contradict: those with
     at least one endpoint named in `draft`.
 
-    Over-inclusive on purpose (see the block comment above). `limit` caps how
-    many reach the judge; the cap is LOGGED when it bites, because a silently
-    truncated role set reads to every downstream layer exactly like a book with
-    few roles.
+    Over-inclusive on purpose (see the block comment above), but RANKED, in
+    three tiers — and the ranking exists because the live data corrected a first
+    attempt that had it wrong.
+
+    On the dogfood book at ch.5 the filter selected **20 of 24** roles: a
+    protagonist-centric cast names the protagonist in nearly every role AND in
+    nearly every passage, so "either endpoint named" is close to a no-op there
+    and the CAP becomes the thing that actually decides what the judge sees.
+    A cap over an arbitrary order sends an arbitrary 20.
+
+    The obvious ranking — both endpoints named first — is **backwards for the
+    case this check exists to catch.** In a misattribution the passage has
+    REPLACED the role's holder, so the true holder is exactly the name that is
+    absent: canon says `Lâm Trạch betrayed Lâm Uyên`, the draft says Lâm Diệp <!-- doc-language-gate: ok -- stored entity names from the cited corpus; the example is only legible with the real names -->
+    did, and only the OBJECT appears. Ranking on both-named buried it.
+
+    So:
+      tier 0 — both endpoints named   → the passage discusses both parties;
+                                        a stated relationship may be contradicted
+      tier 1 — OBJECT named, subject absent → the role's holder is missing from a
+                                        passage about its object: the
+                                        misattribution shape
+      tier 2 — subject named only     → weakest; the role's object is off-scene
+
+    `limit` caps how many reach the judge; the cap is LOGGED when it bites,
+    because a silently truncated role set reads to every downstream layer
+    exactly like a book with few roles.
     """
     if not draft or not snapshot:
         return []
@@ -194,13 +217,25 @@ def roles_in_draft(
         obj_hit = find_span(draft, role["object_name"])
         if subj_hit is None and obj_hit is None:
             continue
+        if subj_hit is not None and obj_hit is not None:
+            tier = 0
+        elif obj_hit is not None:
+            tier = 1
+        else:
+            tier = 2
         hit = subj_hit or obj_hit
-        hits.append({**role, "matched": hit[0], "span": hit[1]})
+        hits.append({**role, "matched": hit[0], "span": hit[1], "tier": tier})
+    # Stable sort — equal-tier roles keep the snapshot's own order, so the
+    # selection is reproducible for a given snapshot rather than dependent on
+    # dict iteration luck.
+    hits.sort(key=lambda h: h["tier"])
     if len(hits) > limit:
+        by_tier = [sum(1 for h in hits if h["tier"] == t) for t in (0, 1, 2)]
         logger.info(
-            "canon role check: %d roles in force at this position are named in "
-            "the draft; sending the first %d to the judge",
-            len(hits), limit,
+            "canon role check: %d of the roles in force at this position are "
+            "named in the draft (tiers both/object-only/subject-only = "
+            "%d/%d/%d); sending %d to the judge, strongest first",
+            len(hits), *by_tier, limit,
         )
         return hits[:limit]
     return hits

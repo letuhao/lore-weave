@@ -2867,7 +2867,65 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   The second bite is the one that matters: it proves the spend default is *enforced by a test*,
   not merely written in a comment.
 
-  ### 🔻 DEFERRAL `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` — the data, not the code
+  ### ✅ HALF 3 — THE AUTHORING PATH HAD NO STORY AXIS. **FIXED, and the data now exists.**
+
+  Chasing "make the data" found the third and last blindness, and it was code again.
+
+  **`recreate_relation` — the user-authored relation path — took no `valid_from_ordinal` at
+  all.** Extraction has stamped a position since F3; every relation an AUTHOR created came out
+  positionless, and an as-of read excludes positionless edges by design. So **author-declared
+  roles, which Q2 says are exactly the roles that matter (*"plan-authored, not extracted"*),
+  were precisely the ones the canon check could never see.** On the dogfood book all the
+  antagonist edges (`enemy_of`, `betrayed`) were author/plan-written and all were unplaced.
+
+  Fixed additively: `recreate_relation(..., valid_from_ordinal=None)` and
+  `POST /v1/knowledge/relations {valid_from_ordinal}`. On an existing edge the Cypher uses
+  `coalesce($valid_from_ordinal, r.valid_from_ordinal)` so an author re-asserting an edge
+  without a position cannot silently strip the story axis off one that had it. A create without
+  a position now logs that the edge will not appear in any as-of read — the silence is what let
+  a whole book's roles sit invisible.
+
+  **Bitten** (Cypher stamp removed → 2 red, restored → green): repo + API + correction suites
+  **70 passed**; knowledge relation/fact-for-check/world-map **188 passed**; composition
+  **3684 passed, 403 skipped**.
+
+  **Then the data was made through the app, not the database.**
+  1. `POST /internal/knowledge/projects/{id}/dispatch-extraction` (chapters 3–5) — job
+     `019fef01-…` completed. Placed relations **13 → 22 of 32**.
+  2. Four antagonist roles authored via the **public** `POST /v1/knowledge/relations` with a
+     real user JWT, each carrying the position it holds from: `antagonist_of` @3, `betrayed` @5,
+     `conspires_with` @4, `antagonist_of` @5. All **201**.
+
+  **Live proof through the guard's own endpoint** (`POST /internal/projects/{id}/fact-for-check`):
+
+  <!-- doc-language-gate: ok -- stored entity names from the cited corpus; the live evidence is only checkable against the real node names -->
+  ```
+  at_order = 2_000_000 →  3 relations   antagonist_of ABSENT (it begins at 3)
+  at_order = 3_000_000 →  7 relations   Lâm Trạch -[antagonist_of]-> Lâm Uyên  [3000000, None)
+  at_order = 5_000_000 → 24 relations   Lâm Trạch -[betrayed]-> Lâm Uyên       [5000000, None)
+                                        Tô Thanh Dao -[conspires_with]-> Lâm Trạch [4000000, None)
+  ```
+  <!-- doc-language-gate: end -->
+
+  The betrayal is now attributed to a **named antagonist character at a story position**,
+  instead of to an event phrase with none. That is the acceptance case's substrate, built.
+
+  ### ⚠️ AND THE LIVE DATA CORRECTED THE CODE I HAD JUST WRITTEN
+
+  Running the real snapshot through `roles_in_draft` showed it selecting **20 of 24** roles: a
+  protagonist-centric cast names the protagonist in nearly every role AND in nearly every
+  passage, so "either endpoint named" is close to a no-op and **the cap decides what the judge
+  sees**. My first ranking put both-endpoints-named first — which is **backwards for the case
+  this check exists to catch.** In a misattribution the passage has REPLACED the role's holder,
+  so the true holder is exactly the absent name and only the OBJECT appears. Ranking on
+  both-named buried the acceptance case in the arbitrary tail.
+
+  Replaced with three tiers — both named (0) · object named, subject absent (1, the
+  misattribution shape) · subject only (2). On the live snapshot: tiers **8/6/6**, and
+  `Lâm Trạch -[betrayed]-> Lâm Uyên` ranks **11 of 20** rather than being cut. <!-- doc-language-gate: ok -- stored entity names, as above -->
+  A synthetic fixture would not have caught this; the 20-of-24 ratio is a property of a real cast.
+
+  ### 🔻 DEFERRAL `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` — superseded; kept for the record
 
   | | |
   |---|---|
@@ -2875,7 +2933,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Evidence** | The acceptance case's OWN betrayal edge is one of the unplaced twelve, and it is malformed in a second, worse way: `"Sự phản bội tại khởi đầu" -[betrayed]-> "Lâm Uyên"`, `valid_from_ordinal=NULL`. <!-- doc-language-gate: ok -- these are stored node names from the cited corpus; translating them would break the identity the evidence turns on --> The subject is **the phrase "the betrayal at the beginning" promoted to an entity** — an event treated as a character. So the betrayal is attributed to a nominalisation rather than to any antagonist. QC-5 asks whether the trap is attributed to the cast-designated antagonist; on this data the answer cannot be right for the right reason. Two neighbours share the shape: `"Ma đạo" -[enemy_of]->` and `"Huyết Chủ" -[related_to]->`, both positionless. |
   | **To unblock** | Two independent things, neither of which is this task. **(a)** Relations must be written WITH a story position — the extraction path stamps `valid_from_ordinal` only on some edges, and which ones is not yet characterised. **(b)** Event-phrase-as-entity is the over-extraction class already recorded against the extractor; a `betrayed` edge whose subject is an event is a symptom of it, not of the guard. |
   | **Mechanism** | The count is a one-command re-run and self-describing (`count(r)` vs `count(r.valid_from_ordinal)` for the project). The role check itself is inert on unplaced edges rather than wrong about them — the as-of read drops them — so this degrades coverage visibly rather than producing false verdicts. |
-  | **Retry when** | (a) lands. QC-5 can then run with `authoring_canon_role_check_enabled=true` and measure what the task names. **Until then a 5/5 on this book still means nothing**, and the reason has moved once more: not "no facts", not "the guard does not look", but "the roles it would look at are unplaced and one of them names an event as the betrayer." |
+  | **Retry when** | ~~(a) lands.~~ **CLOSED 2026-08-11, same session.** (a) was the missing `valid_from_ordinal` on the authoring path — fixed above, and the roles are authored and live-verified. (b) — the event-phrase-as-entity edge (`"Sự phản bội tại khởi đầu" -[betrayed]->`) is still in the graph and still positionless, so it stays invisible to the as-of read rather than being wrong in it; it belongs to the extractor's over-extraction class, not here. QC-5 can now run with `authoring_canon_role_check_enabled=true`. |
 
 - [~] **T37** — composition-service becomes a KAL **command producer**
   Roles are plan-authored, not extracted — this is the scope widening M2 implies.

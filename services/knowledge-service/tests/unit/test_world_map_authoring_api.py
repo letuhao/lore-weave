@@ -227,3 +227,63 @@ def test_create_relation_rejects_self_loop(mock_recreate):
         mock_recreate.assert_not_awaited()
     finally:
         _teardown()
+
+
+# ── T36 · the author-declared relation carries a story position ──────────
+#
+# This path had NO story axis at all, and that was the binding constraint on
+# the refactor's acceptance case: Q2 says roles are "plan-authored, not
+# extracted", the as-of read excludes positionless edges by design, so
+# author-declared roles were exactly the ones the canon check could never see.
+
+
+@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
+def test_create_relation_forwards_the_story_position(mock_recreate):
+    mock_recreate.return_value = _relation_stub("enemy_of")
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/relations",
+            json={"subject_id": _SUBJ, "object_id": _OBJ, "predicate": "enemy_of",
+                  "valid_from_ordinal": 3_000_000},
+        )
+        assert resp.status_code == 201, resp.json()
+        assert mock_recreate.await_args.kwargs["valid_from_ordinal"] == 3_000_000
+    finally:
+        _teardown()
+
+
+@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
+def test_create_relation_position_is_optional_and_defaults_to_none(mock_recreate):
+    """ADDITIVE — an existing caller that sends no position is unchanged."""
+    mock_recreate.return_value = _relation_stub("borders")
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/relations",
+            json={"subject_id": _SUBJ, "object_id": _OBJ, "predicate": "borders"},
+        )
+        assert resp.status_code == 201, resp.json()
+        assert mock_recreate.await_args.kwargs["valid_from_ordinal"] is None
+    finally:
+        _teardown()
+
+
+@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
+def test_create_relation_rejects_a_negative_position(mock_recreate):
+    """The axis starts at 0; a negative ordinal is a caller bug, not a wildcard."""
+    mock_recreate.return_value = _relation_stub("borders")
+    client = _make_client()
+    try:
+        resp = client.post(
+            "/v1/knowledge/relations",
+            json={"subject_id": _SUBJ, "object_id": _OBJ, "predicate": "borders",
+                  "valid_from_ordinal": -1},
+        )
+        assert resp.status_code == 422
+        mock_recreate.assert_not_awaited()
+    finally:
+        _teardown()

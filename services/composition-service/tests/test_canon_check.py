@@ -355,3 +355,42 @@ async def test_role_check_needs_a_judge_and_stays_silent_without_one():
     out = await check_canon("Zed served Bob.", snap, judge=None, user_id="u",
                             model_source="", model_ref="", role_check=True)
     assert out == []
+
+
+def test_roles_in_draft_ranks_by_how_strongly_the_passage_implicates_the_role():
+    """MEASURED, and it corrected a first attempt that had it backwards. On the
+    dogfood book at ch.5 the relevance filter selected 20 of 24 roles, so the
+    CAP decides what the judge sees. Ranking on both-endpoints-named alone
+    buried the misattribution case — in a misattribution the passage has
+    REPLACED the role's holder, so the true holder is exactly the absent name
+    and only the OBJECT appears."""
+    snap = _role_snap(
+        _rel("e-a", "Alpha", "owns", "e-d", "Delta"),        # tier 2: subject only
+        _rel("e-c", "Gamma", "betrayed", "e-a", "Alpha"),    # tier 1: OBJECT only
+        _rel("e-a", "Alpha", "knows", "e-b", "Beta"),        # tier 0: both
+    )
+    hits = roles_in_draft("Alpha spoke to Beta. Someone else had betrayed her.", snap)
+    assert [h["predicate"] for h in hits] == ["knows", "betrayed", "owns"]
+    assert [h["tier"] for h in hits] == [0, 1, 2]
+
+
+def test_roles_in_draft_cap_keeps_the_misattribution_shape_over_the_weakest():
+    """The acceptance case must survive truncation: a role whose holder is
+    ABSENT outranks one whose object is merely off-scene."""
+    snap = _role_snap(
+        _rel("e-a", "Alpha", "owns", "e-d", "Delta"),        # tier 2
+        _rel("e-c", "Gamma", "betrayed", "e-a", "Alpha"),    # tier 1
+    )
+    hits = roles_in_draft("Alpha stood alone; she had been betrayed.", snap, limit=1)
+    assert [h["predicate"] for h in hits] == ["betrayed"]
+
+
+def test_roles_in_draft_equal_tier_keeps_snapshot_order():
+    """Stable sort — reproducible for a given snapshot, not dict-iteration luck."""
+    snap = _role_snap(
+        _rel("e-a", "Alpha", "knows", "e-b", "Beta"),
+        _rel("e-b", "Beta", "trusts", "e-a", "Alpha"),
+    )
+    hits = roles_in_draft("Alpha and Beta spoke.", snap)
+    assert [h["tier"] for h in hits] == [0, 0]
+    assert [h["predicate"] for h in hits] == ["knows", "trusts"]
