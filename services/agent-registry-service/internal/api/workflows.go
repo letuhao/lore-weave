@@ -246,8 +246,16 @@ func inputsToJSON(m map[string]string) []byte {
 
 // ── MCP tools (registered in mcpHandler) ────────────────────────────────────
 
+// validWorkflowSurfaces is the closed set of surfaces a WORKFLOW advertises itself on.
+// Deliberately NOT skills.go's validSurfaces: a skill lives on chat/compose/translate/
+// admin, a workflow lives on book/editor/studio (see the seeds in migrate.go). The MCP
+// list tool borrowed the skill set, so its `surface` enum offered four values that NO
+// workflow advertises — every filter value matched only the two workflows with an empty
+// (unrestricted) surface list, and the ten that declare one were unreachable.
+var validWorkflowSurfaces = []string{"book", "editor", "studio"}
+
 type listWorkflowsIn struct {
-	Surface string `json:"surface,omitempty" jsonschema:"filter to workflows advertised on this surface: chat | compose | translate | admin — omit to see all; do not send an empty string"`
+	Surface string `json:"surface,omitempty" jsonschema:"filter to workflows advertised on this surface: book | editor | studio — omit to see all; do not send an empty string"`
 }
 type workflowMeta struct {
 	Slug        string `json:"slug"`

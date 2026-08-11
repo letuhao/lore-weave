@@ -66,7 +66,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "List the curated multi-step workflows visible to the signed-in user (System defaults + their own). Returns each workflow's slug + title + description — not the full step list. Use to see what workflows exist before proposing a new one or reading one in full.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"workflows", "list workflows", "my workflows", "what workflows", "recipes"}),
 		InputSchema: closedSetSchemaFor[listWorkflowsIn](map[string][]any{
-			"surface": enumSurfaces,
+			"surface": enumWorkflowSurfaces,
 		}),
 	}, s.toolListWorkflows)
 
