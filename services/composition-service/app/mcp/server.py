@@ -5508,7 +5508,8 @@ async def plan_validate(
     name="plan_find_missing_material",
     description=(
         "PlanForge: for everything the plan is MISSING, look for it in the author's own document "
-        "first. Returns three buckets. review = verbatim lines found in their document — SHOW these "
+        "first. Returns FOUR buckets. recovered = the plan already has this, from the read — "
+        "nothing to do, but say so rather than reporting it as a gap. review = verbatim lines found in their document — SHOW these "
         "and let the author keep or drop each one; they are candidates, not answers (measured: a "
         "search's three offered lines were all the wrong kind). ask = the search ran and honestly "
         "found nothing, so this genuinely needs a question — the question text is included. "
