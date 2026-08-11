@@ -1699,6 +1699,20 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             "partitions_read": 0,
             "partitions_unreadable": unreadable,
             "note": note + ".",
+            # The `detail` contract says "Result `meta` reports total/returned/truncated",
+            # and this early return used to omit it — so the ONE response shape a caller
+            # gets differed by outcome, and `result["meta"]["truncated"]` raised KeyError
+            # exactly when every partition was unreadable. Zeros are the honest answer here,
+            # not an absent key. `node_cap_hit` likewise: nothing was capped.
+            "node_cap_hit": False,
+            "meta": {
+                "detail": args.detail,
+                "nodes_total": 0,
+                "nodes_returned": 0,
+                "edges_total": 0,
+                "edges_returned": 0,
+                "truncated": False,
+            },
         }
 
     async with neo4j_session() as session:
