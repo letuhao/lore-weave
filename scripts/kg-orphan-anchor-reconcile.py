@@ -34,21 +34,39 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 
-NEO4J_CONTAINER = "infra-neo4j-1"
+# The target is NAMED, never assumed. `/review-impl` found the first cut hardcoding the dev
+# container: a hardcoded name is not a guard, it is a default — and the default was a live
+# graph holding real books, on a script whose whole job is DETACH DELETE.
+#
+# Two things stand between this and an accident, and neither is a comment:
+#   1. `--apply` is required; without it nothing is written.
+#   2. The container must be named explicitly via `--neo4j-container` (or LW_NEO4J_CONTAINER)
+#      when applying. There is no default for a delete.
+# Reads (the dry run) keep a default so the report is one command.
+DEFAULT_NEO4J_CONTAINER = "infra-neo4j-1"
 PG_CONTAINER = "infra-postgres-1"
 NEO4J_USER = "neo4j"
 NEO4J_PASSWORD = "loreweave_dev_neo4j"
 GLOSSARY_DB = "loreweave_glossary"
 PG_USER = "loreweave"
 
+_CONTAINER: str = DEFAULT_NEO4J_CONTAINER
+
+
+def _container() -> str:
+    """The resolved delete target. A function, not a constant read at import time, so
+    `--neo4j-container` actually reaches `cypher()` instead of being parsed and ignored."""
+    return _CONTAINER
+
 
 def cypher(query: str) -> list[str]:
     """Run a read/write query, return non-header rows. Raises on a non-zero exit."""
     out = subprocess.run(
-        ["docker", "exec", NEO4J_CONTAINER, "cypher-shell",
+        ["docker", "exec", _container(), "cypher-shell",
          "-u", NEO4J_USER, "-p", NEO4J_PASSWORD, "--format", "plain", query],
         capture_output=True, text=True,
     )
@@ -120,11 +138,22 @@ def purge(node_ids: list[str]) -> int:
 
 
 def main() -> int:
+    global _CONTAINER
     ap = argparse.ArgumentParser()
     ap.add_argument("--apply", action="store_true",
                     help="actually delete (default: report only)")
     ap.add_argument("--project", default=None, help="limit to one project_id")
+    ap.add_argument("--neo4j-container", default=os.environ.get("LW_NEO4J_CONTAINER"),
+                    help="target container; REQUIRED with --apply (no default for a delete)")
     args = ap.parse_args()
+    if args.neo4j_container:
+        _CONTAINER = args.neo4j_container
+    elif args.apply:
+        # Refuse rather than fall back. A delete that picks its own target is the shape
+        # this repo's destructive-ops rule exists to stop.
+        print("[orphan-reconcile] REFUSING --apply without an explicit --neo4j-container "
+              "(or LW_NEO4J_CONTAINER). A delete must name its target.")
+        return 1
 
     try:
         rows = anchors(args.project)

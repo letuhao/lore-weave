@@ -84,6 +84,7 @@ from app.deps import (
     get_glossary_client,
     get_projects_repo,
 )
+from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING
 from app.spoiler_window import REVEAL_ALL, parse_reveal_at, resolve_before_order
 from app.events.outbox_emit import (
     ENTITY_CORRECTED,
@@ -628,8 +629,16 @@ async def list_entity_statuses(
     before_chapter_id: UUID | None = Query(
         default=None,
         description=(
-            "Spoiler-window the status THROUGH this book chapter (resolved "
-            "server-side). Omitted / unresolvable → fail-closed (all 'active')."
+            "DEPRECATED — use `reveal_at`. Spoiler-window the status THROUGH this book "
+            "chapter. Omitted / unresolvable → fail-closed (all 'active')."
+        ),
+    ),
+    reveal_at: str | None = Query(
+        default=None,
+        description=(
+            "Q8 — the REVEAL POSITION. A book chapter UUID reads through that chapter; "
+            "`all` is the unbounded author read. Omitted (and no legacy flag) → "
+            "fail-closed: every entity reads 'active' rather than leaking a death."
         ),
     ),
     kind: str | None = Query(default=None, max_length=100),
@@ -637,9 +646,24 @@ async def list_entity_statuses(
     book_client: BookClient = Depends(get_book_client),
 ) -> EntityStatusesResponse:
     """T2.1 — batch `:EntityStatus` (`active|gone`) for a project's cast, windowed
-    to `before_chapter_id`. Project-scoped (not a client id list) to avoid URL-length
+    to the reveal position. Project-scoped (not a client id list) to avoid URL-length
     blowups on large casts. Multi-tenant: `user_id` from JWT scopes both reads."""
-    before_order, available = await resolve_before_order(book_client, before_chapter_id)
+    # Q8 — same one-concept resolution as the facts read. `curation` has no meaning on a
+    # STATUS read (there is no unplaced status to rescue — a status without a position is
+    # 'active' by definition), so only the two positional states are offered here.
+    mode, chapter = parse_reveal_at(
+        reveal_at, before_chapter_id=before_chapter_id, curation=False)
+    if mode == REVEAL_ALL:
+        # NOT None here, unlike the facts read, and the difference is real:
+        # `statuses_detail_at_order` takes `at_order: int` and compares
+        # `from_order <= at_order`, so a null ceiling matches NOTHING and every
+        # entity would silently read 'active' — a fail-OPEN dressed as an author
+        # view. Every status carries a position (there is no unplaced status to
+        # rescue), so "unbounded" is genuinely +∞ here: the same
+        # ORDINAL_OPEN_CEILING the temporal chain already uses for an open interval.
+        before_order, available = ORDINAL_OPEN_CEILING, True
+    else:
+        before_order, available = await resolve_before_order(book_client, chapter)
     async with neo4j_session() as session:
         rows, _total = await list_entities_filtered(
             session,

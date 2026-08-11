@@ -2612,7 +2612,15 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `D-KG-FACT-VOCAB-DISJOINT`, and not a data-generation exercise. Sizing it as "run a backfill"
   would have been wrong by a whole feature.
 
-  ### ✅ `D-T32-REVEAL-AXIS` — Q8's read parameter is BUILT, 2026-08-11
+  ### 🟡 `D-T32-REVEAL-AXIS` — the parameter is BUILT and on 2 of 5 surfaces, 2026-08-11
+
+  **Corrected by `/review-impl` after I first marked this CLOSED.** Q8 seals that *"the
+  spoiler **surfaces** migrate onto it"* — plural. `reveal_at` now serves the facts read AND
+  the batch statuses read; **three surfaces still branch on `before_chapter_id` themselves**:
+  `entities.py:469` (the cast/browse list), `raw_search.py:161` (the passage axis, via
+  `resolve_before_sort_order`) and `timeline.py`. Nothing is broken — they behave exactly as
+  before — but claiming closure on a partial migration is the accounting-artifact failure this
+  plan has a verification script for, so the row stays amber until all five are on one axis.
 
   The spoiler window and the author-curation opt-out were **two query flags saying one
   thing**: how far into the story may this reader see? That is how they drift — `curation=true`
@@ -2640,10 +2648,15 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   and a hard cut would break a live surface to prove a point about naming — the seal accepts
   the re-cut cost, not a gratuitous outage.
 
-  **8 tests** pin the three states, the two legacy mappings, the precedence, and the one that
-  matters most: an **unparseable** position fails CLOSED, never open. **Bitten** — flip that
-  branch to `REVEAL_ALL` and only that test goes red, which is the correct blast radius.
-  knowledge-service unit suite **4174 passed**.
+  **9 tests** pin the three states, the two legacy mappings, the precedence, the one that
+  matters most (an **unparseable** position fails CLOSED, never open), and the asymmetry
+  `/review-impl` caught before it shipped: `all` means `before_order=None` on the FACTS read
+  (its Cypher branches on `IS NULL`, which is how unplaced facts get in) but
+  `ORDINAL_OPEN_CEILING` on the STATUS read — `statuses_detail_at_order` takes `at_order: int`
+  and compares `from_order <= at_order`, so a null there matches nothing and every entity
+  would read `active`: a fail-OPEN wearing an author view's clothes. **Bitten** — flip the
+  fail-closed branch to `REVEAL_ALL` and only that test goes red. knowledge-service unit
+  suite **4175 passed**.
 
   ~~### 🔻 DEFERRAL `D-T32-REVEAL-AXIS` — Q8's read parameter is not built~~
 

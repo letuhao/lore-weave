@@ -771,6 +771,8 @@ async def generate(
                 user_id=user_id, project_id=project_id,
                 cast_glossary_ids=cast_glossary_ids,
                 plan_status=plan_status, plan_cast=plan_cast,
+                # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+                role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
                 scene_sort_order=pc.scene_sort_order,
                 draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),
@@ -1428,6 +1430,8 @@ async def generate_chapter(
             # silently absent — the check reports NO_POSITION rather than passing for
             # a reason nobody can see on the envelope.
             plan_supported=False,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
             cast_glossary_ids=[str(e) for e in pack_node["present_entity_ids"]],
             scene_sort_order=pc.scene_sort_order, draft=winner.text,
@@ -1668,6 +1672,8 @@ async def stitch_chapter_endpoint(
             # silently absent — the check reports NO_POSITION rather than passing for
             # a reason nobody can see on the envelope.
             plan_supported=False,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=user_id, project_id=project_id,
             cast_glossary_ids=[str(e) for e in union_cast(scenes)],
             # A stitch has no single packed prompt — pass the chapter intent as the

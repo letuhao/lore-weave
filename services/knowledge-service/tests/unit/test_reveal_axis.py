@@ -70,3 +70,21 @@ def test_curation_still_beats_a_bare_chapter_window():
     PRESERVED for callers that have not migrated, and now lives in one tested
     function instead of a sentence in a docstring."""
     assert _p(before=uuid4(), curation=True) == (REVEAL_ALL, None)
+
+
+# ── the statuses read maps `all` differently, and that is not an inconsistency ──
+
+def test_reveal_all_means_a_CEILING_on_the_status_read_not_a_null():
+    """/review-impl caught this before it shipped. The facts read passes
+    `before_order=None` for `all` because its Cypher branches on
+    `$before_order IS NULL` and that is how unplaced facts get in.
+    `statuses_detail_at_order` does NOT: it takes `at_order: int` and compares
+    `from_order <= at_order`, so a null ceiling matches nothing and every entity
+    would read 'active' — a fail-OPEN wearing an author view's clothes.
+
+    Every status carries a position, so there is nothing unplaced to rescue and
+    "unbounded" is genuinely +infinity. Same constant the temporal chain uses.
+    """
+    from app.db.neo4j_repos.temporal import ORDINAL_OPEN_CEILING
+    assert isinstance(ORDINAL_OPEN_CEILING, int)
+    assert ORDINAL_OPEN_CEILING > 10 ** 12, "must exceed any real event_order"

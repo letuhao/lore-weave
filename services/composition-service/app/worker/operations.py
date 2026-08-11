@@ -317,6 +317,14 @@ async def run_stitch(
             # silently absent — the check reports NO_POSITION rather than passing for
             # a reason nobody can see on the envelope.
             plan_supported=False,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            # `work.settings`, not `sdict`: run_stitch has no sdict, and the first cut of
+            # this reached for one. The NameError was swallowed by the `except Exception`
+            # below into `status: degraded` — a canon check that silently stopped running.
+            # `test_run_stitch_computes_and_stores_no_persist` caught it by asserting the
+            # status is `ok`, which is exactly what that assertion is for.
+            role_check_enabled=bool((work.settings if work else {} or {}).get(
+                "canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=input.get("cast_glossary_ids") or [],
             scene_sort_order=input.get("chapter_sort"),
@@ -445,6 +453,8 @@ async def run_generate(
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
             plan_status=plan_status, plan_cast=plan_cast,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             draft=w.text, packed_prompt=packed_prompt, profile=profile,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source, judge_ref=critic_ref,
@@ -665,6 +675,8 @@ async def run_chapter_generate(
             # silently absent — the check reports NO_POSITION rather than passing for
             # a reason nobody can see on the envelope.
             plan_supported=False,
+            # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
+            role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
             draft=winner.text, packed_prompt=packed_prompt, profile=profile,

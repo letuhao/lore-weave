@@ -187,6 +187,12 @@ async def run_canon_reflect(
     # NOT_APPLICABLE (nothing to check), which are different things and were indistinguishable
     # on the envelope until this flag existed.
     plan_supported: bool = True,
+    # T36 / SET-3 — the PER-BOOK half of the role check, read from
+    # `composition_work.settings["canon_role_check_enabled"]` by the caller (which owns the
+    # Work row; `profile` is a parsed BookProfile and deliberately does NOT carry raw
+    # settings, so reading it off `profile` would be a silent no-op — SET-4's exact
+    # prohibition). ANDed with the deploy ceiling below.
+    role_check_enabled: bool = False,
     draft: str, packed_prompt: str, profile: Any,
     drafter_source: str, drafter_ref: str,
     judge_source: str | None, judge_ref: str | None,
@@ -297,9 +303,12 @@ async def run_canon_reflect(
             model_ref=str(judge_ref) if distinct else "",
             source_language=source_language, trace_id=trace_id,
             cancel_check=cancel_check,
-            # T36 — the role-attribution check. Off by default (it adds a judge
-            # call to most scenes); see config.authoring_canon_role_check_enabled.
-            role_check=settings.authoring_canon_role_check_enabled,
+            # T36 / SET-3 — effective = AND(deploy ceiling, per-book setting).
+            # The ceiling answers "is this available at all here?"; the Work's own
+            # setting answers "does this author want it?". A ceiling that is off
+            # can never be overridden upward by a book.
+            role_check=(settings.authoring_canon_role_check_ceiling
+                        and role_check_enabled),
         )
 
     revise_out_tokens = 0

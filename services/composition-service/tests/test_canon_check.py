@@ -412,6 +412,14 @@ def test_roles_in_draft_equal_tier_keeps_snapshot_order():
 # The first full-flow run returned 8 affirmed contradictions on a chapter whose
 # canon attribution is CORRECT. These pin the four exemptions that answers,
 # because a prompt rule with no test is a rule that gets edited away.
+#
+# WHAT THESE DO NOT PROVE (NV-1, and /review-impl called it): they assert SUBSTRINGS of a
+# prompt. They red on a harmless rewording and they PASS on a rule that does not work —
+# and the live evidence says these rules do not work (8 -> 7, then 0/4/12 across batch
+# sizes on byte-identical input). Presence is all they check; effectiveness is measured in
+# `docs/measurements/2026-08-11-qc5-full-flow-capture.md` and cannot be a unit test,
+# because the thing under test is a model's judgement. Read them as "the rule is still in
+# the prompt", never as "the judge obeys it".
 
 
 def _role_system_prompt() -> str:
@@ -451,3 +459,46 @@ def test_role_prompt_asks_about_one_statement_and_prefers_false():
     p = _role_system_prompt().lower()
     assert "that statement only" in p
     assert "prefer false when unsure" in p
+
+
+# ── SET-3 — the ceiling and the per-book setting are ANDed ─────────────
+#
+# /review-impl HIGH: the first cut shipped this as a process-global env flag, which is
+# the SET-1 abuse the standard names by example — a behaviour two authors could
+# reasonably disagree about, made "the same for every user, invisible, and unchangeable
+# without a redeploy". These pin the corrected shape at the seam that decides it.
+
+
+@pytest.mark.asyncio
+async def test_role_check_requires_BOTH_the_ceiling_and_the_book_setting():
+    """effective = AND(deploy ceiling, per-book setting). Neither alone runs it."""
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    for role_check in (False,):
+        judge = _FakeJudge('{"verdicts":[{"entity_id":"role_0","violated":true,"why":"x"}]}')
+        out = await check_canon("Zed served Bob.", snap, judge=judge, user_id="u",
+                                model_source="user_model", model_ref="m",
+                                role_check=role_check)
+        assert out == [] and judge.calls == 0, (
+            "a false AND-result must not reach the judge at all")
+
+
+@pytest.mark.asyncio
+async def test_role_check_runs_when_both_halves_are_true():
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"role_0","violated":true,"why":"y"}]}')
+    snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
+    out = await check_canon("Zed served Bob.", snap, judge=judge, user_id="u",
+                            model_source="user_model", model_ref="m", role_check=True)
+    assert [c.kind for c in out] == ["role_contradiction"]
+
+
+def test_the_ceiling_setting_is_named_as_a_ceiling_and_defaults_open():
+    """SET-3: the env half is the deploy MAX, never the switch. A ceiling that
+    shipped CLOSED would make the per-book setting a silent no-op everywhere —
+    which is the 'disabled by deployment' case SET-3 says must be visible, not
+    the default posture. The SPEND default lives on the per-book key instead."""
+    from app.config import Settings
+    fields = Settings.model_fields
+    assert "authoring_canon_role_check_ceiling" in fields
+    assert fields["authoring_canon_role_check_ceiling"].default is True
+    assert "authoring_canon_role_check_enabled" not in fields, (
+        "the old global switch must be gone, not merely unused")
