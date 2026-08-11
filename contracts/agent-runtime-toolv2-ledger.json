@@ -1116,6 +1116,17 @@
         "CONTROL: a code that does not exist -> 'no live kind with that code in this book' -- scoped to the KIND, unlike the sibling iteration 86 fixed for blaming the book"
       ],
       "admitted": false
+    },
+    "jobs_summary": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and every number checked against the database rather than accepted. 3 calls / 2 sessions / 3 ok, no failures. It returns four counters and all four are exact: completed 1042, failed 49, cancelled 17 match job_projection row for row, and `active: 17` decomposes exactly as pending 2 + running 6 + paused 9. The collapse is worth stating because it is invisible in the payload: a PAUSED job counts as active, so 'active 17' with only 6 actually running is correct but coarse. jobs_list (iteration 73) exposes the real per-job status, so nothing is lost -- it is a summary doing what a summary does.",
+      "evidence": [
+        "PHASE 2: 3 ok / 0 failed. No failure population exists",
+        "LIVE: {active: 17, completed: 1042, failed: 49, cancelled: 17}",
+        "DENOMINATOR from the SSOT: loreweave_jobs.job_projection for this owner gives completed 1042, failed 49, cancelled 17, paused 9, running 6, pending 2. Three counters match directly and the fourth sums exactly -- 2 + 6 + 9 = 17",
+        "OBSERVED, not filed as a defect: `active` fuses pending, running and paused, so a reader asking 'what is running' would over-read it by 11. The field name is honest and the per-job status is available from jobs_list"
+      ],
+      "admitted": false
     }
   }
 }
