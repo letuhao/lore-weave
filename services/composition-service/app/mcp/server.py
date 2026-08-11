@@ -7268,7 +7268,20 @@ async def composition_arc_template_update(ctx: MCPContext, args: _ArcTemplateUpd
     tc = _ctx(ctx)
     if args.visibility is not None and args.visibility != "private":
         return {"error": "share/publish from the studio UI (it runs the quota gate), not here"}
-    patch = ArcTemplatePatchArgs(**args.model_dump(exclude={"arc_id", "expected_version"}))
+    # TOOLV2 LOOP #155 — `exclude_unset` is the whole update path.
+    #
+    # ArcTemplateRepo.patch builds its SET list from `args.model_dump(exclude_unset=True)`, so a
+    # field the caller never mentioned is meant to stay untouched. A plain model_dump() here
+    # materialised EVERY optional field as an explicit None first, so the repo saw them all as set
+    # and emitted `visibility = NULL` — which the NOT NULL constraint rejected. Measured: every
+    # update failed, on both this tool and composition_arc_template_edit(op=update), whatever
+    # fields were supplied. The op had never worked.
+    #
+    # The unified tool already drops unset fields with _present() before delegating here; without
+    # this flag that care was undone one line later.
+    patch = ArcTemplatePatchArgs(
+        **args.model_dump(exclude={"arc_id", "expected_version"}, exclude_unset=True)
+    )
     try:
         arc = await ArcTemplateRepo(get_pool()).patch(
             tc.user_id, _uuid(args.arc_id, "arc_id"), patch, expected_version=args.expected_version,
