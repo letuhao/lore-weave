@@ -385,7 +385,7 @@ def _ctx(ctx: MCPContext) -> ToolContext:
 
 def _resolve_bid(tc: ToolContext, book_id: str | None) -> UUID:
     """Studio context binding — resolve a book-scoped tool's book_id from the arg OR the ambient
-    X-Book-Id (tc.book_id). A 1-line drop-in for UUID(book_id); the caller grant-checks it as usual."""
+    X-Book-Id (tc.book_id). A 1-line drop-in for _uuid(book_id, "book_id"); the caller grant-checks it as usual."""
     scope = resolve_book_scope(book_id, tc)
     if scope is None:
         raise ValueError("book_id is required")
@@ -395,7 +395,7 @@ def _resolve_bid(tc: ToolContext, book_id: str | None) -> UUID:
 def _resolve_pid(tc: ToolContext, project_id: str | None) -> UUID:
     """Studio context binding (spec 2026-07-22) — resolve a project-scoped tool's project_id from the
     arg OR the ambient X-Project-Id (tc.project_id, which chat-service derives book->Work->project_id
-    and forwards). A 1-line drop-in for UUID(args.project_id). The resolved project is grant-checked by
+    and forwards). A 1-line drop-in for _uuid(args.project_id, "project_id"). The resolved project is grant-checked by
     the caller (via _book_or_deny) exactly like an explicit arg — the ambient is a scope hint, not authz.
     Only use it on a tool tagged ambient_project (its project_id arg must be Optional)."""
     scope = resolve_project_scope(project_id, tc)
@@ -508,6 +508,28 @@ async def _gate(tc: ToolContext, book_id: UUID, level: GrantLevel) -> None:
     gate)."""
     guard = require_book_owner(_grant_resolver(), int(level))
     await guard(tc, book_id)
+
+
+def _uuid(value: Any, field: str) -> UUID:
+    """Parse a caller-supplied uuid, naming the FIELD and echoing what arrived.
+
+    Every tool here parsed uuids with a bare `_uuid(args.x, "x")`, so a malformed one surfaced as
+    Python's own "badly formed hexadecimal UUID string" — measured identical across 7 of 7
+    composition tools, naming no argument at all. composition_arc_edit alone accepts seven uuid
+    fields, so the caller could not tell which one to fix.
+
+    Echoing the value is the part that carries information the caller cannot otherwise get. The
+    one real occurrence in the corpus was composition_arc_suggest receiving
+    "...cb-1bc5-7384-9fb4-9fb4-3435368886d0" — a model that had DUPLICATED a uuid segment. Shown
+    its own string back, that is visible; described as badly formed, it is not (TOOLV2 LOOP #148).
+    """
+    try:
+        return UUID(str(value))
+    except (ValueError, AttributeError, TypeError):
+        raise ValueError(
+            f"{field} must be a UUID — received {value!r}. Compare it against the id you meant "
+            "to send; a repeated or dropped group is the usual cause."
+        ) from None
 
 
 def _undo(tool: str, **args: Any) -> dict[str, Any]:
@@ -687,7 +709,7 @@ async def composition_get_work(
             if bscope is not None:
                 book_id = str(bscope.id)
     if project_id:
-        pid = UUID(project_id)
+        pid = _uuid(project_id, "project_id")
         pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
         work = await works.get(pid)
         if work is None:
@@ -698,7 +720,7 @@ async def composition_get_work(
         # bridged the two — the model retried book_id AS project_id and dead-ended.
         # Gate FIRST (PM-8 — book_id given directly, no lookup needed), then resolve
         # the book's marked Works; 0 → the H13 uniform deny.
-        bid = UUID(book_id)
+        bid = _uuid(book_id, "book_id")
         await _gate(tc, bid, GrantLevel.VIEW)
         marked = await works.resolve_by_book(bid)
         if not marked:
@@ -760,7 +782,7 @@ async def composition_list_outline(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     outline = OutlineRepo(get_pool())
     scene_links = SceneLinksRepo(get_pool())
@@ -799,10 +821,10 @@ async def composition_get_outline_node(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     outline = OutlineRepo(get_pool())
-    node = await outline.get_node(UUID(node_id))
+    node = await outline.get_node(_uuid(node_id, "node_id"))
     # get_node fetches by id only — project-scope the target so a node_id from
     # another Work (a different book/gate) can't be read through this project
     # (same H13 discipline as composition_get_generation_job / node_update).
@@ -860,12 +882,12 @@ async def composition_get_prose(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    meta = await _book_or_deny(works, tc, UUID(project_id), GrantLevel.VIEW)
+    meta = await _book_or_deny(works, tc, _uuid(project_id, "project_id"), GrantLevel.VIEW)
     book: BookClient = get_book_client()
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
     try:
-        draft = await book.get_draft(meta.book_id, UUID(chapter_id), bearer)
-        revisions = await book.list_revisions(meta.book_id, UUID(chapter_id), bearer, limit=1)
+        draft = await book.get_draft(meta.book_id, _uuid(chapter_id, "chapter_id"), bearer)
+        revisions = await book.list_revisions(meta.book_id, _uuid(chapter_id, "chapter_id"), bearer, limit=1)
     except BookClientError as exc:
         return _book_error_result(exc)
     items = revisions.get("items") or []
@@ -900,10 +922,10 @@ async def composition_list_canon_rules(
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
     if project_id:
-        pid: UUID | None = UUID(project_id)
+        pid: UUID | None = _uuid(project_id, "project_id")
         pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     elif book_id:
-        bid = UUID(book_id)
+        bid = _uuid(book_id, "book_id")
         await _gate(tc, bid, GrantLevel.VIEW)  # tenancy: grant-checked on the book itself
         pid = await _resolve_or_create_default_project(tc, bid, works)
         if pid is None:
@@ -940,10 +962,10 @@ async def composition_get_generation_job(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     jobs = GenerationJobsRepo(get_pool())
-    job = await jobs.get(UUID(job_id))
+    job = await jobs.get(_uuid(job_id, "job_id"))
     # The repo fetches by id only — confirm the job belongs to THIS project so a
     # job_id from another Work (a different book/gate) can't be read through this
     # one. A miss is the uniform "not accessible" (never an existence oracle).
@@ -1064,12 +1086,12 @@ async def composition_create_work(
     ] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     works = WorksRepo(get_pool())
 
     if project_id:
-        pid = UUID(project_id)
+        pid = _uuid(project_id, "project_id")
     else:
         try:
             pid = await _resolve_or_create_default_project(tc, bid, works)
@@ -1222,7 +1244,7 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
     if (args.title or "").strip():
         dup = await outline.find_node_by_title(
             pid, kind=args.kind, title=args.title.strip(),
-            parent_id=UUID(args.parent_id) if args.parent_id else None,
+            parent_id=_uuid(args.parent_id, "parent_id") if args.parent_id else None,
         )
         if dup is not None:
             out = dup.model_dump(mode="json")
@@ -1233,11 +1255,11 @@ async def composition_outline_node_create(ctx: MCPContext, args: _NodeCreateArgs
             return out
     try:
         node = await outline.create_node(
-            pid, kind=args.kind, parent_id=UUID(args.parent_id) if args.parent_id else None,
+            pid, kind=args.kind, parent_id=_uuid(args.parent_id, "parent_id") if args.parent_id else None,
             title=args.title, goal=args.goal, synopsis=args.synopsis, status=args.status,
-            chapter_id=UUID(args.chapter_id) if args.chapter_id else None,
+            chapter_id=_uuid(args.chapter_id, "chapter_id") if args.chapter_id else None,
             # 22 SC4/SC8 — the authored intent (schema-validated above).
-            location_entity_id=UUID(args.location_entity_id) if args.location_entity_id else None,
+            location_entity_id=_uuid(args.location_entity_id, "location_entity_id") if args.location_entity_id else None,
             story_time=args.story_time, conflict=args.conflict, outcome=args.outcome,
             value_shift=args.value_shift, stakes=args.stakes, target_words=args.target_words,
             draft_beats=args.draft_beats,
@@ -1343,10 +1365,10 @@ class _NodeUpdateArgs(ForbidExtra):
 async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
-    node_id = UUID(args.node_id)
+    node_id = _uuid(args.node_id, "node_id")
     # Capture prior values for a precise Undo hint (only the fields we changed).
     prior = await outline.get_node(node_id)
     # Project-scope the target: the gate above checked the resolved Work's book,
@@ -1369,7 +1391,7 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
     # location_entity_id is a UUID column (str arg → UUID); exit_state is the SC12
     # envelope (model → plain dict, ::jsonb serialized by update_node's B2 path).
     if args.location_entity_id is not None:
-        patch["location_entity_id"] = UUID(args.location_entity_id)
+        patch["location_entity_id"] = _uuid(args.location_entity_id, "location_entity_id")
     if args.exit_state is not None:
         # D-GENERATED-FACT-HAS-NO-HOME — MERGE, do not replace. A write here rewrites the whole
         # JSONB envelope, so an author who edits `plot` on a scene the drafter has already
@@ -1379,7 +1401,7 @@ async def composition_outline_node_update(ctx: MCPContext, args: _NodeUpdateArgs
             prior.exit_state, args.exit_state.model_dump(mode="json"))
     # D-SCENE-PROSE-NOWHERE-TO-LAND — bind the node to a manuscript chapter (see the arg).
     if args.chapter_id is not None:
-        patch["chapter_id"] = UUID(args.chapter_id)
+        patch["chapter_id"] = _uuid(args.chapter_id, "chapter_id")
     # D-SCENE-CREATE-PARITY — cast + beat charge. `tension` rides the sparse-patch dict
     # above's convention (None = leave unchanged); `present_entity_ids` needs the UUID
     # coercion, and an explicit [] is a MEANINGFUL clear ("nobody is in this scene yet"),
@@ -1449,16 +1471,16 @@ async def composition_outline_node_delete(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     # Project-scope BEFORE mutating: archive_node targets by id only, so confirm
     # the node is in the gated Work's project (else a node from another Work
     # would be archived under THIS book's gate). See node_update note.
-    target = await outline.get_node(UUID(node_id))
+    target = await outline.get_node(_uuid(node_id, "node_id"))
     if target is None or target.project_id != pid:
         raise uniform_not_accessible()
-    node = await outline.archive_node(UUID(node_id))
+    node = await outline.archive_node(_uuid(node_id, "node_id"))
     if node is None:
         raise uniform_not_accessible()
     out = node.model_dump(mode="json")
@@ -1488,16 +1510,16 @@ async def composition_outline_node_restore(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
     # Project-scope BEFORE mutating: restore_node targets by id only. get_node
     # returns archived rows too, so it confirms the (archived) target is in the
     # gated Work's project before the un-archive. See node_update note.
-    target = await outline.get_node(UUID(node_id))
+    target = await outline.get_node(_uuid(node_id, "node_id"))
     if target is None or target.project_id != pid:
         raise uniform_not_accessible()
-    node = await outline.restore_node(UUID(node_id))
+    node = await outline.restore_node(_uuid(node_id, "node_id"))
     if node is None:
         raise uniform_not_accessible()
     out = node.model_dump(mode="json")
@@ -1533,12 +1555,12 @@ class _SceneLinkCreateArgs(ForbidExtra):
 async def composition_scene_link_create(ctx: MCPContext, args: _SceneLinkCreateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     scene_links = SceneLinksRepo(get_pool())
     try:
         link = await scene_links.create(
-            pid, UUID(args.from_node_id), UUID(args.to_node_id),
+            pid, _uuid(args.from_node_id, "from_node_id"), _uuid(args.to_node_id, "to_node_id"),
             kind=args.kind, label=args.label, created_by=tc.user_id,
         )
     except ReferenceViolationError as exc:
@@ -1570,13 +1592,13 @@ async def composition_scene_link_delete(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     scene_links = SceneLinksRepo(get_pool())
     # Project-scope the delete: constrain the repo WHERE clause by the gated
     # Work's project so an edge from another Work (gated on a different book)
     # cannot be deleted under THIS book's gate. See node_update note.
-    deleted = await scene_links.delete(pid, UUID(link_id))
+    deleted = await scene_links.delete(pid, _uuid(link_id, "link_id"))
     if not deleted:
         raise uniform_not_accessible()
     # A hard delete has no verified reverse op (the row is gone) → undo unavailable.
@@ -1608,10 +1630,10 @@ async def composition_scene_link_restore(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     scene_links = SceneLinksRepo(get_pool())
-    if not await scene_links.restore(pid, UUID(link_id)):
+    if not await scene_links.restore(pid, _uuid(link_id, "link_id")):
         return {"success": False, "error": (
             "that scene link could not be restored — it was never deleted, or the same edge has "
             "since been re-declared")}
@@ -1661,7 +1683,7 @@ async def composition_list_derivatives(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    meta = await _book_or_deny(works, tc, UUID(project_id), GrantLevel.VIEW)
+    meta = await _book_or_deny(works, tc, _uuid(project_id, "project_id"), GrantLevel.VIEW)
     rows = await works.resolve_by_book(meta.book_id)
     return {
         "works": [
@@ -1698,7 +1720,7 @@ async def composition_get_derivative_context(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
     work = await works.get(pid)
     if work is None:
@@ -1742,7 +1764,7 @@ async def composition_get_derivative_context(
 async def composition_archive_derivative(ctx: MCPContext, args: _DerivativeArchiveArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     work = await works.get(pid)
     if work is None:
@@ -1804,7 +1826,7 @@ class _DeriveArgs(ForbidExtra):
 async def composition_create_derivative(ctx: MCPContext, args: _DeriveArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     # Gate EDIT on the source's book — the SAME gate the REST route + the confirm re-check use.
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
@@ -1901,7 +1923,7 @@ async def _require_derivative(works: WorksRepo, tc, project_id: UUID):
 async def composition_divergence_spec_update(ctx: MCPContext, args: _DivergenceSpecUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, UUID(args.project_id))
+    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
         return {"success": False, "error": "NOT_A_DERIVATIVE — the spec exists only on a dị bản"}
     fs = args.model_fields_set
@@ -1909,7 +1931,7 @@ async def composition_divergence_spec_update(ctx: MCPContext, args: _DivergenceS
     if "taxonomy" in fs and args.taxonomy is not None:
         kwargs["taxonomy"] = args.taxonomy
     if "pov_anchor" in fs:  # explicit null clears the anchor
-        kwargs["pov_anchor"] = UUID(args.pov_anchor) if args.pov_anchor else None
+        kwargs["pov_anchor"] = _uuid(args.pov_anchor, "pov_anchor") if args.pov_anchor else None
     if "canon_rule" in fs and args.canon_rule is not None:
         kwargs["canon_rule"] = list(args.canon_rule)
     derivatives = DerivativesRepo(get_pool())
@@ -1958,13 +1980,13 @@ class _EntityOverrideAddArgs(ForbidExtra):
 async def composition_entity_override_add(ctx: MCPContext, args: _EntityOverrideAddArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, UUID(args.project_id))
+    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     if work.source_work_id is None:
         return {"success": False, "error": "NOT_A_DERIVATIVE — overrides exist only on a dị bản"}
     derivatives = DerivativesRepo(get_pool())
     try:
         ov = await derivatives.add_override(
-            work.id, work.book_id, tc.user_id, UUID(args.target_entity_id), args.overridden_fields,
+            work.id, work.book_id, tc.user_id, _uuid(args.target_entity_id, "target_entity_id"), args.overridden_fields,
         )
     except asyncpg.UniqueViolationError:
         return {"success": False, "error": "OVERRIDE_EXISTS — an override for this entity already exists; update it instead"}
@@ -2000,13 +2022,13 @@ class _EntityOverrideUpdateArgs(ForbidExtra):
 async def composition_entity_override_update(ctx: MCPContext, args: _EntityOverrideUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, UUID(args.project_id))
+    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     derivatives = DerivativesRepo(get_pool())
-    prior = await derivatives.get_override(work.id, work.book_id, UUID(args.override_id))  # for Undo
+    prior = await derivatives.get_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))  # for Undo
     if prior is None:
         raise uniform_not_accessible()
     ov = await derivatives.update_override(
-        work.id, work.book_id, UUID(args.override_id), args.overridden_fields,
+        work.id, work.book_id, _uuid(args.override_id, "override_id"), args.overridden_fields,
     )
     if ov is None:
         raise uniform_not_accessible()
@@ -2040,12 +2062,12 @@ class _EntityOverrideDeleteArgs(ForbidExtra):
 async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverrideDeleteArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, UUID(args.project_id))
+    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     derivatives = DerivativesRepo(get_pool())
-    prior = await derivatives.get_override(work.id, work.book_id, UUID(args.override_id))  # for Undo
+    prior = await derivatives.get_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))  # for Undo
     if prior is None:
         raise uniform_not_accessible()
-    ok = await derivatives.delete_override(work.id, work.book_id, UUID(args.override_id))
+    ok = await derivatives.delete_override(work.id, work.book_id, _uuid(args.override_id, "override_id"))
     if not ok:
         raise uniform_not_accessible()
     out = {"success": True, "deleted": True}
@@ -2073,9 +2095,9 @@ async def composition_entity_override_delete(ctx: MCPContext, args: _EntityOverr
 async def composition_entity_override_restore(ctx: MCPContext, args: _EntityOverrideDeleteArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    work = await _require_derivative(works, tc, UUID(args.project_id))
+    work = await _require_derivative(works, tc, _uuid(args.project_id, "project_id"))
     derivatives = DerivativesRepo(get_pool())
-    if not await derivatives.restore_override(work.id, work.book_id, UUID(args.override_id)):
+    if not await derivatives.restore_override(work.id, work.book_id, _uuid(args.override_id, "override_id")):
         return {"success": False, "error": (
             "that override could not be restored — it was never deleted, or a newer override for "
             "the same entity now exists")}
@@ -2119,10 +2141,10 @@ class _ReferenceUpdateArgs(ForbidExtra):
 async def composition_reference_update(ctx: MCPContext, args: _ReferenceUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     refs = ReferencesRepo(get_pool())
-    rid = UUID(args.reference_id)
+    rid = _uuid(args.reference_id, "reference_id")
     prior = await refs.get(pid, rid)  # 404 + prior for the Undo
     if prior is None:
         raise uniform_not_accessible()
@@ -2162,13 +2184,13 @@ class _SwitchActiveWorkArgs(ForbidExtra):
 )
 async def composition_switch_active_work(ctx: MCPContext, args: _SwitchActiveWorkArgs) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(args.book_id)
+    bid = _uuid(args.book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     target: str | None = None
     if args.project_id is not None:
         # Never point active-work at a foreign/nonexistent Work — it must belong to THIS book.
         works = WorksRepo(get_pool())
-        w = await works.get(UUID(args.project_id))
+        w = await works.get(_uuid(args.project_id, "project_id"))
         if w is None or w.book_id != bid:
             return {"success": False, "error": "NOT_A_WORK_OF_THIS_BOOK"}
         target = str(w.project_id) if w.project_id else args.project_id
@@ -2212,7 +2234,7 @@ async def composition_switch_active_work(ctx: MCPContext, args: _SwitchActiveWor
 async def composition_canon_rule_create(ctx: MCPContext, args: _CanonRuleCreateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     if args.from_order is not None and args.until_order is not None and args.from_order > args.until_order:
         return {"success": False, "error": "from_order must not exceed until_order"}
@@ -2225,7 +2247,7 @@ async def composition_canon_rule_create(ctx: MCPContext, args: _CanonRuleCreateA
     if (args.text or "").strip():
         dup = await canon.find_by_text(
             pid, args.text.strip(), scope=args.scope,
-            entity_id=UUID(args.entity_id) if args.entity_id else None,
+            entity_id=_uuid(args.entity_id, "entity_id") if args.entity_id else None,
         )
         if dup is not None:
             out = dup.model_dump(mode="json")
@@ -2236,7 +2258,7 @@ async def composition_canon_rule_create(ctx: MCPContext, args: _CanonRuleCreateA
             return out
     rule = await canon.create(
         pid, args.text, scope=args.scope,
-        entity_id=UUID(args.entity_id) if args.entity_id else None,
+        entity_id=_uuid(args.entity_id, "entity_id") if args.entity_id else None,
         from_order=args.from_order, until_order=args.until_order, kind=args.kind,
         created_by=tc.user_id,
     )
@@ -2272,10 +2294,10 @@ class _CanonRuleUpdateArgs(ForbidExtra):
 async def composition_canon_rule_update(ctx: MCPContext, args: _CanonRuleUpdateArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     canon = CanonRulesRepo(get_pool())
-    rule_id = UUID(args.rule_id)
+    rule_id = _uuid(args.rule_id, "rule_id")
     prior = await canon.get(pid, rule_id)
     # Project-scope the target: canon.get fetches by id only, so confirm the
     # rule is in the gated Work's project before mutating (else a rule from
@@ -2323,16 +2345,16 @@ async def composition_canon_rule_delete(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     canon = CanonRulesRepo(get_pool())
     # Project-scope BEFORE mutating: canon.archive targets by id only, so
     # confirm the rule is in the gated Work's project first (else a rule from
     # another Work would be archived under THIS book's gate). See node_update.
-    prior = await canon.get(pid, UUID(rule_id))
+    prior = await canon.get(pid, _uuid(rule_id, "rule_id"))
     if prior is None or prior.project_id != pid:
         raise uniform_not_accessible()
-    rule = await canon.archive(pid, UUID(rule_id))
+    rule = await canon.archive(pid, _uuid(rule_id, "rule_id"))
     if rule is None:
         raise uniform_not_accessible()
     out = rule.model_dump(mode="json")
@@ -2368,13 +2390,13 @@ async def composition_canon_rule_restore(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     canon = CanonRulesRepo(get_pool())
     # restore() is natively project-scoped (WHERE project_id = $1 AND id = $2 AND
     # is_archived), so it can never un-archive a rule under a different book's gate,
     # and returns None (→ not-accessible) for a non-archived or foreign rule.
-    rule = await canon.restore(pid, UUID(rule_id))
+    rule = await canon.restore(pid, _uuid(rule_id, "rule_id"))
     if rule is None:
         raise uniform_not_accessible()
     return rule.model_dump(mode="json")
@@ -2473,7 +2495,7 @@ async def composition_structure_template_clone(ctx: MCPContext, args: _StructTem
     tc = _ctx(ctx)
     repo = StructureTemplatesRepo(get_pool())
     try:
-        t = await repo.clone_builtin(tc.user_id, UUID(args.template_id), name=args.name)
+        t = await repo.clone_builtin(tc.user_id, _uuid(args.template_id, "template_id"), name=args.name)
     except LookupError:
         raise uniform_not_accessible()
     except DuplicateStructureTemplateName:
@@ -2499,7 +2521,7 @@ async def composition_structure_template_update(ctx: MCPContext, args: _StructTe
     repo = StructureTemplatesRepo(get_pool())
     patch = {k: v for k, v in (("name", args.name), ("kind", args.kind), ("beats", args.beats)) if v is not None}
     try:
-        t = await repo.update(tc.user_id, UUID(args.template_id), args.expected_version, **patch)
+        t = await repo.update(tc.user_id, _uuid(args.template_id, "template_id"), args.expected_version, **patch)
     except StructureTemplateVersionConflict:
         return {"success": False, "outcome": "applied_conflict", "error": "structure was modified; reload"}
     except DuplicateStructureTemplateName:
@@ -2522,7 +2544,7 @@ async def composition_structure_template_update(ctx: MCPContext, args: _StructTe
 async def composition_structure_template_archive(ctx: MCPContext, args: _StructTemplateIdArgs) -> dict:
     tc = _ctx(ctx)
     repo = StructureTemplatesRepo(get_pool())
-    t = await repo.archive(tc.user_id, UUID(args.template_id))
+    t = await repo.archive(tc.user_id, _uuid(args.template_id, "template_id"))
     if t is None:
         raise uniform_not_accessible()
     return t.model_dump(mode="json")
@@ -2541,7 +2563,7 @@ async def composition_structure_template_archive(ctx: MCPContext, args: _StructT
 async def composition_structure_template_restore(ctx: MCPContext, args: _StructTemplateIdArgs) -> dict:
     tc = _ctx(ctx)
     repo = StructureTemplatesRepo(get_pool())
-    t = await repo.restore(tc.user_id, UUID(args.template_id))
+    t = await repo.restore(tc.user_id, _uuid(args.template_id, "template_id"))
     if t is None:
         raise uniform_not_accessible()
     return t.model_dump(mode="json")
@@ -2579,12 +2601,12 @@ class _WriteProseArgs(ForbidExtra):
 async def composition_write_prose(ctx: MCPContext, args: _WriteProseArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
     book: BookClient = get_book_client()
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
-    chap = UUID(args.chapter_id)
+    chap = _uuid(args.chapter_id, "chapter_id")
     # Capture the prior draft for a precise Undo (restore the body at its new version).
     try:
         prior = await book.get_draft(meta.book_id, chap, bearer)
@@ -2655,14 +2677,14 @@ async def composition_publish(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     # Publishing is an authoring (write) action → EDIT.
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
     # Surface the publish-gate up front so the LLM/user sees WHY if it isn't
     # publishable (the confirm route re-checks it at execute time).
     outline = OutlineRepo(get_pool())
-    chap = UUID(chapter_id)
+    chap = _uuid(chapter_id, "chapter_id")
     gate = await outline.chapter_scene_gate(pid, chap)
     if not gate.get("can_publish"):
         return {
@@ -2725,7 +2747,7 @@ async def composition_decompile_arcs(
     chapters_per_arc: Annotated[int, "Target chapters per arc (default 10)."] = 10,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     # Dry-run count so the confirm card is informative (M chapters → ~N arcs). Cheap, and it also
     # gives a clean "nothing to decompile" answer up front for a book with no chapters.
@@ -2799,7 +2821,7 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
             "error": "pass EXACTLY ONE of outline_node_id (a scene) or chapter_id (a whole chapter)",
         }
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     # Generation is a write/spend → EDIT (mirrors the engine's E0-4c pack tier).
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
@@ -2812,7 +2834,7 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     # (it needs book-service to resolve the chapter sort/plan).
     if has_scene:
         outline = OutlineRepo(get_pool())
-        node = await outline.get_node(UUID(target_id))
+        node = await outline.get_node(_uuid(target_id, "target_id"))
         if node is None or node.project_id != pid:
             raise uniform_not_accessible()
         # D-SCENE-PROSE-NOWHERE-TO-LAND — a scene generate does NOT persist (only the
@@ -2867,7 +2889,7 @@ async def composition_generate(ctx: MCPContext, args: _GenerateArgs) -> dict:
     def _confirm_fallback():
         confirm_token = mint_confirm_token(
             settings.confirm_token_signing_secret,
-            tc.user_id, UUID(target_id), _GENERATE_DESCRIPTOR, payload,
+            tc.user_id, _uuid(target_id, "target_id"), _GENERATE_DESCRIPTOR, payload,
         )
         return {
             "confirm_token": confirm_token,
@@ -2988,7 +3010,7 @@ class _AuthoringRunListArgs(TolerantArgs):
 )
 async def composition_authoring_run_list(ctx: MCPContext, args: _AuthoringRunListArgs) -> dict:
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.VIEW)
     svc = await get_authoring_run_service()
     # OUT-5 (mcp-tool-io.md): never silently truncate — over-fetch by one to detect
@@ -3027,11 +3049,11 @@ async def composition_authoring_run_get(ctx: MCPContext, args: _AuthoringRunGetA
     from app.services.authoring_run_service import TransitionConflictError
 
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     # OQ-3: run reads widen to the book grant — gate FIRST (PM-8 ordering), then
     # the un-owner-scoped get; the run must be in THIS book (H13 on a mismatch).
     await _gate(tc, book_id, GrantLevel.VIEW)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     run = await svc.get(run_id)
     if run is None or run.book_id != book_id:
@@ -3089,7 +3111,7 @@ async def composition_authoring_run_create(
     ctx: MCPContext, args: _AuthoringRunCreateArgs,
 ) -> dict:
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.EDIT)
     payload = {
         "book_id": args.book_id,
@@ -3157,9 +3179,9 @@ class _AuthoringRunIdArgs(TolerantArgs):
 )
 async def composition_authoring_run_gate(ctx: MCPContext, args: _AuthoringRunIdArgs) -> dict:
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.EDIT)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     await _require_own_run(tc, svc, book_id, run_id)
     payload = {"book_id": args.book_id, "run_id": args.run_id}
@@ -3217,9 +3239,9 @@ class _AuthoringRunStartArgs(TolerantArgs):
 )
 async def composition_authoring_run_start(ctx: MCPContext, args: _AuthoringRunStartArgs) -> dict:
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.EDIT)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     await _require_own_run(tc, svc, book_id, run_id)
     payload: dict[str, Any] = {"book_id": args.book_id, "run_id": args.run_id}
@@ -3278,9 +3300,9 @@ class _AuthoringRunResumeArgs(TolerantArgs):
 )
 async def composition_authoring_run_resume(ctx: MCPContext, args: _AuthoringRunResumeArgs) -> dict:
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.EDIT)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     await _require_own_run(tc, svc, book_id, run_id)
     payload: dict[str, Any] = {"book_id": args.book_id, "run_id": args.run_id}
@@ -3336,8 +3358,8 @@ async def composition_authoring_run_pause(ctx: MCPContext, args: _AuthoringRunId
     from app.services.authoring_run_service import TransitionConflictError
 
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
-    run_id = UUID(args.run_id)
+    book_id = _uuid(args.book_id, "book_id")
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     await _authoring_run_actor(tc, svc, book_id, run_id, allow_book_owner=True)
     try:
@@ -3371,8 +3393,8 @@ async def composition_authoring_run_close(ctx: MCPContext, args: _AuthoringRunId
     from app.services.authoring_run_service import TransitionConflictError
 
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
-    run_id = UUID(args.run_id)
+    book_id = _uuid(args.book_id, "book_id")
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     await _authoring_run_actor(tc, svc, book_id, run_id, allow_book_owner=True)
     try:
@@ -3412,13 +3434,13 @@ async def composition_authoring_run_accept_unit(
     from app.services.authoring_run_service import TransitionConflictError
 
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     # Grant-tier law (spec 25): unit review is a package WRITE → EDIT on the
     # book, gated FIRST (PM-8 ordering); the run must be in THIS book AND be the
     # caller's own — REST `_run_for_mutation` is creator-only for accept/reject
     # (book-owner escalation is pause/close only), and the two doors must agree.
     await _gate(tc, book_id, GrantLevel.EDIT)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     run = await _require_own_run(tc, svc, book_id, run_id)
     try:
@@ -3458,14 +3480,14 @@ async def composition_authoring_run_reject_unit(
     from app.services.authoring_run_service import TransitionConflictError
 
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     # Grant-tier law (spec 25): unit review is a package WRITE → EDIT on the
     # book, gated FIRST (PM-8 ordering); the run must be in THIS book AND be the
     # caller's own — rejecting a unit RESTORES the chapter's prior revision, so a
     # non-creator EDIT-grantee could destroy another author's draft. REST
     # `_run_for_mutation` is creator-only here; the two doors must agree.
     await _gate(tc, book_id, GrantLevel.EDIT)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     run = await _require_own_run(tc, svc, book_id, run_id)
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
@@ -3527,9 +3549,9 @@ async def composition_authoring_run_reject_unit(
 )
 async def composition_authoring_run_revert_all(ctx: MCPContext, args: _AuthoringRunIdArgs) -> dict:
     tc = _ctx(ctx)
-    book_id = UUID(args.book_id)
+    book_id = _uuid(args.book_id, "book_id")
     await _gate(tc, book_id, GrantLevel.EDIT)
-    run_id = UUID(args.run_id)
+    run_id = _uuid(args.run_id, "run_id")
     svc = await get_authoring_run_service()
     await _require_own_run(tc, svc, book_id, run_id)
     payload = {"book_id": args.book_id, "run_id": args.run_id}
@@ -3771,7 +3793,7 @@ async def composition_motif_get(
     # get_visible IS the IDOR guard for a non-book resource: it enforces R1.1
     # (system | public | owner), so a foreign PRIVATE id is indistinguishable from a
     # missing one (H13) — no enumeration oracle.
-    motif = await repo.get_visible(tc.user_id, UUID(motif_id))
+    motif = await repo.get_visible(tc.user_id, _uuid(motif_id, "motif_id"))
     if motif is None:
         raise uniform_not_accessible()
     return _motif_view(motif, tc.user_id)
@@ -3822,7 +3844,7 @@ async def composition_motif_book_list(
     ] = "summary",  # K37 drain: OUT-2 small-shape default
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     # VIEW-gate the book — the grant IS the access control for the shared tier (read).
     await _gate(tc, bid, GrantLevel.VIEW)
     repo = MotifRepo(get_pool())
@@ -3869,11 +3891,11 @@ async def composition_motif_suggest_for_chapter(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
     pid = _require_project(meta)
     outline = OutlineRepo(get_pool())
-    node = await outline.get_node(UUID(node_id))
+    node = await outline.get_node(_uuid(node_id, "node_id"))
     # Per-tool IDOR: the node must be in the gated Work's project (a node from
     # another Work would otherwise be ranked under THIS book's gate).
     if node is None or node.project_id != pid:
@@ -3943,7 +3965,7 @@ async def composition_arc_suggest(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.VIEW)
     pid = _require_project(meta)
     retriever = MotifRetriever(get_pool())
@@ -4076,7 +4098,7 @@ async def composition_motif_create(ctx: MCPContext, args: _MotifCreateArgs) -> d
     if book_shared:
         if not args.book_id:
             return {"success": False, "error": "book_id is required when target='book_shared'"}
-        book_id = UUID(args.book_id)
+        book_id = _uuid(args.book_id, "book_id")
         await _gate(tc, book_id, GrantLevel.EDIT)
     from app.db.models import MotifCreateArgs as _RepoCreateArgs
     try:
@@ -4130,11 +4152,11 @@ async def composition_motif_archive(
 ) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
-    mid = UUID(motif_id)
+    mid = _uuid(motif_id, "motif_id")
     if book_id is not None:
         # SHARED tier (D-MOTIF-ADOPT-BOOK-COLLAB-TIER): access is the book grant, not ownership.
         # EDIT-gate the book, confirm the target is a shared row IN this book (else H13), archive.
-        bid = UUID(book_id)
+        bid = _uuid(book_id, "book_id")
         await _gate(tc, bid, GrantLevel.EDIT)
         target = await repo.get_in_book(tc.user_id, mid, bid)
         if target is None or not target.book_shared or target.book_id != bid:
@@ -4177,11 +4199,11 @@ async def composition_motif_restore(
 ) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
-    mid = UUID(motif_id)
+    mid = _uuid(motif_id, "motif_id")
     if book_id is not None:
         # SHARED tier: access is the book grant, not ownership. EDIT-gate the book, then restore_shared
         # matches only an ARCHIVED book_shared row in this book (None → uniform deny, no oracle).
-        bid = UUID(book_id)
+        bid = _uuid(book_id, "book_id")
         await _gate(tc, bid, GrantLevel.EDIT)
         motif = await repo.restore_shared(tc.user_id, mid, bid)
     else:
@@ -4248,7 +4270,7 @@ _MOTIF_PATCH_META = {"motif_id", "expected_version", "book_id"}
 async def composition_motif_patch(ctx: MCPContext, args: _MotifPatchToolArgs) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
-    mid = UUID(args.motif_id)
+    mid = _uuid(args.motif_id, "motif_id")
     from app.db.models import MotifPatchArgs as _Patch
 
     # Only the fields the caller actually set become the patch (PATCH semantics — exclude_unset).
@@ -4264,7 +4286,7 @@ async def composition_motif_patch(ctx: MCPContext, args: _MotifPatchToolArgs) ->
     if args.book_id is not None:
         # SHARED-tier edit: the book grant is the gate (not ownership). EDIT-gate, confirm the
         # target is a shared row IN this book (so undo/prior reads the right row), then patch_shared.
-        bid = UUID(args.book_id)
+        bid = _uuid(args.book_id, "book_id")
         await _gate(tc, bid, GrantLevel.EDIT)
         prior = await repo.get_in_book(tc.user_id, mid, bid)
         if prior is None or not prior.book_shared or prior.book_id != bid:
@@ -4366,13 +4388,13 @@ async def composition_motif_link_list(
         return {"success": False, "error": "direction must be 'out', 'in', or 'both'"}
     bid: UUID | None = None
     if book_id is not None:
-        bid = UUID(book_id)
+        bid = _uuid(book_id, "book_id")
         await _gate(tc, bid, GrantLevel.VIEW)   # the book grant is the read access for the shared graph
     repo = MotifRepo(get_pool())
     # READPRED: list_links returns [] for a motif you can't see (IDOR-safe — empty is
     # indistinguishable from 'no edges', no existence oracle).
     links = await repo.list_links(
-        tc.user_id, UUID(motif_id), direction=direction, kinds=kinds, book_id=bid,
+        tc.user_id, _uuid(motif_id, "motif_id"), direction=direction, kinds=kinds, book_id=bid,
     )
     return {"motif_id": motif_id, "links": links, "count": len(links)}
 
@@ -4401,11 +4423,11 @@ async def composition_motif_link_create(ctx: MCPContext, args: _MotifLinkCreateA
     if args.book_id is not None:
         # SHARED-tier edge (D-MOTIF-LINK-SHARED-TIER): EDIT on the book is the write gate; the repo
         # then requires both endpoints to be book_shared in this book.
-        bid = UUID(args.book_id)
+        bid = _uuid(args.book_id, "book_id")
         await _gate(tc, bid, GrantLevel.EDIT)
     try:
         link = await repo.create_link(
-            tc.user_id, UUID(args.from_motif_id), UUID(args.to_motif_id), args.kind,
+            tc.user_id, _uuid(args.from_motif_id, "from_motif_id"), _uuid(args.to_motif_id, "to_motif_id"), args.kind,
             ord=args.ord, book_id=bid,
         )
     except LookupError:
@@ -4452,9 +4474,9 @@ async def composition_motif_link_delete(
     repo = MotifRepo(get_pool())
     bid: UUID | None = None
     if book_id is not None:
-        bid = UUID(book_id)
+        bid = _uuid(book_id, "book_id")
         await _gate(tc, bid, GrantLevel.EDIT)
-    deleted = await repo.delete_link(tc.user_id, UUID(link_id), book_id=bid)
+    deleted = await repo.delete_link(tc.user_id, _uuid(link_id, "link_id"), book_id=bid)
     if not deleted:
         raise uniform_not_accessible()
     # A hard delete has no verified reverse op (the row is gone) → undo unavailable.
@@ -4488,18 +4510,18 @@ class _MotifBindArgs(ForbidExtra):
 async def composition_motif_bind(ctx: MCPContext, args: _MotifBindArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
     outline = OutlineRepo(get_pool())
-    node_id = UUID(args.node_id)
+    node_id = _uuid(args.node_id, "node_id")
     # IDOR #1: the chapter node is in the gated Work's project.
     node = await outline.get_node(node_id)
     if node is None or node.project_id != pid:
         raise uniform_not_accessible()
     # IDOR #2: the motif is caller-visible (you can only bind a motif you can see).
     repo = MotifRepo(get_pool())
-    motif = await repo.get_visible(tc.user_id, UUID(args.motif_id))
+    motif = await repo.get_visible(tc.user_id, _uuid(args.motif_id, "motif_id"))
     if motif is None:
         raise uniform_not_accessible()
     # WIRED to W2's engine (engine/motif_select.py) — the one-engine-two-entries seam
@@ -4576,11 +4598,11 @@ async def composition_motif_unbind(
 ) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(project_id)
+    pid = _uuid(project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
     outline = OutlineRepo(get_pool())
-    nid = UUID(node_id)
+    nid = _uuid(node_id, "node_id")
     node = await outline.get_node(nid)
     if node is None or node.project_id != pid:
         raise uniform_not_accessible()
@@ -4839,7 +4861,7 @@ class _MotifAdoptArgs(ForbidExtra):
 async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dict:
     tc = _ctx(ctx)
     repo = MotifRepo(get_pool())
-    mid = UUID(args.motif_id)
+    mid = _uuid(args.motif_id, "motif_id")
     # READPRED: you may adopt only a motif you can see (public/system/own). A foreign
     # private id is the uniform deny (H13) — no oracle.
     motif = await repo.get_visible(tc.user_id, mid)
@@ -4855,7 +4877,7 @@ async def composition_motif_adopt(ctx: MCPContext, args: _MotifAdoptArgs) -> dic
         if not args.book_id:
             return {"success": False,
                     "error": f"book_id is required when target='{args.target}'"}
-        await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+        await _gate(tc, _uuid(args.book_id, "book_id"), GrantLevel.EDIT)
         book_id = args.book_id
     payload = {
         "motif_id": args.motif_id,
@@ -4925,7 +4947,7 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
         if not args.book_id:
             return {"success": False, "error": "book_id is required when scope='book'"}
         # BOOK(EDIT) gate on the named book (mining writes draft motifs informed by it).
-        await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+        await _gate(tc, _uuid(args.book_id, "book_id"), GrantLevel.EDIT)
     # promote_target='book_shared' needs a single book to land in — reject it for a corpus mine.
     if args.promote_target == "book_shared" and (args.scope != "book" or not args.book_id):
         return {"success": False,
@@ -4946,7 +4968,7 @@ async def composition_motif_mine(ctx: MCPContext, args: _MotifMineArgs) -> dict:
         "estimate_usd": estimate["estimated_usd"],
     }
     # resource_id binds the token: the named book for scope='book', else the user.
-    resource_id = UUID(args.book_id) if args.scope == "book" and args.book_id else tc.user_id
+    resource_id = _uuid(args.book_id, "book_id") if args.scope == "book" and args.book_id else tc.user_id
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret,
         tc.user_id, resource_id, _MOTIF_MINE_DESCRIPTOR, payload,
@@ -5039,11 +5061,11 @@ async def composition_library_translate(ctx: MCPContext, args: _LibraryTranslate
     if args.book_id:
         # SHARED-tier targets: EDIT on the book. Re-checked at confirm AND per-item in
         # the engine — a proposal is not a standing authorization.
-        await _gate(tc, UUID(args.book_id), GrantLevel.EDIT)
+        await _gate(tc, _uuid(args.book_id, "book_id"), GrantLevel.EDIT)
 
     repo = (MotifRepo if args.kind == "motif" else ArcTemplateRepo)(get_pool())
     allowed = await repo.list_translatable(
-        tc.user_id, item_ids, book_id=UUID(args.book_id) if args.book_id else None)
+        tc.user_id, item_ids, book_id=_uuid(args.book_id, "book_id") if args.book_id else None)
     if not allowed:
         # Uniform refusal — it does not distinguish "does not exist" from "is a system
         # row" from "is not yours" (no enumeration oracle). The message names the one
@@ -5069,7 +5091,7 @@ async def composition_library_translate(ctx: MCPContext, args: _LibraryTranslate
     }
     # resource_id binds the token: the named book for a shared-tier translate, else the
     # user (both libraries are user-scoped).
-    resource_id = UUID(args.book_id) if args.book_id else tc.user_id
+    resource_id = _uuid(args.book_id, "book_id") if args.book_id else tc.user_id
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret,
         tc.user_id, resource_id, _LIBRARY_TRANSLATE_DESCRIPTOR, payload,
@@ -5123,7 +5145,7 @@ async def composition_arc_import_analyze(ctx: MCPContext, args: _ArcImportArgs) 
     # object (no set); the derived arc_template lands via the background job and is read
     # back through composition_arc_suggest.
     tc = _ctx(ctx)
-    isid = UUID(args.import_source_id)
+    isid = _uuid(args.import_source_id, "import_source_id")
     # USER scope on the import_source row (§12.6/B-3 — structurally un-shareable):
     # owner == caller, else uniform deny.
     guard = require_user_scope(_import_source_owner)
@@ -5187,14 +5209,14 @@ class _ConformanceRunArgs(ForbidExtra):
 async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
     if args.scope == "chapter":
         if not args.chapter_id:
             return {"success": False, "error": "chapter_id is required when scope='chapter'"}
         outline = OutlineRepo(get_pool())
-        node = await outline.get_node(UUID(args.chapter_id))
+        node = await outline.get_node(_uuid(args.chapter_id, "chapter_id"))
         # IDOR: the chapter is in the gated Work's project.
         if node is None or node.project_id != pid:
             raise uniform_not_accessible()
@@ -5210,7 +5232,7 @@ async def composition_conformance_run(ctx: MCPContext, args: _ConformanceRunArgs
         # the confirm-effect dispatch (routers/actions.py) + the arc-conformance
         # worker must read this `arc_id` (a structure_node) via A4's arc_id-keyed
         # reader, replacing the annotations->>'arc_template_id' scan.
-        arc_node = await StructureRepo(get_pool()).get(UUID(args.arc_id))
+        arc_node = await StructureRepo(get_pool()).get(_uuid(args.arc_id, "arc_id"))
         if arc_node is None or arc_node.book_id != meta.book_id:
             raise uniform_not_accessible()
     estimate = _mine_estimate(scope="book")
@@ -5271,7 +5293,7 @@ async def composition_get_mine_job(
     """
     tc = _ctx(ctx)
     jobs = GenerationJobsRepo(get_pool())
-    job = await jobs.get(UUID(job_id))
+    job = await jobs.get(_uuid(job_id, "job_id"))
     if job is None or job.created_by != tc.user_id:
         raise uniform_not_accessible()
     return job.model_dump(mode="json")
@@ -5307,7 +5329,7 @@ async def composition_conformance_status(
     ] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     # IX-14 — book-scoped read; the E0 VIEW gate IS the access control (the internal
     # canon-markers read inside is safe only behind it). H13 uniform on denial.
     await _gate(tc, bid, GrantLevel.VIEW)
@@ -5315,7 +5337,7 @@ async def composition_conformance_status(
 
     return await compute_conformance_status(
         pool=get_pool(), book_client=get_book_client(), book_id=bid,
-        arc_id=UUID(arc_id) if arc_id else None,
+        arc_id=_uuid(arc_id, "arc_id") if arc_id else None,
     )
 
 
@@ -5386,7 +5408,7 @@ async def plan_propose_spec(
     ] = False,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     svc = _plan_svc()
     run, is_async, job_id = await svc.create_run(
@@ -5437,9 +5459,9 @@ async def plan_validate(
     run_id: Annotated[str, "The plan run (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
-    report = await _plan_svc().validate(tc.user_id, bid, UUID(run_id))
+    report = await _plan_svc().validate(tc.user_id, bid, _uuid(run_id, "run_id"))
     if report is None:
         raise uniform_not_accessible()
     return report
@@ -5473,11 +5495,11 @@ async def plan_find_missing_material(
     ] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     # EDIT rather than VIEW: this spends the author's LLM budget, which a read grant does not entitle.
     await _gate(tc, bid, GrantLevel.EDIT)
     out = await _plan_svc().find_missing_material(
-        tc.user_id, bid, UUID(run_id), model_ref=_opt_uuid(model_ref),
+        tc.user_id, bid, _uuid(run_id, "run_id"), model_ref=_opt_uuid(model_ref),
     )
     if out is None:
         raise uniform_not_accessible()
@@ -5505,9 +5527,9 @@ async def plan_get_missing_material(
     run_id: Annotated[str, "The plan run (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
-    out = await _plan_svc().get_material_review(tc.user_id, bid, UUID(run_id))
+    out = await _plan_svc().get_material_review(tc.user_id, bid, _uuid(run_id, "run_id"))
     return out or {"packet": None, "note": "no material check has been run for this plan yet"}
 
 
@@ -5543,9 +5565,9 @@ async def plan_keep_material(
     ],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
-    out = await _plan_svc().keep_material(tc.user_id, bid, UUID(run_id), kept=kept)
+    out = await _plan_svc().keep_material(tc.user_id, bid, _uuid(run_id, "run_id"), kept=kept)
     if out is None:
         raise uniform_not_accessible()
     return out
@@ -5569,9 +5591,9 @@ async def plan_self_check(
     run_id: Annotated[str, "The plan run (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
-    out = await _plan_svc().self_check(tc.user_id, bid, UUID(run_id))
+    out = await _plan_svc().self_check(tc.user_id, bid, _uuid(run_id, "run_id"))
     if out is None:
         raise uniform_not_accessible()
     return out
@@ -5598,10 +5620,10 @@ async def plan_interpret_feedback(
     apply_mode_hint: Annotated[Literal["auto", "confirm", "diagnose_only"] | None, "Optional apply-mode hint."] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     out = await _plan_svc().interpret(
-        tc.user_id, bid, UUID(run_id),
+        tc.user_id, bid, _uuid(run_id, "run_id"),
         user_message=user_message, model_ref=_opt_uuid(model_ref), apply_mode_hint=apply_mode_hint,
     )
     if out is None:
@@ -5632,11 +5654,11 @@ async def plan_apply_revision(
     focus_paths: Annotated[list[str] | None, "Optional spec paths to focus the refine."] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     try:
         mode, payload = await _plan_svc().refine(
-            tc.user_id, bid, UUID(run_id),
+            tc.user_id, bid, _uuid(run_id, "run_id"),
             model_ref=_opt_uuid(model_ref), revision=draft_revision, focus_paths=focus_paths,
         )
     except LookupError:
@@ -5678,11 +5700,11 @@ async def plan_review_checkpoint(
     ] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     try:
         out = await _plan_svc().review_checkpoint(
-            tc.user_id, bid, UUID(run_id), approved=approved,
+            tc.user_id, bid, _uuid(run_id, "run_id"), approved=approved,
             pass_id=pass_id, edits=edits,
         )
     except ValueError as exc:
@@ -5716,10 +5738,10 @@ async def plan_handoff_autofix(
     max_rounds: Annotated[int, "Max refine rounds (1–5, default 3)."] = 3,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     out = await _plan_svc().handoff_autofix(
-        tc.user_id, bid, UUID(run_id), model_ref=_opt_uuid(model_ref), max_rounds=max_rounds,
+        tc.user_id, bid, _uuid(run_id, "run_id"), model_ref=_opt_uuid(model_ref), max_rounds=max_rounds,
     )
     if out is None:
         raise uniform_not_accessible()
@@ -5762,11 +5784,11 @@ async def plan_compile(
     ] = None,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     try:
         mode, payload = await _plan_svc().compile(
-            tc.user_id, bid, UUID(run_id),
+            tc.user_id, bid, _uuid(run_id, "run_id"),
             arc_id=arc_id, run_pipeline=run_pipeline, model_ref=_opt_uuid(model_ref),
             structure_template_id=_opt_uuid(structure_template_id),
         )
@@ -5832,11 +5854,11 @@ async def plan_run_pass(
     # So the gate is enforced by ABSENCE, not by a prompt asking the model to behave.
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     try:
         return await _plan_svc().run_pass(
-            tc.user_id, bid, UUID(run_id), pass_id,
+            tc.user_id, bid, _uuid(run_id, "run_id"), pass_id,
             model_ref=_opt_uuid(model_ref), params=params or {}, force=False,
         )
     except UpstreamStale as exc:
@@ -5870,9 +5892,9 @@ async def plan_pass_status(
     run_id: Annotated[str, "The plan run (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
-    out = await _plan_svc().pass_status(tc.user_id, bid, UUID(run_id))
+    out = await _plan_svc().pass_status(tc.user_id, bid, _uuid(run_id, "run_id"))
     if out is None:
         raise uniform_not_accessible()
     return out
@@ -5904,10 +5926,10 @@ async def plan_link(
     ] = "skeleton",
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     try:
-        return await _plan_svc().relink(tc.user_id, bid, UUID(run_id), target=target)
+        return await _plan_svc().relink(tc.user_id, bid, _uuid(run_id, "run_id"), target=target)
     except LookupError:
         raise uniform_not_accessible()
     except ValueError as exc:
@@ -5948,12 +5970,12 @@ async def plan_bootstrap_propose(
     run_id: Annotated[str, "The compiled plan run (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     svc = await get_bootstrap_service()
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
     try:
-        rec = await svc.propose(tc.user_id, bid, UUID(run_id), bearer)
+        rec = await svc.propose(tc.user_id, bid, _uuid(run_id, "run_id"), bearer)
     except LookupError:
         raise uniform_not_accessible()
     except ValueError as exc:
@@ -5991,9 +6013,9 @@ async def plan_bootstrap_apply(
     proposal_id: Annotated[str, "The proposal from plan_bootstrap_propose (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
-    pid = UUID(proposal_id)  # validate shape before minting
+    pid = _uuid(proposal_id, "proposal_id")  # validate shape before minting
     payload = {"book_id": str(bid), "proposal_id": str(pid)}
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret, tc.user_id, bid, _BOOTSTRAP_APPLY_DESCRIPTOR, payload,
@@ -6046,7 +6068,7 @@ async def composition_package_tree(
     from app.services.agent_native import Block, arc_line, cap_arcs
 
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
 
     pool = get_pool()
@@ -6206,13 +6228,13 @@ async def composition_find_references(
     from app.services.agent_native import REFERENCE_SOURCES
 
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
 
     # No Work resolution here: all eight sources are BOOK-scoped, and the E0 gate above is the
     # book gate. Resolving a project we would never use was how a book_id ended up in a project slot.
     pool = get_pool()
-    eid = UUID(entity_id)
+    eid = _uuid(entity_id, "entity_id")
     want = tuple(sources) if sources else REFERENCE_SOURCES
     cap = max(1, min(int(limit or 20), 100))
 
@@ -6268,7 +6290,7 @@ async def composition_diagnostics(
     from app.services.agent_native import build_book_diagnostics
 
     tc = _ctx(ctx)
-    bid = UUID(book_id)
+    bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.VIEW)
 
     pool = get_pool()
@@ -6394,7 +6416,7 @@ async def composition_arc_get(
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
-    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.VIEW)
+    node = await _arc_or_deny(structures, tc, _uuid(node_id, "node_id"), GrantLevel.VIEW)
     threads_repo = NarrativeThreadRepo(get_pool())
     out = node.model_dump(mode="json")
     # BA7/BA6/BA15 — the derived reads (the whole reason structure_node exists: it
@@ -6471,7 +6493,7 @@ class _ArcCreateArgs(ForbidExtra):
 )
 async def composition_arc_create(ctx: MCPContext, args: _ArcCreateArgs) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(args.book_id)
+    bid = _uuid(args.book_id, "book_id")
     # Creating INTO a book is a package WRITE → EDIT on the book (the supplied
     # book_id IS the scope; a cross-book parent_arc_id is caught by the trigger).
     await _gate(tc, bid, GrantLevel.EDIT)
@@ -6487,7 +6509,7 @@ async def composition_arc_create(ctx: MCPContext, args: _ArcCreateArgs) -> dict:
     if (args.title or "").strip():
         existing = await structures.find_node_by_title(
             bid, args.kind, args.title.strip(),
-            parent_id=UUID(args.parent_arc_id) if args.parent_arc_id else None,
+            parent_id=_uuid(args.parent_arc_id, "parent_arc_id") if args.parent_arc_id else None,
         )
         if existing is not None:
             out = existing.model_dump(mode="json")
@@ -6503,9 +6525,9 @@ async def composition_arc_create(ctx: MCPContext, args: _ArcCreateArgs) -> dict:
             created_by=tc.user_id,
             kind=args.kind,
             title=args.title, summary=args.summary, goal=args.goal, status=args.status,
-            parent_id=UUID(args.parent_arc_id) if args.parent_arc_id else None,
+            parent_id=_uuid(args.parent_arc_id, "parent_arc_id") if args.parent_arc_id else None,
             tracks=args.tracks, roster=args.roster, roster_bindings=args.roster_bindings,
-            arc_template_id=UUID(args.arc_template_id) if args.arc_template_id else None,
+            arc_template_id=_uuid(args.arc_template_id, "arc_template_id") if args.arc_template_id else None,
             template_version=args.template_version,
         )
     except StructureConflictError as exc:
@@ -6554,7 +6576,7 @@ class _ArcUpdateArgs(ForbidExtra):
 async def composition_arc_update(ctx: MCPContext, args: _ArcUpdateArgs) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
-    prior = await _arc_or_deny(structures, tc, UUID(args.node_id), GrantLevel.EDIT)
+    prior = await _arc_or_deny(structures, tc, _uuid(args.node_id, "node_id"), GrantLevel.EDIT)
     patch: dict[str, Any] = {}
     for field, value in {
         "title": args.title, "summary": args.summary, "goal": args.goal,
@@ -6564,7 +6586,7 @@ async def composition_arc_update(ctx: MCPContext, args: _ArcUpdateArgs) -> dict:
         if value is not None:
             patch[field] = value
     if args.arc_template_id is not None:
-        patch["arc_template_id"] = UUID(args.arc_template_id)
+        patch["arc_template_id"] = _uuid(args.arc_template_id, "arc_template_id")
     try:
         updated = await structures.update(
             prior.id, patch, expected_version=args.expected_version,
@@ -6613,7 +6635,7 @@ async def composition_arc_delete(
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
-    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.EDIT)
+    node = await _arc_or_deny(structures, tc, _uuid(node_id, "node_id"), GrantLevel.EDIT)
     await structures.archive(node.id)
     return {
         "node_id": str(node.id), "archived": True,
@@ -6644,7 +6666,7 @@ async def composition_arc_restore(
     structures = StructureRepo(get_pool())
     # get() returns archived rows too, so _arc_or_deny resolves + gates the archived
     # node before the un-archive.
-    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.EDIT)
+    node = await _arc_or_deny(structures, tc, _uuid(node_id, "node_id"), GrantLevel.EDIT)
     await structures.restore(node.id)
     return {
         "node_id": str(node.id), "archived": False,
@@ -6681,12 +6703,12 @@ class _ArcMoveArgs(ForbidExtra):
 async def composition_arc_move(ctx: MCPContext, args: _ArcMoveArgs) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
-    node = await _arc_or_deny(structures, tc, UUID(args.node_id), GrantLevel.EDIT)
+    node = await _arc_or_deny(structures, tc, _uuid(args.node_id, "node_id"), GrantLevel.EDIT)
     try:
         moved = await structures.move(
             node.id,
-            new_parent_id=UUID(args.new_parent_arc_id) if args.new_parent_arc_id else None,
-            after_id=UUID(args.after_id) if args.after_id else None,
+            new_parent_id=_uuid(args.new_parent_arc_id, "new_parent_arc_id") if args.new_parent_arc_id else None,
+            after_id=_uuid(args.after_id, "after_id") if args.after_id else None,
         )
     except StructureConflictError as exc:
         return _arc_conflict(exc)
@@ -6729,10 +6751,10 @@ async def composition_arc_assign_chapters(
     ctx: MCPContext, args: _ArcAssignChaptersArgs,
 ) -> dict:
     tc = _ctx(ctx)
-    bid = UUID(args.book_id)
+    bid = _uuid(args.book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     structures = StructureRepo(get_pool())
-    target = UUID(args.structure_node_id) if args.structure_node_id else None
+    target = _uuid(args.structure_node_id, "structure_node_id") if args.structure_node_id else None
     count = await structures.assign_chapters(
         bid, target, [UUID(c) for c in args.chapter_node_ids],
     )
@@ -6948,11 +6970,11 @@ class _ArcApplyArgs(ForbidExtra):
 async def composition_arc_apply(ctx: MCPContext, args: _ArcApplyArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     meta = await _book_or_deny(works, tc, pid, GrantLevel.EDIT)
     pid = _require_project(meta)
     # IDOR: the source template must be visible to the caller (H13 on foreign/missing).
-    arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(args.arc_template_id))
+    arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, _uuid(args.arc_template_id, "arc_template_id"))
     if arc_tmpl is None:
         raise uniform_not_accessible()
     # BA3 — the SHARED apply engine (the SAME path the REST route POST /works/{id}/arc/materialize
@@ -7013,7 +7035,7 @@ async def composition_arc_extract_template(
     structures = StructureRepo(get_pool())
     # Reading the spec to extract from it → VIEW on its book; the new template is
     # owner-stamped to the caller (their own library, always writable).
-    node = await _arc_or_deny(structures, tc, UUID(args.node_id), GrantLevel.VIEW)
+    node = await _arc_or_deny(structures, tc, _uuid(args.node_id, "node_id"), GrantLevel.VIEW)
     from app.engine import arc_apply as _engine  # 23 A5 (module exists; fn pending)
     fn = getattr(_engine, "extract_template_from_arc", None)
     if fn is None:
@@ -7059,7 +7081,7 @@ async def composition_arc_template_drift(
 ) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
-    node = await _arc_or_deny(structures, tc, UUID(node_id), GrantLevel.VIEW)
+    node = await _arc_or_deny(structures, tc, _uuid(node_id, "node_id"), GrantLevel.VIEW)
     if node.arc_template_id is None:
         return {"available": False, "reason": "arc has no template provenance (authored directly)"}
     # SHARED path with the REST scope=arc_template_drift (conformance.py): resolve the Work (project
@@ -7067,7 +7089,7 @@ async def composition_arc_template_drift(
     # it is the arc's OWN book, resolve the source template, then run the SAME coarse arc report by
     # the legacy annotation key (by_structure=False). No confirm token — it is a $0 read.
     works = WorksRepo(get_pool())
-    work = await works.get(UUID(project_id))
+    work = await works.get(_uuid(project_id, "project_id"))
     if work is None or work.book_id != node.book_id:
         raise uniform_not_accessible()
     arc_tmpl = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, node.arc_template_id)
@@ -7077,7 +7099,7 @@ async def composition_arc_template_drift(
     from app.routers.conformance import ConformanceTraceReader
     report = await compute_arc_report(
         reader=ConformanceTraceReader(get_pool()), mrepo=MotifRepo(get_pool()),
-        knowledge=get_knowledge_client(), user_id=tc.user_id, project_id=UUID(project_id),
+        knowledge=get_knowledge_client(), user_id=tc.user_id, project_id=_uuid(project_id, "project_id"),
         book_id=node.book_id, arc=arc_tmpl, by_structure=False, deep=False,
     )
     return {"available": True, "report": report}
@@ -7164,7 +7186,7 @@ async def composition_arc_template_get(
     arc_id: Annotated[str, "The arc_template id (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    arc = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, UUID(arc_id))
+    arc = await ArcTemplateRepo(get_pool()).get_visible(tc.user_id, _uuid(arc_id, "arc_id"))
     if arc is None:
         raise uniform_not_accessible()
     return arc.model_dump(mode="json")
@@ -7221,7 +7243,7 @@ async def composition_arc_template_update(ctx: MCPContext, args: _ArcTemplateUpd
     patch = ArcTemplatePatchArgs(**args.model_dump(exclude={"arc_id", "expected_version"}))
     try:
         arc = await ArcTemplateRepo(get_pool()).patch(
-            tc.user_id, UUID(args.arc_id), patch, expected_version=args.expected_version,
+            tc.user_id, _uuid(args.arc_id, "arc_id"), patch, expected_version=args.expected_version,
         )
     except VersionMismatchError as exc:
         return {"error": "version conflict", "current": exc.current.model_dump(mode="json")}
@@ -7248,7 +7270,7 @@ async def composition_arc_template_archive(
     arc_id: Annotated[str, "The arc_template id (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    await ArcTemplateRepo(get_pool()).archive(tc.user_id, UUID(arc_id))
+    await ArcTemplateRepo(get_pool()).archive(tc.user_id, _uuid(arc_id, "arc_id"))
     # honest undo (S-08): the reverse verb is composition_arc_template_restore.
     return {"id": arc_id, "archived": True,
             "_meta": {"undo_hint": _undo("composition_arc_template_restore", arc_id=arc_id)}}
@@ -7270,7 +7292,7 @@ async def composition_arc_template_restore(
     arc_id: Annotated[str, "The archived arc_template id (UUID)."],
 ) -> dict:
     tc = _ctx(ctx)
-    arc = await ArcTemplateRepo(get_pool()).restore(tc.user_id, UUID(arc_id))
+    arc = await ArcTemplateRepo(get_pool()).restore(tc.user_id, _uuid(arc_id, "arc_id"))
     if arc is None:
         raise uniform_not_accessible()
     out = arc.model_dump(mode="json")
@@ -7398,10 +7420,10 @@ class _OutlineNodeMoveArgs(ForbidExtra):
 async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveArgs) -> dict:
     tc = _ctx(ctx)
     works = WorksRepo(get_pool())
-    pid = UUID(args.project_id)
+    pid = _uuid(args.project_id, "project_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
     outline = OutlineRepo(get_pool())
-    node_id = UUID(args.node_id)
+    node_id = _uuid(args.node_id, "node_id")
     # Project-scope the target BEFORE mutating (the gate above checked the resolved
     # Work's book, but reorder_node targets by id only) — a node_id from another
     # Work would otherwise be moved under THIS book's gate. See node_update note.
@@ -7411,8 +7433,8 @@ async def composition_outline_node_move(ctx: MCPContext, args: _OutlineNodeMoveA
     try:
         moved = await outline.reorder_node(
             node_id,
-            new_parent_id=UUID(args.new_parent_id) if args.new_parent_id else None,
-            after_id=UUID(args.after_id) if args.after_id else None,
+            new_parent_id=_uuid(args.new_parent_id, "new_parent_id") if args.new_parent_id else None,
+            after_id=_uuid(args.after_id, "after_id") if args.after_id else None,
             expected_version=args.expected_version,
         )
     except VersionMismatchError as exc:
@@ -7739,7 +7761,7 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
             raise ValueError("op=list requires chapter_id")
         pid = (await _book_or_deny(works, tc, pid, GrantLevel.VIEW)).project_id
         items, open_count = await blocks.list_for_chapter(
-            pid, UUID(args.chapter_id), status=args.status,
+            pid, _uuid(args.chapter_id, "chapter_id"), status=args.status,
             limit=max(1, min(args.limit or 50, 200)),
         )
         return {
@@ -7763,7 +7785,7 @@ async def composition_error_block_edit(ctx: MCPContext, args: _ErrorBlockEditArg
     if not args.block_id:
         raise ValueError(f"op={args.op} requires block_id")
     pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
-    bid = UUID(args.block_id)
+    bid = _uuid(args.block_id, "block_id")
     prior = await blocks.get(pid, bid)
     # Project-scope the target: `get` is already project-keyed, but check explicitly so a block
     # from another Work can never be closed under THIS book's gate (the node_update precedent).
@@ -7927,7 +7949,7 @@ async def composition_derivative_edit(ctx: MCPContext, args: _DerivativeEditArgs
     if args.op == "restore":
         tc = _ctx(ctx)
         works = WorksRepo(get_pool())
-        pid = UUID(args.project_id)
+        pid = _uuid(args.project_id, "project_id")
         pid = (await _book_or_deny(works, tc, pid, GrantLevel.EDIT)).project_id
         work = await works.get(pid)
         if work is None:
