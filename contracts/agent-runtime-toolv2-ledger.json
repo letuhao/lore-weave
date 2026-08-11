@@ -1151,6 +1151,19 @@
         "THE CHECK THAT CHANGED THE READING: judged from the 2 recorded calls, chapter_id looks like a field that is never set. From the SSOT, evidences holds 8408 rows of which 8407 have chapter_id and 8407 have note; block_or_line is populated in 4904 (58%) and is genuinely optional. Two samples of one row is not a shape"
       ],
       "admitted": false
+    },
+    "glossary_list_merge_candidates": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and the empty result is TRUE rather than suspicious. 2 calls / 2 sessions / 2 ok, both returning {candidates: []}, and my live call makes it 3 of 3 -- the 100%-identical shape that has been a real defect three times in this loop. Here it is correct: merge_candidates holds ZERO rows across every book in the database, so there is nothing to return anywhere. WHAT THAT MEANS IS WORTH RECORDING: the tool's non-empty branch has never been exercised in this system, by anything. The producer chain is fully wired -- extraction calls coref_detect.detect_and_propose, which POSTs /internal/books/{id}/merge-candidates, which upserts the rows -- but the step is GATED on load_anchored_kinds returning a non-empty set, and knowledge-service's logs contain zero coref mentions. NOT CLAIMED AS A DEFECT: zero log lines is consistent with 'the gate was never satisfied', not with 'it ran and failed' (a failure logs a warning), and I cannot separate those without running extraction.",
+      "evidence": [
+        "PHASE 2: 2 ok / 0 failed. No failure population exists",
+        "LIVE: {candidates: []} on the throwaway book",
+        "SSOT: merge_candidates holds 0 rows, across 0 distinct books. The empty answer is the true answer everywhere, so the tool cannot be wrong here -- and cannot be shown right on a non-empty set either",
+        "PRODUCER TRACED rather than assumed absent: internal_extraction.py calls coref_detect.detect_and_propose, which calls glossary_client.propose_merge_candidates, which POSTs to the handler that upserts merge_candidates. A FE inbox reads the same rows. The whole chain exists",
+        "GATE: the extraction call sits behind `if kinds:` from load_anchored_kinds, so an unanchored graph skips it entirely. knowledge-service logs show 0 'coref' and 0 'propose-merge-candidates' lines -- consistent with never reaching the call",
+        "NOT CLAIMED: whether this is a dormant feature or a silently dead path. The client swallows a failed POST with a warning, and no warning is present -- which points at 'never called' rather than 'called and failed', but does not settle it"
+      ],
+      "admitted": false
     }
   }
 }
