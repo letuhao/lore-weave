@@ -550,6 +550,32 @@ a tool that has not had its iteration yet is not a conclusion.
 
 ## Debt this loop surfaced but did not absorb
 
+### D-10 · A union-typed argument reports itself twice, in pydantic's internal path language
+
+*Raised by:* iteration 69. `kg_list_templates.scope` is `Literal["system","user"] | list[...] | None`,
+so a bad scalar produces one pydantic error **per union arm** and the shared directive renders both:
+
+```
+`scope.literal['system','user']`: Input should be 'system' or 'user' (you sent a str);
+`scope.list[literal['system','user']]`: Input should be a valid list (you sent a str)
+```
+
+One argument, two statements, and the second reads as a contradiction of the first — the caller is
+told it should be a list right after being told it should be one of two strings. The loc is
+pydantic's discriminator path, not an argument name the caller can use.
+
+**Measured, and it is why this is debt rather than a fix:** across every `invalid arguments for…`
+message in the corpus, **10 calls on 1 tool across 5 sessions** leak a union path, none since
+2026-07-14; the other **188 calls across 14 tools** render cleanly. The message still names the
+valid values and what was sent, so it is noise rather than a dead end — unlike story_search's
+note, which recommended an impossible action.
+
+*Would clear it:* collapse union arms to the field name in `loreweave_mcp.validation_directive`,
+keeping the arm that matches the sent type. Not done here because the subject is 10 calls and
+collapsing can drop the one arm that explains the failure — a redesign of a shared helper wants a
+population bigger than this one.
+
+
 ### D-9 · 980 entities stand in projects that no longer exist, and no re-sweep exists to reclaim them
 
 *Raised by:* iteration 56, from the live probe behind the `memory_recall_entity` fix.

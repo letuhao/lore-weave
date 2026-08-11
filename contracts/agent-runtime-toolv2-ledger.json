@@ -777,6 +777,18 @@
         "CONTROL B: a well-formed but absent id reproduces 'entity not found in this book'"
       ],
       "admitted": false
+    },
+    "kg_list_templates": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change; every failure class is accounted for and three of the four are already closed. 70 calls / 19 ok. 36 are the repeat-read breaker (3 sessions, 2026-07-14) -- the population whose escalation was fixed in iteration 58. 5 are raw pydantic dumps from 2026-06-21..25, before the one-line rewriter. The 10 remaining are `scope` values outside its closed set, and testing them live separated two shapes that the corpus had merged: a ONE-element list is tolerated and unwrapped exactly as the schema description promises, while a MULTI-element list now gets a purpose-written message ('`scope` must be a single value, not a list — omit it entirely to get both') that replaced the raw dump. Only a bad scalar still leaks pydantic's union paths, recorded as D-10 with its measurement rather than fixed on 10 calls.",
+      "evidence": [
+        "PHASE 2: 19 ok / 51 failed = 36 repeat-read breaker + 10 scope-vocabulary + 5 raw pydantic dumps (2026-06-21..25)",
+        "LIVE scope='system' -> 7 templates. LIVE scope=['system'] -> the SAME 7: the one-element list really is unwrapped, so the schema description is true and not a claim",
+        "LIVE with the EXACT recorded failing value ['system','user'] -> '`scope` must be a single value ('system' or 'user'), not a list — omit it entirely to get both'. The recorded failure for that value was a raw pydantic dump; it has since been replaced by a written message",
+        "LIVE scope='all' -> the enum refusal naming both valid values. 'all' and 'triage' are what the model guessed, and the refusal answers the guess",
+        "DATA for D-10, measured before deciding not to act: union-path leakage appears on 10 calls / 1 tool / 5 sessions, none since 2026-07-14, against 188 clean messages across 14 tools"
+      ],
+      "admitted": false
     }
   }
 }
