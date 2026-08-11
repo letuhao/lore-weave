@@ -1095,7 +1095,15 @@ async def _execute_authoring_run_gate(
             detail={"code": "action_error", "reason": "active_run_overlap"},
         ) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=400, detail={"code": "action_error", "detail": str(exc)},
@@ -1148,7 +1156,15 @@ async def _apply_pause_override(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
 
 
 async def _execute_authoring_run_start(
@@ -1172,7 +1188,15 @@ async def _execute_authoring_run_start(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     return {
         "outcome": "action_done",
         "descriptor": _AUTHORING_RUN_START_DESCRIPTOR,
@@ -1254,7 +1278,15 @@ async def _execute_authoring_run_resume(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     return {
         "outcome": "action_done",
         "descriptor": _AUTHORING_RUN_RESUME_DESCRIPTOR,
@@ -1289,7 +1321,15 @@ async def _execute_authoring_run_revert_all(
     except LookupError as exc:
         raise HTTPException(status_code=400, detail={"code": "action_error"}) from exc
     except TransitionConflictError as exc:
-        raise HTTPException(status_code=409, detail={"code": "action_error"}) from exc
+        # TOOLV2 LOOP #170 — keep the transition reason. A 409 here means the run is not in
+        # the state the op needs, and the caller has ALREADY passed the book gate, so naming
+        # the state leaks nothing. Measured: confirming a resume on a draft run answered
+        # {"code": "action_error"} with no reason at all, while the immediate-path sibling
+        # composition_authoring_run_pause says "pause requires status=running, run is draft".
+        # The confirm path was strictly worse than the direct one for the same failure.
+        raise HTTPException(
+            status_code=409, detail={"code": "action_error", "detail": str(exc)},
+        ) from exc
     if result["failed_unit_index"] is not None:
         raise HTTPException(
             status_code=502,
