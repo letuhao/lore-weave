@@ -997,6 +997,18 @@
         "AND THE GUARD CAUGHT ITSELF FIRST: its initial run reddened because the working copy is CRLF and os.ReadFile returns raw bytes, so LF anchors matched nothing. Normalised, with the reason recorded -- a guard that reds for the wrong reason is not evidence"
       ],
       "admitted": false
+    },
+    "composition_get_outline_node": {
+      "state": "proven",
+      "note": "PROVEN on its failure population and its refusal path; THE LIVE HAPPY PATH IS NOT CLAIMED, and the reason is recorded rather than hidden. 25 calls / 6 ok. 12 of the 19 failures are the repeat-read breaker in a SINGLE turn (2026-07-30) -- the population whose escalation iteration 58 fixed; 6 are 'not found or not accessible'; 1 is a validation error from the blank-args era. I could not produce a live successful read: every outline node this account owns sits under a book whose composition_work scope does not resolve for my caller (one such book has TWO work rows with DIFFERENT project_ids, and neither resolves), and the throwaway book's work has a NULL project_id and no outline nodes at all. The corpus's 6 successes are the shape evidence; the refusal path was verified live.",
+      "evidence": [
+        "PHASE 2: 6 ok / 19 failed = 12 repeat-read breaker (1 session, ONE turn) + 6 not-found (2 sessions) + 1 validation error (2026-07-08)",
+        "LIVE, refusal path: an absent node_id and a non-UUID node_id both return 'not found or not accessible' -- so a non-UUID does NOT leak a raw exception here",
+        "MY OWN ERROR, recorded: my first probe passed an EMPTY project_id (a shell substitution that produced nothing) and got 'badly formed hexadecimal UUID string'. That is a raw Python uuid exception leaking, but it was my blank argument that caused it, not a shape the model produced",
+        "NOT CLAIMED: no live successful read. Every owned outline node resolves to a composition_work whose scope the grant check rejects for this caller, and the throwaway book's work carries project_id NULL with zero outline nodes -- so there was no clean surface to read from",
+        "OBSERVED while looking: book 019f6553 has TWO composition_work rows with different project_ids (one of them a d0000000-... fixture id). Neither resolved. A book mapping to two Works has no declared tiebreak in the scope resolution I exercised"
+      ],
+      "admitted": false
     }
   }
 }
