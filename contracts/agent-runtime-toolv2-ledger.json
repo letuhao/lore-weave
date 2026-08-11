@@ -1981,6 +1981,10 @@
     "composition_structure_template_update": {
       "state": "proven",
       "note": "PROVEN. Updating `name` alone left kind and the 2-beat array intact and bumped the version 1→2 -- correct partial semantics, the same side of #155's divide as motif_patch (#208) and canon_rule_update (#177). Reusing the consumed version returns outcome:'applied_conflict' with 'structure was modified; reload'. Note that conflict message differs from the family's usual 'stale expected_version -- refetch and retry' while carrying the same meaning; it also omits current_version, which several siblings DO return (arc_edit #145, canon_rule_edit #175, archive_derivative #161), so a retry here needs an extra read that those avoid. Minor, recorded rather than changed: the outcome marker is what a caller branches on and that is present and correct."
+    },
+    "composition_switch_active_work": {
+      "state": "proven",
+      "note": "PROVEN. Omitting project_id switches back to the canonical Work (active_project_id null); switching to a derivative sets it; an unrelated project_id is refused with the specific NOT_A_WORK_OF_THIS_BOOK rather than a generic deny, so the membership guard both exists and names the relationship it checked. THE FINDING, recorded as DQ-20's second half: it also accepted an ARCHIVED derivative as the active Work. Measured in the same breath -- that derivative's status is 'archived', composition_list_derivatives returns zero matches for it, and switch_active_work set it as active anyway. The studio's editor and panels follow this preference, so a user can be working inside a branch that no listing surface will show. The tool checks book membership and not status: one guard present, its sibling missing. It compounds DQ-20's first half rather than being a separate issue, and both halves come back to the same primitive (resolve_by_book filtered to status='active'), which is why it is recorded there as one decision rather than edited here as two."
     }
   }
 }

@@ -1141,3 +1141,30 @@ takes `include_archived`, and `composition_arc_template_list` takes `status ∈ 
 resolution primitive), or should it gain an `include_archived` flag threaded through? Recorded
 rather than chosen, because the shared function is load-bearing for resolution and picking wrong
 turns a listing convenience into a resolution bug.
+
+### DQ-20, second half — an ARCHIVED derivative can be made the ACTIVE Work
+
+Measured in #228, and it makes the first half materially worse. `composition_switch_active_work`
+accepted an archived derivative as the book's active Work:
+
+| check | result |
+|---|---|
+| that derivative's `status` | `archived` |
+| listed by `composition_list_derivatives` | **no** (0 matches) |
+| accepted by `composition_switch_active_work` | **yes**, `active_project_id` set to it |
+
+So the studio — whose editor and panels follow this preference — can be pointed at a Work that no
+listing surface will show. A user who archives a branch and then switches onto it is editing inside
+something they cannot find, and `composition_list_derivatives` will keep reporting only the
+canonical Work.
+
+The tool does validate membership: an unrelated project_id is refused with the specific
+`NOT_A_WORK_OF_THIS_BOOK`. It simply does not check `status`. One guard is present and its sibling
+is missing.
+
+**Open question, same shape as the first half:** should switching refuse an archived Work, or should
+the listing surface archived Works so the state is at least visible? Either closes the hole; doing
+both is redundant, and doing neither leaves a studio that can resolve to something its own manage
+panel denies exists. Recorded rather than chosen for the same reason as the first half — the
+listing's blindness comes from a shared resolution primitive (`resolve_by_book`, filtered to
+`status='active'`), so the two halves want one decision, not two edits.
