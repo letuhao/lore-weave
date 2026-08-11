@@ -1800,7 +1800,18 @@ class _DeriveOverride(ForbidExtra):
 class _DeriveArgs(ForbidExtra):
     project_id: str  # the SOURCE (canonical) Work's project_id
     name: Annotated[str, "The dị bản's human name (1..200 chars)."]
-    branch_point: int | None = None  # chapter index the branch diverges at (0-based)
+    # TOOLV2 LOOP #178 — the bound is DECLARED, not checked in the handler.
+    #
+    # branch_point is a 0-based chapter index, and nothing validated it: a propose with -5
+    # minted a confirm token and the confirm CREATED the derivative, knowledge partition and
+    # all, with branch_point = -5 persisted. Deriving is expensive and only archivable, so a
+    # structurally impossible index should never survive to the write.
+    #
+    # Declared here rather than guarded in the handler because #166 measured the difference:
+    # a bound the schema knows about is enforced BEFORE the handler runs and explained for
+    # free -- 'Input should be greater than or equal to 0 (you sent -5)' -- while a bound
+    # that lives only in a comment is neither. The sibling unit_index already does this.
+    branch_point: int | None = Field(default=None, ge=0)
     taxonomy: Literal["pov_shift", "character_transform", "au"] = "au"
     pov_anchor: str | None = None
     canon_rule: list[str] = []
