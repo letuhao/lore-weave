@@ -53,6 +53,24 @@ func TestAnAbsentChapterIsNotReportedAsAnInaccessibleBook(t *testing.T) {
 			t.Errorf("a chapter-existence check still blames the book: %q", bad)
 		}
 	}
+
+	// TOOLV2 LOOP #129 — the same false noun at two more sites, in kg_index.go, on a path that is
+	// not a propose at all. errActionTargetGone means the CHAPTER is gone, and the grant check has
+	// already passed, so errBookNotAccessible there is equally false.
+	kg, kerr := os.ReadFile("kg_index.go")
+	if kerr != nil {
+		t.Fatalf("read kg_index.go: %v", kerr)
+	}
+	kgBody := strings.ReplaceAll(string(kg), "\r\n", "\n")
+	// Anchor on the RETURN, not on bare mentions: my own explanatory comment names
+	// errBookNotAccessible, and the first version of this guard reddened on that.
+	if strings.Contains(kgBody, "indexChapterOut{}, errBookNotAccessible") ||
+		strings.Contains(kgBody, "setKGExcludeOut{}, errBookNotAccessible") {
+		t.Error("kg_index.go still maps a missing CHAPTER (errActionTargetGone) to the BOOK error")
+	}
+	if n := strings.Count(kgBody, "errChapterNotInBook"); n != 2 {
+		t.Errorf("both kg_index target-gone branches must name the chapter, got %d", n)
+	}
 }
 
 // The two errors must stay distinguishable, and the chapter one must carry its satisfier —

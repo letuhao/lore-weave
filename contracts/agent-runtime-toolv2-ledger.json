@@ -1505,6 +1505,20 @@
         "SHAPE: updated_fields names what changed, so a caller does not have to diff the three optionals to find out"
       ],
       "admitted": false
+    },
+    "book_index_chapter": {
+      "state": "proven",
+      "note": "PROVEN on its refusal paths, with a fix; the billable path was DELIBERATELY NOT RUN. 0 calls ever. _meta says paid:true, async:true, tier A -- so it writes immediately, with no confirm card, and enqueues an LLM extraction on the user's own model. Its own description says 'COSTS MONEY' and 'There is NO cheap undo'. Invoking it to prove a shape would spend the user's money and could not be undone, so only the pre-billing refusals were exercised -- and one of them was wrong. FIXED: an absent chapter returned 'book not accessible' on a book being read successfully all session. Same false noun iteration 86 fixed on the propose path, at TWO more sites in kg_index.go, on a path that is not a propose at all.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema and _meta read first -- paid:true, async:true, tier A",
+        "THE DEFECT, live: index an absent chapter_id -> 'book not accessible'. The grant check runs BEFORE, so the book is accessible by definition and errActionTargetGone means the CHAPTER is gone",
+        "FIXED at both kg_index.go sites (book_index_chapter and book_chapter_set_kg_exclude), which are the third and fourth call sites of iteration 86's class",
+        "LIVE A/B on the deployed image: the same call now returns 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'",
+        "CONTROL, still correct: chapter_id='not-a-uuid' -> 'chapter_id must be a UUID'",
+        "CODE: the guard covers both new sites and reds when either is reverted. It anchors on the RETURN rather than on bare mentions -- the first version reddened on my own explanatory COMMENT, which names errBookNotAccessible",
+        "NOT RUN, and stated rather than implied: the actual indexing. It is Tier-A immediate, paid, and explicitly has no cheap undo"
+      ],
+      "admitted": false
     }
   }
 }
