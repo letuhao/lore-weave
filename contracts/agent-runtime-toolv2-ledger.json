@@ -2035,6 +2035,10 @@
     "glossary_user_restore": {
       "state": "proven",
       "note": "PROVEN, and it is the tool that overturned #237 -- so this row is the direct evidence for that correction. Restoring a trashed user-tier genre returns status 'restored' and the row goes live with its CONTENT intact: the name 'i242 renamed' survived a full create → patch → delete → restore cycle, so the restore recovers the edited state rather than an original. Restoring an already-live row and restoring a code that never existed both answer 'no trashed genre with that code to restore'. That conflates two cases, but unlike the composition family's uniform deny for the same situation (#209, #215) it names the REQUIRED STATE -- trashed -- so a caller learns what the tool wanted rather than only that it refused. Together with #240/#241/#242 this closes the legacy user-standards quartet: create derives its code, patch edits with an opt-in 409, delete trashes reversibly, restore brings it back. The reversibility is exactly what #237's description was wrong about."
+    },
+    "glossary_user_standards_read": {
+      "state": "proven",
+      "note": "PROVEN against DB truth rather than against itself: genres=1 and kinds=2 from the tool, matching the database's own count of live user-tier rows for this owner. Every row carries base_version -- the exact token glossary_user_patch (#242) consumes -- so the read hands its writer the OCC key instead of making it re-derive one, and cloned_from_genre_id shows which system standard a row was adopted from. LIMITATION stated rather than glossed: the kind_code+genre_code branch returned attributes: [] because this owner has no user-tier attributes for that cell at all. The branch is therefore UNEXERCISED, not verified-empty -- the same distinction #157 had to make about system arc templates. What is proven is the standards listing and its counts."
     }
   }
 }
