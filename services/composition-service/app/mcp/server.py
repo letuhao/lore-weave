@@ -5930,7 +5930,8 @@ async def plan_run_pass(
     name="plan_pass_status",
     description=(
         "PlanForge v2: the run's pass ledger — per pass: status, decision, whether it is FRESH, and "
-        "the artifact it produced; plus `pass_cursor` (how far the compiler can proceed unattended) "
+        "the artifact it produced; plus `runnable_now` (the passes whose dependencies are already "
+        "satisfied — start here), `pass_cursor` (how far the compiler can proceed unattended) "
         "and `blocked_at` (the pass a human must accept next). Freshness is DERIVED on read, never "
         "stored, so it is never stale about staleness. Read-only. VIEW required."
     ),
