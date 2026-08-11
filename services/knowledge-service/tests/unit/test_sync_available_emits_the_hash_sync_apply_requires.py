@@ -62,12 +62,24 @@ def test_the_context_hash_is_available_too_but_under_its_own_name():
     assert '"project_source_hash": diff.get("project_source_hash")' in fn
 
 
-def test_the_unadopted_branch_is_left_alone():
-    """A project that never adopted has no upstream and no hash to give. Emitting a null
-    base_source_hash there would invite a call that cannot work; the branch returns early with
-    adopted:false, which is the honest answer."""
+def test_the_unadopted_branch_answers_with_the_same_key_set():
+    """#257 CORRECTION. This guard originally asserted the opposite — that the unadopted branch
+    should stay a bare three-key dict, on the reasoning that a null base_source_hash "would
+    invite a call that cannot work". That reasoning was wrong on the evidence: the REST
+    /sync/available route already answers this exact case with all five fields nulled, and
+    `adopted: false` is the signal not to proceed.
+
+    Dropping keys instead makes `result["base_source_hash"]` a KeyError on one path and a value
+    on the other — the shape defect #251 fixed on kg_multi_query — and it matters more here
+    because #256 just made base_source_hash the field agents are told to read."""
     fn = _handler()
-    assert '{"has_updates": False, "adopted": False, "changes": []}' in fn
+    assert '{"has_updates": False, "adopted": False, "changes": []}' not in fn, (
+        "the unadopted branch is back to a reduced key set"
+    )
+    for key in ("adopted", "has_updates", "source_ref", "changes",
+                "base_source_hash", "project_source_hash"):
+        assert f'"{key}"' in fn, f"the unadopted branch no longer carries {key}"
+    assert '"base_source_hash": None' in fn, "null, not absent — absent is the KeyError"
 
 
 def test_sync_apply_still_treats_the_hash_as_a_drift_guard():

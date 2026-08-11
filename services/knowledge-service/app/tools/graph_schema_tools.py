@@ -1841,8 +1841,20 @@ async def _handle_kg_sync_available(ctx: "ToolContext", args: KgSyncAvailableArg
     await _resolve_project_owner(ctx, GrantLevel.VIEW)
     schema_id = await _active_project_schema_id(ctx, str(ctx.project_id))
     if schema_id is None:
-        # Project never adopted a template → nothing to sync against.
-        return {"has_updates": False, "adopted": False, "changes": []}
+        # Project never adopted a template → nothing to sync against. Same KEY SET as the
+        # adopted branch, with nulls: the REST /sync/available route already answers this case
+        # with all five fields nulled, and `adopted: false` is the signal not to proceed. A
+        # branch that drops keys makes `result["base_source_hash"]` a KeyError on one path and a
+        # value on the other — the shape defect #251 fixed on kg_multi_query, and it matters more
+        # here because #256 just made base_source_hash the field agents are told to read.
+        return {
+            "adopted": False,
+            "has_updates": False,
+            "source_ref": None,
+            "changes": [],
+            "base_source_hash": None,
+            "project_source_hash": None,
+        }
     diff = await ctx.ontology_mutations_repo.sync_diff(schema_id)
     return {
         "adopted": True,
