@@ -1921,6 +1921,10 @@
     "composition_motif_unbind": {
       "state": "proven",
       "note": "PROVEN as the legacy half of #199's op=unbind clearing mode, and it matches: live scenes under the chapter went 2 → 0 while the TOTAL stayed at 12, so the binding's scenes were archived rather than deleted -- the same invariant #198 established by watching the total only ever grow. Unbinding a chapter that has NOTHING bound is an idempotent success carrying archived_scene_ids: [] -- an empty list rather than an error or a bare flag. That is the honest shape for a zero-effect call: the request ('leave this chapter with no motif') is satisfied, and the empty array says plainly that nothing had to be archived to satisfy it. Unlike #143's arc_assign_chapters, where `assigned: 0` could mean three different mistakes, a zero here has exactly one meaning, so reporting it as success costs the caller nothing. NOT covered by this legacy tool: the EXACT-INVERSE mode. It takes only project_id and node_id, so the undo_token path that #199 proved on composition_motif_bind_edit -- which restores the PREVIOUS binding rather than clearing -- exists only on the unified successor. The legacy tool can clear; it cannot undo."
+    },
+    "composition_outline_node_delete": {
+      "state": "proven",
+      "note": "PROVEN including the DESCENDANT CASCADE its description promises. Archiving a chapter node with two scene children set is_archived on the node AND took its children from 2 live to 0, with the total row count unchanged at 2 -- so the cascade reaches descendants and archives rather than deletes, the same invariant as #198's motif re-bind. An unknown node_id gives the uniform deny. The cascade RESTORES symmetrically, which is the half that could silently not work: composition_outline_node_restore brought the node back to is_archived=false AND its two children back to live. A cascade that archives descendants but restores only the root would leave a chapter with its scenes stranded -- exactly the orphan shape #151 checked for on arcs -- and that is not what happens here."
     }
   }
 }
