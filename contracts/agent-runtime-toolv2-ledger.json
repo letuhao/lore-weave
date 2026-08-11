@@ -1248,6 +1248,17 @@
         "TITLE: the recorded 2026-06-20 card read 'Unpublish chapter (revert canon)'; today it reads 'revert canon → draft'. The end state is now stated rather than implied"
       ],
       "admitted": false
+    },
+    "book_task_provide_input": {
+      "state": "proven",
+      "note": "PROVEN from the recorded call and its advertisement; the live flow could NOT be driven from here and the reason is structural. 1 call / 1 session / 1 ok. This is the CONFIRM side of the durable gate -- the tool that carries a human's decision back into a suspended task, and therefore the counterpart to every propose tool this loop has proven. Its recorded call is complete and correct: {task_id, accepted: true} on a delete_chapter task returns {status 'completed', taskId, result {op 'delete_chapter', outcome 'action_done', book_id, chapter_id}} -- the decision, the terminal status, the typed outcome, and the original operation echoed so the caller can tell WHAT was confirmed rather than just that something was.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "ADVERTISED: book_task_provide_input is present in book-service's tools/list",
+        "RECORDED CONTRACT: args {task_id, accepted}; result {status 'completed', taskId, result {op, outcome 'action_done', book_id, chapter_id}}. The typed outcome is C-14's vocabulary, and the echoed op is what makes the confirmation auditable",
+        "NOT DRIVEN LIVE, and not for convenience: the durable gate emits a TASK only when the client declares task capability during initialize. A stateless curl performs no such handshake, so the same gated call returns a confirm CARD instead -- verified by asking for the task form explicitly and getting a card back. Driving this needs a real MCP session, which is what chat-service provides and the recorded call used"
+      ],
+      "admitted": false
     }
   }
 }
