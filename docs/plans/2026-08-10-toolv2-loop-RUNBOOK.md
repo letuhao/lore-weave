@@ -575,6 +575,19 @@ keeping the arm that matches the sent type. Not done here because the subject is
 collapsing can drop the one arm that explains the failure — a redesign of a shared helper wants a
 population bigger than this one.
 
+**Corrected in iteration 73:** "1 tool" describes the CORPUS, not the code. A live control on
+`jobs_list.status` — a different service, a different union — produced the same doubled render:
+
+```
+`status.literal[...]`: Input should be 'pending', 'running', … (you sent a str);
+`status.list[literal[...]]`: Input should be a valid list (you sent a str)
+```
+
+`jobs_list`'s one recorded failure predates the one-line rewriter, so it never entered the count.
+The corpus number is a floor: **any union-typed argument on any of the three services renders this
+way**, and low recorded traffic is not evidence that the shape is rare — only that few callers have
+hit those arguments since the rewriter shipped.
+
 
 ### D-9 · 980 entities stand in projects that no longer exist, and no re-sweep exists to reclaim them
 

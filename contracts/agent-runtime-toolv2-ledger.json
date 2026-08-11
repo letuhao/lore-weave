@@ -827,6 +827,17 @@
         "DATED: the shim and the inlined-version message shipped 2026-07-03 (W0 MCP reliability hardening); the 409 storm is 2026-06-21"
       ],
       "admitted": false
+    },
+    "jobs_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 11 calls / 7 sessions / 10 ok. The single failure is a `status` value outside its closed set, one session on 2026-06-21, recorded as a raw pydantic dump -- which dates it before the one-line rewriter. Today the same value returns a message naming all seven valid states. AND THE CONTROL CORRECTED MY OWN RUNBOOK: it reproduced D-10's union-path duplication on a SECOND tool, in a different service. D-10 said '1 tool', which was true of the corpus and false of the code -- jobs_list's one recorded failure predates the rewriter, so it never entered the count. The corpus number is a floor, not the blast radius.",
+      "evidence": [
+        "PHASE 2: 10 ok / 1 failed -- a `status` enum violation, 1 session, 2026-06-21, in the raw-pydantic-dump format that predates the one-line rewriter",
+        "LIVE: jobs_list(service='knowledge') -> {detail, items, next_cursor} with 10 items carrying job_id, kind, service, status, detail_status, progress, cost_usd, model, title, parent_job_id, child_count, control_caps",
+        "CONTROL: status='in_progress' -> 'Input should be 'pending', 'running', 'paused', 'cancelling', 'completed', 'failed' or 'cancelled'' -- the whole closed set named inline, which is what a code-known enum owes the caller",
+        "CORRECTION to D-10, made from this control rather than from a re-read of the corpus: the union-arm duplication renders for ANY union-typed argument on any of the three services. Low recorded traffic on those arguments is not evidence the shape is rare"
+      ],
+      "admitted": false
     }
   }
 }
