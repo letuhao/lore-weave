@@ -1,14 +1,26 @@
 """AGE bootstrap against a real AGE (plan T42c).
 
 These run against `loreweave/postgres-knowledge:18` (T42b), which is the only place the
-three extensions exist together. They skip without `TEST_AGE_DSN`, and the skip is fine
-here in a way it is NOT for `test_graph_store_conformance.py`: that suite makes a
-correctness claim about an adapter, so a silent degradation there would be a lie. This one
-proves environment facts, and its facts are re-proved by the image smoke on every build.
+three extensions exist together. They skip without `TEST_AGE_DSN` — which is now a
+DEVELOPER convenience only: as of 2026-08-12 `python-integration-tests.yml` builds the
+image, runs the image smoke, starts the container and sets `TEST_AGE_DSN`, so nothing here
+skips in CI.
+
+⚠️ The paragraph this replaces argued the skip was harmless "because its facts are re-proved
+by the image smoke on every build". That was FALSE when written: `scripts/postgres-knowledge-
+image-smoke.sh` was wired into no workflow at all, so the fallback proof it deferred to ran
+on no build, and `TEST_AGE_DSN` was set by no workflow either. Both halves of the argument
+were absent, and the suite reported green in CI by never executing. Found by
+`scripts/test-dsn-coverage-gate.py`. Recorded rather than quietly deleted, because the shape
+— a skip defended by pointing at another check that turns out not to run — is the one this
+repo keeps re-discovering.
+
+Locally, use a database whose name carries a throwaway marker (the same rule CI follows):
 
     docker run -d --name lw-age-t42c -e POSTGRES_PASSWORD=x -p 7893:5432 \
       loreweave/postgres-knowledge:18
-    TEST_AGE_DSN=postgresql://postgres:x@localhost:7893/postgres \
+    docker exec lw-age-t42c psql -U postgres -c "CREATE DATABASE loreweave_age_test;"
+    TEST_AGE_DSN=postgresql://postgres:x@localhost:7893/loreweave_age_test \
       pytest tests/integration/db/test_age_bootstrap.py
 """
 from __future__ import annotations

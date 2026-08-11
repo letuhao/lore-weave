@@ -153,5 +153,42 @@ def main() -> int:
     return 1
 
 
+
+def _selftest() -> int:
+    """Prove the DSN detector can tell a gating env var from a harmless one.
+
+    Both directions matter, and the second is the one that matters MORE here: this gate's
+    job is to notice a test whose whole suite silently skips because a `*_TEST_*_URL` is
+    unset in CI. A detector that over-matched would flood the report and get muted; one that
+    under-matched would let a suite that never runs report green — the exact
+    `env-gated-tests-skip-and-the-suite-lies` failure this repo has recorded.
+    """
+    ok = True
+    cases = [
+        ("TEST_NEO4J_URI", True, "a gating DSN must be detected"),
+        ("TEST_KNOWLEDGE_DB_URL", True, "a gating DSN must be detected"),
+        ("LOG_LEVEL", False, "an ordinary env var must NOT be treated as gating"),
+        ("PATH", False, "an ordinary env var must NOT be treated as gating"),
+    ]
+    for name, want, why in cases:
+        got = bool(GATING.search(name)) and name not in NOT_GATING
+        if got != want:
+            print(f"  FAIL — {name!r}: gating={got}, expected {want} ({why})")
+            ok = False
+
+    # The READ pattern must actually find the var in source, or the walk above collects
+    # nothing and the gate reports "all armed" over an empty set.
+    sample = 'dsn = os.environ.get("TEST_NEO4J_URI")'
+    if "TEST_NEO4J_URI" not in READ.findall(sample):
+        print("  FAIL — READ did not extract the env var from a realistic call site")
+        ok = False
+
+    print(f"[test-dsn-coverage] SELFTEST {'PASS' if ok else 'FAIL'} — detects gating DSNs, "
+          f"ignores ordinary env vars, and extracts them from source (non-vacuous)")
+    return 0 if ok else 1
+
+
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest())
     sys.exit(main())

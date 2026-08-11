@@ -248,6 +248,94 @@ Usage:
 Exit 0 = clean (or baseline-only). Exit 1 = a new duplication."""
 
 
+
+# ── selftest ─────────────────────────────────────────────────────────
+
+# Every entry is a claim this file's comments already make in PROSE. The near-misses
+# (the `False` rows) are the point: each one is a distinction the author wrote down as
+# "does NOT match" with nothing enforcing it, and each is a line that EXISTS in this
+# repo today. A detector that lost one of these distinctions would not fail the gate —
+# it would make it noisy, the noise would get baselined, and the rule would quietly die.
+_SELFTEST_CASES = [
+    # (rule, line, should_match, why)
+    ("jwt-verifier", "	tok, err := jwt.ParseWithClaims(raw, &Claims{}, keyfn)", True,
+     "the re-declared Go verifier is the primary target"),
+    ("jwt-alg-pin", "		if t.Method != jwt.SigningMethodHS256 {", True,
+     "the algorithm-pin half of a hand-rolled verifier"),
+    ("jwt-alg-pin", "	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)", False,
+     "MINTING a token in a fixture is not a duplicated verifier — the `!=` anchor is why"),
+
+    ("py-jwt-verifier", '    data = jwt.decode(token, secret, algorithms=["HS256"])', True,
+     "the assignment-anchored HS256 decode ~6 services copy-pasted"),
+    ("py-jwt-verifier", '    data = jwt.decode(token, pub, algorithms=["RS256"])', False,
+     "the RS256 admin-token verify is a DIFFERENT verifier, not a copy of this one"),
+    ("py-jwt-verifier", '    # legacy: data = jwt.decode(token, s, algorithms=["HS256"])', False,
+     "a comment describing the old shape must not be flagged as a live copy"),
+
+    ("py-inline-retryable", "        retryable = resp.status_code in (502, 503, 429)", True,
+     "the exact three-code set the SDK owns"),
+    ("py-inline-retryable", "        retryable = resp.status_code in {429, 502, 503}", True,
+     "set form — the permissive bracket class exists for this"),
+    ("py-inline-retryable", "        retryable = resp.status_code in (429, 502, 503, 504)", False,
+     "the 504-INCLUSIVE site keeps its own list per the RETRYABLE_STATUSES caveat"),
+    ("py-inline-retryable", "        ok = resp.status_code in (200, 201)", False,
+     "a success-status check is not a retryable-set copy"),
+
+    ("terminal-event-struct", "type TerminalEvent struct {", True,
+     "a re-DECLARED wire struct"),
+    ("terminal-event-struct", "type TerminalEvent = notifyevent.TerminalEvent", False,
+     "an ALIAS is the sanctioned shared-import FIX — flagging it would punish the cure"),
+
+    ("py-model-name-copy", '    url = f"{base}/internal/models/{model_source}/{model_ref}/info"', True,
+     "the model-info URL literal is the copy's tell-tale"),
+    ("logging-redact-filter", "class RedactFilter(logging.Filter):", True, "the copied filter"),
+    ("logging-setup", "def setup_logging(service: str) -> None:", True, "the copied entrypoint"),
+    ("logging-secret-patterns", "_SECRET_PATTERNS = [", True, "the copied pattern list"),
+]
+
+
+def _selftest() -> int:
+    """Prove each detector fires on the real duplication and NOT on its documented near-miss.
+
+    Run as `python scripts/sdk-duplication-gate.py --selftest`. This is deliberately a
+    detector-level test rather than an end-to-end scan: the gate's PASS on a clean tree is
+    already trivially true (the BASELINE absorbs every known copy), so an end-to-end run
+    proves nothing about whether the patterns still discriminate.
+    """
+    by_rule = dict(DETECTORS)
+    ok = True
+
+    missing = set(by_rule) - {c[0] for c in _SELFTEST_CASES}
+    if missing:
+        # A detector added without a case would be silently unproven — the exact way a
+        # selftest rots into decoration.
+        print(f"  FAIL — detectors with no selftest case: {sorted(missing)}")
+        ok = False
+
+    for rule, line, want, why in _SELFTEST_CASES:
+        got = bool(by_rule[rule].search(line))
+        if got != want:
+            verb = "did not match" if want else "matched"
+            print(f"  FAIL — {rule} {verb} {line.strip()!r} ({why})")
+            ok = False
+
+    # The allowlist is the other half of the gate: the shared home must never be flagged.
+    for rel, allowed in (("sdks/python/loreweave_authn/verify.py", True),
+                         ("contracts/adminjwt/verify.go", True),
+                         ("services/x/tests/test_auth.py", True),
+                         ("services/x/app/auth.py", False)):
+        if is_allowlisted(rel) != allowed:
+            print(f"  FAIL — is_allowlisted({rel!r}) != {allowed} "
+                  "(the SDK layer is the intended owner; a service copy is not)")
+            ok = False
+
+    n_neg = sum(1 for c in _SELFTEST_CASES if not c[2])
+    print(f"[sdk-duplication] SELFTEST {'PASS' if ok else 'FAIL'} — "
+          f"{len(_SELFTEST_CASES)} detector cases over {len(by_rule)} rules "
+          f"({n_neg} documented near-misses held negative) + allowlist (non-vacuous)")
+    return 0 if ok else 1
+
+
 def main() -> int:
     args = sys.argv[1:]
 
@@ -331,4 +419,6 @@ BASELINE = {
 
 
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest())
     sys.exit(main())

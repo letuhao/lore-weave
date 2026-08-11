@@ -74,6 +74,35 @@ SQL string early and reached the parser *as SQL*. Fixed (tag widened until absen
 test added, bite fires. Tenancy verified on all 9 AGE methods by AST; provider, secrets and
 destructive-ops gates clean.
 
+🔴 **THE ENGINE WORK HAD NEVER RUN IN CI (found and fixed 2026-08-12).** `TEST_AGE_DSN` was set
+by **no workflow**, so every AGE suite — bootstrap, conformance, shadow, rebuild drill — SKIPPED
+there, and *a skip is indistinguishable from a pass in pytest's summary line*. The T43 and T42
+results above are real; they were taken on **this machine**, by hand. What was false is the
+implication that CI re-took them. `TEST_VECTOR_DB_URL` was unarmed the same way, so the pgvector
+suite that proves the vector layer moved off Neo4j was also green-by-skip.
+
+⚠️ **Worse than the gap: the skip carried a written justification, and the justification was
+false.** `test_age_bootstrap.py` argued its skip was harmless *"because its facts are re-proved
+by the image smoke on every build"* — and `scripts/postgres-knowledge-image-smoke.sh` was wired
+into **no workflow at all**. The fallback proof ran on no build. **This is the fourth instance
+of `env-gated-tests-skip-and-the-green-suite-lies` in this arc**, and the first where I wrote
+the defence myself.
+
+**Fixed by arming, not by declaring:** `python-integration-tests.yml`'s knowledge job now builds
+the T42b image, runs the image smoke, starts AGE, and sets both DSNs — bolted onto the existing
+PG+Neo4j job precisely because conformance and shadow need **both engines at once**, and split
+across jobs each would silently degrade to whichever engine its job happened to have.
+`db-safety-gate` then caught my own first cut pointing `TEST_AGE_DSN` at an unmarked `postgres`
+database; fixed with a `_test`-marked throwaway rather than an exemption.
+
+```
+armed locally against the same image, exactly as CI will run it:
+  test_age_bootstrap + test_pg_vector_store + test_vector_dual_write_live   35 passed, 0 skipped
+  conformance + rebuild drill + shadow (Neo4j 7690 + AGE 7897, both live)   53 passed, 0 skipped
+  test-dsn-coverage-gate  exit 0   (was 1: every gating variable now armed or declared)
+  db-safety-gate          exit 0   (was 1 on my own workflow line)
+```
+
 📊 **T17 measured 2026-08-12: the remaining 69 modules are a LONG TAIL.** 106 distinct repo
 functions across 180 call sites, **64 % of them called exactly once**; the top 5 account for
 17 %. **106 functions is not a port, it is a repository** — absorbing them all would make
@@ -5023,8 +5052,29 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ```
 
   **QC (a)** gate wired into pre-commit + `foundation-ci`; `gate-wiring-gate` **98 gates,
-  all wired**; `gate-teeth-gate` records it `[OK] built-in selftest` — its 50-vs-44 red is
-  pre-existing and unchanged by this cycle (stop condition 2, already flagged).
+  all wired**; `gate-teeth-gate` records it `[OK] built-in selftest` — its 50-vs-44 red was
+  pre-existing and unchanged by that cycle (stop condition 2, flagged then).
+  ✅ **Discharged 2026-08-12: `gate-teeth-gate` is back at baseline** — `PASS — 73 CI-invoked
+  gate(s), every one able to return non-zero. 29 carry a red-ability proof; 44 held at
+  baseline.` Six selftests written (`slo-latency-lint`, `test-dsn-coverage-gate`,
+  `sdk-duplication-gate`, `role-grant-validator`, `service-acl-matrix-lint`,
+  `transitions-validation-lint`), each **bitten**: ten deliberate breaks, ten reds, each naming
+  the case it broke.
+
+  🔴 **Writing them found a DEAD CHECK.** `transitions-validation-lint.sh` heuristic 2 —
+  *transitions declared without states* — **could never fire**. `grep -c` already prints `0`
+  when it matches nothing and merely exits 1, so `$(grep -c … || echo 0)` held two zeroes on
+  two lines, and `[[ "0\n0" -eq 0 ]]` is a bash **syntax error, not a false**: bash wrote
+  "syntax error in expression" to stderr, the `if` took the else branch, and the gate printed
+  `PASS`. Found by that file's own `--selftest` **on its first run**. Fixed (`|| true`), still
+  passes the real `transitions.yaml`, and the bite is the bug restored.
+
+  🎯 **The near-miss cases are the point.** These gates document distinctions in prose —
+  a JWT *alias* is the sanctioned fix and must not be flagged like a *re-declaration*; token
+  MINTING in a fixture is not a duplicated verifier; the `deploy_audit` UPDATE exception does
+  **not** extend to DELETE; a service with no meta surface needs no ACL row. Every one was an
+  unenforced comment. A detector that lost one would not go red — it would go **noisy**, the
+  noise would get baselined, and the rule would die by relaxation rather than by deletion.
   **QC (b) live — N/A**: static analysis over the source tree, crosses no service seam.
   **QC (c) real data — N/A**: produces no data; the measurement *is* the output.
 

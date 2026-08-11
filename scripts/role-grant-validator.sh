@@ -11,6 +11,96 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+
+# ── selftest — the red-ability proof (gate-teeth-gate) ──────────────────────
+# Runs THIS script against synthetic repo trees. A copy of itself under
+# $tmp/scripts/ makes `repo_root` resolve to $tmp, so nothing in the production
+# path is parameterised for the test — no env hook that CI could accidentally
+# point at an empty tree, which would make the gate pass vacuously.
+#
+# The deploy_audit cases are why this exists. "UPDATE is sanctioned but DELETE is
+# STILL forbidden" is stated only in a comment above the `case` block; an editor
+# who simplified that exception to `continue` would break an append-only
+# guarantee on deploy history and every real matrix would still lint clean.
+if [[ "${1:-}" == "--selftest" ]]; then
+  st_fail=0
+  st_run() {  # st_run <expected-exit> <name> <matrix-body>
+    local want="$1" name="$2" body="$3" t rc base
+    base="$(basename "$0")"
+    t="$(mktemp -d)"
+    mkdir -p "$t/scripts" "$t/migrations/meta" "$t/contracts/service_acl"
+    cp "$0" "$t/scripts/$base"
+    echo 'CREATE TABLE thing_audit (id int);'  > "$t/migrations/meta/001_thing_audit.up.sql"
+    echo 'CREATE TABLE deploy_audit (id int);' > "$t/migrations/meta/002_deploy_audit.up.sql"
+    echo 'CREATE TABLE widgets (id int);'      > "$t/migrations/meta/003_widgets.up.sql"
+    printf '%s\n' "$body" > "$t/contracts/service_acl/matrix.yaml"
+    rc=0
+    bash "$t/scripts/$base" >/dev/null 2>&1 || rc=$?
+    if [[ "$rc" != "$want" ]]; then
+      echo "  FAIL — $name: exit $rc, expected $want"
+      st_fail=1
+    fi
+    rm -rf "$t"
+  }
+
+  st_run 0 "an append-only audit grant passes" "version: 1
+services:
+  - name: svc-a
+    permissions:
+      thing_audit:
+        - INSERT
+        - SELECT
+      widgets:
+        - SELECT"
+
+  st_run 1 "an audit table granting DELETE is refused" "version: 1
+services:
+  - name: svc-a
+    permissions:
+      thing_audit:
+        - INSERT
+        - DELETE"
+
+  st_run 1 "an audit table granting UPDATE is refused" "version: 1
+services:
+  - name: svc-a
+    permissions:
+      thing_audit:
+        - INSERT
+        - UPDATE"
+
+  st_run 0 "deploy_audit MAY grant UPDATE (the sanctioned state-machine exception)" "version: 1
+services:
+  - name: svc-a
+    permissions:
+      deploy_audit:
+        - INSERT
+        - UPDATE"
+
+  st_run 1 "the deploy_audit exception does NOT extend to DELETE" "version: 1
+services:
+  - name: svc-a
+    permissions:
+      deploy_audit:
+        - INSERT
+        - DELETE"
+
+  st_run 1 "a grant on a table no migration creates is refused" "version: 1
+services:
+  - name: svc-a
+    permissions:
+      ghosts:
+        - SELECT"
+
+  if [[ $st_fail -eq 0 ]]; then
+    echo "[role-grant] SELFTEST PASS — append-only enforced, the deploy_audit UPDATE"\
+         "exception held open, its DELETE half held shut, unknown tables refused (non-vacuous)"
+    exit 0
+  fi
+  echo "[role-grant] SELFTEST FAIL"
+  exit 1
+fi
+
 matrix="$repo_root/contracts/service_acl/matrix.yaml"
 
 if [[ ! -f "$matrix" ]]; then
