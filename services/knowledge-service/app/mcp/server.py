@@ -1277,7 +1277,10 @@ async def kg_view_edit(
     description=(
         "Create or replace one of the caller's saved views (a named lens of "
         "edge-type + node-kind codes) for the current project. Owner-scoped: "
-        "only ever touches your own view."
+        "only ever touches your own view. It replaces the view WHOLE: anything you omit "
+        "is CLEARED, not left alone, so send the full lens every time. Beware that an "
+        "emptied code list means ALL — clearing them by accident widens the view to "
+        "everything rather than narrowing it to nothing."
     ),
     # LEGACY (catalog-unification 2026-07-22): superseded by kg_view_edit (op=upsert).
     meta=require_meta(

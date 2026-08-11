@@ -70,6 +70,43 @@ def test_the_delete_half_is_untouched():
         assert "reversible — recreate with upsert" in desc, rel
 
 
+def _legacy_desc(rel: str) -> str:
+    flat = _flat(rel)
+    start = flat.index("Create or replace one of the caller's saved views")
+    return flat[start: start + 700]
+
+
+def test_the_legacy_tool_carries_the_same_warning():
+    """#263. kg_view_edit DELEGATES to `_handle_kg_view_upsert`, so the legacy tool has the
+    identical clearing behaviour — proven through it directly: upserting with only code+name
+    wiped {knows} | {character} | "keep me" to {} | {} | "". Fixing the unified tool and leaving
+    the legacy one is the half-fix this loop has now shipped twice (#253, #260)."""
+    for rel in ("mcp/server.py", "tools/graph_schema_tools.py"):
+        desc = _legacy_desc(rel)
+        assert "is CLEARED, not left alone" in desc, f"{rel}: the legacy tool gives no warning"
+        assert "send the full lens every time" in desc, rel
+
+
+def test_the_legacy_warning_names_the_inverted_consequence():
+    """Sharper here than on the unified tool: `edge_type_codes` is documented "(empty = all)", so
+    an accidentally-cleared list does not leave an empty view — it leaves one showing
+    EVERYTHING. The cleared state is maximal, not neutral."""
+    for rel in ("mcp/server.py", "tools/graph_schema_tools.py"):
+        desc = _legacy_desc(rel)
+        assert "an emptied code list means ALL" in desc.lower() or \
+               "emptied code list means ALL" in desc, rel
+        assert "widens the view to " in desc, rel
+
+
+def test_the_empty_means_all_convention_still_holds():
+    """The warning above is only true while `(empty = all)` is the convention. If that ever
+    flips, the sentence misleads in the opposite direction."""
+    for rel in ("mcp/server.py", "tools/graph_schema_tools.py"):
+        assert "(empty = all)" in _flat(rel), (
+            f"{rel}: the empty=all convention is gone — re-check the widening warning"
+        )
+
+
 def test_the_repo_really_replaces_rather_than_merges():
     """If upsert ever starts merging, this description becomes the false one and these guards
     would be pinning a new lie. Anchor to the write."""
