@@ -984,6 +984,19 @@
         "CONTROL: 'Count Dracula' reproduces 'entity_id must be a UUID' verbatim at the glossary boundary, which is where a direct MCP call lands (CP-5.3 lives in chat-service)"
       ],
       "admitted": false
+    },
+    "book_chapter_publish": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix found by the CONTROL rather than the failure population. 4 calls / 4 sessions / 4 ok -- no failures at all. The control did the work: publishing an absent chapter, in a book the same session had just read successfully, answered 'book not accessible'. The grant check runs BEFORE that branch, so the book is accessible by definition and the message states something false. book_get_chapter -- same service, same book, same absent id -- answers 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'. FIXED at BOTH chapter-existence sites (the plain and gated propose paths) by returning the chapter error the service already defines. H13's uniformity exists to deny an enumeration oracle, and there is none to protect here: the caller has already proven it may read this book.",
+      "evidence": [
+        "PHASE 2: 4 ok / 0 failed. The finding came from a control, not a failure",
+        "LIVE: a confirm card {title 'Publish chapter (canonize)', descriptor book.publish, destructive:false, signed token}. Calling it publishes nothing",
+        "LIVE A/B on the deployed image (container .Image == the built image id): the same absent-chapter call that returned 'book not accessible' now returns 'no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'",
+        "CODE: both sites fixed, and the guard pins BOTH -- reverting either one reds it, which is the one-of-two-sites shape this repo keeps finding. A grep confirmed no other chapter-existence check still returns the book error",
+        "GUARD LIMITATION, stated in the test itself: it reads the source, because both branches sit behind a pgx pool and a grant check and this package has no DB harness. The anchors are whole branches including their return, not loose substrings",
+        "AND THE GUARD CAUGHT ITSELF FIRST: its initial run reddened because the working copy is CRLF and os.ReadFile returns raw bytes, so LF anchors matched nothing. Normalised, with the reason recorded -- a guard that reds for the wrong reason is not evidence"
+      ],
+      "admitted": false
     }
   }
 }

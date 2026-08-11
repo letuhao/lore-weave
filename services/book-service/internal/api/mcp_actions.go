@@ -253,9 +253,17 @@ func (s *Server) proposeChapterAction(ctx context.Context, in chapterActionIn, n
 		return nil, confirmCardOut{}, mcpOwnershipError(err)
 	}
 	// Mint-time existence check so the agent never shows a card destined to 404.
+	// The grant check above ALREADY passed, so the book is accessible by definition and
+	// `errBookNotAccessible` here states something false. Measured live: proposing a publish for
+	// an absent chapter in a perfectly readable book answered "book not accessible", while
+	// book_get_chapter — same service, same book, same absent id — answers "no active chapter
+	// with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for
+	// valid ids)". One names the wrong noun and offers nothing; the other names the argument and
+	// its satisfier. H13's uniform message exists to avoid an enumeration ORACLE, and there is
+	// no oracle to protect here: the caller has already proven it may read this book.
 	var exists bool
 	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
-		return nil, confirmCardOut{}, errBookNotAccessible
+		return nil, confirmCardOut{}, errChapterNotInBook
 	}
 	return s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
 }
@@ -282,9 +290,17 @@ func (s *Server) proposeChapterActionGated(ctx context.Context, meta lwmcp.Meta,
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
 		return nil, nil, mcpOwnershipError(err)
 	}
+	// The grant check above ALREADY passed, so the book is accessible by definition and
+	// `errBookNotAccessible` here states something false. Measured live: proposing a publish for
+	// an absent chapter in a perfectly readable book answered "book not accessible", while
+	// book_get_chapter — same service, same book, same absent id — answers "no active chapter
+	// with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for
+	// valid ids)". One names the wrong noun and offers nothing; the other names the argument and
+	// its satisfier. H13's uniform message exists to avoid an enumeration ORACLE, and there is
+	// no oracle to protect here: the caller has already proven it may read this book.
 	var exists bool
 	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM chapters WHERE id=$1 AND book_id=$2 AND lifecycle_state!='purge_pending')`, chID, bookID).Scan(&exists); err != nil || !exists {
-		return nil, nil, errBookNotAccessible
+		return nil, nil, errChapterNotInBook
 	}
 	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op, ChapterID: chID.String()}, destructive)
 	if cerr != nil {
