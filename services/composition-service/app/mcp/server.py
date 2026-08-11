@@ -2656,7 +2656,8 @@ def _book_error_result(exc: BookClientError) -> dict:
         }
     if exc.status == 404:
         return {"success": False, "error": "not found or not accessible"}
-    return {"success": False, "error": "book-service unavailable", "status": exc.status}
+    return {"success": False, "error": "book-service unavailable",
+            "detail": {"upstream_status": exc.status}}
 
 
 # ── Tier W — publish (canonization) via confirm-token ─────────────────────────
@@ -2698,10 +2699,15 @@ async def composition_publish(
     chap = _uuid(chapter_id, "chapter_id")
     gate = await outline.chapter_scene_gate(pid, chap)
     if not gate.get("can_publish"):
+        # TOOLV2 LOOP #216 — the gate rides under `detail`, which is the ONLY structured
+        # channel the C4 error body forwards ({message, code, detail}). Returned under its
+        # own key it was dropped at the kit boundary, so the comment above -- "surface the
+        # publish-gate up front so the LLM/user sees WHY" -- was defeated: the caller got
+        # "chapter is not publishable yet" and no counts to act on.
         return {
             "success": False,
             "error": "chapter is not publishable yet",
-            "gate": gate,
+            "detail": gate,
         }
     # Mint a confirm token binding (user, resource=chapter, descriptor, payload).
     # The payload captures the exact target so confirm executes what was proposed.
@@ -5880,9 +5886,14 @@ async def plan_run_pass(
     except UpstreamStale as exc:
         # The gate doing its job. The agent gets the BLOCKERS, not a bare failure — so its next move
         # is "accept the cast" rather than a blind retry that will refuse identically forever.
+        # TOOLV2 LOOP #216 — the blockers must ride under `detail` to survive the C4 body.
+        # Under their own keys they were dropped, which made the comment above false: the
+        # agent got "upstream not ready" and nothing to act on, i.e. exactly the blind
+        # retry it was written to prevent.
         return {
             "success": False, "error": "upstream not ready",
-            "pass_id": exc.pass_id, "blockers": exc.blockers, "detail": str(exc),
+            "detail": {"pass_id": exc.pass_id, "blockers": exc.blockers,
+                       "message": str(exc)},
         }
     except ValueError as exc:
         return {"success": False, "error": "cannot run pass", "detail": str(exc)[:300]}
@@ -6981,7 +6992,7 @@ def _pending_engine(dep: str, module: str, fn: str) -> dict[str, Any]:
     return {
         "success": False,
         "error": f"arc engine not yet integrated (23 {dep}) — expected {module}.{fn}",
-        "pending_dependency": dep,
+        "detail": {"pending_dependency": dep, "expected": f"{module}.{fn}"},
     }
 
 
