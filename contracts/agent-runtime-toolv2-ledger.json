@@ -1581,6 +1581,18 @@
         "TRUNCATION is declared (has_more) rather than left to a total-vs-returned comparison"
       ],
       "admitted": false
+    },
+    "book_steering_delete": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. It returns the DELETED ROW rather than a bare ok -- body, name, id, inclusion_mode, match_pattern, enabled, updated_at -- so a caller can reconstruct what it removed without having read it first. That is the right shape for a delete: the information is gone from the system the instant it succeeds, so the response is the last chance to carry it. The refusal names both accepted selectors: 'no steering rule found with that name/id on this book'.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id]; the row is selected by EITHER name or id (both optional properties)",
+        "SETUP via book_steering_set, so the probe was mine to delete",
+        "CONTROL: an absent name -> 'no steering rule found with that name/id on this book', which names the selector and the scope",
+        "FIRST INVOCATION: {deleted: {id, name, body, inclusion_mode 'always', match_pattern null, enabled true, updated_at}} -- the whole row, not an acknowledgement",
+        "POST-CONDITION through a different tool: book_steering_list returns {rules: [], total: 0}. The throwaway book is back to having no steering rules"
+      ],
+      "admitted": false
     }
   }
 }
