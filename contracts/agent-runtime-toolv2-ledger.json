@@ -619,6 +619,19 @@
         "SCOPE, checked not assumed: purge_project has ONE call site, so the 're-sweep' its comment promises does not exist; no integration test and no FE consumer reads the erasure receipt, so adding graph_nodes as an optional field breaks nothing"
       ],
       "admitted": false
+    },
+    "glossary_propose_merge": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 31 calls / 22 sessions / 27 ok; only FOUR failures and both classes are already answered. THREE are the model asking to merge an entity into ITSELF (winner_id == loser_ids[0]), in 3 different books and 3 sessions on 2026-07-15 -- refused with 'at least one loser_id (distinct from the winner) is required', which names the constraint and the argument. ONE sent NAMES ('Count Dracula' / 'Dracula') and got 'winner_id must be a UUID'; that class is CLOSED for the scalar half -- winner_id IS bound to EntityRef and the binding is present in the registry INSIDE the running chat-service, and CP-5.3's registry shipped 2026-08-10, almost a month AFTER this call. loser_ids stays open under DQ-13 (a ref LIST is structurally invisible to pending_for). I did NOT add a runtime gate for the self-merge: the service already refuses it accurately and cheaply, so a gate would only move the same refusal earlier, and gating list members would pre-empt the very contract question DQ-13 defers.",
+      "evidence": [
+        "PHASE 2: 27 ok / 4 failed = 3 self-merge (3 books, 3 sessions, 2026-07-15) + 1 names instead of UUIDs. No other failure shape exists in the population",
+        "LIVE happy path on the throwaway book: winner Mira Vale, loser Thiên Cơ Lâu -> a confirm card with a signed token, destructive:true, and preview rows naming 'winner (kept)' and 'loser (merged away)' with the note 'soft-deleted; reversible'. NOT confirmed, so nothing in the book changed",
+        "CONTROL A: winner_id == loser_ids[0] reproduces 'at least one loser_id (distinct from the winner) is required' verbatim",
+        "CONTROL B: names in both fields reproduces 'winner_id must be a UUID' verbatim",
+        "CHECKED in the DEPLOYED image, not the repo: chat-service's baked agent-runtime-ref-resolvers.json binds glossary_propose_merge.winner_id -> EntityRef and does NOT bind loser_ids",
+        "DATED, not assumed: git says the resolver registry first shipped 2026-08-10; the name failure is 2026-07-15, so it predates the mechanism that now covers it"
+      ],
+      "admitted": false
     }
   }
 }
