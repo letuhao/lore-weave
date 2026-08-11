@@ -1401,6 +1401,23 @@ class PlanForgeService:
                 try:
                     out = extract_json_object(content)
                     out.setdefault("version", 1)
+                    # The model's focus_paths were used VERBATIM. They feed
+                    # plan_apply_revision(focus_paths=...), so a path that does not resolve
+                    # focuses a refine on nothing. Measured on this run: "mechanics.magic_system"
+                    # (the spec keeps mechanics under `layers`, with no top-level key of that
+                    # name) and "events[act_2]" / "layers.characters[act_2]" (string subscripts
+                    # into arrays). `interpret_rules` — the fallback three lines below — already
+                    # filters its own paths; the LLM branch skipped the guard standing next to it.
+                    #
+                    # Validate against the SAME index this branch already built for the prompt.
+                    # If nothing the model named is real, fall back to the index's own top hits
+                    # rather than to an empty focus: the refine still needs somewhere to look.
+                    real_paths = {e["path"] for e in index if e.get("path")}
+                    proposed = [p for p in (out.get("focus_paths") or []) if isinstance(p, str)]
+                    kept = [p for p in proposed if p in real_paths]
+                    if proposed and not kept:
+                        kept = [h["path"] for h in hits[:2] if h.get("path")]
+                    out["focus_paths"] = kept
                 except Exception:
                     out = rules_result
         else:
