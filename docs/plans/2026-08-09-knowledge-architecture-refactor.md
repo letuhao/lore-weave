@@ -53,22 +53,36 @@ shadow comparison is a contest rather than a formality. T41 (rebuild-from-Postgr
 it **does not exist**, three claims depend on it (graph HA unnecessary · P3 rollback · DR), and it
 is stop condition 4.
 
-✅ **Apache AGE — SETTLED BY BUILDING IT, 2026-08-11** (`docs/measurements/2026-08-11-age-construct-probe.md`).
-The PO recalled AGE as the decision and was right about the original design. Rather than re-cite
-the 2026-08-09 documentation audit, AGE 1.7.0 was run on PostgreSQL 18.1 in a throwaway container:
+🔴 **Apache AGE — THE ELIMINATION DOES NOT HOLD** (`docs/measurements/2026-08-11-age-construct-probe.md`).
 
-- ❌ `MERGE … ON CREATE SET` / `ON MATCH SET` → **`syntax error at or near "ON"`**. Fatal, no rename
-  fixes it, and it *is* the entity-anchoring pattern. **This alone keeps AGE out.**
-- ⚠️ `datetime()` absent — **but `timestamp()` works**, so those 157 sites are a *mechanical
-  rename*. That is the exact test that revived **Kuzu** (M8 found `current_timestamp()`). The
-  audit asked it of Kuzu and never of AGE, so **one of AGE's two disqualifiers does not hold.**
-- Controls passed (plain `MERGE` ✅, plain `SET` ✅), so the failures are the constructs, not the
-  harness.
+⛔ **This entry previously said the opposite, twice.** First it repeated the 2026-08-09
+documentation audit; then it "confirmed" that audit by running **Neo4j Cypher syntax against AGE**
+and reading the syntax errors as missing capability. The PO caught it — *"you must use its
+syntax"* — and the objection is right: **that measures portability, not capability.** Re-tested in
+AGE 1.7.0's own idiom, **all three stated disqualifiers dissolve**:
 
-**AGE stays eliminated, now on `measured` basis rather than `audited`** — and the register's stated
-reason should be narrowed to the one construct that survives. If the PO wants it re-opened it is a
-costed question, not a capability unknown: *rewrite ~33 anchoring sites as MATCH-then-branch to
-gain in-Postgres colocation?*
+| construct | AGE-native form | |
+|---|---|---|
+| `MERGE … ON CREATE SET` (19) | `SET x = coalesce(x, v)` | ✅ |
+| `MERGE … ON MATCH SET` (14) | unconditional `SET` | ✅ |
+| `datetime()` (157) | `timestamp()` | ✅ rename |
+| `CALL { … }` (14) | SQL `CTE` / `LATERAL` | ✅ arguably better |
+
+Even `__was_created` — whose code comment explicitly rejects a `created_at == updated_at`
+heuristic — works exactly, via a pre-`MATCH` count in the same transaction: run twice, the flag
+read `t` then `f`, and `created_at` survived while `updated_at` advanced.
+
+**The cost claim survives; the capability claim does not.** *"AGE requires a full query rewrite"*
+is true (~33 anchoring sites + 157 renames + 14 `CALL{}`). What does **not** follow is *"so its
+only advantage evaporates"* — that assumed AGE's advantage was Cypher portability. Its real
+advantage is **colocation**: one Postgres holding graph, vectors (already headed to
+pgvector/pgvectorscale per **T3**) and truth. A dialect difference does not touch that, and the
+audit retired AGE without ever pricing it.
+
+⚠️ **`O3` / `T1` / `T2` rest on a refuted premise and are flagged for PO re-open** — sealed
+decisions are re-opened by the PO with evidence, never worked around, and this is the evidence.
+**X1** already requires building both candidates and letting **T43** choose; if AGE returns, the
+honest candidate set is **AGE vs Kuzu vs Postgres-relational**.
 
 ### The graph: what is built, what is populated, what is neither
 

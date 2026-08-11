@@ -65,7 +65,21 @@ pattern, so *"AGE requires a full query rewrite and its single advantage evapora
 lacks those constructs — carried basis `audited` (a documentation check), not `measured`, and it
 was the sole load-bearing reason AGE is out.
 
-### ✅ SETTLED BY BUILDING IT — AGE 1.7.0 / PostgreSQL 18.1, 2026-08-11
+### 🔴 SETTLED BY BUILDING IT — and the elimination DOES NOT HOLD
+
+⛔ **The table below is the FIRST run and its verdict is retracted.** It tested **Neo4j Cypher
+against AGE** and read syntax errors as missing capability. The PO caught it: *"why did you use
+your syntax for AGE? you must use its syntax."* Testing dialect A against engine B measures
+**portability**, not capability — the same error the 2026-08-09 audit made from documentation,
+except a container gave the wrong answer the authority of a measurement.
+
+**Re-tested in AGE's own idiom, all three disqualifiers dissolve:** `ON CREATE SET` →
+`coalesce` · `ON MATCH SET` → unconditional `SET` · `datetime()` → `timestamp()` · `CALL { }` →
+SQL `CTE`/`LATERAL`. Even `__was_created` works exactly, via a pre-`MATCH` count in the same
+transaction. **`O3`/`T1`/`T2` are flagged for PO re-open.** Full write-up:
+`docs/measurements/2026-08-11-age-construct-probe.md`.
+
+### The first (retracted) run — Neo4j syntax against AGE, 2026-08-11
 
 Per the PO (*"better than build and prove it work"*). Full write-up:
 `docs/measurements/2026-08-11-age-construct-probe.md`.
