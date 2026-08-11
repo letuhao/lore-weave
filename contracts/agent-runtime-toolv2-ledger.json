@@ -850,6 +850,18 @@
         "CLEANUP verified rather than assumed: world_delete -> deleted:true, and 0 rows in both worlds and world_maps for that id"
       ],
       "admitted": false
+    },
+    "composition_arc_suggest": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix. 46 calls / 2 ok. The 43 'not found or not accessible' are five sessions on 2026-07-15 each retrying a project_id 8-10 times in ONE turn, and the ids exist in NO database -- not a composition work, project or book, not a knowledge project, not a book-service book. The retry storms predate the repeated-failure breaker (2026-07-26). THE DEFECT WAS IN THE TWO SUCCESSES: both returned five candidates with every score 0.0 and `degraded: true` buried inside each candidate's match_reason, with NOTHING at the top level. A caller reads `candidates`; that reads as a ranked answer. Its siblings memory_search and story_search both return a top-level `degraded`, so the convention already existed. FIXED: the marker is now derived from the candidates -- not re-decided from user_model, which would be a second implementation able to disagree with the retriever -- and names WHICH sections went unranked plus that the scores are not comparable.",
+      "evidence": [
+        "PHASE 2: 2 ok / 44 failed = 43 'not found or not accessible' (5 sessions) + 1 'badly formed hexadecimal UUID string'",
+        "DATA: the failing project_ids were classified against loreweave_composition, loreweave_knowledge and loreweave_book -- none exists anywhere. The per-turn concentration is 8-10 calls per message, max iteration 6-8",
+        "DATA: both successes carry score 0.0 on every candidate, cosine 0.0, and match_reason.degraded true. 2 of 2",
+        "CODE: 6 guards, one of which calls the handler and reads the returned dict. THE FIRST VERSION OF THAT GUARD WAS A SUBSTRING OVER THE HANDLER'S SOURCE AND STAYED GREEN WHEN THE ASSIGNMENT WAS MOVED UNDER `if False:` -- the exact trap it was written to catch. Rewritten behaviourally, it reds. 3586 composition tests pass",
+        "LIVE on the deployed image (server.py byte-identical to source by sha256): top-level keys now include degraded {rank: not_semantic, sections: [mine]} and a note saying the candidates are ordered by genre and tension only and their scores are not comparable"
+      ],
+      "admitted": false
     }
   }
 }

@@ -3890,13 +3890,39 @@ async def composition_arc_suggest(
         ],
         ref_fields=_ARC_REF_FIELDS, detail=detail,
     )
-    return {
+    out: dict[str, Any] = {
         "candidates": [
             {"arc_template": arc_dicts[i], "score": c.score, "match_reason": c.match_reason}
             for i, c in enumerate(candidates)
         ],
         **meta,
     }
+    # R4 already degrades honestly PER CANDIDATE (`match_reason.degraded`, cosine 0.0), but
+    # nothing said so at the top level — and a caller reads `candidates`, not each candidate's
+    # match_reason. Measured live: five suggestions, every score 0.0, and the only signal that
+    # the semantic rank never ran was nested two levels down. That reads as a ranked answer.
+    #
+    # Its siblings already put this at the top (`memory_search` / `story_search` both return a
+    # top-level `degraded`), so this is the house convention, not a new one — and C-24's rule
+    # is that a partially-executed declaration says which part did not run.
+    #
+    # DERIVED from the candidates rather than from `user_model is None`: the retriever degrades
+    # for more than one reason (no BYOK model for private arcs, OR the embedder being down),
+    # and re-deriving the cause here would be a second implementation that can disagree.
+    _degraded = sorted({
+        c.match_reason.get("section") or "unknown"
+        for c in candidates
+        if isinstance(c.match_reason, dict) and c.match_reason.get("degraded")
+    })
+    if _degraded:
+        out["degraded"] = {"rank": "not_semantic", "sections": _degraded}
+        out["note"] = (
+            "semantic ranking did not run for " + ", ".join(_degraded) + " — these candidates "
+            "are ordered by genre and tension only, and their scores are not comparable. "
+            "Private arcs rank semantically only once the Work has an embedding model set; "
+            "shared arcs need the platform embedder."
+        )
+    return out
 
 
 def _arc_public_projection(arc: Any) -> dict[str, Any]:
