@@ -115,7 +115,7 @@ single actor-identity type being adopted repo-wide, at which point the slot shou
 | ~~`T5`~~ ✅ **DONE 2026-08-11, 15/15 → 16/16.** The arm fired on its own; the row is paid. Two oracle tests: DP-Ch22’s schema block both ways, DP-Ch24’s turn-0 sentinel, and SF-3’s optional table with a shrink arm. 4/4 bitten. Found `TL-STRING-PRODUCER` — the arm fired first on a string inside a test’s assert MESSAGE. **oracle for `15_turn_boundary`** | `dp-oracle-coverage-gate`'s `NO_PRODUCER` arm fires for it; the row is removed; the doc enters the coverable denominator with a live asserting oracle; **bitten** per the six steps; baseline recorded |
 | ~~`T6`~~ ✅ **DONE 2026-08-11.** `0021_turn_slot` + `claim/release/get_turn_slot`. **No `ActorId`** — `SF-6`: four spellings of who-is-acting already exist, so the occupant is opaque JSON. Writes epoch-fenced (a fenced-out writer must not leave a stale “thinking…”); reads deliberately NOT, because DP-Ch51 names the UI as the consumer and a UI holds no lease. **`ActorId` + DP-Ch51 slot primitive** — schema columns, `claim_turn_slot`/`release_turn_slot`/`get_turn_slot` | same evidence shape as `T1`+`T3`; `ActorId` defined once, with its home justified against the actor-hub prior art |
 | ~~`T7`~~ ✅ **DONE 2026-08-11, 16/16 → 17/17.** The arm fired on real code this time, not a test string. The ADVISORY property is guarded three ways — a live test that commits while the slot is held, an arm that reds if the doc stops saying it, and an arm that reds if the migration grows a NOT NULL/UNIQUE. SF-4 gained a shrink arm on `channel_pause`. 4/4 bitten. **oracle for `21_llm_turn_slot`** | as `T5` |
-| `T8` | **full verification** | `cargo test` workspace, a **detached** `--run-all` sweep, both with their REAL exit codes pasted (`BDR-90`: read the RC, not the notification) |
+| ~~`T8`~~ ✅ **DONE 2026-08-11.** `cargo test --workspace` **rc=0, 181 suites**; `--run-all` **rc=0, 85 gates GREEN, 0 RED**, tree clean, no stale lock. Real exit codes read from the process, not from a notification (`BDR-90`). First sweep was **rc=1 with two RED**, both debts this track created — `cargo test --workspace` **rc=0, 181 suites**. First `--run-all` came back **rc=1 with two RED**, both debts this track created (`TLD-13`): a ratcheted `ChannelId::unverified` seam widened from 3 to 8 by the new tests — now funnelled to ONE site, 3 → 1 — and a registered event with no projection handler, now allowlisted with a checked reason. Both rc=0; final sweep re-running. **original cell:** | `cargo test` workspace, a **detached** `--run-all` sweep, both with their REAL exit codes pasted (`BDR-90`: read the RC, not the notification) |
 
 ---
 
@@ -137,6 +137,30 @@ single actor-identity type being adopted repo-wide, at which point the slot shou
 ## 5 · REGISTERS — decisions · parked · debt · drift
 
 **An empty drift log is not evidence of a clean run** (§0.6d). Append as you go.
+
+**`TLD-13` (2026-08-11) — the full sweep found two debts that every green run had agreed with.**
+`cargo test --workspace` was rc=0 across 181 suites, every unit and integration suite for the
+crates I touched was green, and `--run-all` came back **rc=1 with two RED**. Both were obligations
+this track had created, and neither is visible from inside the crate that created it:
+
+* **`channel-id-adoption-gate`** — the turn tests took `ChannelId::unverified` from 3 to 8 in one
+  file. That is a *ratcheted* seam, the named pre-SDK stand-in for a channel resolved through
+  `SessionContext::move_to_channel`, and it is meant to be shrinking. **Nobody decides to widen a
+  closing seam; they add a test.** Funnelled every call through one documented helper, which makes
+  the count a property of the file rather than of how many tests it has — 3 → 1, and the gate then
+  refused the *improvement* until it was recorded, which is the ratchet working in the direction
+  people forget it has.
+* **`projection-coverage-lint`** — a newly registered event with no projection handler. Allowlisted
+  with a reason that names real machinery (`channel_writer_state.last_turn_number` already holds
+  the durable state; a projection would be a second SSOT), and deliberately **not** claiming
+  "nothing consumes it" — `DurableEventStream` is unbuilt, and that gap belongs to
+  `14_durable_subscribe`, whose own shrink arm will fire when it ships.
+
+**The lesson is about where debt becomes visible.** Both gates live outside the crate under
+change, and both were introduced by ordinary, correct-looking work — writing a test, registering an
+event. A per-crate green tells you nothing about either. **The sweep is not a formality at the end
+of a run; it is the only thing that sees cross-cutting obligations**, and running it twice here
+turned up two real ones after everything local was green.
 
 **`TLD-12` (2026-08-11) — a test file's setup instructions are a claim nothing checks.**
 `integration_channel_writer.rs`'s header says it *"requires per-reality migrations 0002 + 0005 +
