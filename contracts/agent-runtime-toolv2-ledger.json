@@ -2235,6 +2235,10 @@
     "settings_get_defaults": {
       "state": "proven",
       "note": "PROVEN exactly against the SSOT; no defect. Returned {defaults: {chat: 019ebb72-..., distill: 019eb620-...}} -- row-for-row identical to user_default_models for my user, both capability and user_model_id. THE OWNERSHIP CONTROL is what makes that meaningful: the table also holds `planner` and `rerank` defaults (2 rows each) belonging to OTHER users, and neither appears in my result. So the map is scoped to the caller rather than being the table. A note on absence: the description says 'e.g. which model is the default for rerank or embedding', and my map contains neither -- because I have set neither. An absent key means 'no default configured', not 'the tool dropped it', and the SSOT confirms the rows do not exist for me. Worth stating because the same shape (#285's empty `inputs`, #284's placeholder body) has been a defect twice and honest twice in this stretch, and only the store can tell them apart."
+    },
+    "settings_get_profile": {
+      "state": "proven",
+      "note": "PROVEN field-for-field against the auth store; no defect. The description lists seven fields and all seven come back, each matching the users row exactly: email claude-test@loreweave.dev, email_verified FALSE, display_name 'Claude Test', locale '', bio '', languages [] (from {} in the store), plus user_id and updated_at 2026-04-05T15:21:55.653712Z. email_verified being false and reported as false is the one worth checking rather than assuming -- a verification flag that defaults to true would be a security claim the store does not support. WHAT IT DOES NOT RETURN is the more important half. The same users row holds `password_hash` and `account_status`; neither appears in the response. The tool projects the documented fields rather than the row, so a credential hash cannot leak through an agent-facing read -- and this is a Tier-R tool an LLM can call freely."
     }
   }
 }
