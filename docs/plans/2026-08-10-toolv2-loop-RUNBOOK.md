@@ -636,6 +636,35 @@ finding — arguably a better one, since nothing has ever exercised the path.
 
 ---
 
+### 🔴 OPEN — `book_chapter_bulk_create`'s undo hint cannot be replayed (iteration 122, NOT concluded)
+
+**Found on the first invocation the tool has ever received**, which is the whole argument for the
+never-called phase. Live:
+
+```
+book_chapter_bulk_create → created 2, chapter_ids [A, B]
+  _meta.undo_hint = {tool: "book_chapter_delete", args: {book_id, chapter_ids: [A, B]}}
+
+replaying that hint verbatim →
+  validating "arguments": unexpected additional properties ["chapter_ids"]
+```
+
+`book_chapter_delete` requires `[book_id, chapter_id]` — **singular**, one chapter per call. The
+hint emits `chapter_ids`, a plural array. It names a real tool with an argument that tool rejects,
+so the undo is unreplayable. Deleting the two probe chapters took two singular calls.
+
+The service's own test (`mcp_server_test.go:220`) builds an undo hint with the **singular**
+`chapter_id` — so the correct shape is known and asserted elsewhere; bulk-create is the one
+producer that emits the plural, and it is also the only producer of a MULTI-id undo. Nobody found
+it because nothing had ever called the tool.
+
+*Deliberately left unconcluded rather than recorded as proven.* A tool whose undo affordance does
+not work is not proven, and the loop's rule is that only `proven` or `blocked` are terminal. The
+fix (make the hint emit one call per chapter, or give delete a plural form), its guard, its
+falsifier and a rebuild are owed — `--next` will return this tool again.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-10 · A union-typed argument reports itself twice, in pydantic's internal path language
