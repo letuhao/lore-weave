@@ -1697,6 +1697,10 @@
     "composition_arc_template_update": {
       "state": "proven",
       "note": "PROVEN as the legacy twin of composition_arc_template_edit(op=update) and fixed by the SAME one-line change -- the unified tool delegates straight to this handler, so the not-null visibility failure was shared. Verified separately after the deploy: a name-only call through THIS tool changed name and preserved summary. See #155."
+    },
+    "composition_arc_template_get": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. An owned active template returns the full row; an owned ARCHIVED template is still readable, which it must be for composition_arc_template_restore to be usable at all; an unknown id gives the uniform deny. The read carries no embedding, source_ref or embedding_model even for the OWNER -- the projection is an allow-list rather than a model_dump, so the heavy/lineage columns cannot leak by being added to the table later. STATED LIMITATION rather than implied: the description says 'own or system', and this environment has ZERO system templates and zero public ones (0 of 53 rows), so the system branch could not be exercised. What was verified is the owned path and the deny; the system path is asserted by the same _VISIBLE_PREDICATE the list tools use (owner_user_id IS NULL OR visibility='public' OR owner_user_id=$1), but asserting is not measuring and this entry does not claim otherwise."
     }
   }
 }
