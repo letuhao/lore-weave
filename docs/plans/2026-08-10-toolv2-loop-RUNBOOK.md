@@ -683,6 +683,38 @@ still undo by iterating. Nothing is lost; it just cannot be replayed mechanicall
 
 ---
 
+### 🔴 OPEN — `book_chapter_purge` mints an irreversible card for an ACTIVE chapter (iteration 123, NOT concluded)
+
+**Found on the first invocation this tool has ever received.** Its own description:
+
+> "Propose PERMANENTLY purging a **trashed** chapter (irreversible)."
+
+Live, against a chapter whose `lifecycle_state` is **`active`** (verified in the database first):
+
+```
+book_chapter_purge{book_id, chapter_id: <an ACTIVE chapter>}
+  → confirm card, destructive: true,
+    title "Permanently purge chapter (irreversible)"
+```
+
+The precondition the description states is **not checked when the card is minted**. A human is
+handed an irreversible-purge card for a live chapter, having been told the tool only purges
+trashed ones — and the card's own title reinforces that it is irreversible without saying the
+target is not trashed.
+
+*What I did NOT test, and will not:* whether the APPLY path re-checks `lifecycle_state`. Settling
+that means confirming an irreversible purge of a real chapter. If apply does check, this is a
+misleading card and a wasted confirmation; if it does not, it is data loss reachable from a
+mislabelled affordance. **Both readings are worth fixing, and the cheap fix is the same either
+way: refuse at propose time when the chapter is not trashed** — the sibling tools already refuse
+on absent chapters, so the mint-time check pattern exists in this exact file.
+
+*Left unconcluded, like #122.* Tier W, `visibility: legacy`, deprecated ("irreversible chapter
+purge is a MANUAL UI action — never the agent"), and 0 recorded calls — the deprecation is
+holding, which is why nobody has hit this.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-10 · A union-typed argument reports itself twice, in pydantic's internal path language
