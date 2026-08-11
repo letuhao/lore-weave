@@ -659,9 +659,27 @@ producer that emits the plural, and it is also the only producer of a MULTI-id u
 it because nothing had ever called the tool.
 
 *Deliberately left unconcluded rather than recorded as proven.* A tool whose undo affordance does
-not work is not proven, and the loop's rule is that only `proven` or `blocked` are terminal. The
-fix (make the hint emit one call per chapter, or give delete a plural form), its guard, its
-falsifier and a rebuild are owed — `--next` will return this tool again.
+not work is not proven, and the loop's rule is that only `proven` or `blocked` are terminal.
+`--next` returns this tool again — verified.
+
+**And the fix is a contract decision, so it is deferred rather than guessed.** `undoResult`'s own
+doc says `args` is "its argument **template**", i.e. replayable verbatim, and the format expresses
+exactly ONE call. A bulk create's undo is N calls. There is **no plural delete tool** — checked.
+So the two candidate fixes are:
+
+1. **Extend the hint format** with repeat-per-item semantics (e.g. an explicit `each` key). That
+   changes a shared contract consumed by ~8 call sites across book-service, and every consumer of
+   `_meta.undo_hint` would need to understand the new shape.
+2. **Add a plural `book_chapter_delete`** (or a bulk variant) so one hint really is one call. That
+   adds a destructive tool to the surface, which is a product decision about the agent's reach.
+
+Both are defensible and they are not equivalent; picking one silently would set the undo contract
+for every future bulk operation. **The question:** should `undo_hint` be able to describe N calls,
+or should every reversible bulk write have a bulk reverse tool?
+
+*Meanwhile the damage is bounded and stated:* the hint is unreplayable, not wrong about the ids —
+`chapter_ids` holds the correct list, so a human or a consumer that understands the intent can
+still undo by iterating. Nothing is lost; it just cannot be replayed mechanically.
 
 ---
 
