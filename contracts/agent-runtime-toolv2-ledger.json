@@ -1282,6 +1282,18 @@
         "SHAPE: the response is the whole post-state, not a delta, so no follow-up read is needed"
       ],
       "admitted": false
+    },
+    "glossary_book_set_kind_genres": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Same shape as its sibling set_active_genres: add and remove both return the FULL resulting set for that kind, and the probe kind was restored to empty. OBSERVED, with zero measured failures so not acted on: its refusal reads 'no live kind with that kind_code in this book' -- it does NOT name the offending value, while the sibling proved one iteration earlier says 'no live genre with code \"no_such_genre_xyz\"'. Two adjacent tools, one names the value and one says 'that'.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE add: kind_code toolv2_i106, add ['fantasy'] -> genre_codes ['fantasy']",
+        "LIVE remove: -> genre_codes [], the probe kind's original state, restored",
+        "CONTROL: an unknown kind_code -> 'no live kind with that kind_code in this book'",
+        "INCONSISTENCY recorded rather than fixed: set_active_genres names the offending code in its refusal; this one does not. The subject is zero recorded failures, so naming it is an observation for whoever touches this file next, not a change to make on no evidence"
+      ],
+      "admitted": false
     }
   }
 }
