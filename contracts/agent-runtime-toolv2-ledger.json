@@ -800,6 +800,19 @@
         "CONTROL: x=1.9, y=-3.2 -> 'x and y must be relative coords in [0,1]', a bounded refusal that names the range rather than the field alone"
       ],
       "admitted": false
+    },
+    "world_map_add_region": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 8 calls / 8 sessions / 8 ok, no failure population, so again proven by POST-CONDITION rather than by the write's own receipt. It returns {region_id}; world_map_get then returns the region with the exact name and the polygon verbatim, alongside the marker from iteration 70. Its two boundary refusals are specific rather than generic: an out-of-range point and a two-point 'polygon' get different messages, each naming the actual rule. The throwaway world was deleted afterwards and the cleanup verified at the API and the database.",
+      "evidence": [
+        "PHASE 2: 8 ok / 0 failed. No failure population exists",
+        "LIVE on the throwaway map: add_region(name='The Ironlands', polygon=[[0,0],[0,0.3],[0.3,0.3],[0.3,0]]) -> {\"region_id\": \"019feec5-aa24-...\"}",
+        "POST-CONDITION: world_map_get returns regions [{region_id, name 'The Ironlands', polygon [[0,0],[0,0.3],[0.3,0.3],[0.3,0]] verbatim, entity_id null, updated_at}] and still shows iteration 70's marker -- the two writes coexist",
+        "CONTROL A: a point outside [0,1] -> 'each polygon point must be [x,y] with x,y in [0,1]'",
+        "CONTROL B: a two-point polygon -> 'polygon needs at least 3 [x,y] points'. Two DIFFERENT rules, two different messages, neither a generic validation error",
+        "CLEANUP, verified rather than assumed: world_delete -> {deleted:true}; world_map_get -> 'map not found'; 0 rows in worlds and world_maps. The world's auto-created bible book is lifecycle_state='purge_pending' with world_id NULL -- I checked that column before calling it an orphan, which is the same check that already caught me once in this loop"
+      ],
+      "admitted": false
     }
   }
 }
