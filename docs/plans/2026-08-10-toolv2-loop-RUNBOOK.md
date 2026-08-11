@@ -570,6 +570,18 @@ that the write is wrong.**
 If it is idempotent, the card should say so the way status_change's does; if it conflicts, the
 card is actively misleading and the propose should refuse.
 
+**Sharpened in iteration 80, and it removes the "maybe the check is expensive" defence.** The
+DIRECT create path in the same service, on the same rows, already does it — and does it well:
+
+| call | result |
+|---|---|
+| `glossary_book_create(level="kind", code="toolv2_i80_kind")` | `status: created` |
+| the same call again | `a row with code "toolv2_i80_kind" already exists in this book — use glossary_book_patch to edit it` |
+| `glossary_propose_new_kind(code="character")`, which exists | a normal creation card, no warning |
+
+The create refuses, names the code, and names the tool that does what the caller wanted. The
+propose, for the same conflict, mints a confirm card. One of these two paths has the check.
+
 ---
 
 ### D-11 · A duplicate propose escapes every breaker, because a confirm card is never identical
