@@ -206,6 +206,13 @@ like success (`BDR-50`, `BDR-56`).
   makes the first one's mutation permanent, and the restore-by-digest guard
   cannot see it. The `O_EXCL` lock now refuses this — and **a refusal is exit 2,
   which is failure evidence, not a passing verification.**
+* **Run `--run-all` DETACHED.** It takes ~25 minutes; a foreground call with a
+  shorter timeout gets SIGTERM, and the harness that was mid-bite never restores
+  — `BDR-89` left a deleted assertion in `spec_oracle.rs` and a stale
+  `target/.bite-harness.lock`. The lock cannot cover this: it is released by the
+  process, and the signal kills the process. **After any interrupted sweep, run
+  `git status` before anything else** — the exit code was `143` and said nothing
+  about the mutated file.
 * **Heredocs eat backslashes** (§0.6). Use the Edit/Write tools for anything
   containing one.
 * **Never run two suites against one throwaway database name** (§0.6).
@@ -707,6 +714,7 @@ not implement toward it.
 | `1b7db-11` | `channels_id_positive` constrains an unwritten `reality_root` derivation | its first implementation |
 | `G-S3`/`G-S4` | lore bible has no schema; "pre-manifest stub" is not a named artifact | the BOOK_TO_GAME track |
 | `D-DP-ORPHANED-CAPABILITY-ON-REJECTED-BIND` | **promoted here 2026-08-10 from the post-slice-5 review**, which is now collapsed — an open row inside a closed section is a row nobody re-reads. `MetaControlPlane::verify_bind` records the capability before returning; `SessionContext::bind` can still reject afterwards on `now_ms >= expires_at_ms`, so a caller more than one TTL ahead of the CP's clock leaves a live row whose secret was dropped. Not a security hole — an unpresentable row — but the shape (a store write whose caller can still fail) is worth a name | `session_registry` carries `@retention_hot: 90d`, so these are already inside a retention regime. Wakes on the first retention sweep reporting a non-trivial count of never-validated rows — which needs a `last_validated_at` column, and that column arrives with the fix |
+| `SWEEP-RED-UNEXPLAINED` | **`dp-oracle-bite-gate` reported RED once inside `--run-all` and has not reproduced** — green on three runs since, one of them a second full sweep from a clean tree (85 green, rc=0). Nothing was changed between, so there is no fix to claim. Leading hypothesis (`BDR-90`): an orphaned `cargo` child of the sweep I had killed with SIGTERM a minute earlier, holding `target/`'s lock — consistent with the evidence, not established by it | **wakes on the next RED from this harness.** It is uninvestigable as things stand: `gate-wiring-gate` prints one summary line per gate and discards the captured output, so the failing leg cannot be recovered from the log. The fix that would make a recurrence diagnosable is to RETAIN the failing gate's output — do that when it next fires, or sooner if another one-off appears |
 | `GATE-TEETH-43` | **43 of 97 CI-invoked gates carry no red-ability proof** — no `--self-test`, no `test_<name>.py`. The HARD tier is green (every one *can* return non-zero); what is missing is the demonstration that it *does*. Opened at **55** on 2026-08-10 when `BDR-70` widened the teeth gate's scope from 58 to 97; **55 -> 51 the same day**, taking the four `dp-slice{1,5b,5c,5d}-bite-gate` harnesses first because a bite harness with broken machinery prints `bitten: N/N` and is believed. Each now proves the MACHINERY — the four-way verdict on synthetic transcripts, byte-exact CRLF round-trip, the restore check firing on a corrupted file, and every leg anchor still present — not the guards it bites | ratcheted at 51 and cannot grow; `NO_PROOF_BASELINE` records every move with its reason. **51 -> 48 (2026-08-10):** `db-safety-gate`, `doc-language-gate`, `language-bias-gate` — the three that read a corpus and could silently read nothing; each gained a REACH family, and the run found 7 stale baseline rows plus a gate red on `main` for 9 days. **48 -> 47:** not progress — `deferral-gate.py` already had a proof and was being FALSELY ACCUSED, its `def self_test` deleted by a docstring stripper that pairs any two triple-quotes (`BDR-80`). Python is parsed now. **Next: `--verify-proofs` RUNS 43 of them in CI, so the remaining 47 are gates whose red-ability nothing demonstrates AT ALL** **47 -> 43 (2026-08-11): the security-adjacent batch is DONE** — `injection-coverage-lint`, `meta-sensitive-read-bypass-lint`, `pii-classify-lint`, `test-dsn-coverage-gate`, each with a REACH family beside its detectors because all four are corpus walkers and each had a different silent-nothing path: `pii-classify` grandfathers everything below 018 (a renumbering leaves it inspecting zero and printing PASS), `test-dsn` derives its unarmed set FROM its gating set (an empty walk prints *"every gating variable is armed"*, the exact false clean it exists to prevent one level up), `injection-coverage` skips a missing `SCAN_DIRS` entry with a bare `continue` (renaming a service directory retires it over that whole service), and `meta-sensitive-read` guarded its zero-tables case but not its grep ROOTS. **15/15 arms bitten, all four files restored byte-exact; the lowering itself bitten** — removing one proof reds `grew to 44 (baseline 43)`. `--verify-proofs` now RUNS 47 (was 43). Two real defects found, neither visible on green: `os.environ["X_TEST_Y"]` was NEVER matched by the gate whose subject is invisible suites (`BDR-87`), and a 16-row list of tracked injection holes had no shrink arm (`BDR-88`). Plus `BDR-86`. **Next batch by blast radius: the destructive/tenancy set** — `meta-write-discipline-lint`, `tenancy-scope-lint`, `secret-scan`-adjacent gates; pick them the same way, worst-consequence-first |
 
 
@@ -1508,6 +1516,51 @@ continuation check in §0.6d has an executable answer.
 The work itself then took one turn: `cargo check` enumerated every call site, and the four
 signatures, one call site and two test callers were done in minutes. **The stop cost more than the
 row did.**
+
+**`BDR-90` (2026-08-11) — a ONE-OFF red in the sweep, not reproduced, and recorded as unexplained
+rather than closed.** The first completed `--run-all` reported
+`dp-oracle-bite-gate.py RED (194.9s)` and exited 1. It is green on three subsequent runs: twice
+standalone (`19/19`, rc=0, ~196s) — the second one invoked exactly as the sweep does, relative
+path, `cwd=REPO`, `stdin=DEVNULL`, captured output — and once inside a second full sweep from a
+clean tree (`GREEN (192.6s)`, 85 green, rc=0).
+
+**What I did not do is call it fixed.** Nothing was changed between the red and the greens, so
+there is no fix to claim; the only honest statement is that it did not reproduce.
+
+The leading hypothesis, unproven: that sweep started ~1 minute after I killed the previous one
+with SIGTERM (`BDR-89`), and **killing the Python parent does not kill its `cargo` child.** An
+orphan holding `target/`'s lock would make a leg's cargo call fail, and `gate-wiring-gate`'s own
+MUTATING comment says a raced harness *"reports 'did not bite'"* — a bias toward FALSE RED, which
+is the direction observed. Consistent with the evidence and not established by it: I checked for
+orphaned `cargo`/`rustc` processes only *before the second* sweep (none), which is the wrong side
+of the event to learn anything.
+
+**What would settle it:** if it recurs, capture the harness's own output — `gate-wiring-gate`
+prints only a summary line per gate, so the leg that failed is not recoverable from the log
+afterwards. That is the actionable gap this leaves: **a sweep that reports RED should retain the
+failing gate's captured output**, or a one-off like this is uninvestigable by construction.
+
+**`BDR-89` (2026-08-11) — a TIMEOUT reaches `BDR-53`'s hazard by a route the lock cannot cover,
+and it leaves the mutation in the tree.** `gate-wiring-gate --run-all` takes ~25 minutes; run in
+the foreground it was killed at a 10-minute tool ceiling (exit 143, SIGTERM). It left
+`crates/dp/tests/spec_oracle.rs` **modified** — a bite harness had deleted
+`check_deferred_write_forms();` as its one-line mutation and died before restoring — plus a stale
+`target/.bite-harness.lock`.
+
+**The `O_EXCL` lock cannot help here.** It exists to stop a *second* harness making a *first*
+one's mutation permanent, and it does that well. But it is released by the process, and SIGTERM
+kills the process: the lock outlives the run while the restore does not. So the tree is left
+mutated **and** further harnesses are refused — the failure is loud in the second respect and
+completely silent in the first.
+
+What makes it dangerous is the timing: had I committed without re-reading `git status`, a deleted
+assertion would have gone in as part of a commit about gate rigour. The mutation is a *deletion of
+a check* — precisely the change a bite is designed to make, and precisely the change nobody wants
+to keep.
+
+**Two rules.** Run `--run-all` **detached**, never in a foreground call with a timeout shorter
+than the sweep. And after any interrupted sweep, `git status` **before** anything else — the tree
+is the evidence, not the exit code, which in this case was `143` and said nothing about the file.
 
 **`BDR-88` (2026-08-11) — a list of tracked SECURITY holes had no shrink arm.**
 `injection-coverage-lint`'s `BASELINE` is sixteen modules that assemble an LLM prompt from

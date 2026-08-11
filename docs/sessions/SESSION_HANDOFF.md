@@ -24,6 +24,8 @@
 > arm**: a 16-row list of tracked injection holes had none, so a module that adopted the sanitizer
 > kept its exemption (`BDR-88`).
 >
+> ⚠ **One unexplained RED is tracked, not closed:** `dp-oracle-bite-gate` failed once inside `--run-all` and is green on three runs since, including a second full sweep from a clean tree (85 green, rc=0). Nothing changed between, so nothing was fixed — see the `SWEEP-RED-UNEXPLAINED` row. It is currently **uninvestigable**: `gate-wiring-gate` keeps one summary line per gate and discards the captured output, so a one-off leaves no leg to read. Retaining the failing gate's output is the fix, and the row says so.
+>
 > ⚠ `pathlib.Path.write_text` on Windows rewrites newlines and will break any shell gate you
 > round-trip through it — use `read_bytes`/`write_bytes`. A hand-run `bash script --selftest`
 > reported PASS on the corrupted file; `--verify-proofs`, a fresh subprocess, reported exit 2. It
