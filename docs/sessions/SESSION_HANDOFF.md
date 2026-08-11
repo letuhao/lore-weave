@@ -2,7 +2,7 @@
 
 ## ▶ GAME BUILD — a reality is created over HTTP, and the engine's authorable surface is finally stated (2026-08-11, branch `feat/game-logic`)
 
-**HEAD:** `cdfadfc61`+ · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `6b8cbf177` · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
 > **▶ DO NEXT — `GATE-TEETH-43`'s next batch, or `G-S3` (give the lore bible a shape).**
 >
@@ -30,6 +30,28 @@
 > was the only login role (there are three). Corrected, and tracked as `AS-PIPELINE-INDEX-ROT`:
 > nothing compares a doc's "this is unbuilt" claim against the thing it names.
 >
+
+### ▶ DEFERRED ITEMS — the four tracks of 2026-08-11, in one place
+
+**Added by audit, and the gap is the point.** Each row below already existed on its own board, and
+**seven of the eleven appeared nowhere else** — not here, not in `docs/deferred/DEFERRED.md`. A
+per-track board is opened by whoever is on that track; this file is opened by whoever is next. A
+deferral recorded only where the deferrer was standing is how the *"we'll come back to it"* trap
+works, and CLAUDE.md asks for the row to be here for exactly that reason.
+
+| id | what | gate reason | wakes on |
+|---|---|---|---|
+| `WS-GATEWAY-CONSUMER` | `api-gateway-bff` has no world route, so `I1`'s player-facing path to reality creation does not exist | 1 (scope) + 2 (structural) | **it is the next BUILD, not a deferral** — but see the ⚠ above: it is `S8`, and `S8` is a PO call |
+| `WS-COMPOSE` | world-service now has a server binary, no compose service block and no general `Dockerfile` | 1 (scope) | anyone running the game tier from compose |
+| `WS-ADMIN-CLI-HTTP` | `SubprocessProvisionInvoker` still execs the `provision` binary rather than calling the route | `WS-F3` — swapping the only production reality-creation path was not that track's mandate | retiring the `provision` `[[bin]]`, which is the witness that it is still the path |
+| `WS-TIMEOUT-DETACH` | a timed-out provision keeps provisioning: `spawn_blocking` is not cancelled when the outer future drops | 1 — bounding it needs a cancellation token through `Effects`, the same async-trait refactor `WS-F5` defers | a provision that actually reaches the 300s ceiling. Recovery is built and proven (`resumed` / `already_provisioned`, one registry row) |
+| `WS-IMAGE-DRIFT` | **nothing compares a declared container image against the running one** — cost this run a failed smoke and cost the turn-loop track a deferral row, for a fix already written and already built | 2 (new check, real design question) | **no mechanism, and that is the finding** |
+| `AS-PIPELINE-INDEX-ROT` | the pipeline index's gate table was wrong on four of five rows, all claiming blocked what was built | 2 | **no mechanism.** `actor-hub-figures-gate` is the shape that works, for figures; generalising it to *claims* is the work |
+| `AS-S8-UNPARKED-BY-ITS-OWN-GATES` | `S8`'s three stated wake-up conditions are now all met; what parks it is build order and `S3`/`S4` | **a product decision, explicitly not an agent's** | the PO |
+| `TL-DOWN-GUARD` | `0020`'s down migration destroys live turn history — it needed no guard when nothing wrote a non-zero value, and `T3` ended that | 2 | the next edit to that migration, or any real rollback |
+| `TL-SDK-FACADE` | `dp::advance_turn` deliberately does not exist; `crates/dp`'s `WriteBackend` has one impl and no consumer | 3 (naturally-next-phase) | DP-Ch14 cross-node routing |
+| `DS-REDIS-TAIL` | DP-Ch16's default subscribe path `dp:events:*` exists in four documents and zero source files | 4 → **2** (it is buildable, not blocked) | a measured latency requirement, or the gateway fan-out landing |
+| `DS-OUTBOX-RELAY` | the outbox branch of DP-Ch17 was taken; the relay turning an outbox row into a `dp:events:*` entry was never written | 2 | same trigger as `DS-REDIS-TAIL` — they are one piece of work |
 
 > **What shipped, in three consecutive tracks.** The turn loop
 > ([run-state](../plans/2026-08-11-turn-loop-RUN-STATE.md), `T0`–`T8`): `advance_turn` + the DP-Ch51
