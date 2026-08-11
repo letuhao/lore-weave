@@ -1356,6 +1356,17 @@
         "THE SHAPE IS THE FINDING: name is EMPTY on every item. These are extraction products with no usable name, and source_kind_code records what the extractor believed the kind was. 29 such entities exist across all books"
       ],
       "admitted": false
+    },
+    "glossary_propose_restore_revision": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Its card is unusually honest about scope: destructive:true, titled 'Restore entity to revision #1', with a preview note reading 'prunes-then-restores attributes/translations/evidence/links to that snapshot'. That word PRUNES is what matters -- a restore is not purely additive, it removes anything added since, and the card says so before the human agrees rather than after. The refusal is scoped to the right pair: 'revision not found for this entity', not a generic not-found.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE: a confirm card, descriptor restore_revision, destructive:true, titled 'Restore entity to revision #1', with a signed token. Not confirmed, so nothing was restored",
+        "THE PREVIEW NOTE IS THE POINT: 'prunes-then-restores attributes/translations/evidence/links to that snapshot' -- it names the four things affected AND admits that restoring removes later additions",
+        "CONTROL: a well-formed but absent revision_id -> 'revision not found for this entity'. Scoped to the entity+revision pair rather than blaming the book, which is the failure iteration 86 had to fix on a sibling"
+      ],
+      "admitted": false
     }
   }
 }
