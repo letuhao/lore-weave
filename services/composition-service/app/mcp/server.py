@@ -6058,6 +6058,22 @@ async def plan_bootstrap_apply(
     bid = _uuid(book_id, "book_id")
     await _gate(tc, bid, GrantLevel.EDIT)
     pid = _uuid(proposal_id, "proposal_id")  # validate shape before minting
+    # ...and validate that it EXISTS. Shape-only was the whole check: a fabricated but
+    # well-formed UUID minted a token, the confirm card rendered it as a normal action, and only
+    # the confirm failed — with `{"code": "action_error"}` and no message, so nobody could tell
+    # why. For a tool that CREATES REAL CHAPTERS that is the worst place to discover it. The
+    # lookup is book-scoped (get_for_book) and the caller has already passed the EDIT gate above,
+    # so this reveals nothing they could not already read.
+    svc = await get_bootstrap_service()
+    rec = await svc.get(bid, pid)
+    if rec is None:
+        raise ToolError(
+            f"no bootstrap proposal {pid} on this book — run plan_bootstrap_propose first and "
+            "pass the proposal_id it returns (a proposal is book-scoped, so one from another "
+            "book will not resolve here)"
+        )
+    diff = rec.diff or {}
+    chapters = diff.get("new_chapters", [])
     payload = {"book_id": str(bid), "proposal_id": str(pid)}
     confirm_token = mint_confirm_token(
         settings.confirm_token_signing_secret, tc.user_id, bid, _BOOTSTRAP_APPLY_DESCRIPTOR, payload,
@@ -6067,6 +6083,16 @@ async def plan_bootstrap_apply(
         "descriptor": _BOOTSTRAP_APPLY_DESCRIPTOR,
         "book_id": str(bid),
         "proposal_id": str(pid),
+        # The mint returned nothing but the ids it was handed, so the agent had nothing to tell
+        # the human it was asking to approve. These are the same numbers plan_bootstrap_propose
+        # already computes from the same diff — one computation, two consumers.
+        "summary": (
+            f"create {len(chapters)} chapter(s)"
+            + (f" + seed {len(diff.get('new_glossary_entities', []))} glossary entit(ies)"
+               if diff.get("new_glossary_entities") else "")
+        ),
+        "new_chapters_count": len(chapters),
+        "new_glossary_entities_count": len(diff.get("new_glossary_entities", [])),
     }
 
 
