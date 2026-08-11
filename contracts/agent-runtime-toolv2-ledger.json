@@ -1889,6 +1889,10 @@
     "composition_motif_link_delete": {
       "state": "proven",
       "note": "PROVEN. Deleting an owned edge returns {deleted: true} and the row is GONE -- count 0, a HARD delete, unlike every other delete in this service (motifs, canon rules, entity overrides, arcs, derivatives all soft-archive). That is not an inconsistency: motif_link has no lifecycle column at all (id, from_motif_id, to_motif_id, ord, created_at, kind), so the table was designed for hard deletes. An edge carries no authored content -- it is three ids and an ordinal -- so there is nothing to preserve for recovery the way a motif's beats or a chapter's prose must be. Re-deleting and an unknown link_id both give the uniform deny. OBSERVED: undo_hint is null. Honest for a hard delete in the sense that nothing can be un-deleted -- but a REPLAYABLE hint was available here, since composition_motif_link_create takes exactly the four values this row held, which is precisely what #184's entity_override_delete does (its hint names override_add with the arguments to recreate it). The one thing a replay would lose is the row id, which nothing references. Recorded, not filed: #122 established that undo_hint is explicitly non-contractual with no consumer in the tree."
+    },
+    "composition_motif_link_edit": {
+      "state": "proven",
+      "note": "PROVEN on both ops with delegation parity confirmed rather than assumed: op=create refused a real 2-cycle (duel composed_of ambush, then ambush composed_of duel) with the message byte-identical to #203's legacy composition_motif_link_create, and op=delete removed the edge through the same path. Both ops name their missing companions ('op=create requires from_motif_id, to_motif_id, and kind'). Worth noting the cycle guard applies per KIND: #203 proved it on `precedes`, this proved it on `composed_of`, which are the two the description says it guards -- variant_of is deliberately excluded, and that asymmetry is stated rather than silent ('a cycle (on composed_of/precedes) is refused'). A variant-of cycle is meaningful (two motifs can each be a variant of the other) where a composition or succession cycle is not."
     }
   }
 }
