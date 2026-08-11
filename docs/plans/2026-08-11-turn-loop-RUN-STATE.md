@@ -100,12 +100,55 @@ The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md
 | `TL-PAUSE` | `channel_pause` (DP-Ch35) is unbuilt, so DP-Ch53's Strict/Concurrent/Cancellable patterns cannot be built | `SF-4`'s reversal — `channel_pause` shipping |
 | `TL-DPCLIENT` | two LOCKED docs specify `impl DpClient` and no such type exists; `SF-1` routes around it rather than fixing the docs | a third doc specifying `DpClient`, or the type actually being introduced |
 | `TL-TURN-VOCAB` | four concepts named "turn"; `SF-2` documents rather than renames | a review in which two of them are confused |
+| `TL-PGVECTOR` | **`template1` on the dev cluster records `vector 0.8.1` as INSTALLED while the cluster has no pgvector files** (PG 18.1 / Alpine), so every database `CREATE DATABASE` makes from it inherits a `pg_extension` row pointing at a missing shared library. `0006_projections` dies on `could not access file "vector"`. This is `W7-TEMPLATE1`'s hazard arriving by its **inverse**: that row warns the template silently *carries* pgvector into every new DB; the live failure is that it silently *claims* to, after the image stopped providing it — so provisioning yields databases that look correct and break on the first vector DDL. Not this track's subject and not fixed here | anyone provisioning a reality that needs embeddings on this cluster, or CI adopting this image. The fix is infra: install pgvector in the image, or drop the stale `pg_extension` row from `template1`. **Do not paper over it in a migration** |
+| `TL-DOWN-GUARD` | `0020`'s down migration discards every channel's turn history with no refuse-if-populated guard, unlike `036` in the meta tree. Correct today — nothing writes a non-zero value | **`T3`.** The moment `advance_turn` has a producer, this down migration can destroy live game state. Revisit it in the same change |
 
 ---
 
 ## 5 · REGISTERS — decisions · parked · debt · drift
 
 **An empty drift log is not evidence of a clean run** (§0.6d). Append as you go.
+
+**`TLD-7` (2026-08-11) — skipping a failed migration produced a CASCADE failure that read as a
+second defect.** With `0006_projections` dying on the missing extension, the obvious move was to
+skip it and continue. `0008` then failed on `relation "npc_session_memory_embedding" does not
+exist` — a consequence of the skip, not an independent problem, and for a moment it read as *"the
+migration chain is broken in two places"*. `BDR-56` in its ordinary clothes.
+
+The fix was to stop hand-picking: apply exactly `0020`'s **transitive dependency closure as
+declared in `manifest.yaml`** (`0001`, `0002`, `0014`). That is principled rather than
+convenient, and it bought a second property free — **if `0020` had needed anything outside its
+declared closure, the run would have said so**, which makes the manifest row itself tested rather
+than asserted. It didn't; the row is correct.
+
+**`TLD-6` (2026-08-11) — `template1` claims an extension the cluster does not have.** See
+`TL-PGVECTOR` in §4. Recorded here for the general shape: **an environment can lie in the
+optimistic direction.** `CREATE DATABASE` faithfully copies `template1`'s `pg_extension` rows, so
+a cluster that once had pgvector and no longer does hands out databases that pass every
+"is the extension installed?" check and fail the first time anything uses it. The check that would
+have caught it is `pg_available_extensions` (the files) rather than `pg_extension` (the claim) —
+two tables that answer different questions and are easy to mistake for each other.
+
+**`TLD-5` (2026-08-11) — the shrink arm whose whole purpose was noticing THIS DAY did not notice
+it.** `DEFERRED_EVENT_COLUMNS`'s row said, in its own words, that it *"fails the day a migration
+adds the column"*. `0020_turn_boundary` added `events.turn_number`, the suite ran, **4 passed**,
+and the row survived. The shipped side read one hardcoded file:
+
+```rust
+let shipped_sql = migration("0014_channel_ordering.up.sql");
+```
+
+`NV-3` — the scope never reaches it. An enumerated scope is **default-uncovered**, and the
+unasked question is the only one a deferral register exists to answer: *what about a migration
+that does not exist yet?* The register was not wrong about its subject; it was blind to the event
+it was written to detect, and it would have stayed blind while reading, to a reviewer, exactly
+like a working mechanism.
+
+Fixed by walking every per-reality migration in the **forward** direction, with a reach floor. The
+**reverse** arm still reads `0014` alone, on purpose: DP-Ch11 governs what that migration puts on
+the event log, so flagging `0013`'s `content_sha256` or `0016`'s `ruleset_digest` would be this
+oracle claiming authority over another document's columns. Two directions, two scopes, both
+stated at the call site. 3/3 bitten.
 
 **`TLD-4` (2026-08-11) — the most-cited LOCKED standard in this repo is not CITABLE by the gate
 that demands citations.** `Reconciles:` is matched against the **first cell** of every standards-index

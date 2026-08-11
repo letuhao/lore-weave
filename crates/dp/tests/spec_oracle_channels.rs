@@ -26,14 +26,28 @@
 //! itself). Both are the `FLOW-2` shape — a document and a fact drifting apart
 //! with nothing watching — and both are watched now.
 //!
-//! # The finding this file shipped with
+//! # The finding this file shipped with — PAID 2026-08-11
 //!
 //! `DP-Ch11`'s schema block declares **five** columns on `events`. The shipped
-//! migration adds **four**: `turn_number` is specified by a LOCKED document and
-//! created by no migration in this repo, measured rather than assumed. It gets
-//! a [`DEFERRED_EVENT_COLUMNS`] row naming what it waits on, and the row fails
-//! the day a migration adds the column — which is the whole difference between
-//! a register and a comment.
+//! migration added **four**: `turn_number` was specified by a LOCKED document
+//! and created by no migration in this repo, measured rather than assumed. It
+//! got a [`DEFERRED_EVENT_COLUMNS`] row naming what it waited on, and the row
+//! failed the day a migration added the column — which is the whole difference
+//! between a register and a comment.
+//!
+//! `0020_turn_boundary` is that day, and the register is now **empty**.
+//!
+//! ⚠ **The arm did not fire on its own, and that is the lesson.** The shipped
+//! side read ONE HARDCODED FILE — `0014_channel_ordering.up.sql` — so the
+//! promise *"fails the day a migration adds the column"* was true only for
+//! `0014`. `0020` added the column, the suite stayed green, and the row
+//! recording it as unshipped survived. `NV-3`: an enumerated scope is
+//! **default-uncovered**, and the unasked question was *"what about a migration
+//! that does not exist yet?"* — which is the only question a deferral register
+//! is FOR. The forward direction now walks every per-reality migration
+//! (`columns_added_to_events_anywhere`, with a reach floor); the reverse arm
+//! still reads `0014` alone, deliberately, because DP-Ch11 governs that
+//! migration's columns and not another document's.
 
 use std::fs;
 use std::path::PathBuf;
@@ -53,12 +67,19 @@ fn migration(name: &str) -> String {
 }
 
 /// `DP-Ch11` columns that no migration creates, each with what they wait on.
-const DEFERRED_EVENT_COLUMNS: &[(&str, &str)] = &[(
-    "turn_number",
-    "DP-A17 / DP-Ch22's per-channel turn counter — 15_turn_boundary.md's turn machinery has no \
-     implementation and nothing would advance the counter, so the column would be a NOT NULL \
-     DEFAULT 0 that never moves",
-)];
+/// **EMPTY as of 2026-08-11**, and that is the register working rather than the
+/// register being unnecessary.
+///
+/// Its one row was `turn_number`, deferred because *"15_turn_boundary.md's turn
+/// machinery has no implementation and nothing would advance the counter, so
+/// the column would be a NOT NULL DEFAULT 0 that never moves."* That reason
+/// named its own unblocking condition, `0020_turn_boundary` met it, and the row
+/// is gone — the register shrank, which is the only direction it may move.
+///
+/// An empty slice is deliberate rather than a deletion of the machinery: the
+/// arms above still run, so the next LOCKED column that no migration creates
+/// gets caught on arrival instead of needing this apparatus rebuilt.
+const DEFERRED_EVENT_COLUMNS: &[(&str, &str)] = &[];
 
 /// Drop `--` comments so a column named in prose is not read as a column.
 ///
@@ -88,6 +109,69 @@ fn added_columns(sql: &str) -> Vec<String> {
         }
         rest = &rest[i + "ADD COLUMN".len()..];
     }
+    out
+}
+
+/// Every column added to `events` by ANY per-reality migration.
+///
+/// # Why this is not `added_columns(migration("0014_channel_ordering.up.sql"))`
+///
+/// It was, and that made `DEFERRED_EVENT_COLUMNS`'s promise false. The register
+/// says a row *"fails the day a migration adds the column"* — but the shipped
+/// side read **one hardcoded file**, so the day arrived in `0020_turn_boundary`
+/// and nothing happened. Measured: the migration added `events.turn_number`,
+/// the suite stayed green, and the row recording it as unshipped survived.
+///
+/// `NV-3` — an enumerated scope is **default-uncovered**: the question "what
+/// about a column added tomorrow, in a migration that does not exist yet?" had
+/// the answer "invisible". Which is exactly what a deferral register cannot
+/// afford, because its whole value is noticing the day its subject arrives.
+///
+/// **The reverse arm deliberately still reads only `0014`** — see its call
+/// site. The two directions have different scopes on purpose: DP-Ch11 governs
+/// what `0014` puts on the event log, so a column added by a DIFFERENT
+/// migration (`0013`'s `content_sha256`, `0016`'s `ruleset_digest`,
+/// `0020`'s `turn_number`) is another document's subject and flagging it here
+/// would be this oracle claiming authority it does not have.
+fn columns_added_to_events_anywhere() -> Vec<String> {
+    let dir: PathBuf =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/migrations/per_reality");
+    let mut out = Vec::new();
+    let mut seen_files = 0usize;
+    let Ok(entries) = fs::read_dir(&dir) else {
+        panic!("cannot read {}", dir.display());
+    };
+    let mut paths: Vec<PathBuf> = entries
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.to_string_lossy().ends_with(".up.sql"))
+        .collect();
+    paths.sort();
+    for p in &paths {
+        let Ok(sql) = fs::read_to_string(p) else { continue };
+        seen_files += 1;
+        // Only `ALTER TABLE events` blocks — `ADD COLUMN` on a sibling table is
+        // not a column on the event log.
+        let code = sql_code(&sql);
+        let mut rest = code.as_str();
+        while let Some(i) = rest.find("ALTER TABLE events") {
+            let tail = &rest[i..];
+            let end = tail.find(';').unwrap_or(tail.len());
+            out.extend(added_columns(&tail[..end]));
+            rest = &tail[end.min(tail.len())..];
+            if rest.is_empty() {
+                break;
+            }
+            rest = &rest[1.min(rest.len())..];
+        }
+    }
+    // Reach floor: a walk that finds nothing and a tree with no event columns
+    // are byte-identical, and this function's whole job is seeing the arrival.
+    assert!(
+        seen_files >= 15,
+        "the per-reality migration walk read only {seen_files} file(s) — it is pointed at nothing, \
+         and every arm resting on it would report clean forever"
+    );
     out
 }
 
@@ -179,8 +263,14 @@ fn the_event_log_columns_match_dp_ch11_or_declare_why_not() {
     let deferred: Vec<&str> = DEFERRED_EVENT_COLUMNS.iter().map(|(c, _)| *c).collect();
     let mut problems: Vec<String> = Vec::new();
 
+    // The FORWARD direction asks "does this column exist anywhere yet?", so it
+    // must see every migration — `shipped` (0014 only) is the reverse arm's
+    // scope and using it here made the register's promise false. See
+    // `columns_added_to_events_anywhere`.
+    let shipped_anywhere = columns_added_to_events_anywhere();
+
     for col in &declared {
-        let is_shipped = shipped.iter().any(|s| s == col);
+        let is_shipped = shipped_anywhere.iter().any(|s| s == col);
         let is_deferred = deferred.contains(&col.as_str());
         if !is_shipped && !is_deferred {
             problems.push(format!(
