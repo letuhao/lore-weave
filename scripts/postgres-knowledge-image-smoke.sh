@@ -96,6 +96,45 @@ NEAREST="$(q "SELECT id FROM smoke3072 ORDER BY emb <=> (SELECT emb FROM smoke30
   && ok "nearest neighbour of row 42 is row 42 (the index returns CORRECT results)" \
   || bad "nearest neighbour of row 42 came back as '$NEAREST' — the index is wrong, which is worse than absent"
 
+# ── 5. Apache AGE — the graph half of the matrix (T42b) ──────────────
+# Same standard as the vector half: not "the file is there", but the extension LOADS and
+# the one construct the engine decision turns on actually runs.
+#
+# The bookworm attempt copied AGE's artifacts in cleanly and failed only here, with
+# `GLIBC_2.38 not found` — a file-existence check passes that, this does not.
+run -c "CREATE EXTENSION IF NOT EXISTS age;" \
+  && ok "AGE extension creates" || bad "CREATE EXTENSION age failed — the image ships an unusable AGE"
+
+AGEV="$(q "SELECT extversion FROM pg_extension WHERE extname='age';")"
+log "apache age=${AGEV:-<none>}"
+[ -n "$AGEV" ] && ok "AGE reports a version" || bad "AGE missing from pg_extension after CREATE"
+
+# A graph is created and written through AGE's own dialect. NOTE: `LOAD 'age'` and the
+# search_path are per-SESSION, so every statement below carries them — a graph created in
+# one psql -c and queried in another WILL fail without them, which is the first thing that
+# bites anyone wiring an adapter (T42c owns that bootstrap).
+AGE_SQL="LOAD 'age'; SET search_path = ag_catalog, \"\$user\", public;"
+# ⚠️ single-character graph names are rejected by AGE ("graph name is invalid") — measured.
+run -c "$AGE_SQL SELECT create_graph('smokegraph');" \
+  && ok "create_graph succeeds" || bad "create_graph failed — AGE loads but cannot hold a graph"
+
+# THE construct the engine choice turns on. AGE has no `ON CREATE SET` / `ON MATCH SET`;
+# the equivalent is `SET x = coalesce(x, v)`, and this asserts the SEMANTICS rather than the
+# syntax: run the same MERGE twice, the create-only field must SURVIVE the second run.
+run -c "$AGE_SQL SELECT * FROM cypher('smokegraph', \$\$ MERGE (e:Entity {id:'a'}) SET e.born = coalesce(e.born, 1), e.seen = 2 RETURN e \$\$) as (v agtype);"
+run -c "$AGE_SQL SELECT * FROM cypher('smokegraph', \$\$ MERGE (e:Entity {id:'a'}) SET e.born = coalesce(e.born, 99), e.seen = 3 RETURN e \$\$) as (v agtype);"
+# `tail -1`: psql echoes a status line per statement, and this query needs THREE (LOAD, SET,
+# then the cypher call) because AGE's search_path is per-session. Without it the comparison
+# reads "LOAD\nSET\n1" and reports a wrong-value failure for a correct result — which is what
+# it did on the first run here.
+BORN="$(q "$AGE_SQL SELECT * FROM cypher('smokegraph', \$\$ MATCH (e:Entity {id:'a'}) RETURN e.born \$\$) as (v agtype);" | tail -1)"
+SEEN="$(q "$AGE_SQL SELECT * FROM cypher('smokegraph', \$\$ MATCH (e:Entity {id:'a'}) RETURN e.seen \$\$) as (v agtype);" | tail -1)"
+if [ "$BORN" = "1" ] && [ "$SEEN" = "3" ]; then
+  ok "AGE reproduces ON CREATE/ON MATCH semantics via coalesce (born stayed 1, seen advanced to 3)"
+else
+  bad "AGE upsert semantics wrong: born='$BORN' (want 1, i.e. create-only survived) seen='$SEEN' (want 3)"
+fi
+
 log "-----------------------------------------------------------------"
 log "image=$IMAGE  passed=$pass failed=$fail"
 [ "$fail" -eq 0 ] || exit 1

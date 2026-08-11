@@ -42,7 +42,11 @@ services:
       # `pg_isready` alone answers "is the server up", which is not the question. The
       # extensions are the reason this image exists, so the check asks for them — an image
       # that starts without pgvectorscale is not healthy for this purpose.
-      test: ["CMD-SHELL", "pg_isready -U loreweave -d loreweave_knowledge_vectors && psql -U loreweave -d loreweave_knowledge_vectors -tAc \"SELECT 1 FROM pg_available_extensions WHERE name='vectorscale'\" | grep -q 1"]
+      # T42b: `age` joins that list. The matrix is now graph + vectors in ONE engine, so an
+      # image missing AGE is exactly as unhealthy as one missing vectorscale — and the count
+      # is asserted (=2) rather than the rows merely being non-empty, because `grep -q 1`
+      # against a two-row result passes when only ONE of them is present.
+      test: ["CMD-SHELL", "pg_isready -U loreweave -d loreweave_knowledge_vectors && [ \"$$(psql -U loreweave -d loreweave_knowledge_vectors -tAc \"SELECT count(*) FROM pg_available_extensions WHERE name IN ('vectorscale','age')\")\" = 2 ]"]
       interval: 10s
       timeout: 5s
       retries: 10

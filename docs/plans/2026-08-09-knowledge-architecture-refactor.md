@@ -35,12 +35,23 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T42b — add AGE to the `loreweave/postgres-knowledge:18` image. Then T42c, then T42. 🔴 HIGHEST PRIORITY.**
+**RESUME: T42c — the AGE graph bootstrap (`LOAD` · `search_path` · `create_graph`). Then T42. 🔴 HIGHEST PRIORITY.**
 
 ✅ **T42a DONE 2026-08-12** — `tests/integration/db/test_graph_store_conformance.py`, **21 green
 against a live Neo4j**, both bites fired (break the real adapter → only `[neo4j]` reds;
 `CONFORMANCE_REQUIRE_REAL=1` with no real store → the control reds). The AGE adapter now has a
 correctness baseline to be judged against instead of a signature check.
+
+✅ **T42b DONE 2026-08-12** — `loreweave/postgres-knowledge:18` now carries **pgvector 0.8.6 +
+pgvectorscale 0.9.0 + Apache AGE 1.7.0**, smoke **9/9**. Graph and vectors are in one engine,
+which is the colocation argument the 2026-08-09 audit retired without pricing. The base moved
+**bookworm → trixie** because AGE's binary needs glibc 2.38 and bookworm ships 2.36 — measured
+via a failed `CREATE EXTENSION`, not predicted. Bite: reverting the base fails the **build** now,
+where a `test -f` would have passed.
+
+⚠️ **Carrying into T42c:** `LOAD 'age'` and `SET search_path = ag_catalog, "$user", public` are
+**per-session**. A graph created in one connection and queried in another fails without them —
+the first thing that bites an adapter, and precisely what T42c exists to own.
 
 🐞 **It also found that the Neo4j integration tests have never run in CI** — the throwaway guard
 refuses port 7687, CI publishes on 7687, and nothing ever set `TEST_NEO4J_ALLOW_SHARED=1` even
@@ -4175,6 +4186,64 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **Do:** add the AGE build stage, version-pin it, extend `postgres-knowledge-image-smoke.sh` to
   assert the extension loads.
   (blocks T42)
+  ---
+  ### ✅ DONE 2026-08-12 — one image now holds graph + vectors, and the smoke proves it
+
+  ```
+  [pgk-smoke] server=PG18  pgvector=0.8.6  pgvectorscale=0.9.0
+  [pgk-smoke] apache age=1.7.0
+  [pgk-smoke] PASS  all SUPPORTED_PASSAGE_DIMS index with diskann (incl. 2560/3072)
+  [pgk-smoke] PASS  the planner CHOOSES the diskann index
+  [pgk-smoke] PASS  nearest neighbour of row 42 is row 42 (the index returns CORRECT results)
+  [pgk-smoke] PASS  AGE extension creates
+  [pgk-smoke] PASS  create_graph succeeds
+  [pgk-smoke] PASS  AGE reproduces ON CREATE/ON MATCH semantics via coalesce (born stayed 1, seen advanced to 3)
+  [pgk-smoke] image=loreweave/postgres-knowledge:18  passed=9 failed=0
+  ```
+
+  🐞 **THE BASE HAD TO MOVE bookworm → trixie, and the reason was measured, not predicted.**
+  The obvious route — multi-stage `COPY` of AGE's artifacts onto the existing bookworm base —
+  builds cleanly and then dies at `CREATE EXTENSION`:
+  ```
+  ERROR: could not load library ".../age.so": /lib/x86_64-linux-gnu/libc.so.6:
+         version `GLIBC_2.38' not found (required by .../age.so)
+  ```
+  `apache/age` is built on **trixie** (glibc 2.41); bookworm ships **2.36**. **glibc is backward
+  compatible, not forward**, so the base moves UP rather than AGE moving down — and that
+  direction is the safe one: pgvectorscale's prebuilt binaries keep working on a *newer* glibc,
+  whereas the reverse is the failure above. Cost: one pin, `pgdg12` → `pgdg13`. **Not** a
+  regression for the vector half — pgvector 0.8.6 and pgvectorscale 0.9.0 are byte-identical
+  upstream versions on trixie, and all five dims plus the correctness check still pass.
+
+  **BITE — revert the base to bookworm and rebuild.** The new `ldd` check turns a production
+  failure into a build failure:
+  ```
+  + echo age.so has unresolved libraries — base/AGE glibc mismatch
+  age.so has unresolved libraries — base/AGE glibc mismatch
+  ERROR: process "/bin/sh -c set -eux; …" did not complete successfully: exit code: 1
+  ```
+  A file-existence check passes that same state. `test -f age.so` was true the whole time.
+
+  **QC (a) gates** — `db-safety-gate` clean; `bash -n` on the smoke script OK.
+  **QC (b) live** — `docker compose -f infra/docker-compose.knowledge-pg.yml up -d` → **`health=healthy`**
+  against the rebuilt image, with the healthcheck now asserting AGE (below).
+  **QC (c) real data** — the smoke inserts 500 rows, builds a 3072-dim StreamingDiskANN index,
+  checks the planner uses it and that the nearest neighbour is correct; the AGE half creates a
+  graph and runs the upsert twice.
+
+  ⚠️ **The compose healthcheck was silently half-blind, and is fixed here.** Its own comment says
+  *"the extensions are the reason this image exists, so the check asks for them"* — but it asked
+  only for `vectorscale`, so an image missing AGE would have reported **healthy**. It now counts
+  both and asserts `=2`, deliberately rather than `grep -q 1`, because a grep against a two-row
+  result passes when only **one** extension is present.
+  *Bite:* the same SQL on a bare `postgres:18-trixie` returns **`0`** — the service would never
+  reach healthy.
+
+  ⚠️ **`apache/age:latest` is an unpinned tag**, and it is the *source* of `age.so`. That is
+  deliberate for now: the smoke certifies a bump rather than the tag doing it, and AGE publishes
+  no per-PG-major pinned tag equivalent to the other two. **If T43 selects AGE, pin it by digest**
+  — an unpinned base for a shipped binary is a supply-chain hole that only a chosen engine makes
+  worth paying for.
 - [~] **T42c** — **AGE graph bootstrap / DDL** *(NEW)*
   AGE needs per-database setup Neo4j does not: `LOAD 'age'`,
   `SET search_path = ag_catalog, "$user", public`, `SELECT create_graph(<name>)`.
