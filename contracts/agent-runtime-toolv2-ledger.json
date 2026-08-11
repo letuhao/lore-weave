@@ -1481,6 +1481,18 @@
         "NOT EXERCISED: the retraction path (kg_exclude=true removing already-extracted facts and passages). The throwaway chapter has no KG extraction, so the flag flipped but nothing was retracted"
       ],
       "admitted": false
+    },
+    "book_chapter_set_part": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. Tier A, visibility legacy, superseded_by book_structure_edit. The documented null case works: part_id null un-homes a chapter into the flat manuscript and the schema declares the field nullable, so this is a real mode rather than an omitted argument -- the same distinction iteration 120 drew for settings_model_set_default's clear. The refusal names the right noun and scope. Its undo hint carries the PREVIOUS part_id and is replayable verbatim -- the fourth correct hint against #122's one broken one.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Schema read first: required [book_id, chapter_id, part_id]",
+        "FIRST INVOCATION with part_id null -> {chapter_id, part_id null}, undo_hint carrying the prior part_id (also null -- the chapter was already un-homed, so the write was a no-op and nothing needed restoring)",
+        "CONTROL: a part_id that is not a live part of this book -> 'target part is not a live part of this book'. Names the target and the scope",
+        "NULL IS A MODE, not a missing argument: the description says 'part_id = the target part, or null to un-home it into the flat manuscript'",
+        "NOT EXERCISED: moving a chapter INTO a part, or between parts. This book has no parts, so only the un-home direction had a live subject"
+      ],
+      "admitted": false
     }
   }
 }
