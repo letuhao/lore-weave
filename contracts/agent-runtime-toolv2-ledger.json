@@ -896,6 +896,19 @@
         "FIELD AUDIT, per the lesson that a clean ok-rate hides payload defects: notes 0/18 and tags 0/18 populated; everything else 14/18 or better. The two empties are optional user-authored metadata, which is a different thing from DQ-15's canon_rule.kind -- that one is an ARGUMENT advertised to the model with no declared vocabulary"
       ],
       "admitted": false
+    },
+    "composition_get_work": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and the incident S1 row 5 records is closed on BOTH sides. 66 calls / 19 ok. 25 failures are 'pass project_id or book_id' from the blank-args era (2 sessions, 2026-07-08); 20 are the repeat-read breaker in ONE session on 2026-07-30 -- 10 and 9 blocks in two turns at iterations 28 and 12, which is exactly the un-escalating breaker fixed in iteration 58; 2 are 'not found or not accessible'. S1 row 5 quotes the failure verbatim: 'the agent read composition_get_work, passed the returned id as project_id, and every scoped read answered not found or not accessible -- for a row that existed'. The recorded payload really did have a bare `id`. Today the field is named `work_id` and the payload carries an `_ids` line telling the caller which uuid every other composition_* tool wants -- and passing the work id as project_id SUCCEEDS rather than answering not-found. Committed 2026-07-30, titled 'three uuids for one book, and the model picked the wrong one'.",
+      "evidence": [
+        "PHASE 2: 19 ok / 47 failed = 25 'pass project_id or book_id' (2026-07-08) + 20 repeat-read breaker (1 session, 2026-07-30) + 2 not-found",
+        "DATA: the 20 blocked repeats are 10 and 9 in two turns, max iteration 28 and 12 -- the shape iteration 58's de-advertise now stops",
+        "LIVE by project_id and by book_id: both return the same Work, carrying work_id, project_id, book_id, status, version, settings and an `_ids` field reading 'work_id = this Work's own key. project_id = what every other composition_* tool's project_id argument wants. book_id = the book. They are DIFFERENT uuids — do not pass work_id as project_id.'",
+        "CONTROL, the S1 row 5 trap itself: passing the WORK id as project_id now returns the Work instead of 'not found or not accessible'. The tool tolerates the confusion AND teaches the caller out of it",
+        "CONTROL: neither argument -> 'pass project_id or book_id', the recorded message verbatim",
+        "DATED: the disambiguator shipped 2026-07-30 in a commit titled 'three uuids for one book, and the model picked the wrong one'"
+      ],
+      "admitted": false
     }
   }
 }
