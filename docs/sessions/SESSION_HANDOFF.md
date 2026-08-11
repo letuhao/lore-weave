@@ -31,6 +31,22 @@
 > nothing compares a doc's "this is unbuilt" claim against the thing it names.
 >
 
+> ### ⏸ AT A CLARIFY CHECKPOINT — do not resume the board until this is settled
+>
+> An audit of the run-state (asked for by the human, after a long run) found **eleven** items, and
+> they are one shape: *a document asserting something about the world that stopped being true, with
+> nothing comparing them.* **This run diagnosed that shape three times and committed four fresh
+> instances of it**, including falsifying the measured-state row that motivated the world-service
+> track — and citing that row approvingly on the way past (`BDR-91`).
+>
+> The missing mechanism is `CLAIM-ROT` in [the reality-layer board](../plans/2026-08-08-reality-layer-RUN-STATE.md) §4.
+> **A draft spec is written and is NOT approved:**
+> [`docs/specs/2026-08-15-claim-rot.md`](../specs/2026-08-15-claim-rot.md). Its §4 holds six open
+> questions — the load-bearing one being whether this earns its keep over simply widening
+> `actor-hub-figures-gate`, which is narrower, already bitten and already wired.
+>
+> **Nothing is built for it. Do not start it without the PO.**
+
 ### ▶ DEFERRED ITEMS — the four tracks of 2026-08-11, in one place
 
 **Added by audit, and the gap is the point.** Each row below already existed on its own board, and
