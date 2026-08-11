@@ -1319,6 +1319,18 @@
         "MY OWN SLIP, and the SECOND time: the first post-condition reused a scratch file an earlier control had overwritten with an absent entity id, so it answered 'entity not found'. I recorded this same mistake in iteration 83 and repeated it anyway"
       ],
       "admitted": false
+    },
+    "glossary_curation_list": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. The ai_suggestions view returns items with entity_id, name, kind_code, status 'draft', tags and created_at, plus a total. Its enum refusal names the whole closed set inline -- [merge_candidates, unknowns, ai_suggestions] -- which is the C-20 pattern working without help. TWO THINGS NOTED: one of the two items returned is 'Toolv2 i93 Probe', this loop's OWN debris from iteration 93 sitting in the review inbox, which is exactly the failure mode that makes smoke debris read as a product bug later; and one of the three views, merge_candidates, must always be empty -- iteration 100 established that table holds zero rows system-wide.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE view=ai_suggestions: {view, total 2, items [{entity_id, name, kind_code, status 'draft', tags ['ai-suggested','assistant'], created_at}]}",
+        "CONTROL: view='no_such_view' -> 'enum: no_such_view does not equal any of: [merge_candidates unknowns ai_suggestions]'. The closed set is named",
+        "DEBRIS, mine: 'Toolv2 i93 Probe' is one of the two items. It is on the disposable book, but it is in a REVIEW INBOX -- the surface a human is meant to trust",
+        "CROSS-REFERENCE: the merge_candidates view has nothing to show anywhere, per iteration 100 -- that table is empty across every book in the database"
+      ],
+      "admitted": false
     }
   }
 }
