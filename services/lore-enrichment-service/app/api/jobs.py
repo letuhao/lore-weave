@@ -38,6 +38,7 @@ from app.jobs.events import LORE_ENRICHMENT_RESUME_STREAM, make_redis_producer
 from app.jobs.job_events import JOB_KIND, JOB_SERVICE, canonical_status, job_error
 from app.jobs.job_request import save_job_request
 from app.jobs.proposal_store import PgProposalStore
+from app.strategies.base import Technique
 from app.jobs.state_machine import (
     IllegalTransitionError,
     JobRecord,
@@ -162,7 +163,10 @@ async def create_job(
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unknown technique {body.technique!r}",
+            detail=(
+                f"unknown technique {body.technique!r} — valid: "
+                + ", ".join(t.value for t in Technique)
+            ),
         )
 
     # de-bias C1 (#3): resolve the book profile so the gap builder localizes the

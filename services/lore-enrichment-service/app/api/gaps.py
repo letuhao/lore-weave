@@ -249,7 +249,10 @@ async def auto_enrich(
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"unknown technique {body.technique!r}",
+            detail=(
+                f"unknown technique {body.technique!r} — valid: "
+                + ", ".join(t.value for t in Technique)
+            ),
         )
 
     if body.targets:
