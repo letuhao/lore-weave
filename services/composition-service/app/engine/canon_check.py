@@ -83,6 +83,15 @@ def scene_at_order(scene_sort_order: int | None) -> int | None:
 class CanonViolation(CanonCandidateBase):
     kind: str = "gone_entity_present"
     glossary_entity_id: str | None = None
+    # T36 — WHICH relationship a `role_contradiction` is about. `entity_id` is
+    # the role's subject, and a subject usually holds SEVERAL roles at a
+    # position (on the dogfood book one character held four), so the entity
+    # alone does not identify the finding. Measured: the judge flagged a
+    # misattributed betrayal and the finding was indistinguishable from one
+    # about the same character's `antagonist_of` or `sibling_of` role.
+    # None on every other kind.
+    predicate: str | None = None
+    object_name: str | None = None
 
     @property
     def locator(self) -> Locator:
@@ -258,20 +267,36 @@ def _build_role_judge_messages(
     system = (
         "You verify story continuity. Each listed statement is an established "
         "relationship that is TRUE at this point in the story. For each, decide "
-        "whether the passage CONTRADICTS it — by giving the relationship to a "
-        "different character, by having a character act in a role the "
-        "relationship assigns to someone else, or by asserting the opposite "
-        "relationship as currently true. A passage that simply does not mention "
-        "the relationship is NOT a contradiction, and neither is a character "
-        "doubting, concealing, or being wrong about it in their own words. "
+        "whether the passage CONTRADICTS it.\n"
+        "It IS a contradiction when the passage assigns that relationship, or "
+        "the act it describes, to a DIFFERENT character than the one named in "
+        "the statement. Judge this by what the passage says happened, not by "
+        "which names it happens to contain: the named subject being ABSENT from "
+        "the passage while someone else performs their role is the clearest "
+        "form of this, not a reason to excuse it.\n"
+        "It is NOT a contradiction when the passage is simply silent about the "
+        "relationship and assigns it to nobody, nor when a character doubts, "
+        "conceals, or is mistaken about it in their own words.\n"
         "Return ONLY a JSON object "
         '{"verdicts":[{"entity_id":str,"violated":bool,"why":str}]}, using the '
-        "entity_id given for each statement." + lang
+        "entity_id given for each statement, which identifies the STATEMENT "
+        "and not any character." + lang
     )
+    # The `entity_id` handed to the judge is a per-STATEMENT token (`role_0`,
+    # `role_1`, …), not the subject's real entity id.
+    #
+    # MEASURED, on the acceptance book with a real model: given the subject's
+    # entity id, the judge correctly spotted that the passage gave a betrayal to
+    # the wrong character — and returned the id of the character it was
+    # ACCUSING rather than the id of the statement being contradicted. That id
+    # also appeared in the list (as the subject of an unrelated `sibling_of`
+    # role), so the verdict silently attached to the wrong relationship. The
+    # finding read correct and pointed somewhere false, which is worse than
+    # missing it. A token that names no character removes the ambiguity.
     listed = "\n".join(
-        f'- entity_id={r["subject_id"]} "{r["subject_name"]}" '
+        f'- entity_id=role_{i} "{r["subject_name"]}" '
         f'{r["predicate"]} "{r["object_name"]}"'
-        for r in roles
+        for i, r in enumerate(roles)
     )
     user = f"ESTABLISHED RELATIONSHIPS AT THIS POINT:\n{listed}\n\nPASSAGE:\n{draft}"
     return system, user
@@ -334,9 +359,12 @@ async def judge_role_attribution(
         )
         return []
     # `parse_judge_verdicts` returns `{entity_id: {violated, why}}`, not a list.
+    # Keyed by the per-statement token so a verdict lands on the ROLE it was
+    # asked about — see `_build_role_judge_messages` for what happened when it
+    # was keyed by the subject's entity id.
     out: list[CanonViolation] = []
-    for r in roles:
-        v = verdicts.get(str(r["subject_id"]))
+    for i, r in enumerate(roles):
+        v = verdicts.get(f"role_{i}")
         if v is None or v.get("violated") is not True:
             continue
         out.append(CanonViolation(
@@ -351,6 +379,8 @@ async def judge_role_attribution(
             matched=r.get("matched", ""),
             confirmed=True,
             why=str(v.get("why") or ""),
+            predicate=r["predicate"],
+            object_name=r["object_name"],
         ))
     return out
 

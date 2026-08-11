@@ -3050,7 +3050,39 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   (3) "RT-2 answered" was never owed: §9 **O7** sealed 2026-08-09 records that **RT-2
   dissolves**, closed by Q2, in scope. It is struck from this list.
 
-  ### DEFERRAL `D-QC5-ACCEPTANCE-BLOCKED-ON-T36`
+  ### ✅ THE ACCEPTANCE ASSERTION IS PROVEN, LIVE — 2026-08-11
+
+  Run on the real book at `at_order = 5_000_000`, snapshot from the guard's own
+  `fact-for-check` endpoint, judged by the account's own BYOK model:
+
+  | draft | roles judged | contradictions |
+  |---|---|---|
+  | **misattributed** — the betrayal given to a different character | 20 | **1** |
+  | **control** — the same scene, correctly attributed | 20 | **0** |
+
+  The control is the point: a check that flags everything would also "pass" this test. The
+  finding names the right relationship (`betrayed`, not the same character's `antagonist_of`
+  or `sibling_of`) and the judge's reason states the substitution exactly.
+
+  Full write-up, including the **three defects this run found in code written the same
+  session**, in `docs/measurements/2026-08-11-qc5-role-attribution-live.md`:
+  the verdict attached to the wrong relationship (subject-id keying → per-statement token);
+  the prompt's "not mentioned ⇒ not a contradiction" exemption **defeating the very case the
+  check exists to catch** (in a misattribution the true holder is exactly who is absent); and
+  a finding that could not say which relationship it was about. None would have surfaced
+  against a synthetic fixture.
+
+  ### 🔻 DEFERRAL `D-QC5-FULL-FLOW-CAPTURE` — the assertion is proven; the artefacts are not captured
+
+  | | |
+  |---|---|
+  | **Blocker** | Nothing technical. QC-5 asks for two things and only one is done: the ASSERTION (proven above) and an end-to-end authoring-flow CAPTURE — *"the plan artifact, the drafted chapters, the critic's per-chapter scores, and the glossary delta"* — run through the real frontend. That capture is a long, spend-bearing live run, and it was not started. |
+  | **Evidence** | The task text names four artefacts; this session produced none of them. What it produced is the acceptance assertion the task turns on, with a control, at `docs/measurements/2026-08-11-qc5-role-attribution-live.md`. Recording that as "QC-5 done" would be the accounting artefact this plan's own verification script exists to prevent. |
+  | **To unblock** | Nothing. It is a run, with `authoring_canon_role_check_enabled=true` set on composition-service (the flag is off by default because roles in force are common and it adds a judge call to most scenes). |
+  | **Mechanism** | `scripts/plan-final-verification.py` check 3 — a QC task may not be `[x]` while its own section records a deferral. This row is what keeps QC-5 at `[~]`, so the gap cannot be closed by a summary that sounds finished. |
+  | **Retry when** | Whenever the PO wants the artefacts. The inverted criterion (*"a pass with 5/5 means the refactor has NOT landed"*) now has a check behind it that can actually fail, which it did not before. |
+
+  ### ~~DEFERRAL~~ `D-QC5-ACCEPTANCE-BLOCKED-ON-T36` — superseded 2026-08-11, kept for the record
 
   | | |
   |---|---|

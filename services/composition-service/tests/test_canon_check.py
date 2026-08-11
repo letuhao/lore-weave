@@ -269,7 +269,11 @@ def test_roles_in_draft_empty_without_a_snapshot():
 
 @pytest.mark.asyncio
 async def test_role_judge_affirms_a_misattribution():
-    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,'
+    # Keyed by the per-STATEMENT token, not a character id. MEASURED: given a
+    # subject entity id, a real judge returned the id of the character it was
+    # ACCUSING — which also appeared as another role's subject, so the verdict
+    # attached to the wrong relationship. Correct-sounding, pointing false.
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"role_0","violated":true,'
                        '"why":"the passage has Zed in Kai\'s role"}]}')
     roles = [_rel("e-kai", "Kai", "serves", "e-bob", "Bob") | {"span": "s", "matched": "Kai"}]
     out = await judge_role_attribution(
@@ -283,13 +287,17 @@ async def test_role_judge_affirms_a_misattribution():
     # NOT "gone" — this candidate says nothing about liveness.
     assert out[0].status == "role"
     assert "Kai" in out[0].why
+    # WHICH relationship — a subject usually holds several roles at a position,
+    # so the entity id alone does not identify the finding.
+    assert out[0].predicate == "serves"
+    assert out[0].object_name == "Bob"
 
 
 @pytest.mark.asyncio
 async def test_role_judge_reports_nothing_when_it_does_not_affirm():
     """The inverse of `judge_canon`'s convention, on purpose: the symbolic layer
     established only RELEVANCE, so an unconfirmed role is not a finding."""
-    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":false,"why":"consistent"}]}')
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"role_0","violated":false,"why":"consistent"}]}')
     roles = [_rel("e-kai", "Kai", "serves", "e-bob", "Bob") | {"span": "s", "matched": "Kai"}]
     out = await judge_role_attribution(
         judge, user_id="u", model_source="user_model", model_ref="m",
@@ -326,7 +334,7 @@ async def test_check_canon_does_not_run_the_role_check_by_default():
 
 @pytest.mark.asyncio
 async def test_check_canon_runs_the_role_check_when_enabled():
-    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,"why":"misattributed"}]}')
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"role_0","violated":true,"why":"misattributed"}]}')
     snap = _role_snap(_rel("e-kai", "Kai", "serves", "e-bob", "Bob"))
     out = await check_canon("Zed served Bob.", snap, judge=judge, user_id="u",
                             model_source="user_model", model_ref="m", role_check=True)
@@ -338,7 +346,10 @@ async def test_check_canon_runs_the_role_check_when_enabled():
 async def test_role_check_never_suppresses_a_gone_cast_finding():
     """The two checks are additive. A scene with both must report both, or
     turning the role check on would silently weaken the gate that already ships."""
-    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,"why":"both"}]}')
+    # The gone-cast judge keys on the ENTITY id; the role judge on the
+    # per-statement token. Both verdicts in one reply, since one fake serves both.
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"e-kai","violated":true,"why":"gone"},'
+                       '{"entity_id":"role_0","violated":true,"why":"role"}]}')
     snap = {"at_order": 5_000_000,
             "entities": [_ent("e-kai", "Kai", "gone")],
             "relations": [_rel("e-kai", "Kai", "serves", "e-bob", "Bob")]}
