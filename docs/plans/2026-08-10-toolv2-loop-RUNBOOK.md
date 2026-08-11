@@ -1048,3 +1048,39 @@ Both readings are defensible from the current code, `composition_arc_edit` accep
 `roster` as first-class create arguments (so an arc CAN hold them), and #146's fix — which closed
 the `motif_code` half of the round trip — does not depend on the answer. Recorded rather than
 guessed; the placements' `thread` values survive either way, so nothing is lost by waiting.
+
+## DQ-19 — arc_template archive's anti-oracle is defeated by its own documented inverse
+
+`composition_arc_template_archive`'s description states the design: "A foreign/missing/system row
+is a uniform no-op (returns archived:true — no existence oracle)."
+`composition_arc_template_restore`'s states the opposite: "a foreign/system/not-archived id is not
+restorable (uniform deny)."
+
+Measured live, both halves behave exactly as written:
+
+| call | nonexistent id | the caller's own id |
+|---|---|---|
+| archive | `archived: true` | `archived: true` |
+| restore | uniform deny | returns the full row |
+
+So archive-then-restore distinguishes existence perfectly. The oracle archive pays an actionability
+price to deny is readable through the tool documented as its reverse.
+
+**The safety half is fine and was checked**: the UPDATE is scoped
+`WHERE (owner_user_id = $1 OR (book_shared AND book_id = $3)) AND id = $2`, so a foreign row is
+genuinely untouched — the no-op is a real no-op, not a silent cross-tenant write. And the leak is
+narrow: restore requires ownership, so what the pair reveals is "this id is MY archived template"
+versus "it is not", which is information about the caller's own data.
+
+**The open question is whether the no-op-success is still worth its cost**, and it is a product
+decision rather than something the code settles:
+
+- If the oracle matters, restore should arguably answer uniformly too — but a restore that cannot
+  report failure is a worse tool than one that can.
+- If it does not (the pair already leaks it, and only over the caller's own rows), archive could
+  report honestly that nothing matched, which is what an honest caller with a typo needs. This is
+  the shape #143 fixed on `arc_assign_chapters` — the difference being that there the silent zero
+  was undocumented, and here it is a stated, deliberate choice.
+
+Recorded rather than overridden: the loop does not reverse a documented security posture on its own
+authority. Nothing is lost by waiting — the write is correctly scoped either way.
