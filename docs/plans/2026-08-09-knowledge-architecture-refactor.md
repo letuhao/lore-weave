@@ -2606,6 +2606,50 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   Both scales are plain ints, so that mistake has nothing to fail against except this test.
   knowledge-service **4551 passed, 307 skipped**.
 
+  #### ▶ LIVE-PROVEN 2026-08-11 — and the first run failed for a reason worth more than the pass
+
+  Ran real extraction over a real book (`019fb89f`, 976 of 1018 entities anchored). **The
+  producer fired immediately**: `D-T32: life_status facts emitted 0/3` — three transitions
+  found, anchors resolved, three appends attempted, **three 500s**.
+
+  Reproduced by hand:
+
+  ```
+  new row for relation "entity_facts" violates check constraint "entity_facts_kind_chk"
+  ```
+
+  **The live constraint did not admit `'status'`** — the very thing T32 shipped a migration to
+  widen. `schema_migrations` on the running database topped out at **0062**, so
+  **0063 (the lifecycle ledger), 0064 (the status kind) and 0065 (fact evidence) had never
+  run there.** Three migrations shipped in code, green in every suite, absent from the
+  database the services were actually talking to. Rebuilding glossary-service applied all
+  three in 40 ms.
+
+  That is the *green-suite-proves-the-working-tree* class, and this producer is what surfaced
+  it: nothing else had tried to write a `'status'` row, so nothing else could notice. The
+  `entity_lifecycle_ledger` and `entity_fact_evidence` tables were missing on that database
+  too — T31's and T34's work was equally unexercised there.
+
+  **After the rebuild, the same extraction:**
+
+  ```
+  D-T32: life_status facts emitted 1/1
+  D-T32: life_status facts emitted 3/3
+
+  fact_kind  attr_or_predicate  value  valid_from_ordinal  valid_to_ordinal
+  status     life_status        gone   4                   NULL
+  status     life_status        gone   6                   NULL
+  status     life_status        gone   6                   NULL
+  ```
+
+  **3 status facts, 3 distinct entities, all open intervals**, positioned at real chapter
+  ordinals. Corpus-wide the vocabulary is now `attribute` 41536 · `name` 5202 · `alias` 1869 ·
+  **`status` 3** — a kind that had been 0 since the CHECK first admitted it.
+
+  **What this does NOT yet unblock:** the seven `alive`-column readers. Three facts on one book
+  is a producer proven, not a corpus. The gate baseline stays the migration checklist until a
+  reader has real liveness to read on the book it serves.
+
   ### ~~DEFERRAL~~ `D-T32-ALIVE-NO-FACTS` — the reader migration cannot be validated yet
 
   | | |
