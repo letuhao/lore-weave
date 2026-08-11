@@ -690,6 +690,26 @@ class GlossaryClient:
         name is skipped). ``park_unknown_kinds=False`` opts out of the
         glossary 'unknown' review bucket so experimental KG kinds don't
         flood triage (mui #1).
+
+        NO CHAPTER CONTEXT, AND THAT IS CORRECT — read this before "fixing" it.
+        glossary's `extract-entities` ALSO emits append-only bi-temporal facts when the
+        caller supplies `chapter_id` + `content_hash` + `chapter_ordinal`, and glossary's
+        own code calls a caller that omits them a *"legacy caller"*. That label describes
+        the wire shape, not this caller: the two live callers do different jobs.
+
+          - translation-service `extraction_worker` — per CHAPTER. It holds the chapter,
+            its hash and its ordinal, sends all three, and its writeback emits facts.
+          - this one — the project-wide GAP REPORT (`find_gap_candidates` →
+            `build_writeback_entities`). It aggregates entities the KG discovered but the
+            glossary has not anchored, ACROSS the project, and proposes them as
+            `ai-suggested` drafts for review. There is no single chapter to attribute a
+            project-wide aggregate to, so there is no ordinal to send.
+
+        Adding a chapter argument here would mean picking one arbitrarily and stamping a
+        story position onto an aggregate that does not have one — a worse failure than
+        emitting no facts, because a wrong `valid_from_ordinal` is invisible and permanent.
+        The measured asymmetry (`writeback_log > 0` iff `facts > 0` across books,
+        2026-08-11) is these two callers doing their two jobs, not one being broken.
         """
         url = f"{self._base_url}/internal/books/{book_id}/extract-entities"
         body: dict = {

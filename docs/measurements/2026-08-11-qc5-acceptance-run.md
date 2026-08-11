@@ -78,6 +78,21 @@ park_unknown_kinds)` — no chapter context at all. It aggregates candidates **p
 per chapter, so it has no single ordinal to attribute. That is a design mismatch, not a missing
 argument.
 
+**Re-examined 2026-08-11 — and it is not a defect at either end.** The two callers do two
+different jobs, and glossary's *"legacy caller"* label describes a wire shape, not this caller:
+
+  - translation-service `extraction_worker` — per **chapter**; holds the chapter, its hash and
+    its ordinal, sends all three, emits facts.
+  - knowledge-service `writeback_discovered_entities` — the project-wide **gap report**
+    (`find_gap_candidates`). It proposes entities the KG discovered but the glossary has not
+    anchored, as `ai-suggested` drafts for review. A project-wide aggregate has no single
+    chapter, so there is no ordinal to send.
+
+Adding one would mean stamping a story position onto an aggregate that does not have one — a
+worse failure than emitting no facts, because a wrong `valid_from_ordinal` is invisible and
+permanent. The correlation below is the two callers doing their two jobs. Documented at the
+call site so the next reader does not re-derive the wrong conclusion, as this write-up first did.
+
 The correlation across books is exact — a writeback-log row is written on the same
 full-payload call:
 
