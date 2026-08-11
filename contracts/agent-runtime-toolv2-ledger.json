@@ -1224,6 +1224,19 @@
         "SUPERSESSION read from _meta rather than assumed: visibility legacy, superseded_by composition_outline_node_edit"
       ],
       "admitted": false
+    },
+    "glossary_ontology_upsert": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 2 calls / 1 ok. THE NAME MISLED ME AND THE DESCRIPTION SETTLED IT: an 'upsert' that returns 'a row with code \"character\" already exists' looks like a contract violation, but this is not a blind upsert -- the caller declares intent per ITEM: 'Omit base_version on an item to create it; include the current base_version to update it with optimistic locking.' The recorded refusal is a CREATE against an existing code, which is correct, and it names its satisfier. The other recorded failure put base_version at the ROOT instead of inside the item. All four branches proven live, including the lock firing inside a batch.",
+      "evidence": [
+        "PHASE 2: 1 ok / 1 failed -- and the 'ok' one carries a per-item error, while the failed one is 'unexpected additional properties [\"base_version\"]' from putting it at the root",
+        "LIVE create: a new code -> {status 'created', version <timestamp>}, summary {created 1, failed 0, updated 0}",
+        "LIVE create on an existing code, the recorded case: {status 'error', error 'a row with code \"character\" already exists in this book — use glossary_book_patch to edit it'}, summary {created 0, failed 1}. Correct, and it names the satisfier",
+        "LIVE update, using the base_version the CREATE returned: {status 'updated', version <new timestamp>}, summary {updated 1}",
+        "LIVE stale update, replaying the now-old base_version: {status 'error', error 'the row changed since you read it (409) — its current base_version is …; retry with base_version=\"…\"'}. The optimistic lock fires per item inside the batch and inlines the current version, exactly as glossary_book_patch does (iteration 72)",
+        "PARTIAL-BATCH shape: every outcome is per item with a summary of created/updated/failed -- C-19 again, and a failed item does not fail the call"
+      ],
+      "admitted": false
     }
   }
 }
