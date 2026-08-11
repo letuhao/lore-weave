@@ -874,6 +874,17 @@
         "METHOD, recorded because the first number was wrong: keying the duplicate query on a truncated card TITLE merged four DIFFERENT kinds into one group and implied a far larger problem. The args are the identity; the display string is not"
       ],
       "admitted": false
+    },
+    "glossary_plan": {
+      "state": "proven",
+      "note": "PROVEN, with a fix. 8 calls / 3 ok. Two failures are 'denied by user' -- a HUMAN decision, correctly typed since the denial work earlier in this loop -- and one is a backend outage. The two real ones are the finding: asked to set every kind's colour and icon, the planner refused with 'The current ontology planner does not support operations for updating visual metadata like color or icon. These changes must be performed via the ontology GUI.' The first half is TRUE (no op in the registry edits kind metadata). The second is FALSE, proven live: glossary_book_patch with level='kind' takes color and icon and applied both in one call. The agent was sent to a GUI it cannot open, about a change one Tier-A call would have made. Cause: the planner MODEL's free-text notes were passed through as the entire user-facing explanation. FIXED: the notes are kept (they explain WHY nothing was planned) but the refusal now also carries the planner's own op vocabulary, ENUMERATED from the registry rather than re-typed, and names glossary_book_patch as the direct-edit path.",
+      "evidence": [
+        "PHASE 2: 3 ok / 5 failed = 2 'denied by user' (human) + 1 backend unavailable + 2 planner 'nothing to plan' refusals",
+        "LIVE DISPROOF of the planner's claim: glossary_book_patch(level='kind', code='character', color='#6366f1', icon='👤') -> status patched, in one call, no GUI",
+        "CODE: the op vocabulary is derived by iterating the registry (a map[string]OpSpec), so it cannot drift when an op is added; the guard asserts every registry key appears in the message, and a second guard pins the sort so the same refusal reads the same twice",
+        "FALSIFIER, and it caught a weak guard first: my initial test called planVocabularyHint DIRECTLY and stayed GREEN when the call site was reverted to the bare note -- it proved the helper, not its wiring. The replacement asserts the error that parseAndValidatePlan actually returns, and reds with the recorded message verbatim. Second time in this loop a helper-level guard passed under an unwired defect"
+      ],
+      "admitted": false
     }
   }
 }
