@@ -1320,3 +1320,39 @@ The tool's `embedding_model` parameter already tells the caller "pick one whose 
 include embedding", which under a fail-open platform is exactly the right guidance. What is
 missing is any signal when they do not.
 
+## DQ-24 — `lore_entity` windows the facts but not the STATUS its description says it windows
+
+Found while proving `lore_entity` (#268). The spoiler guarantee on facts is exact and verified;
+this is one field beside it.
+
+The description reads: "One entity's spoiler-windowed **status** + known facts, bounded to the
+reader's furthest-read chapter". Measured on the same entity, same call, only the reading position
+changing:
+
+| reader state | window_available | kg_entity_id | status | facts |
+|---|---|---|---|---|
+| pinned at chapter 5 | true | 831f58cd… | `active` | **14** (of 27 — exactly the entitled set) |
+| position removed | false | 831f58cd… | `active` | **0** |
+
+Facts are windowed perfectly. `status` is returned identically either way, so it is not windowed
+at all, and the description says it is.
+
+**Open question:** is a KG entity's lifecycle status spoiler-bearing?
+
+The argument that it is: status is `active` / `archived` / `merged`, and an entity archived or
+merged at chapter 90 would show that state to a reader at chapter 5 — revealing that the character
+is written out, or turns out to be the same person as someone else. That is a genuine plot
+disclosure, and it is exactly the kind this tool exists to prevent.
+
+The argument that it is not: status is a KG bookkeeping flag about the author's own curation, not
+a narrative fact with a valid_from_ordinal. There may be no ordinal to window it by, in which case
+the honest fix is the DESCRIPTION (drop "status" from the windowed list) rather than the code.
+
+I did not decide it because the two readings lead to opposite edits and the answer depends on
+whether entity status transitions carry a chapter ordinal at all — which I did not measure. What
+IS measured: the field is not windowed today, and the description says it is.
+
+Not blocking #268: no leak was demonstrated. Every entity I read was `active`, so I never observed
+a status that would disclose anything, and the fact axis — the part carrying narrative content —
+is provably correct.
+
