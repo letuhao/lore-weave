@@ -1057,8 +1057,11 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Manually create ONE knowledge-graph entity node (a character, location, "
         "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
-        "parked and later fails. Idempotent: the same name+kind returns the existing "
-        "node. Returns the entity_id to use as an edge endpoint.",
+        "parked and later fails. Idempotent in RESULT — the same name+kind returns the "
+        "existing node and never creates a duplicate — but it is a WRITE, not a no-op: "
+        "re-running bumps that node's version, so a PATCH holding an If-Match taken "
+        "before the call will 412. Do not call it defensively on a node you already "
+        "have. Returns the entity_id to use as an edge endpoint.",
         {
             "name": {
                 "type": "string",

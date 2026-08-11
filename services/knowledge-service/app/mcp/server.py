@@ -1119,7 +1119,9 @@ async def kg_propose_edge(
         "create ONE node (needs name + kind) — use this BEFORE kg_propose_edge when a "
         "relationship's endpoint isn't in the graph yet; 'from_glossary' = project the book's "
         "recorded glossary entities into the graph as nodes (optional entity_ids; omit for the "
-        "whole active glossary). Both are idempotent (re-running adds no duplicates)."
+        "whole active glossary). Both are idempotent (re-running adds no duplicates) — but "
+        "both WRITE: a re-run bumps the touched nodes' versions, so a PATCH holding an "
+        "If-Match taken before the call will 412."
     ),
     meta=require_meta(
         "A", "project",
@@ -1197,8 +1199,11 @@ async def kg_project_entities_to_nodes(
         "Manually create ONE knowledge-graph entity node (a character, location, "
         "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
-        "parked and later fails. Idempotent: the same name+kind returns the existing "
-        "node. Returns the entity_id to use as an edge endpoint."
+        "parked and later fails. Idempotent in RESULT — the same name+kind returns the "
+        "existing node and never creates a duplicate — but it is a WRITE, not a no-op: "
+        "re-running bumps that node's version, so a PATCH holding an If-Match taken "
+        "before the call will 412. Do not call it defensively on a node you already "
+        "have. Returns the entity_id to use as an edge endpoint."
     ),
     # LEGACY (catalog-unification 2026-07-22): superseded by kg_add_nodes (mode=manual).
     meta=require_meta("A", "project", visibility="legacy", tool_name="kg_create_node"),

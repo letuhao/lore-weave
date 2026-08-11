@@ -1206,3 +1206,41 @@ Not blocking #248: the card now states the set truthfully in either case, so a h
 wiki build is no longer told a false denominator. Whichever way this resolves, the fix is one
 predicate in `_resolve_entity_ids` plus the card note that #248 anchored to it.
 
+## DQ-22 — should a manual "make sure this node exists" call bump the node's version?
+
+Found while proving `kg_create_node` (#249). The description defect is fixed and the tool now warns
+about the cost; this is the behaviour underneath, which I am recording rather than deciding.
+
+`_handle_kg_create_node` delegates to the shared `merge_entity`, whose ON MATCH branch is
+unconditional:
+
+    e.version = coalesce(e.version, 1) + 1,
+    e.updated_at = datetime()
+
+Measured on one node across three identical calls: version 1 → 2 → 3. And `version` gates writes —
+PATCH `/v1/knowledge/entities/{id}` requires If-Match (428 without) and 412s on mismatch. With a
+control, same entity, same body:
+
+| step | result |
+|---|---|
+| read ETag `W/"4"`, PATCH immediately | **200** |
+| read ETag `W/"5"`, one `kg_create_node` (same name+kind), then PATCH | **412** |
+
+**Open question:** should the manual path skip the bump when the merge changed nothing?
+
+I did not change it, for a reason that cuts both ways. `merge_entity` is shared with extraction,
+where a merge folding new evidence into an existing node genuinely *is* an update and *should*
+bump — so a blanket "don't bump on match" is wrong. A no-op-detecting bump (compare the ON MATCH
+SET's inputs against current state, bump only on real change) would be correct for both callers,
+but it changes a primitive on extraction's hot path, and I have no measurement of what that costs
+or of what else reads `version` as a change signal.
+
+The team already knows the effect and mitigated it in ONE place: the frontend's knowledge-effects
+handler invalidates the cast/arc caches after `kg_create_node` specifically, its comment saying
+"else the next human rename 412s against an unseen version". That mitigation covers the FE's own
+caches. It does nothing for an agent, or for a second client, holding a version across the call —
+which is the case #249 measured.
+
+Not blocking #249: the description now states the cost and tells a caller not to make the
+defensive call, so the hazard is at least visible to whoever hits it.
+
