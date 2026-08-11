@@ -31,7 +31,22 @@
 > nothing compares a doc's "this is unbuilt" claim against the thing it names.
 >
 
-> ### ⏸ AT A CLARIFY CHECKPOINT — do not resume the board until this is settled
+> ### ▶ CLARIFY IS CLOSED — the board is [`2026-08-16-claim-rot-RUN-STATE.md`](../plans/2026-08-16-claim-rot-RUN-STATE.md)
+>
+> The spec was audited (§4b) and then **the experiment overturned both the spec and its audit**
+> (§4c): 13 of 13 measured-state rows carry a measurable sub-claim and all 13 match. The unit is the
+> **figure**, not the row — six sub-claims resist, all of them living inside rows that also have
+> measurable parts, and one of them (*"not a scaffold"*) has **no predicate at all**.
+>
+> **Decided, not asked** — three sealed forks in §1 of the board. Widen `actor-hub-figures-gate`
+> in place: renaming costs 279 references across 14 files including immutable history, cloning
+> duplicates 200 lines of scar tissue, and extraction is not rule-of-three at two consumers.
+> Figures only; behaviours, live-process state and history are OUT by name; the unmeasurable
+> sub-claims get marked rather than left looking verified.
+>
+> The block below is kept because its content is still current.
+>
+> ### ⏸ WAS: a clarify checkpoint
 >
 > An audit of the run-state (asked for by the human, after a long run) found **eleven** items, and
 > they are one shape: *a document asserting something about the world that stopped being true, with
