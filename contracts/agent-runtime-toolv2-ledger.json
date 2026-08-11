@@ -1877,6 +1877,10 @@
     "composition_motif_edit": {
       "state": "proven",
       "note": "PROVEN across all four ops. Each names its missing companions ('op=patch requires motif_id and expected_version'). op=patch is genuinely PARTIAL -- patching `name` alone left kind and summary intact -- which puts it with canon_rule_edit (#175) and arc_update (#160) on the correct side of the divide #155 exposed, where composition_arc_template_edit wrote NULL over every unmentioned column. A stale expected_version returns applied_conflict with current_version. archive→restore→archive round-trips with undo hints on each step. Consistent with #187's rule for this service: SCALAR fields are partial, and the COLLECTION fields this tool also accepts (roles, beats, effects) are the replace-wholesale kind -- worth knowing before an agent 'adds a beat' and silently drops the rest, the same trap recorded for canon_rule[] (#182) and overridden_fields (#187)."
+    },
+    "composition_motif_get": {
+      "state": "proven",
+      "note": "PROVEN, and the ownership PROJECTION was proven by DIFFING THE FIELD SETS rather than by reading the allow-list constant. Reading my own motif returns owner_user_id, source_ref, examples, code and status; reading a SYSTEM motif I do not own returns only code and status -- owner_user_id, source_ref and examples are absent, and no embedding appears either way. That matches the _MOTIF_PUBLIC_FIELDS allow-list's stated intent ('NEVER the embedding vector, the raw source_ref lineage, the copied examples[], or owner_user_id') and, unlike quoting the constant, it proves the allow-list is actually APPLIED on this path. An allow-list defined and not wired is the exact failure #146 found elsewhere in this service. My own ARCHIVED motif is still readable in full, which it must be for op=restore to be usable -- the same property #157 established for arc templates. An unknown motif_id gives the uniform deny."
     }
   }
 }
