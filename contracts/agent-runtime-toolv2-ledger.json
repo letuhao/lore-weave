@@ -632,6 +632,21 @@
         "DATED, not assumed: git says the resolver registry first shipped 2026-08-10; the name failure is 2026-07-15, so it predates the mechanism that now covers it"
       ],
       "admitted": false
+    },
+    "book_get": {
+      "state": "proven",
+      "note": "PROVEN LIVE, and its headline (567 calls / 59 ok = 10.4%) is almost entirely the runtime's OWN breaker, not the tool. 495 of the 508 failures are repeat-read refusals in FIVE sessions -- 194 of them in ONE real product turn ('The Tidewright', 2026-07-21) over 35 iterations. The tool itself failed 13 times: 6 missing book_id (1 session, 2026-07-08, the blank-args era), 5 non-UUID book_id, 2 repeated-failure breaker. Of the 5 non-UUID, FOUR sent the literal string 'all' (2 sessions, 2026-08-04) -- a magic word in an id field -- and one a mangled duplicated UUID. Both are refused accurately, and a better sentence is not a fix. THE REAL DEFECT WAS THE BREAKER, and it is fixed: the repeat-read breaker blocked the dispatch and never escalated, so the model re-emitted the call 194 times. Its own §3 comment claimed 'the repeat count keeps rising and the breaker keeps escalating' -- both halves were false. Now the count is fed by a BLOCK ledger and past a second blocked repeat the tool leaves the advertised set, the same lever the repeated-FAILURE breaker and F18 already use.",
+      "evidence": [
+        "PHASE 2: 59 ok / 508 failed = 495 repeat-read breaker (5 sessions) + 6 missing book_id + 5 book_id-not-a-UUID + 2 repeated-failure breaker",
+        "DATA, with the two breakers SEPARATED so the denominator is honest: of all calls carrying 'You have already called', 1180 are tool_list's own F18 breaker (3 sessions, a different message with no count) and 598 are the repeat-READ breaker (40 sessions, 10 tools). ALL 598 report '3 times' -- not one says 4",
+        "DATA: worst single turn = 194 blocked book_get calls in one message, max iteration 35. The 5 sessions are PRODUCT, not measurement: titles 'The Tidewright', 'Book Description Update', 'New Chat', 'Content of conversation:', 'Constraint check: Max 6' -- none match the eval regex (DQ-12)",
+        "ROOT CAUSE, in code: the count read `read_call_results`, which only advances after a real DISPATCH; a blocked repeat never reaches one, so it was frozen at the cap forever",
+        "CODE: two falsifiers, each red with its own message -- restoring `_prior[1] + 1` reds the count guard with 'got [3, 3]' (the corpus finding reproduced exactly), and disabling the de-advertise reds the escalation guard. The escalation guard asserts the WIRE (the tool is absent from the tool list the client actually received), not a flag. 2868 chat-service tests pass; falsification harness 361/366 falsifiers red the guard they name (was 359), 0 stale anchors, partition exact",
+        "SCOPE, corrected mid-iteration: I first registered tests/test_repeated_read_breaker.py in SUITES, which reds test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK -- that tuple must equal the CHECKPOINT suites on disk. The guards moved to test_cp5_repeat.py, which IS the CP-5.7 repeat-semantics suite and was already registered",
+        "LIVE (book_get): throwaway book -> the full book record. CONTROL: no book_id reproduces 'required: missing properties: [\"book_id\"]'; book_id='The Tidewright' reproduces 'book_id must be a UUID'. Both verbatim",
+        "LIVE (breaker): the deployed chat-service image is byte-identical to source by whole-file sha256 and container .Image == the built image id, and the escalation symbols are present IN the running image. The A/B a looping model would give is NOT claimed: I cannot force a real model to loop on demand. What IS proven end-to-end is the guard driving the real _stream_with_tools loop with a fake client, asserting the advertised set on the wire"
+      ],
+      "admitted": false
     }
   }
 }

@@ -15,10 +15,21 @@ rank by.
 SIGNAL.** The breaker already removes the cost — it short-circuits before the dispatch — so nothing
 here caches anything. What changes is that a refusal stops being typed as a tool failure, while the
 repeat count keeps rising and the breaker keeps escalating.
+
+🔴 **THAT LAST CLAUSE WAS FALSE WHEN IT WAS WRITTEN, AND THE CORPUS SAYS SO** (TOOL-V2 LOOP #58).
+The count came from `read_call_results`, which only advances after a real DISPATCH — and a blocked
+repeat never reaches one. So of the **598 calls this breaker blocked, across 40 sessions and 10
+tools** (tool_list's separate F18 breaker excluded), **every single one reported "3 times"**, on
+the 3rd attempt and on the 194th alike. Nothing escalated either: the model read "STOP calling it"
+and re-emitted the call, 194 times in one real product turn. Both halves are now real — the count
+is fed by a BLOCK ledger, and past a second blocked repeat the tool leaves the advertised set, the
+same lever the repeated-FAILURE breaker and F18 already use.
 """
 from __future__ import annotations
 
 import pathlib
+
+import pytest
 
 from app.agentruntime.observation import FAILED, OUTCOMES
 from app.services import instrument
@@ -70,9 +81,18 @@ class TestTheSignalIsRetained:
         """*The contract may remove a repeat's COST; it may never remove its SIGNAL.* A refusal
         that did not say how many times would turn 566 repeats into an unreadable 566 rows."""
         src = STREAM.read_text(encoding="utf-8")
-        assert '"repeat_count": _prior[1] + 1,' in src, (
+        assert '"repeat_count": _attempts,' in src, (
             "the repeated-read refusal does not record how deep the loop is, so the two "
             "populations (a single repeat in 23 sessions vs 566 in one) cannot be told apart"
+        )
+        # The anchor used to be the literal `_prior[1] + 1`, and that expression was itself the
+        # defect: `read_call_results` only advances on a real DISPATCH, so a BLOCKED repeat never
+        # moved it and every refusal in a 194-call loop reported the same "3". The count now comes
+        # from `repeat_block_counts`, which counts the blocks — so this asserts the field is fed
+        # by the block ledger rather than pinning one arithmetic expression that was wrong.
+        assert "repeat_block_counts" in src, (
+            "the repeat count must be driven by the BLOCK ledger; a count read from the dispatch "
+            "ledger is frozen at the cap for every blocked call"
         )
 
     def test_THE_BREAKER_STILL_ESCALATES(self):
@@ -104,3 +124,73 @@ class TestTheSignalIsRetained:
             "read_call_results changed shape; if it now holds result bodies, revisit whether a "
             "cached repeat is served — and if it is, it must still be COUNTED and still escalate"
         )
+
+
+# ── §3 said the breaker "keeps escalating". It did not. (TOOL-V2 LOOP #58) ───
+#
+# These live HERE rather than beside the behavioural repeated-read tests because this is the
+# CP-5.7 repeat-semantics suite — the one the falsification gate measures, and the one whose
+# tuple `test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK` keeps equal to the checkpoint suites on
+# disk. A guard about repeat semantics that sat outside it would be declared by arithmetic.
+from tests.test_repeated_read_breaker import _drive, _read_tool, _tool_calls  # noqa: E402
+
+class TestTheBreakerActuallyEscalates:
+    """Measured on the corpus, excluding tool_list's separate F18 breaker so the denominator is
+    this breaker's own: 598 blocked calls across 40 sessions and 10 tools, and ONE real product
+    turn emitted 194 blocked `book_get` calls over 35 iterations.
+    Short-circuiting the dispatch saved the backend round trip and did nothing about the loop —
+    the model read "STOP calling it" and called it again, 194 times. That is the same failure the
+    repeated-FAILURE breaker answered by taking the tool off the wire, and the same one F18
+    recorded for tool_list (an error "framed the repeat as a failure the model fixes by retrying
+    HARDER, 28→311 calls"). This breaker was the one that never got the escalation."""
+
+    @pytest.mark.asyncio
+    async def test_THE_REPORTED_ATTEMPT_COUNT_RISES_INSTEAD_OF_FREEZING(self):
+        """Every blocked call said "3 times" — on the 3rd attempt and on the 194th alike.
+
+        The count lived in `read_call_results`, which only advances after a real DISPATCH, and a
+        blocked call never reaches one. So the one number in the message that was supposed to
+        convey escalating pressure was a constant.
+        """
+        chunks, _kc = await _drive(times=8)
+        blocked = [t for t in _tool_calls(chunks) if not t["ok"]]
+        assert len(blocked) >= 2, "need at least two blocked repeats to see a count move"
+
+        counts = [b.get("repeat_count") for b in blocked]
+        assert all(c is not None for c in counts), counts
+        assert counts == sorted(counts) and counts[-1] > counts[0], (
+            f"the attempt count must RISE across blocked repeats, got {counts}")
+
+    @pytest.mark.asyncio
+    async def test_THE_LOOPED_TOOL_LEAVES_THE_ADVERTISED_SET(self):
+        """THE fix. A tool the model cannot see is a tool it cannot re-emit."""
+        offered: list[list[str]] = []
+        chunks, _kc = await _drive(times=8, offered=offered)
+        blocked = [t for t in _tool_calls(chunks) if not t["ok"]]
+        name = _read_tool()["function"]["name"]
+
+        assert any(b.get("deadvertised") for b in blocked), (
+            "the breaker must escalate from steering to de-advertising")
+
+        # THE assertion, and it is on the WIRE rather than on the flag: a `deadvertised: True`
+        # stamp next to a tool that is still being offered is a mechanism that reports itself
+        # working while changing nothing.
+        assert any(name in pass_tools for pass_tools in offered), (
+            "sanity: the tool must be offered before it can stop being offered")
+        assert offered[-1] == [] or name not in offered[-1], (
+            f"the looped tool must be GONE from the advertised set, got {offered[-1]}")
+        # And the model is TOLD, because a tool that vanishes without a word invites a hunt
+        # for it rather than the next step.
+        assert any("disabled for the rest of this turn" in b["error"] for b in blocked)
+
+        # The escalation is ORDERED: steer first, de-advertise only after the steer was ignored.
+        assert not blocked[0].get("deadvertised"), (
+            "the first block must steer, not de-advertise — a model that listens listens early")
+
+    @pytest.mark.asyncio
+    async def test_A_NORMAL_READ_NEVER_REACHES_THE_ESCALATION(self):
+        """The escalation must cost the common case nothing."""
+        chunks, _kc = await _drive(times=1)
+        tc = _tool_calls(chunks)
+        assert len(tc) == 1 and tc[0]["ok"] is True
+        assert not any(t.get("deadvertised") for t in tc)

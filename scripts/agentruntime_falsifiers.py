@@ -1267,8 +1267,21 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
          "        _outcome = CALL_DONE if chunk.get(\"ok\") is True else CALL_REFUSED"),
     ],
     "test_THE_REPEAT_COUNT_RIDES_THE_RECORD": [
-        (f"{CS}/app/services/stream_service.py", '                        "repeat_count": _prior[1] + 1,',
+        (f"{CS}/app/services/stream_service.py", '                        "repeat_count": _attempts,',
                                                  "                        # count dropped"),
+    ],
+    # The count used to be `_prior[1] + 1`, read from the DISPATCH ledger — which a blocked call
+    # never advances, so every refusal in a 194-call loop reported "3". Restoring that expression
+    # is the exact regression, so it is the falsifier.
+    "test_THE_REPORTED_ATTEMPT_COUNT_RISES_INSTEAD_OF_FREEZING": [
+        (f"{CS}/app/services/stream_service.py",
+         "                    _attempts = _prior[1] + _blocks",
+         "                    _attempts = _prior[1] + 1"),
+    ],
+    "test_THE_LOOPED_TOOL_LEAVES_THE_ADVERTISED_SET": [
+        (f"{CS}/app/services/stream_service.py",
+         "                    _deadvertise = _blocks >= REPEAT_READ_DEADVERTISE_CAP",
+         "                    _deadvertise = False"),
     ],
     "test_BOTH_NAMED_BREAKERS_ARE_WIRED": [
         # Wire one of two sites — the shape this run keeps finding.
@@ -2210,4 +2223,15 @@ UNFALSIFIED: dict[str, str] = {
         "its subject is the repository's services/ tree, which the gate mirrors only in part; the "
         "guard skips inside a mirror, so no edit can red it there. Falsifiable claim covered by "
         "test_THE_CASE_A_PREFIX_GUESS_GETS_WRONG, which is filesystem-free.",
+    # This one asserts an ABSENCE on a path the mechanism never reaches: a single read never
+    # trips the breaker, so `_deadvertise` is not evaluated at all and no edit to the escalation
+    # can make the guard red. Breaking the breaker's ENTRY condition instead would red its two
+    # siblings first. Recorded rather than repaired because rewriting it to be falsifiable would
+    # mean asserting something other than what it is for — that the common case pays nothing —
+    # and its positive twin, test_THE_LOOPED_TOOL_LEAVES_THE_ADVERTISED_SET, IS falsified and
+    # asserts the de-advertise on the WIRE rather than on a flag.
+    "test_A_NORMAL_READ_NEVER_REACHES_THE_ESCALATION":
+        "a single read never trips the breaker, so the escalation code it guards against is "
+        "never evaluated on this path; no edit to that code can red it. The positive claim is "
+        "carried by test_THE_LOOPED_TOOL_LEAVES_THE_ADVERTISED_SET, which is falsified.",
 }

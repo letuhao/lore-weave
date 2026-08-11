@@ -523,6 +523,18 @@ BLANK_TOOL_ARGS_CAP = 2
 # stranded every async step in the catalogue. So a poll that returns "still running" → "done"
 # never trips this; only a read that keeps handing back the byte-identical answer does.
 REPEAT_READ_CAP = 2
+# ...and once it fires, SHORT-CIRCUITING THE DISPATCH IS NOT ENOUGH. Measured across the whole
+# corpus, with tool_list's separate F18 breaker excluded so the denominator is this breaker's own:
+# 598 calls blocked, across 40 sessions and 10 tools — and ALL 598 report "3 times", not one says
+# 4, because the count came from the DISPATCH ledger a blocked call never advances. One real
+# product turn ("The Tidewright", 2026-07-21) emitted 194 blocked `book_get` calls over 35
+# iterations, every one of them claiming it was the 3rd. The model reads "STOP calling it" and calls it again, which is the exact failure the
+# repeated-FAILURE breaker already answered by taking the tool OFF THE WIRE, and the exact failure
+# F18 records for tool_list ("returning an ERROR framed the repeat as a failure the model 'fixes'
+# by retrying HARDER, 28→311 calls"). This breaker was the one that never got the escalation its
+# own comment claimed it had. After this many BLOCKED repeats the tool is de-advertised for the
+# rest of the turn — the steer gets two chances first, because a model that listens listens early.
+REPEAT_READ_DEADVERTISE_CAP = 2
 
 # Idempotent-no-op WRITE breaker cap — how many times a Tier-A write may return a
 # `created: False` (made-nothing) result for the SAME (tool, args) before a further
@@ -2133,6 +2145,18 @@ async def _stream_with_tools(
         # A SUCCESS clears the tool's whole map (the loop is broken). Distinct from
         # noop_write_counts (created=false SUCCESSES) and read_call_results (identical SUCCESSES).
         fail_by_tool_error: dict[str, dict[str, int]] = {}
+        # Per-tool count of repeats this turn that the repeated-READ breaker BLOCKED. It cannot
+        # live in `read_call_results`: that map only advances after a real dispatch, and a blocked
+        # call never reaches one — which is why the breaker's message said "3 times" on the 3rd
+        # attempt and still said "3 times" on the 194th. Counting the blocks is what makes both the
+        # message true and the de-advertise escalation possible.
+        repeat_block_counts: dict[str, int] = {}
+        # Tools the repeated-READ breaker took off the wire. A SEPARATE set from
+        # `failure_suppress` even though both feed `_suppress`: the withheld column records a
+        # stage and a reason per tool, and filing a de-advertised READ under "repeated-failure
+        # breaker gave up" would put a false reason in the one column built to stop exactly that.
+        # These tools did not fail — they answered, identically, and were asked anyway.
+        repeat_read_suppress: set[str] = set()
         # De-advertise escalation — once the breaker fires for a tool, a WEAK model keeps
         # RE-EMITTING the same call and ignoring the steer (measured: book_get_chapter emitted 19×,
         # only 2 dispatched, the rest short-circuited but the model spun anyway). Short-circuiting
@@ -2336,6 +2360,8 @@ async def _stream_with_tools(
                     # already short-circuited; this stops the wasted EMIT passes too).
                     if failure_suppress:
                         _suppress = set(_suppress) | failure_suppress
+                    if repeat_read_suppress:
+                        _suppress = set(_suppress) | repeat_read_suppress
                     advertised = _advertise_discovery_tools(
                         cat_index, active_tool_names, extra_fe,
                         permission_mode=permission_mode,
@@ -2349,6 +2375,24 @@ async def _stream_with_tools(
                         _filter_tools_for_ask(tools, permission_mode)
                         if permission_mode in ("ask", "plan") else tools
                     )
+                    # The de-advertise has to hold on THIS branch too. Every suppression above
+                    # is wired only into the discovery chokepoint, so a breaker that fires on a
+                    # plain (or nested-subagent) turn would take the tool off no wire at all —
+                    # a mechanism that runs and changes nothing, which is worse than one that
+                    # was never written because it reads as covered. The discovery path records
+                    # the drop in the withheld column; this one has no such column, so it logs.
+                    if repeat_read_suppress:
+                        _before = len(advertised)
+                        advertised = [
+                            td for td in advertised
+                            if (td.get("function") or {}).get("name")
+                            not in repeat_read_suppress
+                        ]
+                        if len(advertised) != _before:
+                            logger.info(
+                                "repeated-read breaker: de-advertised %s on the plain path",
+                                sorted(repeat_read_suppress),
+                            )
                     # P5 REG-P5-01 — a nested subagent sub-run advertises its scoped
                     # set, which carries `_meta` (read by the tier filter just above /
                     # ask-mode). Strip it before the wire. Gated to the nested case so
@@ -2442,6 +2486,12 @@ async def _stream_with_tools(
                             {"tool": t, "stage": "failure_breaker",
                              "reason": "repeated-failure breaker gave up on this tool"}
                             for t in sorted(failure_suppress)
+                        ]
+                    if repeat_read_suppress:
+                        _withheld_now += [
+                            {"tool": t, "stage": "repeat_read_breaker",
+                             "reason": "returned the identical result and was re-asked anyway"}
+                            for t in sorted(repeat_read_suppress)
                         ]
                     if suppress_tool_list:
                         _withheld_now.append({
@@ -4913,16 +4963,36 @@ async def _stream_with_tools(
                     continue
                 _prior = read_call_results.get(_read_key) if _read_key is not None else None
                 if _prior is not None and _prior[1] >= REPEAT_READ_CAP:
+                    # Count the BLOCK, not the dispatch — see `repeat_block_counts`. `_prior[1]`
+                    # is frozen at the cap for every blocked call, so the attempt number has to
+                    # come from here or the message repeats a number that stopped being true.
+                    _blocks = repeat_block_counts[c["name"]] = (
+                        repeat_block_counts.get(c["name"], 0) + 1
+                    )
+                    _attempts = _prior[1] + _blocks
+                    _deadvertise = _blocks >= REPEAT_READ_DEADVERTISE_CAP
                     _repeat_err = (
                         f"You have already called '{c['name']}' with these exact arguments "
-                        f"{_prior[1] + 1} times this turn and it returned the IDENTICAL result "
+                        f"{_attempts} times this turn and it returned the IDENTICAL result "
                         "every time — that result is already above, in this conversation. "
                         "Calling it again cannot tell you anything new. STOP calling it. Read "
                         "the result you already have, and take the NEXT step."
                     )
+                    if _deadvertise:
+                        # Off the wire for the rest of the turn, so it cannot be re-emitted at
+                        # all. Said plainly, because a model that finds a tool missing without
+                        # being told tends to hunt for it instead of moving on.
+                        repeat_read_suppress.add(c["name"])
+                        _repeat_err += (
+                            f" '{c['name']}' is now disabled for the rest of this turn — the "
+                            "answer you have is the answer. Use a DIFFERENT tool, or reply to "
+                            "the user with what you already know."
+                        )
                     logger.info(
-                        "repeated-read breaker: %s returned an unchanged result %d× — short-circuited",
-                        c["name"], _prior[1],
+                        "repeated-read breaker: %s returned an unchanged result %d× — "
+                        "short-circuited (%d blocked repeat(s)%s)",
+                        c["name"], _prior[1], _blocks,
+                        "; de-advertised" if _deadvertise else "",
                     )
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
@@ -4934,7 +5004,11 @@ async def _stream_with_tools(
                         # §3 — the COST is already gone (this short-circuits before dispatch).
                         # The SIGNAL stays: the repeat count keeps rising and the breaker keeps
                         # escalating. What changes is that it stops being typed as a TOOL failure.
-                        "repeat_count": _prior[1] + 1,
+                        # That sentence was aspirational until now — the count was frozen at the
+                        # cap and nothing escalated, so both halves are recorded here instead.
+                        "repeat_count": _attempts,
+                        "repeat_blocks": _blocks,
+                        "deadvertised": _deadvertise,
                     }, "repeated_read")}
                     continue
 
@@ -5335,6 +5409,13 @@ async def _stream_with_tools(
                                     activation_state["dirty"] = True
                     else:
                         read_call_results.clear()
+                        # A real write means earlier reads may now be stale — which is why the
+                        # ledger above resets. The de-advertise has to lift with it, or a tool
+                        # blocked for repeating itself would stay off the wire across the very
+                        # write that made re-reading it the correct next move. Clearing one and
+                        # not the other is the same half-handled transition either way.
+                        repeat_block_counts.clear()
+                        repeat_read_suppress.clear()
                 if ok or _MISSING_REQUIRED_ARGS_MARKER not in str(envelope.get("error") or ""):
                     blank_tool_args_streak = 0
                 else:
