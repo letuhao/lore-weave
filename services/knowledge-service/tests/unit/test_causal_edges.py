@@ -19,9 +19,14 @@ ORDER = {"e1": 0, "e2": 1, "e3": 2}
 WIN = {"e1", "e2", "e3"}
 
 
-def test_build_messages_numbers_events_in_order():
+def test_build_messages_labels_events_in_order():
+    """This test used to assert the format that CAUSED the corpus bite to return
+    zero: `1. id=e1` put a line number beside the id, and the model answered with
+    the number — `[[1, 2, "causes"], …]` — so `parse_edges` dropped every triple.
+    One handle per event, and it is the handle the answer is asked for."""
     user = build_messages(EVENTS)[1]["content"]
-    assert "1. id=e1" in user and "3. id=e3" in user and "A public shaming." in user
+    assert "E1 | " in user and "E3 | " in user and "A public shaming." in user
+    assert "1. id=" not in user, "a line number is a second handle to answer with"
 
 
 def test_parse_edges_keeps_forward_drops_backward_self_and_foreign():

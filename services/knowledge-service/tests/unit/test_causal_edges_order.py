@@ -18,7 +18,12 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from app.extraction.causal_edges import (
+    build_messages,
+    event_tokens,
+    infer_causal_edges,
     REL_CAUSES,
     REL_PRECEDES,
     drop_cycles,
@@ -110,3 +115,91 @@ def test_drop_cycles_is_a_no_op_on_a_forward_only_graph():
     edges = [("e1", "e2", REL_CAUSES), ("e1", "e3", REL_PRECEDES), ("e2", "e4", REL_CAUSES)]
     kept, refused = drop_cycles(edges)
     assert kept == edges and refused == []
+
+
+# ── D-T33-CORPUS-BITE-REASONING-MODEL — hidden thinking is OFF ──────────
+
+
+@pytest.mark.asyncio
+async def test_causal_edges_disables_hidden_thinking():
+    """The corpus bite returned 0 edges over 27 events and the cause was the
+    MODEL, not the parse path: a reasoning model spent its whole budget on
+    `reasoning_content` (job 1: 1176 of 1182 output tokens, content "[]";
+    job 2: 4947 of 4950, finish_reason=length, content empty).
+
+    `max_tokens_for("causal_edges", ...)` sizes the ANSWER, so a preamble
+    silently eats it. This call wants strict JSON — a preamble is pure waste —
+    so the request must carry the SDK's documented cross-provider off-switch.
+    Asserted on the WIRE fields, because that is what the provider sees."""
+    captured: dict = {}
+
+    class _Spy:
+        async def submit_and_wait(self, **kwargs):
+            captured.update(kwargs)
+            raise RuntimeError("stop after capture")
+
+    events = [
+        {"id": "e1", "title": "a", "summary": "a", "event_order": 1},
+        {"id": "e2", "title": "b", "summary": "b", "event_order": 2},
+    ]
+    # ADVISORY contract: the extractor never raises, so the spy's error is swallowed.
+    out = await infer_causal_edges(
+        _Spy(), user_id="u", model_source="user_model", model_ref="m", events=events)
+    assert out == []
+
+    sent = captured["input"]
+    assert sent["reasoning_effort"] == "none", (
+        "hidden thinking must be OFF — reasoning_tokens burn the answer budget")
+    assert sent["chat_template_kwargs"] == {"thinking": False, "enable_thinking": False}, (
+        "the llama.cpp / LM Studio template toggle rides along; reasoning_effort "
+        "alone is a no-op on those runtimes")
+
+
+# ── the E-label round trip (the corpus bite's second failure) ───────────
+
+
+def test_prompt_offers_exactly_one_handle_per_event():
+    """The listing used to read `1. id=<32-hex> | title` — a line NUMBER beside a
+    long opaque id — and the model answered with the number. The inference had
+    worked; the handles did not survive the round trip, and the result was
+    indistinguishable from "the model found nothing"."""
+    window = [{"id": "a" * 32, "title": "one"}, {"id": "b" * 32, "title": "two"}]
+    user = build_messages(window)[1]["content"]
+    assert "E1 | one" in user and "E2 | two" in user
+    assert "a" * 32 not in user, "the raw id must not appear — it is a second handle"
+    assert "1. " not in user, "a line number is a second handle too"
+
+
+def test_parse_edges_resolves_the_E_labels():
+    window = [{"id": "a" * 32, "title": "one"}, {"id": "b" * 32, "title": "two"}]
+    tokens = event_tokens(window)
+    assert tokens == {"E1": "a" * 32, "E2": "b" * 32}
+    out = parse_edges(
+        '[["E1","E2","causes"]]',
+        order_index={"a" * 32: 0, "b" * 32: 1},
+        window_ids={"a" * 32, "b" * 32},
+        token_map=tokens)
+    assert out == [("a" * 32, "b" * 32, "causes")]
+
+
+def test_parse_edges_still_accepts_raw_ids():
+    """The map is a resolution step, not a required encoding — a cached
+    pre-token response must still parse."""
+    out = parse_edges(
+        f'[["{"a" * 32}","{"b" * 32}","precedes"]]',
+        order_index={"a" * 32: 0, "b" * 32: 1},
+        window_ids={"a" * 32, "b" * 32},
+        token_map={"E1": "a" * 32, "E2": "b" * 32})
+    assert out == [("a" * 32, "b" * 32, "precedes")]
+
+
+def test_bare_ordinals_are_still_dropped():
+    """The old failure mode must stay a failure: a positional integer is not a
+    handle this prompt offers, and inventing a mapping for it would turn a
+    misunderstanding into world state."""
+    out = parse_edges(
+        '[[1,2,"causes"]]',
+        order_index={"a" * 32: 0, "b" * 32: 1},
+        window_ids={"a" * 32, "b" * 32},
+        token_map={"E1": "a" * 32, "E2": "b" * 32})
+    assert out == []

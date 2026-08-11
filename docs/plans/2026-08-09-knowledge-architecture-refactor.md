@@ -2611,7 +2611,57 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   they cover (forward-only, no self-loops, no invented ids) is unchanged by T33 and still
   asserted.
 
-  ### 🔻 DEFERRAL `D-T33-CORPUS-BITE-REASONING-MODEL` — the corpus run produced 0 edges, and the cause is the MODEL
+  ### ✅ THE CORPUS BITE PASSES — 2026-08-11. Two causes, and the deferral named one.
+
+  ```
+  {"edges_written": 5, "events_considered": 31}      (was 0 / 27)
+  causes_cycles 0 · precedes_cycles 0                 — and now NON-vacuously
+  ```
+
+  The acyclicity half was previously vacuous (an empty graph is trivially acyclic). It is
+  now checked against a real DAG:
+  <!-- doc-language-gate: ok -- stored event titles from the cited corpus; the inferred chain is the evidence -->
+  ```
+  CAUSES    Hỗn loạn tại cấm địa      → Lâm Trạch cứu Lâm Uyên
+  CAUSES    Lâm Trạch cứu Lâm Uyên    → Lâm Trạch cứu giúp Lâm Uyên
+  PRECEDES  Lâm Trạch cứu giúp…       → Lâm Trạch và Lâm Uyên thề huynh đệ
+  ```
+  <!-- doc-language-gate: end -->
+
+  **Cause 1 — the reasoning model, as the deferral said, but the fix was NOT a policy
+  decision.** The deferral framed unblocking as *"raise the budget or route to a
+  non-reasoning model … provider-config decisions"*, and both would have needed an owner.
+  It missed the third option, which the SDK documents in the field's own comment:
+  `reasoning_effort="none"` is *"the cross-provider way to DISABLE hidden thinking … without
+  it, reasoning_tokens silently burn the output budget and the prose/JSON comes back empty
+  (the extraction footgun)"*. That is a **per-request** knob. Using it manages no model
+  lifecycle, so the repo's rule against doing that never applied. One `reasoning_fields(...)`
+  call, and the same model answers within budget:
+  ```
+  before   finish_reason=length  output=4950  reasoning=4947  content=""
+  after    finish_reason=stop    output=57    reasoning=—     content="[[…]]"
+  ```
+
+  **Cause 2 — which only became visible once the model could answer.** The prompt listed
+  events as `1. id=<32-hex> | title` — a line NUMBER beside a long opaque id — and the model
+  answered with the number:
+  ```
+  [[1, 2, unknown], [2, 3, precedes], [3, 6, causes], …]
+  ```
+  `parse_edges` then correctly dropped every triple, because `1` is not an event id. **The
+  inference had worked; the handles did not survive the round trip**, and the result was
+  indistinguishable from "the model found nothing". Events now carry one handle, `E1..En`,
+  which is the handle the answer is asked for; `event_tokens` resolves them back and a raw id
+  still passes through, so a cached response parses.
+
+  A pre-existing test *asserted the broken format* (`"1. id=e1" in user`) — it encoded the
+  defect, and is replaced by one that asserts a line number is absent. Four new tests cover
+  the round trip, including that a bare ordinal is still DROPPED: inventing a mapping for a
+  misunderstanding would turn it into world state.
+
+  knowledge-service **4239 passed, 600 skipped**.
+
+  ### ~~DEFERRAL~~ `D-T33-CORPUS-BITE-REASONING-MODEL` — CLOSED 2026-08-11; kept for the record
 
   The task's bite is *"run over the corpus → edge count non-zero **and** the graph acyclic"*.
   It was run, live, against the rebuilt image, and it returned **`{"edges_written":0,
