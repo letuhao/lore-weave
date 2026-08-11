@@ -922,6 +922,18 @@
         "DEBRIS, stated rather than implied: the probe kind remains on the disposable book. glossary_book_delete is a confirm-gated PROPOSE (destructive:true, with a cascade preview), which is correct for a cascading delete, so it cannot be completed from the MCP surface alone"
       ],
       "admitted": false
+    },
+    "translation_start_extraction": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it CLOSES A GAP IN MY OWN EVIDENCE. Its dominant failure -- 7 calls, one session, 2026-07-08 -- is the false '(you sent a dict)' type clause fixed in iteration 65, and translation-service is the one of the three services I did NOT live-verify there. It is verified now. The other 3 failures are raw pydantic dumps from before the one-line rewriter. The tool is Tier-W async and mints a confirm card carrying a real cost ESTIMATE, so a user sees the price before the job starts: 20 llm_calls and 37,420 estimated tokens for one chapter.",
+      "evidence": [
+        "PHASE 2: 6 ok / 10 failed = 7 'Field required (you sent a dict)' (1 session, 2026-07-08) + 3 raw pydantic dumps (2026-06-21)",
+        "LIVE, the gap closed: translation-service with {} now returns '`book_id`: Field required; `chapter_ids`: Field required. You sent no arguments at all — supply the required ones and call the tool again.' Iteration 65 is now proven live on all THREE services rather than two",
+        "LIVE happy path on the throwaway book: a confirm card {needs_confirm, confirm_token, descriptor, domain, title 'Extract glossary from 1 chapter(s)', estimate}. Calling it starts NOTHING -- the job runs on confirm -- so the probe spends nothing",
+        "ESTIMATE, checked because a card asking for confirmation must quote a real price: 20 llm_calls, 5 batches, 27,420 in + 10,000 out = 37,420 tokens, model_fit_warning null",
+        "MEASURED BUT NOT CLAIMED AS A DEFECT: 2 of the 6 recorded cards quoted llm_calls 0 and 0 tokens, both in one session on 2026-06-21. A chapter with nothing extractable would correctly estimate zero, today's call quotes real numbers, and no other tool has ever produced a zero-estimate card. Two calls from June is not enough to call it wrong"
+      ],
+      "admitted": false
     }
   }
 }
