@@ -1977,6 +1977,10 @@
     "composition_structure_template_restore": {
       "state": "proven",
       "note": "PROVEN as #222's inverse. Restoring an archived template of mine returns is_archived to false; restoring an already-live one and restoring a BUILT-IN both give the uniform deny. The built-in case matters: a restore that reached rows the caller does not own would be an ownership hole in the opposite direction from #225's update guard -- writing to the platform library through the un-archive path instead of the edit path. It does not. This family is INTERNALLY consistent even though it differs from the motif family: here BOTH archive (#222) and restore deny on a no-op, where composition_motif_archive is idempotent and composition_motif_restore denies. So structure templates apply one rule to both directions; motifs apply different rules to each. Recorded in #222 and repeated here only because the symmetry is the reason this one needs no separate judgement. The template was re-archived afterwards, leaving the library exactly as found."
+    },
+    "composition_structure_template_update": {
+      "state": "proven",
+      "note": "PROVEN. Updating `name` alone left kind and the 2-beat array intact and bumped the version 1→2 -- correct partial semantics, the same side of #155's divide as motif_patch (#208) and canon_rule_update (#177). Reusing the consumed version returns outcome:'applied_conflict' with 'structure was modified; reload'. Note that conflict message differs from the family's usual 'stale expected_version -- refetch and retry' while carrying the same meaning; it also omits current_version, which several siblings DO return (arc_edit #145, canon_rule_edit #175, archive_derivative #161), so a retry here needs an extra read that those avoid. Minor, recorded rather than changed: the outcome marker is what a caller branches on and that is present and correct."
     }
   }
 }
