@@ -1887,11 +1887,42 @@ vectors and validity intervals live in different stores.
   (`exact` = 1.0000 vs numpy ground truth computed outside the DB) held on every run.
 
   🔻 **`D-QC3B-NO-REAL-CORPUS-AT-SCALE`** — the absolute numbers are **synthetic, and a floor**.
-  The real passage corpus is **181 rows**, so *"recall on real data at scale"* cannot be measured
-  today. What transfers is the shape, not the value. **Retry when any real book's corpus exceeds
-  ~5 000 passages (most plausibly after QC-5) — and before the cutover ships, because this is an
-  input to that decision, not a follow-up to it.** Mechanism: `--source neo4j` already exists and
-  needs data, not code; its `exact` control voids the run if the harness is broken.
+  ~~The real passage corpus is **181 rows**~~, so *"recall on real data at scale"* cannot be
+  measured today. What transfers is the shape, not the value. **Retry when any real book's corpus
+  exceeds ~5 000 passages — and before the cutover ships, because this is an input to that
+  decision, not a follow-up to it.** Mechanism: `--source neo4j` already exists and needs data,
+  not code; its `exact` control voids the run if the harness is broken.
+
+  #### 🔎 RE-MEASURED 2026-08-11 — the number was stale and the REASON was never recorded
+
+  **The corpus is 485 passages, not 181** (2.7× the figure above), and every one carries a real
+  `embedding_1024` — so real-data recall is measurable *today*, just not at scale. Per project:
+  181 · 117 · 77 · 60 · 10.
+
+  **Why it is small is the useful part, and it is not "the books are small".** The two largest
+  books by fact count — **26 192** and **18 620** facts — have **zero `knowledge_projects` rows**
+  between them. They were ingested through the translation/glossary pipeline only and have
+  therefore never produced a single passage. The corpus is small because the big books were never
+  put through KG extraction, not because the content does not exist.
+
+  **So the unblock is a run, and its size is now known rather than guessed:**
+
+  ```
+  acceptance book   3 chapters ·   2 646 words → 60 passages     (measured)
+                                              ≈ 44 words / passage
+  book 019fb89f   100 chapters · 484 026 words → ≈ 11 000 passages (projected)
+  ```
+
+  One book takes the corpus **485 → ≈ 11 500** — past this deferral's 5 000 threshold and into
+  the region where QC-3a's *measured* diskann boundary actually bites (the builder neighbour
+  cache fills at **14 717** vectors regardless of corpus size). That is the run that makes both
+  halves of QC-3 answerable on real data.
+
+  **Recipe:** create a `knowledge_projects` row for book `019fb89f-…`, then
+  `POST /internal/knowledge/projects/{id}/dispatch-extraction {"scope":"chapters"}`. **Cost is
+  the reason this is written down rather than done:** 484 026 words of LLM extraction plus
+  embedding, hours of wall-clock and real BYOK spend on a dev stack. It is a PO call, not a
+  side effect of clearing a deferral.
 
   **Still owed by QC-3:** `/review-impl`, and the recall comparison on the real corpus — which is
   the deferral above. The restore drill is done (T25 built it; QC-3a re-ran it at 100 000).
@@ -2491,6 +2522,40 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | **`scripts/alive-column-deprecation-gate.py`**, wired into pre-commit + `foundation-ci.yml`. It pins the reader set exactly — 7 files, each annotated with what it does — so **a NEW reader fails the build** and a file that stops reading must be removed from the baseline. **The baseline can only shrink, and it IS the migration checklist.** *Bite: add a file reading `alive` → FAIL, exit 1, file named.* |
   | **Retry when** | Any liveness facts exist for a real book. Migrate `canon_at_chapter_handler.go` first — **T52 is already rewriting it** — then the remaining six, dropping each from the baseline as it moves. |
 
+  #### 🔎 RE-MEASURED 2026-08-11 — three counts that change what this migration IS
+
+  Attempting the backfill the deferral sanctions turned up its own blockers, and they are worth
+  more than the attempt would have been.
+
+  **1 · The column being migrated FROM is empty too.** `SELECT alive, count(*) FROM
+  glossary_entities` → **`t` 7361, `f` 0**. Not "mostly alive" — *no row has ever been false*.
+  And `alive` is not derived: it is an author-editable toggle (`entity_handler.go:1082` PATCH,
+  `entity_revisions_handler.go:274` revision restore). So every one of the 7 pinned readers
+  filters on a flag **no author has ever set**, and each `WHERE e.alive = true` is currently a
+  no-op. The migration is therefore not "swap a working filter for a better one" — it is
+  "build the liveness signal that neither side has".
+
+  **2 · No producer of a status fact exists anywhere.** `emitChapterFacts` — the only writer
+  behind the chapter writeback — emits exactly three kinds (`name`, `alias`, `attribute`), and
+  the corpus agrees: `attribute` 41 536 · `name` 5 202 · `alias` 1 869, **`status` 0**. T32
+  widened the CHECK to admit `'status'`; nothing has ever tried to write one. The nearest
+  attribute codes (`fertility_status`, `diplomatic_status`, `relic_status`, a generic `status`
+  at 82 rows) are per-kind descriptive attributes, not entity liveness.
+
+  **3 · The liveness signal exists, in the OTHER store, and cannot be joined.** Neo4j holds
+  **21 `:EntityStatus` rows** (18 `gone`, 3 `active`) carrying real story positions
+  (`from_order` 1 000 000 → 10 000 012). But of those 21, **0 are on a glossary-anchored
+  entity** — so a backfill into `entity_facts`, whose FK is `glossary_entities(entity_id)`, has
+  **no join path**. The backfill is not blocked on effort; it is blocked on there being nothing
+  to write against.
+
+  **What this task actually needs**, restated from the evidence: a **cross-pipeline producer**.
+  Status detection lives in the knowledge pipeline (`status_effects` → `merge_entity_status` →
+  Neo4j); fact emission lives in the translation pipeline (`extraction_worker` → glossary
+  `entity_facts`). Neither writes what the other reads — the same shape as
+  `D-KG-FACT-VOCAB-DISJOINT`, and not a data-generation exercise. Sizing it as "run a backfill"
+  would have been wrong by a whole feature.
+
   ### 🔻 DEFERRAL `D-T32-REVEAL-AXIS` — Q8's read parameter is not built
 
   | | |
@@ -2818,7 +2883,51 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Evidence** | All 17 groups are multi-anchored (0 of 17 involve an unanchored, extraction-minted node). Two causes, both visible in the raw names: CJK simplified/traditional pairs folded together by ML-2's T2S normalisation **after** both nodes already existed (retroactive — they were genuinely distinct when written), and plain authoring duplicates with identical raw names. Both are glossary-level. |
   | **To unblock** | A PO decision to run the existing remediation. It already exists and is not new work: `POST /internal/books/{book_id}/dedup-name-variants` (`D-GLOSSARY-ST-DEDUP` M3b) groups by the folded key and merges each group into one winner, **dry-run unless `?apply=true`**. |
   | **Mechanism** | The duplicate-group count is a one-command re-run and self-describing, and the writer-side fix above means the number can no longer GROW from renames. It can only shrink, and only deliberately. |
-  | **Retry when** | The PO approves running the dedup remediation, on a book at a time, dry-run first. |
+  | **Retry when** | ~~The PO approves running the dedup remediation.~~ **Superseded — see below: the dedup remediation is the wrong tool.** |
+
+  #### ⛔ RE-DIAGNOSED 2026-08-11 — these are ORPHANS, not duplicates, and the fix is a sweeper
+
+  Preparing the dedup dry-run disproved the diagnosis above.
+
+  **Half of every "duplicate" pair has no glossary row at all.** Of the 34 nodes in the 17
+  groups: **16 resolve to a live `glossary_entities` row, 18 do not.** A glossary-side dedup
+  cannot merge a node whose glossary entity no longer exists, so `dedup-name-variants` would
+  have run, reported nothing, and left the count untouched.
+
+  **What actually happened** is the signature of a delete that never cascaded: a glossary entity
+  was deleted, its KG node was left behind, a NEW glossary entity for the same name was later
+  authored and mirrored to a second node — and the two nodes now collide on
+  `(user, project, canonical_name, kind)`. The pair is *a live node plus a tombstone-less
+  orphan*, which is why they looked like duplicates and why all 17 groups are "multi-anchored".
+
+  **And the backlog is 100× the visible symptom.** Corpus-wide, joining every KG anchor against
+  `glossary_entities`:
+
+  ```
+  KG anchors        5771
+  resolve           4139
+  DANGLING          1632   (28.3 %)
+  soft-deleted         0   (the resolving ones are all live — these are HARD gone)
+  ```
+
+  Concentrated, too: one project holds **1535 of the 1632** (1751 anchors, 216 resolving) — and
+  that is the same project all 17 collision groups live in.
+
+  **The cascade itself is not broken — it is FIXED, on this branch.**
+  `handle_glossary_entity_purged` hard-deletes the KG node and its edges, and
+  `D-T27-LIVE-REPLAY` records that these lifecycle handlers *"never worked"* until this branch
+  repaired them. So the 1632 are the backlog accumulated while the handler was dead. **The
+  events are long gone; a working handler will never revisit them.** Nothing reconciles history.
+
+  ### 🔻 DEFERRAL `D-KG-ORPHAN-ANCHOR-BACKLOG` — 1632 KG nodes anchored to deleted glossary rows
+
+  | | |
+  |---|---|
+  | **Blocker** | Needs a **reconciler**, which does not exist: the forward path (`glossary.entity_purged` → hard-delete) is fixed, but it is event-driven and the events for these 1632 were emitted (or dropped) while the handlers were broken. A sweeper that deletes KG nodes whose anchor no longer resolves is new work, and it deletes nodes on a graph holding real books — so it is not something to add as a side effect of another task. |
+  | **Evidence** | 5771 anchors · 4139 resolve · **1632 dangling (28.3 %)** · 0 soft-deleted, measured by exporting every `e.glossary_entity_id` and LEFT JOINing `glossary_entities`. One project carries 1535 of them. The 17 collision groups of `D-T35-COLLISION-GROUPS-ARE-GLOSSARY-DEBT` are 18 orphans paired with 16 live nodes — the visible tip. |
+  | **To unblock** | Nothing external. A reconciler in knowledge-service that lists anchors, resolves them against glossary in batches, and hard-deletes the misses through the SAME path `handle_glossary_entity_purged` uses (so one delete semantic, not two). Dry-run first, per project, with the count reported before any write. |
+  | **Mechanism** | The join above is the tracker and it is a one-command re-run. It can only shrink now that the forward cascade works — a growing number would mean the handler regressed, which makes this a regression detector as well as a cleanup list. |
+  | **Retry when** | Scheduled as its own slice. **It should precede any duplicate-freedom assertion** (the reframed QC-6 criterion), because 18 of the 34 nodes that criterion currently counts are orphans that the reconciler removes rather than merges. |
 
   ### ~~DEFERRAL~~ `D-T35-OPAQUE-IDENTITY` — the minting half is closed; kept for the record
 
