@@ -1952,8 +1952,36 @@ vectors and validity intervals live in different stores.
   reaching 5 000 needs roughly 700 more chapters of comparable length. What HAS changed is that
   the run is cheap and repeatable, so this is now a question of available corpus, not of budget.
 
-  **Still owed by QC-3:** `/review-impl`, and the recall comparison on the real corpus — which is
-  the deferral above. The restore drill is done (T25 built it; QC-3a re-ran it at 100 000).
+  **Still owed by QC-3:** `/review-impl`. ~~and the recall comparison on the real corpus~~ —
+  **the real-corpus comparison was RUN 2026-08-11** (below). The restore drill is done (T25
+  built it; QC-3a re-ran it at 100 000).
+
+  #### ▶ REAL-CORPUS RECALL, FIRST MEASUREMENT — and `diskann` loses on both axes
+
+  Every prior vector number in this repo was `--source synthetic`. Against the **556 real
+  passages** ingested today, `k=10`, ground truth computed in numpy outside the database:
+
+  ```
+  exact          recall@10 1.0000   p50 2.75 ms      <- positive control; run is void without it
+  halfvec_exact  recall@10 1.0000   p50 2.47 ms
+  diskann        recall@10 0.8360   p50 3.91 ms      <- THE SHIPPING CHOICE. worst query 0.500
+  hnsw           recall@10 1.0000   p50 2.69 ms
+  halfvec_hnsw   recall@10 1.0000   p50 3.70 ms      (~41 % of the table bytes)
+  ```
+
+  `control_ok: true`. At this corpus size **diskann has no advantage and two costs** — 16 %
+  fewer of the true top-10, and the slowest non-fp16 cell; its worst query recalled **half**.
+  Both same-precision alternatives score a perfect 1.000.
+
+  **What it does not show, stated plainly:** 556 rows is small, and diskann exists for the
+  regime where HNSW's index memory binds — which this run does not reach. The crossover is
+  **not measured and not implied**. But "more rows will fix the recall" is not supported
+  either: the synthetic curve stayed effort-bound at 20 000 rows (0.516 → 0.824, ceiling short
+  of exact). What this settles is the question that could not be checked before — *does
+  diskann's recall hold on real vectors?* — and at one real size the answer is no.
+
+  Full write-up: `docs/measurements/2026-08-11-vector-recall-real-corpus.md`. This closes half
+  of the owed comparison: real, and a comparison, but **not at scale** (1041 of 5 000).
   ⏸ **This checkpoint is NOT signed off.** It gates the vector cutover, which is independently
   blocked by `D-T25B-SOAK`, so work continues on tasks the checkpoint does not gate.
 
