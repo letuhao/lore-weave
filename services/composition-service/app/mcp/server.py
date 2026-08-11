@@ -6731,11 +6731,35 @@ async def composition_arc_assign_chapters(
     bid = UUID(args.book_id)
     await _gate(tc, bid, GrantLevel.EDIT)
     structures = StructureRepo(get_pool())
+    target = UUID(args.structure_node_id) if args.structure_node_id else None
     count = await structures.assign_chapters(
-        bid,
-        UUID(args.structure_node_id) if args.structure_node_id else None,
-        [UUID(c) for c in args.chapter_node_ids],
+        bid, target, [UUID(c) for c in args.chapter_node_ids],
     )
+    if count == 0 and args.chapter_node_ids:
+        # TOOLV2 LOOP #143 — a zero here used to be reported as a success.
+        #
+        # Measured on the first ever invocation: an unknown arc id, an unknown chapter id and
+        # an empty list all returned {"assigned": 0} with no error and no way to tell them
+        # apart. The caller mistypes one uuid out of two and is told the write succeeded,
+        # having changed nothing. The repo is right to no-op (its EXISTS guard stops an arc
+        # adopting another book's chapters); what was missing is saying so.
+        #
+        # The empty-list case is deliberately NOT an error — asking to move no chapters is
+        # satisfied by doing nothing — so this branch only fires when the caller named some.
+        if target is not None:
+            node = await structures.get(target)
+            if node is None or node.book_id != bid:
+                raise ValueError(
+                    "structure_node_id is not an arc in this book — an arc never adopts "
+                    "chapters from another book (call composition_arc_list for this book's "
+                    "arc ids)"
+                )
+        raise ValueError(
+            "none of those chapter_node_ids is an active CHAPTER-kind outline node in this "
+            "book, so nothing was assigned — check the ids (call composition_list_outline "
+            "for the book's chapter nodes); note these are OUTLINE NODE ids, not book "
+            "chapter ids"
+        )
     return {
         "assigned": count, "structure_node_id": args.structure_node_id,
         "_meta": {"undo_hint": None},
