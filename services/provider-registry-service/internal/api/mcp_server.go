@@ -139,7 +139,7 @@ func (s *Server) mcpHandler() http.Handler {
 	// ── Tier W (confirm_action; descriptor settings.model_delete) ──────────────
 	registerTool(srv, &mcp.Tool{
 		Name:        "settings_model_delete",
-		Description: "Delete a registered model permanently. High-impact: this does NOT delete immediately — it returns a confirm_token + a preview, and the USER confirms it on the review surface (POST /v1/settings/actions/confirm, browser-session only). You cannot complete it yourself: there is no confirm tool in the catalogue. Show the preview, hand over the token, and say what will be deleted.",
+		Description: "Delete a registered model permanently. High-impact: this does NOT delete immediately — it returns a confirm_token + a preview that the user must explicitly confirm. Pass the confirm_token to confirm_action with domain='settings'.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeUser, nil, []string{"delete model", "remove model", "drop model"}),
 	}, s.toolModelDelete)
 
