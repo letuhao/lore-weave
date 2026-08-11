@@ -1367,6 +1367,18 @@
         "CONTROL: a well-formed but absent revision_id -> 'revision not found for this entity'. Scoped to the entity+revision pair rather than blaming the book, which is the failure iteration 86 had to fix on a sibling"
       ],
       "admitted": false
+    },
+    "glossary_propose_translation": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Same batch contract as glossary_propose_aliases (iteration 101) and the same exemplary partial shape: an item that cannot be written comes back {status 'skipped', reason 'entity not found in this book'} inside an ok response with written 0 / skipped 1, so a failure is per-item, reasoned, counted, and cannot read as success. I made the SAME shape mistake as in 101 -- sending entity_id and name at the top level instead of items[] -- which is a fair signal that the singular form is what a caller reaches for.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE: items=[{entity_id, value 'Mira Vale (vi)'}], language_code 'vi' -> {results [{entity_id, status 'written'}], written 1, skipped 0}",
+        "LIVE partial: an absent entity_id -> ok=true with {status 'skipped', reason 'entity not found in this book'}, skipped 1, written 0",
+        "MY OWN ERROR, and the second time on this batch family: I sent {entity_id, name} at the top level. The tool takes {language_code, items:[{entity_id, value}]} -- note the field is `value`, not `name`",
+        "DEBRIS: a Vietnamese translation 'Mira Vale (vi)' now exists on the throwaway entity"
+      ],
+      "admitted": false
     }
   }
 }
