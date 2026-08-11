@@ -1331,6 +1331,19 @@
         "CROSS-REFERENCE: the merge_candidates view has nothing to show anywhere, per iteration 100 -- that table is empty across every book in the database"
       ],
       "admitted": false
+    },
+    "glossary_entity_rename": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Rename and restore both proven, the entity is back to 'Mira Vale', and an empty name is refused with 'name is required' rather than blanking the entity. The argument is `name`, not `new_name` -- my first three calls all used `new_name` and were rejected as unexpected properties, which is my error and also a fair signal that `new_name` is the guessable spelling for a tool whose whole job is renaming.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "SCHEMA: required ['entity_id','name']; properties book_id, entity_id, name",
+        "LIVE rename: {entity_id, name 'Mira Vale (renamed)', renamed true}",
+        "LIVE restore: {entity_id, name 'Mira Vale', renamed true}. The throwaway entity is back to its original name",
+        "CONTROL: name='' -> 'name is required'. An empty string does not blank the entity",
+        "MY OWN ERROR, and worth stating for the next reader: I used `new_name` three times. It is the natural guess for a rename tool, and the schema uses `name`"
+      ],
+      "admitted": false
     }
   }
 }
