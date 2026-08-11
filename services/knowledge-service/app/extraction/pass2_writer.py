@@ -925,9 +925,17 @@ async def write_pass2_extraction(
     facts_merged = 0
     for fact in fact_list:
         if fact.type not in FACT_TYPES:
+            # `FACT_TYPES` is now MEMORY_FACT_TYPES + STORY_FACT_TYPES. Until
+            # 2026-08-11 it was the memory half alone, and this branch dropped
+            # every `description`/`attribute`/`temporal`/`causal` fact the story
+            # extractor produced — a warning per fact and `facts=0` in the run
+            # summary, for the life of the feature. What reaches this branch now
+            # is a genuinely unrecognised type (an SDK the writer has not caught
+            # up with), which is worth saying loudly rather than counting.
             logger.warning(
-                "pass2_writer: skipping fact with unknown type %r (content=%.40r)",
-                fact.type, fact.content,
+                "pass2_writer: skipping fact with unknown type %r — not in %r "
+                "(content=%.40r)",
+                fact.type, FACT_TYPES, fact.content,
             )
             continue
         # PP-5 (spec 08 R7) — in a WORK/assistant extraction, coerce a `preference` fact to `statement`.

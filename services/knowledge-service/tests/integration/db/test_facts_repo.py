@@ -8,6 +8,8 @@ import pytest
 import pytest_asyncio
 
 from app.db.neo4j_repos.facts import (
+    MEMORY_FACT_TYPES,
+    STORY_FACT_TYPES,
     FACT_TYPES,
     delete_facts_with_zero_evidence,
     fact_id,
@@ -69,20 +71,26 @@ def test_k11_7_fact_id_rejects_empty_inputs():
 
 
 def test_k11_7_fact_types_constant_matches_literal():
-    # Deliberate change-detector: the vocabulary lives in THREE places that must move
-    # together — the FactType Literal (models.py), this constant, and the pending-facts
-    # CHECK in migrate.py (test_migrate_ddl pins that one). Widening it here without the
-    # DDL would let an unknown type reach merge_fact and 500.
-    # WS-2.1 added 'statement' (the diary's coarse fact kind);
-    # WS-5.7 added 'commitment' (a promised action + due date).
-    assert set(FACT_TYPES) == {
-        "decision",
-        "preference",
-        "milestone",
-        "negation",
-        "statement",
-        "commitment",
+    # Deliberate change-detector across the vocabulary's registries.
+    #
+    # 2026-08-11 — `:Fact` carries TWO families and they have DIFFERENT lockstep rules,
+    # which is the whole point of naming them:
+    #   MEMORY -> also the PendingFactType Literal (models.py) + the pending-facts CHECK
+    #             in migrate.py (test_migrate_ddl pins that one) + kg_fact_types. Widening
+    #             it here without the DDL lets an unknown type reach merge_fact and 500.
+    #   STORY  -> `:Fact` ONLY. It never queues (pass2_writer calls merge_fact directly),
+    #             so widening it must NOT touch the CHECK — a queue that accepts what the
+    #             confirm path cannot promote is the same drift pointing the other way.
+    # WS-2.1 added 'statement'; WS-5.7 added 'commitment'.
+    assert set(MEMORY_FACT_TYPES) == {
+        "decision", "preference", "milestone", "negation", "statement", "commitment",
     }
+    # The story extractor's own vocabulary. Before the split these were dropped at
+    # pass2_writer and story extraction could only ever write 'negation'.
+    assert set(STORY_FACT_TYPES) == {"description", "attribute", "temporal", "causal"}
+    assert set(FACT_TYPES) == set(MEMORY_FACT_TYPES) | set(STORY_FACT_TYPES)
+    # 'negation' is shared, and shared means ONCE.
+    assert len(FACT_TYPES) == len(set(FACT_TYPES))
 
 
 # ── merge_fact ────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.db.neo4j_repos.facts import FACT_TYPES
+from app.db.neo4j_repos.facts import FACT_TYPES, MEMORY_FACT_TYPES
 from app.tools.definitions import (
     ARG_MODELS,
     TOOL_DEFINITIONS,
@@ -126,7 +126,10 @@ def test_no_envelope_keys_leak_into_any_schema():
 
 def test_enum_values_match_their_source_of_truth():
     remember_props = _defn("memory_remember")["function"]["parameters"]["properties"]
-    assert remember_props["fact_type"]["enum"] == list(FACT_TYPES)
+    # MEMORY only — the story vocabulary must not reach the pending-facts inbox.
+    assert remember_props["fact_type"]["enum"] == list(MEMORY_FACT_TYPES)
+    assert "attribute" not in remember_props["fact_type"]["enum"]
+    assert set(MEMORY_FACT_TYPES) < set(FACT_TYPES), "memory is a strict subset of :Fact"
     search_props = _defn("memory_search")["function"]["parameters"]["properties"]
     assert search_props["source_type"]["enum"] == ["chapter", "chat", "glossary"]
 
@@ -168,8 +171,14 @@ def test_search_args_source_type_enum():
 
 
 def test_remember_args_fact_type_enum():
-    for ft in FACT_TYPES:
+    # MEMORY only. The `memory_remember` tool is the chat path, and the story
+    # vocabulary added to `:Fact` on 2026-08-11 must NOT become choosable here —
+    # nothing downstream can promote a story-typed pending fact.
+    for ft in MEMORY_FACT_TYPES:
         assert MemoryRememberArgs(fact_text="x", fact_type=ft).fact_type == ft
+    for story_only in ("description", "attribute", "temporal", "causal"):
+        with pytest.raises(ValidationError):
+            MemoryRememberArgs(fact_text="x", fact_type=story_only)
     with pytest.raises(ValidationError):
         MemoryRememberArgs(fact_text="x", fact_type="rumour")
     with pytest.raises(ValidationError):

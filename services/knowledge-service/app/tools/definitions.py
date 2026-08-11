@@ -23,7 +23,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.neo4j_repos.facts import FACT_TYPES
+from app.db.neo4j_repos.facts import MEMORY_FACT_TYPES
 from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
@@ -377,7 +377,12 @@ TOOL_DEFINITIONS: list[dict] = [
             },
             "fact_type": {
                 "type": "string",
-                "enum": list(FACT_TYPES),
+                # MEMORY_FACT_TYPES, not FACT_TYPES. `:Fact` also carries the STORY
+                # extractor's vocabulary since 2026-08-11, but this tool feeds the
+                # pending-facts inbox and `PendingFactType` is memory-only — offering a
+                # story kind here would let the model queue something the confirm path
+                # cannot promote.
+                "enum": list(MEMORY_FACT_TYPES),
                 "description": (
                     "decision = a choice made; preference = a standing "
                     "like/dislike or habit; milestone = a notable "

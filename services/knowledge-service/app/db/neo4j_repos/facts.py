@@ -48,6 +48,8 @@ __all__ = [
     "Fact",
     "FactType",
     "FACT_TYPES",
+    "MEMORY_FACT_TYPES",
+    "STORY_FACT_TYPES",
     "fact_id",
     "merge_fact",
     "get_fact",
@@ -58,17 +60,48 @@ __all__ = [
     "fact_coverage_for_entity",
 ]
 
-# Closed enum per KSA §5.1. New types require both a code change
-# and an extraction-side pattern, so a Literal is fine.
+# ── TWO FAMILIES OF FACT, ONE NODE LABEL ──────────────────────────────────────
+#
+# `:Fact` carries facts from two different producers, and until 2026-08-11 only one of them
+# could actually write. The enum below was the chat-memory vocabulary; `pass2_writer` — the
+# STORY extraction writer — validated the story extractor's output against it. The two
+# vocabularies intersect in exactly one word, so story extraction wrote `negation` and
+# nothing else, silently, for its whole life.
+#
+# The live graph said so precisely (94 `:Fact` nodes, corpus-wide, 2026-08-11):
+#
+#     negation    64      <- the ONLY overlapping type
+#     preference  17  |
+#     decision    11  |--  chat-memory writes, the other producer
+#     statement    2  |
+#
+# Every `description`, `attribute`, `temporal` and `causal` fact the story extractor ever
+# produced was dropped at the writer with a warning nobody read, and a run observed live
+# logged `persist-pass2 done entities=4 relations=5 events=0 facts=0`.
+#
+# So the families are NAMED rather than merged into one enum that pretends to be homogeneous.
+# `negation` is genuinely shared — both producers mean the same thing by it — and appears once.
+#
 # WS-5.7 (P5 Gate-1) — 'commitment' (a promised action + due date; the due date rides the
-# WS-2.6b s/p/o supersession trio). Adding it here (the SoT) must move IN LOCKSTEP with the
-# models.py mirror + the knowledge_pending_facts CHECK ×2 — the exact drift that 500'd a
-# 'statement' fact at merge_fact (WS-2.1). The write path validates THIS Literal, not kg_fact_types.
-FactType = Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
-# DERIVE the runtime validation tuple from the Literal — never hand-maintain a parallel copy. WS-2.1
-# added 'statement' to the Literal but a hand-kept tuple missed it, so a statement fact queued fine yet
-# 500'd at merge_fact (caught by the WS-2.4 live smoke). get_args keeps the two in lockstep by design.
-FACT_TYPES: tuple[str, ...] = get_args(FactType)
+# WS-2.6b s/p/o supersession trio). The write path validates THESE tuples, not kg_fact_types.
+MemoryFactType = Literal[
+    "decision", "preference", "milestone", "negation", "statement", "commitment",
+]
+# The story extractor's vocabulary — `loreweave_extraction.extractors.fact.FactType`, i.e.
+# what the LLM is actually prompted to produce. `negation` lives in the memory tuple above
+# and is shared, not duplicated here.
+StoryFactType = Literal["description", "attribute", "temporal", "causal"]
+
+FactType = MemoryFactType | StoryFactType
+
+# DERIVE the runtime validation tuples from the Literals — never hand-maintain a parallel
+# copy. WS-2.1 added 'statement' to the Literal but a hand-kept tuple missed it, so a
+# statement fact queued fine yet 500'd at merge_fact (caught by the WS-2.4 live smoke).
+# `get_args` on the UNION returns the two Literal types rather than their members, so the
+# tuples are concatenated instead — same discipline, one indirection less.
+MEMORY_FACT_TYPES: tuple[str, ...] = get_args(MemoryFactType)
+STORY_FACT_TYPES: tuple[str, ...] = get_args(StoryFactType)
+FACT_TYPES: tuple[str, ...] = MEMORY_FACT_TYPES + STORY_FACT_TYPES
 
 
 def fact_id(

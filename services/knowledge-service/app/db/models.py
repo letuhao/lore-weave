@@ -14,16 +14,30 @@ from app.db import ontology_models  # noqa: F401
 ProjectType = Literal["book", "translation", "code", "general"]
 ExtractionStatus = Literal["disabled", "building", "paused", "ready", "failed"]
 ScopeType = Literal["global", "project", "session", "entity"]
-# K21-C (design D5): mirrors the Neo4j FactType closed enum in
-# app/db/neo4j_repos/facts.py. Kept as a local Literal (same pattern
-# as ProjectType / ScopeType) so app.db.models stays free of any
-# neo4j_repos import.
+# K21-C (design D5): mirrors the MEMORY half of the Neo4j fact vocabulary
+# (`MemoryFactType` in app/db/neo4j_repos/facts.py). Kept as a local Literal (same pattern
+# as ProjectType / ScopeType) so app.db.models stays free of any neo4j_repos import.
+#
+# MEMORY ONLY, and that is the whole domain — not a subset that drifted. `knowledge_pending_facts`
+# is the confirm queue for the chat-memory path, and it has exactly two writers:
+# `tools/executor.py` (the `memory_remember` tool, carrying the user's chosen kind) and
+# `routers/internal_admin.py` (the diary distiller, always `'statement'`). STORY extraction
+# never queues — `pass2_writer` calls `merge_fact` directly — so the story vocabulary added
+# to `:Fact` on 2026-08-11 deliberately does NOT widen this Literal or the
+# `knowledge_pending_facts` CHECK. Widening them would admit a value nothing can produce and
+# invite the opposite drift: a queue that accepts what the confirm path cannot promote.
+#
 # WS-5.7 (P5 Gate-1) — `commitment`: a promised/planned action with a due date. The due
 # date rides as the WS-2.6b s/p/o trio (predicate='due', object=<date>), so a date slip
 # Friday→Tuesday→next-week is an ordered supersession chain (group_supersessions), not a new
-# identity. Adding this member touches 3 registries in lockstep (this Literal + the
+# identity. Adding a MEMORY member touches 3 registries in lockstep (this Literal + the
 # knowledge_pending_facts CHECK ×2 + kg_fact_types) — a mismatch is a 500 at merge_fact.
-FactType = Literal["decision", "preference", "milestone", "negation", "statement", "commitment"]
+# Adding a STORY member touches only `StoryFactType`.
+PendingFactType = Literal[
+    "decision", "preference", "milestone", "negation", "statement", "commitment",
+]
+# Back-compat alias — `FactType` was this name before the memory/story split.
+FactType = PendingFactType
 
 # Names are stripped of surrounding whitespace and must contain at least
 # one non-whitespace character. Max 200 chars, chat-service convention.

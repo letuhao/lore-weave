@@ -67,7 +67,7 @@ which also records what the same run proved WORKS — a defect list with no base
 addressed the problem. 06 is small and self-contained (fix-now-shaped, one function); 07 needs the
 kind-typing this refactor is already re-cutting, so it waits on the design.
 
-### A-extra · ★ `D-KG-FACT-VOCAB-DISJOINT` — found 2026-08-11 by a live extraction run
+### A-extra · ✅ `D-KG-FACT-VOCAB-DISJOINT` — found AND fixed 2026-08-11 · **CLOSED**
 
 **The story extractor and the KG fact writer speak two vocabularies that share exactly one
 word, and the writer silently drops everything else.**
@@ -105,13 +105,53 @@ than working around it:
    physical truth store and names `entity_facts` the working bitemporal SSOT. If story facts
    belong there, widening the Neo4j chat-memory enum builds on the layer being retired.
 
-**The decision this needs:** do story facts go to Neo4j `:Fact` (widen the enum, 4 sites,
-one migration) or to `entity_facts` (pass2 gains a glossary write path, and needs book +
-chapter context it does not currently carry)? The second is the sealed direction; the first is
-what the code is one edit away from.
+## RESOLVED — and the fix was narrower than either option first priced
 
-**Reproduce:** `MATCH (f:Fact) RETURN f.type, count(*)` — an overlap-only distribution is the
-finding.
+Neither "widen the enum across 4 sites + a migration" nor "re-home story facts in
+`entity_facts`". Checking *who actually writes the pending-facts queue* collapsed the problem:
+
+`knowledge_pending_facts` has exactly **two** writers — `tools/executor.py` (the
+`memory_remember` chat tool) and `routers/internal_admin.py` (the diary distiller, always
+`'statement'`). **Story extraction never queues**; `pass2_writer` calls `merge_fact` directly.
+So the queue's domain is memory-only *by construction*, and no CHECK migration was needed. The
+lockstep comment asked for a wider change than the code does.
+
+So the two families are **named** instead of merged into one enum pretending to be homogeneous:
+
+```python
+MemoryFactType = Literal["decision","preference","milestone","negation","statement","commitment"]
+StoryFactType  = Literal["description","attribute","temporal","causal"]
+FactType       = MemoryFactType | StoryFactType
+FACT_TYPES     = MEMORY_FACT_TYPES + STORY_FACT_TYPES     # `negation` is shared, appears once
+```
+
+`PendingFactType` (models.py) stays **memory-only**, and that is now a stated invariant rather
+than an accident: widening it would admit a value nothing can produce and invite the opposite
+drift — a queue accepting what the confirm path cannot promote.
+
+**Three lockstep guards fired on the first run and were right to.** One of them caught a
+regression the change introduced: `tools/definitions.py` built the `memory_remember` tool's
+JSON-schema enum from `FACT_TYPES`, so widening it would have offered *story* kinds to the chat
+model and let it queue an unpromotable fact. Both inbox-facing enums (`definitions.py`,
+`graph_schema_tools.py`) now derive from `MEMORY_FACT_TYPES`.
+
+**Proven live**, through the real dispatch-extraction path, not a fixture:
+
+```
+before   negation 64 · preference 17 · decision 11 · statement 2
+after    negation 64 · description 32 · preference 17 · decision 11
+         attribute 3 · statement 2 · temporal 2 · causal 1
+```
+
+**38 story facts persisted where the vocabulary had been dropping them** — every one of the
+four previously-impossible types, first time ever. In the acceptance project alone: description
+32, attribute 3, temporal 2, causal 1.
+
+Bitten: `FACT_TYPES = MEMORY_FACT_TYPES` alone → the three guards go red; restored → green.
+knowledge-service **4532 passed, 307 skipped**.
+
+**Reproduce:** `MATCH (f:Fact) RETURN f.type, count(*)` — an overlap-only distribution was the
+finding; four story types present is the fix.
 
 ---
 

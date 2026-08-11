@@ -333,11 +333,21 @@ def test_recall_cypher_filters_by_date_range_and_project_and_about_subject():
 
 
 def test_fact_types_tuple_stays_in_lockstep_with_the_literal():
-    # WS-2.1/2.4 regression: FACT_TYPES (merge_fact's runtime guard) MUST equal the FactType Literal, or
-    # a type valid at queue time (e.g. 'statement') 500s at promote time. Derive, never hand-maintain.
+    # WS-2.1/2.4 regression: FACT_TYPES (merge_fact's runtime guard) MUST equal the declared
+    # Literals, or a type valid at queue time (e.g. 'statement') 500s at promote time.
+    # Derive, never hand-maintain.
+    #
+    # 2026-08-11: `FactType` became a UNION of two families, so `get_args` on it returns the two
+    # Literal TYPES rather than their members — assert per family and against the concatenation.
     from typing import get_args
-    assert set(fm.FACT_TYPES) == set(get_args(fm.FactType))
-    assert "statement" in fm.FACT_TYPES
+    assert set(fm.MEMORY_FACT_TYPES) == set(get_args(fm.MemoryFactType))
+    assert set(fm.STORY_FACT_TYPES) == set(get_args(fm.StoryFactType))
+    assert set(fm.FACT_TYPES) == set(fm.MEMORY_FACT_TYPES) | set(fm.STORY_FACT_TYPES)
+    assert "statement" in fm.FACT_TYPES        # memory half
+    assert "attribute" in fm.FACT_TYPES        # story half — dropped entirely before the split
+    # `negation` is shared and must appear ONCE, not twice.
+    assert len(fm.FACT_TYPES) == len(set(fm.FACT_TYPES))
+    assert "negation" not in fm.STORY_FACT_TYPES
 
 
 def test_recall_cypher_matches_subject_by_canonical_name_not_raw_lower():
