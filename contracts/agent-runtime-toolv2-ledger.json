@@ -1813,6 +1813,10 @@
     "composition_entity_override_edit": {
       "state": "proven",
       "note": "PROVEN across all four ops, and the claim worth testing was the CONFLICT one: op=restore 'FAILS if a newer override for that same entity now exists, which is honest rather than clobbering the newer one'. Constructed exactly that race -- add, delete, add a NEW override for the same entity, then restore the OLD one -- and it refused, leaving the old one archived and the new one untouched. This is the one-override-per-entity uniqueness resolved by REFUSAL rather than by a silent overwrite, which is the failure mode this repo has hit before (a remediation that writes a shared key without merging first). Restoring by clobbering would have destroyed a deliberate newer decision to recover an older discarded one -- strictly the wrong direction. The refusal also names BOTH possible causes ('it was never deleted, or a newer override for that entity...'), because from the caller's side those are indistinguishable and picking one would be a guess. All four ops name their missing companions precisely. Test rows cleaned up; the override table is empty again."
+    },
+    "composition_entity_override_restore": {
+      "state": "proven",
+      "note": "PROVEN on the HAPPY path that #185's conflict test could not reach: with no rival override, restore returns {restored: true}, is_archived flips to false, AND overridden_fields survives intact ({'name': 'NEWER'}). That last part is the one worth checking -- a restore that recovered the row but not its content would look identical in the response and be useless in effect. Re-restoring an already-live override and an unknown override_id both give the same combined refusal ('it was never deleted, or a newer override for that entity...'). For the unknown id that sentence is technically loose -- the id does not exist at all, which is a third case -- but the looseness is deliberate: naming which of the three applies would confirm whether an override_id exists. The anti-oracle posture costs a little precision here and buys the same protection the rest of this service applies."
     }
   }
 }
