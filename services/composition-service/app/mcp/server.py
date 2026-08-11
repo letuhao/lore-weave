@@ -5630,7 +5630,12 @@ async def plan_keep_material(
         "recovered it, up to six examples of what it found, and status 'present'/'absent'/'unknown'. "
         "'unknown' means the read itself failed or left sections unclassified, so absence cannot be "
         "claimed — do NOT report an 'unknown' kind to the author as missing. Also returns gaps + "
-        "fidelity_score, both of which are empty/None unless the run has its own rubric. VIEW required."
+        "fidelity_score. `gaps` is ALWAYS computed — from the run's own document when it has one, "
+        "otherwise from a consistency audit + rule check of the spec itself — because an empty "
+        "list would read as 'your plan is fine' when it actually means 'nothing was computed'. "
+        "`fidelity_score` IS None unless the run has its own rubric; a gap whose detail cites a "
+        "threshold as 'the POC fixture's, not a standard' is telling you the same thing about "
+        "itself. VIEW required."
     ),
     meta=require_meta("R", "book", synonyms=["self check plan", "plan gaps", "what is missing"], tool_name="plan_self_check"),
 )
