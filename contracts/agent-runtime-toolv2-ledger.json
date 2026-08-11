@@ -1294,6 +1294,18 @@
         "INCONSISTENCY recorded rather than fixed: set_active_genres names the offending code in its refusal; this one does not. The subject is zero recorded failures, so naming it is an observation for whoever touches this file next, not a change to make on no evidence"
       ],
       "admitted": false
+    },
+    "glossary_create_chapter_link": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 1 call / 1 session / 1 ok, no failure population. Three things proven: the create returns the whole link object rather than a bare id; a REPEAT is refused with 'entity is already linked to this chapter' rather than silently minting a duplicate -- which is the guard S1 row 6 says a non-idempotent write generally lacks; and the post-condition was read through a DIFFERENT tool. That last one also closes a gap in iteration 68: glossary_list_chapter_links could only be proven on {links: []} there, and it now has its non-empty branch, returning the same link_id.",
+      "evidence": [
+        "PHASE 2: 1 ok / 0 failed. No failure population exists",
+        "LIVE: the link object -- link_id, entity_id, chapter_id, chapter_index 1, chapter_title 'Contract smoke', relevance 'appears', mention_count 0, note null",
+        "REPEAT: the identical call -> 'entity is already linked to this chapter'. A duplicate write is refused, not silently created",
+        "POST-CONDITION through another tool: glossary_list_chapter_links returns the SAME link_id -- and that is iteration 68's non-empty branch, which was unverified there",
+        "DEBRIS: one chapter link remains on the disposable book, joining that entity to its single chapter"
+      ],
+      "admitted": false
     }
   }
 }
