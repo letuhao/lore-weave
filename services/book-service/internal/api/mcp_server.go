@@ -48,6 +48,11 @@ var (
 	// can already enumerate scenes via book_scene_list, so naming a bad scene_id leaks no
 	// existence oracle either.
 	errSceneNotInBook = errors.New("no active scene with that scene_id in this book — check the scene_id (call book_scene_list for valid ids)")
+	// errStructureTargetNotInBook is the same reasoning for the STRUCTURE ops, where the missing
+	// thing may be a part or a chapter and the shared mapper cannot tell which (TOOLV2 LOOP
+	// #138). It is still not the book: every one of these paths runs after an EDIT grant has
+	// passed, so "book not accessible" was false on all of them.
+	errStructureTargetNotInBook = errors.New("no active part or chapter with that id in this book — check the id (call book_structure_read for the current structure)")
 )
 
 // mcpUserID lifts the caller's user id from the kit identity context (set by

@@ -96,6 +96,50 @@ func TestAnAbsentChapterIsNotReportedAsAnInaccessibleBook(t *testing.T) {
 	if !strings.Contains(scBody, "sceneGetOut{}, errSceneNotInBook") {
 		t.Error("the scene read must name the scene")
 	}
+
+	// TOOLV2 LOOP #138 — the SWEEP. #132's commit said "the pattern is a grep away, and the next
+	// iteration that touches book-service should run it rather than wait to trip over the seventh".
+	// The seventh arrived (book_structure_part_archive, absent part_id → "book not accessible"), so
+	// this pass classified every remaining errBookNotAccessible raise site instead of fixing one.
+	//
+	// The three sites that survive are genuinely ABOUT the book — they query `FROM books WHERE
+	// id=$1`, or they are the caller-binding / grant guard itself — and this guard pins the
+	// distinction rather than the absence: a future site that names a sub-entity is what reds it.
+	parts, perr := os.ReadFile("mcp_tools_parts.go")
+	if perr != nil {
+		t.Fatalf("read mcp_tools_parts.go: %v", perr)
+	}
+	partsBody := strings.ReplaceAll(string(parts), "\r\n", "\n")
+	// The mapper turned errChapterNotFound — a sentinel that literally names the chapter — into the
+	// book error, carrying an H13 "no existence oracle" comment. errChapterNotInBook's declaration
+	// already records why that does not hold after the grant check.
+	if strings.Contains(partsBody, "errors.Is(err, errChapterNotFound):\n\t\treturn errBookNotAccessible") {
+		t.Error("the parts mapper still renames a missing CHAPTER to an inaccessible book")
+	}
+	if !strings.Contains(partsBody, "errors.Is(err, errChapterNotFound):") ||
+		!strings.Contains(partsBody, "return errChapterNotInBook") {
+		t.Error("the parts mapper must pass errChapterNotFound through as the chapter error")
+	}
+	// moveChapterToPart: a pgx.ErrNoRows here means the chapter or the part is missing.
+	if strings.Contains(partsBody, "chapterSetPartOut{}, errBookNotAccessible") {
+		t.Error("moveChapterToPart still blames the book for a missing chapter/part")
+	}
+
+	// The chapter_drafts join is on the CHAPTER; a miss is not a book-access fact.
+	wr, werr := os.ReadFile("mcp_tools_write.go")
+	if werr != nil {
+		t.Fatalf("read mcp_tools_write.go: %v", werr)
+	}
+	wrBody := strings.ReplaceAll(string(wr), "\r\n", "\n")
+	if strings.Contains(wrBody, "uuid.Nil, 0, errBookNotAccessible") {
+		t.Error("the draft read still blames the book for a chapter that is not in it")
+	}
+	// The three remaining raises in this file are the real book checks. If that count moves, the
+	// sweep needs re-running rather than silently regrowing.
+	if n := strings.Count(wrBody, "errBookNotAccessible"); n != 3 {
+		t.Errorf("mcp_tools_write.go should hold exactly the 3 genuine book-access raises "+
+			"(each querying FROM books WHERE id=$1), got %d — re-run the #138 sweep", n)
+	}
 }
 
 // The two errors must stay distinguishable, and the chapter one must carry its satisfier —

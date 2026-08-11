@@ -666,7 +666,9 @@ func (s *Server) mcpRestoreRevision(ctx context.Context, caller, bookID, chID, r
 	if err := tx.QueryRow(ctx, `
 SELECT d.body,d.draft_format FROM chapter_drafts d JOIN chapters c ON c.id=d.chapter_id
 WHERE d.chapter_id=$1 AND c.book_id=$2`, chID, bookID).Scan(&currentBody, &currentFormat); err != nil {
-		return uuid.Nil, 0, errBookNotAccessible
+		// The join is on the CHAPTER and its draft; a miss means the chapter is not in this
+		// book, not that the book is unreachable.
+		return uuid.Nil, 0, errChapterNotInBook
 	}
 	var body json.RawMessage
 	var bodyFormat string

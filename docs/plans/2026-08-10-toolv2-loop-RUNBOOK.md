@@ -1000,3 +1000,26 @@ the fact.
 `contracts/agent-runtime-toolv2-ledger.json` records the **conclusion** per tool and nothing else —
 it never defines the set, so it cannot flatter the progress number. `--status` computes coverage
 against the catalogue every time.
+
+## DQ-17 — a fabricated `X-User-Id` makes "book not accessible" TRUE, and it looks like the defect
+
+Iteration #138's live A/B first came back UNCHANGED after a verified-byte-identical redeploy. The
+cause was not the fix: I had typed a plausible user UUID into the header instead of reading the
+book's `owner_user_id`. With an unknown user the grant genuinely fails, so `mcpRequireGrant` →
+`mcpOwnershipError` → "book not accessible" — the exact string the whole false-noun class is about,
+produced by the one site where it is correct.
+
+`SELECT owner_user_id FROM books WHERE id=$1` gave `019d5e3c-7cc5-7e6a-8b27-1344e148bf7c`; with that
+header the same absent `part_id` answered "no active part or chapter with that id in this book", and
+a `book_structure_read` control on the same book/user succeeded — which is what makes the book
+demonstrably accessible rather than assumed so.
+
+**Rule for every remaining live control: read the owner from the DB, and run a same-book read
+control in the same request batch.** A deny-shaped answer with an unverified identity measures the
+header, not the tool. This is the same failure mode as the typed denominator — a value I supplied
+being read back as evidence.
+
+Scope of the doubt, stated rather than waved away: the earlier sites in this class (#86, #129, #130,
+#132, and the four swept here) were argued from the CODE — each raise sits downstream of a grant
+check that has already passed, so the message is false regardless of which user called. The bad
+header can invalidate a TRIGGER, not those fixes.
