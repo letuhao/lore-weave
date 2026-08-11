@@ -6595,9 +6595,10 @@ async def composition_arc_update(ctx: MCPContext, args: _ArcUpdateArgs) -> dict:
     name="composition_arc_delete",
     description=(
         "Soft-archive an arc/saga AND its sub-arc subtree (reversible via "
-        "composition_arc_restore). Member chapters are NOT deleted — their "
-        "structure_node_id simply points at an archived node. EDIT required "
-        "(auto-applied; Undo restores it)."
+        "composition_arc_restore). Member chapters are NOT deleted, but they DO leave the "
+        "arc: each one's structure_node_id is cleared into a recovery slot, so the "
+        "chapters read as unplanned until composition_arc_restore puts them back. EDIT "
+        "required (auto-applied; Undo restores it)."
     ),
     meta=require_meta(
         "A", "book",
