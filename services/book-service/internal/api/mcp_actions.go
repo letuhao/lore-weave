@@ -361,6 +361,20 @@ func (s *Server) proposeBookActionGated(ctx context.Context, meta lwmcp.Meta, st
 	if _, err := s.mcpRequireGrant(ctx, bookID, userID, need); err != nil {
 		return nil, nil, mcpOwnershipError(err)
 	}
+	// A book PURGE is irreversible and its description promises it acts on a TRASHED book.
+	// Nothing enforced that at mint time: TOOLV2 LOOP #131 called book_purge against an ACTIVE
+	// book and got a "Permanently purge book (irreversible)" card. mcpTransitionBook DOES guard
+	// (its purge_pending arm refuses unless lifecycle=="trashed"), so confirming would have
+	// errored rather than destroyed the book — but the human is still handed an irreversible
+	// card for a live book, having been told the tool only purges trash. Same defect and same
+	// fix as the chapter-level purge in iteration 123.
+	if op == "purge_book" {
+		var trashed bool
+		if err := s.pool.QueryRow(ctx,
+			`SELECT lifecycle_state='trashed' FROM books WHERE id=$1`, bookID).Scan(&trashed); err != nil || !trashed {
+			return nil, nil, errors.New("book is not in the trash — purge only removes an ALREADY-TRASHED book; delete it first (book_delete), then purge")
+		}
+	}
 	_, card, cerr := s.mintBookActionCard(userID, bookID, descriptor, title, actionPayload{Op: op}, destructive)
 	if cerr != nil {
 		return nil, nil, cerr

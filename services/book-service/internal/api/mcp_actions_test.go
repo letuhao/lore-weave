@@ -71,6 +71,16 @@ func TestAnAbsentChapterIsNotReportedAsAnInaccessibleBook(t *testing.T) {
 	if n := strings.Count(kgBody, "errChapterNotInBook"); n != 2 {
 		t.Errorf("both kg_index target-gone branches must name the chapter, got %d", n)
 	}
+
+	// TOOLV2 LOOP #131 — the BOOK-level purge had the same missing precondition as the
+	// chapter-level one. There is only ONE book-card mint site (proposeBookActionGated); the
+	// chapter path has two, which is why #123 needed a pair and this needs one.
+	if n := strings.Count(body, `SELECT lifecycle_state='trashed' FROM books`); n != 1 {
+		t.Errorf("the book propose path must CHECK lifecycle_state='trashed' at mint time, got %d", n)
+	}
+	if !strings.Contains(body, "purge only removes an ALREADY-TRASHED book; delete it first (book_delete), then purge") {
+		t.Error("the book-purge refusal must name the precondition and its satisfier")
+	}
 }
 
 // The two errors must stay distinguishable, and the chapter one must carry its satisfier —

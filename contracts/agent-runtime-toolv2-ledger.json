@@ -1530,6 +1530,19 @@
         "TWIN of book_audio_generate: same descriptor family, same deprecation reason, same zero calls. Two deprecated billing tools, neither ever reached by an agent"
       ],
       "admitted": false
+    },
+    "book_purge": {
+      "state": "proven",
+      "note": "PROVEN, with a fix: the BOOK-level twin of iteration 123's defect, found by looking for it rather than by stumbling on it. 0 calls ever, deprecated, tier W. Its description promises it purges a TRASHED book; calling it against an ACTIVE one minted a 'Permanently purge book (irreversible)' card. Severity is the same as #123 and stated the same way: mcpTransitionBook's purge_pending arm DOES refuse unless lifecycle=='trashed', so confirming would have errored rather than destroyed the book. A misleading card and a wasted human confirmation. FIXED at the single book-card mint site -- and that ONE site is itself worth noting: the chapter path needed a pair, so the count came from reading the code rather than assuming symmetry.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. _meta read first: tier W, visibility legacy, deprecated -- 'irreversible book purge is a MANUAL UI action — never the agent'",
+        "THE DEFECT, live: book_purge against a book whose lifecycle_state was verified 'active' -> a confirm card, destructive:true, 'Permanently purge book (irreversible)'",
+        "SEVERITY, read rather than tested destructively: mcpTransitionBook case 'purge_pending' returns errActionBadState unless lifecycle=='trashed'. The apply path guards; the mint did not",
+        "SITE COUNT from the code, not from symmetry: only ONE book-card mint site exists (proposeBookActionGated); the chapter path has two, which is why #123 needed a pair",
+        "CODE: the guard pins the check and the message; reverting it reds. Whole book-service suite green",
+        "LIVE A/B on the deployed image: the same call now returns 'book is not in the trash — purge only removes an ALREADY-TRASHED book; delete it first (book_delete), then purge'"
+      ],
+      "admitted": false
     }
   }
 }
