@@ -17,6 +17,7 @@ import pytest
 
 from app.tools.executor import (
     TOOL_FACT_CONFIDENCE,
+    _empty_story_search_note,
     TOOL_FACT_SOURCE_TYPE,
     ToolContext,
     execute_tool,
@@ -1074,3 +1075,41 @@ def test_events_filter_cypher_carries_the_diary_exclusion_predicate():
     from app.db.neo4j_repos import events as ev
     assert "exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
     assert "NOT coalesce(e.project_id, '') IN $exclude_project_ids" in ev._LIST_EVENTS_FILTER_WHERE
+
+
+# ── story_search's empty-result advice (TOOLV2 LOOP #67) ──────────────
+
+
+class TestTheEmptyNoteNeverRecommendsALegThatDidNotRun:
+    """S1 row 12, and it happened 9 times on 2026-07-15: an empty result carrying
+    `degraded: {"semantic": "not_indexed"}` was followed by the note "try mode='semantic'".
+    The tool said the semantic leg could not run and recommended it in the next key.
+
+    The model has no way to know the advice is void, so it spends its next call on the one
+    thing guaranteed to fail — and gets the same note back."""
+
+    def test_A_NOT_INDEXED_PROJECT_IS_NOT_TOLD_TO_TRY_SEMANTIC(self):
+        note = _empty_story_search_note("hybrid", {"semantic": "not_indexed"})
+        assert "mode='semantic'" not in note, (
+            f"the leg that just failed must not be the recommendation: {note!r}")
+        assert "no indexed passages" in note
+        # And it names what would CLEAR the obstacle, not just what the obstacle is.
+        assert "kg_project_set_embedding_model" in note
+
+    def test_A_SEMANTIC_QUERY_IS_NOT_TOLD_TO_TRY_SEMANTIC(self):
+        """The same dead end in a smaller form: recommending the mode already in use."""
+        note = _empty_story_search_note("semantic", {})
+        assert "mode='semantic'" not in note, note
+        assert "mode='exact'" in note
+
+    def test_AN_UNKNOWN_DEGRADED_LEG_IS_NAMED_RATHER_THAN_IGNORED(self):
+        """A leg this function has no special case for must still be surfaced — silently
+        giving the default advice would hide that the search was incomplete."""
+        note = _empty_story_search_note("hybrid", {"rerank": "unavailable"})
+        assert "rerank" in note and "unavailable" in note, note
+
+    def test_THE_ORDINARY_EMPTY_RESULT_KEEPS_ITS_ORIGINAL_ADVICE(self):
+        """Nothing degraded and an exact query — semantic IS the useful next step, and the
+        fix must not cost the case that always worked."""
+        note = _empty_story_search_note("exact", {})
+        assert "mode='semantic'" in note, note

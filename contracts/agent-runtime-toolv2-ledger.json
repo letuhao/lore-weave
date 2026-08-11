@@ -751,6 +751,18 @@
         "NOTED, not counted as product: most of the 28 are 'S10 World 2026-07-14-...' eval fixtures -- the measurement contamination DQ-12 describes, visible here in the data the tool returns rather than in its call counts"
       ],
       "admitted": false
+    },
+    "story_search": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix -- and this is the sharpest case in the loop of a tool whose headline is perfect and whose behaviour was not. 9 calls / 9 sessions / 9 ok. ZERO failures. But all NINE returned empty hits, all nine carried degraded {'semantic': 'not_indexed'}, and all nine then advised \"try mode='semantic'\" -- the leg the same payload had just reported could not run. 9 of 9, 100%, every recorded use of the tool. The two branches were written independently: `degraded` was set from the retriever, and the empty-note was unconditional. S1 row 12 recorded this and it was carried forward from iteration 63, where I found it filed under the WRONG TOOL. FIXED: the note is now derived from what actually ran -- it names the unavailable leg, says only exact matching applied, and names the tool that would enable semantic. A semantic-mode query is no longer told to try semantic either, and a degraded leg with no special case is surfaced rather than silently given the default advice.",
+      "evidence": [
+        "PHASE 2: 9 ok / 0 failed. The failure population is empty and the defect is entirely inside the SUCCESSES",
+        "DATA, all four counts over the same 9 rows: 9 ok, 9 with hits [], 9 with degraded semantic=not_indexed, 9 advising mode='semantic'. The contradiction is not a sample, it is the whole population",
+        "CODE: 4 guards. The falsifier -- restoring the single unconditional note -- reds the three defect guards with the real message and leaves the no-regression guard green, which is the split that shows the fix did not just delete the old advice",
+        "LIVE on the deployed image (executor.py inside the container byte-identical to source by sha256): an empty search on an unindexed project now returns 'no matches, and semantic search did not run: this project has no indexed passages. Only exact matching was applied, so try a shorter exact phrase or a different spelling. To enable meaning-based search, index the project first (kg_project_set_embedding_model, then run extraction).'",
+        "PROVENANCE, corrected in iteration 63: S1 row 12 attributes this to the memory family. memory_search's degraded note is coherent and was verified live there; every one of the 9 contradictory rows is story_search"
+      ],
+      "admitted": false
     }
   }
 }
