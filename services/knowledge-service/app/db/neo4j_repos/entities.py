@@ -40,6 +40,7 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "Entity",
+    "get_glossary_anchor_id",
     "sync_glossary_entity_node",
     "load_entity_details_by_ids",
     "find_alias_collision",
@@ -3497,6 +3498,29 @@ ON MATCH SET
   e.updated_at = datetime()
 RETURN e.glossary_entity_id AS id, e.created_at = e.updated_at AS created
 """
+
+
+async def get_glossary_anchor_id(
+    session: CypherSession, *, user_id: str, entity_id: str,
+) -> str | None:
+    """The glossary FK of one node, or None when it is a discovered-but-unanchored
+    entity. Scoped by `user_id` like every other read here.
+
+    D-T32-ALIVE-NO-FACTS needs this because `entity_facts.entity_id` is an FK to
+    `glossary_entities`: a life-status fact can only exist for a node the author has
+    anchored. A one-property lookup rather than `get_entity`, because the caller is
+    inside a per-chapter write loop and does not need the node.
+    """
+    result = await run_read(
+        session,
+        "MATCH (e:Entity {id: $entity_id}) WHERE e.user_id = $user_id "
+        "RETURN e.glossary_entity_id AS gid",
+        entity_id=entity_id, user_id=user_id,
+    )
+    async for rec in result:
+        gid = rec["gid"]
+        return str(gid) if gid else None
+    return None
 
 
 async def sync_glossary_entity_node(

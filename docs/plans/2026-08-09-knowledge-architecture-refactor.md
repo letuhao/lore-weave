@@ -2567,7 +2567,46 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   would have "passed" as a bite while proving nothing. Redone so the predicate is dropped with
   the parameter still typed.
 
-  ### 🔻 DEFERRAL `D-T32-ALIVE-NO-FACTS` — the reader migration cannot be validated yet
+  ### ✅ THE PRODUCER IS BUILT — `D-T32-ALIVE-NO-FACTS`'s blocker is gone, 2026-08-11
+
+  The re-measurement below said this needed a **cross-pipeline producer**, not a backfill.
+  Built:
+
+  ```
+  pass2_writer   status_effect → :EntityStatus (unchanged)
+                                → StatusTransition(glossary_entity_id, status, chapter_ordinal)
+  internal_extraction            → POST /internal/books/{book}/facts/append
+                                   fact_kind='status' · attr_or_predicate='life_status'
+  ```
+
+  **Reported, not written, and the split is the point.** The writer owns a Neo4j session and
+  nothing else; `entity_facts` lives behind glossary's HTTP boundary. Emitting from inside the
+  graph transaction would put a network call somewhere that cannot roll back with it. The
+  router already holds the glossary client and resolves the book, so it emits what pass2
+  reports. **Best-effort by contract**: the transition is already durable as `:EntityStatus`, so
+  a failed append is a gap to re-run, never a reason to 500 a persist that succeeded.
+
+  **Anchored entities only**, and that is why a backfill was impossible: `entity_facts.entity_id`
+  is an FK to `glossary_entities`, and **0 of the graph's 21 existing status rows were
+  anchored**. A discovered-but-unanchored death still gets its `:EntityStatus` — the graph is
+  not gated on the author having curated the entity — and is COUNTED
+  (`outcome="no_glossary_anchor"`) rather than dropped silently, because that count is what
+  distinguishes "no deaths" from "no anchors".
+
+  **The bite exposed my own vacuous tests.** Five unit tests around `StatusTransition` all
+  passed with the `event_order → chapter_ordinal` conversion deliberately broken — they pinned
+  the MODEL, never the write site. NV-1 exactly. A live-Neo4j test now drives
+  `write_pass2_extraction` end to end, and with the conversion reverted it reads:
+
+  ```
+  AssertionError: reported 5000000; an event_order would be ~5000000 and would place
+  the fact a million chapters into the book
+  ```
+
+  Both scales are plain ints, so that mistake has nothing to fail against except this test.
+  knowledge-service **4551 passed, 307 skipped**.
+
+  ### ~~DEFERRAL~~ `D-T32-ALIVE-NO-FACTS` — the reader migration cannot be validated yet
 
   | | |
   |---|---|

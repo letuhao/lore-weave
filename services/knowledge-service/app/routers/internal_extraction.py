@@ -988,6 +988,60 @@ async def persist_pass2(body: PersistPass2Request) -> ExtractItemResponse:
             body.embedding_model_uuid is not None,
             body.embedding_dimension is not None,
         )
+    # ── D-T32-ALIVE-NO-FACTS — the life-status producer ─────────────────────────
+    #
+    # `glossary_entities.alive` was the liveness signal and it carried NOTHING:
+    # 7361 true / 0 false, never once set by an author (it is a manual toggle, not a
+    # derived column). Meanwhile the graph DID know who had died — 21 `:EntityStatus`
+    # rows with real story positions — and `entity_facts` could hold that since T32
+    # widened its CHECK to admit `'status'`. Nothing ever wrote one: corpus-wide,
+    # `attribute` 41536 · `name` 5202 · `alias` 1869 · **status 0**.
+    #
+    # The gap was cross-pipeline, not missing code: detection lives here (the
+    # knowledge extractor's `status_effects`), while fact emission lives behind
+    # glossary's HTTP boundary. This is the seam that touches both — it already holds
+    # the glossary client and resolved the book — so it emits what pass2 reported.
+    #
+    # BEST-EFFORT, and deliberately: a persist that succeeded must not 500 because a
+    # downstream fact append failed. The transitions are already durable as
+    # `:EntityStatus`; this is the projection into the SSOT, and a failure here is a
+    # gap to re-run, not a reason to lose the extraction.
+    if result.status_transitions and body.project_id is not None:
+        # The book this project mirrors — the fact table is book-scoped, and glossary
+        # rejects a cross-book write (its own tenancy lock), so an unresolvable book
+        # means we simply have nowhere correct to put these.
+        book_id = await get_knowledge_pool().fetchval(
+            "SELECT book_id FROM knowledge_projects WHERE project_id = $1",
+            body.project_id,
+        )
+    else:
+        book_id = None
+    if result.status_transitions and book_id is not None:
+        emitted = 0
+        gclient = get_glossary_client()
+        for tr in result.status_transitions:
+            try:
+                ok = await gclient.append_fact(
+                    UUID(str(book_id)),
+                    entity_id=tr.glossary_entity_id,
+                    fact_kind="status",
+                    attr_or_predicate="life_status",
+                    value=tr.status,
+                    valid_from_ordinal=tr.chapter_ordinal,
+                    cardinality="single",
+                )
+                emitted += 1 if ok else 0
+            except Exception:  # noqa: BLE001 — see BEST-EFFORT above.
+                logger.warning(
+                    "D-T32: life_status append failed entity=%s status=%s @%d",
+                    tr.glossary_entity_id, tr.status, tr.chapter_ordinal,
+                    exc_info=True,
+                )
+        logger.info(
+            "D-T32: life_status facts emitted %d/%d source_id=%s",
+            emitted, len(result.status_transitions), body.source_id,
+        )
+
     logger.info(
         "Phase 4b-β: persist-pass2 done source_id=%s "
         "entities=%d relations=%d events=%d facts=%d statuses=%d in %.1fs",

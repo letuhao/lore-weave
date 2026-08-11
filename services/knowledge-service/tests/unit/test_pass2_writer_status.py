@@ -96,12 +96,19 @@ def _hierarchy(chapter_index: int = 2) -> HierarchyPaths:
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+# D-T32 — the writer now also asks each transitioned node for its glossary anchor, so
+# the projection into `entity_facts` can be addressed. Patched like every other repo
+# call this file fakes; the anchor itself is covered by the live-Neo4j test.
+@patch(f"{_PATCH_BASE}.get_glossary_anchor_id", new_callable=AsyncMock)
 async def test_status_written_at_event_order(
-    mock_source, mock_resolve, mock_merge_event, mock_evidence,
+    mock_anchor_id, mock_source, mock_resolve, mock_merge_event, mock_evidence,
     mock_merge_status, mock_hierarchy,
 ):
     """An event's status_effects writes an :EntityStatus at the event's
     event_order, with entity_ref resolved via the chapter entity map."""
+    # Unanchored: these fixtures never set up a glossary anchor, and the graph
+    # write is not gated on one (D-T32). None is the honest stub.
+    mock_anchor_id.return_value = None
     mock_source.return_value = _result("src-1")
     mock_resolve.return_value = _result("eid-kai")
     mock_merge_event.return_value = _result("evid-kai falls")
@@ -142,8 +149,10 @@ async def test_status_written_at_event_order(
 @patch(f"{_PATCH_BASE}.merge_event", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.resolve_or_merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
+@patch(f"{_PATCH_BASE}.get_glossary_anchor_id", new_callable=AsyncMock)
 async def test_status_written_from_chapter_index_when_no_part(
-    mock_source, mock_resolve, mock_merge_event, mock_evidence, mock_merge_status,
+    mock_anchor_id, mock_source, mock_resolve, mock_merge_event, mock_evidence,
+    mock_merge_status,
 ):
     """FD-4 (066 fix): a FLAT book (no part → no hierarchy_paths) STILL writes
     :EntityStatus when the chapter's own sort_order is threaded as
@@ -152,6 +161,9 @@ async def test_status_written_from_chapter_index_when_no_part(
     canonical 067 run on a part-less death-chapter book. Contrast with
     `test_status_skipped_when_event_order_none` (no hierarchy AND no
     chapter_index → genuinely positionless → still skipped)."""
+    # Unanchored: these fixtures never set up a glossary anchor, and the graph
+    # write is not gated on one (D-T32). None is the honest stub.
+    mock_anchor_id.return_value = None
     mock_source.return_value = _result("src-1")
     mock_resolve.return_value = _result("eid-kai")
     mock_merge_event.return_value = _result("evid-kai falls")

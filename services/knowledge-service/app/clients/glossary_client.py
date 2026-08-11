@@ -668,6 +668,54 @@ class GlossaryClient:
             logger.warning("glossary entity-display-names failed: %s", exc)
             return {}
 
+    async def append_fact(
+        self,
+        book_id: UUID,
+        *,
+        entity_id: str,
+        fact_kind: str,
+        attr_or_predicate: str,
+        value: str,
+        valid_from_ordinal: int,
+        cardinality: str = "single",
+        source_episode_id: str | None = None,
+    ) -> bool:
+        """POST /internal/books/{book_id}/facts/append — one append-only bi-temporal fact.
+
+        Returns True on success, False on any failure (the caller decides whether that
+        matters; D-T32's life-status producer treats it as best-effort because the
+        transition is already durable as an `:EntityStatus`).
+
+        `valid_from_ordinal` is a CHAPTER ordinal, not an `event_order`. Both are plain
+        ints and the two scales differ by `EVENT_ORDER_CHAPTER_STRIDE`, so a caller that
+        passes the wrong one gets a fact positioned a million chapters into the book with
+        nothing to complain about it. The conversion belongs to whoever holds the graph
+        ordinal — see `StatusTransition`.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/facts/append"
+        body: dict = {
+            "entity_id": entity_id,
+            "fact_kind": fact_kind,
+            "attr_or_predicate": attr_or_predicate,
+            "value": value,
+            "valid_from_ordinal": valid_from_ordinal,
+            "cardinality": cardinality,
+        }
+        if source_episode_id:
+            body["source_episode_id"] = source_episode_id
+        try:
+            resp = await self._http.post(url, json=body)
+            if resp.status_code not in (200, 201):
+                logger.warning(
+                    "glossary facts/append → %d (entity=%s kind=%s attr=%s)",
+                    resp.status_code, entity_id, fact_kind, attr_or_predicate,
+                )
+                return False
+            return True
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning("glossary facts/append failed: %s", exc)
+            return False
+
     async def propose_entities(
         self,
         book_id: UUID,
