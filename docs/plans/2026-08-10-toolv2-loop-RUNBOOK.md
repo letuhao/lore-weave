@@ -1084,3 +1084,22 @@ decision rather than something the code settles:
 
 Recorded rather than overridden: the loop does not reverse a documented security posture on its own
 authority. Nothing is lost by waiting — the write is correctly scoped either way.
+
+### DQ-19, second half — restore denies a row the caller can read
+
+Measured in #159, completing the pair. `composition_arc_template_restore` answers "not found or
+not accessible" for **the caller's own ACTIVE template** — a row they can fetch in full through
+`composition_arc_template_get`. The description documents it ("a foreign/system/not-archived id is
+not restorable (uniform deny)"), so the behaviour is intended, but the sentence is false about a
+row whose existence the caller can prove one tool away.
+
+This is the false-noun class the loop has fixed seven times in book-service (#86, #129, #130, #132,
+#138), and the argument that settled those applies here too: downstream of a passed ownership
+check there is no enumeration oracle left to protect, so uniformity buys nothing and costs the
+caller its next move. "This template is not archived" leaks nothing, because ownership was already
+provable.
+
+It is recorded rather than fixed for one reason only: **consistency with DQ-19's first half**. That
+entry declined to change `archive`'s documented no-op-success on the loop's own authority. Fixing
+`restore`'s message while leaving `archive`'s would settle half a documented contract arbitrarily.
+Both halves want the same product decision, and they should get it together.
