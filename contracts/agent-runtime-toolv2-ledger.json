@@ -1056,6 +1056,17 @@
         "NOT CONFIRMED, so no outward call was made and nothing was charged"
       ],
       "admitted": false
+    },
+    "settings_list_providers": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 3 calls / 3 sessions / 3 ok, no failure population. This one carries CREDENTIALS, so the payload audit was the point: it returns `has_secret` as a BOOLEAN and no secret material at all -- no api_key, no token, no sk- prefix anywhere in the response. The count matches the database exactly (7 and 7), so nothing is silently filtered either. A substring scan for 'secret' does hit, and it is the FIELD NAME has_secret rather than a value -- checked before reporting, because a false leak report is worse than none.",
+      "evidence": [
+        "PHASE 2: 3 ok / 0 failed. No failure population exists",
+        "LIVE: 7 providers with provider_credential_id, provider_kind, display_name, api_standard, endpoint_base_url, status, has_secret",
+        "SECRET AUDIT: has_secret is a bool (verified by type, not by eye); the serialized response contains no 'api_key', no 'token', no 'sk-'. The one 'secret' substring match is the field NAME",
+        "DENOMINATOR from the SSOT: provider_credentials holds 7 rows for this owner and 7 were returned -- complete, not capped"
+      ],
+      "admitted": false
     }
   }
 }
