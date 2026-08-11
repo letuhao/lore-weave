@@ -837,6 +837,28 @@ async def apply_arc_to_spec(
         # without it the extract falls back to the motif UUID, and a library template whose
         # placements name uuids resolves in no other book, which is the entire point of one.
         arc_id_str = str(created["arc_id"])
+        # TOOLV2 LOOP #147 — stamp the TEMPLATE this arc came from.
+        #
+        # composition_arc_template_drift answers "did this arc drift from the template it came
+        # from (its pinned arc_template_id + template_version)?" -- and apply, the only thing
+        # that creates an arc FROM a template, never wrote either. Measured: 1 of 137 arcs in the
+        # database carries an arc_template_id, so the drift tool had essentially nothing to
+        # answer about, and composition_arc_get reported arc_template_id:null for an arc it had
+        # just built from a template.
+        #
+        # Best-effort and deliberately NOT inside the commit transaction: the provenance is
+        # metadata about a tree that is already correct, and failing the whole apply over it
+        # would trade a real outline for a label. expected_version=None skips OCC — nothing else
+        # has touched this node yet, it was created moments ago in the same call.
+        try:
+            from app.db.repositories.structure import StructureRepo as _StructureRepo
+            await _StructureRepo(pool).update(
+                UUID(arc_id_str),
+                {"arc_template_id": arc_template.id, "template_version": arc_template.version},
+                expected_version=None,
+            )
+        except Exception:  # noqa: BLE001 — provenance must never fail a committed apply
+            logger.warning("arc materialize: could not stamp template provenance on %s", arc_id_str)
         code_by_id = {str(m.id): m.code for m in resolved if m is not None}
         ledger_rows = []
         for row, node_id in zip(flat_app_rows, scene_ids):
