@@ -1443,12 +1443,20 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
         return
     project_id, user_id, glossary_entity_id = resolved
 
+    from app.adapters.graph_store_provider import get_graph_store
     from app.db.neo4j import neo4j_session
-    from app.db.neo4j_repos.entities import archive_entity, get_entity_by_glossary_id
+    from app.db.neo4j_repos.entities import get_entity_by_glossary_id
 
     # Exceptions propagate to the consumer's retry path: a transient Neo4j outage SHOULD
     # redeliver rather than silently drop the propagation. Archiving is idempotent.
     async with neo4j_session() as session:
+        # T17 — `archive_entity` goes through the port; `get_entity_by_glossary_id` does NOT
+        # and stays a direct repo call. The port has no anchor-keyed lookup, and inventing
+        # one to make this module "fully migrated" would grow the port by convenience rather
+        # than by demand — which the port's own docstring rules out ("a port grows by demand,
+        # not by inventory"). So this module keeps ONE concrete import and the ceiling does
+        # not fall for it. A partial migration recorded honestly beats a port method added to
+        # make a number move.
         entity = await get_entity_by_glossary_id(
             session, user_id=str(user_id), project_id=str(project_id),
             glossary_entity_id=str(glossary_entity_id),
@@ -1459,8 +1467,8 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
                 glossary_entity_id,
             )
             return
-        await archive_entity(
-            session, user_id=str(user_id), canonical_id=entity.id, reason="glossary_deleted",
+        await get_graph_store(session).archive_entity(
+            user_id=str(user_id), canonical_id=entity.id, reason="glossary_deleted",
         )
     logger.debug("glossary.entity_deleted archived KG entity %s", glossary_entity_id)
 

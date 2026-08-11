@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -56,6 +57,12 @@ def _make_client():
 
     app.dependency_overrides[get_current_user] = lambda: _TEST_USER
     return TestClient(app, raise_server_exceptions=False)
+
+
+# T17 — the router reads the graph through the port now, so the patch target moved
+# from the repo symbol to `get_graph_store`. A module-level mock keeps the tests'
+# existing arrange/assert shape: the decorator no longer injects an argument.
+_RESTORE = AsyncMock()
 
 
 @patch("app.routers.public.entities.list_user_entities", new_callable=AsyncMock)
@@ -129,9 +136,12 @@ def test_archive_user_entity_not_found(mock_archive, mock_get):
 
 
 # ── D-KG-ENTITY-RESTORE (S7) — the inverse of archive ────────────────────────
-@patch("app.routers.public.entities.restore_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.get_graph_store",
+       new=lambda _s: SimpleNamespace(restore_entity=_RESTORE))
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_restore_user_entity_happy(mock_restore):
+def test_restore_user_entity_happy():
+    mock_restore = _RESTORE
+    mock_restore.reset_mock()
     """POST /entities/{id}/restore clears archived_at via restore_entity → 204."""
     mock_restore.return_value = _entity_stub()
     client = _make_client()
@@ -143,9 +153,12 @@ def test_restore_user_entity_happy(mock_restore):
     assert kwargs["user_id"] == str(_TEST_USER)
 
 
-@patch("app.routers.public.entities.restore_entity", new_callable=AsyncMock)
+@patch("app.routers.public.entities.get_graph_store",
+       new=lambda _s: SimpleNamespace(restore_entity=_RESTORE))
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
-def test_restore_user_entity_not_found(mock_restore):
+def test_restore_user_entity_not_found():
+    mock_restore = _RESTORE
+    mock_restore.reset_mock()
     """restore_entity returns None when the entity doesn't exist → 404."""
     mock_restore.return_value = None
     client = _make_client()

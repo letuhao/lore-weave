@@ -23,6 +23,7 @@ from fastapi import status as status_codes  # C8: alias — the list_entities ro
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_helpers import run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
@@ -37,7 +38,6 @@ from app.db.neo4j_repos.entities import (
     EntityDetail,
     MergeEntitiesError,
     user_archive_entity,
-    restore_entity,
     find_entities_by_vector,
     find_gap_candidates,
     get_entity,
@@ -277,8 +277,11 @@ async def restore_user_entity(
     ranking weight lags one pass.
     """
     async with neo4j_session() as session:
-        result = await restore_entity(
-            session,
+        # T17 — through the port. `restore_entity` is a 1:1 match; the sibling
+        # `user_archive_entity` above is NOT (it carries `reason='user_archived'` and its own
+        # semantics distinct from the port's `archive_entity`), so it stays a direct repo
+        # call rather than being bent to fit.
+        result = await get_graph_store(session).restore_entity(
             user_id=str(user_id),
             canonical_id=entity_id,
         )

@@ -81,8 +81,9 @@ MAX_CONCRETE_IMPORTERS = 70
 # for choosing an engine by measurement at all, which is what X3 implied by making the
 # engine layer 1. See `D-T42D-GRAPHSTORE-HAS-NO-CALLERS`.
 #
-# **1 as of the first migrated call site** (`wiki/context.py`, the KG-facts read).
-MIN_GRAPHSTORE_ADOPTERS = 1
+# **3** as of T17 batch 2: `wiki/context.py` (KG-facts read), `events/handlers.py`
+# (lifecycle archive) and `routers/public/entities.py` (user restore).
+MIN_GRAPHSTORE_ADOPTERS = 3
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

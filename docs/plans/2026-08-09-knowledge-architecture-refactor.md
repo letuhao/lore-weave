@@ -37,9 +37,16 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 
 **RESUME: T17 (continuing) — migrate the next graph call sites onto `GraphStore`. 🔴 CRITICAL PATH TO T43.**
 
-✅ **First call site migrated 2026-08-12** — `wiki/context.py::gather_kg_facts`, through the
-new `graph_store_provider` composition root. **GraphStore adopters `0 → 1`; concrete binders
-`71 → 70`.** T43 is no longer structurally blocked; it is now merely *thin*.
+✅ **Batches 1–2 migrated 2026-08-12** — `wiki/context.py` (KG-facts read) ·
+`events/handlers.py` (lifecycle archive) · `routers/public/entities.py` (user restore),
+through the new `graph_store_provider` composition root. **GraphStore adopters `0 → 3`;
+concrete binders `71 → 70`.** T43 is no longer structurally blocked; it is now merely *thin*.
+
+⚠️ **The two counters move independently, and that is the design.** The ceiling stayed at 70
+because batch 2's modules still call things the port does not have
+(`get_entity_by_glossary_id`, `user_archive_entity`). Growing the port to make a number fall
+would be growth by *convenience*, which the port's docstring forbids — *"a port grows by
+demand, not by inventory"*.
 
 🔴 **The lesson to carry into every remaining migration:** the unit tests **cannot** prove a
 migrated call site is behaviour-identical — they patch the port wholesale, and a
@@ -1551,6 +1558,49 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   pushed callers to import the port directly and construct their own adapter, **bypassing the
   composition root**. `graph_store_provider` now counts as adoption, which is the shape T17
   is migrating *to*.
+
+  ### ✅ BATCH 2 — 2026-08-12 · adopters `1 → 3`
+
+  ```
+  [port-adoption-gate] 70 module(s) bind `neo4j_repos` directly (ceiling 70);
+                       4 import a port; **3 import GraphStore** (floor 3)
+  4184 unit tests pass · 23 integration (equivalence + conformance) against a live Neo4j
+  ```
+  Migrated: `events/handlers.py` (lifecycle archive) · `routers/public/entities.py` (user
+  restore).
+
+  **What was deliberately NOT migrated, and why it is the honest answer.** The ceiling stayed
+  at **70** — neither module dropped its concrete import, because each still calls something
+  the port does not have: `get_entity_by_glossary_id` (anchor-keyed lookup) and
+  `user_archive_entity` (`reason='user_archived'`, distinct semantics from the port's
+  `archive_entity`). Adding port methods to make those numbers move would grow the port by
+  *convenience*, which its own docstring forbids — *"a port grows by demand, not by
+  inventory"*. **A partial migration recorded honestly beats a port method invented to make a
+  gate go green**, and the two counters moving independently is exactly what lets that be
+  visible.
+
+  🐞 **THREE MORE TESTS BROKE, and this time the full suite caught them** — batch 1's lesson
+  applied: `-k` filters hide the breakage. `test_user_entities_api.py` (×2) and
+  `test_glossary_lifecycle_handlers.py` patched symbols the migrated modules no longer
+  import. Two further traps inside the fix itself:
+  * `autospec=True` on an **async** method yields a `MagicMock`, not an `AsyncMock` →
+    `TypeError: object MagicMock can't be used in 'await' expression`. Needs
+    `new_callable=AsyncMock`.
+  * a `@patch(..., new=…)` decorator **stops injecting the mock argument**, so the test
+    signatures had to drop it and bind a module-level handle instead.
+
+  **BITES — one per migrated call site, each red on its own site:**
+  ```
+  archive reason "glossary_deleted" -> "WRONG_REASON"   FAILED test_delete_archives_with_the_glossary_deleted_reason
+  restore result discarded                              FAILED test_restore_user_entity_happy  (assert 404 == 204)
+  2 failed, 16 passed
+  ```
+
+  **QC (a)** 4184 unit · `port-adoption-gate` PASS at the new floor · `graph-port-gate` PASS
+  (297 scanned) · `entity-lifecycle-outbox-gate` PASS (14 mutations, all emit — the archive
+  migration did not break the outbox contract).
+  **QC (b) live** — throwaway Neo4j 5. **QC (c) real data** — 23 integration tests, the
+  equivalence pair writing and reading real nodes through both paths.
   ---
   **Evidence (batch 1).** Gate baseline **21 → 15**. Six runtime paths moved into adapter
   territory; knowledge suite **4040 passed**; 5 bites, each red then green.

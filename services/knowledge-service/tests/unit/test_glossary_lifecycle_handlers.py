@@ -102,7 +102,8 @@ async def test_status_leaving_active_archives_with_that_reason(pool, status):
          patch("app.db.neo4j_repos.entities.get_entity_by_glossary_id",
                autospec=True, return_value=entity), \
          patch("app.db.neo4j_repos.entities.user_archive_entity", autospec=True) as archive, \
-         patch("app.db.neo4j_repos.entities.archive_entity", autospec=True) as hard_archive:
+         patch("app.adapters.graph_store_provider.Neo4jGraphStore.archive_entity",
+               new_callable=AsyncMock) as hard_archive:
         await handle_glossary_entity_status_changed(
             _event("glossary.entity_status_changed",
                    _payload(status=status, prior_status="active")),
@@ -181,7 +182,8 @@ async def test_delete_archives_with_the_glossary_deleted_reason(pool):
     with patch("app.db.neo4j.neo4j_session", _session), \
          patch("app.db.neo4j_repos.entities.get_entity_by_glossary_id",
                autospec=True, return_value=entity), \
-         patch("app.db.neo4j_repos.entities.archive_entity", autospec=True) as archive:
+         patch("app.adapters.graph_store_provider.Neo4jGraphStore.archive_entity",
+               new_callable=AsyncMock) as archive:
         await handle_glossary_entity_deleted(
             _event("glossary.entity_deleted", _payload(op="deleted")), pool=pool,
         )
