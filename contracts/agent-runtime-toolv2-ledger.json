@@ -1164,6 +1164,18 @@
         "NOT CLAIMED: whether this is a dormant feature or a silently dead path. The client swallows a failed POST with a warning, and no warning is present -- which points at 'never called' rather than 'called and failed', but does not settle it"
       ],
       "admitted": false
+    },
+    "glossary_propose_aliases": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 2 calls / 2 sessions / 2 ok, no failure population. Its PARTIAL-BATCH shape is the thing worth recording: an item that cannot be written does not fail the call, it comes back as {status: 'skipped', reason: 'entity not found in this book'} inside an ok response, with written: 0 and skipped: 1 alongside. That is S1 row 7's C-19 -- partial as a first-class outcome, with the retry set machine-derivable -- and it cannot read as a silent success because the counters contradict it. MY FIRST TWO LIVE CALLS FAILED AND BOTH WERE MY ERROR: I sent {entity_id, aliases} at the top level; the tool takes {language_code, items: [{entity_id, aliases}]}.",
+      "evidence": [
+        "PHASE 2: 2 ok / 0 failed. No failure population exists",
+        "LIVE: items=[{entity_id, aliases:['The Bell-Reader']}] -> {language_code 'en', results [{entity_id, status 'written'}], written 1, skipped 0}",
+        "LIVE partial: an absent entity_id in the batch returns ok=true with results [{entity_id, status 'skipped', reason 'entity not found in this book'}], skipped 1, written 0. The failure is per-ITEM, reasoned, and counted",
+        "MY OWN ERROR, recorded: two calls rejected with 'unexpected additional properties [\"aliases\" \"entity_id\"]' because I used the singular shape. The schema requires language_code and items; reading it before the third attempt is what fixed it",
+        "DEBRIS: the alias 'The Bell-Reader' remains on the throwaway book's entity. Additive metadata on a disposable book"
+      ],
+      "admitted": false
     }
   }
 }
