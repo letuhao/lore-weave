@@ -6704,6 +6704,34 @@ async def composition_arc_move(ctx: MCPContext, args: _ArcMoveArgs) -> dict:
     tc = _ctx(ctx)
     structures = StructureRepo(get_pool())
     node = await _arc_or_deny(structures, tc, _uuid(args.node_id, "node_id"), GrantLevel.EDIT)
+    # TOOLV2 LOOP #150 — diagnose a CYCLE before the depth guard misattributes it.
+    #
+    # The DB trigger enforces both, and correctly refuses either. But it checks depth BEFORE it
+    # walks for a cycle, and the cap is depth 2 — so moving a node under its own descendant
+    # almost always trips the depth branch first. Measured: A (depth 1) under its own child B
+    # (depth 2) was refused with "structure_node depth 3 exceeds saga→arc→sub-arc", which sends
+    # the caller looking for a shallower parent when the real problem is that the target sits
+    # BENEATH the node being moved. Advice that cannot succeed is worse than none.
+    #
+    # The trigger stays the integrity SSOT — this only names the cause, and only for the case
+    # its ordering hides. Walking up from the proposed parent is bounded by the depth cap.
+    if args.new_parent_arc_id:
+        walker = _uuid(args.new_parent_arc_id, "new_parent_arc_id")
+        seen: set = set()
+        while walker is not None and walker not in seen:
+            if walker == node.id:
+                return {
+                    "success": False,
+                    "error": (
+                        "that parent is inside the arc you are moving — an arc cannot become its "
+                        "own descendant. Move it under an arc outside this subtree, or move the "
+                        "child out first (composition_arc_list shows the tree)."
+                    ),
+                    "detail": f"cycle: {args.new_parent_arc_id} is below {node.id}",
+                }
+            seen.add(walker)
+            ancestor = await structures.get(walker)
+            walker = ancestor.parent_id if ancestor is not None else None
     try:
         moved = await structures.move(
             node.id,
