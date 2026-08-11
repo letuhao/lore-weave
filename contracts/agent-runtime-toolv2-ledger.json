@@ -725,6 +725,20 @@
         "AND IT WOULD HAVE HELPED: the model's other failed call tried role='betrayed bride'. `role` IS a valid code for this kind -- that call failed only on the name-as-entity_id, which CP-5.3 now resolves"
       ],
       "admitted": false
+    },
+    "memory_remember": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix that reaches far past this tool. 20 calls / 3 ok. 15 of the 17 failures are ONE shape on 2026-07-06 across 7 sessions: the model sent {} and was told '`fact_text`: Field required (YOU SENT A DICT)'. It had sent nothing. For a `missing` error pydantic sets `input` to the PARENT object, so the type clause described the arguments dict and blamed the model for a type error it had not made. Corpus-wide the clause appears on 79 calls / 7 tools / 16 sessions and the args were {} in 100% of them -- it was false every single time it rendered. THREE services carried a byte-identical copy, each with a comment saying the kit would absorb it later; it now lives in loreweave_mcp as validation_directive, so the fix landed once instead of thrice. A missing field now says only what is true, an all-empty call is told it sent nothing, and a REAL type error keeps its clause, where `input` genuinely is the offending value.",
+      "evidence": [
+        "PHASE 2: 3 ok / 17 failed = 15 'Field required (you sent a dict)' (7 sessions, 2026-07-06) + 1 raw pydantic dump (2026-07-02) + 1 ReadTimeout",
+        "DATA: every call carrying 'Field required (you sent a' had args {} -- 79 calls, 7 tools, 16 sessions, 100%. The clause never once described a value the model actually sent",
+        "SCOPE, counted not assumed: three copies (jobs-service, knowledge-service, translation-service), all three importing loreweave_mcp already, all three carrying the comment 'the kit will absorb the shared copy later'",
+        "CODE: 5 kit guards; the falsifier restoring the single unconditional clause reds them with the real message. Suites: kit 1025, knowledge-service 4000, translation 1161, jobs 99 -- all pass",
+        "LIVE on deployed images (all three container .Image == built image id, and the kit's errors.py inside the image is byte-identical to source by sha256): knowledge-service memory_remember {} -> '`fact_text`: Field required; `fact_type`: Field required. You sent no arguments at all — supply the required ones and call the tool again.'",
+        "LIVE, the other half, on a second service: jobs_get with job_id=['a','b'] still returns '`job_id`: Input should be a valid string (you sent a list)' and is NOT told it sent nothing -- the correct clause survives where it was always correct",
+        "SMOKE DEBRIS CLEANED: a probe call succeeded and wrote a junk fact into the graph; memory_forget invalidated it, and I verified the node's valid_until is set rather than trusting the 'invalidated: true' response (my first check read the wrong property name)"
+      ],
+      "admitted": false
     }
   }
 }

@@ -36,6 +36,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 
 from loreweave_mcp import (
+    validation_directive,
     ForbidExtra,
     apply_response_contract,
     build_tool_context,
@@ -68,22 +69,16 @@ mcp_server = make_stateless_fastmcp("jobs")
 # loreweave_mcp kit absorbs it (kit is outside the W0 change surface).
 
 
-def _validation_directive(tool_name: str, exc: ValidationError) -> str:
-    """One line: every failing arg with pydantic's expectation + the sent shape."""
-    parts = []
-    errs = exc.errors(include_url=False)
-    for err in errs[:3]:
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
-        msg = err.get("msg", "invalid value")
-        sent = err.get("input")
-        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
-    if len(errs) > 3:
-        parts.append(f"(+{len(errs) - 3} more)")
-    return (
-        f"invalid arguments for {tool_name} — "
-        + "; ".join(parts)
-        + ". Fix the argument and call the tool again."
-    )
+# W0 #4b — the one-line validation directive now lives in the kit as
+# `validation_directive`. It used to be a byte-identical copy in THIS file and in two sibling
+# services, and the copy was wrong in a way none of the three noticed: for a `missing` error
+# pydantic sets `input` to the PARENT object, so every rendering said "(you sent a dict)" about
+# a field that had never been sent. Measured across the corpus: 79 calls, 7 tools, 16 sessions,
+# args `{}` in 100% of them — the clause was false every single time it appeared.
+#
+# The comment that used to sit here said the kit "will absorb the shared copy later". Three
+# copies is how one of them drifts, so it absorbed it.
+_validation_directive = validation_directive
 
 
 def _install_validation_error_rewriter(server) -> None:

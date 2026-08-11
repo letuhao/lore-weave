@@ -22,7 +22,7 @@ identical, so the agent can't probe which book ids exist by watching the error.
 from __future__ import annotations
 
 from mcp.server.fastmcp.exceptions import ToolError
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 
 __all__ = ["ForbidExtra", "TolerantArgs", "NotAccessibleError", "uniform_not_accessible"]
 
@@ -82,3 +82,51 @@ def uniform_not_accessible(exc: BaseException | None = None) -> NotAccessibleErr
     if exc is not None:
         err.__cause__ = exc
     return err
+
+
+def validation_directive(tool_name: str, exc: ValidationError, *, max_errors: int = 3) -> str:
+    """One line per failing argument: what pydantic expected, and what was actually sent.
+
+    🔴 **THE TYPE CLAUSE USED TO LIE, AND IT LIED ON THE MOST COMMON FAILURE THERE IS.**
+    Three services carried a byte-identical copy of this function, each rendering
+    ``(you sent a {type(err["input"]).__name__})`` for every error. For a ``missing`` error
+    pydantic sets ``input`` to the PARENT object — there is no field value, because the field
+    was never sent — so the clause reported the type of the arguments dict and the model was
+    told ``fact_text: Field required (you sent a dict)`` when it had sent no arguments at all.
+
+    Measured before the fix: **79 calls, 7 tools, 16 sessions, and in 100% of them the args
+    were `{}`.** Every single rendering of that clause was false, and it pointed the model at a
+    type error it had not made. One of those models then tried the field as a differently-typed
+    argument, which is what a misattributed cause does to a caller that trusts it.
+
+    So a ``missing`` error now says what is true — the field is absent — and, when the model
+    sent nothing at all, says that too, because "you sent no arguments" is the one fact that
+    distinguishes an empty call from a wrong one. Non-``missing`` errors keep the type clause,
+    where ``input`` really is the offending value and the clause was always correct.
+
+    Lives in the kit because all three copies said it should: each carried the comment "the
+    loreweave_mcp kit will absorb the shared copy later", and three copies is how one of them
+    drifts.
+    """
+    parts: list[str] = []
+    errs = exc.errors(include_url=False)
+    sent_nothing = all(
+        err.get("type") == "missing" and isinstance(err.get("input"), dict) and not err["input"]
+        for err in errs
+    ) and bool(errs)
+    for err in errs[:max_errors]:
+        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
+        msg = err.get("msg", "invalid value")
+        if err.get("type") == "missing":
+            # No value exists to describe. `input` here is the parent object, not the field.
+            parts.append(f"`{loc}`: {msg}")
+        else:
+            parts.append(f"`{loc}`: {msg} (you sent a {type(err.get('input')).__name__})")
+    if len(errs) > max_errors:
+        parts.append(f"(+{len(errs) - max_errors} more)")
+    tail = (
+        " You sent no arguments at all — supply the required ones and call the tool again."
+        if sent_nothing
+        else " Fix the argument and call the tool again."
+    )
+    return f"invalid arguments for {tool_name} — " + "; ".join(parts) + "." + tail
