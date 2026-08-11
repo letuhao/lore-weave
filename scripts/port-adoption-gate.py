@@ -86,7 +86,7 @@ MAX_CONCRETE_IMPORTERS = 70
 # `context/selectors/facts.py` (5 sites) · `tools/executor.py` (2) ·
 # `routers/internal_admin.py` (3).  **`find_relations_for_entity` now has ZERO direct
 # callers outside the adapters** — that half of the migration is complete.
-MIN_GRAPHSTORE_ADOPTERS = 9
+MIN_GRAPHSTORE_ADOPTERS = 10
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"
@@ -218,9 +218,9 @@ def main() -> int:
     if len(graphstore) > MIN_GRAPHSTORE_ADOPTERS:
         print(f"\n[port-adoption-gate] FAIL — GraphStore adopters ROSE to {len(graphstore)} "
               f"but the floor still says {MIN_GRAPHSTORE_ADOPTERS}.\n")
-        print("  Raise it — that is the progress T43 is blocked on, and recording it is the")
-        print("  point. Every operation sits at zero shadow observations until real traffic")
-        print("  flows through the port (D-T42D-GRAPHSTORE-HAS-NO-CALLERS).")
+        print("  Raise it — adoption is the progress this floor exists to record. (The older")
+        print("  message here said T43 was blocked at zero observations; that was true when")
+        print("  this gate was written and is not now — T43 compares 9/9 operations.)")
         return 1
 
     if MIN_GRAPHSTORE_ADOPTERS == 0:

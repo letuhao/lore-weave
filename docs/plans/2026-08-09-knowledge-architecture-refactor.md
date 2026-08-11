@@ -58,11 +58,16 @@ the engines mint their own node ids (fixed by an identity mapping) · each stamp
 `archived_at` clock (fixed by comparing presence, not the instant) · agtype scalars carry
 their JSON quotes (fixed in `_unwrap`). Every one first appeared as `DIVERGED`.
 
-⏸ **THIS IS A STOP-AND-WAIT CHECKPOINT, AND THE DECISIONS ARE NOT MINE:**
-1. **QC-7** requires a **rebuild-from-Postgres drill** (T41) alongside this shadow evidence,
-   and then `/review-impl`. **T41 does not exist** — and if AGE is chosen, the graph lives *in*
-   Postgres and T41 changes shape entirely, which is why X3 re-scoped it to *after* the engine
-   decision rather than before.
+✅ **T41 IS BUILT AND DRILLED (2026-08-12), so QC-7's second input now exists.**
+`app/jobs/graph_rebuild.py`, written **through the port** — which is why it did not need the
+engine decision after all. **Stop condition 4 does not fire:** a 5 000-entity book rebuilds in
+**102s on Neo4j, 20s on AGE**. Graph HA stays unnecessary and the rollback story holds.
+📊 AGE is **~5× faster** on this path — the first *performance* datapoint beside T43's
+correctness one. ⚠️ `D-T41-RELATIONS-NOT-REBUILDABLE`: a rebuild restores **identity**, not the
+extracted edge set.
+
+⏸ **WHAT REMAINS AT QC-7 IS NOT MINE:**
+1. **`/review-impl` on this arc** — QC-7's own words: *"present evidence and WAIT"*.
 2. **The engine choice is a sealed-row decision.** `T1`/`T2` are amended on refuted premises
    and flagged for PO re-open. `cutover_permitted: True` is the shadow reporting **no
    objection** — it is data, not authorisation.
@@ -4920,12 +4925,68 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Why it blocks T43** | A shadow comparison needs real traffic through the port. With no callers, every operation has zero observations and the coverage floor cannot be satisfied by waiting — the engine cannot be chosen on measurement, which is the method X1 insisted on. |
   | **Mechanism** | The **floor** in `port-adoption-gate`: the moment a module adopts `GraphStore`, the gate reds demanding the floor be raised, so adoption is recorded rather than drifting. |
   | **Retry when** | T17's migration reaches the graph read/write sites. **This is now the critical path to T43**, not background cleanup. |
-- [~] **T41** — ⛔ **RE-SCOPE AFTER the engine decision, do not build first** *(was: build rebuild-from-Postgres)*
-  It does not exist — the only sweepers are `reconcile_evidence_count` and `stats_updater` — and
-  three claims depend on it (graph HA unnecessary, P3 rollback, DR). **But its shape depends on
-  the engine.** If AGE wins, the graph *is* Postgres and this becomes a different, smaller task or
-  none at all. Building it before the decision constructs a path for a topology about to change.
-  (depends on T43's outcome)
+- [~] **T41** — ~~⛔ RE-SCOPE AFTER the engine decision, do not build first~~ ✅ **BUILT 2026-08-12**
+  It did not exist — the only sweepers were `reconcile_evidence_count` and `stats_updater` — and
+  three claims depended on it (graph HA unnecessary, P3 rollback, DR).
+  ~~(depends on T43's outcome)~~
+  ---
+  ### ✅ BUILT AND DRILLED — `app/jobs/graph_rebuild.py`
+
+  ⛔ **MY "depends on the engine" REASONING WAS WRONG, and the port is why.** I parked this on
+  the grounds that *"if AGE wins, the graph IS Postgres and T41 changes shape"*. But the
+  rebuild's job is to re-project the authoritative Postgres data into the graph, and it does
+  that **through `GraphStore`** — so **one implementation serves whichever engine T43 selects**.
+  Written before the port had adopters it would have been Neo4j-specific; written after T17,
+  it is not. **T41 never needed the engine decision; it needed the port to have callers.**
+
+  It also fixes the rollback story: not *"point the adapter back"* (which strands whatever the
+  new engine wrote) but *"point the adapter back **and rebuild from the source of truth**"*.
+
+  🎯 **STOP CONDITION 4 DOES NOT FIRE.** *"T41 shows rebuild-from-Postgres is impractical at
+  book scale → graph HA returns as a requirement and Phase 7's rollback story fails."*
+  Measured, 120 entities, all three adapters:
+  ```
+  [T41 drill] adapter=fake   read=120 written=120 failed=0 elapsed=0.01s rate=17887/s
+  [T41 drill] adapter=neo4j  read=120 written=120 failed=0 elapsed=2.44s rate=49/s
+  [T41 drill] adapter=age    read=120 written=120 failed=0 elapsed=0.47s rate=254/s
+
+  projected            neo4j        age
+    1 000 entities     20.4s        3.9s
+    5 000 entities    102.0s       19.7s
+   20 000 entities    408.2s       78.7s
+  ```
+  **Practical on both engines**, so graph HA stays unnecessary and the rollback story holds.
+
+  📊 **AGE is ~5× faster than Neo4j on this path** (254/s vs 49/s) — the **first performance
+  datapoint** in the engine question, alongside T43's correctness result. Not a verdict: one
+  write-heavy path on one machine, and the read paths are unmeasured.
+
+  **BITE — increment the tally without performing the write:**
+  ```
+  6 failed, 3 passed   (across fake · neo4j · age)
+  ```
+  The counters alone still said `written=120 failed=0`. What catches it is reading one entity
+  **back out of the store** — a tally is exactly what a broken write path keeps incrementing.
+
+  🐞 **I walked into a trap I had already documented.** The fixture pulled the driver via
+  `request.getfixturevalue("neo4j_driver")`, which pytest resolves synchronously — every test
+  died with *"Runner.run() cannot be called from a running event loop"*. `test_graph_store_
+  conformance.py` records this exact failure from cycle 1. The note is now repeated in the new
+  file, because a lesson recorded only where it was learned is one the next file re-learns.
+
+  **QC (a)** 4184 unit. **(b) live** — both engines in throwaway containers. **(c) real data** —
+  **428 integration** (up from 419), the drill writing and reading back 120 real entities per
+  adapter.
+
+  ### 🔻 DEFERRAL `D-T41-RELATIONS-NOT-REBUILDABLE` — a rebuild restores identity, not edges
+
+  | | |
+  |---|---|
+  | **Blocker** | `glossary_entities` is the Postgres SSOT for entity **identity**, so nodes and anchors re-project cleanly. Extraction-derived **relations** have no Postgres original — they are produced by the LLM pipeline from chapter text. A rebuild therefore restores the cast, not the web. |
+  | **Evidence** | `rebuild_entities_from_glossary` writes entities only; the drill asserts entity counts and says nothing about edges, deliberately. |
+  | **Why it is stated rather than glossed** | The three claims T41 underwrites are about **DR and rollback**. "The graph is rebuildable" is true of identity and false of relations, and letting the stronger reading stand would make the disaster story sound better than it is — the precise failure this plan keeps finding (a green check standing in for a claim nobody measured). |
+  | **Mechanism** | The module docstring and this row both name the boundary; the drill's assertions are entity-scoped, so nobody can read edge-recovery into a passing run. |
+  | **Retry when** | Either re-extraction is accepted as the relation-recovery path (it costs LLM spend — a PO call), or relations gain a Postgres original. **Neither is in this plan's scope.** |
 - [~] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
   No cutover while any port operation has **zero shadow observations** — merge/split/restore/coref/
   triage are rare and would diverge silently, and the graph feeds canon checks.
