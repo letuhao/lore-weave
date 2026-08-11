@@ -354,7 +354,7 @@ Re-measure rather than trust this table if more than a session has passed. Two r
 | admin command surface | **33 commands, live and dispatched**, 10 domain registries | `go run ./cmd/admin --list` |
 | a command that CREATES a reality | **`reality provision`**, shipped by `W3` (was: none — all 8 `reality` commands required one to exist) | `--list` |
 | admin issuance on the dev stack | **was disabled** (`POST /internal/admin/token` → 404, no signing key). `W3` enabled it; the key lives in the operator's env, **not** the repo — regenerate + `export ADMIN_JWT_LOCAL_PRIVATE_KEY_PEM=<base64 PKCS#8>` then `docker compose up -d auth-service` | `curl -o /dev/null -w '%{http_code}' -XPOST …/internal/admin/token` |
-| game-tier services in compose | `game-server` only; `world-service`, `commit-service` absent — **still true**, and now a gap rather than a non-event: world-service has a server binary with no compose entry and no general `Dockerfile` (`WS-COMPOSE`) | `grep -c "^  <svc>:" infra/docker-compose.yml` |
+| game-tier services in compose | `game-server` only; `world-service`, `commit-service` absent — **still true**, and now a gap rather than a non-event: world-service has a server binary with no compose entry and no general `Dockerfile` (`WS-COMPOSE`) | `grep -cE '^  (world-service|commit-service|game-server):' infra/docker-compose.yml` → **1** of 3 |
 | Postgres login roles | **3** — `loreweave` (`rolsuper`+`rolbypassrls`), **`loreweave_provisioner`** (`CREATEDB` only, `W7`), `w1p_foreign` (a drill fixture) | `SELECT rolname, rolsuper, rolcreatedb FROM pg_roles WHERE rolcanlogin` |
 
 ---
