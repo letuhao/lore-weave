@@ -1103,3 +1103,41 @@ It is recorded rather than fixed for one reason only: **consistency with DQ-19's
 entry declined to change `archive`'s documented no-op-success on the loop's own authority. Fixing
 `restore`'s message while leaving `archive`'s would settle half a documented contract arbitrarily.
 Both halves want the same product decision, and they should get it together.
+
+## DQ-20 — archiving a derivative hides it from the panel that would restore it
+
+Measured in #195. `composition_list_derivatives` returns only the canonical Work for a book whose
+two derivatives are archived — including when called with an ARCHIVED derivative's own project_id.
+There is no `include_archived` / `status` parameter, so an archived branch is unreachable through
+the tool surface.
+
+**This is not agent-only.** The REST route `list_book_derivatives` is documented as "the REST twin
+of the MCP composition_list_derivatives (the DivergenceManagerView's read side)", and both call the
+same repository method. The product's own divergence manager is equally blind.
+
+The cause is a shared primitive with two callers that want opposite things:
+
+```
+resolve_by_book: WHERE book_id = $1 AND status = 'active' AND book_lifecycle = 'active'
+                   AND NOT pending_project_backfill
+```
+
+Its docstring shows it is the **work-RESOLUTION** chokepoint (`work_resolution.resolve_work` maps
+len==1 → found, len>1 → candidates). For resolution the `status='active'` filter is *correct* — an
+archived Work must never resolve as the live one. For a **manage panel that offers Restore** it is
+exactly wrong. Each caller's fix is the other's defect, which is why this wants a decision rather
+than an edit.
+
+The consequence is concrete: `composition_derivative_edit op=restore` works (proven in #180), but
+its input is discoverable only if the caller wrote the project_id down before archiving.
+`composition_get_derivative_context` still answers for an archived derivative, so nothing is lost —
+it is *unfindable*, not gone.
+
+Sibling precedent exists in this same service and shows the intended shape: `composition_arc_list`
+takes `include_archived`, and `composition_arc_template_list` takes `status ∈ draft|active|archived`
+(#158 measured an archived template correctly listed under it). Derivatives simply never got one.
+
+**Open question:** should the listing get its own repository read (leaving `resolve_by_book` a pure
+resolution primitive), or should it gain an `include_archived` flag threaded through? Recorded
+rather than chosen, because the shared function is load-bearing for resolution and picking wrong
+turns a listing convenience into a resolution bug.
