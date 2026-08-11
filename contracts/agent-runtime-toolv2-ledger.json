@@ -948,17 +948,7 @@
     },
     "glossary_entity_get_genres": {
       "state": "proven",
-      "note": "PROVEN LIVE with no code change, and it is the RIGHT WAY to return an empty set. 5 calls / 5 sessions / 5 ok, and all five returned genre_ids [] -- the 100%-identical shape that has been a defect three times in this loop. Here it is not, because the empty list ships with `uses_book_default: true`, which says WHY it is empty. Compare story_search, whose empty result carried advice that could not work, and canon_rule's `kind`, which is null in 45 of 45 rows with nothing explaining it. BOTH branches were proven rather than the one the corpus happened to contain: setting an explicit genre flips the flag to false, and clearing it flips it back.",
-      "evidence": [
-        "PHASE 2: 5 ok / 0 failed. No failure population exists",
-        "LIVE default branch: {genre_ids: [], uses_book_default: true} -- the empty set is explained by its companion flag rather than left ambiguous",
-        "LIVE other branch, created on the throwaway rather than assumed from one sample: glossary_entity_set_genres(genre_codes=['fantasy']) -> {genre_ids: [fantasy, universal], uses_book_default: false}, and the reader returns the same",
-        "RESTORED: genre_codes=[] returns the entity to {genre_ids: [], uses_book_default: true}, verified by a second read",
-        "NOTED: setting 'fantasy' alone yields TWO ids -- fantasy and universal. universal is implied rather than dropped",
-        "CONTROL: a name in entity_id -> 'entity_id must be a UUID'; an absent id -> 'entity not found in this book'",
-        "MY OWN ERROR, recorded because it briefly read as a tool defect: the first read-back reused a scratch file my control loop had overwritten with an ABSENT entity id, so it answered 'entity not found'. The file was stale, not the tool"
-      ],
-      "admitted": false
+      "note": "PROVEN alongside its writer (#236). It reports {genre_ids, uses_book_default}, and both states were measured against a real change: empty with uses_book_default true before, two ids with false after setting 'drama' (universal auto-included), empty and true again after clearing. A read that could not distinguish 'no override' from 'an empty override' would make the write tool's clear operation unverifiable; this one does."
     },
     "book_get_chapter": {
       "state": "proven",
@@ -2013,6 +2003,10 @@
     "glossary_entity_restore": {
       "state": "proven",
       "note": "PROVEN on the REAL positive path, built rather than borrowed. The only soft-deleted entities in the database sit on a book I hold no grant on (correctly answered 'book not accessible'), so I created a disposable entity on the throwaway book with glossary_propose_new_entity, deleted it through the genuine propose→confirm chain (deleted:true, deleted_at set), then restored it: restored:true, deleted_at cleared, and the name 'i235 Disposable' intact. A restore that recovered the row but not its content would look identical in the response. Restoring an already-live entity returns {restored: false} -- the documented 'no-op, not an error' -- and the boolean is what makes that honest: 'I did something' and 'there was nothing to do' are distinguishable without an error. ONE ASYMMETRY RECORDED: an UNKNOWN entity_id ALSO returns {restored: false}, identical to 'already live'. Its sibling glossary_entity_delete (#234) does distinguish these, answering 'entity not found in this book'. So the same bad input gets named by one half of the pair and silently absorbed by the other, and a caller that typos an id here is told its entity was already fine. Not filed: the no-op contract is documented and deliberate, and the tool has zero traffic. This also closed #234's positive path retroactively -- that delete really does set deleted_at through the confirm chain."
+    },
+    "glossary_entity_set_genres": {
+      "state": "proven",
+      "note": "PROVEN, including the auto-inclusion its description claims. Setting ONE genre code ('drama') returned TWO genre_ids -- because '`universal` is always included' -- so that clause is real and measurable rather than aspirational, and a caller counting what it sent against what came back will not mistake the extra id for a bug. The override read back identically through glossary_entity_get_genres, and an empty list cleared it, flipping uses_book_default back to true. That boolean is the honest distinction between 'the override is empty' and 'there is no override' -- the same null-versus-empty care #192 recorded on run reports. A bogus code answers 'no live genre with code \"nonexistent_genre\" in this book': noun, value AND scope. METHOD NOTE: my first three calls failed with 'unexpected additional properties [\"genres\"]' because I sent `genres` and the field is `genre_codes` -- I had the schema on screen and constructed the call from the tool NAME instead. The error named the offending key, which is why it cost one round trip rather than a hunt. The entity was left following the book default, as found."
     }
   }
 }
