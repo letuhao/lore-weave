@@ -130,7 +130,14 @@ async def preview_build_graph(
     # human who is about to spend, but it must be worded as a fact, not as a block.
     benchmark_ok = True
     if project.embedding_model:
-        latest = await benchmark_repo.get_latest(owner, project.project_id, project.embedding_model)
+        # MODEL-scoped, not project-scoped. kg_run_benchmark runs on a hidden per-(user, model)
+        # sandbox project (`__benchmark__:<model>`) and records the run under THAT project_id, so
+        # a project-scoped `get_latest(owner, project.project_id, …)` could never match one — the
+        # warning row stayed lit on every preview no matter how many times the user benchmarked.
+        # `get_latest_for_model` is the lookup written for exactly this ("a passing run on the
+        # user's hidden benchmark sandbox unlocks every project using the same model"), and it is
+        # what the extraction-start advisory already uses, so card and core now read one source.
+        latest = await benchmark_repo.get_latest_for_model(owner, project.embedding_model)
         benchmark_ok = latest is not None and latest.passed
 
     chapters_note = "chapter extraction"
