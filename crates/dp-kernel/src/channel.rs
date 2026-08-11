@@ -235,6 +235,30 @@ impl ChannelWriter {
             });
         };
 
+        // ── 1b: DP-Ch21 — the writer STAMPS the allocated turn into the
+        // payload. It cannot be the caller's to supply.
+        //
+        // `TurnBoundary { turn_number, turn_data }` puts the number in the
+        // payload, and `advance_turn(ctx, channel, turn_data, causal_refs)`
+        // does not let the caller pass one — because the caller cannot know it:
+        // it is allocated here, under the epoch fence, at commit time. A
+        // caller-authored value is a guess, and a guess that disagrees with the
+        // column is two SSOTs for one fact with no rule for which wins.
+        //
+        // Found by a subscriber test asserting the two agree: the payload said
+        // 3 and the column said 2, because the test helper had authored the
+        // number. That assertion was written as a consistency check and turned
+        // out to be a design check.
+        let payload = if advance_turn {
+            let mut p = env.payload.clone();
+            if let Some(obj) = p.as_object_mut() {
+                obj.insert("turn_number".into(), serde_json::json!(turn_number));
+            }
+            p
+        } else {
+            env.payload.clone()
+        };
+
         // ── 2: the event row (PgEventStore shape + channel columns) ──
         sqlx::query(
             r#"
@@ -267,7 +291,7 @@ impl ChannelWriter {
         .bind(env.aggregate_version as i64)
         .bind(&env.event_type)
         .bind(env.event_version as i32)
-        .bind(&env.payload)
+        .bind(&payload)
         .bind(env.metadata.as_ref())
         .bind(&env.occurred_at)
         .bind(&env.recorded_at)
@@ -546,5 +570,130 @@ impl ChannelWriter {
             // cleared together, so a partial row means something else wrote it.
             _ => None,
         })
+    }
+}
+
+// ─────────────────── DP-Ch16 / DP-Ch17 — durable per-channel subscribe ───────────────────
+
+/// `DP-Ch16` — a feature-side channel event type.
+///
+/// The discriminator matches `events.event_type`, which is the authoritative
+/// registry's name (`contracts/events/_registry.yaml`) — so a type whose
+/// `EVENT_TYPE` is unregistered can never match a committed row, by
+/// construction rather than by convention.
+pub trait ChannelEvent: serde::de::DeserializeOwned + Send + 'static {
+    /// Discriminator, e.g. `channel.turn_boundary`.
+    const EVENT_TYPE: &'static str;
+}
+
+/// `DP-Ch16` — one item from a channel's durable stream.
+///
+/// `Heartbeat` and `StreamEnd` are part of the LOCKED shape and are not emitted
+/// by [`ChannelWriter::read_channel_events_durable`], which is a bounded
+/// catch-up read rather than a live tail — see `DF-1`. They exist here so the
+/// enum a consumer matches on does not change when the tail lands; adding a
+/// variant later would break every `match`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum DurableStreamItem<S> {
+    Event {
+        channel_event_id: i64,
+        writer_epoch: i64,
+        /// `DP-Ch22` — the turn this event landed in. 0 = the channel has never
+        /// advanced one.
+        turn_number: i64,
+        causal_refs: serde_json::Value,
+        payload: S,
+        occurred_at: chrono::DateTime<chrono::Utc>,
+    },
+    /// Emitted on an idle channel so a consumer can tell "quiet" from "lost".
+    /// Not produced by the catch-up read; reserved for the live tail.
+    Heartbeat { last_event_id: i64 },
+    /// Graceful close. Reserved for the live tail.
+    StreamEnd { reason: String },
+}
+
+impl ChannelWriter {
+    /// `DP-Ch16` — read this channel's events from `from_event_id` forward, in
+    /// `DP-A15` per-channel total order.
+    ///
+    /// `from_event_id = 0` means "from the beginning of retention", per DP-Ch16.
+    /// The bound is EXCLUSIVE: pass the last `channel_event_id` you processed
+    /// and you get what comes after it, which is what makes the resume token
+    /// composable — a consumer that crashes mid-item re-reads nothing it has
+    /// already acknowledged.
+    ///
+    /// # Which tier this reads, and why that is the canonical one
+    ///
+    /// Postgres, not Redis. `DP-Ch17` specifies two backing stores and calls
+    /// the Postgres `events` table **canonical** and the Redis tail
+    /// *"best-effort live"*. The Redis stream `dp:events:{reality}:{channel}`
+    /// **does not exist in any source file in this repository** — measured, see
+    /// the durable-subscribe run-state §1.2 — so this reads the half that is
+    /// real. `DF-1` defers the tail; it is a latency optimisation, and building
+    /// a relay for a stream with no reader would have been the wrong order.
+    ///
+    /// # Not a live stream
+    ///
+    /// This returns a Vec, not an async stream. DP-Ch16's `DurableEventStream`
+    /// is a live subscription whose cancellation semantics are tied to a gRPC
+    /// server-streaming RPC that does not exist either. Returning a bounded
+    /// page is the honest shape for a catch-up read over a table, and it is
+    /// what every consumer needs first: you cannot tail a channel until you
+    /// have caught up to its head.
+    ///
+    /// # Visibility
+    ///
+    /// DP-Ch16 requires a capability check at subscribe time. This method is
+    /// on `ChannelWriter`, which already holds a lease for the channel — a
+    /// stronger claim than the read capability DP-Ch16 asks for. A caller with
+    /// only observer rights needs the SDK surface, which waits on `DF-2`.
+    pub async fn read_channel_events_durable<S: ChannelEvent>(
+        &self,
+        from_event_id: i64,
+        limit: i64,
+    ) -> Result<Vec<DurableStreamItem<S>>, ChannelError> {
+        let rows: Vec<(i64, Option<i64>, i64, serde_json::Value, serde_json::Value, chrono::DateTime<chrono::Utc>)> =
+            sqlx::query_as(
+                r#"
+                SELECT channel_event_id, writer_epoch, turn_number, causal_refs, payload, occurred_at
+                  FROM events
+                 WHERE reality_id = $1
+                   AND channel_id = $2
+                   AND channel_event_id > $3
+                   AND event_type   = $4
+                 ORDER BY channel_event_id
+                 LIMIT $5
+                "#,
+            )
+            .bind(self.reality_id)
+            .bind(self.lease.channel_id.get())
+            .bind(from_event_id)
+            .bind(S::EVENT_TYPE)
+            .bind(limit)
+            .fetch_all(&*self.pool)
+            .await?;
+
+        let mut out = Vec::with_capacity(rows.len());
+        for (channel_event_id, writer_epoch, turn_number, causal_refs, payload, occurred_at) in rows {
+            let decoded: S = serde_json::from_value(payload).map_err(|e| {
+                // A row whose payload does not fit its own declared type is a
+                // contract break between the writer and the registry, not a
+                // "skip it and carry on" — silently dropping it would make a
+                // gap in a stream whose ONLY promise is total order.
+                ChannelError::Db(sqlx::Error::Decode(Box::new(e)))
+            })?;
+            out.push(DurableStreamItem::Event {
+                channel_event_id,
+                // `writer_epoch` is nullable in the schema (reality-scoped rows
+                // leave it NULL); a channel row always has one, and 0 here
+                // would be indistinguishable from a real epoch.
+                writer_epoch: writer_epoch.unwrap_or(-1),
+                turn_number,
+                causal_refs,
+                payload: decoded,
+                occurred_at,
+            });
+        }
+        Ok(out)
     }
 }

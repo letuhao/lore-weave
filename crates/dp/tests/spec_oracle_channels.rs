@@ -749,3 +749,137 @@ fn the_unbuilt_half_of_dp_ch5x_still_has_its_reason() {
          inheriting it."
     );
 }
+
+// ─────────────────── DP-Ch16 / DP-Ch17 — 14_durable_subscribe.md ────────────────────
+
+/// `DP-Ch16`'s stream-item variants against the enum that ships them.
+///
+/// This document left `NO_PRODUCER` on 2026-08-12 when
+/// `ChannelWriter::read_channel_events_durable` shipped.
+///
+/// The variants are the doc↔code pair worth pinning, and not for tidiness:
+/// `Heartbeat` and `StreamEnd` are NOT produced by the catch-up read, so
+/// nothing else in the tree would notice if they were dropped from the enum —
+/// and dropping them is exactly what a later author would do on seeing two
+/// variants nothing constructs. They exist so the `match` a consumer writes
+/// today still compiles when the live tail lands.
+#[test]
+fn dp_ch16_stream_item_variants_match_the_shipped_enum() {
+    let spec = doc("14_durable_subscribe.md");
+    let src = fs::read_to_string(
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../dp-kernel/src/channel.rs"),
+    )
+    .expect("dp-kernel channel.rs");
+
+    // The variants DP-Ch16's `DurableStreamItem` block declares.
+    let block = sql_block_after(&spec, "pub enum DurableStreamItem");
+    let declared: Vec<&str> = ["Event", "Heartbeat", "StreamEnd"]
+        .into_iter()
+        .filter(|v| block.contains(v) || spec.contains(&format!("{v} {{")))
+        .collect();
+    assert!(
+        declared.len() >= 3,
+        "14_durable_subscribe.md declares only {declared:?} stream-item variant(s) — DP-Ch16's \
+         enum moved and this oracle is reading nothing"
+    );
+
+    let mut problems: Vec<String> = Vec::new();
+    for v in &declared {
+        if !src.contains(&format!("{v} {{")) && !src.contains(&format!("{v},")) {
+            problems.push(format!(
+                "DP-Ch16 declares `DurableStreamItem::{v}` and `dp-kernel::channel` does not. A \
+                 consumer's `match` is written against the LOCKED shape; removing a variant \
+                 nothing constructs yet is a breaking change deferred, not avoided."
+            ));
+        }
+    }
+
+    // DP-Ch16: resume is EXCLUSIVE of the token, and 0 means "from the
+    // beginning of retention". Both are in the SQL, and both are the kind of
+    // off-by-one that a test with a single event cannot see.
+    if !src.contains("channel_event_id > $3") {
+        problems.push(
+            "the reader's resume bound is no longer `channel_event_id > $3`. DP-Ch16 says to pass \
+             the last successfully-processed id, so an inclusive bound re-delivers an item the \
+             consumer already acknowledged."
+                .to_string(),
+        );
+    }
+    if !src.contains("ORDER BY channel_event_id") {
+        problems.push(
+            "the reader no longer orders by `channel_event_id`. DP-A15's per-channel total order \
+             is the ONE thing this stream promises; without the ORDER BY, Postgres may return any \
+             order and the tests would still pass on small pages."
+                .to_string(),
+        );
+    }
+
+    assert!(problems.is_empty(), "14_durable_subscribe.md:\n  - {}", problems.join("\n  - "));
+}
+
+/// `DF-1` — DP-Ch17's Redis live tail is unbuilt, and the register shrinks.
+///
+/// `dp:events:{reality}:{channel}` is DP-Ch16's *"default subscribe path"* and
+/// appears in four documents and no source file. The day it appears, this reds
+/// and `DF-1` must be re-decided rather than inherited.
+#[test]
+fn dp_ch17_live_tail_is_still_unbuilt_and_the_doc_still_calls_postgres_canonical() {
+    let spec = doc("14_durable_subscribe.md");
+
+    // DF-1 rests on this: the tail is best-effort, the DB is canonical. If
+    // DP-Ch17 is amended to make Redis authoritative, the fork's reasoning is
+    // gone and the reader is pointed at the wrong store.
+    assert!(
+        spec.contains("stream is best-effort live;") || spec.contains("DB is canonical"),
+        "14_durable_subscribe.md no longer says the Redis tail is best-effort and the DB \
+         canonical — DF-1 chose the Postgres tier on that sentence"
+    );
+
+    let mut producers: Vec<String> = Vec::new();
+    let mut seen = 0usize;
+    for root in ["crates", "services"] {
+        let mut stack = vec![PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").join(root)];
+        while let Some(d) = stack.pop() {
+            let Ok(entries) = fs::read_dir(&d) else { continue };
+            for e in entries.flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+                    if n != "target" && n != "node_modules" {
+                        stack.push(p);
+                    }
+                } else if p.extension().is_some_and(|x| x == "rs") {
+                    seen += 1;
+                    // THIS FILE names the stream key in order to search for it,
+                    // so it matches itself — and it did, on the first run. A
+                    // gate must never be its own witness. (Comment-stripping is
+                    // not enough here: the key is in a string literal, which is
+                    // `TL-STRING-PRODUCER`'s shape seen from the other side.)
+                    if p.ends_with("spec_oracle_channels.rs") {
+                        continue;
+                    }
+                    let Ok(src) = fs::read_to_string(&p) else { continue };
+                    let code: String = src
+                        .lines()
+                        .filter(|l| !l.trim_start().starts_with("//"))
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    if code.contains("dp:events:") {
+                        producers.push(p.display().to_string());
+                    }
+                }
+            }
+        }
+    }
+    assert!(
+        seen > 200,
+        "the source walk found only {seen} .rs file(s) — pointed at nothing, and the arm below \
+         would report clean forever"
+    );
+    assert!(
+        producers.is_empty(),
+        "DP-Ch17's Redis stream `dp:events:*` now exists in {producers:?}. DF-1 deferred the live \
+         tail BECAUSE it did not — re-decide the fork, and make DP-Ch21 step 8 true while you are \
+         there (DS-CH21-STEP8)."
+    );
+}

@@ -219,12 +219,16 @@ async fn append_turn(
     reality: Uuid,
     ver: u64,
 ) -> dp_kernel::channel::ChannelAppended {
-    w.advance_turn(
-        &envelope(reality, "channel", "ch", ver, "channel.turn_boundary"),
-        &serde_json::json!([]),
-    )
-    .await
-    .expect("advance_turn")
+    // A REAL DP-Ch21 payload, not the shared fixture's `{"v": N}`. The durable
+    // subscribe tests decode these rows into a typed `ChannelEvent`, and a
+    // round-trip through a placeholder blob would prove only that the decoder
+    // can read whatever the test happened to write.
+    let mut env = envelope(reality, "channel", "ch", ver, "channel.turn_boundary");
+    env.payload = serde_json::json!({
+        "turn_number": ver,
+        "turn_data": { "scene": format!("beat-{ver}") },
+    });
+    w.advance_turn(&env, &serde_json::json!([])).await.expect("advance_turn")
 }
 
 #[tokio::test]
@@ -472,4 +476,109 @@ async fn a_stale_writer_cannot_claim_the_turn_slot() {
         "player_acting",
         "the fenced-out writer did not overwrite the live slot"
     );
+}
+
+// ─────────────── DP-Ch16 / DP-Ch17 — durable subscribe over the canonical tier ───────────────
+//
+// These read back rows that `advance_turn` COMMITTED in the tests above. That
+// is the point: a subscriber tested against its own fixtures proves only that
+// it can read what it wrote.
+
+/// The feature-side type DP-Ch16 describes, matching `channel.turn_boundary`'s
+/// registered payload (`contracts/events/_registry.yaml`).
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+struct TurnBoundaryPayload {
+    turn_number: u64,
+    turn_data: serde_json::Value,
+}
+
+impl dp_kernel::channel::ChannelEvent for TurnBoundaryPayload {
+    const EVENT_TYPE: &'static str = "channel.turn_boundary";
+}
+
+/// A subscriber resumes a channel from a given event id and receives the turn
+/// boundaries the writer committed, in order, typed.
+///
+/// Kill-mutations: the `>` bound becomes `>=` (resume re-delivers the last
+/// acknowledged item) · the ORDER BY is dropped (total order is the one thing
+/// DP-A15 promises) · the `event_type` filter is dropped (a subscriber for one
+/// type receives another type's payload and the decode is a lie).
+#[tokio::test]
+async fn a_subscriber_resumes_and_receives_the_committed_turn_boundaries() {
+    let Some(url) = dsn() else {
+        eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — durable subscribe suite skipped");
+        return;
+    };
+    let pool = pool(&url).await;
+    let reality = Uuid::new_v4();
+    let ch = test_channel(16);
+    let lease = acquire_writer_lease(&pool, reality, ch).await.unwrap();
+    let writer = ChannelWriter::new(pool.clone(), reality, lease);
+
+    // Interleave boundaries with ordinary events, so the type filter has
+    // something to exclude and the ordering has something to get wrong.
+    append_turn(&writer, reality, 1).await;
+    writer
+        .append(&envelope(reality, "combat_session", "e", 2, "npc.said"), &serde_json::json!([]))
+        .await
+        .unwrap();
+    append_turn(&writer, reality, 3).await;
+    append_turn(&writer, reality, 4).await;
+
+    // DP-Ch16: `from_event_id = 0` means "from the beginning of retention".
+    let all = writer
+        .read_channel_events_durable::<TurnBoundaryPayload>(0, 100)
+        .await
+        .expect("read from the beginning");
+    assert_eq!(all.len(), 3, "three boundaries, and NOT the npc.said between them");
+
+    let (mut ids, mut turns) = (Vec::new(), Vec::new());
+    for item in &all {
+        match item {
+            dp_kernel::channel::DurableStreamItem::Event {
+                channel_event_id, turn_number, payload, writer_epoch, ..
+            } => {
+                ids.push(*channel_event_id);
+                turns.push(*turn_number);
+                assert_eq!(
+                    payload.turn_number as i64, *turn_number,
+                    "the payload's turn and the column's turn are the same fact written twice; \
+                     if they can disagree, one of them is not the truth"
+                );
+                assert!(*writer_epoch >= 1, "a channel row always carries its writer's epoch");
+                assert!(payload.turn_data.get("scene").is_some(), "turn_data survived the trip");
+            }
+            other => panic!("catch-up read must yield only Event items, got {other:?}"),
+        }
+    }
+    assert_eq!(ids, vec![1, 3, 4], "per-channel total order, npc.said excluded (DP-A15)");
+    assert_eq!(turns, vec![1, 2, 3], "the turn counter as the writer allocated it");
+
+    // RESUME. The bound is exclusive: hand back the last id processed and get
+    // only what follows. This is what makes the token composable.
+    let resumed = writer
+        .read_channel_events_durable::<TurnBoundaryPayload>(ids[0], 100)
+        .await
+        .unwrap();
+    assert_eq!(resumed.len(), 2, "resuming from the first boundary re-delivers nothing");
+    match &resumed[0] {
+        dp_kernel::channel::DurableStreamItem::Event { channel_event_id, .. } => {
+            assert_eq!(*channel_event_id, 3, "resume starts AFTER the token, not at it");
+        }
+        other => panic!("expected an Event, got {other:?}"),
+    }
+
+    // Resuming from the head yields nothing — a caught-up subscriber, not an error.
+    let tail = writer
+        .read_channel_events_durable::<TurnBoundaryPayload>(*ids.last().unwrap(), 100)
+        .await
+        .unwrap();
+    assert!(tail.is_empty(), "a caught-up subscriber reads an empty page, not an error");
+
+    // The limit is honoured — a catch-up read is paged, not unbounded.
+    let paged = writer
+        .read_channel_events_durable::<TurnBoundaryPayload>(0, 2)
+        .await
+        .unwrap();
+    assert_eq!(paged.len(), 2, "LIMIT bounds the page");
 }

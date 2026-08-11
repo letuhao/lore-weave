@@ -354,7 +354,26 @@ NOT_A_SPEC: dict[str, str] = {
 #: register). Writing oracles for these is the orphan shape `§0.6c` forbids:
 #: ceremony over Phase-4 designs nothing implements.
 NO_PRODUCER: dict[str, tuple[str, ...]] = {
-    "14_durable_subscribe.md": ("DurableEventStream", "durable_subscribe"),
+    # Markers widened 2026-08-12, and the reason generalises.
+    #
+    # The pair was ("DurableEventStream", "durable_subscribe") — SPEC
+    # vocabulary. An implementation that deviates for a documented reason is
+    # invisible to a marker set written that way, and this one does: the live
+    # `DurableEventStream` is an async stream whose cancellation is tied to a
+    # gRPC server-streaming RPC that does not exist, so the shipped shape is a
+    # bounded catch-up READ over the canonical Postgres tier (`DF-1`).
+    #
+    # Second time this exact miss has happened — `15_turn_boundary`'s markers
+    # named the wire type and a symbol from a neighbouring document, and the arm
+    # fired on a string in a test's assert message instead. **A NO_PRODUCER
+    # marker set must name what an implementation would plausibly CREATE, not
+    # only what the spec's prose CALLS it.**
+    # `14_durable_subscribe.md` LEFT THIS TABLE 2026-08-12 — the third row this
+    # register has shed in two days, each because its own arm fired. Its
+    # producer is `ChannelWriter::read_channel_events_durable` over the
+    # canonical Postgres tier; DP-Ch17's Redis live tail is still unbuilt and is
+    # registered inside the oracle, because the DOCUMENT is covered and only
+    # part of it is outstanding.
     # `15_turn_boundary.md` LEFT THIS TABLE 2026-08-11 — the shrink arm fired
     # and was paid. `ChannelWriter::advance_turn` is its producer, and the
     # document is now in the coverable denominator with an oracle.
