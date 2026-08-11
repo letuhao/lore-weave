@@ -14,6 +14,7 @@
     "11_access_pattern_rules.md",
     "12_channel_primitives.md",
     "13_channel_ordering_and_writer.md",
+    "15_turn_boundary.md",
     "17_channel_lifecycle.md"
   ]
 }

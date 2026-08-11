@@ -487,3 +487,131 @@ fn every_dp_ch31_transition_names_a_state_dp_ch31_defines() {
          code, so both agree with the half of the file that is right"
     );
 }
+
+// ───────────────────── DP-Ch21 / DP-Ch22 — 15_turn_boundary.md ──────────────────────
+
+/// `DP-Ch22`'s schema block against the migration that ships it.
+///
+/// This document left `dp-oracle-coverage-gate`'s `NO_PRODUCER` table on
+/// 2026-08-11: `ChannelWriter::advance_turn` exists, so an oracle over it is no
+/// longer the orphan shape §0.6c forbids.
+///
+/// # What it compares, and the one thing it deliberately does not
+///
+/// DP-Ch22 declares two columns and an index. All three are read out of the
+/// document's own SQL block and checked against `0020_turn_boundary.up.sql` —
+/// so renaming either side reds, and the message names both.
+///
+/// It does **not** compare the index's *shape*. DP-Ch22's original text
+/// specified a partial UNIQUE index, which Postgres cannot create on a
+/// partitioned table; the doc carries an `AMENDED` block saying so and giving a
+/// conformant form. Pinning the shape here would pin the amendment's prose, not
+/// the schema — and the property that actually matters (the DDL runs) is proven
+/// by executing it, which `T1` did.
+#[test]
+fn dp_ch22_turn_columns_are_shipped_by_a_migration() {
+    let spec = doc("15_turn_boundary.md");
+    let migration_sql = migration("0020_turn_boundary.up.sql");
+
+    // Every `ADD COLUMN` the document's schema section declares.
+    let declared = added_columns(&spec);
+    assert!(
+        declared.len() >= 2,
+        "15_turn_boundary.md parsed only {} ADD COLUMN(s) {declared:?} — DP-Ch22's schema blocks \
+         moved and this oracle is reading nothing",
+        declared.len()
+    );
+
+    let shipped = added_columns(&migration_sql);
+    let mut problems: Vec<String> = Vec::new();
+    for col in &declared {
+        if !shipped.iter().any(|s| s == col) {
+            problems.push(format!(
+                "DP-Ch22 declares `{col}` and 0020_turn_boundary.up.sql does not add it. The \
+                 turn counter's schema and its specification have drifted."
+            ));
+        }
+    }
+    for col in &shipped {
+        if !declared.iter().any(|d| d == col) {
+            problems.push(format!(
+                "0020_turn_boundary.up.sql adds `{col}` and 15_turn_boundary.md does not declare \
+                 it — a schema decision made in a migration file."
+            ));
+        }
+    }
+
+    // DP-Ch24: turn 0 is the never-advanced sentinel, so the column must
+    // default to it. A NULLable or 1-defaulted column would make "this channel
+    // does not use turns" indistinguishable from "turn one is in progress".
+    // ⚠ Anchored on `EXISTS turn_number`, NOT on `turn_number BIGINT NOT NULL
+    // DEFAULT 0` — because `last_turn_number BIGINT NOT NULL DEFAULT 0`
+    // CONTAINS that substring. The looser form was satisfied by the sibling
+    // column, so `events.turn_number`'s default could change to 1 and this arm
+    // would still pass. Found by a bite harness refusing an ambiguous anchor.
+    if !migration_sql.contains("EXISTS turn_number BIGINT NOT NULL DEFAULT 0") {
+        problems.push(
+            "DP-Ch24 makes turn 0 the 'never advanced' sentinel, and the migration no longer \
+             declares `turn_number BIGINT NOT NULL DEFAULT 0`. Without that default, a channel \
+             with no boundary is indistinguishable from one mid-turn-one."
+                .to_string(),
+        );
+    }
+
+    assert!(
+        problems.is_empty(),
+        "15_turn_boundary.md declares {declared:?}; 0020 ships {shipped:?}:\n  - {}",
+        problems.join("\n  - ")
+    );
+}
+
+/// `SF-3` — `channel_turn_index` is specified as OPTIONAL and is not built.
+///
+/// The register is one row and its shrink arm is the point: the day a migration
+/// creates the table, this reds and the row must go. That is what stops a
+/// "deliberately unbuilt" note from ageing into a stale claim nobody rechecks.
+#[test]
+fn the_optional_turn_index_is_still_unbuilt_and_still_optional() {
+    let spec = doc("15_turn_boundary.md");
+
+    // The doc must still CALL it optional. If DP-Ch22 is amended to require the
+    // table, SF-3's reasoning evaporates and this row is no longer a choice.
+    assert!(
+        spec.contains("OPTIONAL and currently unbuilt"),
+        "15_turn_boundary.md no longer describes `channel_turn_index` as optional — SF-3 rests on \
+         that sentence, so the fork must be re-decided rather than inherited"
+    );
+
+    // THE SHRINK ARM: nothing may create it while the row says nothing does.
+    let dir: PathBuf =
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../contracts/migrations/per_reality");
+    let mut creators: Vec<String> = Vec::new();
+    let mut seen = 0usize;
+    let mut paths: Vec<PathBuf> = fs::read_dir(&dir)
+        .expect("per_reality migrations")
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.to_string_lossy().ends_with(".up.sql"))
+        .collect();
+    paths.sort();
+    for p in &paths {
+        let Ok(sql) = fs::read_to_string(p) else { continue };
+        seen += 1;
+        if sql_code(&sql).contains("CREATE TABLE IF NOT EXISTS channel_turn_index")
+            || sql_code(&sql).contains("CREATE TABLE channel_turn_index")
+        {
+            creators.push(p.file_name().unwrap_or_default().to_string_lossy().to_string());
+        }
+    }
+    assert!(
+        seen >= 15,
+        "the migration walk read only {seen} file(s) — pointed at nothing, and the arm below \
+         would report clean forever"
+    );
+    assert!(
+        creators.is_empty(),
+        "`channel_turn_index` is recorded as deliberately unbuilt (SF-3) and {creators:?} now \
+         creates it. Either the failover anomaly it prevents was observed — in which case say so \
+         and retire SF-3 — or the table arrived without the decision being revisited."
+    );
+}

@@ -355,7 +355,18 @@ NOT_A_SPEC: dict[str, str] = {
 #: ceremony over Phase-4 designs nothing implements.
 NO_PRODUCER: dict[str, tuple[str, ...]] = {
     "14_durable_subscribe.md": ("DurableEventStream", "durable_subscribe"),
-    "15_turn_boundary.md": ("TurnBoundary", "wait_for_token"),
+    # `15_turn_boundary.md` LEFT THIS TABLE 2026-08-11 — the shrink arm fired
+    # and was paid. `ChannelWriter::advance_turn` is its producer, and the
+    # document is now in the coverable denominator with an oracle.
+    #
+    # Kept as a note because the arm fired on the WRONG EVIDENCE first: the
+    # markers were ("TurnBoundary", "wait_for_token"), neither of which a Rust
+    # implementation creates — `TurnBoundary` is the WIRE type's name (Go struct
+    # + generated bindings, which live under contracts/ and are outside this
+    # walk) and `wait_for_token` belongs to 14_durable_subscribe. What actually
+    # tripped it was the string "TurnBoundary" inside a test's assert MESSAGE.
+    # Right answer, wrong reason. See TL-STRING-PRODUCER: a string literal is
+    # not a producer, and this walk cannot yet tell the difference.
     "16_bubble_up_aggregator.md": ("BubbleUpAggregator", "bubble_up_aggregator"),
     "18_causality_and_routing.md": ("CausalityToken", "route_to_writer"),
     "19_privacy_redaction_policies.md": ("RedactionFilter", "RedactionPolicy"),

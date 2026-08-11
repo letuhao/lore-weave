@@ -331,10 +331,22 @@ LEGS: list[dict] = [
     },
     # ── DP-Ch11 (13_channel_ordering_and_writer.md). ─────────────────────────
     {
-        "label": "[DP-Ch11] the unbuilt column loses its register row",
-        "path": CH_ORACLE,
-        "find": '    "turn_number",',
-        "replace": '    "turn_number_bitten",',
+        # REPOINTED 2026-08-11. This leg used to mutate the `turn_number` row
+        # inside DEFERRED_EVENT_COLUMNS — and that register is now EMPTY,
+        # because `0020_turn_boundary` shipped the column and the row was paid.
+        # Its anchor vanished, the leg scored MISUSE, and the harness refused
+        # the commit rather than skipping quietly. That refusal is the design
+        # working: a leg whose anchor is gone proves nothing, and the dangerous
+        # version of this is the one that shrugs and still prints `bitten: N/N`.
+        #
+        # The arm under test is unchanged — "a column DP-Ch11 declares that no
+        # migration ships and no register excuses". With the register empty, the
+        # honest way to trigger it is from the MIGRATION side, which also makes
+        # this leg bite the real doc/migration pair instead of a register row.
+        "label": "[DP-Ch11] a declared column that no migration ships and no register excuses",
+        "path": MIG / "0020_turn_boundary.up.sql",
+        "find": "    ADD COLUMN IF NOT EXISTS turn_number BIGINT NOT NULL DEFAULT 0;",
+        "replace": "    ADD COLUMN IF NOT EXISTS turn_number_bitten BIGINT NOT NULL DEFAULT 0;",
         "where": CH,
         "witness": "the_event_log_columns_match_dp_ch11_or_declare_why_not",
         "names": ("events.turn_number", "DEFERRED_EVENT_COLUMNS"),
@@ -342,8 +354,13 @@ LEGS: list[dict] = [
     {
         "label": "[DP-Ch11] a register row for a column the migration DOES add (the shrink arm)",
         "path": CH_ORACLE,
-        "find": 'const DEFERRED_EVENT_COLUMNS: &[(&str, &str)] = &[(',
-        "replace": 'const DEFERRED_EVENT_COLUMNS: &[(&str, &str)] = &[\n    ("channel_id", "already added — this row is the bite"),\n    (',
+        # Anchor updated 2026-08-11: the register is now an empty slice, so the
+        # old `= &[(` no longer exists. The leg is otherwise unchanged, and it
+        # is the one that still works AS WRITTEN — adding a row for a column the
+        # migration DOES add is exactly what the shrink arm must refuse, and
+        # that does not depend on the register having rows already.
+        "find": 'const DEFERRED_EVENT_COLUMNS: &[(&str, &str)] = &[];',
+        "replace": 'const DEFERRED_EVENT_COLUMNS: &[(&str, &str)] = &[\n    ("channel_id", "already added — this row is the bite"),\n];',
         "where": CH,
         "witness": "the_event_log_columns_match_dp_ch11_or_declare_why_not",
         "names": ("`channel_id`", "DEFERRED_EVENT_COLUMNS"),
