@@ -1777,6 +1777,10 @@
     "composition_canon_rule_restore": {
       "state": "proven",
       "note": "PROVEN as the exact inverse of #174, with the same guard tested the same way. Restoring an archived rule of the caller's own project brings it back (is_archived false, text intact). Restoring an ALREADY-live rule, an unknown rule_id, and -- the one that matters -- another project's archived rule under my own project_id all give the uniform deny, and the foreign rule was still archived afterwards. Checking the victim row is what separates a proven guard from a proven message. The pair delete↔restore is therefore symmetric in BOTH directions: each flips is_archived only for a rule that is genuinely in the gated Work's project, and each leaves everything else untouched. Note this is a flat rule list rather than a tree, so unlike the arc restore in #151 there is no ancestor chain to reconnect -- the asymmetry that mattered there simply does not arise here."
+    },
+    "composition_canon_rule_update": {
+      "state": "proven",
+      "note": "PROVEN as the legacy twin of composition_canon_rule_edit(op=update) and, like #160's arc_update, it handles partials correctly: setting active=false alone changed only that, leaving text and kind intact. Reusing an already-consumed expected_version returns applied_conflict with current_version, so the version really is single-use rather than decorative. It also settles from the WRITE side the distinction that misled me in #173: `active` and `is_archived` are two different user actions, not two names for one. This tool toggles active (disable a rule while keeping it in the list); composition_canon_rule_delete sets is_archived (remove it from the list, reversibly). The row after active=false still had is_archived=false, so a disabled rule is NOT a deleted one -- and the critic's own read path (list_active: 'WHERE active AND NOT is_archived') needs both to be true, which is why each has its own tool."
     }
   }
 }
