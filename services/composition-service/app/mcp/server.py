@@ -1565,6 +1565,19 @@ async def composition_scene_link_create(ctx: MCPContext, args: _SceneLinkCreateA
         )
     except ReferenceViolationError as exc:
         raise uniform_not_accessible(exc) from exc
+    except asyncpg.UniqueViolationError:
+        # TOOLV2 LOOP #218 — a repeat edge leaked the RAW Postgres error, constraint name
+        # and column tuple included: 'duplicate key value violates unique constraint
+        # "uq_scene_link_edge" DETAIL: Key (from_node_id, to_node_id, kind)=(...)'. Three
+        # siblings in this same service already answer this in the tool's own vocabulary --
+        # motif_link_create ("that edge already exists"), motif_create and
+        # arc_template_create ("... already exists in your library") -- so this was the one
+        # site that missed the pattern, not a missing pattern.
+        return {
+            "success": False,
+            "outcome": "applied_conflict",
+            "error": "that scene link already exists (same from, to, and kind)",
+        }
     out = link.model_dump(mode="json")
     out["_meta"] = {"undo_hint": _undo(
         "composition_scene_link_delete", project_id=args.project_id, link_id=str(link.id),
