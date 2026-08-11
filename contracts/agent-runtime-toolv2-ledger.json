@@ -1468,6 +1468,19 @@
         "CONTRAST recorded because this loop found the opposite three iterations ago: #122's undo hint named `chapter_ids` against a tool that takes `chapter_id`. This tool hands back a usable ID in the RESULT rather than an argument template that can be wrong"
       ],
       "admitted": false
+    },
+    "book_chapter_set_kg_exclude": {
+      "state": "proven",
+      "note": "PROVEN by constructing its first invocation; no code change needed. 0 calls ever. Both directions proven and the database restored to false. ITS UNDO HINT IS THE COUNTEREXAMPLE TO #122: args are {book_id, chapter_id, kg_exclude} -- exactly this tool's own arguments, carrying the PREVIOUS value -- so it is replayable verbatim, which is what `undoResult`'s 'argument template' contract means. Three data points on undo hints now: correct here and in #105, broken in #122 (fixed). NOT EXERCISED: the retraction half. The description says kg_exclude=true RETRACTS already-extracted facts and passages, and the throwaway chapter has never been extracted, so there was nothing to retract.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. No failure population, no recorded shape",
+        "FIRST INVOCATION kg_exclude=true -> {chapter_id, kg_exclude true}, with undo_hint args carrying kg_exclude FALSE (the prior value)",
+        "RESTORE kg_exclude=false -> {chapter_id, kg_exclude false}, undo_hint carrying true. Database verified back at f",
+        "UNDO HINT REPLAYABLE VERBATIM: its args are this tool's own arguments, unlike #122 where the hint named `chapter_ids` against a tool taking `chapter_id`",
+        "MY OWN ERROR: my first two calls used `excluded`; the field is `kg_exclude`. Reading the schema is the method for this phase and I guessed anyway -- the fifth time in this loop",
+        "NOT EXERCISED: the retraction path (kg_exclude=true removing already-extracted facts and passages). The throwaway chapter has no KG extraction, so the flag flipped but nothing was retracted"
+      ],
+      "admitted": false
     }
   }
 }
