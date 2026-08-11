@@ -49,13 +49,19 @@ def test_AN_EMPTY_CALL_IS_TOLD_THAT_IT_WAS_EMPTY():
     assert "no arguments at all" in got, got
 
 
-def test_A_REAL_TYPE_ERROR_KEEPS_ITS_TYPE_CLAUSE():
+def test_A_REAL_TYPE_ERROR_KEEPS_ITS_VALUE_CLAUSE():
     """The clause is correct where `input` really is the offending value. Removing it there
-    would trade one lost signal for another — the fix is accuracy, not silence."""
+    would trade one lost signal for another — the fix is accuracy, not silence.
+
+    TOOLV2 LOOP #172 sharpened it further: the clause now shows the VALUE rather than its
+    type. A caller told "you sent a list" learns nothing it did not already know; shown
+    ['not', 'an', 'int'] it can see exactly what it put in the field.
+    """
     got = validation_directive("memory_remember", _err(
         {"fact_text": "x", "fact_type": "y", "weight": ["not", "an", "int"]}))
 
-    assert "`weight`" in got and "you sent a list" in got, got
+    assert "`weight`" in got, got
+    assert "'not', 'an', 'int'" in got, f"the offending value must be visible: {got!r}"
     # ...and a call that DID carry arguments must not be told it sent none.
     assert "no arguments at all" not in got, got
 
@@ -66,7 +72,9 @@ def test_A_MIXED_ERROR_SET_DESCRIBES_EACH_ERROR_ON_ITS_OWN_TERMS():
     got = validation_directive("memory_remember", _err({"weight": "abc"}))
 
     assert "`fact_text`: Field required" in got, got
-    assert "you sent a str" in got, f"the mistyped field keeps its (correct) clause: {got!r}"
+    # The mistyped field keeps its value clause -- now showing the VALUE rather than its type
+    # (TOOLV2 LOOP #172): 'abc' is what lets the caller see its own mistake; 'a str' is not.
+    assert "you sent 'abc'" in got, f"the mistyped field keeps its clause: {got!r}"
     assert "`fact_text`: Field required (you sent" not in got, (
         f"the missing field must not borrow the mistyped one's clause: {got!r}")
     # Not an empty call — it carried `weight`.
@@ -88,3 +96,67 @@ def test_THE_ERROR_LIST_IS_CAPPED_AND_THE_OVERFLOW_IS_DECLARED():
     got = validation_directive("wide_tool", exc.value, max_errors=3)
 
     assert "(+2 more)" in got, got
+
+
+# TOOLV2 LOOP #172 — the clause described the TYPE of what was sent, not the value.
+#
+# Measured on composition_authoring_run_review with unit_index=-1 against a `minimum: 0` bound:
+#
+#     `unit_index`: Input should be greater than or equal to 0 (you sent a int)
+#
+# "a int" is a fact the caller already had. The one it needed was -1. This is the same affordance
+# #148 had to hand-roll inside composition-service for uuid parsing ("received '…9fb4-9fb4-…'",
+# which is how a model sees its own duplicated group) — except here it belongs in the kit, so every
+# Python MCP service gets it from one place.
+def test_the_clause_shows_the_value_not_its_type():
+    from pydantic import BaseModel, Field, ValidationError
+
+    from loreweave_mcp.errors import validation_directive
+
+    class Args(BaseModel):
+        unit_index: int = Field(ge=0)
+
+    try:
+        Args(unit_index=-1)
+    except ValidationError as exc:
+        msg = validation_directive("composition_authoring_run_review", exc)
+    assert "-1" in msg, f"the offending value must appear: {msg}"
+    assert "you sent a int" not in msg, f"the type clause is back: {msg}"
+
+
+def test_a_huge_input_falls_back_to_its_type():
+    """A refusal that pastes an entire document back at the model is its own failure — the clause
+    has to stay one readable line, so the value is only shown while it is short enough to read."""
+    from pydantic import BaseModel, Field, ValidationError
+
+    from loreweave_mcp.errors import validation_directive
+
+    class Args(BaseModel):
+        name: str = Field(max_length=5)
+
+    try:
+        Args(name="x" * 4000)
+    except ValidationError as exc:
+        msg = validation_directive("some_tool", exc)
+    assert "xxxxxxxxxx" not in msg, f"a 4000-char input was pasted into the refusal: {msg[:200]}"
+    assert "str of" in msg and "chars" in msg, f"the fallback must still say what arrived: {msg}"
+
+
+def test_a_missing_field_still_has_no_value_clause():
+    """The #-earlier fix this file already guards: for a `missing` error pydantic sets `input` to
+    the PARENT object, so ANY rendering of it is false. Showing the value instead of the type must
+    not resurrect that on the most common failure there is."""
+    from pydantic import BaseModel, ValidationError
+
+    from loreweave_mcp.errors import validation_directive
+
+    class Args(BaseModel):
+        needed: str
+
+    try:
+        Args()
+    except ValidationError as exc:
+        msg = validation_directive("some_tool", exc)
+    assert "you sent" not in msg.split("You sent no arguments")[0], (
+        f"a missing field must not describe a value it never received: {msg}"
+    )

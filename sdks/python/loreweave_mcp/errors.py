@@ -84,6 +84,27 @@ def uniform_not_accessible(exc: BaseException | None = None) -> NotAccessibleErr
     return err
 
 
+def _render_input(value: object, *, limit: int = 80) -> str:
+    """Describe what the caller actually sent, preferring the VALUE over its type.
+
+    The clause used to read ``(you sent a {type.__name__})``, so a model that sent
+    ``unit_index: -1`` against a ``minimum: 0`` bound was told 'you sent a int' — a fact it
+    already knew, and not the one it needed. The value is what lets a caller see its own
+    mistake: -1 versus 0, or a uuid with a duplicated group (TOOLV2 LOOP #172; the same
+    argument that #148 had to hand-roll for uuid parsing in composition-service).
+
+    Long or unprintable inputs fall back to the type, because a refusal that pastes an entire
+    document back at the model is its own failure — the clause has to stay one readable line.
+    """
+    try:
+        shown = repr(value)
+    except Exception:  # noqa: BLE001 — a repr that raises must not break the refusal
+        return f"a {type(value).__name__}"
+    if len(shown) > limit:
+        return f"a {type(value).__name__} of {len(shown)} chars"
+    return shown
+
+
 def validation_directive(tool_name: str, exc: ValidationError, *, max_errors: int = 3) -> str:
     """One line per failing argument: what pydantic expected, and what was actually sent.
 
@@ -121,7 +142,7 @@ def validation_directive(tool_name: str, exc: ValidationError, *, max_errors: in
             # No value exists to describe. `input` here is the parent object, not the field.
             parts.append(f"`{loc}`: {msg}")
         else:
-            parts.append(f"`{loc}`: {msg} (you sent a {type(err.get('input')).__name__})")
+            parts.append(f"`{loc}`: {msg} (you sent {_render_input(err.get('input'))})")
     if len(errs) > max_errors:
         parts.append(f"(+{len(errs) - max_errors} more)")
     tail = (
