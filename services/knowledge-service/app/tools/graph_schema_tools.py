@@ -1849,6 +1849,15 @@ async def _handle_kg_sync_available(ctx: "ToolContext", args: KgSyncAvailableArg
         "has_updates": bool(diff.get("has_updates")),
         "source_ref": diff.get("source_ref"),
         "changes": diff.get("changes", []),
+        # kg_sync_apply REQUIRES base_source_hash and its description says to get it "from
+        # kg_sync_available" — but this projection used to drop it, so the agent-native chain
+        # could not be completed at all: the only producer named did not emit the value the
+        # consumer demands. `sync_diff` returns it as `source_hash_current` (the upstream's
+        # recomputed content_hash, which sync_apply compares against to detect drift) and the
+        # REST route already forwards it. Emitted under the CONSUMER's name so an agent passes
+        # it straight through instead of having to guess which of two hashes is meant.
+        "base_source_hash": diff.get("source_hash_current"),
+        "project_source_hash": diff.get("project_source_hash"),
     }
 
 
