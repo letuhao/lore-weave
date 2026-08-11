@@ -222,11 +222,59 @@ def collect() -> dict[str, list[tuple[int, str]]]:
     return found
 
 
+def selftest() -> int:
+    """Prove this gate can go red, on synthetic input, without touching the repo.
+
+    Hand-biting in a terminal proves it to the person who ran it and to nobody else; CI cannot
+    see a pasted transcript. `gate-teeth-gate` is right to count that as unproven — this gate
+    shipped without it and grew that debt by one.
+
+    The two cases are the ones the gate's accuracy actually rests on: it must SEE a call, and
+    it must IGNORE prose that names the same endpoint. The second is not decoration — a
+    docstring-blind version of this gate would have over-reported the baseline by 2x and hidden
+    the real reader set inside noise.
+    """
+    ok = True
+
+    call = 'url = f"{base}/internal/books/{book_id}/entities/by-ids"\n'
+    if not scan("x.py", call):
+        print("  FAIL — a real call site was not detected")
+        ok = False
+
+    prose = '"""Historically read /internal/books/{book_id}/entities directly."""\n'
+    if scan("x.py", prose):
+        print("  FAIL — a docstring mention was counted as a call site")
+        ok = False
+
+    # The nested-quote interpolation that the first version of `_SEG` could not cross. It cost
+    # a real missed reader; it is pinned here so the regex cannot silently regress to it.
+    nested = "_get(f\"/internal/books/{book}/entities/{ents[0]['entity_id']}/canon-content\")\n"
+    if not scan("x.py", nested):
+        print("  FAIL — a nested-quote interpolation was not detected")
+        ok = False
+
+    # A bi-temporal read belongs to knowledge-http-surface-gate; double-reporting it here would
+    # make two gates argue about one finding.
+    if scan("x.py", 'get(f"/internal/books/{b}/entities/{e}/facts")\n'):
+        print("  FAIL — a bi-temporal read leaked into this gate's scope")
+        ok = False
+
+    print(f"[authored-catalog-reader-gate] SELFTEST {'PASS' if ok else 'FAIL'} — detects a call, "
+          f"ignores a docstring, crosses a nested-quote interpolation, and leaves the "
+          f"bi-temporal reads to their own gate (non-vacuous)")
+    return 0 if ok else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--print", dest="just_print", action="store_true",
                     help="list findings without gating (used to build the baseline)")
+    ap.add_argument("--selftest", action="store_true",
+                    help="prove this gate can go red, on synthetic input")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     if not os.path.isdir(SCAN_ROOT):
         print(f"[authored-catalog-reader-gate] SKIP — {SCAN_ROOT} not present")

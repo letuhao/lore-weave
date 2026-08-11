@@ -107,12 +107,63 @@ def applied_steps(db: str, table: str, col: str) -> set[str] | None:
     return {line.strip() for line in proc.stdout.splitlines() if line.strip()}
 
 
+def selftest() -> int:
+    """Prove the STATIC half can go red, on synthetic source.
+
+    The live half is bitten by pointing `--live --db` at a throwaway whose ledger stops short
+    (that is how 0063/0064/0065 were caught), but a bite that needs a database cannot run in
+    CI — so the parser that finds an unregistered migration is proven here instead. Shipping
+    without this is what `gate-teeth-gate` counts, and it counted this file.
+    """
+    ok = True
+    src = (
+        'var chain = []Step{\n'
+        '\t{"0001_init", UpInit},\n'
+        '\t{"0002_next", UpNext},\n'
+        '}\n'
+        'func UpInit(ctx context.Context) error { return nil }\n'
+        'func UpNext(ctx context.Context) error { return nil }\n'
+        'func UpOrphaned(ctx context.Context) error { return nil }\n'
+    )
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        f = os.path.join(d, "ledger.go")
+        open(f, "w", encoding="utf-8").write(src)
+
+        steps = registered_steps(f)
+        if [s[0] for s in steps] != ["0001_init", "0002_next"]:
+            print(f"  FAIL — chain parse returned {steps}")
+            ok = False
+
+        orphaned = defined_funcs(d) - {s[1] for s in steps}
+        if orphaned != {"UpOrphaned"}:
+            print(f"  FAIL — expected UpOrphaned unregistered, got {orphaned}")
+            ok = False
+
+    # Unreachable-DB must report None (SKIPPED), never an empty set. Conflating "cannot see"
+    # with "not there" would make the gate report every step as missing and teach people to
+    # ignore it — the one behaviour this script's docstring promises.
+    if applied_steps("lw_definitely_no_such_db_selftest", "schema_migrations", "name") is not None:
+        print("  FAIL — an unreachable database did not report SKIPPED")
+        ok = False
+
+    print(f"[migration-drift] SELFTEST {'PASS' if ok else 'FAIL'} — parses a chain, flags an "
+          f"unregistered Up* func, and reports an unreachable DB as SKIPPED rather than "
+          f"all-missing (non-vacuous)")
+    return 0 if ok else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--live", action="store_true",
                     help="also diff against a reachable database (the check that matters)")
     ap.add_argument("--db", default=None, help="override the database name")
+    ap.add_argument("--selftest", action="store_true",
+                    help="prove the static half can go red, on synthetic source")
     args = ap.parse_args()
+
+    if args.selftest:
+        return selftest()
 
     failures: list[str] = []
     for svc, cfg in SERVICES.items():
