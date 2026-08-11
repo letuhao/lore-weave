@@ -1044,6 +1044,18 @@
         "CODE: three guards. The first two call the installer themselves, so they prove the WRAPPER and stayed green when I deleted the module-level install line -- the fourth time in this loop a guard passed over an unwired fix. The third asserts the manager's call_tool IS our closure at import, and reds with the install removed. 3589 tests pass"
       ],
       "admitted": false
+    },
+    "glossary_deep_research": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change; its only failure class is already closed. 4 calls / 1 ok, and 3 of the 4 failed on 'required: missing properties: [\"max_results\"]' across three sessions on 2026-06-21..24 -- a paging knob that was mandatory, so a caller could not research anything without inventing a number. Today the schema requires only entity_id and query, and max_results documents its own default ('how many sources (1-10, default 5)'). Verified by CALLING without it rather than by reading the schema. The confirm card is a model of how a paid outward call should be presented.",
+      "evidence": [
+        "PHASE 2: 1 ok / 3 failed, all three the same missing-max_results validation error",
+        "SCHEMA today: required = ['entity_id', 'query']; max_results is optional and states its default in its own description",
+        "LIVE, the exact recorded shape (no max_results): succeeds, returning a confirm card titled 'Research \"Mira Vale\" on the web'",
+        "THE CARD, worth recording as a good example: preview rows carry the query, the resolved entity NAME (not just its id), and a row labelled 'web search (PAID)' whose note reads 'outward call to your web-search provider — up to 5 sources attached as draft evidence'. The cost, the direction, the volume and the default are all on the card the human confirms",
+        "NOT CONFIRMED, so no outward call was made and nothing was charged"
+      ],
+      "admitted": false
     }
   }
 }
