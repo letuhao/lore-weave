@@ -43,6 +43,49 @@ them are the core targets (`lore-enrichment` LIST · `translation` mention-backf
 `worker-ai` LIST + by-ids); two are eval scripts that migrate last; one is a bulk DELETE that is
 **not** T38's (writes are T47's scope growth, not this task's).
 
+### The graph: what is built, what is populated, what is neither
+
+Added 2026-08-11 after the audit was challenged for omitting it — correctly. The first cut of
+this block said only *"Phases 6–9 have not started"*, which is true and useless: it hides that
+Phase 7 carries a **stop condition** and blocks `D-T17-BACKFILL-CYPHER`. Measured on the live
+dev graph (`infra-neo4j-1`, read-only):
+
+| | |
+|---|---|
+| **The graph MODEL is built and populated** | `Entity` 4813 · `Event` 1184 · `Passage` 1041 · `Fact` 341 · `ExtractionSource` 172 · `EntityStatus` 35 · edges `EVIDENCED_BY` 2803 · `RELATES_TO` 1142 · `ABOUT` 248. This refactor's new graph shape is real and carrying data. |
+| **The second graph DATABASE does not exist** | Only `neo4j_graph_store.py` (+ `fake_graph_store.py`, a test double). **No Kuzu, no AGE, no Memgraph anywhere in the repo.** That is **T42**, and decision X1 requires building **both** candidates. `D-T17-BACKFILL-CYPHER` (6 migration files) is blocked on it, then T43 → QC-7. |
+| **⚠️ The CAUSAL layer is empty in practice** | **4 of 1184 `Event` nodes (0.34 %) touch any causal edge** — 2 `CAUSES` + 2 `PRECEDES` in the entire graph, all from T33's single-book corpus bite (31 events considered, 5 edges written). Events span **at least 8 projects**; the producer has run on ~2.6 % of them. |
+
+### ⚠️ Stop condition 3 is UN-EVALUATED, and it names an edge type that does not exist
+
+The plan's own words: *"**T33** yields few or low-quality `HAPPENS_BEFORE` edges → D0.1 degrades
+to 'unknown' everywhere and AC1 stays broken. **This is the highest-risk unknown in the plan.**"*
+
+Two problems, and they compound.
+
+1. **`HAPPENS_BEFORE` exists nowhere** — not in `causal_edges.py`, not in `events.py`, not in the
+   live graph. The writer emits `CAUSES` and `PRECEDES` as *distinct relationship types* (T33
+   made them distinct deliberately: `PRECEDES` claims only *when*, `CAUSES` claims *why*, and
+   `get_causal_motif_pairs` reads `:CAUSES` only so a mere ordering cannot be certified as
+   causally verified). Anyone checking this stop condition literally queries `HAPPENS_BEFORE`,
+   gets **0**, and **cannot distinguish "the stop condition fired" from "my query is wrong".**
+2. **It has never been evaluated at corpus scale.** T33 is `[~]`; its corpus bite ran over **31
+   events in one book**. So the honest status is not *"T33 produced few edges"* — it is *"T33
+   has only ever been asked for edges on 2.6 % of the corpus, and the plan's highest-risk
+   unknown is therefore still unknown."* The mechanism is proven; the corpus is not.
+
+**This is the same shape as `D-T32-ALIVE-NO-FACTS`** — a producer proven on one book and mistaken
+for a populated corpus — except here a **stop condition** turns on it, and the run policy says a
+stop condition means *stop and re-open the design, not work around it*. The re-measure is cheap:
+
+```
+MATCH (e:Event) WHERE (e)-[:CAUSES|PRECEDES]-() RETURN count(DISTINCT e);   -- 4
+MATCH (e:Event) RETURN count(e);                                            -- 1184
+```
+
+Recorded as `D-T33-CAUSAL-COVERAGE-UNMEASURED`; it is a **candidate to displace T38 as the
+RESUME target**, because it can invalidate design decisions that T38 cannot.
+
 ### The three decisions that are actually open
 
 Six places in this file say *"the PO"*. Only these three are still owed an answer; the rest were
@@ -2966,6 +3009,17 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   they cover (forward-only, no self-loops, no invented ids) is unchanged by T33 and still
   asserted.
 
+  ### 🔻 DEFERRAL `D-T33-CAUSAL-COVERAGE-UNMEASURED` — the bite is one book, the graph is eight projects
+
+  | | |
+  |---|---|
+  | **Blocker** | The corpus bite below is real and it passes — but it ran over **31 events in one book**. The live graph holds **1184 `Event` nodes across at least 8 projects**, and **4 of them (0.34 %) touch any causal edge**: 2 `CAUSES` + 2 `PRECEDES` in total, all from that one bite. The producer is proven; the corpus is not populated. **This is the same shape as `D-T32-ALIVE-NO-FACTS`** — a producer proven on one book and read as a populated corpus — and here the plan's **highest-risk stop condition** turns on it. |
+  | **Evidence** | Live dev graph, read-only, 2026-08-11: `MATCH (e:Event) WHERE (e)-[:CAUSES\|PRECEDES]-() RETURN count(DISTINCT e)` → **4**; `MATCH (e:Event) RETURN count(e)` → **1184**. Node census: `Entity` 4813 · `Event` 1184 · `Passage` 1041 · `Fact` 341 · `EntityStatus` 35. Edge census: `EVIDENCED_BY` 2803 · `RELATES_TO` 1142 · `ABOUT` 248 · `CAUSES` **2** · `PRECEDES` **2**. |
+  | **Also fixed here** | Stop condition 3 was written against **`HAPPENS_BEFORE`**, a relationship type that exists in **neither the code nor the graph** — T33 deliberately persists `CAUSES` and `PRECEDES` as distinct types. A literal check of the old wording returns 0, which is indistinguishable from a broken query. The stop condition now pins the *query*, not a name. |
+  | **To unblock** | Nothing external, and no decision. Run the causal extractor across the event corpus (or a representative slice of the 8 projects) and re-measure both counts. Only then can *"few or low-quality"* be judged — today it cannot be judged at all, in either direction. |
+  | **Mechanism** | The two Cypher counts, pinned verbatim in **Stop conditions § 3** so the next reader measures rather than quotes. They are cheap, read-only, and answer the question directly. A prose note would not have done that: this exact stop condition sat unexamined precisely because it named a symbol nobody could grep for and no command reproduced it. |
+  | **Retry when** | Before Phase 7 opens. T42's engine choice is argued partly from *"the workload is shallow because relationship extraction is immature"* (decision X1) — deciding an engine while the causal layer sits at 0.34 % coverage would settle it on an artefact, which is the argument X1 exists to reject. |
+
   ### ✅ THE CORPUS BITE PASSES — 2026-08-11. Two causes, and the deferral named one.
 
   ```
@@ -4002,8 +4056,20 @@ Any of these means **stop and re-open the design**, not work around it:
 
 1. **T8** shows the KAL hop makes `state@as_of` unaffordable per chapter → §12 needs rethinking.
 2. **T21** shows pgvectorscale cannot index 2560/3072 → the vector plan changes.
-3. **T33** yields few or low-quality `HAPPENS_BEFORE` edges → D0.1 degrades to *"unknown"* everywhere
+3. **T33** yields few or low-quality causal edges → D0.1 degrades to *"unknown"* everywhere
    and AC1 stays broken. **This is the highest-risk unknown in the plan.**
+   ⚠️ **This condition was written against `HAPPENS_BEFORE`, which exists nowhere** — not in
+   `causal_edges.py`, not in `events.py`, not in the graph. T33 persists two *distinct*
+   relationship types on purpose: `CAUSES` (why) and `PRECEDES` (only when). A literal check of
+   the old wording returns 0 and reads identically to a broken query, so the evaluating query is
+   pinned here instead of a name:
+   ```cypher
+   MATCH (e:Event) WHERE (e)-[:CAUSES|PRECEDES]-() RETURN count(DISTINCT e) AS covered;
+   MATCH (e:Event) RETURN count(e) AS total;
+   ```
+   **Measured 2026-08-11: covered 4 / total 1184 (0.34 %).** That is not yet a fired stop
+   condition — T33's producer has only ever run over **31 events in one book** — but it is no
+   longer an unknown that can be left un-examined. See `D-T33-CAUSAL-COVERAGE-UNMEASURED`.
 4. **T41** shows rebuild-from-Postgres is impractical at book scale → graph HA returns as a
    requirement and Phase 7's rollback story fails.
 
