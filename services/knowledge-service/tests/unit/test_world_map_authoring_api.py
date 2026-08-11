@@ -84,7 +84,7 @@ def _teardown():
 # ── POST /v1/knowledge/entities ──────────────────────────────────────
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_create_entity_happy(mock_merge):
     mock_merge.return_value = _entity_stub()
@@ -108,7 +108,7 @@ def test_create_entity_happy(mock_merge):
         _teardown()
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_create_entity_rejects_unknown_kind(mock_merge):
     client = _make_client()
@@ -127,7 +127,7 @@ def test_create_entity_rejects_unknown_kind(mock_merge):
 @pytest.mark.parametrize(
     "kind", ["character", "location", "organization", "concept", "item"]
 )
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_create_entity_accepts_all_five_authorable_kinds(mock_merge, kind):
     mock_merge.return_value = _entity_stub(name="Thing", kind=kind)
@@ -143,7 +143,7 @@ def test_create_entity_accepts_all_five_authorable_kinds(mock_merge, kind):
         _teardown()
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_create_entity_rejects_legacy_faction_misnomer(mock_merge):
     # ``faction`` was the old create-gate misnomer; it is now renamed to
@@ -160,7 +160,7 @@ def test_create_entity_rejects_legacy_faction_misnomer(mock_merge):
         _teardown()
 
 
-@patch("app.routers.public.entities.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch("app.routers.public.entities.neo4j_session", new=lambda: _noop_session())
 def test_create_entity_rejects_blank_name(mock_merge):
     client = _make_client()

@@ -35,7 +35,27 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T17 (continuing) — migrate the next graph call sites onto `GraphStore`. 🔴 CRITICAL PATH TO T43.**
+**RESUME: T43 — the shadow comparison. 🔴 IT IS NOW RUNNABLE.**
+
+✅ **T17's port-covered surface is COMPLETE (2026-08-12).** An AST sweep for direct calls to
+any port-covered repo function outside the adapters returns **zero**. Every
+`find_entities_by_name`, `find_relations_for_entity`, `archive_entity`, `restore_entity` and
+`merge_entity` in the application now goes through `get_graph_store(...)`. **Adopters `0 → 9`.**
+
+**`D-T42D-GRAPHSTORE-HAS-NO-CALLERS` is discharged for the implemented methods** — T43 can
+observe the port's full covered surface on real traffic, so its coverage floor is reachable
+rather than structurally impossible.
+
+⚠️ **T17 is NOT finished, and the ceiling says so: 70 modules still bind `neo4j_repos`.** They
+call functions the port does not have — `get_entity_by_glossary_id`, `user_archive_entity`,
+`merge_entity_at_id`, subgraph reads, motif/thread writes. Closing those means **growing the
+port**, one deliberate design decision per operation (*"a port grows by demand, not by
+inventory"*), not more mechanical migration. That is separable from T43 and should not block
+it.
+
+⚠️ **Carrying into T43:** `D-T42-AGE-EVENT-SURFACE` — `status_at_order` and `events_in_window`
+raise on the AGE adapter, so the shadow comparison must record them as **uncovered** rather
+than as agreeing.
 
 ✅ **Batches 1–4 migrated 2026-08-12** — `wiki/context.py` · `events/handlers.py` ·
 `routers/public/entities.py` · `context/selectors/facts.py` (5 sites) · `tools/executor.py`
@@ -1679,6 +1699,50 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   find them**; a future batch should enumerate sites with the AST rather than by eye.
 
   **QC (a)** 4184 unit · `port-adoption-gate` PASS at floor 6. **QC (b) live** — throwaway
+  Neo4j 5. **QC (c) real data** — 24 integration tests through both paths.
+
+  ### ✅ BATCH 5 — 2026-08-12 · **the port's covered surface reaches ZERO direct callers**
+
+  ```
+  AST sweep for direct calls to any port-covered repo function outside the adapters:
+      remaining direct portable call sites: 0
+  [port-adoption-gate] 70 bind neo4j_repos (ceiling 70); **9 import GraphStore** (floor 9)
+  4184 unit · 24 integration against a live Neo4j
+  ```
+
+  **Enumerated by AST, not by eye — the method change the last two batches earned.** Batches 3
+  and 4 each hid a call site behind different formatting, found only when a test failed. An
+  `ast.Call` walk over `app/` (excluding adapters) found the remaining set precisely:
+  **4 sites, all `merge_entity`** — `entity_resolver.py` · `routers/public/entities.py` ·
+  `routers/public/pending_facts.py` · `tools/graph_schema_tools.py`. All four passed only
+  port-mappable arguments, so all four moved onto `resolve_or_merge_entity`.
+
+  🎯 **Every operation the port covers now goes through it.** `find_entities_by_name`,
+  `find_relations_for_entity`, `archive_entity`, `restore_entity` and `merge_entity` have
+  **zero** direct callers outside the adapters. **T43 can now observe the port's full covered
+  surface on real traffic** — the coverage floor is reachable for every implemented method.
+
+  ⚠️ **The remaining 70 concrete importers are NOT this surface.** They call repo functions
+  the port does not have (`get_entity_by_glossary_id`, `user_archive_entity`,
+  `merge_entity_at_id`, subgraph reads, motif/thread writes…). Closing them means *growing the
+  port*, which is a design decision per operation — *"a port grows by demand, not by
+  inventory"* — not more of this mechanical migration.
+
+  **BITE — mint an authored entity at `confidence=0.1` instead of `1.0`:**
+  ```
+  FAILED test_create_entity_happy   assert 0.1 == 1.0
+  1 failed, 14 passed
+  ```
+
+  🐞 **Two self-inflicted errors, both worth recording.** A scripted regex rewrite of the test
+  patches produced **unmatched parentheses** — reverted, and replaced with a one-token change
+  (repoint the module prefix to `app.adapters.neo4j_graph_store`, the namespace the adapter
+  actually resolves `merge_entity` in), which kept every mock and assertion intact. Then that
+  blanket replace hit a **substring** trap: `merge_entity_at_id` *contains* `merge_entity`, so
+  4 patch targets were rewritten to a function the adapter does not import. `merge_entity_at_id`
+  is not a port method and had to stay put.
+
+  **QC (a)** 4184 unit · `port-adoption-gate` PASS at floor 9. **QC (b) live** — throwaway
   Neo4j 5. **QC (c) real data** — 24 integration tests through both paths.
   ---
   **Evidence (batch 1).** Gate baseline **21 → 15**. Six runtime paths moved into adapter

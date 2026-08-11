@@ -86,7 +86,7 @@ MAX_CONCRETE_IMPORTERS = 70
 # `context/selectors/facts.py` (5 sites) · `tools/executor.py` (2) ·
 # `routers/internal_admin.py` (3).  **`find_relations_for_entity` now has ZERO direct
 # callers outside the adapters** — that half of the migration is complete.
-MIN_GRAPHSTORE_ADOPTERS = 6
+MIN_GRAPHSTORE_ADOPTERS = 9
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

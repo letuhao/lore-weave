@@ -1315,9 +1315,8 @@ async def create_entity_endpoint(
     confidence 1.0 mark it user-asserted.
     """
     async with neo4j_session() as session:
-        entity = await merge_entity(
-            session,
-            user_id=str(user_id),
+        entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
+                        user_id=str(user_id),
             project_id=str(body.project_id),
             name=body.name.strip(),
             kind=body.kind,

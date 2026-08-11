@@ -33,6 +33,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.db.models import PendingFact
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.entities import merge_entity
 from app.db.neo4j_repos.facts import Fact, days_since_epoch, merge_fact
@@ -136,9 +137,8 @@ async def _promote_pending_fact(session, user_id: UUID, pending: PendingFact) ->
     valid_from_ordinal: int | None = None
     event_date_iso: str | None = None
     if pending.subject and pending.project_id and pending.event_date is not None:
-        entity = await merge_entity(
-            session,
-            user_id=str(user_id),
+        entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
+                        user_id=str(user_id),
             project_id=project_id,
             name=pending.subject,
             kind=_DIARY_SUBJECT_KIND,

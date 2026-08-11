@@ -1050,7 +1050,7 @@ async def test_full_pipeline_all_candidate_types(
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch("app.extraction.entity_resolver.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_anchor_hit_skips_merge_entity(
     mock_upsert_source, mock_merge_entity, mock_add_evidence,
@@ -1103,7 +1103,7 @@ async def test_anchor_hit_skips_merge_entity(
 
 @pytest.mark.asyncio
 @patch(f"{_PATCH_BASE}.add_evidence", new_callable=AsyncMock)
-@patch("app.extraction.entity_resolver.merge_entity", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.merge_entity", new_callable=AsyncMock)
 @patch(f"{_PATCH_BASE}.upsert_extraction_source", new_callable=AsyncMock)
 async def test_anchor_miss_still_mints_new_entity(
     mock_upsert_source, mock_merge_entity, mock_add_evidence,

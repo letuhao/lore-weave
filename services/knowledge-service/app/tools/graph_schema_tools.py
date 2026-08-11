@@ -64,6 +64,7 @@ from app.ontology.confirm import (
     ActionClaims,
     mint_action_token,
 )
+from app.adapters.graph_store_provider import get_graph_store
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.graph_views import (
     read_entity_edge_timeline,
@@ -2096,9 +2097,8 @@ async def _handle_kg_create_node(ctx: "ToolContext", args: KgCreateNodeArgs) -> 
     if not name or not kind:
         raise ToolExecutionError("name and kind must both be non-empty")
     async with neo4j_session() as session:
-        entity = await merge_entity(
-            session,
-            user_id=str(owner),
+        entity = await get_graph_store(session).resolve_or_merge_entity(  # T17
+                        user_id=str(owner),
             project_id=str(ctx.project_id),
             name=name,
             kind=kind,

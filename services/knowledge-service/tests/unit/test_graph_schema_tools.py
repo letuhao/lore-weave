@@ -1630,7 +1630,7 @@ async def test_kg_create_node_creates_and_returns_endpoint_id(monkeypatch):
 
     monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
     me = AsyncMock(return_value=SimpleNamespace(id="kg-sha", name="Kai", kind="character"))
-    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", me)
 
     res = await execute_tool(ctx, "kg_create_node", {"name": "  Kai  ", "kind": "character"})
     assert res.success
@@ -1669,7 +1669,7 @@ async def test_kg_create_node_resolves_to_owner_not_caller(monkeypatch):
 
     monkeypatch.setattr("app.tools.graph_schema_tools.neo4j_session", _fake_session)
     me = AsyncMock(return_value=SimpleNamespace(id="kg-1", name="Kai", kind="character"))
-    monkeypatch.setattr("app.db.neo4j_repos.entities.merge_entity", me)
+    monkeypatch.setattr("app.adapters.neo4j_graph_store.merge_entity", me)
 
     res = await execute_tool(ctx, "kg_create_node", {"name": "Kai", "kind": "character"})
     assert res.success
