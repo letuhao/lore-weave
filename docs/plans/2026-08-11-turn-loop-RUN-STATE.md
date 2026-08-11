@@ -101,6 +101,7 @@ The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md
 | `TL-DPCLIENT` | two LOCKED docs specify `impl DpClient` and no such type exists; `SF-1` routes around it rather than fixing the docs | a third doc specifying `DpClient`, or the type actually being introduced |
 | `TL-TURN-VOCAB` | four concepts named "turn"; `SF-2` documents rather than renames | a review in which two of them are confused |
 | `TL-PGVECTOR` | **`template1` on the dev cluster records `vector 0.8.1` as INSTALLED while the cluster has no pgvector files** (PG 18.1 / Alpine), so every database `CREATE DATABASE` makes from it inherits a `pg_extension` row pointing at a missing shared library. `0006_projections` dies on `could not access file "vector"`. This is `W7-TEMPLATE1`'s hazard arriving by its **inverse**: that row warns the template silently *carries* pgvector into every new DB; the live failure is that it silently *claims* to, after the image stopped providing it — so provisioning yields databases that look correct and break on the first vector DDL. Not this track's subject and not fixed here | anyone provisioning a reality that needs embeddings on this cluster, or CI adopting this image. The fix is infra: install pgvector in the image, or drop the stale `pg_extension` row from `template1`. **Do not paper over it in a migration** |
+| `TL-CWC-A2-CHANNEL-ID` | **two load-bearing documents disagree about the same field.** `contracts/game-wire/README.md` lists `channel_id` among the 64-bit ids that MUST cross as a decimal string (CWC-A2); `tools/eventgen/field_map.go` says it is *"NOT a CWC-A2 decimal-string case"* and argues that a channel id is a small per-reality index. Only one can be right, and today the emitted TS says `number` | the first client that reads a `channel_id` above 2^53, or anyone touching CWC-A2. Cheap to settle, and it should be settled by whoever owns the wire contract rather than by a turn-loop slice |
 | `TL-DOWN-GUARD` | `0020`'s down migration discards every channel's turn history with no refuse-if-populated guard, unlike `036` in the meta tree. Correct today — nothing writes a non-zero value | **`T3`.** The moment `advance_turn` has a producer, this down migration can destroy live game state. Revisit it in the same change |
 
 ---
@@ -108,6 +109,56 @@ The patterns compose `channel_pause`, which is unbuilt, and `21_llm_turn_slot.md
 ## 5 · REGISTERS — decisions · parked · debt · drift
 
 **An empty drift log is not evidence of a clean run** (§0.6d). Append as you go.
+
+**`TLD-10` (2026-08-11) — a bite harness that restores with `git checkout` DELETES the fix under
+test.** Two arms of `T2`'s harness restored the mutated file with `git checkout -- <file>`, which
+restores from the **index**. `emit_python.go` carried an uncommitted fix, so the "restore" reverted
+it to `HEAD` and threw the work away — and the very next arm then tested a file that no longer had
+the thing being tested.
+
+**The digest guard is the only reason this is a footnote.** The harness compares the file's sha256
+before and after and refused with `MISUSE — restore not byte-exact`, so the damage was announced
+instead of discovered later. Harnesses now save the **working-tree bytes** to a temp copy and
+restore from that. `git checkout` is not an undo for anything unstaged.
+
+Two more wrong-reason reds in the same run, both from careless mutation choice: `if usesUuid {` →
+`if true {` makes Go's `usesUuid` *declared and not used*, a compile error; and renaming the
+registry entry trips the generator's separate no-field-map guard before the drift check. Both
+scored SURVIVED against arms that work. **A mutation must break exactly one thing** — the fix was
+to flip the predicate's argument (`Contains(t, "Uuid")` → `Contains(t, "")`) and to edit the
+description rather than the name. 4/4 after.
+
+**`TLD-9` (2026-08-11) — the drift gate cannot see a tree that is uniformly wrong, and the
+generated Rust is compiled by nothing.** `eventgen-validate` diffs the committed generated tree
+against a freshly generated one. That is a **drift** check and it is structurally blind to *both
+sides being broken*: two identically-wrong outputs agree perfectly.
+
+Proven by producing exactly that. `channel.turn_boundary` is the first event with a field typed
+`Any`, and the Python emitter's import line was the literal `from typing import TypedDict` — so
+the module raised `NameError: name 'Any' is not defined` on import, the package barrel re-exports
+every module, and the gate said **PASS**. The Rust emitter had the mirror bug, an unconditional
+`use uuid::Uuid;`, unused on **nine** events — and that one was invisible for a *different*
+reason: `contracts/events/generated/rust` has no `Cargo.toml`, is not a workspace member, and
+nothing references it. **It is never compiled.**
+
+Both emitters now derive their imports. `eventgen-validate` gained check (5): every generated
+Python module must actually import, with a reach floor. It is deliberately import-only — it proves
+the module parses and its names resolve, which is exactly the class of bug an emitter introduces.
+The Rust side has no equivalent while nothing compiles it, which is worth knowing: **the only
+correctness signal on two of the three generated languages is that a human reads them.**
+
+**`TLD-8` (2026-08-11) — the field map named my field before it existed, and it was right.**
+Writing `turn_number`'s types, the comment on `channel_id` two lines up already said which rule
+applies: *"that rule exists for monotonic counters that genuinely grow past 2^53 — turn_number,
+island_seq, channel_event_id"*. So the TS type is `string`, not `number` (CWC-A2), decided by a
+note left for exactly this moment rather than by me guessing. Recorded as a positive: the previous
+author wrote down the reasoning *and its future subjects*, and it survived the gap.
+
+⚠ It also surfaced a contradiction between two files nobody has reconciled:
+`contracts/game-wire/README.md` lists **`channel_id`** among the ids that must cross as decimal
+strings; `tools/eventgen/field_map.go` says `channel_id` is *"NOT a CWC-A2 decimal-string case"*
+and argues why. Both are load-bearing documents about the same field. Not this track's subject —
+noted here so it is not lost, since only one of them can be right.
 
 **`TLD-7` (2026-08-11) — skipping a failed migration produced a CASCADE failure that read as a
 second defect.** With `0006_projections` dying on the missing extension, the obvious move was to

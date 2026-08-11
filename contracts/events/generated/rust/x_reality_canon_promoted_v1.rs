@@ -3,7 +3,6 @@
 // A canon entry was promoted in one reality; meta-worker dispatches projection writes across consumer realities.
 
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct XRealityCanonPromotedV1 {

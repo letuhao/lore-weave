@@ -41,6 +41,26 @@ type Field struct {
 // The gap is now enforced by [noFieldMapAllowed] — see its comment.
 func fieldsForEvent(eventType string, version uint32) []Field {
 	switch eventType {
+	case "channel.turn_boundary":
+		if version == 1 {
+			return []Field{
+				// turn_number IS a CWC-A2 decimal-string case, and this file
+				// already said so before the field existed: the note on
+				// `channel_id` below names "turn_number, island_seq,
+				// channel_event_id" as the monotonic counters the rule is FOR.
+				// contracts/game-wire/README.md agrees. So the TS type is
+				// `string`, not `number` — JS corrupts past 2^53, and the bug
+				// is invisible in dev because small values round-trip fine.
+				{"turn_number", "uint64", "u64", "string", "int"},
+				// The FIRST opaque-JSON field in this map. DP-Ch21 is explicit
+				// that DP does not interpret turn_data: it is a D&D round, a
+				// scene title, "player A's turn" — vocabulary owned by whichever
+				// feature advances turns. Giving it a schema here would make the
+				// data plane the owner of a domain language, which is the
+				// D-2 shape (game vocabulary in engine tables).
+				{"turn_data", "json.RawMessage", "serde_json::Value", "unknown", "Any"},
+			}
+		}
 	case "ruleset.epoch_activated":
 		if version == 1 {
 			return []Field{

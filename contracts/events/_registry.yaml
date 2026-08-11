@@ -59,6 +59,18 @@ events:
     owner: commit-service
 
   # ────────────────────────────────────────────────────────────────────
+  # channel.* — per-channel timeline primitives (DP-Ch21)
+  # ────────────────────────────────────────────────────────────────────
+  - name: channel.turn_boundary
+    aggregate: channel
+    versions: [1]
+    active_version: 1
+    go_struct: TurnBoundaryV1
+    description: A channel's turn counter advanced by one; every member sees it in the channel's total order (DP-Ch21). NOT the dp-kernel TurnContext request lifecycle.
+    shipped_cycle: 8
+    owner: dp
+
+  # ────────────────────────────────────────────────────────────────────
   # npc.* — NPC behavior + utterances
   # ────────────────────────────────────────────────────────────────────
   - name: npc.said

@@ -10,6 +10,7 @@ from .canon_entry_created_v1 import CanonEntryCreatedV1
 from .canon_entry_decanonized_v1 import CanonEntryDecanonizedV1
 from .canon_entry_promoted_v1 import CanonEntryPromotedV1
 from .canon_entry_updated_v1 import CanonEntryUpdatedV1
+from .turn_boundary_v1 import TurnBoundaryV1
 from .npc_said_v1 import NpcSaidV1
 from .npc_said_v2 import NpcSaidV2
 from .reality_created_v1 import RealityCreatedV1
@@ -28,6 +29,7 @@ __all__ = [
     "CanonEntryDecanonizedV1",
     "CanonEntryPromotedV1",
     "CanonEntryUpdatedV1",
+    "TurnBoundaryV1",
     "NpcSaidV1",
     "NpcSaidV2",
     "RealityCreatedV1",
