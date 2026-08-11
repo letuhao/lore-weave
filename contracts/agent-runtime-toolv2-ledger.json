@@ -1067,6 +1067,19 @@
         "DENOMINATOR from the SSOT: provider_credentials holds 7 rows for this owner and 7 were returned -- complete, not capped"
       ],
       "admitted": false
+    },
+    "glossary_propose_new_entity": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and deliberately NOT improved. 7 calls / 5 ok. Both failures are the same shape: `description` sent as a TOP-LEVEL field when it is an ATTRIBUTE CODE, so additionalProperties:false rejects it. The schema does not hint at that -- `attributes` is described only as 'optional attribute code → value map', and the tool description points at glossary_book_ontology_read for KINDS but not for attribute codes. I did not fix it: this tool carries `visibility: legacy` and its own description ends 'NOTE: superseded by glossary_propose_entities -- kept for existing callers only'. Improving a superseded surface spends effort where callers are being moved away from.",
+      "evidence": [
+        "PHASE 2: 5 ok / 2 failed, both 'unexpected additional properties [\"description\"]', two sessions (2026-06-21, 2026-07-05)",
+        "LIVE with description as an ATTRIBUTE: {entity_id, status 'created'} -- a Tier-A write that lands as a DRAFT in the review inbox, not canon",
+        "CONTROL with description at the top level: reproduces the recorded rejection verbatim",
+        "SCHEMA: required ['kind','name']; properties book_id, kind, name, attributes, scope_label; additionalProperties false. `description` is not among them and nothing says where it belongs",
+        "SUPERSESSION, read from _meta and the description rather than assumed: visibility 'legacy', superseded by glossary_propose_entities",
+        "DEBRIS: the probe entity's delete is a confirm-gated propose (destructive:true, preview naming the entity, its 2 attributes and 0 chapter links), so it could not be completed from the MCP surface. One draft entity remains on the disposable book"
+      ],
+      "admitted": false
     }
   }
 }
