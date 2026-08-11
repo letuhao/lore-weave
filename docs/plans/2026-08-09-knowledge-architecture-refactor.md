@@ -3352,7 +3352,54 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Evidence** | The task text names four artefacts; this session produced none of them. What it produced is the acceptance assertion the task turns on, with a control, at `docs/measurements/2026-08-11-qc5-role-attribution-live.md`. Recording that as "QC-5 done" would be the accounting artefact this plan's own verification script exists to prevent. |
   | **To unblock** | Nothing. It is a run, with `authoring_canon_role_check_enabled=true` set on composition-service (the flag is off by default because roles in force are common and it adds a judge call to most scenes). |
   | **Mechanism** | `scripts/plan-final-verification.py` check 3 — a QC task may not be `[x]` while its own section records a deferral. This row is what keeps QC-5 at `[~]`, so the gap cannot be closed by a summary that sounds finished. |
-  | **Retry when** | Whenever the PO wants the artefacts. The inverted criterion (*"a pass with 5/5 means the refactor has NOT landed"*) now has a check behind it that can actually fail, which it did not before. |
+  | **Retry when** | ~~Whenever the PO wants the artefacts.~~ **RUN 2026-08-11 — see below.** |
+
+  #### ▶ CAPTURED 2026-08-11 — the pipeline is proven end-to-end, the judge is not calibrated
+
+  Real generate through the real endpoint on chapter 11, *"the trap closes"* — the acceptance
+  case's own chapter. Job `019ff029-…`, completed, **4109-character draft**, and the role check
+  **ran inside the flow** (two `judge_role_attribution` LLM jobs, 09:31 + 09:32 — the first
+  execution anywhere except a direct probe).
+
+  **It took three runs, and the two failures are the useful part.**
+  *Run 1* — no distinct critic on the work, so `resolve_critic_refs(...).distinct` was False and
+  **neither** judge could run (invariant 2). *Run 2* — the containers were restarted with the
+  flag but still running the image built **before** the role check existed; the result was
+  indistinguishable from a legitimate "no findings". That is the *rebuild-stale-images-first*
+  trap: checking the flag was not enough, because the flag was never the stale thing.
+
+  **8 findings, and 8 of 8 are false positives.** Two contradict their own stated reason —
+  *"Lâm Trạch reveals his betrayal to Lâm Uyên in the passage, not someone else"* returned <!-- doc-language-gate: ok -- the judge's verbatim verdict on cited-corpus names; paraphrasing removes the evidence -->
+  `violated: true`, which is canon being CONFIRMED, not contradicted. Three treat a plot event
+  as ending a kinship (betraying your cousin does not stop them being your cousin). One reads a
+  location change as a contradiction.
+
+  **QC-5's criterion is about a MISATTRIBUTED trap; this draft attributes correctly and the
+  check fired anyway** — the opposite error. The earlier direct probe had it right (1 finding
+  on a misattributed draft, **0 on the correct control**); the difference is that the control
+  was two hand-written sentences and this is 4109 characters of real prose with 24 relations in
+  force at once. **A check that fires 8 times on a correct chapter trains an author to ignore
+  it**, which is worse than not shipping it — and is why it stays off by default.
+
+  Full write-up, including the four distinct failure modes and the exact prompt change they
+  imply: `docs/measurements/2026-08-11-qc5-full-flow-capture.md`.
+
+  ### 🔻 DEFERRAL `D-QC5-ROLE-JUDGE-PRECISION` — the check fires on correct prose
+
+  | | |
+  |---|---|
+  | **Blocker** | Precision, not wiring. `judge_role_attribution` returned 8 affirmed contradictions on a chapter whose canon attribution is CORRECT. The prompt tells the judge that silence is not a contradiction; it does not tell it that a relationship the passage **confirms** is not one either, nor that an event involving two people does not end a kinship or a marriage. |
+  | **Evidence** | All 8 verdicts, with the judge's own reasons, in the write-up. Two of them describe agreement and return `violated: true`. Contrast the controlled probe: 1 finding on a misattributed draft, 0 on the correct control — the machinery discriminates on a short passage and stops discriminating on a long one. |
+  | **To unblock** | Nothing external. Rewrite `_build_role_judge_messages` against these 8 cases, and consider capping or ranking by tier so a 24-relation snapshot does not hand the judge everything at once. |
+  | **Mechanism** | Job `019ff029-…` is the baseline: the same chapter, the same snapshot, the same critic. A re-run that drops below 8 is measurable, and 0-with-the-misattribution-still-caught is the target. The check is **off by default**, so this precision gap cannot reach an author meanwhile. |
+  | **Retry when** | Immediately — it is the next unit of this task, not a wait. |
+
+  #### ⚠️ ONE ARTEFACT QC-5 NAMES THAT THIS RUN DID NOT PRODUCE
+
+  *"the critic's per-chapter scores"* — the canon envelope carries per-CHECK statuses
+  (`canon_cast` · `plan_liveness` · `name_grounding`), **not** the 4-dimension `judge_prose`
+  scores. Those come from the D5 continuity critic, a different pass this endpoint does not
+  run. The glossary delta is 0 by design (`persist:false` — a read-only run).
 
   ### ~~DEFERRAL~~ `D-QC5-ACCEPTANCE-BLOCKED-ON-T36` — superseded 2026-08-11, kept for the record
 
