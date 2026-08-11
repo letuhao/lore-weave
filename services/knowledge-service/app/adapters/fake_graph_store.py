@@ -243,6 +243,19 @@ class FakeGraphStore:
                 continue
             if direction == "both" and entity_id not in (r.subject_id, r.object_id):
                 continue
+            # An edge to an ARCHIVED peer is excluded (the repo's
+            # `include_archived_peer=False` default).
+            #
+            # 🐞 MISSING until 2026-08-12, and this fake is what ~561 tests lean on (T20) —
+            # so every one of them could see a relation to an entity the author archived,
+            # while production would not. Found by T43's property-based differential run
+            # catching it in the AGE adapter, then by the conformance rule added alongside
+            # the fix catching it HERE too. A fake that is more permissive than the real
+            # adapters does not merely miss bugs; it teaches its tests the wrong contract.
+            peer_id = r.object_id if r.subject_id == entity_id else r.subject_id
+            peer = self._entities.get(peer_id)
+            if peer is not None and peer.archived_at is not None:
+                continue
             if as_of is not None:
                 # A POSITIONLESS edge is excluded. Cypher gets this from three-valued
                 # logic (`NULL <= N` is NULL, not true); Python must say it, and a fake

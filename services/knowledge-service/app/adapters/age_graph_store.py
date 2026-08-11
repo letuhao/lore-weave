@@ -403,15 +403,28 @@ class AgeGraphStore:
                 f"r.valid_from_ordinal IS NOT NULL AND r.valid_from_ordinal <= {_lit(as_of)} "
                 f"AND (r.valid_to_ordinal IS NULL OR {_lit(as_of)} < r.valid_to_ordinal)"
             )
+        # ⚠️ AN ARCHIVED PEER'S EDGES ARE EXCLUDED, matching the Neo4j repo's
+        # `include_archived_peer=False` default. This was MISSING here and the property-based
+        # differential suite found it (seed=1): after an `archive()`, AGE returned an edge
+        # Neo4j did not —
+        #     primary  =[('parent_of','0.85','12')]
+        #     secondary=[('ally_of','0.7','5'), ('parent_of','0.85','12')]
+        # The scripted shadow pass never archived a peer and then read relations, so nine
+        # green operations had said nothing about this. It is a real behaviour difference,
+        # not a comparison artifact: a caller would have seen a relation to an entity the
+        # author archived.
+        peer_live = "p.archived_at IS NULL"
         out = (
             f"MATCH (a:Entity {{id: {_lit(entity_id)}, user_id: {_lit(user_id)}}})"
             f"-[r:RELATES_TO]->(p:Entity) "
-            f"WHERE p.user_id = {_lit(user_id)} AND {conf} AND {window} RETURN r"
+            f"WHERE p.user_id = {_lit(user_id)} AND {peer_live} AND {conf} AND {window} "
+            f"RETURN r"
         )
         inc = (
             f"MATCH (p:Entity)-[r:RELATES_TO]->"
             f"(a:Entity {{id: {_lit(entity_id)}, user_id: {_lit(user_id)}}}) "
-            f"WHERE p.user_id = {_lit(user_id)} AND {conf} AND {window} RETURN r"
+            f"WHERE p.user_id = {_lit(user_id)} AND {peer_live} AND {conf} AND {window} "
+            f"RETURN r"
         )
         parts = {"outgoing": [out], "incoming": [inc], "both": [out, inc]}[direction]
         rels: list[Relation] = []

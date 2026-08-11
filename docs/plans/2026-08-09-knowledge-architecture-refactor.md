@@ -67,9 +67,22 @@ their JSON quotes (fixed in `_unwrap`). Every one first appeared as `DIVERGED`.
    and flagged for PO re-open. `cutover_permitted: True` is the shadow reporting **no
    objection** — it is data, not authorisation.
 
-**What is NOT claimed:** this is a 9/9 agreement on a **synthetic traffic pattern**, not a
-production soak. The plan's own words apply — merge/split/restore/coref/triage are rare, and
-one pass through each is coverage, not confidence.
+✅ **T43 IS NOW COMPLETE ON ALL THREE OF ITS PARTS** — shadow comparison · **property-based
+differential suite** · coverage floor. The suite (5 seeds × 25 randomised operations) is what
+took this from coverage to confidence, and **it found a real AGE bug on its first proper run**:
+edges to *archived* peers were being returned. The same bug was in `FakeGraphStore`, which
+~561 tests lean on. The scripted 9/9 pass was blind to both.
+
+```
+419 integration (both engines live) · 4184 unit
+9/9 compared · blocked_by: [] · cutover_permitted: True   (re-taken AFTER the fix)
+```
+
+**What is NOT claimed:** 5 seeds × 25 operations is a differential *suite*, not a production
+soak. It is a far stronger claim than one scripted pass — the archived-peer bug proves the
+difference — but the honest statement is *"no divergence across 125 randomised operations on
+5 replayable seeds"*, not *"the engines are equivalent"*. Adding seeds widens it permanently
+and cheaply; that is the intended way to grow this evidence.
 
 ✅ **T17's port-covered surface is COMPLETE (2026-08-12).** An AST sweep for direct calls to
 any port-covered repo function outside the adapters returns **zero**. Every
@@ -4778,6 +4791,60 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   write the plan's stop-and-wait discipline out of existence.
 
   **QC** — 4 shadow · **410 integration** (both engines live) · **4184 unit**.
+
+  ### ✅ THE PROPERTY-BASED DIFFERENTIAL SUITE — 2026-08-12, and it found a real bug
+
+  T43 asks for three things: *"Shadow comparison + **property-based differential suite** +
+  coverage floor"*. Two were built; **this was the missing one**, and it is what turns one
+  pass per operation into confidence.
+  `tests/integration/db/test_shadow_differential.py` — 5 fixed seeds × 25 randomised
+  operations against both engines, plus a corpus-coverage test asserting no operation is
+  skipped by *every* seed.
+
+  **Seeded, not random.** A failing seed is a reproducible bug report; a genuinely random
+  suite that fails weekly and cannot be replayed gets marked flaky, which is how a
+  differential suite dies.
+
+  🐞 **IT IMMEDIATELY FOUND A REAL DIVERGENCE — a bug in the AGE adapter, not an artifact.**
+  ```
+  seed=1 diverged on ['relations_for']
+    primary  =[('parent_of','0.85','12')]
+    secondary=[('ally_of','0.7','5'), ('parent_of','0.85','12')]
+    trace: … relate(->,12) relations() restore() relations() archive() … relations()
+  ```
+  Neo4j's repo excludes edges whose **peer is archived** (`include_archived_peer=False`); the
+  AGE adapter had no such predicate. A caller would have rendered a relation to an entity the
+  author deliberately archived. **The scripted pass never archived a peer and then read
+  relations, so nine green operations had said nothing about it.**
+
+  ⚠️ **The previous cycle's headline was therefore obtained with a buggy adapter.** The
+  9/9-zero-divergence result was true of *that traffic* and silent about this rule. **Re-taken
+  after the fix it still reads 9/9 · `blocked_by: []` · `cutover_permitted: True`** — but the
+  correction matters more than the number: *a green differential run is only as strong as the
+  traffic that produced it.*
+
+  🐞 **AND THE SAME BUG WAS IN `FakeGraphStore`.** The durable fix was to add the rule to the
+  **conformance suite** — the correctness baseline — which then failed on `[fake]` too. Per
+  T20 the fake is what **~561 tests** lean on, so every one of them could see a relation to an
+  archived entity that production would not. **A fake more permissive than the real adapters
+  does not merely miss bugs; it teaches its tests the wrong contract.**
+
+  🐞 **A generator defect, caught by the suite's own non-vacuity assertion.** The first version
+  let a guarded operation fall through the `elif` chain and do *nothing*, so seed 1337 produced
+  **8 comparisons from 25 calls**. Guarded ops now fall back to `merge` rather than vanishing.
+  A generator that silently skips work makes a differential suite report agreement it never
+  tested for.
+
+  **BITE — revert the archived-peer predicate, and note WHICH suites see it:**
+  ```
+  scripted shadow pass  : 4 passed   <- BLIND (this is what produced the 9/9 headline)
+  property-based        : 1 failed   <- catches it
+  conformance           : 1 failed   <- catches it, for every adapter
+  ```
+
+  **QC (a)** 4184 unit. **(b) live** — both engines in throwaway containers.
+  **(c) real data** — **419 integration**, up from 410 (+6 differential, +3 conformance across
+  the three adapters).
 - [~] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
   `scripts/graph-port-gate.py` walks `ast.Constant` strings and enforces that **Cypher** does not
   appear outside adapter dirs. It **never inspects imports**. So it proves Cypher is *centralised*,

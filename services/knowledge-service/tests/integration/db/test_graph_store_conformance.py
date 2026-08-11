@@ -294,6 +294,36 @@ async def test_low_confidence_edges_are_filtered_by_default(store):
 
 
 @pytest.mark.asyncio
+async def test_an_edge_to_an_ARCHIVED_peer_is_excluded(store):
+    """An archived entity's edges must not surface through a live entity's neighbourhood.
+
+    🐞 **Added 2026-08-12 because the AGE adapter got this wrong and this suite did not
+    notice.** T43's property-based differential run found it (seed=1): after an archive, AGE
+    returned an edge Neo4j did not —
+        primary  =[('parent_of','0.85','12')]
+        secondary=[('ally_of','0.7','5'), ('parent_of','0.85','12')]
+    Nine green conformance operations had said nothing about it, because no rule here
+    archived a peer and then read relations.
+
+    That is the lesson worth more than the fix: **the conformance suite is the correctness
+    baseline, so a rule the differential run discovers belongs HERE**, or the next adapter
+    re-learns it the same way. The consequence is user-visible — a relation to an entity the
+    author deliberately archived, presented as current.
+    """
+    u, p, _ = _ids()
+    a, b = await _pair(store, u, p)
+    await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="ally_of", confidence=0.9)
+    assert await store.relations_for(user_id=u, entity_id=a.id), "fixture edge missing"
+
+    await store.archive_entity(user_id=u, canonical_id=b.id, reason="test")
+    assert await store.relations_for(user_id=u, entity_id=a.id) == [], (
+        "an edge to an ARCHIVED peer was returned — the author removed that entity, and a "
+        "caller would render a relation to something that is supposed to be gone"
+    )
+
+
+@pytest.mark.asyncio
 async def test_another_users_relations_are_not_returned(store):
     u, p, other = _ids()
     a, b = await _pair(store, u, p)
