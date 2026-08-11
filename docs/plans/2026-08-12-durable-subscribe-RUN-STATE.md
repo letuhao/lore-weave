@@ -87,12 +87,12 @@ There is no such type; the turn-loop audit established this and nothing has chan
 
 | # | row | done = |
 |---|---|---|
-| `D0` | this file + the audit | `phase0-reconcile-gate.py` passes on it, pasted |
-| `D1` | **`ChannelEvent` trait + `DurableStreamItem`** — the typed shapes DP-Ch16 specifies | the types exist in non-comment source; a feature type implementing `ChannelEvent` round-trips through the decoder; unit tests pasted |
-| `D2` | **the reader** — resume from a `channel_event_id`, read forward in `DP-A15` order | reads back events the writer committed, in order, with `writer_epoch`/`turn_number`/`causal_refs` intact; `from_event_id = 0` means "from the beginning of retention"; live PG test, pasted |
-| `D3` | **end to end against `T3`'s output** | a subscriber resumes a channel and receives the `channel.turn_boundary` events `advance_turn` commits — **state explicitly whether it is a live test or a drill**; a drill does not satisfy the goal |
-| `D4` | **oracle for `14_durable_subscribe`** | the `NO_PRODUCER` shrink arm FIRES and is PAID; the doc enters the coverable denominator with a live asserting oracle; bitten per the six steps; baseline 17/17 → 18/18 |
-| `D5` | **full verification** | `cargo test --workspace` and a **detached** `--run-all`, both green, REAL exit codes pasted |
+| ~~`D0`~~ ✅ **DONE.** this file + the audit | `phase0-reconcile-gate.py` passes on it, pasted |
+| ~~`D1`~~ ✅ **DONE.** **`ChannelEvent` trait + `DurableStreamItem`** — the typed shapes DP-Ch16 specifies | the types exist in non-comment source; a feature type implementing `ChannelEvent` round-trips through the decoder; unit tests pasted |
+| ~~`D2`~~ ✅ **DONE.** `read_channel_events_durable`, exclusive resume bound, DP-A15 order, type-filtered. **the reader** — resume from a `channel_event_id`, read forward in `DP-A15` order | reads back events the writer committed, in order, with `writer_epoch`/`turn_number`/`causal_refs` intact; `from_event_id = 0` means "from the beginning of retention"; live PG test, pasted |
+| ~~`D3`~~ ✅ **DONE — a LIVE test, not a drill.** It decodes boundaries `advance_turn` committed earlier in the same suite, against real Postgres. Found a real defect: the writer was trusting a caller-authored `turn_number` in the payload (`DSD-4`). **end to end against `T3`'s output** | a subscriber resumes a channel and receives the `channel.turn_boundary` events `advance_turn` commits — **state explicitly whether it is a live test or a drill**; a drill does not satisfy the goal |
+| ~~`D4`~~ ✅ **DONE, 17/17 → 18/18.** 6/6 bitten. **oracle for `14_durable_subscribe`** | the `NO_PRODUCER` shrink arm FIRES and is PAID; the doc enters the coverable denominator with a live asserting oracle; bitten per the six steps; baseline 17/17 → 18/18 |
+| ~~`D5`~~ ✅ **DONE 2026-08-12.** `cargo test --workspace` **rc=0, 181 suites**; `--run-all` **rc=0, 85 GREEN, 0 RED**, tree clean, no stale lock. Real exit codes read from the process (`BDR-90`). **full verification** | `cargo test --workspace` and a **detached** `--run-all`, both green, REAL exit codes pasted |
 
 ---
 
@@ -110,6 +110,40 @@ There is no such type; the turn-loop audit established this and nothing has chan
 ## 5 · REGISTERS — decisions · parked · debt · drift
 
 **An empty drift log is not evidence of a clean run** (§0.6d).
+
+**`DSD-4` (2026-08-12) — an assertion written to check the READER turned out to check the DESIGN.**
+The subscriber test asserts that an event's `turn_number` column and its payload's `turn_number`
+agree — written as an ordinary consistency check. It failed: payload 3, column 2.
+
+Neither was a bug in the reader. **`advance_turn` was trusting a caller-authored payload.**
+DP-Ch21 puts `turn_number` inside `TurnBoundary`, and the primitive's own signature
+(`advance_turn(ctx, channel, turn_data, causal_refs)`) does not let the caller pass one — because
+the caller *cannot know it*: it is allocated at commit time, under the epoch fence. Anything the
+caller writes there is a guess, and a guess that can disagree with the column is two SSOTs for one
+fact with no rule for which wins. The writer stamps it now.
+
+Worth noting how close this came to not being found: the check only fails when the allocated turn
+and the caller's guess DIVERGE, and in a test that commits one boundary they coincide. It took
+interleaving three boundaries with an unrelated event — done for the type filter, not for this.
+
+**`DSD-3` (2026-08-12) — the shrink arm matched itself.** `DF-1`'s arm searches for `dp:events:`
+and must therefore contain that string, so on its first run it reported ITSELF as the producer that
+retires the fork. Comment-stripping does not help when the needle is in a string literal — which is
+`TL-STRING-PRODUCER` seen from the other side. **A gate must never be its own witness**, and the
+third file in this repo to need that exclusion explicitly.
+
+**`DSD-2` (2026-08-12) — the marker set missed the implementation, for the second time in two
+days.** `14_durable_subscribe`'s markers were `("DurableEventStream", "durable_subscribe")` — SPEC
+vocabulary. The shipped symbols are `DurableStreamItem` and `read_channel_events_durable`,
+deviating for a reason recorded in `DF-1`, so the arm stayed silent on the day the design was
+implemented. `15_turn_boundary` had the same miss a day earlier and fired on a string in a test's
+assert message instead.
+
+**The rule this yields: a `NO_PRODUCER` marker set must name what an implementation would plausibly
+CREATE, not only what the spec's prose CALLS it.** A spec's vocabulary and an implementation's are
+allowed to differ — that is what a sealed fork is for — and a register keyed only on the former
+goes quiet exactly when it should speak. Markers widened; code NOT renamed, because renaming to
+satisfy a gate is `BDR-55`.
 
 **`DSD-1` (2026-08-12) — Phase 0 found the subject missing, not the implementation.**
 The plan going in was *"build DP-Ch16's subscribe"*. The audit's second question showed that the store it subscribes to has never existed in any language, while the tier DP-Ch17 calls **canonical** is fully shipped and already carries every column the reader needs. The work is therefore a reader over Postgres plus a deferred relay — smaller, better defined, and pointed at the half that exists. **Three tracks in a row, Phase 0 has changed the shape of the work before a line was written.**
