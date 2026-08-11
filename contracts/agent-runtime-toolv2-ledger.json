@@ -1893,6 +1893,10 @@
     "composition_motif_link_edit": {
       "state": "proven",
       "note": "PROVEN on both ops with delegation parity confirmed rather than assumed: op=create refused a real 2-cycle (duel composed_of ambush, then ambush composed_of duel) with the message byte-identical to #203's legacy composition_motif_link_create, and op=delete removed the edge through the same path. Both ops name their missing companions ('op=create requires from_motif_id, to_motif_id, and kind'). Worth noting the cycle guard applies per KIND: #203 proved it on `precedes`, this proved it on `composed_of`, which are the two the description says it guards -- variant_of is deliberately excluded, and that asymmetry is stated rather than silent ('a cycle (on composed_of/precedes) is refused'). A variant-of cycle is meaningful (two motifs can each be a variant of the other) where a composition or succession cycle is not."
+    },
+    "composition_motif_link_list": {
+      "state": "proven",
+      "note": "PROVEN against two real edges built for the test (duel precedes ambush, duel variant_of meet), so every filter was checked against a known expected answer rather than an empty graph. direction='both' and 'out' return both edges; 'in' on duel returns nothing (nothing points at it); and -- the decisive one -- 'in' on AMBUSH returns the precedes edge, i.e. the SAME row seen from the other endpoint. That proves direction genuinely inverts the traversal rather than being a label on a fixed result set. kinds=['precedes'] filters to one. Each row carries the neighbor's id, code AND name inline, which is what makes the description's 'walk the graph by following a neighbor id into another list call' actually workable: a traversal needs no second lookup per hop just to know what it reached. Both test edges were deleted afterwards."
     }
   }
 }
