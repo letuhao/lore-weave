@@ -713,6 +713,18 @@
         "MISATTRIBUTION AVOIDED, and it was the spec's: S1 row 12 files 'degraded semantic + a note suggesting mode=semantic' under this family, but all 9 such rows are STORY_SEARCH (2026-07-15). Carried forward to that tool's iteration rather than answered here; executor.py:392 still holds the string, so it is live debt, not history"
       ],
       "admitted": false
+    },
+    "glossary_entity_set_attributes": {
+      "state": "proven",
+      "note": "PROVEN LIVE, with a fix. 12 calls / 8 ok. One failure sent a NAME as entity_id (2026-07-14), a class CP-5.3 now covers -- its registry shipped 2026-08-10, after. The other three are one incident, 2026-08-10: the model sent attributes {'status': 'canonical'}, got 'no valid attribute codes for this entity's kind' and nothing else, and its NEXT move was to try `status` as a top-level ARGUMENT, which failed on 'unexpected additional properties'. Told only that its alphabet was wrong, it guessed at the grammar. FIXED: the refusal now names the rejected code AND the valid codes for that kind. The set is per-book, per-kind DATA so it cannot be a schema enum -- which is exactly the case where the rejection has to carry it -- and it was already in memory as attrDefMap, so it costs a map walk and no query. NOTE THE TOOL DESCRIPTION ALREADY SAID 'call glossary_book_ontology_read for the kind's valid attribute codes'. The model had been told, in prose, and still guessed: that is the difference between a sentence and data in the refusal.",
+      "evidence": [
+        "PHASE 2: 8 ok / 4 failed = 1 entity_id-as-name (2026-07-14) + 2 'no valid attribute codes' + 1 'unexpected additional properties [\"status\"]', the last three one session on 2026-08-10",
+        "CODE: three Go guards, and the falsifier -- restoring the original one-line message -- reds all three with their own messages. They also pin that ANOTHER kind's codes are never offered (a suggestion that fails on retry is worse than none), that an attribute-less kind says so rather than showing an empty list, and that the 25-code cap declares its overflow instead of reading as the complete alphabet",
+        "LIVE CONTROL on the deployed image (container .Image == the built image id), the EXACT recorded call: 'no valid attribute codes for this entity's kind — rejected: status. Valid codes for this kind: affiliation, aliases, appearance, description, emotional_wound, gender, love_language, name, occupation, personality, relationships, role, social_class'",
+        "LIVE happy path on the throwaway book: attributes {description: ...} -> {\"updated\":[\"description\"]}",
+        "AND IT WOULD HAVE HELPED: the model's other failed call tried role='betrayed bride'. `role` IS a valid code for this kind -- that call failed only on the name-as-entity_id, which CP-5.3 now resolves"
+      ],
+      "admitted": false
     }
   }
 }
