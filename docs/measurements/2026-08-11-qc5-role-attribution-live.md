@@ -80,9 +80,16 @@ end-to-end authoring flow through the real frontend, capturing the plan artifact
 chapters, the critic's per-chapter scores, and the glossary delta. That capture has not been
 run — see `D-QC5-FULL-FLOW-CAPTURE`.
 
-The role check is also **off by default** (`authoring_canon_role_check_enabled`), because
-roles in force are common and enabling it adds a judge call to most scenes. This run enabled
-it explicitly.
+The role check is also **off by default**, because roles in force are common and enabling it
+adds a judge call to most scenes. This run enabled it explicitly.
+
+⚠️ **The switch was renamed after this run, so the command above no longer turns it on.** At
+measurement time it was the env flag `authoring_canon_role_check_enabled`; `/review-impl` found
+that to be a SET-1 abuse and `96b5ebf2d` replaced it with the per-book setting
+`composition_work.settings["canon_role_check_enabled"]`, ANDed with the deploy ceiling
+`authoring_canon_role_check_ceiling` (default `True`). The old key is gone and a test asserts
+its absence — setting it now does nothing, silently. The measurement stands; only the
+reproduction step moved.
 
 ## Reproducing
 

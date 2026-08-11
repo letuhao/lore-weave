@@ -20,7 +20,58 @@ Design (SEALED): [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-09-
 
 scope if full plan, not small slices, need full plan first before do anything else
 
-## Current state — read this before resuming *(2026-08-09 22:16)*
+## ▶ CURRENT RUN STATE — the only block that answers "what next" *(audited 2026-08-11)*
+
+> **Everything below the `## Superseded run-state strata` heading is HISTORY.** It is kept for its
+> evidence, its measurements and its commands — not for its "next" pointers. Four of those
+> accumulated there, written on three different dates, all still in the present tense
+> (*"Next: T17"* · *"RESUME: QC-5, blocked on D-T36-ROLE-FACTS"* — a deferral retracted 25 commits
+> ago · *"NEXT: 1. QC-3a 2. QC-3b"* — both since done, twelve lines above the pointer that asks
+> for them). **That is why the last stretch of work fragmented into one-file tasks:** a reader
+> arriving at this plan could not locate the goal, so they picked up whatever the nearest
+> paragraph named. A plan with four heads has none. This block is now the single head.
+
+**Phases 0–5 are LANDED.** Phase 0 (`6ee50af00`) · Phase 1 (`cfbcea8b5`, `3fbf79afb`) ·
+Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
+Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
+
+**RESUME: Phase 6, T38 — and its first unit is to give T38 a checklist that can fail.**
+See `D-T38-MECHANISM-IS-VACUOUS` below; the mechanism this plan claims for T38 does not cover
+T38. Until that is fixed, T38 has no way to report progress and no way to report regression.
+
+### The three decisions that are actually open
+
+Six places in this file say *"the PO"*. Only these three are still owed an answer; the rest were
+answered and are kept for the record (X1, X2, and T25b's two — all implemented).
+
+| # | decision | who | what is blocked | cost of not deciding |
+|---|---|---|---|---|
+| **OD-1** | **T30's registry half.** Registering the nine `glossary.*` events the `canon.*` way adds a **sixth** parallel list rather than removing the five that exist. Genuine adoption = glossary-service imports `contracts/events` (a Go module dependency + a rewrite of every emit site), which `canon.go` itself records as a separate sub-program. **Scope call.** | PO | T30 stays `[~]`. Nothing downstream. | Low — the property RT-10 wanted (a producer rename cannot land silently) already ships and is gated. |
+| **OD-2** | **Set `KNOWLEDGE_VECTOR_DB_URL` on the shared dev stack** and let the secondary soak. Operational, about a shared environment. | whoever owns the dev stack | `D-T25B-SOAK` → the three vector read sites → the rest of the T25b cutover. | Medium — the cutover cannot be *argued for* at all, and the failure counter reads zero for the wrong reason. |
+| **OD-3** | **QC-3's POST-REVIEW sign-off** (⏸). Evidence is gathered; `/review-impl` and the real-corpus recall comparison are owed by me first. | me, then PO | The vector cutover only — which OD-2 independently blocks. | Low today, because OD-2 blocks the same gate. |
+
+**Not open, though the prose reads as if it were:** RT-2 (dissolved by §9 **O7** at sealing) ·
+`D-T36-ROLE-FACTS` (retracted — both blockers were false) ·
+`D-QC5-ACCEPTANCE-BLOCKED-ON-T36` (superseded twice) · X1 · X2 · T25b's two.
+`D-QC5-ROLE-JUDGE-PRECISION` is a **spend** question, not a design one: two experiments and a
+mechanism say the judge model is the limit, so it costs a stronger model or it stays `[~]`.
+
+### Drift found by the 2026-08-11 audit
+
+| id | drift | status |
+|---|---|---|
+| **DRIFT-1** | Four competing "next" pointers across three dates; the 283-skips paragraph appears **three** times (one copy congratulating itself for deleting a duplicate of itself); the throwaway-Neo4j recipe twice, verbatim. | **fixed** by this block + the `Superseded` heading. |
+| **DRIFT-2** | The plan told its own reader to run QC-5 with **`authoring_canon_role_check_enabled=true`** — a config key deleted in `96b5ebf2d` as a SET-1 abuse, with a test now asserting its **absence**. Anyone following the instruction sets an env var that does nothing, watches the role check not fire, and concludes the guard is broken. | **fixed** — 4 sites here + 1 measurement doc. |
+| **DRIFT-3** | T38's stated mechanism is **vacuous**. See `D-T38-MECHANISM-IS-VACUOUS`. | **recorded**, and it is T38's first unit. |
+| **DRIFT-4** | `186 routes` (T38) and `31 frontend files` (T51) carry **no reproducing command**, so they cannot be re-measured or shrunk against. This plan has already been wrong by 36× (77 → 2819 stale ids) and by 2× (485 → 1041 passages) on exactly this shape: a number with no command behind it. | **open** — closed by T38's first unit, which must emit both numbers from a script. |
+| **DRIFT-5** | `[~]` now means two different things — *"blocked on someone else"* and *"just a lot of work"* — so 37/37 checkboxes are ticked and the plan can no longer answer *"what may I start right now?"*. Group A/B/C is the answer, but it lives 3 600 lines away from the checkboxes. | **fixed** — Group B is named in the RESUME line above. |
+
+---
+
+## Superseded run-state strata — evidence and commands, **not** "what next"
+
+*(Preserved verbatim below. Read for measurements, test-DB names, bite recipes and live-smoke
+commands. Do not read for sequencing; the block above owns that.)*
 
 **Phase 0 LANDED (`6ee50af00`). Phase 1 LANDED (`cfbcea8b5` + `3fbf79afb`) — T4–T10, T53, QC-1.
 Phase 2 slice 1 LANDED (`b042380b5`) — T11·T12·T13. Slice 2 (T14·T15·T16) done. Next: T17.**
@@ -48,7 +99,11 @@ it** (T16 gates, T17 sweeps). See T13.
 | **Live smokes** | `entity-lifecycle-guards-live-smoke.sh` (11/11) · `state-asof-live-smoke.sh` (9/9). **Rebuild the images first** — a stale container passes for the wrong reason, which already happened once here |
 | **Images rebuilt** | `glossary-service` · `knowledge-gateway` · `composition-service`, from the working tree, 2026-08-09 |
 
-**RESUME: QC-5 — the acceptance test (blocked on T36; see D-T36-ROLE-FACTS).**
+~~**RESUME: QC-5 — the acceptance test (blocked on T36; see D-T36-ROLE-FACTS).**~~
+⛔ **STALE — struck 2026-08-11.** `D-T36-ROLE-FACTS` was retracted (both blockers were false),
+T36 shipped both halves, and QC-5 ran. The live RESUME pointer is in the CURRENT RUN STATE block
+at the top of this file. This line is left struck rather than deleted because it is the exact
+pointer that mis-routed a session, and a silent deletion teaches nothing.
 
 T31 landed (`91cfc2227`): `entity_lifecycle_ledger` as chain step **0063**, written in the
 mutation's own transaction, append-only enforced by a trigger. Its bite found that
@@ -3325,7 +3380,8 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
     an unconfirmed role is not a finding.
 
   **The default is the decision, not an oversight.** `role_check` defaults **False**
-  (`config.authoring_canon_role_check_enabled`). The gone-cast judge fires only when a gone
+  (as of `96b5ebf2d`: `work.settings["canon_role_check_enabled"]` ANDed with the deploy ceiling
+  `config.authoring_canon_role_check_ceiling`). The gone-cast judge fires only when a gone
   character is named in prose — rare. Roles in force are **common**, so enabling this adds a
   second judge call to most scenes. A token-spending toggle fails closed and the operator opts in.
 
@@ -3408,7 +3464,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Evidence** | The acceptance case's OWN betrayal edge is one of the unplaced twelve, and it is malformed in a second, worse way: `"Sự phản bội tại khởi đầu" -[betrayed]-> "Lâm Uyên"`, `valid_from_ordinal=NULL`. <!-- doc-language-gate: ok -- these are stored node names from the cited corpus; translating them would break the identity the evidence turns on --> The subject is **the phrase "the betrayal at the beginning" promoted to an entity** — an event treated as a character. So the betrayal is attributed to a nominalisation rather than to any antagonist. QC-5 asks whether the trap is attributed to the cast-designated antagonist; on this data the answer cannot be right for the right reason. Two neighbours share the shape: `"Ma đạo" -[enemy_of]->` and `"Huyết Chủ" -[related_to]->`, both positionless. |
   | **To unblock** | Two independent things, neither of which is this task. **(a)** Relations must be written WITH a story position — the extraction path stamps `valid_from_ordinal` only on some edges, and which ones is not yet characterised. **(b)** Event-phrase-as-entity is the over-extraction class already recorded against the extractor; a `betrayed` edge whose subject is an event is a symptom of it, not of the guard. |
   | **Mechanism** | The count is a one-command re-run and self-describing (`count(r)` vs `count(r.valid_from_ordinal)` for the project). The role check itself is inert on unplaced edges rather than wrong about them — the as-of read drops them — so this degrades coverage visibly rather than producing false verdicts. |
-  | **Retry when** | ~~(a) lands.~~ **CLOSED 2026-08-11, same session.** (a) was the missing `valid_from_ordinal` on the authoring path — fixed above, and the roles are authored and live-verified. (b) — the event-phrase-as-entity edge (`"Sự phản bội tại khởi đầu" -[betrayed]->`) is still in the graph and still positionless, so it stays invisible to the as-of read rather than being wrong in it; it belongs to the extractor's over-extraction class, not here. QC-5 can now run with `authoring_canon_role_check_enabled=true`. |
+  | **Retry when** | ~~(a) lands.~~ **CLOSED 2026-08-11, same session.** (a) was the missing `valid_from_ordinal` on the authoring path — fixed above, and the roles are authored and live-verified. (b) — the event-phrase-as-entity edge (`"Sự phản bội tại khởi đầu" -[betrayed]->`) <!-- doc-language-gate: ok -- a stored node name from the cited corpus; translating it would break the identity this evidence turns on --> is still in the graph and still positionless, so it stays invisible to the as-of read rather than being wrong in it; it belongs to the extractor's over-extraction class, not here. QC-5 can now run with the role check on — see the ⚠️ note under `D-QC5-FULL-FLOW-CAPTURE` for how it is turned on **since `96b5ebf2d`**; it is no longer an env flag. |
 
 - [~] **T37** — composition-service becomes a KAL **command producer**
   Roles are plan-authored, not extracted — this is the scope widening M2 implies.
@@ -3553,7 +3609,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   |---|---|
   | **Blocker** | Nothing technical. QC-5 asks for two things and only one is done: the ASSERTION (proven above) and an end-to-end authoring-flow CAPTURE — *"the plan artifact, the drafted chapters, the critic's per-chapter scores, and the glossary delta"* — run through the real frontend. That capture is a long, spend-bearing live run, and it was not started. |
   | **Evidence** | The task text names four artefacts; this session produced none of them. What it produced is the acceptance assertion the task turns on, with a control, at `docs/measurements/2026-08-11-qc5-role-attribution-live.md`. Recording that as "QC-5 done" would be the accounting artefact this plan's own verification script exists to prevent. |
-  | **To unblock** | Nothing. It is a run, with `authoring_canon_role_check_enabled=true` set on composition-service (the flag is off by default because roles in force are common and it adds a judge call to most scenes). |
+  | **To unblock** | Nothing. It is a run with the role check on. ⚠️ **HOW TO TURN IT ON CHANGED in `96b5ebf2d`, and the old instruction is now a trap.** It was `authoring_canon_role_check_enabled=true` in composition-service's env; `/review-impl` found that to be a SET-1 abuse (two users would reasonably want different values ⇒ a user setting, not an env flag) and deleted the key. A test now asserts its **absence**, so setting it does nothing at all — the check stays silent and reads exactly like a broken guard. The switch is now **per book**: `composition_work.settings["canon_role_check_enabled"] = true`, ANDed with the deploy **ceiling** `authoring_canon_role_check_ceiling` (default `True`, so the ceiling is not what you adjust). Off by default because roles in force are common and it adds a judge call to most scenes. |
   | **Mechanism** | `scripts/plan-final-verification.py` check 3 — a QC task may not be `[x]` while its own section records a deferral. This row is what keeps QC-5 at `[~]`, so the gap cannot be closed by a summary that sounds finished. |
   | **Retry when** | ~~Whenever the PO wants the artefacts.~~ **RUN 2026-08-11 — see below.** |
 
@@ -3670,7 +3726,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   |---|---|
   | **Blocker** | QC-5 proves the case **T36 closes**, and T36 is deferred (`D-T36-ROLE-FACTS`). Running it now would re-run the dogfood book against a system where a role is still handed to the canon check as *currently true regardless of reading position* — so it would reproduce the original failure and report it as a **regression of this refactor**, which is the precise mistake `/aif-improve +check` already moved this task to avoid. |
   | **Evidence** | The plan's own dependency line: *"depends on **T36** — it is T36 that closes the case this test proves"*, and the note recording that QC-5 was previously scheduled one commit BEFORE the task that makes it pass. `entity_facts` holds **0** rows of `fact_kind='relation'`, so there is no role fact for the check to window. `fact_for_check.py` still documents relations as not position-windowed. |
-  | **To unblock** | ~~`D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2.~~ **Superseded twice on 2026-08-11.** That deferral is retracted (both blockers were false). T36 then shipped both halves: relations are position-windowed, and the guard asks the role question behind `authoring_canon_role_check_enabled`. What QC-5 now waits on is **data**, not code — `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`: 12 of the book's 25 relations carry no story position, and the betrayal edge the acceptance case turns on is one of them, with an event phrase as its subject. No PO decision is outstanding at any point in this chain. |
+  | **To unblock** | ~~`D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2.~~ **Superseded twice on 2026-08-11.** That deferral is retracted (both blockers were false). T36 then shipped both halves: relations are position-windowed, and the guard asks the role question behind the per-book `canon_role_check_enabled` setting (renamed from an env flag in `96b5ebf2d` — see `D-QC5-FULL-FLOW-CAPTURE`). What QC-5 now waits on is **data**, not code — `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`: 12 of the book's 25 relations carry no story position, and the betrayal edge the acceptance case turns on is one of them, with an event phrase as its subject. No PO decision is outstanding at any point in this chain. |
   | **Mechanism** | The task's own pass/fail rule is the tracker and it is unusually sharp: *"a pass here with `canon_consistency` 5/5 means the refactor has NOT landed."* That inverted criterion cannot be satisfied by accident — a green run is the failure signal — so QC-5 cannot be quietly marked done. |
   | **Retry when** | T36 closes. Capture what the task names: the plan artifact, the drafted chapters, the critic's per-chapter scores, and the glossary delta (entity count before/after the cast pass). |
 
@@ -3714,9 +3770,25 @@ open. **Retry when** the predecessor closes; each already carries its `(depends 
 these. They are deferred because each is multi-session work whose half-done state is
 indistinguishable from its done state at a glance, and this session's remaining capacity would
 buy a fraction of one. **Retry when** picked up as their own slices, in plan order.
-**Mechanism:** `scripts/knowledge-access-gate.py` + `knowledge-http-surface-gate.py` already
+~~**Mechanism:** `scripts/knowledge-access-gate.py` + `knowledge-http-surface-gate.py` already
 enforce the allowlist T38 shrinks — the allowlist IS T38's checklist and can only shrink, the
-same shape as `D-T17-BACKFILL-CYPHER`, `D-T32-ALIVE-NO-FACTS` and `D-T35-OPAQUE-IDENTITY`.
+same shape as `D-T17-BACKFILL-CYPHER`, `D-T32-ALIVE-NO-FACTS` and `D-T35-OPAQUE-IDENTITY`.~~
+
+### 🔻 DEFERRAL `D-T38-MECHANISM-IS-VACUOUS` — T38's stated checklist cannot fail
+
+| | |
+|---|---|
+| **Blocker** | The paragraph struck above is **false**, and it was written by me. Measured 2026-08-11: `knowledge-access-gate.py`'s allowlist holds **one** entry — an enrichment *maintenance script*, not a route. `knowledge-http-surface-gate.py`'s allowlist is **empty**, and its own pattern comment reads *"The authored entities-LIST endpoint is intentionally NOT here (authored catalog, see header)"*. **T38 is "migrate the authored-catalog readers."** The two gates therefore exclude precisely T38's scope by design. |
+| **Evidence** | Both gates PASS at HEAD: `[knowledge-access-gate] PASS — no direct EAV/Neo4j reads outside the owning services` · `[knowledge-http-surface-gate] PASS — no consumer hits the owning services' bi-temporal knowledge /internal endpoints`. They pass today, and they would pass unchanged with T38 **entirely undone**. That is NV-1 exactly: *a check that cannot fail is a claim in the costume of evidence.* The two gates are not wrong — they enforce a real and different invariant (the bi-temporal reads, which genuinely are migrated). The error is the sentence that borrowed their green for a scope they never covered. |
+| **To unblock** | Nothing external. T38's **first unit** is to build the checklist it was claimed to already have: a gate that enumerates the authored-catalog reader sites, prints the count, and refuses to let it grow. Only then does "186 routes" become a number that can shrink rather than a number in a paragraph. |
+| **Mechanism** | The gate itself, bitten both ways: it must go red when a new authored-catalog reader is added, and its count must fall when one is migrated. Until that script exists, T38 has **no** mechanism — which is what this row records rather than papers over. |
+| **Retry when** | Immediately. It is T38's first unit, not a wait. |
+
+⚠️ **`186 routes` and `31 frontend files` carry no reproducing command** (DRIFT-4). Neither
+number can be re-derived, so neither can be shrunk against. This plan has already been wrong by
+**36×** on a number of exactly this shape (`77` → `2819` stale ids) and by **2×** on another
+(`485` → `1041` passages). The T38 gate must **emit** both counts, so the next reader measures
+instead of quoting.
 
 **Group C — the closing tasks, which are correctly last.** `T47` (documentation checkpoint),
 `T48` (`/aif-verify` — *"every QC task's evidence actually pasted"*), `T49` (handoff + archive).
