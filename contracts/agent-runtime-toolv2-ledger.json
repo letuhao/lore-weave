@@ -1973,6 +1973,10 @@
     "composition_structure_template_edit": {
       "state": "proven",
       "note": "PROVEN across its six ops, and the BUILT-IN guard was tested properly on the second attempt. My first probe omitted expected_version, so it was refused for THAT and never reached the ownership check -- a refusal that would have looked like the guard working while proving nothing. Retried with the built-in's real version: still the uniform deny, and 'Save the Cat' is unchanged in the database. So 'built-ins are never edited in place' holds on ownership, not merely on a missing argument. Every op names its missing companions ('op=update requires template_id and expected_version'). op=list returns the built-ins with their beats, which is what makes the description's advice -- 'use it to find the template_id to pass to plan_compile' -- followable in one call. The clone/archive/restore ops delegate to the paths proven in #222 and #223, including #223's deep-copy check that a cloned built-in carries its beats rather than referencing them."
+    },
+    "composition_structure_template_restore": {
+      "state": "proven",
+      "note": "PROVEN as #222's inverse. Restoring an archived template of mine returns is_archived to false; restoring an already-live one and restoring a BUILT-IN both give the uniform deny. The built-in case matters: a restore that reached rows the caller does not own would be an ownership hole in the opposite direction from #225's update guard -- writing to the platform library through the un-archive path instead of the edit path. It does not. This family is INTERNALLY consistent even though it differs from the motif family: here BOTH archive (#222) and restore deny on a no-op, where composition_motif_archive is idempotent and composition_motif_restore denies. So structure templates apply one rule to both directions; motifs apply different rules to each. Recorded in #222 and repeated here only because the symmetry is the reason this one needs no separate judgement. The template was re-archived afterwards, leaving the library exactly as found."
     }
   }
 }
