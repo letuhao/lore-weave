@@ -1212,6 +1212,18 @@
         "NOT ACTED ON: naming a missing field's enum would mean threading the arg model into loreweave_mcp.validation_directive, and the measured subject is one call in one session"
       ],
       "admitted": false
+    },
+    "composition_outline_node_update": {
+      "state": "proven",
+      "note": "PROVEN from the corpus with no code change; it is LEGACY (visibility: legacy, superseded_by composition_outline_node_edit, which iteration 104 proved). 2 calls / 1 session / 2 ok, no failures. Its result carries an `_meta.undo_hint` and BOTH halves of it are right, which is the part worth recording because getting either wrong would make undo useless: the hint carries the PREVIOUS synopsis (replaying it restores, rather than re-applying what was just written) AND an expected_version bumped to the POST-write value (so the undo passes the optimistic lock instead of 409-ing on the version the caller originally held).",
+      "evidence": [
+        "PHASE 2: 2 ok / 0 failed. No failure population exists",
+        "UNDO HINT verified against the call that produced it: the args sent synopsis 'Lâm Uyển đào thoát qua rừng trúc…' with expected_version 1; the hint returns the PREVIOUS synopsis 'Tiếp nối từ việc bị trục xuất…' with expected_version 2, plus the tool name to call",
+        "WHY BOTH HALVES MATTER: an undo hint carrying the NEW value would replay the change; one carrying the caller's OLD version number would 409 against the row it just bumped. This one is correct on both",
+        "CONTRACT: tier A, scope book, required project_id + node_id + expected_version -- optimistic concurrency, the same discipline glossary_book_patch carries (iteration 72)",
+        "SUPERSESSION read from _meta rather than assumed: visibility legacy, superseded_by composition_outline_node_edit"
+      ],
+      "admitted": false
     }
   }
 }
