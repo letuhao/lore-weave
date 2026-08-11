@@ -38,9 +38,24 @@ type reorderChaptersRequest struct {
 	AfterChapterID *uuid.UUID `json:"after_chapter_id"`
 }
 
+// ChapterID is a STRING, not uuid.UUID, and that is load-bearing rather than a style choice.
+// `uuid.UUID` is `[16]byte`, so the MCP SDK's schema generator declares it `type: "array"` —
+// while it MARSHALS as a string. The declared output contract and the actual JSON therefore
+// disagree, and the SDK rejects the response at the boundary.
+//
+// Measured (TOOLV2 LOOP #124, on this tool's FIRST EVER invocation): a reorder of two chapters
+// COMMITTED — the rows moved — and the caller received
+// `validating tool output: … /properties/chapters/items/properties/chapter_id: type: <uuid> has
+// type "string", want "array"`. An effect landed and was reported as a protocol failure, which
+// is the one outcome a caller cannot recover from: retrying a reorder it believes failed either
+// re-sends a now-stale order or silently no-ops.
+//
+// The JSON is byte-identical either way (uuid.UUID marshals to the same string), so this changes
+// only the generated SCHEMA — and it restores the house convention already stated elsewhere in
+// this package: "the MCP output struct uses string UUIDs".
 type reorderedChapter struct {
-	ChapterID uuid.UUID `json:"chapter_id"`
-	SortOrder int       `json:"sort_order"`
+	ChapterID string `json:"chapter_id"`
+	SortOrder int    `json:"sort_order"`
 }
 
 // reorderChapters — POST /v1/books/{book_id}/chapters/reorder
@@ -179,7 +194,7 @@ WHERE id = $1 AND book_id = $2
 `, id, bookID, slot); err != nil {
 			return nil, err
 		}
-		out = append(out, reorderedChapter{ChapterID: id, SortOrder: slot})
+		out = append(out, reorderedChapter{ChapterID: id.String(), SortOrder: slot})
 	}
 	return out, nil
 }

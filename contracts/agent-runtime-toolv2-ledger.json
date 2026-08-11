@@ -1441,6 +1441,21 @@
         "LIVE A/B on the deployed image: the exact call that minted a card now returns 'chapter is not in the trash — purge only removes an ALREADY-TRASHED chapter; delete it first (book_chapter_delete), then purge'"
       ],
       "admitted": false
+    },
+    "book_chapter_reorder": {
+      "state": "proven",
+      "note": "PROVEN, with the most serious defect this loop has found, on a tool that had NEVER been called. Every successful reorder COMMITTED and was then reported to the caller as a PROTOCOL ERROR: `reorderedChapter.ChapterID` was a uuid.UUID, which is [16]byte, so the MCP schema generator declared it type:'array' while it marshals as a string. The SDK validated the response against that schema and rejected it. Measured live: two chapters MOVED IN THE DATABASE and the caller received 'validating tool output: … chapter_id: type: <uuid> has type \"string\", want \"array\"'. That is the one outcome a caller cannot recover from -- an effect landed and was reported as a failure, so a retry either re-sends a now-stale order or silently no-ops. FIXED to string; the JSON is byte-identical (uuid.UUID marshals to the same text), so only the generated SCHEMA changes, and it restores a convention this package already states elsewhere.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Tier A, visibility legacy, superseded_by book_structure_edit",
+        "THE DEFECT, live and decisive: reordering the two 'auto'-track chapters returned a JSON-RPC error, AND the database order changed (chapter C moved from sort_order 3 to 1). The write commits, then output validation rejects the response",
+        "ROOT CAUSE: uuid.UUID is [16]byte -> schema says array; it marshals as a string. The package's own convention is already stated in mcp_tools_write.go: 'the MCP output struct uses string UUIDs'",
+        "WHY NOTHING CAUGHT IT: the existing test drives the handler DIRECTLY and compares Go values, so it never sees the schema boundary. It went green through the whole defect -- and my type change broke its compile, which is how I found it",
+        "CODE: a TYPE guard (fails to compile if ChapterID stops being a string) plus a wire-shape assertion that the JSON is unchanged. Whole book-service suite green",
+        "LIVE A/B on the deployed image (container .Image == built image id): the identical call now returns structuredContent {book_id, original_language 'auto', chapters [{chapter_id, sort_order}]} instead of a protocol error",
+        "RESTORED: the original order, using the tool's own documented self-inverse (reorder with the prior order), and verified in the database",
+        "TWO CORRECT REFUSALS also proven: a mixed-language-track list -> 'chapter_ids must list every active chapter of this language track exactly once' (the throwaway book has an 'en' and an 'auto' track), and a repeated id -> 'chapter_ids must not repeat a chapter'"
+      ],
+      "admitted": false
     }
   }
 }

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"os"
 	"strings"
 	"testing"
@@ -111,5 +112,33 @@ func TestBulkCreateUndoHintIsNotAVerbatimArgLie(t *testing.T) {
 	}
 	if strings.Contains(body, `map[string]any{"book_id": bookID.String(), "chapter_ids": ids}`) {
 		t.Error("the bare chapter_ids arg template is back — replaying it is rejected by book_chapter_delete")
+	}
+}
+
+// TOOLV2 LOOP #124 — book_chapter_reorder committed its write and then failed its OWN output
+// schema, so the caller saw a protocol error for an effect that had landed.
+//
+// uuid.UUID is [16]byte: the MCP schema generator declares it `type: "array"` while it marshals
+// as a string. Measured on the tool's first ever invocation — two chapters moved in the database
+// and the response was rejected with
+// `/properties/chapters/items/properties/chapter_id: type: <uuid> has type "string", want "array"`.
+//
+// This is a TYPE guard, not a string match: it fails to compile if ChapterID stops being a
+// string, which is stronger than any source anchor.
+func TestReorderedChapterIDIsAStringSoTheSchemaMatchesTheJSON(t *testing.T) {
+	var rc reorderedChapter
+	if _, ok := any(rc.ChapterID).(string); !ok {
+		t.Fatalf("reorderedChapter.ChapterID must be a string; a uuid.UUID generates "+
+			`type:"array" in the output schema while marshalling as a string, and the SDK `+
+			"then rejects every successful response. got %T", rc.ChapterID)
+	}
+	// And the field must still serialise under the same key — the JSON is meant to be
+	// byte-identical to the uuid.UUID form, so no consumer sees a change.
+	b, err := json.Marshal(reorderedChapter{ChapterID: "019febe4-79b1-7936-a78e-aa6f550dd3d8", SortOrder: 2})
+	if err != nil {
+		t.Fatalf("marshal: %v", err)
+	}
+	if got := string(b); got != `{"chapter_id":"019febe4-79b1-7936-a78e-aa6f550dd3d8","sort_order":2}` {
+		t.Errorf("wire shape changed: %s", got)
 	}
 }
