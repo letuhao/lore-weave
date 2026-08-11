@@ -1414,6 +1414,33 @@
         "THE ZERO READ CORRECTLY: _meta visibility 'legacy'; the description states the product decision outright -- narration spend is a manual UI action and the agent does not bill. Zero agent calls is the intended outcome"
       ],
       "admitted": false
+    },
+    "book_chapter_bulk_create": {
+      "state": "proven",
+      "note": "PROVEN, with a fix, on a tool that had NEVER been called. Its documented idempotence is real -- re-sending the same original_filename returned created 0 / skipped 2. The defect was its undo hint: `undoResult`'s args is documented as the reverse tool's ARGUMENT TEMPLATE, and it emitted `chapter_ids` (a list) against book_chapter_delete, which takes `chapter_id` (singular). Replaying it verbatim returned 'unexpected additional properties [\"chapter_ids\"]' -- the only multi-id undo in the service was unreplayable. I FIRST DEFERRED THIS AS A CONTRACT DECISION AND THAT WAS WRONG: the agent-runtime contract's own effect_and_undo member says undo_hint 'is not contractual, so a write's reversibility is a convention rather than a fact', and a repo-wide search finds NO consumer -- including the frontend that one comment claims reads it. With no contract and no consumer there was nothing to decide, so evidence cleared the question rather than a product call.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. No failure population and no recorded shape -- the live call is the only evidence",
+        "FIRST INVOCATION: created 2 with both chapter_ids, plus an undo_hint",
+        "IDEMPOTENCE, as documented: re-sending the same original_filename -> created 0, skipped 2, and the hint correctly carries chapter_ids null when there is nothing to undo",
+        "THE DEFECT, proven by replaying the hint verbatim: 'unexpected additional properties [\"chapter_ids\"]'. book_chapter_delete requires [book_id, chapter_id]",
+        "EVIDENCE THAT CLEARED THE DEFERRAL: toolcontract.py's effect_and_undo member states undo_hint is NOT contractual; grep across frontend, chat-service and the SDKs finds no reader. The service's own test builds a SINGULAR hint, so the correct shape was already asserted elsewhere",
+        "FIX: args now carries only what is a verbatim argument (book_id) plus repeat_arg 'chapter_id', telling the caller to iterate chapter_ids into that singular argument",
+        "CODE: guard pins repeat_arg AND that the bare chapter_ids template cannot return. LIVE on the deployed image (container .Image == built image id): undo_hint now reads {tool book_chapter_delete, args {book_id, chapter_ids, repeat_arg 'chapter_id'}}"
+      ],
+      "admitted": false
+    },
+    "book_chapter_purge": {
+      "state": "proven",
+      "note": "PROVEN, with a fix, on a tool that had NEVER been called. Its description promises it purges a TRASHED chapter; calling it against an ACTIVE one minted a normal 'Permanently purge chapter (irreversible)' card. FIXED at both propose sites: a purge is now refused at mint time unless the chapter is trashed. I ALSO CORRECTED MY OWN SEVERITY CLAIM: I had written that this might be 'data loss reachable from a mislabelled affordance' and said I would not test the apply path destructively. Reading it settles the question without destroying anything -- mcpTransitionChapter's purge_pending arm refuses unless cState=='trashed'. So confirming that card would have ERRORED, not destroyed a chapter. The defect is a misleading card and a wasted human confirmation, which is worth fixing and is not data loss.",
+      "evidence": [
+        "PHASE 2: 0 calls ever. Tier W, visibility legacy, deprecated -- 'irreversible chapter purge is a MANUAL UI action — never the agent'. Zero calls is the deprecation holding",
+        "THE DEFECT, live: purge against a chapter whose lifecycle_state was verified 'active' in the database -> a confirm card, destructive:true, 'Permanently purge chapter (irreversible)'",
+        "SEVERITY CORRECTED BY READING, not by guessing or by destroying: mcpTransitionChapter case 'purge_pending' returns errActionBadState unless cState=='trashed'. The apply path guards; the mint path did not",
+        "FIX at BOTH propose sites (plain and durable-gate), the pair iteration 86 had to fix together for the same function",
+        "CODE: the guard anchors on the CHECK rather than on `if op == \"purge_chapter\"` -- that phrase also appears in the APPLY path where it selects a target state, and the first version of the guard counted 3 and reddened for the wrong reason. Reverting either site reds it",
+        "LIVE A/B on the deployed image: the exact call that minted a card now returns 'chapter is not in the trash — purge only removes an ALREADY-TRASHED chapter; delete it first (book_chapter_delete), then purge'"
+      ],
+      "admitted": false
     }
   }
 }

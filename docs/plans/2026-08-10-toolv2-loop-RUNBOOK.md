@@ -636,7 +636,7 @@ finding — arguably a better one, since nothing has ever exercised the path.
 
 ---
 
-### 🔴 OPEN — `book_chapter_bulk_create`'s undo hint cannot be replayed (iteration 122, NOT concluded)
+### ✅ CLOSED — `book_chapter_bulk_create`'s undo hint could not be replayed (iteration 122)
 
 **Found on the first invocation the tool has ever received**, which is the whole argument for the
 never-called phase. Live:
@@ -683,7 +683,7 @@ still undo by iterating. Nothing is lost; it just cannot be replayed mechanicall
 
 ---
 
-### 🔴 OPEN — `book_chapter_purge` mints an irreversible card for an ACTIVE chapter (iteration 123, NOT concluded)
+### ✅ CLOSED — `book_chapter_purge` minted an irreversible card for an ACTIVE chapter (iteration 123)
 
 **Found on the first invocation this tool has ever received.** Its own description:
 
@@ -702,16 +702,22 @@ handed an irreversible-purge card for a live chapter, having been told the tool 
 trashed ones — and the card's own title reinforces that it is irreversible without saying the
 target is not trashed.
 
-*What I did NOT test, and will not:* whether the APPLY path re-checks `lifecycle_state`. Settling
-that means confirming an irreversible purge of a real chapter. If apply does check, this is a
-misleading card and a wasted confirmation; if it does not, it is data loss reachable from a
-mislabelled affordance. **Both readings are worth fixing, and the cheap fix is the same either
-way: refuse at propose time when the chapter is not trashed** — the sibling tools already refuse
-on absent chapters, so the mint-time check pattern exists in this exact file.
+**SEVERITY CORRECTED.** I wrote that this might be "data loss reachable from a mislabelled
+affordance" and that settling it required a destructive test. It did not — *reading*
+`mcpTransitionChapter` settles it: its `purge_pending` arm returns `errActionBadState` unless
+`cState == "trashed"`. **The apply path guards; only the mint path did not.** So confirming that
+card would have errored, not destroyed a chapter. This was a misleading card and a wasted human
+confirmation. Still worth fixing, and materially less severe than I first framed it — recorded
+because the alarming reading was mine, and it was wrong.
 
-*Left unconcluded, like #122.* Tier W, `visibility: legacy`, deprecated ("irreversible chapter
-purge is a MANUAL UI action — never the agent"), and 0 recorded calls — the deprecation is
-holding, which is why nobody has hit this.
+**FIXED** at both propose sites: a purge is refused at mint time unless the chapter is trashed,
+with a message naming the precondition and its satisfier. Live A/B on the deployed image: the
+exact call that minted a card now returns *"chapter is not in the trash — purge only removes an
+ALREADY-TRASHED chapter; delete it first (book_chapter_delete), then purge"*.
+
+*Concluded `proven`.* Tier W, `visibility: legacy`, deprecated ("irreversible chapter purge is a
+MANUAL UI action — never the agent"), and 0 recorded calls — the deprecation is holding, which is
+why nobody had hit this.
 
 ---
 

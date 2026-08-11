@@ -68,3 +68,48 @@ func TestTheChapterErrorNamesTheArgumentAndItsSatisfier(t *testing.T) {
 		t.Errorf("the chapter and book errors must be distinguishable")
 	}
 }
+
+// TOOLV2 LOOP #123 — book_chapter_purge minted an irreversible card for an ACTIVE chapter.
+//
+// Its own description promises it purges a TRASHED chapter. Live, against a chapter whose
+// lifecycle_state was `active`, it returned a normal "Permanently purge chapter (irreversible)"
+// card — putting a human one click from destroying a live chapter, having been told the tool
+// only removes trash. Found on the tool's first ever invocation; nothing had called it before.
+func TestPurgeRefusesAChapterThatIsNotTrashed(t *testing.T) {
+	src, err := os.ReadFile("mcp_actions.go")
+	if err != nil {
+		t.Fatalf("read source: %v", err)
+	}
+	body := strings.ReplaceAll(string(src), "\r\n", "\n")
+
+	// BOTH propose paths — the plain one and the durable-gate one. A guard on one of two
+	// sites is the shape this repo keeps finding, and #86 fixed exactly that pair.
+	// Anchor on the CHECK, not on `if op == "purge_chapter"` — that phrase also appears in the
+	// apply path, where it selects the target state rather than guarding a precondition. The
+	// first version of this guard counted 3 and reddened for the wrong reason.
+	if n := strings.Count(body, `SELECT lifecycle_state='trashed' FROM chapters`); n != 2 {
+		t.Errorf("both propose paths must CHECK lifecycle_state='trashed' at mint time, got %d", n)
+	}
+	// The refusal has to name the state AND the way out, not just say no.
+	if !strings.Contains(body, "purge only removes an ALREADY-TRASHED chapter; delete it first (book_chapter_delete), then purge") {
+		t.Error("the refusal must name the precondition and its satisfier")
+	}
+}
+
+// TOOLV2 LOOP #122 — the bulk-create undo hint named an argument the delete tool rejects.
+func TestBulkCreateUndoHintIsNotAVerbatimArgLie(t *testing.T) {
+	src, err := os.ReadFile("mcp_tools_write.go")
+	if err != nil {
+		t.Fatalf("read source: %v", err)
+	}
+	body := strings.ReplaceAll(string(src), "\r\n", "\n")
+
+	// `args` is documented as the reverse tool's argument TEMPLATE. book_chapter_delete takes
+	// chapter_id (singular), so a bare chapter_ids list in args is unreplayable.
+	if !strings.Contains(body, `"repeat_arg":  "chapter_id"`) {
+		t.Error("a multi-id undo must declare that it repeats, or the hint reads as one verbatim call")
+	}
+	if strings.Contains(body, `map[string]any{"book_id": bookID.String(), "chapter_ids": ids}`) {
+		t.Error("the bare chapter_ids arg template is back — replaying it is rejected by book_chapter_delete")
+	}
+}
