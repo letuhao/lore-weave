@@ -11,10 +11,29 @@ returns everything A2-S3's SCORE-style symbolic guard + LLM-judge need to ask
     hard contradiction).
   - **entities** — id → name/canonical_name/kind, so the guard can map draft
     mentions onto the checked entity set.
-  - **relations** — current valid relations for the set (supporting context for
-    the LLM-judge). NOTE: relations carry datetime validity (`valid_until`), a
-    DIFFERENT axis from `event_order`, so they are NOT position-windowed here —
-    "current canon relations", documented, not a bug.
+  - **relations** — the relations that were true AT `at_order` (T36). A role is
+    a relation with a story interval, so it is windowed by the same half-open
+    convention every other positioned read uses:
+    `valid_from_ordinal <= at_order < valid_to_ordinal`.
+
+    This read used to be un-windowed, on the reasoning that "relations carry
+    datetime validity (`valid_until`), a DIFFERENT axis from `event_order`".
+    That reasoning is **stale**: F3 gave `:RELATES_TO` a story axis
+    (`valid_from_ordinal`/`valid_to_ordinal`, stamped on the `event_order`
+    scale) and T18 gave `find_relations_for_entity` the `as_of_ordinal`
+    parameter to read it. Only the call site was never updated — so a role that
+    ENDED at ch.20 still read as live when checking ch.10. Measured on the dev
+    graph 2026-08-11: of 905 `:RELATES_TO` edges, **619 carry a story position
+    and 175 have already been closed by `maintain_chain`** — 175 ended relations
+    that the canon check was being handed as currently true. That is
+    `D-CANON-CHECK-BLIND-TO-ROLE` in one number.
+
+    POSITIONLESS edges (`valid_from_ordinal IS NULL` — legacy, or written
+    without a chapter position) are EXCLUDED, per T18's stated rule: *"an edge
+    that cannot be placed on the axis must not be mixed into an answer whose
+    whole value is that it is placed."* They are counted and WARNed rather than
+    silently dropped, because on today's graph they are 286 of 905 and a
+    caller comparing before/after needs to see where the difference went.
   - **events** — events with `event_order ≤ P` that involve the entity set (the
     timeline up to the check position), newest-first.
 
@@ -59,6 +78,12 @@ class FactCheckRelation(BaseModel):
     subject_name: str | None = None
     object_name: str | None = None
     confidence: float = 0.0
+    # T36 — WHICH story interval answered. Part of the contract, not decoration:
+    # it is how a judge tells a role established last chapter from one that has
+    # held since chapter 1, and how a reader of the payload can see that the
+    # window was applied at all. `valid_to_ordinal` is None for an open interval.
+    valid_from_ordinal: int | None = None
+    valid_to_ordinal: int | None = None
 
 
 class FactCheckEvent(BaseModel):
@@ -185,7 +210,12 @@ async def get_fact_for_check(
         for eid in ids
     ]
 
-    # 3. current valid relations for the set (deduped; capped).
+    # 3. T36 — the relations that were true AT `at_order` (deduped; capped).
+    # `as_of_ordinal=at_order` is the whole fix: the story axis and the parameter
+    # that reads it both already existed (F3, T18), and only this call site was
+    # left un-windowed. `valid_from_ordinal` is stamped on the `event_order`
+    # scale, the same scale `at_order` is on, so the position passes through
+    # unscaled — see the module docstring.
     seen_rel: set[tuple[str, str, str]] = set()
     relations: list[FactCheckRelation] = []
     for eid in ids:
@@ -193,6 +223,7 @@ async def get_fact_for_check(
             break
         rels = await find_relations_for_entity(
             session, user_id=user_id, entity_id=eid, project_id=project_id,
+            as_of_ordinal=at_order,
             limit=relation_limit,
         )
         for r in rels:
@@ -204,9 +235,33 @@ async def get_fact_for_check(
                 subject_id=r.subject_id, predicate=r.predicate,
                 object_id=r.object_id, subject_name=r.subject_name,
                 object_name=r.object_name, confidence=r.confidence,
+                valid_from_ordinal=r.valid_from_ordinal,
+                valid_to_ordinal=r.valid_to_ordinal,
             ))
             if len(relations) >= relation_limit:
                 break
+
+    # T36 diagnostic — an EMPTY windowed result is ambiguous: the set may
+    # genuinely have no relations, or every relation it has may be positionless
+    # (excluded by the as-of read, per T18's rule) or already closed before
+    # `at_order`. Those look identical to a caller and lead to opposite
+    # conclusions, so probe once — only in the empty case, so the normal path
+    # keeps its query count — and say which it is.
+    if not relations:
+        unwindowed = 0
+        for eid in ids:
+            unwindowed += len(await find_relations_for_entity(
+                session, user_id=user_id, entity_id=eid, project_id=project_id,
+                limit=relation_limit,
+            ))
+        if unwindowed:
+            logger.warning(
+                "fact-for-check: no relation is true at at_order=%d, but the "
+                "entity set has %d relation(s) off the window — positionless "
+                "(no valid_from_ordinal) or closed before this position. The "
+                "canon judge sees NO relational context for this check.",
+                at_order, unwindowed,
+            )
 
     # 4. events at/before P involving the set (newest-first).
     events: list[FactCheckEvent] = []

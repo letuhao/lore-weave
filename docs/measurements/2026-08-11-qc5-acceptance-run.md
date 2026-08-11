@@ -124,8 +124,36 @@ episode citation     115 / 115
 ```
 
 Every fact carries the story position of the chapter it came from and cites its immutable
-episode. **QC-5's substrate precondition is now met**; the remaining blockers are T36 (roles as
-relation facts) and RT-2.
+episode. **QC-5's substrate precondition is now met.**
+
+## UPDATE 2 — the role half was blind in TWO ways, and only one was known
+
+The section below ("The role half…") said roles could not be checked because `entity_facts`
+holds 0 rows of `fact_kind='relation'`. That is true and it is not the binding constraint.
+
+**The axis half is now fixed** (T36). `:RELATES_TO` has carried a story interval since F3, and
+`find_relations_for_entity` has taken `as_of_ordinal` since T18 — `fact_for_check` simply never
+passed it. Measured on the dev graph before the fix:
+
+```
+:RELATES_TO edges total          905
+carrying a story position        619
+ALREADY CLOSED (valid_to set)    175   ← handed to the canon check as "currently true"
+```
+
+**The consumption half is the real blocker, and it was not in the plan.** The canon check reads
+only `entities` + `status` from the snapshot — `check_canon` → `gone_cast_in_draft` →
+`gone_entities_referenced`, and the judge prompt is built from the draft plus the *gone*
+candidates. The snapshot's `relations` reach no prompt and no symbolic rule; nothing in
+composition-service consumes them.
+
+So the guard asks exactly one question — *"is a `gone` entity being treated as present?"* —
+while QC-5's criterion asks a different one: *"is the trap attributed to the cast-designated
+antagonist?"* A correct, well-windowed role payload changes nothing until something reads it.
+**A 5/5 here would still be structurally guaranteed**, now for a locatable reason.
+
+**RT-2 is not a blocker and never was:** §9 O7 (sealed 2026-08-09) records that it *dissolves*,
+closed by Q2, in scope. Tracked as `D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES`.
 
 ## What would make this test meaningful
 

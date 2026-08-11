@@ -2757,15 +2757,83 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   ```
   **Zero relation facts.** Nothing writes them — which is T37, below.
 
-  ### 🔻 DEFERRAL `D-T36-ROLE-FACTS`
+  ### ⛔ RETRACTED 2026-08-11 — `D-T36-ROLE-FACTS` was wrong on both blockers
+
+  That entry deferred this task on two claims. Re-reading the seal and the schema
+  (rather than re-deriving them from memory, which is how they got in) shows both are false.
+
+  | claimed blocker | what is actually true |
+  |---|---|
+  | **(a)** "depends on T35 — a role fact inherits the identity its entities are keyed on" | Roles live in `entity_facts`, whose key is `entity_id UUID NOT NULL REFERENCES glossary_entities(entity_id)` — a glossary **surrogate UUID, already opaque**. T35 retires the *Neo4j* derived `e.id = hash(name, kind)`. Different store, different key. The dependency does not exist. |
+  | **(b)** "RT-2 is an open scope-honesty defect the PO must resolve" | The register **already resolved it**. §9 O7, sealed 2026-08-09: *"the premise was wrong … **RT-2 therefore dissolves rather than resolving** — `D-CANON-CHECK-BLIND-TO-ROLE` is closed by **Q2** (roles as relation facts), which **is** in scope."* The red team's "SURVIVES" verdict was an INPUT to that sealing, not its outcome. I quoted the input and missed the disposition. |
+
+  Neither blocker survives, so T36 is not blocked. What follows is the work, done.
+
+  ### ✅ HALF 1 — THE AXIS. The canon read is position-windowed. **DONE.**
+
+  **The docstring this task was built on was stale.** It claimed relations *"carry datetime
+  validity (`valid_until`), a DIFFERENT axis from `event_order`, so they are NOT
+  position-windowed here"*. But **F3 gave `:RELATES_TO` a story axis** (`valid_from_ordinal` /
+  `valid_to_ordinal`, stamped on the `event_order` scale) and **T18 gave
+  `find_relations_for_entity` the `as_of_ordinal` parameter that reads it**. Both shipped.
+  Only this one call site was never updated — so the fix is to pass the position that was
+  already in scope:
+
+  ```python
+  rels = await find_relations_for_entity(
+      session, user_id=user_id, entity_id=eid, project_id=project_id,
+      as_of_ordinal=at_order,          # T36 — the whole fix
+      limit=relation_limit,
+  )
+  ```
+
+  **The scale needed checking, not assuming**, and it was measured on the dev graph rather
+  than read off a comment — `valid_from_ordinal` runs 1 000 000 → 20 000 000, i.e. `chapter ×
+  EVENT_ORDER_CHAPTER_STRIDE`, the same scale `at_order` is on. So the position passes through
+  unscaled.
+
+  **The defect, quantified** (dev Neo4j, read-only, 2026-08-11):
+
+  ```
+  :RELATES_TO edges total          905
+  carrying a story position        619
+  ALREADY CLOSED (valid_to set)    175   ← served to the canon check as "currently true"
+  positionless (excluded by as-of) 286
+  ```
+
+  **175 relations that had already ended in story time** were being handed to the canon check
+  at every reading position.
+
+  **Bitten.** Fix reverted → the three new tests go red, each for its own reason; restored →
+  green. Positionless edges are excluded per T18's stated rule and WARNed (never silently
+  dropped) when the windowed result is empty, because "no relations" and "relations exist but
+  none is placed" lead to opposite conclusions and looked identical before.
+
+  ```
+  # fix reverted
+  FAILED test_role_that_ended_is_absent_after_it_ends
+  FAILED test_role_not_yet_begun_is_absent_before_it_starts
+  FAILED test_relation_positionless_is_excluded
+  3 failed, 6 passed
+  # fix restored
+  9 passed in 5.78s
+  # regression
+  knowledge-service  -k "fact_for_check or canon or relation"   339 passed, 9 skipped
+  composition-service -k canon                                  145 passed, 14 skipped
+  ```
+
+  Tests were run against a **throwaway Neo4j** (`lw-t36-neo4j`, port 7999). The suite's own
+  guard refuses the dev graph's ports; that guard was respected, not bypassed.
+
+  ### 🔻 DEFERRAL `D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES` — the half nobody had located
 
   | | |
   |---|---|
-  | **Blocker** | Two, and neither is code-shaped. **(a)** It depends on T35 (`D-T35-OPAQUE-IDENTITY`): a role fact names two entities, so it inherits whatever identity they are keyed on, and writing roles against an id that is about to be retired means writing them twice. **(b)** The refactor's own red team records this as an open **scope-honesty defect**, not a schedulable task — see below. |
-  | **Evidence** | `fact_for_check.py`'s docstring, quoted above, is the defect in the code's own words. `entity_facts` holds **0** rows of `fact_kind='relation'`, so the read side has nothing to window even if it were windowed. RT-2 (`2026-08-09-architecture-RED-TEAM.md`): *"the register claims this refactor's acceptance case, and the plan does not close it. **SURVIVES as a scope-honesty defect**: either the bible enters scope, or the register row is re-pointed and the claim withdrawn."* |
-  | **To unblock** | T35 lands, **and** the PO resolves RT-2 — either the lore bible enters scope, or `D-CANON-CHECK-BLIND-TO-ROLE`'s register row is re-pointed and the acceptance claim withdrawn. The second is a decision, not work. |
-  | **Mechanism** | The `relation` count is the tracker and it is already asserted where it matters: `fact_for_check.py`'s docstring is the one place a reader of the canon check will stand, and it states the limitation rather than hiding it. When roles start being written, that paragraph must change or it becomes a lie — which is a review-visible edit, not a silent one. |
-  | **Retry when** | T35 lands and RT-2 is answered. **QC-5 cannot certify the acceptance case until then**, so QC-5's report must say so rather than scoring around it. |
+  | **Blocker** | Half 1 makes the relation payload **correct**. It does not make it **read**. The canon check consumes only `entities` + `status` from the snapshot: `check_canon` → `gone_cast_in_draft` → `gone_entities_referenced(draft, snapshot)`, and the judge prompt is built by `_build_judge_messages(draft, candidates, source_language)` — the snapshot's `relations` reach **no** prompt and **no** symbolic rule. Grepping composition-service for a consumer of `FactForCheck.relations` returns nothing outside tests. |
+  | **Evidence** | `services/composition-service/app/engine/canon_check.py` — the guard asks exactly one question, *"is a `gone` entity being treated as present?"*. QC-5's criterion is a **different** question: *"the trap must be attributed to the cast-designated antagonist."* That is relational, and no code path poses it. So `D-CANON-CHECK-BLIND-TO-ROLE` was blind in **two** ways, and the plan (and my own deferral) named only the axis one. The register's Q2 says roles are *"plan-authored, not extracted"*, which is why the missing piece looked like a writer problem — but a writer feeding a reader that never reads would still score 5/5. |
+  | **To unblock** | Nothing external. This is implementation in composition-service: a symbolic role rule over the now-windowed relations (subject/predicate/object at P), and the role set in the judge's context so misattribution is answerable. T37 (composition as KAL command producer) supplies **author-declared** roles; extracted relations already exist and are now correctly windowed, so the guard can be built and tested before T37 lands. |
+  | **Mechanism** | `FactCheckRelation` now carries `valid_from_ordinal`/`valid_to_ordinal`, so a consumer arriving later inherits the interval rather than re-deriving it — and the three tests above pin the windowing the consumer will depend on. The absence itself is asserted nowhere yet; the first role rule is what turns that from a note into a gate. |
+  | **Retry when** | Immediately — it is the next unit of T36, not a wait. **QC-5 still cannot certify the acceptance case**, and the reason has changed: not "no relation facts exist" (they do, 619 positioned) but "the guard does not consult them." |
 
 - [~] **T37** — composition-service becomes a KAL **command producer**
   Roles are plan-authored, not extracted — this is the scope widening M2 implies.
@@ -2871,8 +2939,16 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   layer for a book that has never had one. Recording the measurement is the honest execution of
   this test, and it yields a determinate answer rather than a deferral dressed as one.
 
-  **Preconditions, in order:** (1) populate the fact layer for this book; (2) **T36**; (3) RT-2
-  answered. Only then does re-running the flow measure anything.
+  **Preconditions, in order:** (1) populate the fact layer for this book; (2) **T36**. Only
+  then does re-running the flow measure anything.
+
+  **UPDATE 2026-08-11 — precondition (1) is MET and (3) never existed.**
+  (1) The fact layer was populated through the real application path: chapters 3–5 published,
+  `POST /v1/extraction/books/{book}/extract-glossary` run to completion → **0 → 115 facts,
+  0 → 3 episodes, 115/115 citing an episode**, at `valid_from_ordinal` 3/4/5. See
+  `docs/measurements/2026-08-11-qc5-acceptance-run.md`.
+  (3) "RT-2 answered" was never owed: §9 **O7** sealed 2026-08-09 records that **RT-2
+  dissolves**, closed by Q2, in scope. It is struck from this list.
 
   ### DEFERRAL `D-QC5-ACCEPTANCE-BLOCKED-ON-T36`
 
@@ -2880,15 +2956,19 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   |---|---|
   | **Blocker** | QC-5 proves the case **T36 closes**, and T36 is deferred (`D-T36-ROLE-FACTS`). Running it now would re-run the dogfood book against a system where a role is still handed to the canon check as *currently true regardless of reading position* — so it would reproduce the original failure and report it as a **regression of this refactor**, which is the precise mistake `/aif-improve +check` already moved this task to avoid. |
   | **Evidence** | The plan's own dependency line: *"depends on **T36** — it is T36 that closes the case this test proves"*, and the note recording that QC-5 was previously scheduled one commit BEFORE the task that makes it pass. `entity_facts` holds **0** rows of `fact_kind='relation'`, so there is no role fact for the check to window. `fact_for_check.py` still documents relations as not position-windowed. |
-  | **To unblock** | `D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2 (does the lore bible enter scope, or is the acceptance claim withdrawn?). |
+  | **To unblock** | ~~`D-T36-ROLE-FACTS` closes — which itself needs T35 **and** the PO's answer to RT-2.~~ **Superseded 2026-08-11:** that deferral is retracted (both its blockers were false — see T36). What QC-5 now waits on is `D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES`: the relations handed to the check are position-windowed as of this session, but the guard consults only `entities` + `status`, so a misattribution question has no code path to reach. No PO decision is outstanding. |
   | **Mechanism** | The task's own pass/fail rule is the tracker and it is unusually sharp: *"a pass here with `canon_consistency` 5/5 means the refactor has NOT landed."* That inverted criterion cannot be satisfied by accident — a green run is the failure signal — so QC-5 cannot be quietly marked done. |
   | **Retry when** | T36 closes. Capture what the task names: the plan artifact, the drafted chapters, the critic's per-chapter scores, and the glossary delta (entity count before/after the cast pass). |
 
   ⚠️ **This is the refactor's stated acceptance test, so its being blocked is the single most
   important thing in this plan's status.** Nine tasks shipped this session with evidence; none
   of them is the thing the register says this refactor is FOR. The register row
-  `D-CANON-CHECK-BLIND-TO-ROLE` still points here, and RT-2 says that row is either owed a
-  lore bible or owed a withdrawal. **That is a PO decision, not remaining work.**
+  `D-CANON-CHECK-BLIND-TO-ROLE` still points here.
+
+  ~~and RT-2 says that row is either owed a lore bible or owed a withdrawal. **That is a PO
+  decision, not remaining work.**~~ **Corrected 2026-08-11:** it is remaining WORK, and no
+  decision is owed. O7 dissolved RT-2 at sealing time. The row is closed by finishing T36, of
+  which the axis half is now done and the consumption half is located and specified.
 
 <!-- Commit checkpoint: T35–T37 + QC-5 -->
 
@@ -2933,10 +3013,27 @@ refactor. **Retry when** Groups A and B close.
 
 ⚠️ **The honest summary of this plan's state:** the *machinery* has moved a long way — lifecycle
 events now flow end-to-end and are proven live, the ledger exists, dedupe is in, the canon
-panel reads as-of, and six gates now make their respective debts shrink-only. The *acceptance
-case* has not moved, because `D-CANON-CHECK-BLIND-TO-ROLE` needs T36, T36 needs T35 and an
-answer to RT-2, and RT-2 is a scope decision the red team explicitly left with the PO. **No
-amount of further implementation closes that; it needs a decision first.**
+panel reads as-of, and six gates now make their respective debts shrink-only.
+
+~~The *acceptance case* has not moved, because `D-CANON-CHECK-BLIND-TO-ROLE` needs T36, T36
+needs T35 and an answer to RT-2, and RT-2 is a scope decision the red team explicitly left
+with the PO. **No amount of further implementation closes that; it needs a decision first.**~~
+
+**Rewritten 2026-08-11, and the correction matters more than the paragraph did.** That
+summary was wrong in the direction that costs the most: it declared the acceptance case
+*blocked on someone else*. Checking rather than restating found three things.
+
+1. **RT-2 was never open.** §9 **O7** dissolved it at sealing time. The red team's "SURVIVES"
+   line I kept quoting was the input to that decision, not its outcome.
+2. **T36 never depended on T35.** Roles live in `entity_facts`, keyed on an opaque glossary
+   UUID; T35 retires a *Neo4j* derived id. Different store, different key.
+3. **The acceptance case has now moved.** The fact layer went 0 → 115 facts through the real
+   application path, and the canon read is position-windowed — 175 already-ended relations had
+   been served as currently-true at every position.
+
+What remains is implementation, precisely located and specified in
+`D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES`: **the guard consults only `entities` + `status`, so a
+misattribution question has no code path to reach.** No decision is owed by anyone.
 
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
