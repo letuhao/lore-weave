@@ -763,6 +763,20 @@
         "PROVENANCE, corrected in iteration 63: S1 row 12 attributes this to the memory family. memory_search's degraded note is coherent and was verified live there; every one of the 9 contradictory rows is story_search"
       ],
       "admitted": false
+    },
+    "glossary_list_chapter_links": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change, and it holds the WORST headline in the loop: 264 calls / 1 ok = 0.4%. It is one incident. 197 of the 201 'entity_id must be a UUID' failures sent the SAME name -- 'Ember Codex' -- in ONE session, and 198 landed in a SINGLE TURN across only 13 iterations, so the model emitted roughly fifteen identical calls per batch. A second turn accounts for 57 of the 61 'entity not found in this book'. TWO mechanisms now each stop this independently, and BOTH postdate the incident: the repeated-failure breaker with de-advertise (2026-07-26) and CP-5.3 EntityRef resolution (2026-08-10). I checked the intra-BATCH case rather than assuming the per-turn breaker covers it: the breaker's check and its counter are in the same `for c in calls` loop, so calls 3..15 of a single batch are short-circuited, not just calls in later iterations.",
+      "evidence": [
+        "PHASE 2: 1 ok / 263 failed = 201 'entity_id must be a UUID' (2 sessions) + 61 'entity not found in this book' (5 sessions) + 1 'book_id must be a UUID'",
+        "DATA: 197 of the 201 sent entity_id='Ember Codex'; the per-turn concentration is 198 calls in one message_id at max iteration 13, and 57 in another at iteration 59",
+        "CHECKED IN CODE, not assumed: the repeated-failure breaker reads fail_by_tool_error and that map is incremented inside the SAME per-call loop, so a 15-call batch is capped at 2 within the batch itself",
+        "CHECKED IN THE RUNNING IMAGE: chat-service's baked resolver registry binds glossary_list_chapter_links.entity_id -> EntityRef, so a name now resolves before dispatch",
+        "LIVE: a real entity_id on the throwaway book -> {\"links\": []} -- an empty SET, and not-found is a separate ERROR, so the two are not fused",
+        "CONTROL A: the EXACT string from the 197-call loop, 'Ember Codex', reproduces 'entity_id must be a UUID' verbatim",
+        "CONTROL B: a well-formed but absent id reproduces 'entity not found in this book'"
+      ],
+      "admitted": false
     }
   }
 }
