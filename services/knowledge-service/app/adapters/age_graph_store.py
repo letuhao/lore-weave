@@ -32,13 +32,24 @@ as a whole agtype map, and referencing it inside the query is limited. Values ar
 **interpolated**, which makes escaping a correctness AND a security concern rather than a
 formatting detail — see `_lit`.
 
-WHAT THIS ADAPTER DOES NOT IMPLEMENT, AND WHY IT SAYS SO LOUDLY
----------------------------------------------------------------
-`status_at_order` and `events_in_window` raise `NotImplementedError`. That is deliberate:
-T43 compares this adapter against Neo4j, and a method that silently returned `[]` would
-make a COVERAGE gap look like a DATA difference. The plan's own coverage floor says a port
-operation with zero shadow observations blocks cutover; an empty answer would satisfy that
-floor while proving nothing. See `D-T42-AGE-EVENT-SURFACE`.
+THE EVENT SURFACE — implemented 2026-08-12, and it used to raise
+-----------------------------------------------------------------
+`status_at_order` and `events_in_window` shipped as `NotImplementedError` on purpose
+(`D-T42-AGE-EVENT-SURFACE`): T43 compares this adapter against Neo4j, and a method that
+silently returned `[]` would have made a COVERAGE gap look like a DATA difference — and
+would have satisfied the shadow coverage floor while proving nothing. **Raising was the
+honest interim state; it was never the destination.** Both are now real, which takes the
+comparison from 7 of 9 operations to all nine.
+
+Two choices in them are worth reading before editing:
+
+* **`status_at_order` falls back to `'active'`**, matching Neo4j's
+  `coalesce(latest.status, 'active')`. The asymmetry matters: a wrongly-`gone` entity
+  vanishes from a panel, while a wrongly-`active` one silently un-kills a character.
+* **`events_in_window` sorts in PYTHON.** Neo4j sinks unplaced events with
+  `coalesce(e.event_order, 9223372036854775807)`; AGE's ordering over a NULL property is
+  exactly the engine-specific behaviour this migration keeps finding differs. Sorting here
+  makes the two adapters agree by construction on the one thing a caller sees — the sequence.
 """
 from __future__ import annotations
 
@@ -104,6 +115,36 @@ def _props(row: Any) -> dict:
     except json.JSONDecodeError:
         return {}
     return parsed.get("properties", parsed) if isinstance(parsed, dict) else {}
+
+
+def _unwrap(cell: Any) -> Any:
+    """A scalar agtype cell -> a Python value.
+
+    agtype scalars arrive as JSON text (`"gone"`, `12`, `null`), so a bare `str()` would make
+    the quotes part of the value and `'"gone"' != 'gone'` would read as an engine divergence.
+    """
+    if cell is None:
+        return None
+    try:
+        return json.loads(str(cell))
+    except (json.JSONDecodeError, TypeError):
+        return str(cell)
+
+
+def _to_event(props: dict) -> Event:
+    return Event.model_validate(
+        {
+            "id": props.get("id", ""),
+            "user_id": props.get("user_id", ""),
+            "project_id": props.get("project_id"),
+            "title": props.get("title", ""),
+            "canonical_title": props.get("canonical_title", props.get("title", "")),
+            "summary": props.get("summary"),
+            "chapter_id": props.get("chapter_id"),
+            "event_order": props.get("event_order"),
+            "chronological_order": props.get("chronological_order"),
+        }
+    )
 
 
 def _to_entity(props: dict) -> Entity:
@@ -405,11 +446,42 @@ class AgeGraphStore:
         at_order: int,
         min_evidence: int = 1,
     ) -> dict[str, str]:
-        raise NotImplementedError(
-            "AgeGraphStore.status_at_order is not implemented (D-T42-AGE-EVENT-SURFACE). "
-            "It raises rather than returning {}: T43 compares this adapter against Neo4j, "
-            "and a silent empty map would make a COVERAGE gap look like a DATA difference."
-        )
+        """`{entity_id: status}` at a story position — the LATEST transition at or before it.
+
+        ⚠️ **Fail-OPEN is the danger here, and `'active'` is the fallback**: an entity with no
+        qualifying transition is alive. That is the Neo4j behaviour
+        (`coalesce(latest.status, 'active')`) and it must be matched exactly, because the
+        author-facing consequence of getting it wrong is asymmetric — a wrongly-`gone` entity
+        disappears from a panel, while a wrongly-`active` one silently un-kills a character.
+
+        **One query per entity, not an `UNWIND` + aggregate.** Neo4j does this in a single
+        pass with `head(collect(s))`; AGE's aggregate handling across `OPTIONAL MATCH` is the
+        kind of construct this migration has repeatedly found differs, and a per-entity loop
+        is boring, obviously correct, and the shadow comparison's job is to catch it if it is
+        not. Entity counts here are a handful (a canon check's cast), not a page of results.
+        """
+        out: dict[str, str] = {}
+        for eid in entity_ids:
+            where = [
+                f"s.user_id = {_lit(user_id)}",
+                f"s.entity_id = {_lit(eid)}",
+                f"s.from_order <= {_lit(at_order)}",
+                f"s.evidence_count >= {_lit(min_evidence)}",
+            ]
+            if project_id is not None:
+                where.append(f"s.project_id = {_lit(project_id)}")
+            rows = await self._run(
+                f"MATCH (s:EntityStatus) WHERE {' AND '.join(where)} "
+                f"RETURN s.status, s.from_order",
+                columns="status agtype, from_order agtype",
+            )
+            latest, best = None, None
+            for r in rows:
+                order = _unwrap(r["from_order"])
+                if best is None or (order is not None and order > best):
+                    best, latest = order, _unwrap(r["status"])
+            out[eid] = str(latest) if latest is not None else "active"
+        return out
 
     async def events_in_window(
         self,
@@ -422,8 +494,42 @@ class AgeGraphStore:
         include_archived: bool = False,
         limit: int = 200,
     ) -> list[Event]:
-        raise NotImplementedError(
-            "AgeGraphStore.events_in_window is not implemented (D-T42-AGE-EVENT-SURFACE). "
-            "It raises rather than returning []: an empty list would satisfy T43's "
-            "shadow-coverage floor while proving nothing about this operation."
-        )
+        """Events between two bounds on ONE axis. Three axes, three different questions.
+
+        `narrative` = authored `event_order` · `chronological` = in-story order, where undated
+        events sink last · `date` = the parsed `event_date_iso` timeline. Collapsing them into
+        one "time" parameter would make a caller unable to ask the one it means — the port's
+        own docstring says so, and this adapter keeps them distinct rather than aliasing two
+        of them to the cheap one.
+        """
+        field = {
+            "narrative": "event_order",
+            "chronological": "chronological_order",
+            "date": "event_date_iso",
+        }[axis]
+
+        where = [f"e.user_id = {_lit(user_id)}"]
+        if project_id is not None:
+            where.append(f"e.project_id = {_lit(project_id)}")
+        if after is not None:
+            where.append(f"e.{field} > {_lit(after)}")
+        if before is not None:
+            where.append(f"e.{field} < {_lit(before)}")
+        if not include_archived:
+            where.append("e.archived_at IS NULL")
+
+        rows = await self._run(
+            f"MATCH (e:Event) WHERE {' AND '.join(where)} RETURN e")
+        events = [_to_event(_props(r["v"])) for r in rows]
+
+        # Sorted in PYTHON, deliberately. Neo4j orders with
+        # `coalesce(e.event_order, 9223372036854775807)` so unplaced events sink last; AGE's
+        # ordering over a NULL property is exactly the sort of engine-specific behaviour this
+        # comparison exists to avoid depending on. Doing it here makes the two adapters agree
+        # by construction on the one thing a caller can actually see — the sequence.
+        sink = float("inf")
+        events.sort(key=lambda e: (
+            sink if getattr(e, field, None) is None else getattr(e, field),
+            e.title or "",
+        ))
+        return events[:limit]

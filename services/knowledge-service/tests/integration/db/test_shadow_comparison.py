@@ -70,9 +70,10 @@ async def _traffic(store, user_id: str, project_id: str) -> None:
         user_id=user_id, glossary_entity_id="none-such", project_id=project_id)
     await store.archive_entity(user_id=user_id, canonical_id=a.id, reason="t43")
     await store.restore_entity(user_id=user_id, canonical_id=a.id)
-    # The two AGE raises — driven deliberately, so they are RECORDED as uncovered rather
-    # than left absent. An operation nobody called and an operation that cannot answer look
-    # identical in a report that only counts successes.
+    # Both were `NotImplementedError` until 2026-08-12 and are now real, which is what takes
+    # the comparison from 7 of 9 operations to nine. They are still driven explicitly: an
+    # operation nobody called and an operation that cannot answer look identical in a report
+    # that only counts successes.
     await store.status_at_order(
         user_id=user_id, project_id=project_id, entity_ids=[a.id], at_order=10)
     await store.events_in_window(user_id=user_id, project_id=project_id)
@@ -92,7 +93,11 @@ async def _traffic(store, user_id: str, project_id: str) -> None:
 # made the report look clean while 6 of 9 operations stayed uncompared;
 # `D-T43-ID-KEYED-OPS-NEED-A-MAPPING` asked for the mapping precisely so the comparison
 # becomes real rather than narrower.
-_UNIMPLEMENTED = {"status_at_order", "events_in_window"}
+# ⚠️ EMPTY, and that is the point of this cycle. `D-T42-AGE-EVENT-SURFACE` is closed: AGE now
+# implements `status_at_order` and `events_in_window`, so nothing is `uncovered` and the
+# coverage floor has nothing left to block on. If either regresses to a raise, this set is
+# where the expectation lives and the floor test reds immediately.
+_UNIMPLEMENTED: set[str] = set()
 
 
 async def test_the_two_engines_agree_on_every_comparable_operation(shadow):
@@ -121,11 +126,10 @@ async def test_the_coverage_floor_names_every_unobserved_operation(shadow):
     that agreed perfectly on `relations_for` and never touched `restore_entity` would be
     evidence about one operation wearing the costume of evidence about the port.
 
-    Two DIFFERENT reasons an operation is unobservable today, and the floor does not care
-    which — both block cutover:
-      * `_UNIMPLEMENTED` — AGE raises (`D-T42-AGE-EVENT-SURFACE`)
-      * `upsert_relation` — id-keyed, so the secondary is asked about a node it lacks
-        (`D-T43-ID-KEYED-OPS-NEED-A-MAPPING`)
+    As of 2026-08-12 the floor is EMPTY — every one of the nine operations is compared. The
+    assertion is kept (rather than deleted as satisfied) because it is what reds if an
+    operation regresses to a raise, or if a future port method arrives with no adapter behind
+    it: `OPERATIONS` is the checklist, and an unobserved entry blocks cutover.
     """
     user_id, project_id = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
     await _traffic(shadow, user_id, project_id)
@@ -134,8 +138,14 @@ async def test_the_coverage_floor_names_every_unobserved_operation(shadow):
     assert set(report["blocked_by"]) == _UNIMPLEMENTED, (
         f"unexpected coverage floor: {report['blocked_by']}"
     )
-    assert report["cutover_permitted"] is False, (
-        "a cutover was permitted while operations have zero comparisons"
+    # ⚠️ `cutover_permitted` is a DATA statement, not an authorisation. It says the shadow
+    # has no remaining objection: every operation was compared and none disagreed. Whether
+    # the swap HAPPENS is QC-7's POST-REVIEW checkpoint and the PO's call on sealed rows
+    # T1/T2 — a harness that could authorise its own cutover would be the plan's
+    # stop-and-wait discipline written out of existence.
+    assert report["cutover_permitted"] is True, (
+        f"the shadow still objects: blocked_by={report['blocked_by']} "
+        f"samples={report['samples']}"
     )
     for op in OPERATIONS:
         if op not in report["blocked_by"]:
@@ -143,13 +153,23 @@ async def test_the_coverage_floor_names_every_unobserved_operation(shadow):
 
 
 async def test_an_unimplemented_secondary_is_uncovered_not_agreed(shadow):
-    """The three-outcome rule, and the reason it is three.
+    """The three-outcome rule, tested against a STUB rather than against AGE's gaps.
 
-    `AgeGraphStore.status_at_order` raises `NotImplementedError` by design. If the shadow
-    folded that into `agreed`, a method the secondary CANNOT ANSWER would count toward
-    parity — a coverage gap reading as a data result, which is the confusion the adapter
-    raises to prevent in the first place.
+    It used to lean on `AgeGraphStore.status_at_order` raising. That gap closed this cycle,
+    and a rule that stops being tested the moment the codebase improves is a rule that will
+    be gone when it is next needed. A stub keeps it permanently exercised.
+
+    Why the rule matters: if the shadow folded `NotImplementedError` into `agreed`, a method
+    the secondary CANNOT ANSWER would count toward parity — a coverage gap reading as a data
+    result, which is exactly what the raise exists to prevent.
     """
+    class Refusing:
+        def __getattr__(self, _name):
+            async def _raise(**_kw):
+                raise NotImplementedError("not built on this engine")
+            return _raise
+
+    shadow._secondary = Refusing()
     user_id, project_id = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
     await shadow.status_at_order(
         user_id=user_id, project_id=project_id, entity_ids=["x"], at_order=1)

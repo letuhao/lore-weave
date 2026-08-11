@@ -35,30 +35,41 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `D-T42-AGE-EVENT-SURFACE` — implement AGE's `status_at_order` + `events_in_window`.
-They are the ONLY two things between T43 and a complete comparison.**
+**RESUME: ⏸ QC-7 — POST-REVIEW. STOPPED AND WAITING. The shadow comparison is complete.**
 
-✅ **T43 IS BUILT AND MEASURED (2026-08-12).** `shadow_graph_store.py` with a
-primary→secondary identity mapping. **7 of 9 operations compared, ZERO divergences**, on
-real traffic against both live engines. 4 shadow · 410 integration · 4184 unit.
+✅ **T43 IS COMPLETE (2026-08-12).** Neo4j vs Apache AGE, shadowed on real traffic against two
+live engines:
 
 ```
-blocked_by         : ['status_at_order', 'events_in_window']
-cutover_permitted  : False
+9 of 9 operations compared · ZERO divergences
+blocked_by         : []
+cutover_permitted  : True
 ```
+4 shadow · 410 integration · 4184 unit.
 
-🎯 **On everything comparable, Neo4j and Apache AGE agree.** That is the first measured
-evidence in the engine question — the contest **X1** asked for, settled by measurement rather
-than by argument, on an engine the 2026-08-09 audit had eliminated from a documentation check.
+🎯 **Neo4j and Apache AGE agree on every operation the port declares.** That is the contest
+**X1** asked for — the engine settled by measurement rather than by argument — and the engine
+in question is the one the 2026-08-09 audit eliminated from a *documentation* check that a
+container later refuted.
 
-⚠️ **Two harness defects were found and fixed before they could be published as engine
-differences**, which in the document that decides the engine would have been the worst outcome
-available: the engines mint their own node ids (fixed by the mapping), and each stamps its own
-`archived_at` clock (fixed by comparing presence, not the instant).
+⚠️ **THREE harness defects were caught before they could be published as engine differences**,
+which in the document that decides the engine would have been the worst outcome available:
+the engines mint their own node ids (fixed by an identity mapping) · each stamps its own
+`archived_at` clock (fixed by comparing presence, not the instant) · agtype scalars carry
+their JSON quotes (fixed in `_unwrap`). Every one first appeared as `DIVERGED`.
 
-⏸ **The engine CHOICE is not mine.** Sealed rows `T1`/`T2` were amended on refuted premises and
-are flagged for PO re-open; **QC-7** is the POST-REVIEW checkpoint that gates the swap. The
-data is now here to decide on.
+⏸ **THIS IS A STOP-AND-WAIT CHECKPOINT, AND THE DECISIONS ARE NOT MINE:**
+1. **QC-7** requires a **rebuild-from-Postgres drill** (T41) alongside this shadow evidence,
+   and then `/review-impl`. **T41 does not exist** — and if AGE is chosen, the graph lives *in*
+   Postgres and T41 changes shape entirely, which is why X3 re-scoped it to *after* the engine
+   decision rather than before.
+2. **The engine choice is a sealed-row decision.** `T1`/`T2` are amended on refuted premises
+   and flagged for PO re-open. `cutover_permitted: True` is the shadow reporting **no
+   objection** — it is data, not authorisation.
+
+**What is NOT claimed:** this is a 9/9 agreement on a **synthetic traffic pattern**, not a
+production soak. The plan's own words apply — merge/split/restore/coref/triage are rare, and
+one pass through each is coverage, not confidence.
 
 ✅ **T17's port-covered surface is COMPLETE (2026-08-12).** An AST sweep for direct calls to
 any port-covered repo function outside the adapters returns **zero**. Every
@@ -4712,7 +4723,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Evidence** | Both raise `NotImplementedError` naming this deferral. The conformance suite covers the other 7 methods across all three adapters. |
   | **Why raise instead of return empty** | **T43 compares this adapter against Neo4j.** A silent `[]`/`{}` would make a **coverage** gap look like a **data** difference — and worse, would satisfy the plan's own shadow-coverage floor (*"no cutover while any port operation has zero shadow observations"*) while proving nothing. An operation that answers wrongly is more dangerous than one that refuses. |
   | **Mechanism** | The raise itself: T43 cannot record an observation for these two without failing loudly, so the coverage floor stays honest. |
-  | **Retry when** | T43 needs event-surface parity, or the engine decision selects AGE — whichever comes first. |
+  | **Retry when** | ~~T43 needs event-surface parity, or the engine decision selects AGE.~~ ✅ **CLOSED 2026-08-12.** |
+
+  #### ✅ CLOSED — both methods implemented, and the comparison reaches 9 of 9
+
+  ```
+  operation                   obs  agr  div  unc unmap
+  resolve_or_merge_entity       2    2    0    0     0
+  find_entities_by_name         1    1    0    0     0
+  neighborhood                  1    1    0    0     0
+  archive_entity                1    1    0    0     0
+  restore_entity                1    1    0    0     0
+  upsert_relation               1    1    0    0     0
+  relations_for                 2    2    0    0     0
+  status_at_order               1    1    0    0     0
+  events_in_window              1    1    0    0     0
+
+  blocked_by         : []
+  cutover_permitted  : True
+  ```
+
+  **Raising was the honest interim state; it was never the destination.** The `[]`/`{}` a
+  hurried implementation would have returned is what the raise existed to prevent — and it
+  would have satisfied the coverage floor while proving nothing.
+
+  **Two decisions inside the implementation are load-bearing:**
+  * **`status_at_order` falls back to `'active'`**, matching Neo4j's
+    `coalesce(latest.status, 'active')`. The asymmetry is the reason: a wrongly-`gone` entity
+    vanishes from a panel, while a wrongly-`active` one **silently un-kills a character**.
+  * **`events_in_window` sorts in PYTHON.** Neo4j sinks unplaced events with
+    `coalesce(e.event_order, 9223372036854775807)`; AGE's ordering over a NULL property is
+    exactly the engine-specific behaviour this migration keeps finding differs. Sorting in the
+    adapter makes both agree by construction on the one thing a caller sees — the sequence.
+  * A third, small: `_unwrap` JSON-decodes scalar agtype cells, because `"gone"` with its
+    quotes intact would compare unequal to `gone` and read as an engine divergence.
+
+  **BITE — invert the status fallback (`'active'` → `'gone'`):**
+  ```
+  FAILED test_the_two_engines_agree_on_every_comparable_operation
+  FAILED test_the_coverage_floor_names_every_unobserved_operation
+  ```
+  One wrong default reds both the divergence check *and* the cutover gate — which is the
+  behaviour you want from a guard on a value that decides whether a character is alive.
+
+  ⚠️ **The three-outcome rule was re-based onto a STUB.** It used to lean on
+  `AgeGraphStore.status_at_order` raising; that gap just closed, and **a rule that stops being
+  tested the moment the codebase improves is a rule that will be gone when it is next
+  needed.** It now installs a refusing secondary of its own, so `uncovered ≠ agreed` stays
+  permanently exercised.
+
+  ⚠️ **`cutover_permitted: True` is a DATA statement, not an authorisation.** It says the
+  shadow has no remaining objection. Whether the swap happens is **QC-7**'s POST-REVIEW and
+  the PO's call on sealed `T1`/`T2` — a harness that could authorise its own cutover would
+  write the plan's stop-and-wait discipline out of existence.
+
+  **QC** — 4 shadow · **410 integration** (both engines live) · **4184 unit**.
 - [~] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
   `scripts/graph-port-gate.py` walks `ast.Constant` strings and enforces that **Cypher** does not
   appear outside adapter dirs. It **never inspects imports**. So it proves Cypher is *centralised*,
