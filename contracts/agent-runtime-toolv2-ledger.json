@@ -862,6 +862,18 @@
         "LIVE on the deployed image (server.py byte-identical to source by sha256): top-level keys now include degraded {rank: not_semantic, sections: [mine]} and a note saying the candidates are ordered by genre and tension only and their scores are not comparable"
       ],
       "admitted": false
+    },
+    "glossary_propose_new_kind": {
+      "state": "proven",
+      "note": "PROVEN LIVE with no code change. 32 calls / 6 sessions / 32 ok -- every call returned a signed confirm card, so there is no failure population. Two findings came out of reading the SUCCESSES. DQ-16: proposing a code that ALREADY EXISTS at book level returns a normal creation card with no warning, while the sibling glossary_propose_status_change returns its card WITH a 'this will change nothing' warning -- so the convention exists and this tool does not follow it. I did not test what the apply does and have not assumed it. D-11: one turn proposed four distinct kinds TWICE each, eight cards for four things, and no breaker fires because a confirm card is never byte-identical (fresh token, fresh expires_at) and it is not a created:false write.",
+      "evidence": [
+        "PHASE 2: 32 ok / 0 failed. Every result is a grant-authority card with a descriptor of schema_create_kind",
+        "LIVE: propose code='toolv2_probe_kind' -> a card with a signed token, destructive:false, and preview_rows naming the code and the name. NOT confirmed, so the book is unchanged",
+        "CONTROL (DQ-16): propose code='character', which this book already has at book level after iteration 72's patch -> an identical-looking creation card, no warning",
+        "DATA (D-11): keyed on ARGS, duplicate confirm cards total 8 redundant across 7 groups / 2 tools / 4 turns, last 2026-07-15",
+        "METHOD, recorded because the first number was wrong: keying the duplicate query on a truncated card TITLE merged four DIFFERENT kinds into one group and implied a far larger problem. The args are the identity; the display string is not"
+      ],
+      "admitted": false
     }
   }
 }

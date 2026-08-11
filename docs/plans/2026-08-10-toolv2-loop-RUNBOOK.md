@@ -548,6 +548,47 @@ a tool that has not had its iteration yet is not a conclusion.
 
 ---
 
+### DQ-16 · A propose card does not say the thing it proposes already exists
+
+*Raised by:* iteration 76. `glossary_propose_new_kind(code="character")` on a book that already
+has a book-level `character` kind returns a normal creation card —
+`Create kind "Character" (code: character)`, `destructive: false`, preview rows `code` / `name` —
+with **nothing saying the code is taken**.
+
+The convention for this exists in the same service. `glossary_propose_status_change` returns its
+card with `warning: "all 1 matched entities already have status \"active\" — this will change
+nothing"` (verified live in iteration 55). So a propose CAN inspect current state and say the
+change is a no-op; this one does not.
+
+**What I did NOT test, and will not assume:** what happens on confirm. The apply may be
+idempotent, may error, or may create a conflicting row — and there is no confirm tool on the
+glossary MCP surface (confirmation runs through chat-service's action-token path), so settling it
+is a bigger detour than this iteration. **The observation is that the card is uninformative, not
+that the write is wrong.**
+
+*Would clear it:* confirming one such card on a throwaway book and recording what the apply does.
+If it is idempotent, the card should say so the way status_change's does; if it conflicts, the
+card is actively misleading and the propose should refuse.
+
+---
+
+### D-11 · A duplicate propose escapes every breaker, because a confirm card is never identical
+
+*Raised by:* iteration 76. One turn emitted `glossary_propose_new_kind` for four distinct kinds
+**twice each** — eight confirm cards for four things. No breaker fires: it is not a read (the
+repeat-read breaker fingerprints the RESULT, and every card carries a fresh token and
+`expires_at`, so the fingerprint always differs), and it is not a `created:false` write.
+
+**Measured, keyed on ARGS rather than the card title: 8 redundant cards, 7 groups, 2 tools,
+4 turns**, last seen 2026-07-15. Small — and worth stating how the first count went wrong: keying
+on a truncated `title` merged four *different* kinds into one group and suggested a much larger
+problem than exists. The args are the identity; the display string is not.
+
+*Not absorbed because* 8 cards does not justify a fifth breaker, and the natural fix is DQ-16's
+— a propose that knows the target already exists has something better to do than be counted.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-10 · A union-typed argument reports itself twice, in pydantic's internal path language
