@@ -615,6 +615,27 @@ problem than exists. The args are the identity; the display string is not.
 
 ---
 
+## The phase boundary at iteration 120 — the corpus runs out
+
+**Every tool with recorded traffic is concluded.** From iteration 121 the queue is tools with
+**0 calls**, and the method has to change, so it is written down before it is improvised:
+
+* There is **no failure population to split**. Phase 2 has nothing to read, and "the failures are
+  all the blank-args era" — the sentence that closed a third of this loop — is unavailable.
+* There is **no recorded shape**. Every ledger row so far could check a live result against what
+  the corpus said the tool returns. Now the live call IS the only evidence, which makes reading
+  the schema first mandatory rather than a shortcut I kept skipping (four tools in this loop
+  refused my first call because I guessed an argument name).
+* The tool may never have run **at all**, which is a different claim from "it works". Iteration
+  100 already met this shape: `glossary_list_merge_candidates` is correct, and no merge candidate
+  has ever existed in the database, so its non-empty branch is unverifiable by anyone.
+
+The QC bar does not move. What changes is that CODE and DATA now lean harder on the schema and on
+the SSOT, because the corpus can no longer corroborate. A first invocation that fails is still a
+finding — arguably a better one, since nothing has ever exercised the path.
+
+---
+
 ## Debt this loop surfaced but did not absorb
 
 ### D-10 · A union-typed argument reports itself twice, in pydantic's internal path language
