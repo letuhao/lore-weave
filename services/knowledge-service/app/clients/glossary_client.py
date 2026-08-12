@@ -504,6 +504,38 @@ class GlossaryClient:
         )
         return rows, True
 
+    async def reemit_mirror(
+        self, book_id: UUID, entity_ids: list[str],
+    ) -> dict | None:
+        """POST /internal/books/{book_id}/mirror-reemit — put lost mirror events back at
+        the start of the projection path (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER).
+
+        This service DETECTS the divergence but must not repair it from this end: the KG
+        would then have two writers. glossary-service re-publishes through the outbox the
+        consumer already reads, so the repair travels the one path that is proven and
+        idempotent.
+
+        Returns the response body (`reemitted`, `skipped_ids`, `failed_ids`) or None on
+        failure. A None here means the repair did NOT happen — the caller must not report
+        success, because an unrepaired divergence that claims to be fixed is worse than
+        one that is merely known.
+        """
+        url = f"{self._base_url}/internal/books/{book_id}/mirror-reemit"
+        try:
+            resp = await self._http.post(url, json={"entity_ids": list(entity_ids)})
+            if resp.status_code != 200:
+                logger.warning(
+                    "glossary mirror-reemit → %d: %s", resp.status_code, resp.text[:200],
+                )
+                return None
+            return resp.json()
+        except (httpx.HTTPError, ValueError) as exc:
+            logger.warning(
+                "glossary mirror-reemit failed: %s: %s",
+                type(exc).__name__, exc or "(no detail — likely a timeout)",
+            )
+            return None
+
     async def list_all_entities(
         self,
         book_id: UUID,

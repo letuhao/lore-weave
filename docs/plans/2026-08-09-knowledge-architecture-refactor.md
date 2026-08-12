@@ -5172,11 +5172,32 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   | | |
   |---|---|
-  | **Blocker** | The glossary is the SSOT and the KG is its projection, but the projection is at-least-once delivery with **no reconciliation**. An event lost while a handler was broken is lost permanently: nothing re-emits, and — until now — nothing compared the two stores. **The DETECTOR is shipped; the REPAIRER is not.** Divergence is measured at **17 of 43 (40%)** on the acceptance book and nothing closes it. |
-  | **Evidence** | The chain above, every step measured, plus a live replay proving the handler is correct now. The gap is not the handler — it is the absence of anything that notices, and then of anything that fixes it. |
-  | **To unblock** | The repairer. It belongs on the EMIT side: re-publish `glossary.entity_updated` through the outbox for the ids the detector reports, rather than writing the graph directly. That path is already proven (the replay above) and already idempotent (the MERGE is keyed on `glossary_entity_id`); a second writer into the mirror would add a divergence class rather than close one. It needs no model. |
-  | **Mechanism** | `GET /internal/projects/{id}/glossary-mirror-drift` returns the anti-join. `missing` must trend to zero and stay there. **17** is the baseline, and it is now a number a machine produces rather than one a person finds by hand-querying two databases. |
-  | **Retry when** | Immediately. This blocks QC-5 meaningfully — an acceptance test over canon cannot mean much while 40% of canon is absent from the store the check reads. |
+  | **Blocker** | ~~The projection is at-least-once delivery with no reconciliation.~~ **CLOSED 2026-08-12.** Detector + repairer both shipped, and the divergence on the acceptance book is **17 → 0**, verified in Neo4j directly rather than by asking the detector about its own repair. What remains open is the *scheduling* question (below), not the mechanism. |
+  | **Evidence** | The chain above, every step measured. Then: `missing 17` → repair re-emitted 17 → `missing 0` within one relay cycle. Independently: Neo4j went **26 → 43** nodes carrying a glossary id, and all 17 formerly-missing ids are present (`found_of_17: 17`). |
+  | **Mechanism** | `GET …/glossary-mirror-drift` measures, `POST …/glossary-mirror-repair` closes. The count is the metric and it is now machine-produced. |
+  | **Still open** | **Nothing RUNS the detector.** Both routes are operator-triggered `/internal` endpoints — a person still has to ask. The projection can therefore drift again the next time a handler breaks, and the gap would once more be found by accident. What this needs is a schedule (a periodic sweep, or the drift count as a metric an alert watches) — a smaller and much better-understood problem than the one it replaces. |
+  | **Retry when** | Whenever periodic reconciliation is scoped. **No longer blocks QC-5**, which is the point: the acceptance test now reads a complete cast. |
+
+  #### 📈 WHAT CLOSING IT CHANGED FOR QC-5
+
+  The acceptance-position snapshot (`fact-for-check`, `at_order = 11 × 1e6`, the full cast):
+
+  ```
+                     before repair        after repair
+  entities                     16                  43     <- the whole cast is visible now
+  relations                    31                  31
+  events                        4                   4
+  ```
+
+  **QC-5's premise has materially changed** and its earlier results are not comparable: the
+  judge-precision numbers in this section were measured against a canon missing two of every
+  five members, and at least some of what was scored as a false positive was the judge
+  reasoning about entities it could not see. **QC-5 is worth re-running from scratch.**
+
+  Relations and events did NOT move — they are a different projection (extraction-derived),
+  and `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` (12 of 25 relations carry no story position) is
+  untouched by this repair. Fixing the entity mirror does not fix the relation mirror, and
+  claiming otherwise would be exactly the over-reach this row exists to prevent.
 
   ⚠️ **One dev-data change:** the replay probe created the KG node for the entity it tested
   (a genuine repair — the glossary says that entity exists). The other 21 were left alone;
@@ -5193,6 +5214,20 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Not measured, and it says so** | The other direction (a KG node whose glossary row is gone) needs a bulk graph enumeration the port does not have. The response returns `"orphans": "not measured"` rather than `0`, because a zero from a check that never ran is the accounting artefact this plan exists to prevent. Hand-measured once: 0 of 26. |
   | **Bites** | 4 on the Go predicate (filter `alive` · drop the shared fragment · hide nameless rows · narrow the emit side) and 5 on the Python detector — all red. Two were VACUOUS first: a `Contains` drift assertion passed the very mutation it existed to catch (a side ADDING a condition still contains the fragment), and a wiring test compared `handlers.is_mirrorable is is_mirrorable`, which stayed green when the call site reverted to an inline condition. Both replaced — suffix/whole-clause assertion, and a spy that must actually be reached. |
   | **Live** | Against rebuilt images on the dev stack: `truth_total 46 · mirrorable 43 · mirrored 26 · missing 17 · not_mirrorable 3 · truncated false`, and the 17 ids are **byte-identical** to an independent two-database `comm -23` run by hand. `entity_cap=5` returns `missing 0` with `truncated: true` — proof the numbers track live input, and a demonstration of exactly why a silent cap would be indistinguishable from a healthy mirror. |
+
+  #### ✅ SHIPPED THIS CYCLE — the repairer
+
+  | | |
+  |---|---|
+  | **Where it lives** | `POST /internal/books/{id}/mirror-reemit` on **glossary-service**, driven by `POST /internal/projects/{id}/glossary-mirror-repair` on knowledge-service. knowledge detects (it owns the KG and knows what is absent) and hands the ids back to the SSOT; it never writes the graph. Repairing from the detecting end would give the mirror a SECOND WRITER, which grows the divergence class instead of closing it. |
+  | **What it actually does** | Re-inserts `glossary.entity_updated` into the outbox — the same payload the organic path emits, through the same relay, to the same consumer. No new writer, no new payload shape, no state of its own. It is deliberately boring. |
+  | **What it refuses** | The emit-side read (`loadEntityEventFields`) is reused verbatim, so a soft-deleted entity is **skipped, not resurrected** — `D-OUTBOX-PAYLOAD-TRASH` is the bug where re-emitting for a trashed entity silently un-deleted it downstream. Nameless drafts skipped for the handler's own reason. Scope comes from the loaded row: an id belonging to another book is declined, not emitted. Declined ids are returned BY ID — "nothing happened, and I will not say which" is how a repair that did nothing looks like one that worked. |
+  | **Bounded** | 100 per repair call (500 hard cap server-side), and `deferred_ids` names what it left. A silent bound would have the operator read "repaired" and never learn 83 remained. |
+  | **Honest about time** | The response reports what was RE-EMITTED, never a fresh divergence count. Convergence is eventual — the repair rides the same relay as every organic event — and a post-repair zero computed inside the repair would be measuring the repair with the repair. |
+  | **Bites** | 6, all red — resurrect a trashed entity · trust the caller's book instead of the row's · drop the per-call cap · report a failed re-emit as success · bound silently · call the SSOT with nothing to repair. The first went red on a COMPILE error at first (an unused variable), which is red for the wrong reason; re-bitten to keep the variable referenced, and it then failed on the outbox rows the trashed and nameless entities should never have received. |
+  | **Live** | `missing 17` → `reemitted 17, skipped 0, failed 0` → `missing 0` inside one relay cycle. Verified **outside** the detector: Neo4j `26 → 43` glossary-linked nodes, and all 17 formerly-missing ids present. |
+
+  ⚠️ **This wrote to dev data, deliberately and with the PO's go-ahead.** 17 KG nodes were created — all of them entities the glossary says exist, so every write is a repair of real data loss, not a fixture.
 
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**

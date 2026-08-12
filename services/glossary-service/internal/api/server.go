@@ -178,6 +178,10 @@ func (s *Server) Router() http.Handler {
 		// filters `alive`, a story flag the emit path does not honour, so reconciling
 		// against it reports a dead-but-correctly-mirrored entity as an orphan.
 		r.Get("/books/{book_id}/mirror-truth-ids", s.internalMirrorTruthIDs)
+		// The repair. It puts LOST events back at the start of the one legitimate
+		// projection path (outbox → relay → consumer) rather than writing the graph
+		// from the other end, which would give the mirror a second writer.
+		r.Post("/books/{book_id}/mirror-reemit", s.internalMirrorReemit)
 		// KG-ML M5 (C9) — batch localized entity display names for the knowledge
 		// KG graph-view / edge-timeline (resolves name/term attr → language).
 		r.Post("/books/{book_id}/entity-display-names", s.internalEntityDisplayNames)
