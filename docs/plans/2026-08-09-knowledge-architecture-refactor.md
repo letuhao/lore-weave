@@ -35,7 +35,94 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: OD-1 — T30's real adoption. `glossary-service` imports `contracts/events`.**
+**RESUME: T17 — grow the port by demand (`merge_fact`, 5 calls / 5 modules), or a Phase 6 task.**
+
+✅ **OD-1 IS DONE AND T30 IS CLOSED (2026-08-12). `D-GLOSSARY-EVENTS-NO-SOT` is discharged.**
+
+The deferral's disease was never "the names are not in a YAML file" — it was **seven names owned
+by a Go `const` block and hand-mirrored by five consumers across four services, with nothing
+relating the copies.** T30 shipped the gate that made a rename *loud*; OD-1 removes the
+mirroring itself.
+
+🎯 **The root cause turned out to be in the contract, not in the five authors.**
+`contracts/events/generated/` emitted payload types and a dispatch map in four languages but
+**no event-NAME surface in any of them**. There was no constant to import, so every producer
+and consumer had to write its own literal. That is not a discipline failure; it was the only
+thing the contract made possible. `eventgen` now emits name constants for Go
+(`EventGlossaryEntityUpdated`) and Python (`EVENT_GLOSSARY_ENTITY_UPDATED`) **for all 22
+registered events**, not just glossary's.
+
+**Delivered:** 7 events registered in `_registry.yaml` with structs mirroring the wire
+field-for-field · `contracts/events/glossary.go` (which deliberately declares **no** names —
+that would have been the eighth copy) · eventgen emits name constants + the field maps the
+closed `noFieldMapAllowed` list required · `sdks/python/loreweave_events`, a generated,
+dependency-free SDK module, because the generated tree is on no service's import path (the
+reason the Python consumers had no choice) · producer, 2 Go consumers and 3 Python consumers
+all rewired · the SSOT gate repointed from the producer's literals to the registry.
+
+🔴 **The gate had to change or it would have lied.** Its old SSOT was "literals the producer
+declares", and the producer now declares none — so it failed with its own message: *"a gate
+that scans nothing passes everything."* Its question is now **stronger**: the registry owns the
+names, so any `glossary.*` literal in live code outside the generated files is a
+re-declaration. Old question: *"does this copy match?"* New: *"why is there a copy?"*
+
+**BITE — RT-10's founding scenario, run against the new arrangement.** Rename one event in the
+registry, regenerate, and every layer must notice:
+
+```
+RED  eventgen refuses a registered event with no field map
+RED  glossary-service (producer + 2 Go consumers) — undefined: events.EventGlossaryEntityUpdated
+RED  knowledge-service   — ImportError: cannot import name 'EVENT_GLOSSARY_ENTITY_UPDATED'
+RED  learning-service    — ImportError: cannot import name 'EVENT_GLOSSARY_ENTITY_UPDATED'
+RED  translation-service — ImportError: cannot import name 'EVENT_GLOSSARY_ENTITY_UPDATED'
+ALL LAYERS NOTICED THE RENAME
+```
+
+⚠️ **The bite's FIRST run reported two of those five as silent — and that was the harness, not
+the code.** knowledge- and learning-service validate their settings at import, so a missing env
+var raised *before* the module reached its own imports. Read at face value it would have said
+"two consumers do not notice a rename". Fixed by supplying the env, and the harness now asserts
+no `ValidationError` rather than inferring silence from one.
+
+**QC (a) gates:** `glossary-events-ssot-gate` PASS (7 names, registry-owned) · `eventgen-validate`
+PASS (codegen matches the registry and is fully committed) · `gate-teeth-gate` PASS, and the
+ratchet **fell 44 → 43** because the rewritten gate gained a `--selftest` with its change rather
+than owing one after it · doc-language · db-safety · port-adoption · test-dsn-coverage ·
+sdk-duplication all exit 0.
+**QC (b) the seam:** glossary-service `internal/api` **742 passed, 2 skipped** against a
+throwaway Postgres. That is the wire-value proof: those tests query
+`outbox_events WHERE event_type='glossary.entity_updated'` **by literal**, so a constant whose
+value had drifted from the string would red them.
+⚠️ Run bare, that same package **skips 459 tests** and still prints `ok` — the outbox assertions
+are among them. The first pass here nearly leaned on a green that had not executed.
+**QC (c) real data:** N/A — no data is produced; the wire values are byte-identical by
+construction, which is exactly what QC (b) measures.
+
+```
+4186 knowledge unit · 201 learning · 19 translation · 742 glossary-api (DB) · eventgen + contracts/events go test ok
+```
+
+🔻 **`D-OD1-NAME-CONSTANTS-WEAKEN-LITERAL-GATES` — a cost this cycle CREATED, stated rather
+than discovered later.** `epoch-emit-trigger-gate` blocked the commit: the generated SDK module
+contains `EVENT_RULESET_EPOCH_ACTIVATED = "ruleset.epoch_activated"`, and a dotted event_type in
+quotes is exactly the shape that gate exists to catch (it is how a Python service emits without
+ever naming the struct). **The gate was right, and I did not widen its allowlist** — that list is
+capped at three by its own self-test, and the cap is the correct rule. Fixed with a *category*: a
+file `eventgen` wrote is a declaration surface, regenerated from the registry, that cannot hide a
+`publish` because the next `make eventgen` deletes anything added to it. Both directions bitten
+(marker-anywhere → selftest reds; exemption removed → the gate reds on the real file).
+
+**But the underlying weakening is real and general:** with name constants, a producer can write
+`await bus.publish(EVENT_RULESET_EPOCH_ACTIVATED, payload)` and **no line contains the dotted
+string**, so every literal-based gate in the repo now has a blind spot. That arrived with the
+constants, not with the exemption, and it is the price of deleting the hand-mirrored literals.
+Closing it needs a symbol-aware check — *the constant's importers, not its spelling*. **Wakes
+when:** a second literal-based gate is written, or any of them is relied on to authorise a
+release.
+
+⚠️ **Correction carried into the contract: there are SEVEN glossary events, not nine.** The
+plan's prose said nine; the producer declares seven and the gate agrees. Fixed at the source
+rather than carried forward.
 
 ✅ **QC-7 IS SIGNED OFF AND ALL THREE OPEN DECISIONS ARE TAKEN (PO, 2026-08-12).**
 
@@ -445,7 +532,7 @@ answered and are kept for the record (X1, X2, and T25b's two — all implemented
 
 | # | decision | who | what is blocked | cost of not deciding |
 |---|---|---|---|---|
-| **OD-1** ✅ **ANSWERED 2026-08-12 — DO THE REAL ADOPTION** (PO). It is the RESUME. | **T30's registry half.** Registering the nine `glossary.*` events the `canon.*` way adds a **sixth** parallel list rather than removing the five that exist. Genuine adoption = glossary-service imports `contracts/events` (a Go module dependency + a rewrite of every emit site), which `canon.go` itself records as a separate sub-program. **Scope call.** | PO | T30 stays `[~]`. Nothing downstream. | Low — the property RT-10 wanted (a producer rename cannot land silently) already ships and is gated. |
+| **OD-1** ✅ **ANSWERED AND DELIVERED 2026-08-12** (PO: do the real adoption) — T30 is closed; `D-GLOSSARY-EVENTS-NO-SOT` discharged. | **T30's registry half.** Registering the nine `glossary.*` events the `canon.*` way adds a **sixth** parallel list rather than removing the five that exist. Genuine adoption = glossary-service imports `contracts/events` (a Go module dependency + a rewrite of every emit site), which `canon.go` itself records as a separate sub-program. **Scope call.** | PO | T30 stays `[~]`. Nothing downstream. | Low — the property RT-10 wanted (a producer rename cannot land silently) already ships and is gated. |
 | **OD-2** ✅ **ANSWERED AND DISCHARGED 2026-08-12** (PO: set it) — done, evidence in the run-state block; the soak's remaining half is wall-clock. | **Set `KNOWLEDGE_VECTOR_DB_URL` on the shared dev stack** and let the secondary soak. Operational, about a shared environment. | whoever owns the dev stack | `D-T25B-SOAK` → the three vector read sites → the rest of the T25b cutover. | Medium — the cutover cannot be *argued for* at all, and the failure counter reads zero for the wrong reason. |
 | **OD-3** — still open, still owed by me first. | **QC-3's POST-REVIEW sign-off** (⏸). Evidence is gathered; `/review-impl` and the real-corpus recall comparison are owed by me first. | me, then PO | The vector cutover only — which OD-2 independently blocks. | Low today, because OD-2 blocks the same gate. |
 
@@ -3224,7 +3311,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 ### Phase 5 · The model
 
-- [~] **T30** — Close `D-GLOSSARY-EVENTS-NO-SOT` **before any producer moves**
+- [x] **T30** — Close `D-GLOSSARY-EVENTS-NO-SOT` **before any producer moves** ✅ **BOTH HALVES DONE 2026-08-12** (enforcement T30 · registry adoption OD-1)
   `contracts/events/_registry.yaml` — 0 `glossary.*` entries; the real list is a Go `const` block
   hand-mirrored by five consumers with no generator and no drift gate.
   (depends on T29)
@@ -3256,7 +3343,13 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   change meaning if it ever started being emitted. Tests are reported as a **note**, not
   failed: failing them would push the next author to delete the assertion rather than the drift.
 
-  ⚠️ **THE REGISTRY HALF IS NOT DONE, AND IS NOT QUIETLY SUBSTITUTED — PO input wanted.**
+  ✅ **THE REGISTRY HALF IS NOW DONE (OD-1, PO 2026-08-12).** The analysis below stands and is
+  why it was escalated rather than guessed — registering the events the `canon.*` way really
+  would have added a sixth list. What closed it was going further than `canon.go`: generating
+  the NAMES from the registry (they did not exist in any language) and rewiring the producer
+  and all five consumers to import them. Evidence in the CURRENT RUN STATE block.
+
+  ~~**THE REGISTRY HALF IS NOT DONE, AND IS NOT QUIETLY SUBSTITUTED — PO input wanted.**~~
   The obvious reading of this task is "add the nine events to `_registry.yaml`". Measured, that
   does **not** close the deferral, and the repo contains the proof:
   - `contracts/events/registry.go:108` **requires a non-empty `go_struct`** per entry and

@@ -75,6 +75,19 @@ from app.mcp.server import build_mcp_app, mcp_server
 # (/mcp/admin) RS256-gated at the transport before tools/list (INV-T6). Its
 # session manager is run alongside mcp_server in the lifespan below.
 from app.mcp.admin_server import build_admin_mcp_app, mcp_admin_server
+# ⚠️ Event names come from the CONTRACT (T30/OD-1, 2026-08-12): generated into
+# `loreweave_events` from contracts/events/_registry.yaml. These were hand-written
+# literals, and a producer rename left them registering handlers for a name nothing
+# emits — valid Python forever, every mocked test still green, the handler simply
+# never running. A rename is now an ImportError at startup instead.
+from loreweave_events import (
+    EVENT_GLOSSARY_ENTITY_DELETED,
+    EVENT_GLOSSARY_ENTITY_MERGED,
+    EVENT_GLOSSARY_ENTITY_PURGED,
+    EVENT_GLOSSARY_ENTITY_RESTORED,
+    EVENT_GLOSSARY_ENTITY_STATUS_CHANGED,
+    EVENT_GLOSSARY_ENTITY_UPDATED,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -291,30 +304,30 @@ async def lifespan(app: FastAPI):
         # glossary.entity_updated on every entity write (single + bulk
         # extract); this triggers the existing glossary_sync → Neo4j.
         dispatcher.register(
-            "glossary.entity_updated", handle_glossary_entity_updated,
+            EVENT_GLOSSARY_ENTITY_UPDATED, handle_glossary_entity_updated,
         )
         # mui #1c — glossary.entity_merged consolidates the KG: merge the loser
         # :Entity into the winner + entity_alias_map (anti-resurrection).
         dispatcher.register(
-            "glossary.entity_merged", handle_glossary_entity_merged,
+            EVENT_GLOSSARY_ENTITY_MERGED, handle_glossary_entity_merged,
         )
         # T27 — the entity lifecycle. Delete/restore/purge were silent in glossary-service,
         # so the KG mirror never learned about any of them: a restored entity stayed
         # archived here forever while the glossary showed it live.
         dispatcher.register(
-            "glossary.entity_deleted", handle_glossary_entity_deleted,
+            EVENT_GLOSSARY_ENTITY_DELETED, handle_glossary_entity_deleted,
         )
         dispatcher.register(
-            "glossary.entity_restored", handle_glossary_entity_restored,
+            EVENT_GLOSSARY_ENTITY_RESTORED, handle_glossary_entity_restored,
         )
         dispatcher.register(
-            "glossary.entity_purged", handle_glossary_entity_purged,
+            EVENT_GLOSSARY_ENTITY_PURGED, handle_glossary_entity_purged,
         )
         # T28 — the curation axis. `status` is a liveness predicate in glossary-service
         # (every consumer read filters `status = 'active'`), so retiring an entity removed
         # it from the glossary's own canon reads while this mirror kept answering about it.
         dispatcher.register(
-            "glossary.entity_status_changed", handle_glossary_entity_status_changed,
+            EVENT_GLOSSARY_ENTITY_STATUS_CHANGED, handle_glossary_entity_status_changed,
         )
 
         consumer = EventConsumer(

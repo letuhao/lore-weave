@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	events "github.com/loreweave/foundation/contracts/events/generated"
 	"log/slog"
 	"time"
 
@@ -53,7 +54,18 @@ import (
 // The kind reassignment goes the other way for the same reason — it IS a content change, the
 // payload already carries `kind`, and the consumer already knows what to do with it. A new
 // event there would be a second way to say something already said.
-const entityStatusChangedEvent = "glossary.entity_status_changed"
+// ⚠️ THE WIRE NAMES COME FROM THE CONTRACT NOW (T30 / OD-1, 2026-08-12).
+//
+// These were string literals, and `D-GLOSSARY-EVENTS-NO-SOT` recorded what that cost: this
+// block was the authoritative list, hand-mirrored by five consumers across four services,
+// with nothing relating the copies. Renaming one here left the others compiling and silently
+// not matching — no compile error, no failing test, the handler simply stopped running.
+//
+// They are now aliases of the generated constants in `contracts/events`, which are emitted
+// from `_registry.yaml`. The local names are kept because the call sites read better with
+// them and the diff stays honest; what is DELETED is the second source of truth. A rename in
+// the registry is now a compile error here.
+const entityStatusChangedEvent = events.EventGlossaryEntityStatusChanged
 
 // entityStatusChangedPayload carries BOTH statuses. The consumer's decision is
 // "is the new status active", which needs only one of them — but `prior_status` is what makes

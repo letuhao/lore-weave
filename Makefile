@@ -66,6 +66,7 @@ eventgen:
 	  --registry contracts/events/_registry.yaml \
 	  --events-dir contracts/events \
 	  --out-dir   contracts/events/generated \
-	  --target    all
+	  --target    all \
+	  --sdk-python-out sdks/python/loreweave_events/__init__.py
 	@rm -f tools/eventgen/eventgen tools/eventgen/eventgen.exe
 	@echo "eventgen regeneration complete"

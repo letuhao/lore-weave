@@ -40,6 +40,22 @@ func EmitPython(reg *events.Registry, outDir string) error {
 	for _, l := range initLines {
 		ib.WriteString(l + "\n")
 	}
+	// Event-type NAME constants (T30/OD-1, 2026-08-12) — the Python half of the
+	// same surface `emit_go.go` adds. Without it the three PYTHON consumers of
+	// glossary.* would keep hand-declaring their own literals even after the Go
+	// side stopped, which would leave the parallel-list problem half-solved and
+	// harder to see: the remaining copies would be in a different language from
+	// the owner, so no compiler or linter relates them.
+	//
+	// UPPER_SNAKE with an EVENT_ prefix, mirroring the Go `Event` prefix.
+	ib.WriteString("\n# Event-type name constants, generated from the registry.\n")
+	ib.WriteString("# Import these instead of writing the literal: a rename in the registry\n")
+	ib.WriteString("# changes this file, and a stale import raises ImportError at startup\n")
+	ib.WriteString("# rather than silently matching nothing at dispatch time.\n")
+	for _, n := range reg.EventTypes() {
+		ib.WriteString(fmt.Sprintf("%s = %q\n", pyEventConstName(n), n))
+	}
+
 	ib.WriteString("\n__all__ = [\n")
 	for _, l := range initExports {
 		ib.WriteString(l + "\n")
@@ -86,3 +102,10 @@ func pythonImports(fields []Field) []string {
 }
 
 // (snake() is defined in emit_rust.go and shared across emitters.)
+
+// pyEventConstName turns an event_type into a module-level Python constant name:
+// "glossary.entity_updated" -> "EVENT_GLOSSARY_ENTITY_UPDATED".
+func pyEventConstName(eventType string) string {
+	repl := strings.NewReplacer(".", "_", "-", "_")
+	return "EVENT_" + strings.ToUpper(repl.Replace(eventType))
+}

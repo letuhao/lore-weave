@@ -10,6 +10,13 @@ from .canon_entry_created_v1 import CanonEntryCreatedV1
 from .canon_entry_decanonized_v1 import CanonEntryDecanonizedV1
 from .canon_entry_promoted_v1 import CanonEntryPromotedV1
 from .canon_entry_updated_v1 import CanonEntryUpdatedV1
+from .glossary_entity_deleted_v1 import GlossaryEntityDeletedV1
+from .glossary_entity_merged_v1 import GlossaryEntityMergedV1
+from .glossary_entity_purged_v1 import GlossaryEntityPurgedV1
+from .glossary_entity_restored_v1 import GlossaryEntityRestoredV1
+from .glossary_entity_status_changed_v1 import GlossaryEntityStatusChangedV1
+from .glossary_entity_updated_v1 import GlossaryEntityUpdatedV1
+from .glossary_name_confirmed_v1 import GlossaryNameConfirmedV1
 from .npc_said_v1 import NpcSaidV1
 from .npc_said_v2 import NpcSaidV2
 from .reality_created_v1 import RealityCreatedV1
@@ -17,6 +24,33 @@ from .ruleset_epoch_activated_v1 import RulesetEpochActivatedV1
 from .world_tick_v1 import WorldTickV1
 from .x_reality_canon_promoted_v1 import XRealityCanonPromotedV1
 from .x_reality_user_erased_v1 import XRealityUserErasedV1
+
+# Event-type name constants, generated from the registry.
+# Import these instead of writing the literal: a rename in the registry
+# changes this file, and a stale import raises ImportError at startup
+# rather than silently matching nothing at dispatch time.
+EVENT_ADMIN_CANON_OVERRIDE_COMPENSATING = "admin.canon.override.compensating"
+EVENT_ADMIN_CANON_OVERRIDE_CONSENTED = "admin.canon.override.consented"
+EVENT_ADMIN_CANON_OVERRIDE_REQUESTED = "admin.canon.override.requested"
+EVENT_ADMIN_CANON_OVERRIDE_VETOED = "admin.canon.override.vetoed"
+EVENT_CANON_CHANGE_RECORDED = "canon.change.recorded"
+EVENT_CANON_ENTRY_CREATED = "canon.entry.created"
+EVENT_CANON_ENTRY_DECANONIZED = "canon.entry.decanonized"
+EVENT_CANON_ENTRY_PROMOTED = "canon.entry.promoted"
+EVENT_CANON_ENTRY_UPDATED = "canon.entry.updated"
+EVENT_GLOSSARY_ENTITY_DELETED = "glossary.entity_deleted"
+EVENT_GLOSSARY_ENTITY_MERGED = "glossary.entity_merged"
+EVENT_GLOSSARY_ENTITY_PURGED = "glossary.entity_purged"
+EVENT_GLOSSARY_ENTITY_RESTORED = "glossary.entity_restored"
+EVENT_GLOSSARY_ENTITY_STATUS_CHANGED = "glossary.entity_status_changed"
+EVENT_GLOSSARY_ENTITY_UPDATED = "glossary.entity_updated"
+EVENT_GLOSSARY_NAME_CONFIRMED = "glossary.name_confirmed"
+EVENT_NPC_SAID = "npc.said"
+EVENT_REALITY_CREATED = "reality.created"
+EVENT_RULESET_EPOCH_ACTIVATED = "ruleset.epoch_activated"
+EVENT_WORLD_TICK = "world.tick"
+EVENT_XREALITY_CANON_PROMOTED = "xreality.canon.promoted"
+EVENT_XREALITY_USER_ERASED = "xreality.user.erased"
 
 __all__ = [
     "AdminCanonOverrideCompensatingV1",
@@ -28,6 +62,13 @@ __all__ = [
     "CanonEntryDecanonizedV1",
     "CanonEntryPromotedV1",
     "CanonEntryUpdatedV1",
+    "GlossaryEntityDeletedV1",
+    "GlossaryEntityMergedV1",
+    "GlossaryEntityPurgedV1",
+    "GlossaryEntityRestoredV1",
+    "GlossaryEntityStatusChangedV1",
+    "GlossaryEntityUpdatedV1",
+    "GlossaryNameConfirmedV1",
     "NpcSaidV1",
     "NpcSaidV2",
     "RealityCreatedV1",

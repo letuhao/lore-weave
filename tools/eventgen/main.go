@@ -21,6 +21,8 @@ func main() {
 		scope        = flag.String("scope", "events", "codegen scope: events | contracts (contracts reserved for Q-L4-3 V2)")
 		validate     = flag.Bool("validate", false, "validate-only: parse registry + abort without writing files")
 		showVersion  = flag.Bool("version", false, "print version and exit")
+		sdkPythonOut = flag.String("sdk-python-out", "",
+			"optional path for the self-contained Python event-name constants module (e.g. sdks/python/loreweave_events/__init__.py); empty writes nothing")
 	)
 	flag.Parse()
 
@@ -42,6 +44,7 @@ func main() {
 		OutDir:       *outDir,
 		Target:       *target,
 		Validate:     *validate,
+		SDKPythonOut: *sdkPythonOut,
 	}
 	if err := Run(cfg); err != nil {
 		log.Fatalf("eventgen: %v", err)

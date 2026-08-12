@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	events "github.com/loreweave/foundation/contracts/events/generated"
 	"log/slog"
 	"time"
 
@@ -42,13 +43,24 @@ import (
 
 // entityUpdatedEvent is the canonical event type string published on the
 // glossary stream. Stable wire contract consumed by knowledge-service.
-const entityUpdatedEvent = "glossary.entity_updated"
+// ⚠️ THE WIRE NAMES COME FROM THE CONTRACT NOW (T30 / OD-1, 2026-08-12).
+//
+// These were string literals, and `D-GLOSSARY-EVENTS-NO-SOT` recorded what that cost: this
+// block was the authoritative list, hand-mirrored by five consumers across four services,
+// with nothing relating the copies. Renaming one here left the others compiling and silently
+// not matching — no compile error, no failing test, the handler simply stopped running.
+//
+// They are now aliases of the generated constants in `contracts/events`, which are emitted
+// from `_registry.yaml`. The local names are kept because the call sites read better with
+// them and the diff stays honest; what is DELETED is the second source of truth. A rename in
+// the registry is now a compile error here.
+const entityUpdatedEvent = events.EventGlossaryEntityUpdated
 
 // entityMergedEvent (mui #1c) is emitted when a glossary entity is merged into
 // a winner. knowledge-service's consumer runs its existing repo merge_entities
 // (rewire KG edges) + entity_alias_map (anti-resurrection). aggregate_id is the
 // winner (the surviving canon).
-const entityMergedEvent = "glossary.entity_merged"
+const entityMergedEvent = events.EventGlossaryEntityMerged
 
 type entityMergedPayload struct {
 	BookID         string `json:"book_id,omitempty"`
@@ -186,7 +198,7 @@ type wikiCorrectedPayload struct {
 	BookID                string `json:"book_id,omitempty"`
 	ArticleID             string `json:"article_id"`
 	EntityID              string `json:"entity_id"`
-	UserID                string `json:"user_id"` // the owner who edited (learning's correction owner)
+	UserID                string `json:"user_id"`                 // the owner who edited (learning's correction owner)
 	PriorGenerationStatus string `json:"prior_generation_status"` // generated | needs_review | blocked
 	EmittedAt             string `json:"emitted_at"`
 }
@@ -550,7 +562,7 @@ func (s *Server) emitTranslationChanged(
 	}
 }
 
-const nameConfirmedEvent = "glossary.name_confirmed"
+const nameConfirmedEvent = events.EventGlossaryNameConfirmed
 
 // nameConfirmedPayload is carried by glossary.name_confirmed (M7c-3 — the human
 // name-confirm flywheel). A USER set a name translation to confidence='verified'

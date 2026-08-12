@@ -26,12 +26,24 @@ import logging
 from uuid import UUID
 
 from loreweave_jobs import BaseTerminalConsumer
+# ⚠️ Event names come from the CONTRACT (T30/OD-1, 2026-08-12): generated into
+# `loreweave_events` from contracts/events/_registry.yaml. These were hand-written
+# literals, and a producer rename left them registering handlers for a name nothing
+# emits — valid Python forever, every mocked test still green, the handler simply
+# never running. A rename is now an ImportError at startup instead.
+from loreweave_events import (
+    EVENT_GLOSSARY_ENTITY_DELETED,
+    EVENT_GLOSSARY_ENTITY_PURGED,
+    EVENT_GLOSSARY_ENTITY_RESTORED,
+    EVENT_GLOSSARY_ENTITY_STATUS_CHANGED,
+    EVENT_GLOSSARY_ENTITY_UPDATED,
+)
 
 log = logging.getLogger(__name__)
 
 STREAM = "loreweave:events:glossary"
 GROUP_NAME = "translation-staleness"
-GLOSSARY_CHANGE_EVENT = "glossary.entity_updated"
+GLOSSARY_CHANGE_EVENT = EVENT_GLOSSARY_ENTITY_UPDATED
 
 # The ENTITY LIFECYCLE events (plan T27/T28) belong here too, and their absence was a live,
 # reproduced defect rather than a design choice — QC-4's smoke trashed a real entity through
@@ -52,10 +64,10 @@ GLOSSARY_CHANGE_EVENT = "glossary.entity_updated"
 # The flag only flips false -> true, so an entity that is deleted and then purged flags once
 # and the second event is a cheap no-op.
 GLOSSARY_LIFECYCLE_EVENTS = (
-    "glossary.entity_deleted",
-    "glossary.entity_restored",
-    "glossary.entity_purged",
-    "glossary.entity_status_changed",
+    EVENT_GLOSSARY_ENTITY_DELETED,
+    EVENT_GLOSSARY_ENTITY_RESTORED,
+    EVENT_GLOSSARY_ENTITY_PURGED,
+    EVENT_GLOSSARY_ENTITY_STATUS_CHANGED,
 )
 GLOSSARY_STALENESS_EVENTS = (GLOSSARY_CHANGE_EVENT, *GLOSSARY_LIFECYCLE_EVENTS)
 MAX_RETRIES = 3

@@ -15,6 +15,14 @@ type Config struct {
 	OutDir       string
 	Target       string // all | go | rust | ts | python
 	Validate     bool   // parse only; emit nothing
+	// SDKPythonOut, when non-empty, is the path of a SELF-CONTAINED Python module of
+	// event-name constants, written for distribution through `sdks/python`.
+	//
+	// It is a separate flag rather than another file under OutDir on purpose:
+	// `scripts/eventgen-validate.sh` regenerates into a temp dir and `diff -r`s it against
+	// OutDir, so anything extra written under OutDir during validation would read as drift.
+	// Empty (the default) writes nothing, which is what keeps that comparison honest.
+	SDKPythonOut string
 }
 
 // Run executes the eventgen pipeline:
@@ -42,6 +50,14 @@ func Run(cfg Config) error {
 	if cfg.Validate {
 		fmt.Fprintf(os.Stderr, "eventgen: registry valid — %d events registered\n", reg.Len())
 		return nil
+	}
+
+	// The SDK constants module. Emitted from the registry, so the names it carries and the
+	// names the Go constants carry cannot disagree.
+	if cfg.SDKPythonOut != "" {
+		if err := EmitSDKPythonConstants(reg, cfg.SDKPythonOut); err != nil {
+			return fmt.Errorf("emit sdk python constants: %w", err)
+		}
 	}
 
 	emitters := map[string]Emitter{

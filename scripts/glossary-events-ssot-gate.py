@@ -62,7 +62,31 @@ import subprocess
 import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-PRODUCER_DIR = os.path.join(ROOT, "services", "glossary-service", "internal", "api")
+# ⚠️ THE OWNER MOVED (T30 / OD-1, 2026-08-12), AND THIS GATE'S QUESTION CHANGED WITH IT.
+#
+# Until now the SSOT was "whatever glossary.* string literals the PRODUCER declares", and the
+# gate asked: does every consumer literal match one of them? That was the best check available
+# while the names lived in a Go `const` block — but it ACCEPTED the underlying disease, because
+# it needed those literals to exist in order to work at all.
+#
+# OD-1 made `contracts/events/_registry.yaml` the owner: the names are generated from it into
+# Go (`contracts/events/generated`) and Python (`sdks/python/loreweave_events`), and the
+# producer plus all five consumers import them. The producer therefore declares ZERO literals
+# now, and the old gate FAILED on precisely that — correctly, by its own rule that a gate
+# scanning nothing passes everything.
+#
+# The question is now stronger: the registry owns the names, so **any glossary.* literal in
+# live code outside the generated files is a re-declaration** — a copy that can drift. The old
+# check asked "does this copy match?"; this one asks "why is there a copy?".
+REGISTRY_PATH = os.path.join(ROOT, "contracts", "events", "_registry.yaml")
+
+# The generated files necessarily CONTAIN the literals — they are what everything else imports.
+# Exempting them is not a hole: they are rewritten by `make eventgen` from the registry, and
+# `scripts/eventgen-validate.sh` fails if they drift from it.
+GENERATED_PREFIXES = (
+    os.path.join("contracts", "events", "generated"),
+    os.path.join("sdks", "python", "loreweave_events"),
+)
 SCAN_DIRS = [os.path.join(ROOT, "services"), os.path.join(ROOT, "contracts")]
 SCAN_EXT = (".go", ".py", ".ts", ".tsx", ".js", ".yaml", ".yml", ".sql")
 
@@ -85,6 +109,11 @@ EVENT_RE = re.compile(
 # event_type on the wire. It is outside the families above and so never reaches this set;
 # kept named here so the next reader does not "fix" its absence.
 NOT_EVENTS: set[str] = set()
+
+# Matches a registry entry line: `  - name: glossary.entity_updated`. Anchored to the
+# `- name:` key so a description or comment that happens to mention an event name is not
+# mistaken for a registration.
+REGISTRY_NAME_RE = re.compile(r"\s*-\s*name:\s*(glossary\.[a-z0-9_]+)\s*$")
 
 # Documentation and history are allowed to name events that no longer exist — that is what
 # history is for. Only live code is held to the contract.
@@ -176,27 +205,111 @@ def walk(dirs: list[str]) -> list[str]:
     return found
 
 
+def _selftest() -> int:
+    """Prove this gate can go RED, and prove the three things it must NOT fail on.
+
+    Written when the gate's question changed (T30/OD-1): it used to ask *"does this consumer
+    literal match the producer's?"* and now asks *"why is there a literal at all, when the
+    registry owns the name?"*. That is a strictly stronger check, and a stronger check is
+    exactly the kind that gets loosened later by widening an exemption. The negative cases
+    below are what makes such a loosening visible instead of convenient.
+
+    Drives `main()` end-to-end against synthetic trees by rebinding the module globals, so it
+    exercises the real walk, the real regex and the real exit code rather than a
+    re-implementation of them.
+    """
+    import tempfile
+
+    g = globals()
+    saved = {k: g[k] for k in ("ROOT", "SCAN_DIRS", "REGISTRY_PATH", "GENERATED_PREFIXES")}
+    ok = True
+    NL = chr(10)
+
+    def run(case: str, want: int, *, registry: str, files: dict) -> None:
+        nonlocal ok
+        with tempfile.TemporaryDirectory() as t:
+            reg = os.path.join(t, "registry.yaml")
+            with open(reg, "w", encoding="utf-8") as fh:
+                fh.write(registry)
+            for rel, body in files.items():
+                full = os.path.join(t, rel.replace("/", os.sep))
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(body)
+            g["ROOT"] = t
+            g["REGISTRY_PATH"] = reg
+            g["SCAN_DIRS"] = [os.path.join(t, "services"), os.path.join(t, "contracts")]
+            sys.argv = ["gate"]
+            try:
+                got = main()
+            except SystemExit as exc:      # argparse should not fire, but never mask it
+                got = int(exc.code or 0)
+            if got != want:
+                print("  FAIL — " + case + ": exit " + str(got) + ", expected " + str(want))
+                ok = False
+
+    REG = ("events:" + NL
+           + "  - name: glossary.entity_updated" + NL
+           + "    aggregate: glossary" + NL)
+    LIVE = "services/knowledge-service/app/main.py"
+
+    run("a registered name referenced in live code passes", 0,
+        registry=REG, files={LIVE: 'x = "glossary.entity_updated"' + NL})
+
+    run("an UNREGISTERED name in live code is refused", 1,
+        registry=REG, files={LIVE: 'x = "glossary.entity_vanished"' + NL})
+
+    # Negative controls. Each is a way this gate could turn into a nuisance and get muted,
+    # and a muted gate is worse than no gate because it still prints PASS.
+    run("an unregistered name in a TEST file is a note, not a failure", 0,
+        registry=REG,
+        files={"services/knowledge-service/tests/test_x.py":
+               'x = "glossary.entity_created"' + NL})
+
+    run("the generated files may carry the literals — they ARE the owner's output", 0,
+        registry=REG,
+        files={"contracts/events/generated/python/__init__.py":
+               'EVENT_GLOSSARY_ENTITY_VANISHED = "glossary.entity_vanished"' + NL})
+
+    # The scans-nothing guard, and the reason it is not hypothetical: on 2026-08-12 the owner
+    # moved to the registry, the producer's literal count went to zero, and the OLD gate
+    # failed on exactly this rule rather than silently passing everything.
+    run("an empty registry FAILS instead of passing everything", 1,
+        registry="events: []" + NL, files={LIVE: 'x = "glossary.entity_updated"' + NL})
+
+    for k, v in saved.items():
+        g[k] = v
+    print("[glossary-events-ssot-gate] SELFTEST " + ("PASS" if ok else "FAIL")
+          + " — an unregistered name reds, a registered one passes, tests and generated files"
+          + " stay exempt, and an empty registry cannot pass everything (non-vacuous)")
+    return 0 if ok else 1
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--staged", action="store_true",
                     help="report only files in the staged set (the SSOT is still read in full)")
     args = ap.parse_args()
 
-    if not os.path.isdir(PRODUCER_DIR):
-        print(f"[glossary-events-ssot-gate] SKIP — producer dir not present: {PRODUCER_DIR}")
-        return 0
+    if not os.path.isfile(REGISTRY_PATH):
+        print(f"[glossary-events-ssot-gate] FAIL — registry absent: {REGISTRY_PATH}")
+        return 1
 
-    # The SSOT: every glossary.* literal the producer declares.
+    # The SSOT: every glossary.* event registered in the contract. Read with a line regex
+    # rather than a YAML parser so the gate keeps working inside a pre-commit hook with no
+    # third-party dependencies available — and so a parse error can never be swallowed
+    # somewhere and turn into an empty set that passes everything.
     ssot: set[str] = set()
-    for base, _, files in os.walk(PRODUCER_DIR):
-        for f in files:
-            if f.endswith(".go") and not f.endswith("_test.go"):
-                ssot |= events_in(os.path.join(base, f))
+    with open(REGISTRY_PATH, "r", encoding="utf-8", errors="ignore") as fh:
+        for line in fh:
+            m = REGISTRY_NAME_RE.match(line)
+            if m:
+                ssot.add(m.group(1))
 
     if not ssot:
-        print("[glossary-events-ssot-gate] FAIL — no glossary.* event names found in the "
-              "producer. Either the producer moved (update PRODUCER_DIR) or the gate is "
-              "scanning nothing, and a gate that scans nothing passes everything.")
+        print("[glossary-events-ssot-gate] FAIL — no glossary.* events found in "
+              f"{os.path.relpath(REGISTRY_PATH, ROOT)}. Either the registry moved or this "
+              "gate is scanning nothing, and a gate that scans nothing passes everything.")
         return 1
 
     staged: set[str] = set()
@@ -213,6 +326,8 @@ def main() -> int:
     in_tests: dict[str, set[str]] = {}
     used: set[str] = set()
     for path in walk(SCAN_DIRS):
+        if os.path.relpath(path, ROOT).startswith(GENERATED_PREFIXES):
+            continue
         names = events_in(path)
         if not names:
             continue
@@ -243,13 +358,13 @@ def main() -> int:
         print("\n  These are dead branches that look alive. Either the producer renamed the")
         print("  event and this consumer was not updated, or the name is a typo — both are")
         print("  silent: no compile error, no failing test, the handler simply never runs.")
-        print(f"\n  The producer ({os.path.relpath(PRODUCER_DIR, ROOT)}) emits:")
+        print(f"\n  The registry ({os.path.relpath(REGISTRY_PATH, ROOT)}) declares:")
         for name in sorted(ssot):
             print(f"    {name}")
 
     if not failed:
         print(f"[glossary-events-ssot-gate] PASS — {len(ssot)} glossary.* event name(s) "
-              f"declared by the producer; every reference in non-test code across services/ "
+              f"declared by the registry; every reference in non-test code across services/ "
               f"and contracts/ matches one of them")
     if in_tests:
         print("  note — names referenced only by TESTS that no producer emits:")
@@ -263,4 +378,6 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        sys.exit(_selftest())
     sys.exit(main())

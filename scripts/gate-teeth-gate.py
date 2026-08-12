@@ -44,9 +44,13 @@ WORKFLOWS = ROOT / ".github" / "workflows"
 #: MEASURED, not estimated — the first value here was a guess of 43 and the gate rejected it
 #: on its own first run, which is the behaviour you want from a ratchet.
 #: 2026-08-09: 45 → 44, `scripts/test_db_safety_gate.py`. db-safety-gate had shipped two
+#: 2026-08-12: 44 → 43, `glossary-events-ssot-gate.py` gained a --selftest. Its SSOT
+#: moved from the producer's string literals to `contracts/events/_registry.yaml`
+#: (T30/OD-1), which is a stronger question — so the proof was written with the
+#: change rather than owed after it.
 #: blind spots (an allowlist that omitted `tests/`, and a config check that required `TEST`
 #: in the variable name) and both were found by hand; the proofs are now permanent.
-NO_PROOF_BASELINE = 44
+NO_PROOF_BASELINE = 43
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
