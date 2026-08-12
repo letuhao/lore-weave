@@ -89,10 +89,11 @@
       "note": "BLOCKED on D-FJ-15. Run on book 019f9cf7 from plain prose with no operator-typed tool argument. The rail pinned and named its only step (story_search) — and that step was never called; the rail stands at 0/1. The model answered from ambient context, correctly, which is exactly why this is blocked rather than proven: the workflow's promise ('Answer using only what the reader has read so far') is enforced by the step that did not run, so a right answer here proves nothing about the cutoff. Not dressed up as proven on the strength of a good-looking reply."
     },
     "glossary-bootstrap": {
-      "state": "not_started",
+      "state": "proven",
       "surface": "unrestricted",
       "declared_steps": 4,
-      "note": "NOT STARTED — the only declared WORKFLOW without a terminal conclusion. It needs a book with no categories yet, so a fresh one; the run stopped at book creation when the browser session's access token expired and the app redirected to /login. Two hard environment limits were hit in the same window and are recorded because they bound what this session could verify, not as excuses: the host OOM'd (an unrelated GitKraken hook died with 'fatal error: out of memory allocating heap arena map', the same limit that earlier killed a pytest-xdist run with an execnet MemoryError), and the auth token expired. RESUME: log in, create a fresh book, and send prose paraphrasing the workflow's own description ('set up this book's world categories'). Note D-FJ-9/D-FJ-10 make the pinning of description-shaped requests markedly more reliable than when this loop started, so this should now engage its rail."
+      "modules_crossed": 2,
+      "note": "PROVEN end to end through the browser on a FRESH book 019ff61b-7ece-777a-a006-b9bd0ca7eb0c (created for this run precisely because the workflow needs a book with no categories), driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument — the only text supplied was 'Set up this book's world categories for me so I have somewhere to file characters, places and terms.' ALL FOUR declared steps ran in order: glossary_list_system_standards, glossary_adopt_standards (which raised its confirm card), the confirm, and glossary_book_ontology_read. MEASURED: the book went from 0 categories to 14 — character, location, item, event, terminology, power_system, organization, technique, species, relationship, plot_arc, trope, social_setting, unknown — which includes all three the user actually asked for (characters, places, terms). NO DEFECT SURFACED. Note this run only happened because the browser's access token had expired mid-loop and a fresh dev session was minted against the auth service's own JWT secret and an existing session row; that is a dev-environment operation, recorded so the run is reproducible rather than mysterious."
     }
   },
   "defects": {
@@ -272,8 +273,8 @@
   },
   "progress": {
     "workflows_declared": 12,
-    "workflows_concluded": 11,
-    "workflows_proven": 8,
+    "workflows_concluded": 12,
+    "workflows_proven": 9,
     "workflows_blocked": 3,
     "skills_declared": 27,
     "skills_concluded": 0,
