@@ -276,7 +276,25 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: `checked` stayed 0, `problems` stayed empty, and it printed *"0 alerts validated"* and exited
 #: 0. The count was right there in the success line — the same tell as
 #: `read-audit-drift`'s "(0 ids)".
-NO_PROOF_BASELINE = 29
+#: 2026-08-12 (m): 29 -> 28. `dashboard-validator.sh`, closing `GT4`. Its reach floor already
+#: existed and `GRANDFATHERED` was legitimately empty — but the TEMPLATE exemption was **wider
+#: than its stated reason**: `check_dashboard "$f" 2>/dev/null` swallowed all NINE rules while
+#: the comment justified exactly one ("uid `_template` is intentionally non-kebab-case"). A
+#: template that lost its `timezone`, or stopped being valid JSON, was waved through under a
+#: justification that did not cover it. Narrowed to the uid rule; measured first, and it reds
+#: nothing today.
+#:
+#: **Two of its four bite arms FAILED on the first run, and both were right to.** The narrowed
+#: exemption and the new shrink arm had NO CASE: the probe tree contained no template entry, and
+#: the hardcoded exemption path resolved against the real repo, so disabling either rule changed
+#: nothing. Rules added ten minutes earlier, already deletable with the suite green. Fixed by
+#: parameterising `LW_TEMPLATE_FILES` — and `+x` rather than `-n`, because a probe wanting NO
+#: exemptions passes an empty string and `-n` would hand it the production default.
+#:
+#: Same root as the third finding: `DASH_ROOT` was read at script LOAD, so every probe ran
+#: against the real `dashboards/` tree and passed by accident. A self-test that never reaches
+#: its own fixture is worse than none — it reports coverage of inputs it never read.
+NO_PROOF_BASELINE = 28
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
