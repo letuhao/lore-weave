@@ -177,7 +177,23 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: gate now prints the subject count and says outright that nothing was compared; the coverage
 #: gap is tracked as `GT-ADMIN-NO-SUBJECT`. A proof that the rule bites and a statement that it
 #: has nothing to bite are two different facts, and this baseline only ever counted the first.
-NO_PROOF_BASELINE = 38
+#: 2026-08-12 (e): 38 -> 37. `dep-pinning-lint.sh`, where the proof was the smaller half again.
+#: Measured while writing it: the gate was scanning **89% foreign trees** — 600 of 675 `go.mod`
+#: and 288 of 324 `Dockerfile` under `.claude/worktrees/` (agent scratch copies of this repo),
+#: 136 of 153 `requirements*.txt` in worktrees / `site-packages` / `vendor`. It excluded
+#: `node_modules` and `.venv` and nothing else, so 1440 "judged" dependency lines were mostly
+#: other people's. Real counts: 75 / 17 / 3 / 36, and 176 lines.
+#:
+#: And the exclusion it did have was the WRONG SHAPE: `-not -path '*/target/*'` filters find's
+#: RESULTS while find still DESCENDS into every pruned directory. Four scans each walked two
+#: complete Rust build trees. `-prune` instead: **51-76s -> 13s**, identical counts. This is the
+#: same latency class that once took `admin-command-registry-lint` to a 900s timeout under
+#: `--run-all` — a gate red for a reason unrelated to what it checks.
+#:
+#: Also collapsed a warn arm that fired on **36 of 36** subjects (zero digest-pinned FROMs exist
+#: anywhere) from 36 identical lines to one ratio. A warning on everything is a warning on
+#: nothing; the ratio still moves the day someone pins one. `GT-DOCKER-WARN-100PCT`.
+NO_PROOF_BASELINE = 37
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
