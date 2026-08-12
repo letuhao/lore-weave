@@ -5066,6 +5066,53 @@ user turns at ~10× this `n`), and the 33 self-contradicting rows (registered as
 
 <details><summary>The original instructions, kept for the record</summary>
 
+## ▶ NEXT RUN — **the frontend journey loop**, set 2026-08-12
+
+**Book:** [`docs/plans/2026-08-12-frontend-journey-loop-RUNBOOK.md`](2026-08-12-frontend-journey-loop-RUNBOOK.md).
+**A run that departs from this section must say so HERE, in the same session it departs** — the
+obligation added below, after this board missed a three-day divergence.
+
+### The claim, stated so it can be falsified
+
+> **The tool loop asked "does this tool work?". This loop asks "can the product be used?"**
+
+319 of 319 tools are proven — every LIVE leg a hand-built JSON-RPC call I wrote myself. That bar is
+**structurally blind** to the four classes that dominate this board's own corpus: of **4,175 recorded
+failures, 88.1% are a missing declaration on the tool** — repeat semantics 48.8%, typed params 16.8%,
+argument supplier 14.1%, preconditions 8.4%. **None of the four can occur when the caller writes the
+arguments.** They need a model choosing the tool and deriving the arguments from prose.
+
+### Frozen at entry
+
+| | decision | why it is load-bearing |
+|---|---|---|
+| unit | a **journey** — one natural-language intent, carried to a finished outcome, **crossing ≥2 modules** | a single-module journey is a tool test with extra steps, and 319 of those are done |
+| denominator | **re-derived from `loreweave_agent_registry` at entry**, never typed. At writing: **12 published workflows** (`{book,editor}` 5 · `{book,editor,studio}` 4 · `{book}` 1 · unrestricted 2) + **27 published skills** (`{chat}` 13 · `{chat,compose}` 5 · unrestricted 9) + 1 slash command · 1 subagent · 2 mode bindings | the product **declares** its journeys as rows; a self-derived total always reads "done" |
+| model | **`google/gemma-4-26b-a4b-qat` via `lm_studio`** — verified **already this account's `chat` default and active** in `user_default_models`, not set for the run | a weak local model is the point: the corpus's failures come from this class, and CP-3's V-METRIC already measured where its carrier breaks (d=4) |
+| LIVE leg | 🔴 **through the BROWSER at `localhost:5174`, driven by the model.** **If I type a tool argument, the journey is not proven** | this single rule is the entire difference from the last loop |
+| content | **create freely — dev environment.** The tool loop's throwaway-book rule is **explicitly LIFTED**, PO decision 2026-08-12 | journeys about continuity, spoilers and translation are meaningless against a book with no history |
+| CODE · DATA | unchanged — tests + a falsifier proven RED on the original defect; every denominator from SSOT | |
+
+### What it can see that the tool loop could not
+
+**selection** (did the model pick the right tool from prose) · **derivation** (did it build arguments
+it was never handed) · **chaining** (did output A survive as input B across a module boundary) ·
+**composition** (do skill + workflow + state machine agree whose turn it is) · **surfacing** (did the
+FE render it, and is what it rendered true) · **recovery** (after a refusal, was there a next move
+that worked). The tool loop could see the last two only, and only when I staged them by hand.
+
+### Carried, not closed
+
+🔴 **The registry refactor is NOT done and is the standing architectural blocker** — *the registry is
+a FILE, not a registry* (below, `BLOCKS v2 tools`). **Deliberately sequenced after this loop:** it
+blocks admitting NEW v2 tools, not exercising the 315 that exist, and building the registry before
+knowing how tools fail under a real model risks building the wrong registry. **This loop is what
+tells it what to hold.** Also carried: **11 debt items** (D-1…D-11, tool-loop RUNBOOK), **DQ-1 → DQ-29**
+(all but DQ-26 open, new ones continue at DQ-30), and the **five items of the superseded scope below**,
+unchanged and still not done.
+
+---
+
 ## ▶ ~~NEXT RUN~~ — SUPERSEDED 2026-08-10/12 by the CP-5 tool loop, and the supersession went unrecorded
 
 🔴 **NONE of the five items below was taken.** The sessions of 2026-08-10 → 08-12 ran the CP-5 tool
