@@ -174,6 +174,10 @@ func (s *Server) Router() http.Handler {
 		// mui #4 — batch fetch by id for the knowledge semantic selector.
 		r.Post("/books/{book_id}/entities/by-ids", s.internalEntitiesByIDs)
 		r.Get("/books/{book_id}/entity-ids", s.internalEntityIDs)
+		// The truth side of the glossary→KG mirror anti-join. NOT entity-ids: that one
+		// filters `alive`, a story flag the emit path does not honour, so reconciling
+		// against it reports a dead-but-correctly-mirrored entity as an orphan.
+		r.Get("/books/{book_id}/mirror-truth-ids", s.internalMirrorTruthIDs)
 		// KG-ML M5 (C9) — batch localized entity display names for the knowledge
 		// KG graph-view / edge-timeline (resolves name/term attr → language).
 		r.Post("/books/{book_id}/entity-display-names", s.internalEntityDisplayNames)

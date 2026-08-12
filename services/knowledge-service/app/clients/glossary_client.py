@@ -454,6 +454,56 @@ class GlossaryClient:
         )
         return rows, True
 
+    async def list_mirror_truth_ids(
+        self, book_id: UUID, *, page_size: int = 200, max_pages: int = 50,
+    ) -> tuple[list[dict], bool] | None:
+        """GET /internal/books/{book_id}/mirror-truth-ids — the entities glossary-service
+        EMITS for, which is the only correct truth set for the KG mirror anti-join
+        (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER).
+
+        Deliberately NOT :meth:`list_entity_ids`, though the two look interchangeable:
+        `entity-ids` filters `alive`, a STORY flag. A narratively dead character still
+        emits and is still a graph node, so reconciling against that list would report
+        every dead-but-correctly-mirrored entity as an orphan, permanently.
+
+        Each row is ``{entity_id, kind_code, has_name}``. `has_name` is reported, not
+        filtered on — the decision of what SHOULD be mirrored is this service's
+        (`app.mirror.predicate.is_mirrorable`), because the skip lives in this service's
+        handler.
+
+        Returns ``(rows, truncated)``; None if the first page fails. `truncated` is True
+        only when `max_pages` ran out with more to come — a silent cap here would
+        under-report the divergence, which is the one thing a detector must not do.
+        """
+        rows: list[dict] = []
+        offset = 0
+        for _page in range(max_pages):
+            url = f"{self._base_url}/internal/books/{book_id}/mirror-truth-ids"
+            try:
+                resp = await self._http.get(
+                    url, params={"limit": page_size, "offset": offset},
+                )
+                if resp.status_code != 200:
+                    logger.warning("glossary mirror-truth-ids → %d", resp.status_code)
+                    return (rows, True) if rows else None
+                data = resp.json()
+            except (httpx.HTTPError, ValueError) as exc:
+                logger.warning(
+                    "glossary mirror-truth-ids failed: %s: %s",
+                    type(exc).__name__, exc or "(no detail — likely a timeout)",
+                )
+                return (rows, True) if rows else None
+            rows.extend(data.get("items") or [])
+            next_offset = data.get("next_offset")
+            if next_offset is None:
+                return rows, False
+            offset = next_offset
+        logger.warning(
+            "glossary mirror-truth-ids: hit max_pages=%d for book=%s (%d rows)",
+            max_pages, book_id, len(rows),
+        )
+        return rows, True
+
     async def list_all_entities(
         self,
         book_id: UUID,

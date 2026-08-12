@@ -28,6 +28,7 @@ from app.db.repositories.extraction_pending import (
 )
 from app.events.dispatcher import EventData
 from app.events.gating import may_extract_chat_turn, should_extract
+from app.mirror.predicate import is_mirrorable
 
 __all__ = [
     "handle_chat_turn",
@@ -1022,7 +1023,10 @@ async def handle_glossary_entity_updated(
     # re-emits, at which point the MERGE (keyed on glossary_entity_id)
     # creates/updates the node. This is correct at-least-once behaviour,
     # not a dropped event.
-    if not name or not kind:
+    # ⚠️ The skip rule is `app.mirror.predicate.is_mirrorable`, not an inline condition.
+    # The mirror DETECTOR has to apply the identical rule to tell "not yet nameable" from
+    # "lost in delivery"; two copies of it would drift into an alarm nobody can clear.
+    if not is_mirrorable(name, kind):
         logger.debug(
             "glossary.entity_updated for %s has empty name/kind (op=%s) — "
             "skipping until a populated event arrives",

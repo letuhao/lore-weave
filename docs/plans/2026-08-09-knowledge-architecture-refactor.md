@@ -5147,30 +5147,52 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   🔴 **SCOPE — this is not one character:**
 
   ```
-  glossary entities for the acceptance book : 48
-  KG entities carrying a glossary id        : 26
-  MISSING from the KG                       : 22   (46%)
+  glossary rows the emit path considers to exist : 46   (deleted_at IS NULL)
+  of those, ones the handler would mirror        : 43   (3 have no name YET — skipped by design)
+  present in the KG                              : 26
+  MISSING                                        : 17   (40%)
+  present in the KG but NOT in the truth set     :  0
   ```
 
+  ⚠️ **The first published figure here was `22 of 48 (46%)` and it was WRONG.** It came from
+  `SELECT count(*) FROM glossary_entities`, which counts 2 soft-deleted rows the KG is correct
+  not to hold and 3 nameless drafts the handler declines by design. **Five of the twenty-two
+  were the measurement's own predicate being sloppy**, not lost data — the exact
+  `reconcile-by-truth` mistake this repo has paid for before: asking a narrower (or wider)
+  question than the producer asks itself. The numbers above are the anti-join, per id, against
+  the producer's own predicate, and they are reproduced live by the shipped detector below.
+
   **`fact_for_check` reads the KG.** So every canon check in this architecture has been
-  reasoning over a cast with nearly half its members invisible — which is why the acceptance
+  reasoning over a cast missing two of every five members — which is why the acceptance
   snapshot returned 16 entities for a 30-id cast, and why a legitimately authored character
-  looked like an invention. **A silent 46% hole in the mirror is a stronger finding than any
+  looked like an invention. **A silent 40% hole in the mirror is a stronger finding than any
   judge-precision result in this section, and it invalidates the premise of several of them.**
 
   ### 🔻 DEFERRAL `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER`
 
   | | |
   |---|---|
-  | **Blocker** | The glossary is the SSOT and the KG is its projection, but the projection is at-least-once delivery with **no reconciliation**. An event lost while a handler was broken is lost permanently: nothing compares the two stores, nothing re-emits, and no check reports the divergence. Measured at **22 of 48 (46%)** on the acceptance book. |
-  | **Evidence** | The chain above, every step measured, plus a live replay proving the handler is correct now. The gap is not the handler — it is the absence of anything that notices. |
-  | **To unblock** | A reconciler: enumerate glossary entities per book, anti-join against KG `glossary_entity_id`, re-emit or MERGE the difference. It is the same shape as `reconcile-by-truth` already used elsewhere in this repo, and it needs no model. A *detector* (count divergence, alarm) is worth shipping even before the repairer. |
-  | **Mechanism** | The anti-join count IS the metric: it must trend to zero and stay there. `48 vs 26` is the baseline. |
-  | **Retry when** | Immediately. This blocks QC-5 meaningfully — an acceptance test over canon cannot mean much while 46% of canon is absent from the store the check reads. |
+  | **Blocker** | The glossary is the SSOT and the KG is its projection, but the projection is at-least-once delivery with **no reconciliation**. An event lost while a handler was broken is lost permanently: nothing re-emits, and — until now — nothing compared the two stores. **The DETECTOR is shipped; the REPAIRER is not.** Divergence is measured at **17 of 43 (40%)** on the acceptance book and nothing closes it. |
+  | **Evidence** | The chain above, every step measured, plus a live replay proving the handler is correct now. The gap is not the handler — it is the absence of anything that notices, and then of anything that fixes it. |
+  | **To unblock** | The repairer. It belongs on the EMIT side: re-publish `glossary.entity_updated` through the outbox for the ids the detector reports, rather than writing the graph directly. That path is already proven (the replay above) and already idempotent (the MERGE is keyed on `glossary_entity_id`); a second writer into the mirror would add a divergence class rather than close one. It needs no model. |
+  | **Mechanism** | `GET /internal/projects/{id}/glossary-mirror-drift` returns the anti-join. `missing` must trend to zero and stay there. **17** is the baseline, and it is now a number a machine produces rather than one a person finds by hand-querying two databases. |
+  | **Retry when** | Immediately. This blocks QC-5 meaningfully — an acceptance test over canon cannot mean much while 40% of canon is absent from the store the check reads. |
 
   ⚠️ **One dev-data change:** the replay probe created the KG node for the entity it tested
   (a genuine repair — the glossary says that entity exists). The other 21 were left alone;
-  hand-repair is not the fix, the reconciler is.
+  hand-repair is not the fix, the reconciler is. (That repair is why the live detector reports
+  17 and not 18.)
+
+  #### ✅ SHIPPED THIS CYCLE — the detector
+
+  | | |
+  |---|---|
+  | **Truth side** | `GET /internal/books/{id}/mirror-truth-ids` (glossary-service). Built from `mirrorTruthPredicate`, the **same SQL fragment the emit path reads**, extracted so it can have a second reader. NOT the existing `entity-ids`: that filters `e.alive`, a STORY flag the emit path does not honour, so reconciling against it would report every narratively-dead-but-correctly-mirrored character as an orphan, forever. |
+  | **Consumer side** | `app/mirror/predicate.py::is_mirrorable` — the handler's own skip rule (empty name/kind), now called by BOTH the handler and the detector. A nameless draft is *not yet nameable*, not lost; two copies of that rule would drift into an alarm nobody can clear. |
+  | **The anti-join** | `app/mirror/glossary_mirror.py`, per id, through the **`GraphStore` port** (`neighborhood`) — so the divergence is measured against whichever adapter T43 selects rather than against Neo4j specifically. Port adopters 10 → 11. |
+  | **Not measured, and it says so** | The other direction (a KG node whose glossary row is gone) needs a bulk graph enumeration the port does not have. The response returns `"orphans": "not measured"` rather than `0`, because a zero from a check that never ran is the accounting artefact this plan exists to prevent. Hand-measured once: 0 of 26. |
+  | **Bites** | 4 on the Go predicate (filter `alive` · drop the shared fragment · hide nameless rows · narrow the emit side) and 5 on the Python detector — all red. Two were VACUOUS first: a `Contains` drift assertion passed the very mutation it existed to catch (a side ADDING a condition still contains the fragment), and a wiring test compared `handlers.is_mirrorable is is_mirrorable`, which stayed green when the call site reverted to an inline condition. Both replaced — suffix/whole-clause assertion, and a spy that must actually be reached. |
+  | **Live** | Against rebuilt images on the dev stack: `truth_total 46 · mirrorable 43 · mirrored 26 · missing 17 · not_mirrorable 3 · truncated false`, and the 17 ids are **byte-identical** to an independent two-database `comm -23` run by hand. `entity_cap=5` returns `missing 0` with `truncated: true` — proof the numbers track live input, and a demonstration of exactly why a silent cap would be indistinguishable from a healthy mirror. |
 
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
@@ -5183,6 +5205,17 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   (`canon_cast` · `plan_liveness` · `name_grounding`), **not** the 4-dimension `judge_prose`
   scores. Those come from the D5 continuity critic, a different pass this endpoint does not
   run. The glossary delta is 0 by design (`persist:false` — a read-only run).
+
+  ### 🔻 DEFERRAL `D-NO-CI-BUILDS-ANY-SERVICE-IMAGE` — found by the detector's live smoke
+
+  | | |
+  |---|---|
+  | **Blocker** | **T30 (OD-1) shipped an image that could not be built.** Making `glossary-service` depend on the `contracts/events` module added a `replace => ../../contracts/events` that the Dockerfile never COPYs, so `go mod download` dies in the container: *"reading /src/contracts/events/go.mod: no such file or directory"*. The Go suite, the gates and `go build` were all green throughout — on a developer machine and in CI the replace resolves against the real directory on disk. **Only a container has a build context, and no workflow in this repo builds any service image.** Found on the first `docker compose build` of this cycle, one day later, while setting up an unrelated live smoke. |
+  | **Evidence** | The build failure verbatim, and `grep -rn "docker build\|compose build\|buildx" .github/workflows/` → the only hit is `python-integration-tests.yml` (the T42b AGE image). 13 workflows, 0 that build a service image. |
+  | **Fixed now** | The `COPY` line, plus `scripts/dockerfile-replace-copy-gate.py`: for every containerised Go service, every path-form `replace` target outside the service dir must be COPYed into the image (directly or via an ancestor). **43 targets, 0 uncopied** after the fix. Selftest proves it reds on a missing COPY and stays green on an ancestor copy, a whole-context `COPY .`, and a published-module replace. Bitten against the REAL repo: reverting the one-line fix reds it, naming the service and the path. |
+  | **Still open** | The gate closes THIS failure mode statically. It does not build anything, so it cannot catch a Dockerfile that is wrong in any other way (a bad base image, a missing runtime file, a broken multi-stage COPY). A CI leg that actually builds the service images is the real fix, and nothing in this repo does it. |
+  | **Mechanism** | The gate's own count. `43 / 0` is the floor and it is not a shrink-only backlog — a violation is not debt, it is an artefact that does not exist. |
+  | **Retry when** | Whenever image-build CI is scoped. Out of this plan's scope; recorded because it was found here and because it means **"the suite is green" has never implied "the service can be deployed"** for any service in this repo. |
 
   ### ~~DEFERRAL~~ `D-QC5-ACCEPTANCE-BLOCKED-ON-T36` — superseded 2026-08-11, kept for the record
 

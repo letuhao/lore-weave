@@ -86,7 +86,13 @@ MAX_CONCRETE_IMPORTERS = 69
 # `context/selectors/facts.py` (5 sites) · `tools/executor.py` (2) ·
 # `routers/internal_admin.py` (3).  **`find_relations_for_entity` now has ZERO direct
 # callers outside the adapters** — that half of the migration is complete.
-MIN_GRAPHSTORE_ADOPTERS = 10
+#
+# **11** — `mirror/glossary_mirror.py`, the glossary→KG mirror detector
+# (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER). It asks presence through `neighborhood()`
+# rather than reaching for `neo4j_repos`, so the divergence it reports is measured against
+# whichever adapter T43 selects — a detector bound to Neo4j would have to be rewritten by
+# the engine swap it is supposed to survive.
+MIN_GRAPHSTORE_ADOPTERS = 11
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

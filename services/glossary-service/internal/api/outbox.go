@@ -395,6 +395,31 @@ func buildTranslationEventPayload(
 // early empty-name event is still idempotently corrected by the later
 // PATCH-driven event.
 //
+// mirrorTruthPredicate names EXACTLY the rows this service will emit a
+// `glossary.entity_updated` for — the producer's own done-predicate, extracted so it can
+// have a second reader.
+//
+// D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER needs to ask "which entities SHOULD the KG hold?",
+// and the only correct answer is "the ones this service emits for". The nearest existing
+// enumeration, `/internal/books/{id}/entity-ids`, filters `e.alive` — a STORY flag (a
+// narratively dead character is still a graph node, and emits like any other). Reconciling
+// against it would report a dead-but-correctly-mirrored entity as an orphan forever.
+// `reconcile-by-truth` has cost this repo a bug before by asking a narrower proxy than the
+// producer's own predicate; this constant is what stops it happening a third time.
+//
+// ⚠️ Both readers below MUST be built from this fragment — `mirror_truth_handler.go`'s
+// TestMirrorTruthSharesTheProducerPredicate reds if either stops using it.
+const mirrorTruthPredicate = `e.deleted_at IS NULL`
+
+// entityEventFieldsSQL is the emit-side read: the snapshot the outbox payload carries.
+// Package-level (not inline) so the drift test can see that it and the mirror-truth
+// enumeration agree on which rows exist at all.
+const entityEventFieldsSQL = `
+		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
+		FROM glossary_entities e
+		JOIN book_kinds k ON k.book_kind_id = e.kind_id
+		WHERE e.entity_id = $1 AND ` + mirrorTruthPredicate
+
 // D-OUTBOX-PAYLOAD-TRASH: the WHERE clause carried no lifecycle filter, so a
 // trashed entity still yielded a payload — and editing a trashed entity
 // re-published `glossary.entity_updated`, which made knowledge-service re-embed
@@ -411,13 +436,8 @@ func loadEntityEventFields(
 		shortDescDB *string
 		kindCode    string
 	)
-	err := q.QueryRow(ctx, `
-		SELECT e.cached_name, e.cached_aliases, e.short_description, k.code
-		FROM glossary_entities e
-		JOIN book_kinds k ON k.book_kind_id = e.kind_id
-		WHERE e.entity_id = $1 AND e.deleted_at IS NULL`,
-		entityID,
-	).Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)
+	err := q.QueryRow(ctx, entityEventFieldsSQL, entityID).
+		Scan(&cachedName, &cachedAlias, &shortDescDB, &kindCode)
 	if err != nil {
 		return "", "", nil, "", false
 	}
