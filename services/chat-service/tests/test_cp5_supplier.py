@@ -457,3 +457,47 @@ class TestAFabricatedRuntimeOwnedIdIsTreatedAsMissing:
         args = {"book_id": "b1"}
         assert _invented_supplier_ids(args, block) == []
         assert args["book_id"] == "b1"
+
+
+class TestTheOwedRefusalNamesTheToolThatEmitsTheId:
+    """🔴 MEASURED LIVE 2026-08-12, right after D-FJ-11 made the refusal honest.
+
+    The model was correctly told run_id is "NOT yours to invent ... Establish that context first
+    (e.g. list or open the book you mean, then call this with the id it returns)" -- and it retried
+    plan_compile TWICE, because that sentence names no tool. The emitter was already written down in
+    the contract's own identifier_resolution prose and the message threw it away.
+    """
+
+    def test_the_refusal_names_the_emitting_tool(self):
+        from app.services.stream_service import _missing_args_message
+        block = {"argument_supplier": {"run_id": "plan — emitted by a prior step"}}
+        msg = _missing_args_message("plan_compile", ["run_id"], block)
+        assert "plan_propose_spec" in msg
+        assert "list or open the book you mean" not in msg
+
+    def test_naming_it_also_ARMS_it(self):
+        """The compose with D-FJ-4: the arming arm keys off catalogue names in the refusal text, so a
+        refusal that names the emitter makes it reachable in the same move."""
+        from app.services.stream_service import _missing_args_message, _tools_named_in_refusal
+        block = {"argument_supplier": {"run_id": "plan — emitted by a prior step"}}
+        msg = _missing_args_message("plan_compile", ["run_id"], block)
+        assert _tools_named_in_refusal(msg, {"plan_propose_spec": {}}, set()) == ["plan_propose_spec"]
+
+    def test_with_NO_declared_emitter_the_generic_sentence_survives(self):
+        """The control. Most contracts declare no emitter, and inventing one would be a guess -- the
+        old sentence must still be there for them."""
+        from app.services.stream_service import _missing_args_message
+        block = {"argument_supplier": {"book_id": "context — the ambient book"}}
+        msg = _missing_args_message("book_read", ["book_id"], block)
+        assert "NOT yours to invent" in msg
+        assert "Establish that context first" in msg
+
+    def test_the_CONTRACT_declares_the_emitter_structurally(self):
+        """Declared as DATA, not parsed out of identifier_resolution's prose -- behaviour must not be
+        decided by an explanation written for a human."""
+        from app.agentruntime.toolcontract import declared_emitter
+        reg = registry()
+        assert declared_emitter(reg, "plan_compile", "run_id") == "plan_propose_spec"
+        assert declared_emitter(
+            reg, "plan_bootstrap_apply", "proposal_id") == "plan_bootstrap_propose"
+        assert declared_emitter(reg, "plan_compile", "book_id") is None

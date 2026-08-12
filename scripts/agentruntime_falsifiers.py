@@ -1352,6 +1352,26 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
         (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
     ],
+    # ── the owed refusal names the EMITTER (journey loop D-FJ-12) ───────────────────────────
+    "test_the_refusal_names_the_emitting_tool": [
+        (f"{CS}/app/services/stream_service.py", "        _emitters = sorted({e for a in owed if (e := declared_emitter(_reg, tool, a))})",
+         "        _emitters = []"),
+    ],
+    "test_naming_it_also_ARMS_it": [
+        (f"{CS}/app/services/stream_service.py", "        _emitters = sorted({e for a in owed if (e := declared_emitter(_reg, tool, a))})",
+         "        _emitters = []"),
+    ],
+    # Inventing an emitter where none is declared is a guess; the generic sentence must survive.
+    "test_with_NO_declared_emitter_the_generic_sentence_survives": [
+        (f"{CS}/app/services/stream_service.py", "        _emitters = sorted({e for a in owed if (e := declared_emitter(_reg, tool, a))})",
+         '        _emitters = ["some_tool"]'),
+    ],
+    # A reader that answers None for everything makes the whole member dead data.
+    "test_the_CONTRACT_declares_the_emitter_structurally": [
+        (f"{PKG}/toolcontract.py",
+         '    block = registry.get("argument_emitters") if type(registry) is dict else None',
+         "    block = None"),
+    ],
     # ── a fabricated runtime-owed id (journey loop D-FJ-11) ─────────────────────────────────
     "test_the_LIVE_placeholder_is_caught": [
         (f"{CS}/app/services/stream_service.py", "    out: list[str] = []",
@@ -1398,7 +1418,11 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     # A checker with nothing DECLARED to check is the same decoration, one layer out.
     "test_the_CONTRACT_declares_the_ids_the_live_run_fabricated": [
-        ("contracts/agent-runtime-tool-contracts.json", '    "plan_compile": {', '    "plan_compile_disabled": {'),
+        # Anchored on the CONTRACT row specifically — "plan_compile" also names a key in the
+        # sibling `argument_emitters` map, and a two-occurrence anchor is a stale row.
+        ("contracts/agent-runtime-tool-contracts.json",
+         '    "plan_compile": {\n      "_why"',
+         '    "plan_compile_disabled": {\n      "_why"'),
     ],
     # ── a rail write stalled with NO tool named (journey loop D-FJ-8) ───────────────────────
     # Returning nothing restores the ORIGINAL blind spot: a turn that called nothing and named no

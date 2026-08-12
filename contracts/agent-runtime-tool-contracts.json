@@ -607,5 +607,17 @@
         "book_id": "context — the runtime supplies the ambient book"
       }
     }
+  },
+  "argument_emitters": {
+    "_why": "D-FJ-12 — WHICH TOOL EMITS A PLAN-SUPPLIED ID, as DATA. The emitter was already written in identifier_resolution's prose ('an opaque id emitted by plan_propose_spec') and the refusal threw it away, so a model told 'not yours to invent' had nowhere to go and retried the same tool twice. Declared structurally rather than parsed out of that explanation, because deciding behaviour from prose is exactly what declared_supplier refuses to do.",
+    "plan_compile": {
+      "run_id": "plan_propose_spec"
+    },
+    "plan_bootstrap_apply": {
+      "proposal_id": "plan_bootstrap_propose"
+    },
+    "book_read": {
+      "chapter_id": "book_list"
+    }
   }
 }

@@ -2128,18 +2128,29 @@ def _missing_args_message(tool: str, missing: list[str], contract: dict | None) 
     is the same standard C-12 sets for a rejection, and the same standard the `context|plan` arm
     already meets.
     """
-    from app.agentruntime.toolcontract import declared_supplier
+    from app.agentruntime.toolcontract import declared_emitter, declared_supplier
 
     block = contract if type(contract) is dict else {}
     owed = [a for a in missing if declared_supplier(block, a) in ("context", "plan")]
     if owed:
+        # D-FJ-12 — NAME THE TOOL THAT EMITS IT. "Establish that context first (e.g. list or open
+        # the book you mean)" is a book-flavoured example, not an instruction, and a model told only
+        # that retried the SAME tool twice. The emitter is declared data (`emitted_by`), so say it.
+        # Naming it also ARMS it: `_tools_named_in_refusal` keys off catalogue names in the refusal
+        # text, so one sentence fixes both the instruction and the reachability.
+        _reg = _tool_contract_registry()
+        _emitters = sorted({e for a in owed if (e := declared_emitter(_reg, tool, a))})
+        _how = (
+            f"Call {' and '.join(_emitters)} first, then call this with the id it returns."
+            if _emitters else
+            "Establish that context first (e.g. list or open the book you mean, then call this "
+            "with the id it returns)."
+        )
         return (
             f"'{tool}' is missing {owed}, and {'these are' if len(owed) > 1 else 'this is'} "
             f"NOT yours to invent: the runtime supplies "
             f"{'them' if len(owed) > 1 else 'it'} from the current context or an "
-            f"active plan, and has none right now. Establish that context first "
-            f"(e.g. list or open the book you mean, then call this with the id it "
-            f"returns). Do NOT guess a value."
+            f"active plan, and has none right now. {_how} Do NOT guess a value."
         )
     if any(declared_supplier(block, a) is None for a in missing):
         # Undeclared: say so, and give the id move FIRST — that is the class this arm was

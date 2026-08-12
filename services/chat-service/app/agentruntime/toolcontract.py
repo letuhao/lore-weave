@@ -482,6 +482,36 @@ CONTRACT_REGISTRY_FILENAME = "agent-runtime-tool-contracts.json"
 SUPPLIERS = ("model", "context", "plan")
 
 
+def declared_emitter(registry: dict, tool: str, param: str) -> str | None:
+    """The TOOL that emits `param`, per the contract's `emitted_by` member, or None.
+
+    🔴 D-FJ-12. `declared_supplier` answers *whose* an argument is; it does not answer *where the
+    caller gets it*. Measured live 2026-08-12: after the refusal correctly said run_id was "NOT
+    yours to invent … establish that context first", the model retried the SAME tool twice, because
+    that sentence names no tool. The emitter was already written down — plan_compile's
+    `identifier_resolution` reads "an opaque id emitted by plan_propose_spec" — and the message
+    threw it away.
+
+    Read from STRUCTURED data rather than parsed out of that prose, for the reason
+    `declared_supplier` states about its own explanation: the prose after the dash is for a human,
+    and behaviour must not be decided by it.
+
+    Lives in the registry's `argument_emitters` map — a SIBLING of `contracts`, not a member of a
+    contract row. Tool contract 1.0.0 declares a closed member set and the membrane gate enforces it
+    on every read ("a released row must satisfy the tool contract every time the file is read"), so
+    the first draft's `emitted_by` member failed that gate; carrying one map is not a reason to bump
+    a released contract version.
+    """
+    block = registry.get("argument_emitters") if type(registry) is dict else None
+    if type(block) is not dict:
+        return None
+    per_tool = block.get(tool)
+    if type(per_tool) is not dict:
+        return None
+    raw = per_tool.get(param)
+    return raw if type(raw) is str and raw else None
+
+
 def declared_supplier(contract: dict, param: str) -> str | None:
     """Which side owes `param`, per the tool's `argument_supplier` member, or None.
 
