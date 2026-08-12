@@ -1001,7 +1001,7 @@ the fact.
 it never defines the set, so it cannot flatter the progress number. `--status` computes coverage
 against the catalogue every time.
 
-## DQ-17 — a fabricated `X-User-Id` makes "book not accessible" TRUE, and it looks like the defect
+### DQ-17 — a fabricated `X-User-Id` makes "book not accessible" TRUE, and it looks like the defect
 
 Iteration #138's live A/B first came back UNCHANGED after a verified-byte-identical redeploy. The
 cause was not the fix: I had typed a plausible user UUID into the header instead of reading the
@@ -1024,7 +1024,7 @@ Scope of the doubt, stated rather than waved away: the earlier sites in this cla
 check that has already passed, so the message is false regardless of which user called. The bad
 header can invalidate a TRIGGER, not those fixes.
 
-## DQ-18 — apply drops the template's `tracks`/`roster` onto the arc node, so extract cannot return them
+### DQ-18 — apply drops the template's `tracks`/`roster` onto the arc node, so extract cannot return them
 
 Measured in #146 on a clean apply→extract round trip. The source template
 (`019f0d28-…`, "W10 FE Smoke Arc") carries `tracks: 2` and `roster: 2`. The arc node
@@ -1049,7 +1049,7 @@ Both readings are defensible from the current code, `composition_arc_edit` accep
 the `motif_code` half of the round trip — does not depend on the answer. Recorded rather than
 guessed; the placements' `thread` values survive either way, so nothing is lost by waiting.
 
-## DQ-19 — arc_template archive's anti-oracle is defeated by its own documented inverse
+### DQ-19 — arc_template archive's anti-oracle is defeated by its own documented inverse
 
 `composition_arc_template_archive`'s description states the design: "A foreign/missing/system row
 is a uniform no-op (returns archived:true — no existence oracle)."
@@ -1104,7 +1104,7 @@ entry declined to change `archive`'s documented no-op-success on the loop's own 
 `restore`'s message while leaving `archive`'s would settle half a documented contract arbitrarily.
 Both halves want the same product decision, and they should get it together.
 
-## DQ-20 — archiving a derivative hides it from the panel that would restore it
+### DQ-20 — archiving a derivative hides it from the panel that would restore it
 
 Measured in #195. `composition_list_derivatives` returns only the canonical Work for a book whose
 two derivatives are archived — including when called with an ARCHIVED derivative's own project_id.
@@ -1169,7 +1169,7 @@ panel denies exists. Recorded rather than chosen for the same reason as the firs
 listing's blindness comes from a shared resolution primitive (`resolve_by_book`, filtered to
 `status='active'`), so the two halves want one decision, not two edits.
 
-## DQ-21 — the wiki job pays to write articles about entities a human REJECTED
+### DQ-21 — the wiki job pays to write articles about entities a human REJECTED
 
 Found while proving `kg_build_wiki` (#248). The label defect on that card is fixed; this is the
 behaviour underneath it, which I am recording rather than deciding.
@@ -1206,7 +1206,7 @@ Not blocking #248: the card now states the set truthfully in either case, so a h
 wiki build is no longer told a false denominator. Whichever way this resolves, the fix is one
 predicate in `_resolve_entity_ids` plus the card note that #248 anchored to it.
 
-## DQ-22 — should a manual "make sure this node exists" call bump the node's version?
+### DQ-22 — should a manual "make sure this node exists" call bump the node's version?
 
 Found while proving `kg_create_node` (#249). The description defect is fixed and the tool now warns
 about the cost; this is the behaviour underneath, which I am recording rather than deciding.
@@ -1244,7 +1244,7 @@ which is the case #249 measured.
 Not blocking #249: the description now states the cost and tells a caller not to make the
 defensive call, so the hazard is at least visible to whoever hits it.
 
-## METHOD — a second `docker cp` of the tests dir in one container's life runs STALE tests
+### METHOD — a second `docker cp` of the tests dir in one container's life runs STALE tests
 
 Hit during #252 and worth writing down, because the failure mode is a FALSE GREEN.
 
@@ -1279,7 +1279,7 @@ the container's copy for a phrase you just added must return 1. Single files (`d
 <container>:/app/app/.../x.py`) are safe to repeat, which is why the red-proof injections in this
 loop were never affected.
 
-## DQ-23 — `canEmbed` fails open at DISPATCH time; should it also fail open at CONFIGURATION time?
+### DQ-23 — `canEmbed` fails open at DISPATCH time; should it also fail open at CONFIGURATION time?
 
 Found while proving `kg_project_set_embedding_model` (#253). Recorded, not decided — the fail-open
 decision it rests on is deliberate, documented, and defensible.
@@ -1320,7 +1320,7 @@ The tool's `embedding_model` parameter already tells the caller "pick one whose 
 include embedding", which under a fail-open platform is exactly the right guidance. What is
 missing is any signal when they do not.
 
-## DQ-24 — `lore_entity` windows the facts but not the STATUS its description says it windows
+### DQ-24 — `lore_entity` windows the facts but not the STATUS its description says it windows
 
 Found while proving `lore_entity` (#268). The spoiler guarantee on facts is exact and verified;
 this is one field beside it.
@@ -1356,7 +1356,7 @@ Not blocking #268: no leak was demonstrated. Every entity I read was `active`, s
 a status that would disclose anything, and the fact axis — the part carrying narrative content —
 is provably correct.
 
-## DQ-25 — should `registry_propose_workflow` check that a step's tool exists?
+### DQ-25 — should `registry_propose_workflow` check that a step's tool exists?
 
 Found while proving the tool (#289). Everything else about it is sound and recorded there; this is
 one question I will not answer by guessing.
@@ -1524,3 +1524,41 @@ detach". #318 added `clear_world`, so that sentence was false **one iteration af
 written**, in a file I had edited in between without noticing.
 
 When a fix removes a limitation, grep for the other places that cite it.
+
+
+---
+
+## ✅ THE LOOP IS CLOSED — 319 of 319 concluded, 316 proven, 3 blocked
+
+**The stop condition is the one written at the top of this file, and it is met:
+`scripts/toolv2-loop.py --next` returns `NEXT 0 of 0 remaining`.** `--status` is the authority and
+reports 319/319 with a CONCLUSION; `contracts/agent-runtime-toolv2-ledger.json` holds them.
+This section is a summary of that file and must never become its source.
+
+**Blocked — 3 finished iterations with honest outcomes, never silent skips:**
+
+| tool | why it could not be proven |
+|---|---|
+| `composition_authoring_run_start` | a sibling mis-pick, and the tool that fixes it already exists |
+| `composition_conformance_run` | all 31 calls came from ONE day across 4 sessions — the corpus cannot support a verdict |
+| `composition_reference_update` | its subject matter has **no producer reachable from any surface**, so the positive path cannot be exercised at all |
+
+**What the loop was actually for, stated as findings rather than as a count.** The dominant defect
+families were: mechanisms that never run; required inputs no named producer emits; descriptions that
+contradict measured behaviour; silent truncation; and doomed confirm tokens. The single most-repeated
+mistake was **mine** — the half-fix, five times, twice in the same file — which is why every guard
+now asserts over every site **by name** rather than over the one under test.
+
+🔴 **The strongest evidence against CODE-only verification came from #315**, and it belongs here
+rather than in a commit message: joining a table twice made `version=version+1` ambiguous, Postgres
+rejected the statement, and the tool answered *"failed to update map"* for **every** rename — while
+`go build`, the entire suite, and the new static guards all passed. A string-built statement is not
+type-checked. Only the live leg could find it.
+
+**Left open, and each is a product decision rather than unbuilt work:** DQ-1 → DQ-29, minus DQ-26
+(raised in #308, resolved by evidence in #309). They are revisited when the catalogue has no
+remaining independently-executable work — which is now — or when new evidence makes one live.
+
+🔴 **This section did not exist until 2026-08-12.** The loop defined a stop condition and then met it
+without recording that it had. A run that cannot say it finished is indistinguishable from one that
+stopped.
