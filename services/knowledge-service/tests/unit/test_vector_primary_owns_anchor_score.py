@@ -27,6 +27,7 @@ written beside them. This test fails the moment the primary changes, and says wh
 from __future__ import annotations
 
 import pytest
+from unittest import mock
 
 from app.adapters.dual_write_vector_store import DualWriteVectorStore
 
@@ -127,4 +128,76 @@ def test_the_deferral_is_recorded_where_the_next_reader_will_look():
         pytest.skip("plan not present in this checkout")
     assert "D-T25B-PG-ANCHOR-SCORE" in plan.read_text(encoding="utf-8"), (
         "the deferral vanished from the plan while the code still depends on it"
+    )
+
+
+# ── the secondary must never be able to fail the primary write (OD-2, 2026-08-12) ──
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_secondary_degrades_to_primary_only_instead_of_raising():
+    """🔴 REGRESSION. Found by the OD-2 live run on the first day the secondary was on.
+
+    `DualWriteVectorStore.upsert` swallows a secondary exception — but only once the store
+    EXISTS. Building it was the hole: `_vector_pool()` opens the pool lazily inside
+    `get_vector_store`, so with the DSN set and the secondary unreachable the composition
+    root RAISED, and passage ingestion failed outright. The primary is the system of record
+    and it never got written; an optional secondary took down the required path.
+
+        socket.gaierror: [Errno -3] Temporary failure in name resolution
+
+    Asserting on the RETURNED store, not on a log line: the defect is what the caller gets
+    back, and a test that only checked the error message would pass against a version that
+    still raised.
+    """
+    from app.adapters import vector_store_provider as provider
+    from app.adapters.neo4j_vector_store import Neo4jVectorStore
+
+    async def boom():
+        raise OSError("secondary is down")
+
+    with mock.patch.object(provider, "_vector_pool", boom), \
+         mock.patch.object(provider.settings, "knowledge_vector_db_url",
+                           "postgresql://x/y", create=True):
+        store = await provider.get_vector_store(mock.MagicMock())
+
+    assert isinstance(store, Neo4jVectorStore), (
+        f"got {type(store).__name__}: an unreachable secondary must degrade to the "
+        "primary-only store, never propagate out of the composition root"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_degrade_is_counted_so_a_zero_still_means_nothing_failed():
+    """The other half, and the reason this is not just a `try/except: pass`.
+
+    `D-T25B-SOAK` exists because a counter reading zero when nothing is wired is
+    indistinguishable from one reading zero when nothing failed. A silent degrade would
+    rebuild that exact trap one layer up — writes would flow to Neo4j alone, the operator
+    would see `secondary_failed == 0`, and the cutover would be authorised against a store
+    missing every row written during the outage.
+    """
+    from app.adapters import vector_store_provider as provider
+    from app.metrics import vector_dual_write_total
+
+    def _count() -> float:
+        total = 0.0
+        for metric in vector_dual_write_total.collect():
+            for s in metric.samples:
+                if s.name.endswith("_total") and s.labels.get("outcome") == "secondary_failed":
+                    total += s.value
+        return total
+
+    async def boom():
+        raise OSError("secondary is down")
+
+    before = _count()
+    with mock.patch.object(provider, "_vector_pool", boom), \
+         mock.patch.object(provider.settings, "knowledge_vector_db_url",
+                           "postgresql://x/y", create=True):
+        await provider.get_vector_store(mock.MagicMock())
+
+    assert _count() > before, (
+        "an unreachable secondary was not counted — the soak gate would read zero and "
+        "authorise a cutover onto a store that is missing rows"
     )

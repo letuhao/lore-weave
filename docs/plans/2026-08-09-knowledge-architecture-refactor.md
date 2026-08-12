@@ -35,7 +35,75 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: ⏸ QC-7 — POST-REVIEW. STOPPED AND WAITING. The shadow comparison is complete.**
+**RESUME: OD-1 — T30's real adoption. `glossary-service` imports `contracts/events`.**
+
+✅ **QC-7 IS SIGNED OFF AND ALL THREE OPEN DECISIONS ARE TAKEN (PO, 2026-08-12).**
+
+| | Decision | What it changes |
+|---|---|---|
+| **Engine** | **Keep BOTH, behind the port.** No cutover. | `T1`/`T2` are settled as *"two conforming engines"*, not an elimination. **The conformance suite and the shadow comparison stop being scaffolding and become permanent infrastructure** — two adapters are only safe while the thing that proves they agree keeps running. That is why arming them in CI (the cycle before this one) was load-bearing rather than tidy-up. `cutover_permitted: True` stays as data; nothing acts on it. |
+| **OD-2** | **Set `KNOWLEDGE_VECTOR_DB_URL` on the dev stack.** | ✅ **DONE — see below.** Unblocks the `D-T25B-SOAK` precondition. |
+| **OD-1** | **Do the real adoption**, not the sixth parallel list. | `glossary-service` takes a Go module dependency on `contracts/events` and every emit site is rewritten. **This is the RESUME.** |
+
+✅ **OD-2 IS DISCHARGED (2026-08-12) — the secondary is live and taking writes.**
+`knowledge-pg` started, `KNOWLEDGE_VECTOR_DB_URL` set in `infra/.env`, wired `${…:-}` in compose
+so **default-off stays byte-identical** for self-hosters, and documented in `.env.example`.
+
+```
+store type      : DualWriteVectorStore
+  ._primary     : Neo4jVectorStore
+  ._secondary   : PgVectorStore
+upsert returned : True
+metric          : {'scope':'passage','outcome':'both'} = 1.0
+secondary schema auto-created: 10 tables (passage_/entity_vectors_ × 384/1024/1536/2560/3072)
+```
+
+🔴 **TURNING IT ON FOUND TWO DEFECTS THE SAME DAY, AND BOTH WERE INVISIBLE UNTIL SOMETHING RAN.**
+
+**(1) The opt-in compose layer could never start.** `docker-compose.knowledge-pg.yml` mounted its
+volume at `/var/lib/postgresql/data`, but postgres 18+ images keep the cluster in a
+major-version subdirectory (`PGDATA=/var/lib/postgresql/18/docker`). The entrypoint saw a stray
+mount and **refused to boot — a crash loop, not a warning.** The shared dev `postgres` service
+mounts it correctly; this layer had it wrong from the day it was written, and OD-2 is the first
+time anyone started it.
+
+**(2) An unreachable secondary took down the PRIMARY write path.** `DualWriteVectorStore.upsert`
+swallows a secondary exception and counts `secondary_failed` — but that protection begins only
+once the store *exists*. Building it was the hole: `_vector_pool()` opens the pool lazily inside
+the composition root, so with the DSN set and the secondary down, `get_vector_store` **raised**
+and passage ingestion failed outright. The primary is the system of record and it never got
+written. An optional secondary was able to fail the required path.
+
+```
+socket.gaierror: [Errno -3] Temporary failure in name resolution
+  (raised out of get_vector_store -> _vector_pool -> asyncpg.create_pool)
+```
+
+Fixed: degrade to primary-only, **counted** on the existing `secondary_failed` series — a silent
+degrade would rebuild `D-T25B-SOAK`'s own trap one layer up (zero because nothing is wired,
+indistinguishable from zero because nothing failed). `_pool` stays `None`, so recovery is
+automatic. A second partial-construction hazard was fixed alongside it: `_pool` was published
+*before* `ensure_vector_schema`, so a schema failure cached a pool that skipped the ensure
+forever.
+
+```
+LIVE BITE  secondary stopped  -> store=Neo4jVectorStore  upsert=True  secondary_failed=1.0
+           secondary restored -> store=DualWriteVectorStore  both=1.0   (no restart)
+UNIT BITE  pre-fix code (propagate)   -> 2 failed  |  silent degrade -> 1 failed (counter test only)
+           4186 unit passed (+2 regressions) · db-safety · doc-language · gate-teeth · port-adoption
+           · test-dsn-coverage · migration-drift · graph-port all exit 0
+```
+
+⚠️ **`D-T25B-SOAK` IS HALF-DISCHARGED, AND THE REMAINING HALF IS WALL-CLOCK.** Its retry
+condition names two things: the variable set **and** the secondary having taken real traffic long
+enough for a zero to mean something. The first is done and writes are *proven* to flow; the
+second cannot be produced in a work cycle, only accumulated. **Do not read the current zero as
+health yet** — that is the exact error the deferral was written to prevent.
+
+⚠️ **The dev knowledge-service image was ~8 hours stale** — it had no `app/adapters` or
+`app/ports` directory at all, so the variable would have configured a service that has no
+`get_vector_store`. Rebuilt. *Setting config on a stale image is indistinguishable from a
+feature that does not work.*
 
 ✅ **T43 IS COMPLETE (2026-08-12).** Neo4j vs Apache AGE, shadowed on real traffic against two
 live engines:
@@ -377,9 +445,9 @@ answered and are kept for the record (X1, X2, and T25b's two — all implemented
 
 | # | decision | who | what is blocked | cost of not deciding |
 |---|---|---|---|---|
-| **OD-1** | **T30's registry half.** Registering the nine `glossary.*` events the `canon.*` way adds a **sixth** parallel list rather than removing the five that exist. Genuine adoption = glossary-service imports `contracts/events` (a Go module dependency + a rewrite of every emit site), which `canon.go` itself records as a separate sub-program. **Scope call.** | PO | T30 stays `[~]`. Nothing downstream. | Low — the property RT-10 wanted (a producer rename cannot land silently) already ships and is gated. |
-| **OD-2** | **Set `KNOWLEDGE_VECTOR_DB_URL` on the shared dev stack** and let the secondary soak. Operational, about a shared environment. | whoever owns the dev stack | `D-T25B-SOAK` → the three vector read sites → the rest of the T25b cutover. | Medium — the cutover cannot be *argued for* at all, and the failure counter reads zero for the wrong reason. |
-| **OD-3** | **QC-3's POST-REVIEW sign-off** (⏸). Evidence is gathered; `/review-impl` and the real-corpus recall comparison are owed by me first. | me, then PO | The vector cutover only — which OD-2 independently blocks. | Low today, because OD-2 blocks the same gate. |
+| **OD-1** ✅ **ANSWERED 2026-08-12 — DO THE REAL ADOPTION** (PO). It is the RESUME. | **T30's registry half.** Registering the nine `glossary.*` events the `canon.*` way adds a **sixth** parallel list rather than removing the five that exist. Genuine adoption = glossary-service imports `contracts/events` (a Go module dependency + a rewrite of every emit site), which `canon.go` itself records as a separate sub-program. **Scope call.** | PO | T30 stays `[~]`. Nothing downstream. | Low — the property RT-10 wanted (a producer rename cannot land silently) already ships and is gated. |
+| **OD-2** ✅ **ANSWERED AND DISCHARGED 2026-08-12** (PO: set it) — done, evidence in the run-state block; the soak's remaining half is wall-clock. | **Set `KNOWLEDGE_VECTOR_DB_URL` on the shared dev stack** and let the secondary soak. Operational, about a shared environment. | whoever owns the dev stack | `D-T25B-SOAK` → the three vector read sites → the rest of the T25b cutover. | Medium — the cutover cannot be *argued for* at all, and the failure counter reads zero for the wrong reason. |
+| **OD-3** — still open, still owed by me first. | **QC-3's POST-REVIEW sign-off** (⏸). Evidence is gathered; `/review-impl` and the real-corpus recall comparison are owed by me first. | me, then PO | The vector cutover only — which OD-2 independently blocks. | Low today, because OD-2 blocks the same gate. |
 
 **Not open, though the prose reads as if it were:** RT-2 (dissolved by §9 **O7** at sealing) ·
 `D-T36-ROLE-FACTS` (retracted — both blockers were false) ·
@@ -591,7 +659,7 @@ argument order changed … close D-T25B-PG-ANCHOR-SCORE first".)* 4149 unit test
 | **Evidence** | `app/adapters/vector_store_provider.py` returns a plain `Neo4jVectorStore` when the env var is unset (T25a, asserted by test). Consequently `vector_dual_write_total{outcome="secondary_failed"}` reads **0** — and as T25a's own docstring puts it, *a gate that reads zero because nothing is wired looks exactly like a gate that reads zero because nothing failed*. The counter is not evidence of health here; it is evidence of absence. |
 | **To unblock** | Someone with authority over the dev stack sets `KNOWLEDGE_VECTOR_DB_URL`, and the secondary then takes real traffic for long enough that a zero on the failure counter means something. **This is an operational decision about a shared environment, not a code change** — which is exactly why it is not mine to make unilaterally. |
 | **Mechanism** | `tests/unit/test_vector_primary_owns_anchor_score.py::test_the_provider_keeps_neo4j_as_primary` asserts on the **constructed** store that Neo4j is primary and that `DualWriteVectorStore(primary, secondary)` keeps that argument order. Any attempt to begin the read cutover reds it with a message naming this deferral. A note in a file nobody is editing would not have done that; T27 already proved that failure mode here, shipping handlers that could never run. |
-| **Retry when** | `KNOWLEDGE_VECTOR_DB_URL` is set on the dev stack **and** the soak has produced a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Both halves are required; the second without the first is the trap above. |
+| **Retry when** | ⚠️ **First half DONE 2026-08-12** (variable set, dual-write live, writes proven to reach the secondary). The second half is wall-clock and cannot be worked, only waited: `KNOWLEDGE_VECTOR_DB_URL` is set on the dev stack **and** the soak has produced a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Both halves are required; the second without the first is the trap above. |
 
 **PO decisions (both ANSWERED, kept for the record):**
 

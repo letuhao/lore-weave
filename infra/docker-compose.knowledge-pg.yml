@@ -37,7 +37,16 @@ services:
       # silently "the other database" rather than a failure to start.
       - "5556:5432"
     volumes:
-      - knowledge_pg_data:/var/lib/postgresql/data
+      # ⚠️ `/var/lib/postgresql`, NOT `/var/lib/postgresql/data`. The postgres 18+ images
+      # store the cluster in a MAJOR-VERSION subdirectory (`PGDATA=/var/lib/postgresql/18/
+      # docker`) so `pg_upgrade --link` can work across a single mount point. A volume
+      # mounted at `/data` is therefore not the data directory at all: the entrypoint sees
+      # it as a stray mount, prints "there appears to be PostgreSQL data in
+      # /var/lib/postgresql/data (unused mount/volume)" and REFUSES TO START — a crash loop,
+      # not a warning. The shared dev `postgres` service already mounts it correctly; this
+      # layer had it wrong from the day it was written and nobody noticed, because the layer
+      # is opt-in and OD-2 (2026-08-12) is the first time anyone started it.
+      - knowledge_pg_data:/var/lib/postgresql
     healthcheck:
       # `pg_isready` alone answers "is the server up", which is not the question. The
       # extensions are the reason this image exists, so the check asks for them — an image

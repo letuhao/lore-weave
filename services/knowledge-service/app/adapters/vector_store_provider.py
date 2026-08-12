@@ -31,6 +31,7 @@ from __future__ import annotations
 import logging
 
 from app.config import settings
+from app.metrics import vector_dual_write_total
 from app.db.neo4j_helpers import CypherSession
 from app.ports.vector_store import VectorStore
 
@@ -55,10 +56,23 @@ async def _vector_pool():
 
         from app.adapters.pg_vector_store import ensure_vector_schema
 
-        _pool = await asyncpg.create_pool(
+        # Built into a LOCAL, published to `_pool` only once the schema is ensured. The
+        # earlier version assigned `_pool` first, so a `create_pool` that succeeded followed
+        # by an `ensure_vector_schema` that failed left a CACHED pool whose schema had never
+        # been applied — and because the cache is checked with `is None`, every later call
+        # returned that pool and skipped the ensure permanently. The failure would surface
+        # far away, as a missing table on write.
+        pool = await asyncpg.create_pool(
             settings.knowledge_vector_db_url, min_size=1, max_size=5, command_timeout=30,
         )
-        await ensure_vector_schema(_pool)
+        try:
+            await ensure_vector_schema(pool)
+        except Exception:
+            # Do not leak the connections on the way out; leaving `_pool` None means the
+            # next call retries cleanly.
+            await pool.close()
+            raise
+        _pool = pool
         logger.info("T25a: vector-store secondary connected and schema ensured")
     return _pool
 
@@ -104,7 +118,43 @@ async def get_vector_store(session: CypherSession) -> VectorStore:
         # any-owner read would let one tenant's write be authorised by another's row.
         return await get_entity(session, user_id=user_id, canonical_id=entity_id) is not None
 
-    secondary = PgVectorStore(await _vector_pool(), entity_exists=entity_exists)
+    # ⚠️ THE SECONDARY MUST NEVER BE ABLE TO FAIL THE PRIMARY WRITE.
+    #
+    # `DualWriteVectorStore.upsert` already guarantees that — it swallows a secondary
+    # exception and counts `secondary_failed` — but that protection begins only once the
+    # store EXISTS. Building it is where the gap was: `_vector_pool()` opens the connection
+    # pool lazily, so with the DSN set and the secondary unreachable this line RAISED, the
+    # exception propagated out of the composition root, and passage ingestion failed
+    # outright. The primary is the system of record and it never got written.
+    #
+    # Found 2026-08-12 by the OD-2 live run, on the first day the secondary was switched on,
+    # by stopping the container and re-driving a write:
+    #
+    #     socket.gaierror: [Errno -3] Temporary failure in name resolution
+    #     (raised out of get_vector_store -> _vector_pool -> asyncpg.create_pool)
+    #
+    # So a secondary outage is degraded, not propagated: the caller gets the primary-only
+    # store it had before the migration. `_pool` stays None, so the NEXT call retries and
+    # recovery is automatic — no restart needed.
+    #
+    # It is counted, not merely logged. Degrading silently would recreate the exact defect
+    # `D-T25B-SOAK` exists to prevent: `secondary_failed` sitting at zero because nothing
+    # was wired, indistinguishable from zero because nothing failed. Reusing that existing
+    # series (rather than minting a new one) means the soak gate ALREADY watches this — an
+    # unreachable secondary reds the same check a rejected write does, which is right,
+    # because both mean the same thing at cutover: the target is missing rows.
+    try:
+        pool = await _vector_pool()
+    except Exception as exc:  # noqa: BLE001
+        for scope in ("passage", "entity"):
+            vector_dual_write_total.labels(scope=scope, outcome="secondary_failed").inc()
+        logger.error(
+            "T25a: vector secondary UNREACHABLE — serving primary-only this call, and the "
+            "rows written now will be MISSING at cutover. err=%s", exc,
+        )
+        return primary
+
+    secondary = PgVectorStore(pool, entity_exists=entity_exists)
     return DualWriteVectorStore(
         primary,
         secondary,
