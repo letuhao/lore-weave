@@ -219,3 +219,57 @@ class TestParseTranslatedBlocks:
         response = "[BLOCK 0]\nLine one\nLine two\n\n[BLOCK 1]\nSingle line"
         result = parse_translated_blocks(response, [0, 1])
         assert "Line one\nLine two" == result[0]
+
+
+class TestTheCountMatchesWhatTheBatcherWillActuallyTranslate:
+    """🔴 MEASURED LIVE 2026-08-12, job 019ff568-5b93-7a55-b26c-ebfec28be145 (book 019f8027, en→vi).
+
+    Both chapters hold exactly ONE `paragraph` block whose text_content is length 0. The worker
+    logged "1 blocks (1 translate, 0 pass, 0 caption) -> 0 batches" and then raised "translation
+    produced no output: 0/1 blocks translated (LLM step failed for every batch)". No LLM call was
+    ever made -- there was no batch to make one with. The job row was left status='failed' with an
+    EMPTY error_message, so the translation failed with the blame pointed at the wrong component.
+
+    `build_batch_plan` skips an entry with empty text; `translatable_count` counted it anyway. The
+    count and the batcher have to mean the same thing.
+    """
+
+    def test_an_EMPTY_block_is_not_counted_as_translatable(self):
+        plan = build_batch_plan(
+            [{"type": "paragraph", "content": []}],
+            source_lang="en", target_lang="vi",
+        )
+        assert len(plan.batches) == 0, "an empty block should produce no batch"
+        assert plan.translatable_count == 0, (
+            "an empty block was counted translatable, so the total-failure guard fires over a "
+            "stage that never ran"
+        )
+
+    def test_the_COUNT_never_exceeds_what_was_batched(self):
+        """The invariant the live failure violated: nothing can be 'translatable' that no batch
+        contains. Mixed empty + real blocks, so the assertion is not vacuous."""
+        plan = build_batch_plan(
+            [
+                {"type": "paragraph", "content": []},
+                {"type": "paragraph", "content": [{"type": "text", "text": "Real sentence here."}]},
+                {"type": "paragraph", "content": []},
+            ],
+            source_lang="en", target_lang="vi",
+        )
+        batched = sum(len(b.entries) for b in plan.batches)
+        assert plan.translatable_count == 1
+        assert plan.translatable_count <= batched, (
+            f"translatable_count={plan.translatable_count} exceeds the {batched} block(s) actually "
+            "batched — the denominator the total-failure guard divides by is a phantom"
+        )
+
+    def test_a_REAL_block_is_still_counted(self):
+        """The control. If this fix suppressed genuine translatable blocks it would silence the
+        total-failure guard the count exists to feed -- the same silent false-success, one layer
+        down."""
+        plan = build_batch_plan(
+            [{"type": "paragraph", "content": [{"type": "text", "text": "Real sentence here."}]}],
+            source_lang="en", target_lang="vi",
+        )
+        assert plan.translatable_count == 1
+        assert len(plan.batches) == 1

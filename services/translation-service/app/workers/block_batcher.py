@@ -128,7 +128,30 @@ class BatchPlan:
 
     @property
     def translatable_count(self) -> int:
-        return sum(1 for e in self.all_entries if e.action == "translate")
+        """Blocks this plan will ACTUALLY try to translate — action AND text.
+
+        🔴 **THE COUNT AND THE BATCHER DISAGREED ABOUT WHAT "TRANSLATABLE" MEANS.** `build_batch_plan`
+        skips any entry whose text is empty (`if not text_to_translate: continue`), but this counted
+        every entry whose ACTION was `translate`, empty or not. A chapter of empty blocks therefore
+        reported translatable_count=1 and produced 0 batches, and `chapter_worker`'s total-failure
+        guard — `translatable_count > 0 and translated_count == 0` — fired over a stage that had
+        never run.
+
+        MEASURED LIVE 2026-08-12, job 019ff568-5b93-7a55-b26c-ebfec28be145 (book 019f8027, en→vi).
+        Both chapters hold exactly ONE `paragraph` block with text_content of length 0. The worker
+        logged *"1 blocks (1 translate, 0 pass, 0 caption) → 0 batches"* and then raised
+        *"translation produced no output: 0/1 blocks translated (LLM step failed for every batch —
+        see worker log)"*. No LLM call was ever made: there was no batch to make one with. The job
+        row was left status='failed' with error_message EMPTY, so the user's translation simply
+        failed with an accusation pointed at the wrong component.
+
+        The guard itself is right and stays: a chapter whose blocks DO carry text and whose LLM step
+        fails still has translatable_count > 0 and must still raise, because the block pipeline falls
+        each failed block back to its original text and persisting that as "completed" is the silent
+        false-success it was built to stop. Only the denominator changes — to the one the batcher
+        actually uses.
+        """
+        return sum(1 for e in self.all_entries if e.action == "translate" and e.text)
 
     @property
     def passthrough_count(self) -> int:
