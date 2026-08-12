@@ -35,6 +35,19 @@
       "declared_steps": 4,
       "modules_crossed": 2,
       "note": "PROVEN end to end through the browser on book 019ff542-1ad0-70c0-8c7d-b6066560d3aa, driven by google/gemma-4-26b-a4b-qat, with no operator-typed tool argument — the only text supplied was the user's prose. The rail's terminal step kg_build is async_job/class-C, so its correct terminal is a minted confirm card ('proposed: true … nothing is spent until confirmed'), which is what it returned with a real embedding_model and llm_model in the token params. The journey surfaced TWO defects, each with its own row, falsifier and commit: D-FJ-3 (a refusal that called one precondition the ONLY one on the call it had just refused for another) and D-FJ-4 (that refusal naming recovery tools that were not on the surface). Neither passing run was accepted as proof of the other: D-FJ-3 is proven by the refusal now naming both gates in ONE message on the first call, D-FJ-4 by the arming log plus the model actually calling the two tools it had only narrated before. Two turns in this journey died with LLM_UPSTREAM_ERROR from the local model and were retried; LM Studio answered a direct probe normally, so those were transient upstream failures, not product defects (carried as OBS-11)."
+    },
+    "populate-from-notes": {
+      "state": "proven",
+      "surface": "{book,editor}",
+      "declared_steps": 3,
+      "modules_crossed": 2,
+      "note": "PROVEN end to end through the browser on book 019ff4cf-2143-7a5f-9cc4-0cf62e286432, driven by google/gemma-4-26b-a4b-qat, no operator-typed tool argument — the only input was a block of pasted notes in the shape a person actually writes them (four ALL-CAPS headings, em-dash bullets, a quoted term). All three declared steps succeeded: glossary_book_ontology_read, glossary_extract_entities_from_doc, glossary_propose_entities. MEASURED: 11 of 11 note items became glossary entries, every one correctly kinded — 3 character (Iseul Vantar, Rho Delkanen, Emet Sooll), 3 location (Ashmere, The Weeping Stair, Cauldron Bay), 2 technique (Saltreading, The Long Sight), 2 terminology (true chart, Drowning debt) and 1 organization (Tidewright Guild). All status='draft', i.e. reviewable rather than committed, which is what the workflow's description promises. Two details worth recording as CORRECT behaviour rather than defects, both checked before being filed: 'Warden Emet Sooll' was stored as 'Emet Sooll' (the canonicaliser strips honorifics by design), and 'Tidewright Guild' was filed as organization even though MY notes listed it under TERMS — the ontology defines organization as 'a body of PEOPLE acting together … NOT a doctrine', so the extractor was right and the heading was wrong. NO DEFECT SURFACED. The model then went beyond the rail into kg_project_create + kg_add_nodes, which is currently parked on its Tier-A approval card; that is the gate working, not a failure."
+    },
+    "translation-pass": {
+      "state": "in_progress",
+      "surface": "{book,editor}",
+      "declared_steps": 3,
+      "note": "NOT CONCLUDED. Run on book 019f8027-294f-7106-b697-a68b7e8f1c66 (en, 2 chapters — a book with real text, since translation-pass needs source prose and every book this loop created has 0 chapters). Attempt 1 died before any assistant row: LLM_UPSTREAM_ERROR, CP-0.4 stamped 'failed' on the user message. Attempt 2 produced one tool call (composition_package_tree) and ended outcome='crashed' with 0 chars. NOT a context problem — provider-registry's own preflight logged input_tokens=12,344 against context_length=200,000, 6% used — and LM Studio answered a direct /v1/chat/completions probe normally in between. Neither declared step (translation_coverage, translation_start_job, translation_retranslate_dirty) was ever reached. Two findings recorded from the attempts (OBS-12, OBS-13). This journey is the loop's resume point."
     }
   },
   "defects": {
@@ -111,6 +124,14 @@
     {
       "id": "OBS-11",
       "note": "A long book-studio session died with LLM_UPSTREAM_ERROR and chat-service stamped 'CP-0.4 orphaned turn: no assistant row, outcome failed' on the user message. The session had accumulated 467,340 input tokens over 9 messages against a 195K-usable context. The UI's own context meter read 10%."
+    },
+    {
+      "id": "OBS-12",
+      "note": "The intent pinner engaged the WRONG rail again, and this time it was not recoverable. For 'Check what in this book still needs translating into Vietnamese, and bring the translation up to date' — a near-paraphrase of translation-pass's own description — stream_service logged 'rail vision-to-book: 3/9 steps done, next=glossary_book_ontology_read'. translation-pass was never pinned. Same class as OBS-4 (kg-build pinned for a vision-to-book request), but there the correct rail still ran; here the model called composition_package_tree and no translation tool at all."
+    },
+    {
+      "id": "OBS-13",
+      "note": "Turns are dying as LLM_UPSTREAM_ERROR / outcome='crashed' with 0 chars, and NOTHING logs the upstream reason. provider-registry-service logs only its 'chat context preflight' line; chat-service re-raises an opaque {\"event\":\"error\",\"code\":\"LLM_UPSTREAM_ERROR\"}; worker-ai logs nothing. Observed 3 times across 3 books on 2026-08-12, at 6% context use, while a direct LM Studio probe succeeded. The operator cannot tell a model crash from a bad payload from a transport fault — a silent seam on the one path every journey depends on."
     }
   ]
 }
