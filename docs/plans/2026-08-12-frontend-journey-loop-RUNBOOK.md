@@ -96,6 +96,38 @@ this class of model, and CP-3's V-METRIC already measured where its carrier brea
 
 ---
 
+## 🔴 ONE DEFECT, ONE CYCLE. NEVER BATCH.
+
+**A journey is how a defect is FOUND. It is not the unit of work for fixing one.**
+
+When a journey surfaces three defects across three tools, that is **three cycles**, each run to
+completion on its own: test → find → investigate → fix → prove all three legs → conclude → commit.
+Not one investigation, not one fix, not one commit covering three.
+
+**I have already broken this rule and it is why the rule is written here.** In tool-loop #311 I was
+proving `world_map_get`, found a `world_delete` defect (a cascade dropping map rows and keeping their
+blobs), and folded the fix into the same iteration. Both were real and both were proven — but they
+went in as **one** commit, under **one** ledger row, for **two** different tools. The second defect
+has no row of its own, and the only reason it is findable is a sentence inside the first one's note.
+
+| what batching costs | why it matters here |
+|---|---|
+| the second defect has no ledger row | the ledger is the progress authority; a defect not in it did not happen |
+| one falsifier is asked to cover two mechanisms | the tool loop's most repeated failure was the half-fix — a shared guard is how a half-fix hides |
+| a bisect lands on a commit that changed two things | the diagnosis is no longer separable from the fix |
+| "investigated together" quietly becomes "assumed the same cause" | two defects in one journey are usually **not** one root cause |
+
+**The rule, stated so it can be checked:** every defect gets its own ledger row, its own falsifier
+proven red on **its own** original defect, and its own commit. A journey's row records what the
+journey did; each defect it surfaced links to a row of its own.
+
+**The one exception, and it is narrow:** a single mechanism present at several sites is ONE defect
+and must be fixed at every site in one cycle — that is the half-fix rule, and splitting it is the
+opposite mistake. The test is whether one falsifier, injected at any one site, reds the guard for
+all of them. If yes it is one defect at N sites. If no it is N defects.
+
+---
+
 ## Rules inherited from the tool loop, each already paid for
 
 These are not restated as advice. Each cost an iteration to learn.
