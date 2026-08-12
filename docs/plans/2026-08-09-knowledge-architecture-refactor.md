@@ -4811,6 +4811,48 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   The stack was left as found: the role-check flag was set for this run per the runbook and
   **unset again afterwards** (it is off by default precisely because the judge is not calibrated).
 
+  #### ✅ THE ROLE AXIS CAN NOW SAY "COULD NOT VERIFY" — fixed 2026-08-12
+
+  The live run above exposed a defect worth more than the run itself. **Every failure path in
+  `judge_role_attribution` returns `[]` — the same value a clean check returns.** So the
+  envelope reported `status: checked`, `violations: []`, `resolved: true` for a run in which
+  the role check never executed. The WARNING was in the log, and **the log is not the
+  verdict**: an author reads that envelope as canon-clean.
+
+  This is the shape the same file already guards on its other axes — *"explicit skip reasons
+  so dirty data doesn't SILENTLY strip canon protection while reporting a green"*
+  (`skipped_no_cast`, `skipped_no_position`). The role axis was the one without one.
+
+  **Fixed** with an optional `on_degraded` callback (additive — no signature or return-type
+  change, so the existing `== []` contract and its tests are untouched), surfaced as
+  `ReflectResult.role_check_status` and carried on the envelope as `canon.role_check`:
+
+  | value | meaning |
+  |---|---|
+  | `null` | not requested, or no roles to ask about — nothing was owed |
+  | `checked` | the judge answered |
+  | `no_verdicts` | the judge was CALLED and returned nothing usable |
+  | `llm_error` / `job_<status>` | it could not be called at all |
+
+  Deliberately **not** a `checks` entry: `checks` feeds `coverage`, and that block's own
+  comment explains why the judge axis is kept out of it (it would paint permanent amber on
+  every book with no configured critic). This reports a judge that *failed*, which is a
+  different claim from one never configured.
+
+  ```
+  BITE  remove the no_verdicts signal -> test_an_empty_judge_completion_is_reported_not_swallowed FAILED
+        remove the llm_error signal   -> test_an_unreachable_judge_is_reported_too FAILED
+  QC    3699 composition tests passed, 403 skipped (+3 new, 2 bitten)
+  ```
+
+  ⚠️ **WHAT THE LIVE RE-RUN DID AND DID NOT SHOW.** Job `019ff415` on the rebuilt image
+  returns the new key — `canon.role_check: null` — and that is the CORRECT value for it: the
+  guard early-returned on `no_position` before reaching the judge, so nothing was owed. **The
+  `no_verdicts` value itself is proven by unit test and bite, not yet by a live run**, because
+  this generation happened not to reach the judge the way `019ff401` did. Stating that rather
+  than presenting the null as confirmation — a null that means "not asked" and a null that
+  means "asked and lost the answer" are exactly what this change exists to separate.
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a

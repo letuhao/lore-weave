@@ -295,7 +295,23 @@ async def run_canon_reflect(
     distinct = resolve_critic_refs(judge_source, judge_ref, drafter_ref).distinct
     source_language = getattr(profile, "source_language", "auto")
 
+    # The role axis reports COULD-NOT-VERIFY through this, because every failure path in
+    # `judge_role_attribution` returns `[]` — the same value a clean check returns. Set by the
+    # callback below and folded onto the result after the reflect loop; `nonlocal` rather than
+    # a return value so the existing `check_fn` contract (and its callers) are untouched.
+    role_degraded: str | None = None
+
     async def check_fn(text: str) -> list[CanonViolation]:
+        nonlocal role_degraded
+
+        def _role_degraded(reason: str) -> None:
+            nonlocal role_degraded
+            # First reason wins across reflect iterations: the interesting event is that the
+            # check stopped being trustworthy, and a later iteration overwriting it with a
+            # different failure would hide when that started.
+            if role_degraded is None:
+                role_degraded = reason
+
         return await check_canon(
             text, snapshot,
             judge=llm if distinct else None, user_id=str(user_id),
@@ -309,6 +325,7 @@ async def run_canon_reflect(
             # can never be overridden upward by a book.
             role_check=(settings.authoring_canon_role_check_ceiling
                         and role_check_enabled),
+            on_role_degraded=_role_degraded,
         )
 
     revise_out_tokens = 0
@@ -376,6 +393,11 @@ async def run_canon_reflect(
         plan_supported=plan_supported, trace_id=trace_id, cancel_check=cancel_check,
     )
     result.unlinked_gone_refs = plan_unlinked
+    # The role axis: only reportable when the check was actually asked for. `None` when it was
+    # off (nothing was owed), the failure reason when the judge was called and could not
+    # answer, and "checked" when it did.
+    if settings.authoring_canon_role_check_ceiling and role_check_enabled:
+        result.role_check_status = role_degraded or "checked"
     result.checks = {
         "canon_cast": check_over(
             len(result.cast_liveness) - len(unresolved), degraded=degraded),

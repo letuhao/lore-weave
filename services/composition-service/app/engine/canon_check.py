@@ -317,8 +317,14 @@ async def judge_role_attribution(
     draft: str, roles: list[dict[str, Any]], source_language: str = "auto",
     max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
+    on_degraded: Callable[[str], None] | None = None,
 ) -> list[CanonViolation]:
     """Ask whether the passage contradicts any role in force at P.
+
+    ⚠️ `on_degraded` exists because EVERY failure path here returns `[]`, which is the same
+    value a clean check returns. Without it the caller cannot tell *"the judge checked and
+    found nothing"* from *"the judge never ran"* — and the canon envelope reported the second
+    as the first. See the `no_verdicts` branch below for the live run that showed it.
 
     Returns only the roles the judge AFFIRMED, as `role_contradiction`
     candidates. That is the opposite convention from `judge_canon`, and
@@ -352,10 +358,14 @@ async def judge_role_attribution(
         )
     except LLMError as exc:
         logger.warning("judge_role_attribution degraded (LLM error): %s — no role findings", exc)
+        if on_degraded:
+            on_degraded("llm_error")
         return []
     if getattr(job, "status", None) != "completed":
         logger.info("judge_role_attribution status=%s → no role findings",
                     getattr(job, "status", None))
+        if on_degraded:
+            on_degraded(f"job_{getattr(job, 'status', None)}")
         return []
     verdicts = parse_judge_verdicts(extract_judge_text(job.result))
     if not verdicts:
@@ -367,6 +377,19 @@ async def judge_role_attribution(
             "(finish_reason=%s) — the role check did not run",
             len(roles), (job.result or {}).get("finish_reason"),
         )
+        # ⚠️ AND TELL THE CALLER, not just the log.
+        #
+        # Measured live 2026-08-12 (job `019ff401` on the acceptance book): 24 roles in force
+        # at the position, 20 sent to the judge, `tokens_used=0`, an empty completion — and a
+        # canon envelope carrying `status: checked`, `violations: []`, `resolved: true`. An
+        # author reads that as canon-clean. The WARNING above is in the log, and **the log is
+        # not the verdict.**
+        #
+        # This is the shape the same file already guards elsewhere with `skipped_no_cast` /
+        # `skipped_no_position`: *"explicit skip reasons so dirty data doesn't SILENTLY strip
+        # canon protection while reporting a green."* The role axis was the one without one.
+        if on_degraded:
+            on_degraded("no_verdicts")
         return []
     # `parse_judge_verdicts` returns `{entity_id: {violated, why}}`, not a list.
     # Keyed by the per-statement token so a verdict lands on the ROLE it was
@@ -578,6 +601,7 @@ async def check_canon(
     source_language: str = "auto", trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     role_check: bool = False,
+    on_role_degraded: Callable[[str], None] | None = None,
 ) -> list[CanonViolation]:
     """Full canon check on a draft: SCORE symbolic pre-filter → (if any
     candidates AND a distinct judge is configured) LLM-judge confirmation.
@@ -608,6 +632,7 @@ async def check_canon(
         judge, user_id=user_id, model_source=model_source, model_ref=model_ref,
         draft=draft, roles=roles, source_language=source_language,
         trace_id=trace_id, cancel_check=cancel_check,
+        on_degraded=on_role_degraded,
     )
 
 
@@ -624,6 +649,20 @@ class ReflectResult(BaseModel):
     # status it means "nothing was verified", which the FE + publish-gate surface
     # so dirty data doesn't silently strip canon protection.
     status: str = "checked"
+    # The ROLE axis, which had no status of its own until 2026-08-12.
+    #
+    #   None          — the role check was not requested, or there were no roles to ask
+    #                   about. Nothing was owed, so nothing is reported.
+    #   "checked"     — the judge answered.
+    #   "no_verdicts" — the judge was CALLED and returned nothing usable.
+    #   "llm_error" / "job_<status>" — it could not be called at all.
+    #
+    # Anything other than None/"checked" means COULD NOT VERIFY. It is a separate field
+    # rather than a `checks` entry deliberately: `checks` feeds `coverage`, and the note in
+    # `canon_reflect` explains why the judge axis is kept out of that calculation — it would
+    # paint permanent amber on every book with no configured critic. This reports a judge
+    # that FAILED, which is a different claim from one that was never configured.
+    role_check_status: str | None = None
     # ── S1 · the honest primitive ────────────────────────────────────────────────────────
     # PER-CHECK status (`loreweave_guard.CheckStatus`), because this guard is a COMPOSITE and
     # a scalar makes it lie in one direction or the other: `status` above describes the
@@ -772,6 +811,10 @@ def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
         "guard_status": reflect.guard_status,
         # S2 — the per-entity cast resolution + the count no layer could speak to.
         # `unresolved_cast_reference` in the eval was BLIND on this field.
+        # The role axis rides the envelope for exactly the reason `unlinked_gone_refs` does
+        # below: a consumer that cannot see what the guard failed to do will render its
+        # silence as an all-clear.
+        "role_check": reflect.role_check_status,
         "cast_liveness": reflect.cast_liveness,
         "unresolved_refs": reflect.unresolved_refs,
         # The plan-liveness check's own gap list. Rides the envelope for the same reason
@@ -819,6 +862,7 @@ def unguarded_envelope(reason: str) -> dict[str, Any]:
         "checks": {},
         "guard_status": CheckStatus.NOT_RUN.value,
         "guard_reason": reason,
+        "role_check": None,
         "cast_liveness": {},
         "unresolved_refs": [],
         "unlinked_gone_refs": [],

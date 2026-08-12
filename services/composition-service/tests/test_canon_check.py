@@ -502,3 +502,58 @@ def test_the_ceiling_setting_is_named_as_a_ceiling_and_defaults_open():
     assert fields["authoring_canon_role_check_ceiling"].default is True
     assert "authoring_canon_role_check_enabled" not in fields, (
         "the old global switch must be gone, not merely unused")
+
+
+# ── the role axis must be able to say "could not verify" (2026-08-12) ──
+
+@pytest.mark.asyncio
+async def test_an_empty_judge_completion_is_reported_not_swallowed():
+    """🔴 REGRESSION, found by a live acceptance run (job 019ff401).
+
+    Every failure path in `judge_role_attribution` returns `[]` — the SAME value a clean
+    check returns. The live run sent 20 roles to the judge, got `tokens_used=0` and an empty
+    completion, and the canon envelope carried `status: checked`, `violations: []`,
+    `resolved: true`. An author reads that as canon-clean. The WARNING was in the log, and
+    the log is not the verdict.
+    """
+    seen: list[str] = []
+    kwargs = dict(user_id="u", model_source="s", model_ref="m",
+                  draft="Zed served Bob.", roles=[{"subject_id": "a", "predicate": "p",
+                                                   "object_id": "b", "subject_name": "Zed",
+                                                   "object_name": "Bob"}])
+    out = await judge_role_attribution(
+        _FakeJudge("no json here"), on_degraded=seen.append, **kwargs)
+    assert out == [], "the degrade contract still returns no findings"
+    assert seen == ["no_verdicts"], (
+        f"got {seen!r} — a judge that returned nothing must SAY so; otherwise the caller "
+        "cannot tell it from a clean check"
+    )
+
+
+@pytest.mark.asyncio
+async def test_an_unreachable_judge_is_reported_too():
+    from loreweave_llm.errors import LLMError as _LLMError
+    seen: list[str] = []
+    kwargs = dict(user_id="u", model_source="s", model_ref="m",
+                  draft="Zed served Bob.", roles=[{"subject_id": "a", "predicate": "p",
+                                                   "object_id": "b", "subject_name": "Zed",
+                                                   "object_name": "Bob"}])
+    await judge_role_attribution(
+        _FakeJudge(raise_exc=_LLMError("down")), on_degraded=seen.append, **kwargs)
+    assert seen == ["llm_error"]
+
+
+@pytest.mark.asyncio
+async def test_a_judge_that_answers_reports_NOTHING_on_the_degrade_channel():
+    """The negative control. Without it, a callback fired unconditionally would pass the two
+    tests above while marking every healthy run as could-not-verify — turning the new field
+    into permanent amber, which is the failure mode its own comment warns about."""
+    seen: list[str] = []
+    judge = _FakeJudge('{"verdicts":[{"entity_id":"role_0","violated":false,"why":"ok"}]}')
+    await judge_role_attribution(
+        judge, user_id="u", model_source="s", model_ref="m",
+        draft="Zed served Bob.",
+        roles=[{"subject_id": "a", "predicate": "p", "object_id": "b",
+                "subject_name": "Zed", "object_name": "Bob"}],
+        on_degraded=seen.append)
+    assert seen == [], f"a healthy judge reported {seen!r} on the degrade channel"
