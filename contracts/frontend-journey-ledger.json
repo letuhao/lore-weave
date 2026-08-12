@@ -118,6 +118,11 @@
       "state": "blocked",
       "surface": "admin/CMS",
       "note": "BLOCKED on run configuration, and the reason is measured rather than assumed. The skill's own description is 'Admin/CMS system-tier operations (admin surface only).' The ACCOUNT is eligible — it holds 1 of the 5 rows in loreweave_auth.admin_principals — so this is not a permissions failure. The operations live on the CMS frontend (infra-cms-frontend-1, localhost:5175), and the RUNBOOK's run configuration fixes this loop's frontend to infra-frontend-1 → localhost:5174. Driving it would mean changing a run parameter the RUNBOOK pins, which is not mine to change mid-run, so it is recorded as DQ-32 and concluded blocked rather than skipped or quietly re-scoped."
+    },
+    "skill:knowledge": {
+      "state": "blocked",
+      "surface": "unrestricted (system skill)",
+      "note": "BLOCKED. Run on book 019ff61b from plain prose, no operator-typed tool argument: 'Remember that Iseul is left-handed, and tell me what you now know about her from the graph' — a request squarely in this skill's declared domain ('Knowledge-graph + memory grounding and story search'). NEITHER half ran: no memory_remember, no graph read. The turn suspended on a kg_add_nodes Tier-A card; the card was approved in the browser and the resume DID fire (POST /tool-results 200), but the step-runner then redrove an UNRELATED workflow — 'rail step-runner: driving vision-to-book → plan_propose_spec (redrive 1/8, strength=enforce)' on a book where the user had asked about memory and the graph — and the turn persisted outcome='crashed' at 270 chars. Two things compounded, both already on the board: the rail precedence half of OBS-15 (vision-to-book was pinned at 7/9 and won over the request's own domain) and the crashed-turn mode of OBS-13. Recorded blocked rather than retried indefinitely, and NOT credited to the knowledge skill on the strength of graph work done in earlier journeys — kg-build exercised those tools, but this skill's own journey did not complete."
     }
   },
   "defects": {
@@ -320,9 +325,12 @@
     "workflows_proven": 9,
     "workflows_blocked": 3,
     "skills_declared": 27,
-    "skills_concluded": 0,
+    "skills_concluded": 3,
     "defects_proven": 12,
-    "defects_open": 3,
-    "_note": "Counted from the ledger's own rows, never typed. The WORKFLOW denominator is CLOSED: 12 of 12 concluded, 9 proven and 3 blocked. The 27 declared SKILLS are entirely unstarted — the loop worked the workflows first, per the RUNBOOK's ordering (a workflow before a skill)."
+    "defects_open": 4,
+    "_note": "Counted from the ledger's own rows, never typed. The WORKFLOW denominator is CLOSED: 12 of 12 concluded, 9 proven and 3 blocked. The 27 declared SKILLS are entirely unstarted — the loop worked the workflows first, per the RUNBOOK's ordering (a workflow before a skill).",
+    "real_skills_declared": 5,
+    "skills_proven": 1,
+    "skills_blocked": 2
   }
 }
