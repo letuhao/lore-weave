@@ -1404,3 +1404,22 @@ In #307 I recorded that `world_delete` "left the bible book behind". I had queri
 seen 1. The row existing was the **purge queue working** — `lifecycle_state` was `purge_pending`
 with `purge_eligible_at` stamped, which I never read. A surviving row is not a surviving object
 when the schema has a lifecycle column. The #307 ledger note now carries the correction.
+
+### DQ-26 — RESOLVED in #309 (count), deliberately not for the lists
+
+`world_get.book_count` now counts `lifecycle_state='active'`, matching `book_list`, the 200-book
+limit counter, and `chapter_count` in the same feature. The two member **list** endpoints keep
+`!='purge_pending'` on purpose: they return `b.lifecycle_state` per row, so a consumer can tell a
+trashed member apart. A bare count cannot. The asymmetry is asserted in
+`world_book_count_test.go`, not left to memory.
+
+### DQ-27 — a legacy world with no bible has no repair path (#309)
+
+`provisionBibleChapter` is called only from `createWorldCore`. Nothing in the product can
+provision a bible for an **existing** world, so a world created before auto-provisioning returns
+`bible_book_id: null` / `bible_chapter_id: null` from `world_get` — whose own description offers
+that handle "for authoring lore into it" — and the agent has no next move.
+
+Measured: 27 of my 28 worlds are in this state, but all 27 are June–July smoke/E2E worlds; the
+only real world has a full handle. Whether to backfill legacy worlds or add a provision verb is a
+product decision.

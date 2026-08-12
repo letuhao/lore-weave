@@ -184,7 +184,16 @@ WHERE w.id=$1 AND w.owner_user_id=$2
 // projection stays a single self-contained SELECT list.
 const worldSelectSQL = `
 SELECT w.id, w.owner_user_id, w.name, w.description, w.created_at, w.updated_at,
-  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state!='purge_pending'),0) AS book_count,
+  -- #309: 'active', not != 'purge_pending'. book_count is a bare integer with no lifecycle
+  -- qualifier, and on the agent surface it is the ONLY membership signal there is — world_get
+  -- returns no member list and book_list has no world filter. Counting trashed books made it
+  -- contradict every other definition of "a book you have": book_list's access filter and the
+  -- 200-book limit counter are both lifecycle_state='active', and chapter_count further down
+  -- this same feature is 'active' too. Measured: a world whose only member was a trashed book
+  -- reported book_count 1 while no listing surface would ever show that book. The list
+  -- endpoints keep != 'purge_pending' deliberately — they return b.lifecycle_state per row, so
+  -- a consumer there can tell a trashed member apart. A count cannot.
+  COALESCE((SELECT COUNT(*) FROM books b WHERE b.world_id=w.id AND b.is_bible=false AND b.lifecycle_state='active'),0) AS book_count,
   (SELECT bb.id FROM books bb WHERE bb.world_id=w.id AND bb.is_bible=true ORDER BY bb.created_at ASC LIMIT 1) AS bible_book_id,
   (SELECT c.id FROM chapters c
      WHERE c.book_id=(SELECT bb.id FROM books bb WHERE bb.world_id=w.id AND bb.is_bible=true ORDER BY bb.created_at ASC LIMIT 1)
