@@ -49,7 +49,37 @@ from dataclasses import dataclass, field
 
 from loreweave_extraction.name_normalize import normalize_entity_name
 
-_TOKEN = re.compile(r"([A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\-]+(?:['’](?:s|t|ll|re|ve|m|d))?)")
+# ⚠️ UNICODE-AWARE, AND CASE IS DECIDED IN PYTHON — NOT BY A CHARACTER RANGE.
+#
+# This was `[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ\-]+…`: Latin-1 only. Vietnamese is a CASED LATIN script whose
+# letters live in Latin Extended Additional (U+1E00-U+1EFF), so codepoints such as U+1EE5 and
+# U+1ED9 fall outside those ranges and the tokeniser could not see words containing them.
+#
+# Measured on the QC-5 acceptance draft (job `019ff423`), which invented a character with ZERO
+# canon entities: the extractor emitted nothing for it, `unanchored_names` came back `[]`, and
+# the envelope reported `name_grounding: "checked"`. **A check that cannot see the name it
+# exists to catch, reporting that it checked.** The LLM canon check caught the invention; this
+# one — the cheap deterministic one whose whole job it is — did not.
+#
+# Ranges cannot fix this: Latin Extended-A/Additional interleave upper and lower case, so no
+# range expresses "a capital". The tail is therefore matched permissively as word characters
+# (`\w` is Unicode-aware in Python 3) and CASE is checked in `_is_capitalised`, which uses
+# `str.isupper()`/`str.islower()` and so works for any cased script. A caseless script (CJK)
+# yields False from `.isupper()` and is excluded here — which is correct, because those books
+# take the `caseless_script` branch that says so honestly rather than pretending to check.
+_TOKEN = re.compile(r"([^\W\d_][\w\-]*(?:['’](?:s|t|ll|re|ve|m|d))?)", re.UNICODE)
+
+
+def _is_capitalised(word: str) -> bool:
+    """A leading capital followed by no other capital — the shape a name takes in a cased
+    script. Rejects ALLCAPS (which is emphasis, not a name) and rejects caseless scripts,
+    whose `.isupper()` is False for every character."""
+    core = word.split("'")[0].split("’")[0].replace("-", "")
+    if len(core) < 2 or not core[0].isupper():
+        return False
+    return not any(c.isupper() for c in core[1:])
+
+
 _SENTENCE_START = re.compile(r"(?:^|[.!?;:\n\"“”‘’()\[\]—–\-]\s*)$")
 
 #: Possessive and contraction tails. Run against the REAL chapter, the first version of this
@@ -209,12 +239,19 @@ def extract_names(text: str, corpus: str | None = None) -> set[str]:
     """
     if not text:
         return set()
-    lowercase = frozenset(re.findall(r"\b([a-zà-öø-ÿ]{2,})\b", corpus if corpus is not None else text))
+    # Same widening as `_TOKEN`, and for the same reason: a lowercase Vietnamese word
+    # must count as lowercase evidence, or a word that also appears lowercased
+    # mid-sentence is misjudged as a name.
+    lowercase = frozenset(
+        w for w in re.findall(r"\b([^\W\d_]{2,})\b", corpus if corpus is not None else text)
+        if w[:1].islower())
     spans = _quoted_spans(text)
     seen: dict[str, bool] = {}
     for m in _TOKEN.finditer(text):
         word = _normalise(m.group(1))
-        if len(word) < 3 or _in_quotes(m.start(), spans):
+        # `_TOKEN` is permissive on purpose now; capitalisation is the real predicate and it
+        # is decided here, where `str.isupper()` works for every cased script.
+        if len(word) < 3 or not _is_capitalised(word) or _in_quotes(m.start(), spans):
             continue
         mid = not _SENTENCE_START.search(text[max(0, m.start() - 3):m.start()])
         seen[word] = seen.get(word, False) or mid
@@ -243,10 +280,32 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
     # every capitalised non-function token as something the story knows about.
     if known_names:
         truth = "glossary"
-        known = {_normalise(w) for w in known_names if len(_normalise(w)) >= 3}
+        # ⚠️ A MULTI-WORD CANON NAME MUST ALSO ANCHOR ITS PARTS.
+        #
+        # The extractor emits single WORDS; the glossary holds full names. So `Lâm Uyên` in
+        # `known` never matched the extracted `Lâm` or `Uyên`, and both were reported as
+        # unanchored — the check accusing the book's own protagonist. Not Vietnamese-specific:
+        # `Zaphod Beeblebrox` breaks identically in English. It stayed invisible only because
+        # the Latin-1 tokeniser could not see Vietnamese words at all, so this book produced
+        # no extractions to mismatch.
+        #
+        # Expanding to components is the right direction for THIS check by its own stated
+        # rule — *"a name missing from `known` becomes a false accusation an author reads; a
+        # spurious extra entry in `known` only suppresses one advisory line"*. The cost, said
+        # plainly: an invented full name whose FAMILY name matches a canon character will
+        # now anchor on that part, trading some recall for a large precision gain.
+        known = set()
+        for w in known_names:
+            norm = _normalise(w)
+            if len(norm) >= 3:
+                known.add(norm)
+            for part in norm.replace("-", " ").split():
+                if len(part) >= 3:
+                    known.add(part)
     else:
         truth = "prompt_proxy"
         known = {_normalise(m.group(1)) for m in _TOKEN.finditer(grounding)
+                 if _is_capitalised(_normalise(m.group(1)))
                  if _normalise(m.group(1)).lower() not in _FUNCTION_WORDS
                  and len(_normalise(m.group(1))) >= 3}
     if not known:

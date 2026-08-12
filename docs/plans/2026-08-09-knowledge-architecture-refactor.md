@@ -5002,6 +5002,53 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | This draft is a free regression fixture: a real generation containing a real invented name, with the expected answer known. |
   | **Retry when** | Immediately — it is cheap, deterministic, and needs no model. |
 
+  #### ✅ `D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES` — FIXED, and it uncovered a second defect
+
+  **Cause, measured.** The tokeniser was `[A-ZÀ-ÖØ-Þ][a-zà-öø-ÿ-]+` — **Latin-1 only**.
+  Vietnamese is a CASED LATIN script whose letters live in Latin Extended Additional
+  (U+1E00–U+1EFF), so the words carrying U+1EE5 and U+1ED9 were never tokenised at
+  all. The check reported `name_grounding: "checked"` while structurally unable to see the
+  names it exists to catch.
+
+  Ranges cannot express "a capital" in Latin Extended (upper and lower interleave), so the
+  tail is now matched as Unicode word characters and **case is decided in Python**
+  (`str.isupper()`), which works for any cased script and correctly excludes caseless ones —
+  CJK still takes the honest `caseless_script` branch rather than a clean bill of health.
+
+  🔴 **Fixing the blindness immediately exposed a LATENT SECOND BUG.** With extraction working,
+  the check began flagging the book's own protagonist: the extractor emits single WORDS while
+  the glossary holds full names, so `Lâm Uyên` never matched the extracted `Lâm`/`Uyên`.
+  **Not Vietnamese-specific** — `Zaphod Beeblebrox` breaks identically in English; it stayed
+  invisible only because the Latin-1 tokeniser produced no Vietnamese extractions to mismatch.
+  Multi-word canon names now anchor their parts too.
+
+  <!-- doc-language-gate: ok -- the extracted tokens ARE the measurement here: which
+       words the check can see and which it reports as invented. Translating them
+       deletes the evidence. -->
+  ```
+  REAL acceptance draft, glossary as truth (29 canon names)
+    before:  unanchored = []                    <- blind
+    after :  unanchored = ['Lục', 'Tội']        <- exactly the invented character, no others
+  ENGLISH regression
+    "Zaphod Beeblebrox met Trillian. Then Blorpnax arrived."
+    after :  unanchored = ['Blorpnax']          <- only the invention
+  ```
+  <!-- doc-language-gate: end -->
+
+  **Bite:** restoring the Latin-1 tokeniser reds the two extraction tests; removing the
+  component expansion reds the two precision tests. **QC:** 3706 composition tests pass
+  (+7 new), worker + service images rebuilt and verified to carry the fix.
+
+  ### 🔻 DEFERRAL `D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION`
+
+  | | |
+  |---|---|
+  | **Blocker** | The live call is `audit_names(draft, packed_prompt, language)` — **`known_names` is never passed**, so production runs in `prompt_proxy` mode: the draft is compared against **the drafter's own input**. This module's own docstring calls that out — *"a check whose input and whose expectation come from the same place verifies nothing"* — and names the glossary SSOT as the correct source. The SSOT exists (29 canon names) and composition-service already holds a `GlossaryClient`. |
+  | **Evidence** | Measured on the same draft, same code: with `known_names` = the glossary, the invented name is caught (`['Lục', 'Tội']`); through the live path it still reports `unanchored: []`. <!-- doc-language-gate: ok -- the two tokens are the measurement itself --> The tokeniser fix was necessary but is not sufficient while the comparison runs against a proxy. |
+  | **To unblock** | Pass the book's glossary names into `audit_names` at both call sites in `canon_reflect`. It is a real design change, not a typo: it adds a glossary call to the authoring hot path and needs a degrade story (an outage must fall back to the proxy and SAY so via `truth_source`, which the field already supports). |
+  | **Mechanism** | `truth_source` is already on the envelope, so once wired, a regression back to the proxy is visible rather than silent. |
+  | **Retry when** | Immediately — no PO decision, no model, and the acceptance draft is a ready-made fixture with a known answer. |
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
