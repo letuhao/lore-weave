@@ -55,22 +55,28 @@ def _bearer() -> str:
     return jwt.encode({"sub": USER, "iat": now, "exp": now + 3600}, SECRET, algorithm="HS256")
 
 
-def selfcheck() -> int:
-    """Everything the live gate depends on, minus the stack. Runs in CI."""
+def selfcheck(contract: dict | None = None, turns: list[str] | None = None) -> int:
+    """Everything the live gate depends on, minus the stack. Runs in CI.
+
+    `contract`/`turns` are parameters so `--self-test` can drive the REAL
+    checker over synthetic inputs. Reading the module globals here would make
+    every probe test the live contract instead of its own fixture (`GTD-17`)."""
+    contract = CONTRACT if contract is None else contract
+    turns = TURNS if turns is None else turns
     problems: list[str] = []
     for key in ("frame_fields", "trace_span_fields"):
-        val = CONTRACT.get(key)
+        val = contract.get(key)
         if not isinstance(val, list) or not val:
             problems.append(f"contract key {key!r} missing or empty")
-    if not TURNS:
+    if not turns:
         problems.append("TURNS is empty — the gate would drive no turns and pass vacuously")
     if problems:
         for p in problems:
             print(f"FAIL: {p}")
         return 1
     print(
-        f"SELFCHECK PASS — contract parses ({len(CONTRACT['frame_fields'])} frame fields, "
-        f"{len(CONTRACT['trace_span_fields'])} span fields), {len(TURNS)} turns declared."
+        f"SELFCHECK PASS — contract parses ({len(contract['frame_fields'])} frame fields, "
+        f"{len(contract['trace_span_fields'])} span fields), {len(turns)} turns declared."
     )
     print(f"  Live half NOT run here: needs a stack at {BASE} + JWT_SECRET "
           f"({'set' if SECRET else 'NOT set'}).")
@@ -139,13 +145,19 @@ def main() -> int:
     return _assert_contract(items)
 
 
-def _assert_contract(items: list[dict]) -> int:
+def _assert_contract(items: list[dict], contract: dict | None = None) -> int:
+    """The gate's ENTIRE rule set, and a pure function over the decoded response.
+
+    Only the transport needs a live stack; these assertions do not. That is why
+    `--self-test` can prove every one of them bites without a stack — filing this
+    gate as un-bitable would have been calling buildable work blocked."""
+    contract = CONTRACT if contract is None else contract
     if not items:
         print("FAIL: context-trace returned no turns")
         return 1
 
     latest = items[-1]["frame"]
-    missing = [f for f in CONTRACT["frame_fields"] if f not in latest or latest[f] is None]
+    missing = [f for f in contract["frame_fields"] if f not in latest or latest[f] is None]
     if missing:
         print(f"FAIL: latest frame missing/null fields: {missing}")
         print(json.dumps(latest, indent=2, ensure_ascii=False)[:2000])
@@ -154,7 +166,7 @@ def _assert_contract(items: list[dict]) -> int:
     # Every span wire-standard.
     for pt in items:
         for span in pt["frame"].get("trace", []):
-            bad = [k for k in CONTRACT["trace_span_fields"] if k not in span]
+            bad = [k for k in contract["trace_span_fields"] if k not in span]
             if bad:
                 print(f"FAIL: trace span missing {bad} in seq {pt['sequence_num']}")
                 return 1
@@ -173,5 +185,109 @@ def _assert_contract(items: list[dict]) -> int:
     return 0 if (any_flag and raw_ok) else 1
 
 
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+# The live half needs a stack; the RULES do not. Every assertion in
+# `_assert_contract` and `selfcheck` is driven here over synthetic frames, so
+# this gate carries a red-ability proof that runs in CI beside its `--selfcheck`.
+_CONTRACT = {"frame_fields": ["intent", "retrieval_mode", "raw_tokens", "used_tokens",
+                              "reduction_pct"],
+             "trace_span_fields": ["name", "delta"]}
+
+
+def _frame(**over) -> dict:
+    f = {"intent": "lore", "retrieval_mode": "hybrid", "raw_tokens": 100,
+         "used_tokens": 60, "reduction_pct": 40, "status_flags": ["drafting"],
+         "trace": [{"name": "compact", "delta": -40}]}
+    f.update(over)
+    return f
+
+
+def _items(*frames) -> list[dict]:
+    return [{"sequence_num": i, "frame": f} for i, f in enumerate(frames or (_frame(),))]
+
+
+def self_test() -> int:
+    failures = 0
+
+    def probe(name: str, want: int, fn) -> None:
+        nonlocal failures
+        import contextlib
+        import io
+        try:
+            with contextlib.redirect_stdout(io.StringIO()), \
+                    contextlib.redirect_stderr(io.StringIO()):
+                got = fn()
+        except Exception as e:  # noqa: BLE001 - a crash is what this asserts against
+            failures += 1
+            print(f"  FAIL {name}: raised {type(e).__name__}: {e} — it must return a code")
+            return
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: rc={got} (want {want})")
+
+    print("context-inspector-trace-gate --self-test")
+
+    probe("a complete trace passes", 0,
+          lambda: _assert_contract(_items(), _CONTRACT))
+
+    # the live half's rules, driven without a stack
+    probe("NO turns at all fails (the vacuous-pass case)", 1,
+          lambda: _assert_contract([], _CONTRACT))
+    probe("a MISSING frame field fails", 1,
+          lambda: _assert_contract(
+              [{"sequence_num": 0, "frame": {k: v for k, v in _frame().items()
+                                             if k != "intent"}}], _CONTRACT))
+    probe("a NULL frame field fails (present is not enough)", 1,
+          lambda: _assert_contract(_items(_frame(intent=None)), _CONTRACT))
+    probe("a trace span missing a wire field fails", 1,
+          lambda: _assert_contract(
+              _items(_frame(trace=[{"name": "compact"}])), _CONTRACT))
+    probe("no status_flags on ANY turn fails", 1,
+          lambda: _assert_contract(_items(_frame(status_flags=[])), _CONTRACT))
+    probe("...but status_flags on an EARLIER turn is enough", 0,
+          lambda: _assert_contract(
+              _items(_frame(), _frame(status_flags=[])), _CONTRACT))
+    probe("raw != used + savings fails", 1,
+          lambda: _assert_contract(_items(_frame(raw_tokens=999)), _CONTRACT))
+
+    # the static half
+    probe("a valid contract + turn set selfchecks clean", 0,
+          lambda: selfcheck(_CONTRACT, ["a turn"]))
+    probe("an EMPTY frame_fields list fails", 1,
+          lambda: selfcheck({**_CONTRACT, "frame_fields": []}, ["a turn"]))
+    probe("a MISSING trace_span_fields key fails", 1,
+          lambda: selfcheck({"frame_fields": ["intent"]}, ["a turn"]))
+    probe("an EMPTY turn set fails (it would drive nothing and pass)", 1,
+          lambda: selfcheck(_CONTRACT, []))
+
+    # CANNOT_RUN must stay distinct from both pass and fail
+    def _no_secret() -> int:
+        # `main()` reads sys.argv, so the probe must clear it too: invoked as
+        # `--selfcheck` (which is how CI runs this file) main() short-circuits to
+        # the static half and never reaches the SECRET branch. The case passed
+        # with rc=0 until this was fixed — a probe that never reached its subject.
+        global SECRET
+        keep_secret, keep_argv = SECRET, sys.argv
+        SECRET, sys.argv = None, [sys.argv[0]]
+        try:
+            return main()
+        finally:
+            SECRET, sys.argv = keep_secret, keep_argv
+
+    probe("no JWT_SECRET is CANNOT_RUN (2), never 0 and never 1", CANNOT_RUN, _no_secret)
+
+    if failures:
+        print(f"context-inspector-trace-gate --self-test: {failures} rule(s) did not behave")
+        return 1
+    print("context-inspector-trace-gate --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        sys.exit(self_test())
+    _rc = self_test()
+    if _rc:
+        sys.exit(_rc)
+    print()
     sys.exit(main())
