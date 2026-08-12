@@ -1786,12 +1786,33 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   `internal_wiki.py` — both asked the port's own question while reaching past it to the same
   `neo4j_repos` function). The five tests that mocked the repo function went red on the swap and
   were repointed at the port: **a migration whose tests stay green never moved the binding.**
-  Next batch is blocked on a design call, not on work — `public/relations.py`,
-  `public/events.py` and `internal_timeline.py` need operations the port does not have
-  (get/invalidate/recreate a relation; get/archive/merge an event; a paginated timeline browse
-  with totals, participants and free text). Growing the port for them is T43's scope question —
-  *does the port own paginated browse queries?* — and the port's own rule is that it grows by
-  demand, so the demand should be stated before the method is.
+  🔴 **MEASURED 2026-08-13 — T17 IS NOT MOSTLY WORK, IT IS MOSTLY A DESIGN DECISION.** Of the
+  67 modules still binding the concrete layer, an AST pass over what each one actually imports
+  says: **1 migratable with today's port** (taken: `extraction/motif_beat.py`), **2 model-only**,
+  and **every other module needs an operation the port does not have.** So "migrate 67 modules"
+  is really "answer one scope question, then migrate 60-odd" — the remaining effort is gated,
+  not merely large.
+
+  ⚠️ **The name-match analysis over-reported once and was caught before it did damage.**
+  `ontology/triage_apply.py` looked migratable because it calls `create_relation`, which the
+  port wraps. It passes `pending_validation`, `schema_version` and `cardinality` — none on
+  `upsert_relation` — and relies on a `None` return the port cannot produce. **Matching function
+  NAMES is not matching signatures**, and a "clean swap" on that basis would have silently
+  dropped three arguments.
+
+  **The scope question, stated so it can be answered:** `public/relations.py`,
+  `public/events.py` and `internal_timeline.py` need get/invalidate/recreate a relation,
+  get/archive/merge an event, and a paginated browse carrying totals, participants and free
+  text. Does `GraphStore` own **paginated browse queries and correction writes**, or only
+  domain reads plus the upserts? The port's docstring already leans one way — *"a count belongs
+  to a paginated browse, not to 'give me the events in this window'"* — but that is a comment,
+  not a decision. It is T43's question because a second adapter must implement whatever is
+  added.
+
+  ⚠️ **The ceiling cannot reach zero as currently defined.** `ports/graph_store.py` is itself
+  counted as a concrete binder, because the port imports its own types (`Entity`, `Relation`,
+  `Event`) from `neo4j_repos`. Two more modules are model-only imports. That is a real coupling
+  worth its own slice — and the number is left honest rather than redefined to look better.
   🔴 **NOW ON THE CRITICAL PATH (X3, 2026-08-11).** This read as background cleanup while the
   engine swap sat in the tail. With the engine moved to layer 1, **port adoption is what makes a
   swap actually work** — an unmigrated module is one that breaks when the engine changes.

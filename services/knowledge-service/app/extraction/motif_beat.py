@@ -44,7 +44,10 @@ import logging
 from uuid import UUID
 
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.events import Event, list_events_in_order
+from app.adapters.graph_store_provider import get_graph_store
+# `Event` is the port's own return type (the port imports it from here too), so this stays
+# a MODEL import after the migration — not a behavioural binding to the Neo4j layer.
+from app.db.neo4j_repos.events import Event
 from app.db.pool import get_knowledge_pool
 
 logger = logging.getLogger(__name__)
@@ -204,10 +207,13 @@ async def derive_motif_beat_sequences(
     sequences: list[list[dict]] = []
     async with neo4j_session() as session:
         for project_id, _container_book_id in containers:
-            events = await list_events_in_order(
-                session,
+            # T17 — through the port. Unbounded narrative order is exactly
+            # `events_in_window(axis="narrative")` with no bounds, and the adapter routes
+            # that straight to the same repo query, so this is behaviour-identical.
+            events = await get_graph_store(session).events_in_window(
                 user_id=str(user_id),
                 project_id=str(project_id),
+                axis="narrative",
                 limit=_MAX_EVENTS_PER_SEQUENCE,
             )
             # list_events_in_order already orders by event_order (nulls last)

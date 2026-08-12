@@ -97,7 +97,16 @@ MAX_CONCRETE_IMPORTERS = 67
 # Both asked the port's own question (one entity plus its capped one-hop neighbourhood)
 # while reaching past it to the same `neo4j_repos` function, so neither produced a shadow
 # observation for T43 to measure. Ceiling 69 -> 67 in the same move.
-MIN_GRAPHSTORE_ADOPTERS = 13
+#
+# **14** — `extraction/motif_beat.py`, via `events_in_window(axis="narrative")`.
+#
+# ⚠️ Note the CEILING did not move with it, and that is not a miss: motif_beat still
+# imports the `Event` MODEL from `neo4j_repos`, which this gate counts as a concrete
+# import because it is one. The ceiling cannot reach zero while the port's own types
+# live in the concrete layer — `ports/graph_store.py` is itself counted for exactly
+# that reason. Moving the models is a separate slice; the number stays honest until
+# then rather than being redefined to look better.
+MIN_GRAPHSTORE_ADOPTERS = 14
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

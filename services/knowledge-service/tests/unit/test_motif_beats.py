@@ -314,10 +314,16 @@ def _patch_deriver(monkeypatch, *, project_rows, events_by_project):
     monkeypatch.setattr(deriver_mod, "get_knowledge_pool", lambda: _FakePool(project_rows))
     monkeypatch.setattr(deriver_mod, "neo4j_session", lambda: _FakeNeo4jSession())
 
-    async def _list(session, *, user_id, project_id, limit):
-        return list(events_by_project.get(project_id, []))
+    # T17 — the deriver reaches the graph through the PORT now, so the double is the
+    # port's method. Patching `list_events_in_order` would leave these green against a
+    # call the deriver no longer makes.
+    class _Store:
+        async def events_in_window(self, *, user_id, project_id, axis="narrative",
+                                   after=None, before=None, include_archived=False,
+                                   limit=200):
+            return list(events_by_project.get(project_id, []))
 
-    monkeypatch.setattr(deriver_mod, "list_events_in_order", AsyncMock(side_effect=_list))
+    monkeypatch.setattr(deriver_mod, "get_graph_store", lambda session: _Store())
 
 
 @pytest.mark.asyncio
