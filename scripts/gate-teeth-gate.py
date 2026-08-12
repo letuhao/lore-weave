@@ -134,7 +134,24 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: word character, so `retrieved_docs` / `retrieved_chunks` do not match. Widening is a
 #: heuristic decision whose false positives become BASELINE rows — i.e. exemptions — so the
 #: limit is now a measured self-test case instead of a surprise.
-NO_PROOF_BASELINE = 43
+#:
+#: 2026-08-12: 43 -> 41. `capacity-budget-lint.sh` and `service-acl-matrix-lint.sh`, the two
+#: smallest of the 43, each gained a REAL `--selftest` — extracted predicate, both directions
+#: cased, and the bare invocation runs the selftest BEFORE the lint so the proof executes on
+#: every CI run rather than on request. The ratchet asked for this itself and refused to pass
+#: until the number followed, which is the whole point of it.
+#:
+#: **The trap this number invites, stated so the next person does not walk into it.** Proof
+#: detection here is STRUCTURAL — a `def self_test` / `selftest() {` in executable text. It
+#: cannot tell a real self-test from an empty one, so 41 stub functions would clear this
+#: baseline to zero and prove NOTHING, converting an honest gap into false coverage. That is
+#: strictly worse than 41, because a gap invites work and a false pass silences review. Each
+#: of the two above was bitten six-step before it was counted: the name anchor dropped (a
+#: prefix match), membership forced true, and each alternative of the meta-write detector
+#: removed one at a time — the last of those because blanking the whole pattern reds on the
+#: FIRST case and says nothing about the other two. Both also gained REACH FLOORS: a walk that
+#: reaches zero services now exits 2 instead of printing PASS (`BDR-82`).
+NO_PROOF_BASELINE = 41
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
