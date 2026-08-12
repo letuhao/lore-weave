@@ -83,6 +83,18 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"keep\s+(writing|drafting)",
         r"write.*(several|multiple|the\s+next\s+few).*chapter",
         r"draft.*while\s+i",
+        # 🔴 THE WORKFLOW'S OWN DESCRIPTION IS "drafting itself chapter by chapter, on its own", and
+        # not one pattern above matched a user who wrote exactly that. MEASURED LIVE 2026-08-12:
+        # "Set this book drafting itself chapter by chapter from the plan, and pause for me to
+        # review before it goes too far" pinned NOTHING — the only rail computed was a completed
+        # vision-to-book — so none of this workflow's five steps was ever reached.
+        #
+        # These three phrases are what make it AUTONOMOUS (many chapters, unattended), which is the
+        # line against chapter-compose ("write THIS chapter"). Kept to that: a bare "write this
+        # chapter" must still pin chapter-compose alone, and the guard asserts it.
+        r"chapter\s+by\s+chapter",
+        r"draft(ing)?\s+itself",
+        r"on\s+its\s+own.*(draft|writ)",
     ]),
     # Single-chapter/scene writing (chapter-compose: outline → get-chapter → draft). This is the
     # rail for "write THIS scene/chapter" once the world is built — the continued-writing case the

@@ -120,3 +120,34 @@ class TestAVerbStemIsNotTheWordAUserWrites:
         assert intent_pinned_workflows("The transatlantic cable was laid in 1858.") == []
         assert intent_pinned_workflows("Draw a triangle on the map.") == []
         assert intent_pinned_workflows("translator") == []
+
+
+class TestTheWorkflowsOwnDescriptionMustPinIt:
+    """🔴 MEASURED LIVE 2026-08-12, journey `autonomous-drafting`, book 019ff497.
+
+    The workflow's own description is "drafting itself chapter by chapter, on its own", and not one
+    of its patterns matched a user who wrote exactly that. "Set this book drafting itself chapter by
+    chapter from the plan, and pause for me to review before it goes too far" pinned NOTHING — the
+    only rail computed was a completed vision-to-book — so none of its five steps was ever reached.
+    """
+
+    LIVE = ("Set this book drafting itself chapter by chapter from the plan, "
+            "and pause for me to review before it goes too far.")
+
+    def test_the_LIVE_sentence_pins_autonomous_drafting(self):
+        from app.services.intent_workflows import intent_pinned_workflows
+        assert "autonomous-drafting" in intent_pinned_workflows(self.LIVE)
+
+    def test_the_phrases_that_make_it_autonomous_pin_it(self):
+        from app.services.intent_workflows import intent_pinned_workflows
+        for s in ("go chapter by chapter", "let the book draft itself",
+                  "let it run on its own and draft"):
+            assert "autonomous-drafting" in intent_pinned_workflows(s), s
+
+    def test_a_SINGLE_chapter_request_still_belongs_to_chapter_compose(self):
+        """The control. autonomous-drafting is the MANY-chapters, unattended rail; widening it until
+        it swallowed "write this chapter" would take the single-chapter case from chapter-compose."""
+        from app.services.intent_workflows import intent_pinned_workflows
+        got = intent_pinned_workflows("Please write this chapter for me.")
+        assert "chapter-compose" in got
+        assert "autonomous-drafting" not in got
