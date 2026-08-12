@@ -68,6 +68,13 @@
       "declared_steps": 3,
       "modules_crossed": 2,
       "note": "PROVEN through the browser on book 019f9cf7-0ae3-79e6-b93f-37b9ce9e573c, driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument. The rail pinned — 'intent pinned workflow(s) [canon-check]', 'rail canon-check: 0/3 steps done, next=composition_list_canon_rules' — and step 1 ran green. The model then reported: 'no specific rules (like character eye color or established timelines) have been recorded in the system yet. Because there are no rules to check against, I can't identify any contradictions.' 🔴 THAT CLAIM WAS VERIFIED RATHER THAN TRUSTED, which is the whole surfacing question: canon_rule holds 58 rows overall and 0 for this book — so the query is DISCRIMINATING, not vacuously empty, and the report is true. Steps 2-3 (book_list, book_read) were not reached because there was nothing to check them against, which is the correct behaviour for the workflow's own description ('check the book against the consistency rules IT HAS RECORDED'). An honest 'there is nothing recorded to check' is the right answer here, and it is the opposite of the failure this loop keeps finding — it would have been trivial to invent contradictions instead. NO DEFECT SURFACED."
+    },
+    "chapter-compose": {
+      "state": "proven",
+      "surface": "{book,editor,studio}",
+      "declared_steps": 2,
+      "modules_crossed": 2,
+      "note": "PROVEN end to end through the browser on book 019ff4cf-2143-7a5f-9cc4-0cf62e286432, driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument — the only text supplied was 'Write the opening draft of the first chapter, following what the plan says it should cover.' Both declared steps ran: book_list, then book_chapter_save_draft. 🔴 AND IT CONTAINS THE RECOVERY LOOP THIS WHOLE RUN HAS BEEN BUILDING: save_draft was first refused with 'this book has no chapters yet — create one first with book_chapter_create', the model CALLED book_chapter_create, and then save_draft succeeded. That is precisely the shape D-FJ-4 exists to guarantee (a refusal that names its recovery tool, with that tool reachable), working unaided. MEASURED: chapter 019ff60c 'The Forged Path' active, with real prose grounded in this book's own glossary — 'The salt crust crunched beneath Iseul's boots … the Ring of Salt Flats … This was Saltreading, the art of seeing the tide before it arrived … \"The tide is coming in faster than the Guild charts say\".' The chapter title matches the first arc build-a-book produced on the same book, and every proper noun traces back to the notes pasted in populate-from-notes. THREE journeys composing on one book. NO DEFECT SURFACED."
     }
   },
   "defects": {
