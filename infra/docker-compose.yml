@@ -1219,6 +1219,17 @@ services:
       #   docker compose -f docker-compose.yml -f docker-compose.knowledge-pg.yml up -d knowledge-pg
       #   KNOWLEDGE_VECTOR_DB_URL=postgresql://loreweave:loreweave_dev@knowledge-pg:5432/loreweave_knowledge_vectors
       KNOWLEDGE_VECTOR_DB_URL: ${KNOWLEDGE_VECTOR_DB_URL:-}
+      # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
+      # DETECTS (see knowledge_glossary_mirror_missing); this decides whether it also
+      # CLOSES what it finds by re-emitting through glossary-service's outbox.
+      #
+      # Default off, and not because repair is risky — it is idempotent and writes no
+      # graph. An always-on repairer MASKS the breakage that caused the drift: a handler
+      # dropping every third event looks exactly like a healthy system with a diligent
+      # janitor. Turn it on WITH `knowledge_glossary_mirror_repaired_total` watched —
+      # a healthy system converges to zero repairs per sweep, so sustained repair volume
+      # is the real alarm.
+      KNOWLEDGE_MIRROR_AUTO_REPAIR: ${KNOWLEDGE_MIRROR_AUTO_REPAIR:-}
       # Pass-2 precision filter — NO env config (D-WX-PRECISION-FILTER-MODEL-ARCH).
       # Was a hardcoded env UUID of one user's model, submitted as user_model scoped
       # to the request's user → 404 for every other user → decoupled fold stall (D-WX

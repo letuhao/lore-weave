@@ -34,6 +34,10 @@ __all__ = [
     "summary_regen_tokens_total",
     "reconcile_sweep_total",
     "quarantine_sweep_total",
+    "glossary_mirror_missing",
+    "glossary_mirror_projects_diverged",
+    "glossary_mirror_repaired_total",
+    "glossary_mirror_sweep_total",
     "tool_calls_total",
     "tool_call_duration_seconds",
     "tool_call_result_size_bytes",
@@ -498,6 +502,47 @@ quarantine_sweep_total = Counter(
 )
 for _outcome in ("completed", "lock_skipped", "errored"):
     quarantine_sweep_total.labels(outcome=_outcome)
+
+
+# ── glossary→KG mirror drift (D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER) ─
+# The projection is at-least-once with no reconciliation: entities lost while a
+# handler was broken stayed lost, and NOTHING reported it. Live-measured on the
+# acceptance book: 17 of 43 absent, found by hand during an unrelated dig.
+#
+# ⚠️ DELIBERATELY UNLABELLED BY PROJECT. The obvious design is a per-project
+# gauge, and the dev database alone holds 451 projects — that is 451 series for
+# a number that is zero almost everywhere. These aggregate; the per-project
+# detail goes to the structured log, and the drift probe endpoint answers for
+# one project on demand.
+glossary_mirror_missing = Gauge(
+    "knowledge_glossary_mirror_missing",
+    "Entities the glossary says exist and the KG does not hold, summed across "
+    "every project the last sweep walked. MUST trend to zero: a sustained "
+    "non-zero value means the projection is losing events.",
+    registry=registry,
+)
+glossary_mirror_projects_diverged = Gauge(
+    "knowledge_glossary_mirror_projects_diverged",
+    "Projects with at least one missing entity at the last sweep. Separates "
+    "'one book is badly broken' from 'every book lost one event'.",
+    registry=registry,
+)
+glossary_mirror_repaired_total = Counter(
+    "knowledge_glossary_mirror_repaired_total",
+    "Mirror events re-emitted by the sweep. A HEALTHY system converges to zero "
+    "repairs; sustained repair volume means something upstream keeps losing "
+    "events and the reconciler is only masking it.",
+    registry=registry,
+)
+glossary_mirror_sweep_total = Counter(
+    "knowledge_glossary_mirror_sweep_total",
+    "Mirror-drift sweep outcomes. `errored` fires once per sweep that had ≥1 "
+    "per-project error, not once per project.",
+    ["outcome"],
+    registry=registry,
+)
+for _outcome in ("completed", "lock_skipped", "errored"):
+    glossary_mirror_sweep_total.labels(outcome=_outcome)
 
 
 # ── K21 — LLM memory tool calls ──────────────────────────────────────

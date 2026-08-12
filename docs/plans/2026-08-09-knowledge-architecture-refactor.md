@@ -5175,8 +5175,43 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Blocker** | ~~The projection is at-least-once delivery with no reconciliation.~~ **CLOSED 2026-08-12.** Detector + repairer both shipped, and the divergence on the acceptance book is **17 → 0**, verified in Neo4j directly rather than by asking the detector about its own repair. What remains open is the *scheduling* question (below), not the mechanism. |
   | **Evidence** | The chain above, every step measured. Then: `missing 17` → repair re-emitted 17 → `missing 0` within one relay cycle. Independently: Neo4j went **26 → 43** nodes carrying a glossary id, and all 17 formerly-missing ids are present (`found_of_17: 17`). |
   | **Mechanism** | `GET …/glossary-mirror-drift` measures, `POST …/glossary-mirror-repair` closes. The count is the metric and it is now machine-produced. |
-  | **Still open** | **Nothing RUNS the detector.** Both routes are operator-triggered `/internal` endpoints — a person still has to ask. The projection can therefore drift again the next time a handler breaks, and the gap would once more be found by accident. What this needs is a schedule (a periodic sweep, or the drift count as a metric an alert watches) — a smaller and much better-understood problem than the one it replaces. |
-  | **Retry when** | Whenever periodic reconciliation is scoped. **No longer blocks QC-5**, which is the point: the acceptance test now reads a complete cast. |
+  | ~~Still open~~ | ~~Nothing RUNS the detector.~~ **CLOSED 2026-08-12** — see the sweeper below. |
+  | **Retry when** | Nothing outstanding. **No longer blocks QC-5**, which is the point: the acceptance test now reads a complete cast. |
+
+  #### ✅ SHIPPED THIS CYCLE — the sweeper, which is what makes it a reconciler
+
+  The detector and the repairer were both `/internal` endpoints, so a **person had to ask**.
+  The 17-entity hole that started this was found by hand, a day late, during an
+  investigation into something else. Nothing would have found the next one either.
+
+  | | |
+  |---|---|
+  | **Shape** | `app/jobs/mirror_drift_scheduler.py`, deliberately the same shape as the existing `reconcile_evidence_count_scheduler` — same advisory-lock idiom (key `20_310_006`, distinct from all five siblings), same cursor-resumable sweep, same loop wrapper — so operators keep one mental model for "background scheduler" in this service. Six-hourly, 35-minute startup stagger. |
+  | **Detects, does not repair, by default** | `KNOWLEDGE_MIRROR_AUTO_REPAIR=false`. Not because repair is risky (idempotent, writes no graph) but because an always-on repairer **masks the breakage that caused the drift** — a handler dropping every third event would look exactly like a healthy system with a diligent janitor. With it on, `knowledge_glossary_mirror_repaired_total` is the alarm: a healthy system converges to ZERO repairs per sweep. |
+  | **Metrics, not per-project gauges** | `knowledge_glossary_mirror_missing` + `_projects_diverged` are aggregate. The obvious design labels by project, and the dev database alone holds **451** — 451 series for a number that is zero almost everywhere. Per-project detail goes to the log line, with ids, so a red metric is actionable without a second investigation. |
+  | **Cost, measured not assumed** | ~95 ms for a 43-entity book (~2 ms/entity, ~8 ms fixed). 451 projects ≈ 45 s. **That measurement is why the bulk `GraphStore` read was NOT built**: at this cost it buys nothing, and a detector bound to one engine would have to be rewritten by the engine swap it exists to survive. |
+  | **Bites** | 7, all red: unreachable glossary counted as a clean project · one bad project aborting the sweep · counting the REQUEST as the repair instead of the SSOT's answer · swallowing a failed re-emit · repairing regardless of the setting · clearing the cursor on a capped sweep · dropping the advisory lock. |
+  | **Live** | Loop start logged; the service ran **its own** sweep — `projects=377 diverged=69 MISSING=1906 errored=0 capped=False` — and `/metrics` then served `knowledge_glossary_mirror_missing 1906`, `_projects_diverged 69`, `_sweep_total{outcome="completed"} 1`. Cursor resumption verified across two sweeps. |
+
+  ⚠️ **That 1906 is NOT production drift.** It was measured on the isolated stack, whose
+  Neo4j was never seeded — only the one project's 43 entities were rebuilt there. It proves
+  the machinery end to end and nothing about how healthy the real mirror is. The real number
+  is the shared stack's, and the shared stack no longer runs this code (see below).
+
+  🔻 **A documented switch that did not exist.** The scheduler's docstring named
+  `KNOWLEDGE_MIRROR_AUTO_REPAIR` while the settings field was `mirror_auto_repair` — this
+  `Settings` class has no `env_prefix`, so the field name **is** the variable name, and the
+  documented switch was dead. Found by trying to use it. Fields are `knowledge_mirror_*` now
+  (matching the `knowledge_vector_db_url` precedent) and the switch is exposed in
+  `docker-compose.yml`. A reminder that "documented" and "wired" are different claims, which
+  is the same class as `D-GLOSSARY-EVENTS-NO-SOT`.
+
+  ⚠️ **The shared stack no longer serves this code.** Mid-cycle, `GET …/glossary-mirror-drift`
+  on `:8216` started returning **404**: the other branch rebuilt and restarted
+  `infra-knowledge-service` at 08:53Z from their tree. Our isolated stack (08:45Z) still
+  served it. That is the contention `infra/iso.sh` was built for, demonstrating itself within
+  the hour — and it means **any live measurement of the REAL mirror has to wait for the
+  branches to reconcile.**
 
   #### 📈 WHAT CLOSING IT CHANGED FOR QC-5
 

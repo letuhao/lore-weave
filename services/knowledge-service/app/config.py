@@ -259,6 +259,30 @@ class Settings(BaseSettings):
     # keeps working without Neo4j running. Set to e.g.
     # bolt://neo4j:7687 to enable. When set, the lifespan hook
     # fail-fasts on unreachable Neo4j (per the K11.2 spec).
+    # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the scheduled mirror sweep always
+    # DETECTS; this decides whether it also closes what it finds by re-emitting through
+    # glossary-service's outbox.
+    #
+    # Default FALSE, and not because repair is risky (it is idempotent and writes no
+    # graph): an always-on repairer MASKS the breakage that caused the drift. A handler
+    # dropping every third event would look exactly like a healthy system with a diligent
+    # janitor. With it on, `knowledge_glossary_mirror_repaired_total` is the alarm —
+    # a healthy system converges to zero repairs per sweep — so turning it on is a
+    # deployment decision made with that metric watched, not a default.
+    # ⚠️ `knowledge_`-prefixed ON PURPOSE. There is no `env_prefix` on this Settings
+    # class, so the field name IS the env var name — `mirror_auto_repair` would be
+    # `MIRROR_AUTO_REPAIR`, which says nothing about which of the stack's ~40 services
+    # it belongs to. Same reasoning as `knowledge_vector_db_url`. (Caught live: the
+    # scheduler's docstring documented `KNOWLEDGE_MIRROR_AUTO_REPAIR` while the field
+    # was unprefixed, so the switch it named did not exist.)
+    knowledge_mirror_auto_repair: bool = False
+    # Schedule knobs. A background sweeper nobody can force is one nobody ever watches
+    # run: the default first sweep is 35 minutes after boot, which is longer than anyone
+    # will sit and wait, so the honest way to verify it in-process is to shorten it.
+    # 0 means "sweep immediately at startup".
+    knowledge_mirror_sweep_startup_delay_s: int = 35 * 60
+    knowledge_mirror_sweep_interval_s: int = 6 * 60 * 60
+
     neo4j_uri: str = ""
     neo4j_user: str = "neo4j"
     neo4j_password: str = "loreweave_dev_neo4j"

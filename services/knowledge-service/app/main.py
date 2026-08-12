@@ -463,6 +463,7 @@ async def lifespan(app: FastAPI):
     # 001-003 so all schedulers can run concurrently without blocking.
     reconcile_sweep_task = None
     quarantine_sweep_task = None
+    mirror_drift_task = None
     if settings.neo4j_uri:
         try:
             from app.db.neo4j import neo4j_session
@@ -501,9 +502,32 @@ async def lifespan(app: FastAPI):
             logger.info(
                 "C14a: quarantine-cleanup loop started as background task"
             )
+
+            # D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER — the glossary→KG mirror had a
+            # detector and a repairer, both /internal endpoints, so a PERSON had to
+            # ask. The 17-entity hole that started this was found by hand a day late,
+            # during an investigation into something else. This is what runs it.
+            from app.clients.glossary_client import get_glossary_client
+            from app.jobs.mirror_drift_scheduler import run_mirror_drift_loop
+
+            mirror_drift_task = asyncio.create_task(
+                run_mirror_drift_loop(
+                    get_knowledge_pool(),
+                    _scheduler_session_factory,
+                    get_glossary_client(),
+                    auto_repair=settings.knowledge_mirror_auto_repair,
+                    sweeper_state_repo=_sweeper_state_repo,
+                    interval_s=settings.knowledge_mirror_sweep_interval_s,
+                    startup_delay_s=settings.knowledge_mirror_sweep_startup_delay_s,
+                )
+            )
+            logger.info(
+                "mirror-drift loop started as background task (auto_repair=%s)",
+                settings.knowledge_mirror_auto_repair,
+            )
         except Exception:
             logger.warning(
-                "C14a: reconcile/quarantine loops failed to start (non-fatal)",
+                "C14a: reconcile/quarantine/mirror loops failed to start (non-fatal)",
                 exc_info=True,
             )
 
@@ -701,6 +725,16 @@ async def lifespan(app: FastAPI):
                 logger.warning(
                     "C14a: error stopping quarantine sweep loop",
                     exc_info=True,
+                )
+        if mirror_drift_task is not None:
+            mirror_drift_task.cancel()
+            try:
+                await mirror_drift_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.warning(
+                    "error stopping mirror-drift sweep loop", exc_info=True,
                 )
 
         # Stop event consumer next.
