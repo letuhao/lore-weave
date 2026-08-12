@@ -6257,6 +6257,46 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   **QC** — 4 shadow · **410 integration** (both engines live) · **4184 unit**.
 
+  #### 🎯 RE-MEASURED 2026-08-13 — **9 of 9, and the coverage floor no longer blocks**
+
+  The block above was accurate when written and is now STALE by one step: it predates
+  `D-T42-AGE-EVENT-SURFACE` closing. Re-run against two throwaway engines (Neo4j on `:7999`,
+  the T42b AGE image on `:7893` — neither is a dev port, neither is the isolated stack):
+
+  ```
+  operation                   obs  agr  div  unc unmap
+  resolve_or_merge_entity       2    2    0    0     0
+  find_entities_by_name         1    1    0    0     0
+  neighborhood                  1    1    0    0     0
+  archive_entity                1    1    0    0     0
+  restore_entity                1    1    0    0     0
+  upsert_relation               1    1    0    0     0
+  relations_for                 1    1    0    0     0
+  status_at_order               1    1    0    0     0
+  events_in_window              1    1    0    0     0
+
+  COMPARED           : 9 of 9
+  blocked_by         : []
+  cutover_permitted  : True
+  ```
+
+  **Neo4j and AGE agree on every operation the port defines, with zero divergences.** That is
+  the evidence X1 insisted the engine choice be made on, and it now exists.
+
+  ⚠️ **What this does NOT say, stated because the number invites the stronger reading.**
+  `cutover_permitted` is a **data statement about the shadow's observations, not an
+  authorisation** — the test file says so itself, and QC-7 is the ⏸ checkpoint that decides.
+  The traffic is the harness's **synthetic** sequence, one or two observations per operation,
+  not production load: it proves the two engines answer the same way on the shapes exercised,
+  not that every real call pattern agrees. The sealed floor says *"no cutover while any
+  operation has zero observations"* — that condition is met; it was never the only one.
+
+  🔻 **A STALE-BY-ONE-STEP PLAN IS ITSELF THE FINDING.** Two rows here (`3 of 9` in the task
+  body, `7 of 9` in the closure note) each described a real measurement and each stopped being
+  true when a *different* deferral closed. Nothing relates a deferral's closure to the numbers
+  it invalidates elsewhere in this document, which is the same class as
+  `debt-batches-list-is-stale` — verify before believing a status row, including this one.
+
 - [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
   `/review-impl`. **Actually run** rebuild-from-Postgres on a real book and time it — the path is
   being built in T41 and has never existed, so its cost is unknown and three claims depend on it.
