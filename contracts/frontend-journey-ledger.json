@@ -87,6 +87,12 @@
       "surface": "{book}",
       "declared_steps": 1,
       "note": "BLOCKED on D-FJ-15. Run on book 019f9cf7 from plain prose with no operator-typed tool argument. The rail pinned and named its only step (story_search) — and that step was never called; the rail stands at 0/1. The model answered from ambient context, correctly, which is exactly why this is blocked rather than proven: the workflow's promise ('Answer using only what the reader has read so far') is enforced by the step that did not run, so a right answer here proves nothing about the cutoff. Not dressed up as proven on the strength of a good-looking reply."
+    },
+    "glossary-bootstrap": {
+      "state": "not_started",
+      "surface": "unrestricted",
+      "declared_steps": 4,
+      "note": "NOT STARTED — the only declared WORKFLOW without a terminal conclusion. It needs a book with no categories yet, so a fresh one; the run stopped at book creation when the browser session's access token expired and the app redirected to /login. Two hard environment limits were hit in the same window and are recorded because they bound what this session could verify, not as excuses: the host OOM'd (an unrelated GitKraken hook died with 'fatal error: out of memory allocating heap arena map', the same limit that earlier killed a pytest-xdist run with an execnet MemoryError), and the auth token expired. RESUME: log in, create a fresh book, and send prose paraphrasing the workflow's own description ('set up this book's world categories'). Note D-FJ-9/D-FJ-10 make the pinning of description-shaped requests markedly more reliable than when this loop started, so this should now engage its rail."
     }
   },
   "defects": {
@@ -263,5 +269,16 @@
       "question": "When the target model narrates a write instead of performing it, and the runtime's nudge does not change that, what is the product's answer? Options seen from here, none chosen: (a) the runtime executes the rail's next declared step itself once the nudge is ignored (the rail already names the tool and the step is gated, so consent is not bypassed); (b) the turn is reported to the AUTHOR as 'no action was taken' rather than ending on the model's claim; (c) the journey is declared out-of-reach for this model tier and the surface says so.",
       "evidence": "MEASURED 2026-08-12 with all eight fixes deployed and verified by content. Book 019f9cf7-0ae3-79e6-b93f-37b9ce9e573c, prose 'Please translate this book into Vietnamese for me now'. The runtime did everything it can currently do: the rail was computed with next=translation_start_job, D-FJ-8's arm fired correctly — 'the turn called NO tool while a rail's next write step is outstanding: [translation_start_job] — nudging once' — and the directive told the model to either call it or say plainly that it did not. The model still ended the turn with ZERO tool calls, outcome='completed', and no job row; on the sister book it wrote 'I have already started the translation for Chapter 1' after the same nudge. Every declared step of this workflow HAS been observed succeeding live in other runs, so the tools work; what does not work is getting this model to take the step when it has decided to narrate instead. That is a product decision about what the runtime owes the author when the model will not act, not a further defect to fix by measurement."
     }
+  },
+  "progress": {
+    "workflows_declared": 12,
+    "workflows_concluded": 11,
+    "workflows_proven": 8,
+    "workflows_blocked": 3,
+    "skills_declared": 27,
+    "skills_concluded": 0,
+    "defects_proven": 12,
+    "defects_open": 3,
+    "_note": "Counted from the ledger's own rows, never typed. The 27 declared SKILLS are entirely unstarted — the loop worked the workflows first, per the RUNBOOK's ordering (a workflow before a skill), and got 11 of 12 to a terminal conclusion."
   }
 }
