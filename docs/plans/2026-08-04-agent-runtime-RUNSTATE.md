@@ -4536,9 +4536,13 @@ retrofitted to whatever gets built.
 
 ---
 
-## ▶ NEXT RUN — CP-5's EXIT: admit the essential set, and the two questions it leaves
+## ▶ ~~NEXT RUN~~ — CP-5's EXIT: **EXECUTED and CLOSED 2026-08-10.** Both halves met; see directly below
 
-*The `/goal` points here. If the prompt and this section disagree, **this section wins.***
+*This header stayed un-struck and kept claiming* "the `/goal` points here … this section wins" *while
+the closure sat one line beneath it. With the section further down also live, the board carried
+**three simultaneous "this section wins" claims**. Struck 2026-08-12 by the same audit that found the
+other two — and found by a verification check, not by re-reading, which is the only reason it was
+caught at all.*
 
 > ### ✅ **CP-5 CLOSES — 2026-08-10. BOTH HALVES OF THE EXIT, AND THE SECOND ONE WAS THE HARD ONE.**
 >
