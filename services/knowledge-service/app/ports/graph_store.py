@@ -38,10 +38,19 @@ from __future__ import annotations
 
 from typing import Literal, Protocol, runtime_checkable
 
-from app.db.neo4j_repos.entities import Entity, EntityDetail
-from app.db.neo4j_repos.provenance import EvidenceWriteResult
-from app.db.neo4j_repos.events import Event
-from app.db.neo4j_repos.relations import Relation
+# ⚠️ These come from `app.domain`, NOT from `db/neo4j_repos/` (T17). A port that imports its
+# own implementation is not a boundary: every signature here was typed in one engine's
+# vocabulary, `port-adoption-gate` counted this file among the modules bound to the concrete
+# layer (correctly — an import is an import), and a second adapter returned Neo4j's models by
+# definition rather than by agreement. The classes never depended on the repo layer; they were
+# simply defined next to the first thing that spoke them.
+from app.domain.graph_models import (
+    Entity,
+    EntityDetail,
+    EvidenceWriteResult,
+    Event,
+    Relation,
+)
 
 __all__ = ["EventAxis", "GraphStore", "RelationDirection"]
 

@@ -1809,10 +1809,23 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   not a decision. It is T43's question because a second adapter must implement whatever is
   added.
 
-  ⚠️ **The ceiling cannot reach zero as currently defined.** `ports/graph_store.py` is itself
-  counted as a concrete binder, because the port imports its own types (`Entity`, `Relation`,
-  `Event`) from `neo4j_repos`. Two more modules are model-only imports. That is a real coupling
-  worth its own slice — and the number is left honest rather than redefined to look better.
+  ✅ **THE PORT NO LONGER IMPORTS ITS OWN IMPLEMENTATION (2026-08-13).** `ports/graph_store.py`
+  was itself counted as a concrete binder — it typed every signature in `Entity`, `Relation`,
+  `Event` imported from `neo4j_repos`. So the port was not a boundary: one engine's vocabulary
+  *was* the contract, and a second adapter returned Neo4j's models by definition rather than by
+  agreement. The six models moved to `app/domain/graph_models.py`; `neo4j_repos` re-exports them
+  so ~60 importers keep working, and the gate's ceiling is what records callers moving off.
+
+  ```
+  concrete binders   67 → 64      (the port itself, plus the two model-only importers)
+  ```
+
+  **This is the ceiling becoming ABLE to fall** — before it, no amount of call-site migration
+  could reach zero. Checked by AST before moving: every model came back with no module-level
+  dependency except `EntityDetail` on `Entity`, which moved with it. The re-export preserves
+  **class identity** (`neo4j_repos.Entity is domain.Entity` → `True`), so `isinstance` across
+  the two import paths still holds — a shim that produced a copy would have broken checks
+  service-wide in a way no type annotation would catch.
   🔴 **NOW ON THE CRITICAL PATH (X3, 2026-08-11).** This read as background cleanup while the
   engine swap sat in the tail. With the engine moved to layer 1, **port adoption is what makes a
   swap actually work** — an unmigrated module is one that breaks when the engine changes.

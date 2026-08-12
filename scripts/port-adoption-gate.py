@@ -65,7 +65,12 @@ EXEMPT_DIRS = (
 
 # The ceiling can only fall. Raising it is a deliberate act with a reason, not a fix for a
 # red build — that is the whole contract of a shrink-only gate.
-MAX_CONCRETE_IMPORTERS = 67
+# **64** (2026-08-13) — the domain models moved to `app/domain/graph_models.py`, so
+# `ports/graph_store.py` STOPPED COUNTING ITSELF: the port had been importing `Entity`,
+# `Relation` and `Event` from the implementation it exists to abstract. Two model-only
+# importers followed. This is the ceiling becoming ABLE to fall — before it, no amount of
+# call-site migration could reach zero.
+MAX_CONCRETE_IMPORTERS = 64
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.

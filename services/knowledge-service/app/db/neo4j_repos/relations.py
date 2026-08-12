@@ -82,55 +82,10 @@ SUBGRAPH_MAX_NODE_CAP = 500
 SUBGRAPH_MAX_HOPS = 3
 
 
-class Relation(BaseModel):
-    """Pydantic projection of a `:RELATES_TO` edge.
-
-    The endpoints are returned alongside the edge properties so
-    the caller can render `(subject_name)-[predicate]->(object_name)`
-    without a second round-trip. Endpoint nodes are projected as
-    just `id` + `name` + `kind` to keep the payload small —
-    callers that need the full node go through K11.5's
-    `get_entity`.
-    """
-
-    id: str
-    user_id: str
-    subject_id: str
-    object_id: str
-    predicate: str
-    confidence: float = 0.0
-    source_event_ids: list[str] = Field(default_factory=list)
-    source_chapter: str | None = None
-    valid_from: datetime | None = None
-    valid_until: datetime | None = None
-    # F3 — story (valid) time axis (chapter ordinals). The existing
-    # valid_from/valid_until above are wall-clock TRANSACTION-time; these are the
-    # STORY-time half-open interval [valid_from_ordinal, valid_to_ordinal) over
-    # the (subject, predicate) arc. valid_from_ordinal is stamped at write time
-    # (the chapter ordinal the edge was established at, on the same scale as
-    # events.event_order); valid_to_ordinal is set ONLY by temporal.maintain_chain
-    # when a later instance on the same (subject, predicate) chain supersedes it.
-    # NULL on legacy / positionless edges. See app.db.neo4j_repos.temporal + §12.3.
-    valid_from_ordinal: int | None = None
-    valid_to_ordinal: int | None = None
-    valid_to_ordinal_eff: int | None = None
-    # dec-3 (D-KG-INSTORY-EVENTDATE) — detected in-story (narrative) time as a
-    # truncated ISO string: "YYYY" / "YYYY-MM" / "YYYY-MM-DD". An ADDITIONAL,
-    # optional valid-time REFINEMENT alongside the chapter-ordinal axis
-    # (valid_from_ordinal) — chapter-ordinal stays the PRIMARY / spoiler-safe
-    # story-time axis; event_date_iso is a SECONDARY descriptive sort/filter key
-    # supplied only when the prose carries an explicit in-story date. NULL is the
-    # dominant case and never affects the ordinal chain. Mirrors :Event /
-    # :Fact event_date_iso (same truncated-ISO shape, precision-preferring merge).
-    event_date_iso: str | None = None
-    pending_validation: bool = False
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-    # Endpoint projection — populated by find_* helpers.
-    subject_name: str | None = None
-    subject_kind: str | None = None
-    object_name: str | None = None
-    object_kind: str | None = None
+# T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
+# names, so defining them here made the port import its own implementation. Re-exported
+# so existing importers keep working; the adoption gate records callers moving off.
+from app.domain.graph_models import Relation  # noqa: F401
 
 
 class RelationHop(BaseModel):

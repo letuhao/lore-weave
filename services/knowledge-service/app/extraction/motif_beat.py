@@ -45,9 +45,9 @@ from uuid import UUID
 
 from app.db.neo4j import neo4j_session
 from app.adapters.graph_store_provider import get_graph_store
-# `Event` is the port's own return type (the port imports it from here too), so this stays
-# a MODEL import after the migration — not a behavioural binding to the Neo4j layer.
-from app.db.neo4j_repos.events import Event
+# T17 — the model comes from the engine-neutral domain module, so this file no longer
+# imports `neo4j_repos` at all.
+from app.domain.graph_models import Event
 from app.db.pool import get_knowledge_pool
 
 logger = logging.getLogger(__name__)

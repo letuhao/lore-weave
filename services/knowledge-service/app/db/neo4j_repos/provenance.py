@@ -340,14 +340,10 @@ _ADD_EVIDENCE_CYPHER: dict[str, str] = {
 }
 
 
-class EvidenceWriteResult(BaseModel):
-    """Returned by `add_evidence` so the caller can log the
-    post-write counters and tell whether the edge was newly
-    created or already present."""
-
-    evidence_count: int
-    mention_count: int
-    created: bool
+# T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
+# names, so defining them here made the port import its own implementation. Re-exported
+# so existing importers keep working; the adoption gate records callers moving off.
+from app.domain.graph_models import EvidenceWriteResult  # noqa: F401
 
 
 async def add_evidence(

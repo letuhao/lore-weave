@@ -89,92 +89,10 @@ __all__ = [
 # Tuple (not set) for stable iteration; lookup is O(n) on n=4 so
 # no hash overhead matters.
 SUPPORTED_VECTOR_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
-class Entity(BaseModel):
-    """Pydantic projection of an `:Entity` node.
-
-    Mirrors the property set documented in KSA §3.4.B + §3.4.E.
-    Fields that are populated by K11.5b (embeddings) or K11.8
-    (evidence_count) are present as Optional so the model can
-    represent both a freshly-merged entity and a fully-anchored
-    one without two separate types.
-    """
-
-    id: str
-    user_id: str
-    project_id: str | None = None
-    name: str
-    canonical_name: str
-    kind: str
-    aliases: list[str] = Field(default_factory=list)
-    canonical_version: int = 1
-    source_types: list[str] = Field(default_factory=list)
-    confidence: float = 0.0
-
-    # Two-layer anchoring (KSA §3.4.E).
-    glossary_entity_id: str | None = None
-    anchor_score: float = 0.0
-
-    # Soft-archive (KSA §3.4.F).
-    archived_at: datetime | None = None
-    archive_reason: str | None = None
-
-    # K11.8 maintains this; K11.5a queries against the
-    # `entity_user_evidence` composite index.
-    evidence_count: int = 0
-    # K11.5b: mention_count is the number of times this entity
-    # was observed during extraction. K11.8 increments it; K11.5b's
-    # recompute_anchor_score divides by max-per-project to derive
-    # anchor_score for discovered (non-anchored) entities.
-    mention_count: int = 0
-
-    # K19d γ-a: set to True by `update_entity_fields` (backing the
-    # PATCH /entities/{id} route). Once true, `merge_entity`'s
-    # ON MATCH branch no longer re-adds extracted name variants to
-    # `aliases` — the extractor can't silently undo a user's edit.
-    # Existing nodes created before K19d γ-a lack this property and
-    # read-path `coalesce(user_edited, false) = false` treats them
-    # as un-edited, preserving the old behaviour on re-extraction.
-    user_edited: bool = False
-
-    # C9 (D-K19d-γa-01): optimistic-concurrency counter. Bumped by
-    # every user-facing write (PATCH, unlock, user-merge, extraction
-    # merge_entity). Pre-C9 nodes without the property read as 1 via
-    # `_node_to_entity`'s coalesce — the first write after C9 will
-    # mint the value. Router hands out weak ETags of the form
-    # `W/"<version>"` and requires If-Match on PATCH.
-    version: int = 1
-
-    # Cycle 73e: True when minted by Pass2 writer's Tier-B autocreate
-    # (relation subject/object unresolved against extracted entity
-    # list AND not in anchors). Cleared on legit re-extraction via
-    # `_MERGE_ENTITY_CYPHER`'s ON MATCH promotion CASE. Legacy nodes
-    # without the property read as False via `_node_to_entity` +
-    # `coalesce(e.auto_created, false)` Cypher idiom.
-    auto_created: bool = False
-
-    created_at: datetime | None = None
-    updated_at: datetime | None = None
-
-    # C8 (C8-entity-status LOCKED) — DERIVED status, never a stored
-    # column. The two-layer anchor model already carries the source
-    # fields (`archived_at`, `glossary_entity_id`); `status` is a pure
-    # projection over them so the FE renders ⭐/💭/📦 without inferring
-    # the precedence itself.
-    #
-    # Precedence (BE+FE MUST agree): `archived` wins over `canonical`.
-    # A soft-archive (`_ARCHIVE_CYPHER`) already nulls
-    # `glossary_entity_id`, so in practice the two are mutually
-    # exclusive — but if a future write path ever leaves both set, an
-    # archived entity must read as archived (it is out of the active
-    # retrieval set), not canonical. `discovered` = unanchored + active.
-    @computed_field  # type: ignore[prop-decorator]
-    @property
-    def status(self) -> str:
-        if self.archived_at is not None:
-            return "archived"
-        if self.glossary_entity_id is not None:
-            return "canonical"
-        return "discovered"
+# T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
+# names, so defining them here made the port import its own implementation. Re-exported
+# so existing importers keep working; the adoption gate records callers moving off.
+from app.domain.graph_models import Entity  # noqa: F401
 
 
 # C8 — closed set of derivable statuses, exposed so the router's
@@ -768,14 +686,10 @@ async def resolve_kg_entity_id_by_glossary_id(
 # load-bearing (both salience weights default to 0.0) going quiet.
 
 
-@dataclass(frozen=True)
-class PromotionSignals:
-    """Graph-native per-entity promotion inputs (P3a): evidence + mentions + edit
-    recency, as stored on the `:Entity` node. Scoring lives in the selector; this
-    module only reads."""
-    evidence_count: int
-    mention_count: int
-    updated_at: datetime | None
+# T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
+# names, so defining them here made the port import its own implementation. Re-exported
+# so existing importers keep working; the adoption gate records callers moving off.
+from app.domain.graph_models import PromotionSignals  # noqa: F401
 
 
 _PROMOTION_SIGNALS_CYPHER = """
@@ -979,19 +893,10 @@ LIMIT $limit
 ENTITIES_DETAIL_REL_CAP = 200
 
 
-class EntityDetail(BaseModel):
-    """K19d.4 — `GET /v1/knowledge/entities/{id}` response payload.
-
-    Relations are projected with both endpoint node id/name/kind so
-    the FE can render `(subject)-[predicate]->(object)` without a
-    second round-trip per row. Direction is inferable by comparing
-    `relations[i].subject_id == entity.id`.
-    """
-
-    entity: Entity
-    relations: list[Relation]
-    relations_truncated: bool = False
-    total_relations: int = 0
+# T17 — moved to `app.domain.graph_models`: the port typed its signatures in these
+# names, so defining them here made the port import its own implementation. Re-exported
+# so existing importers keep working; the adoption gate records callers moving off.
+from app.domain.graph_models import EntityDetail  # noqa: F401
 
 
 async def list_user_entities(
