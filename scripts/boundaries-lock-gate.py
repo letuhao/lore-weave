@@ -31,6 +31,18 @@ Also WARNS (never blocks) if the committed `_LOCK.md` still shows a non-None
 `Owner:` — a lock left held is a bug too, but a different one, and blocking it
 would break the legitimate bare-claim commit above.
 
+GT8 · what this gate lacked
+---------------------------
+Its rules were welded to git: `main()` read the staged list and called `git show`
+inline, so there was nothing a case could drive. `evaluate()` now takes the file
+list plus two lookups, and only the lookups need git — the same split that let
+`context-inspector-trace-gate` be proven without a stack.
+
+Its structural limit, stated rather than left implicit: in a sweep nothing is
+staged, so the live half has no subject and its green says only that the rules
+are proven. The bare invocation now says so instead of printing a bare "nothing
+to do".
+
 USAGE
 -----
     python scripts/boundaries-lock-gate.py --staged     # pre-commit
@@ -85,20 +97,13 @@ def lock_owner(path: str) -> str | None:
     return None
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--staged", action="store_true", help="check staged files (pre-commit)")
-    ap.add_argument("--warn-only", action="store_true", help="report but always exit 0")
-    args = ap.parse_args()
+def evaluate(files, added_lines_fn, owner_fn):
+    """The ENTIRE rule set, as a pure function of the staged file list plus two
+    lookups. Only the lookups need git; the rules do not — which is why
+    `--self-test` can prove every one of them bites without staging anything.
 
-    if not args.staged:
-        print("[boundaries-lock] nothing to do (pass --staged)")
-        return 0
-
-    files = staged_files()
-
-    # Group staged boundary files by their owning `_boundaries/` directory, so the
-    # rule works for any number of boundary folders rather than one hardcoded path.
+    Returns (violations, warnings, n_folders).
+    """
     edits: dict[str, list[str]] = defaultdict(list)
     locks: dict[str, str] = {}
     for path in files:
@@ -110,15 +115,15 @@ def main() -> int:
         else:
             edits[folder].append(path)
 
-    if not edits:
-        print("[boundaries-lock] PASS — no _boundaries/ content staged")
-        return 0
-
     violations: list[str] = []
     warnings: list[str] = []
 
     for folder, changed in sorted(edits.items()):
         lock_path = locks.get(folder)
+        # Message refinement, not detection: with no staged lock there is no
+        # release line either, so the next branch reds anyway. It stays because
+        # "you did not stage the lock" and "the lock evidences no release" send a
+        # committer to different actions. A bite arm on it came back green.
         if lock_path is None:
             violations.append(
                 f"{folder}/: {len(changed)} file(s) staged but {LOCK_BASENAME} is NOT staged\n"
@@ -128,7 +133,7 @@ def main() -> int:
             )
             continue
 
-        if not any(RELEASE_MARKER in ln for ln in added_lines(lock_path)):
+        if not any(RELEASE_MARKER in ln for ln in added_lines_fn(lock_path)):
             violations.append(
                 f"{folder}/: {LOCK_BASENAME} is staged but adds no '{RELEASE_MARKER}' line\n"
                 f"    changed: {', '.join(sorted(changed))}\n"
@@ -136,15 +141,111 @@ def main() -> int:
             )
             continue
 
-        owner = lock_owner(lock_path)
+        owner = owner_fn(lock_path)
         if owner is not None and owner.lower() not in ("none", "—", "-", ""):
             warnings.append(f"{folder}/: lock left HELD by {owner!r} after this commit")
+
+    return violations, warnings, len(edits)
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+B = "docs/x/_boundaries"
+
+
+def self_test() -> int:
+    failures = 0
+
+    def probe(name, want_v, want_w, files, added=None, owners=None):
+        nonlocal failures
+        added = added or {}
+        owners = owners or {}
+        try:
+            v, w, _ = evaluate(files, lambda p: added.get(p, []), lambda p: owners.get(p))
+        except Exception as e:  # noqa: BLE001 - a crash is what this asserts against
+            failures += 1
+            print(f"  FAIL {name}: raised {type(e).__name__}: {e}")
+            return
+        ok = (len(v) == want_v) and (len(w) == want_w)
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: {len(v)} violation(s), {len(w)} warning(s) "
+              f"(want {want_v}/{want_w})")
+
+    RELEASED = [f"{RELEASE_MARKER} 2026-08-12"]
+    print("boundaries-lock-gate --self-test")
+
+    probe("nothing staged is clean", 0, 0, [])
+    probe("a non-boundary file is not our business", 0, 0, ["services/a/main.go"])
+    probe("the lock staged ALONE is a legitimate bare claim", 0, 0, [f"{B}/{LOCK_BASENAME}"])
+
+    probe("boundary content WITHOUT the lock fails", 1, 0, [f"{B}/99_changelog.md"])
+    probe("boundary content WITH a released lock passes", 0, 0,
+          [f"{B}/99_changelog.md", f"{B}/{LOCK_BASENAME}"],
+          added={f"{B}/{LOCK_BASENAME}": RELEASED})
+    probe("...but a lock adding NO release line fails", 1, 0,
+          [f"{B}/99_changelog.md", f"{B}/{LOCK_BASENAME}"],
+          added={f"{B}/{LOCK_BASENAME}": ["- **Owner:** alice"]})
+
+    # the warn leg — a lock left held is a different bug, and must NOT block
+    probe("a lock left HELD warns but does not block", 0, 1,
+          [f"{B}/99_changelog.md", f"{B}/{LOCK_BASENAME}"],
+          added={f"{B}/{LOCK_BASENAME}": RELEASED},
+          owners={f"{B}/{LOCK_BASENAME}": "alice"})
+    for none_ish in ("None", "none", "—", "-", ""):
+        probe(f"...and Owner={none_ish!r} is released, not held", 0, 0,
+              [f"{B}/99_changelog.md", f"{B}/{LOCK_BASENAME}"],
+              added={f"{B}/{LOCK_BASENAME}": RELEASED},
+              owners={f"{B}/{LOCK_BASENAME}": none_ish})
+
+    # per-folder, not one hardcoded path
+    B2 = "docs/y/_boundaries"
+    probe("TWO folders are judged independently", 1, 0,
+          [f"{B}/99.md", f"{B}/{LOCK_BASENAME}", f"{B2}/99.md"],
+          added={f"{B}/{LOCK_BASENAME}": RELEASED})
+    probe("...and both released is clean", 0, 0,
+          [f"{B}/99.md", f"{B}/{LOCK_BASENAME}", f"{B2}/99.md", f"{B2}/{LOCK_BASENAME}"],
+          added={f"{B}/{LOCK_BASENAME}": RELEASED, f"{B2}/{LOCK_BASENAME}": RELEASED})
+
+    if failures:
+        print(f"boundaries-lock-gate --self-test: {failures} rule(s) did not behave")
+        return 2
+    print("boundaries-lock-gate --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--staged", action="store_true", help="check staged files (pre-commit)")
+    ap.add_argument("--warn-only", action="store_true", help="report but always exit 0")
+    ap.add_argument("--self-test", "--selftest", dest="self_test", action="store_true",
+                    help="prove every rule bites, over synthetic staged sets")
+    args = ap.parse_args()
+
+    if args.self_test:
+        return self_test()
+    rc = self_test()
+    if rc:
+        return rc
+
+    if not args.staged:
+        # Nothing is staged in a sweep, so the live half has no subject there.
+        # Said out loud rather than reported as a pass with no qualifier: this
+        # gate's green in `--run-all` means the RULES are proven (above), not
+        # that any commit was inspected.
+        print("[boundaries-lock] live half needs --staged; nothing inspected. "
+              "The self-test above is what makes this gate's green mean something.")
+        return 0
+
+    files = staged_files()
+    violations, warnings, n_folders = evaluate(files, added_lines, lock_owner)
 
     for w in warnings:
         print(f"[boundaries-lock] WARN — {w}")
 
     if not violations:
-        print(f"[boundaries-lock] PASS — {len(edits)} boundary folder(s), lock cycle evidenced")
+        if n_folders:
+            print(f"[boundaries-lock] PASS — {n_folders} boundary folder(s), lock cycle evidenced")
+        else:
+            print("[boundaries-lock] PASS — no _boundaries/ content staged")
         return 0
 
     print("[boundaries-lock] FAIL — _boundaries/ edited without an evidenced lock cycle\n")
