@@ -620,7 +620,18 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 	if err != nil {
 		return nil, mapUpdateOut{}, errors.New("map_id must be a UUID")
 	}
-	setClauses := []string{"updated_at=now()", "version=version+1"}
+	// #315: refuse a call that changes nothing. Without this the statement still ran
+	// `version=version+1`, so an empty update CONSUMED AN OCC GENERATION: measured live, a map at
+	// version 2 came back at version 3 with every field identical, which makes every other client
+	// holding version 2 fail its next write with "map changed elsewhere" over a change that never
+	// happened. The world rename sibling (toolWorldUpdate) already refuses the same way.
+	if in.Name == nil && in.ImageRef == nil {
+		return nil, mapUpdateOut{}, errors.New("provide name and/or image_ref to update")
+	}
+	// `m.version+1`, NOT `version+1`: the statement joins world_maps twice, so an unqualified
+	// `version` on the right-hand side is AMBIGUOUS and Postgres rejects the whole UPDATE.
+	// The Go suite could not see this — it took a live call to surface "failed to update map".
+	setClauses := []string{"updated_at=now()", "version=m.version+1"}
 	args := []any{mapID, ownerID}
 	idx := 3
 	if in.Name != nil {
@@ -646,12 +657,21 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 		args = append(args, *in.ExpectedVersion)
 		idx++
 	}
+	// The self-join to `old` returns the PRE-update row alongside the new one (the FROM side reads
+	// the statement's snapshot, so it cannot see this UPDATE's own writes). That is what makes the
+	// undo hint below possible WITHOUT a second query: a read-then-update would leave a window in
+	// which the values reported as "prior" were already someone else's.
 	query := fmt.Sprintf(
-		`UPDATE world_maps SET %s WHERE id=$1 AND owner_user_id=$2%s RETURNING id, world_id, name, image_object_key, version`,
-		strings.Join(setClauses, ", "), whereVersion)
+		`UPDATE world_maps m SET %s FROM world_maps old
+		 WHERE m.id=old.id AND m.id=$1 AND m.owner_user_id=$2%s
+		 RETURNING m.id, m.world_id, m.name, m.image_object_key, m.version, old.name, old.image_object_key`,
+		strings.Join(setClauses, ", "), strings.ReplaceAll(whereVersion, " AND version=", " AND m.version="))
 	var d worldMapDetail
 	var gotMap, gotWorld uuid.UUID
-	err = s.pool.QueryRow(ctx, query, args...).Scan(&gotMap, &gotWorld, &d.Name, &d.ImageObjectKey, &d.Version)
+	var priorName string
+	var priorImageKey *string
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&gotMap, &gotWorld, &d.Name, &d.ImageObjectKey, &d.Version,
+		&priorName, &priorImageKey)
 	if errors.Is(err, pgx.ErrNoRows) {
 		// 0 rows: either the map is gone/foreign (not found) OR — only when a version was supplied
 		// — it was stale. One owner-scoped read disambiguates, so a version conflict reports the
@@ -674,7 +694,25 @@ func (s *Server) toolWorldMapUpdate(ctx context.Context, _ *mcp.CallToolRequest,
 	d.MapID = gotMap.String()
 	d.WorldID = gotWorld.String()
 	s.withImageURL(&d)
-	return nil, mapUpdateOut{Map: d}, nil
+	// Undo hint (#315): a rename had no reversal at all — the prior name was neither kept nor
+	// returned, so an agent that renamed a map could not put it back. The world rename sibling has
+	// emitted one since S-07. `image_ref` is always present and is "" when the map had no base
+	// image, because that is what CLEARS it on replay; omitting it would leave the new image in
+	// place and make the undo a partial one.
+	//
+	// expected_version is the version this call just produced. The undo therefore REFUSES if
+	// anything else touched the map in between, rather than blind-clobbering it — on a tool that
+	// carries an OCC token, an undo that silently overwrites a third party's edit is the failure
+	// the token exists to prevent.
+	undoArgs := map[string]any{
+		"map_id": gotMap.String(), "name": priorName, "expected_version": d.Version,
+	}
+	if priorImageKey != nil {
+		undoArgs["image_ref"] = *priorImageKey
+	} else {
+		undoArgs["image_ref"] = ""
+	}
+	return undoResult("world_map_update", undoArgs), mapUpdateOut{Map: d}, nil
 }
 
 // ── world_map_update_marker ──────────────────────────────────────────────────

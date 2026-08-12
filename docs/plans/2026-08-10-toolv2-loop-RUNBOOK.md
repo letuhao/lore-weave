@@ -1487,3 +1487,14 @@ the row first all matched.
 The "description no longer prescribes the bad recipe" test matched the whole file and went red on
 my own code comment, which quotes the old recipe to explain why it was wrong. Scope description
 assertions to the `addTool(...)` registration block. The #313 twin was rescoped the same way.
+
+### METHOD — the clearest case yet for why CODE alone is not the bar (#315)
+
+Joining `world_maps` twice made the SET's `version=version+1` ambiguous. Postgres rejected the
+statement and `world_map_update` answered "failed to update map" for **every** rename.
+
+`go build` passed. The whole `internal/api` suite passed. My own new static guards passed. Only
+calling the deployed tool surfaced it — a string-built SQL statement is not type-checked, so the
+Go compiler and every source-reading test are blind to it by construction.
+
+A static guard now pins `m.version+1`, but the guard was written *after* the live call found it.
