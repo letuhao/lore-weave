@@ -8,11 +8,25 @@
 #
 # This makes the L3.B "every event type is accounted for" criterion actually
 # ENFORCEABLE (previously there was no such gate — PRR-32) and pins the current
-# coverage state honestly (PRR-09): 5/14 registered events are projected; the
-# rest are consumed by writers/seeders/history (by-design) or are a tracked
-# deferred gap.
+# coverage state honestly (PRR-09): the rest are consumed by
+# writers/seeders/history (by-design) or are a tracked deferred gap.
 #
-# Exit 0 = clean; 1 = uncovered+unallowlisted event(s); 2 = misuse.
+# **The ratio is PRINTED, not restated here.** This line used to say "5/14
+# registered events are projected"; measured 2026-08-12 the gate reports
+# **4/16**. A figure in a docstring has no measurement rule and goes stale by
+# construction — the same defect this repo's figures-gate exists to catch, in
+# the header of a gate. Run it; the number is in the output.
+#
+# Exit 0 = clean; 1 = uncovered+unallowlisted event(s); 2 = misuse / selftest
+# failure / the scan reached nothing.
+#
+# RED-ABILITY PROOF (`GATE-TEETH`, 2026-08-12), plus the arm the allowlist
+# never had. Every row below is an EXEMPTION, and an exemption with no shrink
+# arm is permanent by default: nothing reds when an allowlisted event is
+# deregistered, and nothing reds when one GAINS a projection and the row's
+# reason expires. `npc.said`'s row even states its own retirement trigger in
+# prose — *"when the actor/NPC track ships an emitter, this row must be
+# replaced"* — with no mechanism to notice. Both directions now red.
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -100,26 +114,120 @@ declare -A allow=(
   [npc.said]="no producer and no consumer: its projection was dropped by migration 0017 with the pc_*/npc_* orphan family; every remaining occurrence is a test fixture. Registered contract for the unbuilt actor/NPC track — see the comment above for the trigger that retires this row"
 )
 
-violations=0
-covered=0
-for ev in "${registered[@]}"; do
-  if grep -qx "$ev" <<<"$handled"; then
-    covered=$((covered + 1))
-    continue
-  fi
-  if [[ -n "${allow[$ev]+set}" ]]; then
-    echo "[projection-coverage] allowlisted — $ev: ${allow[$ev]}"
-    continue
-  fi
-  echo "[projection-coverage] FAIL — registered event '$ev' has NO projection handler and is NOT allowlisted. Add an apply_event arm in crates/projections/*, or allowlist it with a reason."
-  violations=$((violations + 1))
-done
+# --- PREDICATES, extracted so cases can drive them --------------------------
 
-echo "[projection-coverage] ${covered}/${#registered[@]} registered events have a projection handler; $(( ${#registered[@]} - covered )) consumed elsewhere/deferred (see allowlist above)."
+# Is $1 among the newline-separated handled literals in $2?
+is_handled() {
+  grep -qx -- "$1" <<<"$2"
+}
 
-if [[ $violations -gt 0 ]]; then
-  echo "[projection-coverage] FAIL — $violations uncovered + unallowlisted event(s)"
-  exit 1
-fi
-echo "[projection-coverage] PASS"
-exit 0
+# Allowlist rows whose event is no longer REGISTERED. $1 = allow keys, $2 = registered.
+stale_allow_rows() {
+  comm -23 <(printf '%s\n' "$1" | grep . | sort -u) <(printf '%s\n' "$2" | grep . | sort -u)
+}
+
+# Allowlist rows for events that NOW HAVE a projection — the reason expired.
+# $1 = allow keys, $2 = handled.
+expired_allow_rows() {
+  comm -12 <(printf '%s\n' "$1" | grep . | sort -u) <(printf '%s\n' "$2" | grep . | sort -u)
+}
+
+run_lint() {
+  local violations=0 covered=0 ev allow_keys stale expired
+  allow_keys="$(printf '%s\n' "${!allow[@]}")"
+
+  # REACH FLOOR on the HANDLED side. The registered side is already floored
+  # above. If the projections glob stops matching, `handled` is empty; today
+  # that is loud (four covered events would go uncovered and unallowlisted), but
+  # it is loud only by ACCIDENT — the day the last non-allowlisted event gains a
+  # row, an empty `handled` becomes a silent full pass.
+  if [[ -z "$(printf '%s\n' "$handled" | grep . || true)" ]]; then
+    echo "[projection-coverage] FAIL — parsed ZERO event literals from"
+    echo "  crates/projections/*/src/lib.rs. Every coverage answer below would be"
+    echo "  'uncovered', and once every event is allowlisted that reads as a clean pass."
+    exit 2
+  fi
+
+  for ev in "${registered[@]}"; do
+    if is_handled "$ev" "$handled"; then
+      covered=$((covered + 1))
+      continue
+    fi
+    if [[ -n "${allow[$ev]+set}" ]]; then
+      echo "[projection-coverage] allowlisted — $ev: ${allow[$ev]}"
+      continue
+    fi
+    echo "[projection-coverage] FAIL — registered event '$ev' has NO projection handler and is NOT allowlisted. Add an apply_event arm in crates/projections/*, or allowlist it with a reason."
+    violations=$((violations + 1))
+  done
+
+  # **THE SHRINK ARMS.** An allowlist that can only grow stops being read. Both
+  # directions, because a row dies two different ways.
+  stale="$(stale_allow_rows "$allow_keys" "$(printf '%s\n' "${registered[@]}")")"
+  if [[ -n "$stale" ]]; then
+    echo "[projection-coverage] FAIL — allowlist row(s) whose event is no longer registered:"
+    printf '    %s\n' $stale
+    echo "  The exemption outlived its subject. Delete the row."
+    violations=$((violations + 1))
+  fi
+  expired="$(expired_allow_rows "$allow_keys" "$handled")"
+  if [[ -n "$expired" ]]; then
+    echo "[projection-coverage] FAIL — allowlist row(s) for event(s) that NOW HAVE a projection:"
+    printf '    %s\n' $expired
+    echo "  The reason expired the moment the arm landed. Delete the row."
+    violations=$((violations + 1))
+  fi
+
+  echo "[projection-coverage] ${covered}/${#registered[@]} registered events have a projection handler; $(( ${#registered[@]} - covered )) consumed elsewhere/deferred (see allowlist above)."
+
+  if [[ $violations -gt 0 ]]; then
+    echo "[projection-coverage] FAIL — $violations uncovered + unallowlisted event(s)"
+    exit 1
+  fi
+  echo "[projection-coverage] PASS — ${#registered[@]} registered, $covered projected, ${#allow[@]} allowlisted, all rows live"
+  exit 0
+}
+
+selftest() {
+  local h=$'reality.frozen\nchannel.created'
+
+  is_handled 'reality.frozen' "$h" || { echo "[projection-coverage] SELFTEST FAIL — a handled event was not matched"; exit 2; }
+  if is_handled 'reality.froze' "$h"; then
+    echo "[projection-coverage] SELFTEST FAIL — a PREFIX matched; -x anchoring is gone"; exit 2
+  fi
+  if is_handled 'nope.event' "$h"; then
+    echo "[projection-coverage] SELFTEST FAIL — an unhandled event matched (vacuous)"; exit 2
+  fi
+
+  # Shrink arm 1 — a row whose event left the registry.
+  if [[ -z "$(stale_allow_rows $'a.gone\nb.live' $'b.live\nc.other')" ]]; then
+    echo "[projection-coverage] SELFTEST FAIL — a STALE allowlist row (event deregistered) was not reported"; exit 2
+  fi
+  if [[ -n "$(stale_allow_rows $'b.live' $'b.live\nc.other')" ]]; then
+    echo "[projection-coverage] SELFTEST FAIL — a LIVE allowlist row was reported stale (cry-wolf)"; exit 2
+  fi
+
+  # Shrink arm 2 — a row whose event gained a projection.
+  if [[ -z "$(expired_allow_rows $'a.now_projected\nb.still_exempt' $'a.now_projected')" ]]; then
+    echo "[projection-coverage] SELFTEST FAIL — an EXPIRED allowlist row (event now projected) was not reported"; exit 2
+  fi
+  if [[ -n "$(expired_allow_rows $'b.still_exempt' $'a.now_projected')" ]]; then
+    echo "[projection-coverage] SELFTEST FAIL — a still-unprojected row was reported expired (cry-wolf)"; exit 2
+  fi
+
+  # Neither arm may fire on empty input — that would make every clean run red.
+  if [[ -n "$(stale_allow_rows '' '')" || -n "$(expired_allow_rows '' '')" ]]; then
+    echo "[projection-coverage] SELFTEST FAIL — a shrink arm fires on empty input"; exit 2
+  fi
+
+  echo "[projection-coverage] SELFTEST PASS — handled-matching is exact (a prefix does not count)"
+  echo "  and refuses an unhandled event; both shrink arms report a dead row — deregistered"
+  echo "  and now-projected — while leaving live rows alone and staying silent on empty input"
+}
+
+case "${1:-}" in
+  --selftest) selftest ;;
+  --lint)     run_lint ;;
+  "")         selftest; run_lint ;;
+  *)          echo "usage: $0 [--selftest | --lint]"; exit 2 ;;
+esac

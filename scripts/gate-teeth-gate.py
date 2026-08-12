@@ -205,7 +205,18 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: The transitions gate opened with `if [[ ! -f "$target" ]]; then echo "nothing to lint";
 #: exit 0; fi` — **one `git mv` from permanently green**, silently, with a cheerful message.
 #: The file existing today is the only reason it never bit. A vanished subject is a finding.
-NO_PROOF_BASELINE = 35
+#: 2026-08-12 (g): 35 -> 34. `projection-coverage-lint.sh`, whose real gap was not the proof:
+#: its 12-row ALLOWLIST had no shrink arm, so an exemption was permanent by default. Nothing
+#: red when an allowlisted event was deregistered, and nothing red when one GAINED a projection
+#: and the row's reason expired — `npc.said`'s row states its own retirement trigger in PROSE
+#: (*"when the actor/NPC track ships an emitter, this row must be replaced"*) with no mechanism
+#: to notice. Both directions now red, mirroring `deferral-gate`'s `PROSE_ONLY` shrink and
+#: `dp-oracle-coverage`'s `NO_PRODUCER` arms. Measured clean on landing: 0 stale, 0 expired.
+#:
+#: Its docstring also claimed *"5/14 registered events are projected"* while the gate reported
+#: **4/16** — claim rot in the header of a gate. The ratio is printed at runtime now and no
+#: longer restated where nothing measures it.
+NO_PROOF_BASELINE = 34
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
