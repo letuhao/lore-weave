@@ -113,6 +113,11 @@
       "state": "proven",
       "surface": "unrestricted (system skill)",
       "note": "PROVEN through the browser on the fresh book 019ff61b, driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument: 'Add Iseul Vantar to my glossary as a character — a young cartographer of the Tidewright Guild.' The skill's declared domain is 'Glossary/lore entity workflows — search, propose, confirm', and that is what happened: glossary_book_ontology_read, glossary_list_system_standards and glossary_propose_entities all ran green, and SSOT shows entity 'Iseul Vantar' status='draft' — proposed for review rather than committed, which is the correct end-state for a propose. HONEST LIMIT: 3 skills were in context for the turn (the chip reads '39 công cụ · 3 kỹ năng · 14,581 tok') and the UI does not name WHICH three, so the skill row's identity was not separately verified; the evidence here is the declared domain outcome, measured in the database. That the panel cannot name its own loaded skills is recorded as OBS-16. This journey also surfaced D-FJ-16."
+    },
+    "skill:admin": {
+      "state": "blocked",
+      "surface": "admin/CMS",
+      "note": "BLOCKED on run configuration, and the reason is measured rather than assumed. The skill's own description is 'Admin/CMS system-tier operations (admin surface only).' The ACCOUNT is eligible — it holds 1 of the 5 rows in loreweave_auth.admin_principals — so this is not a permissions failure. The operations live on the CMS frontend (infra-cms-frontend-1, localhost:5175), and the RUNBOOK's run configuration fixes this loop's frontend to infra-frontend-1 → localhost:5174. Driving it would mean changing a run parameter the RUNBOOK pins, which is not mine to change mid-run, so it is recorded as DQ-32 and concluded blocked rather than skipped or quietly re-scoped."
     }
   },
   "defects": {
@@ -303,6 +308,10 @@
     "DQ-31": {
       "question": "Should E2E and fixture skills be allowed to exist as tier='user', status='published' rows in loreweave_agent_registry — and if not, what removes them? Options seen, none chosen: (a) tests create them as status='draft' so they never enter a published denominator; (b) a cleanup step in the E2E teardown; (c) a retention sweep over user-tier skills whose slug matches a test pattern. Also: should a user-tier skill be allowed to shadow a SYSTEM slug (`glossary`) at all?",
       "evidence": "Measured 2026-08-12 by live query: 27 published skills = 5 system + 22 user, and all 22 user rows are test artifacts by name and description (e2e-*, dupe-*, proposed-*, imported-skill-*, descriptions 's'/'d'/'from md'). SIX published rows carry slug='glossary'; uq_skills_user is a PARTIAL unique index (per owner, tier='user'), so distinct owners each keep their own 'my glossary override' and none of them collides with the system row. That is the index behaving as designed — the question is whether a published user skill shadowing a system slug is intended. The practical cost is concrete: it made the declared skill denominator 27 when the product declares 5."
+    },
+    "DQ-32": {
+      "question": "Is the admin/CMS surface (localhost:5175) in scope for this journey loop? The RUNBOOK pins the frontend to infra-frontend-1 → localhost:5174, and one declared system skill (`admin`) is reachable only on the CMS surface. Either the run configuration widens to include :5175, or `admin` is explicitly out of the declared denominator — but it should not sit in the denominator while being unreachable by the pinned configuration.",
+      "evidence": "Measured 2026-08-12: skills.slug='admin', tier='system', description 'Admin/CMS system-tier operations (admin surface only)', counted in the denominator's unrestricted group. The account holds an admin_principals row, so eligibility is not the blocker; the surface is. infra-cms-frontend-1 is up and serving on 5175."
     }
   },
   "progress": {
