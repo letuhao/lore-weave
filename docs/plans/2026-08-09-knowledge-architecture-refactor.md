@@ -4763,6 +4763,54 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   rows**, and `canon_consistency` reads only that table. The KG side is populated and windowed
   correctly.
 
+  #### ✅ THE READ PATH IS LIVE-PROVEN — a fresh acceptance run, 2026-08-12
+
+  Job `019ff401-…`, chapter 11 (*the trap closes*), role check ON per the runbook,
+  `persist:false`, against an image rebuilt today. **3598-character draft, completed in ~40s.**
+  The worker log is the evidence the GOAL asks for:
+
+  ```
+  canon role check: 24 of the roles in force at this position are named in the draft
+                    (tiers both/object-only/subject-only = 16/2/6); sending 20 to the judge
+  ```
+
+  🎯 **Twenty-four roles IN FORCE AT THIS POSITION, resolved through the position-windowed KG,
+  inside the real authoring flow.** That is T36's read path working end-to-end on the
+  acceptance book at the acceptance chapter — not a probe, not a fixture. The tiering
+  (`16/2/6`) is `roles_in_draft` ranking them, which is the mechanism the misattribution shape
+  depends on.
+
+  🔴 **AND THE JUDGE RETURNED NOTHING.**
+
+  ```
+  WARNING judge_role_attribution produced NO verdicts for 20 role(s) (finish_reason=stop)
+          — the role check did not run
+  llm_job 019ff402-…  status=completed  tokens_used=0  max_tokens=3060  prompt=6552 chars
+  ```
+
+  **`tokens_used = 0` rules out the obvious explanation:** this is not the budget ceiling being
+  hit, it is an EMPTY completion returned immediately. It matches the residue already recorded
+  under `D-QC5-ROLE-JUDGE-PRECISION` (*"some calls also returned no parseable JSON at all
+  (finish_reason=stop, empty verdicts)"*) and confirms that finding's conclusion — **this check
+  cannot ship on this judge model** — with a fourth independent data point.
+
+  ⚠️ **`guard_status: no_position` in the same envelope is a DIFFERENT check, not this one.**
+  `plan_liveness` could not resolve a position and `pack.warnings` carried
+  `l4_dropped_no_position=29`, while the role check simultaneously resolved 24 roles at the
+  same position. Reading the envelope's `no_position` as "the position-windowed architecture
+  does not work" would have been wrong twice in one session — the first time cost a published
+  retraction; this is the second, caught before publishing.
+
+  **So the honest QC-5 status is now sharply split:**
+  | half | state |
+  |---|---|
+  | the architecture's position-windowed read | ✅ **live-proven** — 24 roles in force, in the real flow |
+  | the judge on top of it | 🔴 returns an empty completion; `D-QC5-ROLE-JUDGE-PRECISION` owns it |
+  | `canon_consistency` (the criterion's literal metric) | ⚠️ unanchored — 0 `canon_rule` rows on this book |
+
+  The stack was left as found: the role-check flag was set for this run per the runbook and
+  **unset again afterwards** (it is off by default precisely because the judge is not calibrated).
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
