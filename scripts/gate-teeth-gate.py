@@ -265,7 +265,18 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: explicit `isinstance(p95, bool)` guard a boolean sails through as the number 1 — a positive
 #: number, and a passing SLO. The guard was already there; nothing proved it was load-bearing
 #: until its own bite arm removed it and watched the case go red.
-NO_PROOF_BASELINE = 30
+#: 2026-08-12 (l): 30 -> 29. `alert-rule-validator.sh`. **Third dead exemption list on this
+#: board**: `PRE_SLI_GRANDFATHER` held 38 names and **14 of them (36%) referred to alerts that
+#: no longer exist anywhere on disk**. Dead weight, and worse — a dead row silently
+#: re-grandfathers its alert the day the name comes back, so the list could disarm the very
+#: checks (`sli_ref`, registry membership, runbook) it is an exception to. Trimmed to 24, with
+#: the `GT-F5` shrink arm.
+#:
+#: Reach floor too: `os.walk` on a missing or renamed alerts directory yields nothing, so
+#: `checked` stayed 0, `problems` stayed empty, and it printed *"0 alerts validated"* and exited
+#: 0. The count was right there in the success line — the same tell as
+#: `read-audit-drift`'s "(0 ids)".
+NO_PROOF_BASELINE = 29
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
