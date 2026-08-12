@@ -4703,6 +4703,47 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | The updated test now asserts **0** violations with the reason written beside it, so restoring a non-zero expectation requires deciding what rules to send — the assertion cannot drift back quietly. |
   | **Retry when** | Whoever owns the quality report picks the rule source. No PO decision is required for the fix itself. |
 
+  #### 🧪 AND THE OBVIOUS FIX IS REFUTED — measured, 2026-08-12
+
+  Having found `present_facts=[]` hardcoded at every `judge_prose` call site
+  (`engine.py:2067` · `authoring_run_service.py:691` · `quality_report.py:119`), the natural
+  conclusion is *"wire it to the knowledge layer and the dimension becomes meaningful."*
+  **Tested before proposing it, and it is wrong.** Same passage, same judge, same critic
+  model, only `present_facts` changed — sourced from the real
+  `POST /internal/projects/{id}/fact-for-check` snapshot the refactor itself builds:
+
+  ```
+  present_facts = []                  ->  5 / 5 / 4 / canon 5 · 0 violations
+  present_facts = 16 real facts       ->  5 / 5 / 4 / canon 5 · 0 violations   (identical)
+  ```
+
+  **The canon dimension responds to `active_rules`, not to `present_facts`.** The bite above
+  moved it `5 → 2` with two rules; sixteen real facts moved it not at all. So wiring facts
+  would have been work done on a guess, and would NOT have made QC-5 evaluable.
+
+  🔴 **THE DEEPER MEASUREMENT — the position-windowed snapshot is EMPTY at the acceptance
+  position.** The same call returns:
+
+  ```
+  fact-for-check @ at_order=11 (the acceptance chapter, 30-entity cast)
+    entities   16
+    relations   0
+    events      0
+  ```
+
+  **Zero relations and zero events at the chapter the acceptance case is about.** This is
+  `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` confirmed independently at the data layer: 12 of the
+  book's 25 relations carry no story position, the betrayal edge among them, and an as-of read
+  **correctly** excludes a positionless edge. The machinery is behaving exactly as T36
+  specifies; there is simply nothing placed for it to return.
+
+  🎯 **This changes the recommendation, so it is stated plainly rather than left implicit.**
+  Authoring `canon_rule` rows WOULD make `canon_consistency` move — the bite proves it — but it
+  would exercise the **authored rule table**, not the position-windowed relation path this
+  refactor was built to deliver. **Placing the book's relations on story positions is the
+  option that actually tests the architecture.** A green obtained the first way would look like
+  the acceptance test passing while the thing under test stayed unexercised.
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
