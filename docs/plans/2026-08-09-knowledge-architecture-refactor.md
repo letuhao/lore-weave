@@ -4416,6 +4416,49 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   one commit BEFORE the task that makes it pass, so it would have failed and read as a regression.)*
   ---
   ---
+  🔴 **QC-5 RE-RUN 2026-08-12 against the COMPLETE cast. RESULT: still FAIL — and the failure
+  has MOVED.** Full evidence:
+  [`docs/measurements/2026-08-12-qc5-rerun-complete-cast.md`](../measurements/2026-08-12-qc5-rerun-complete-cast.md).
+
+  The 2026-08-11 run was measured against a KG missing 17 of 43 entities. That hole is closed,
+  so the assertion was re-run on a canon the check can see. Two arms of one passage differing
+  in a single substitution — who commits the betrayal — three runs each:
+
+  <!-- doc-language-gate: ok -- character names from the cited corpus; the substitution IS the experiment -->
+  ```
+  ARM A · MISATTRIBUTED (Lục Vô Tội betrays)   canon_consistency=3, violations=2   x3
+  ARM B · CORRECTED     (Lâm Trạch betrays)    canon_consistency=3, violations=2   x3
+  CONTROL (a passage that cannot violate)      canon_consistency=5, violations=0   x2
+  ```
+  <!-- doc-language-gate: end -->
+
+  **The named defect is NOT reproduced** — arm A scores **3, not 5/5**, and cites the betrayal
+  rule. The blindness this refactor targeted is gone. **But that is not a pass**, because the
+  identical verdict lands on the CORRECT arm: same score, same two rules, zero variance over
+  six runs. A flag that fires the same way whether the passage is right or wrong carries no
+  information about the thing QC-5 measures. The control proves the check is not merely
+  flagging everything — it has a working floor and responds to content.
+
+  <!-- doc-language-gate: ok -- the judge's verbatim output and the name-drift it exhibits ARE the measurement subject -->
+  Worse, on arm B the check is **actively wrong**: the passage was edited so the canon
+  antagonist IS the betrayer, and the judge reports *"the passage contradicts [R1] by showing
+  that Lin Zhe is not the betrayer"* — in English, where arm A answered in Vietnamese, and
+  rendering `Lâm Trạch` as `Lin Zhe`, a Mandarin romanisation of the same Sino-Vietnamese name.
+  <!-- doc-language-gate: end -->
+
+  On arm A the stated reason is the passage's own claim recited as fact, so **the correct flag
+  there is right by accident.**
+
+  **The failure has moved** from *"scores 5/5 on a misattributed betrayal"* to *"cannot tell a
+  misattributed betrayal from a correct one, and mis-reasons about the correct one"*.
+
+  <!-- doc-language-gate: ok -- the two principals are named because WHICH entities were already mirrored is the point -->
+  ⚠️ **One earlier claim of mine narrowed by this run.** I wrote that judge-precision results
+  were measured against a canon the judge "could not fully see". True for the cast at large —
+  but `Lục Vô Tội` and `Lâm Trạch`, this case's two principals, were both among the 26 already
+  mirrored. The mirror hole does **not** explain this particular non-discrimination.
+  <!-- doc-language-gate: end -->
+
   🔴 **QC-5 WAS RUN, 2026-08-11. RESULT: FAIL — and not for the reason the plan anticipated.**
   Full evidence: [`docs/measurements/2026-08-11-qc5-acceptance-run.md`](../measurements/2026-08-11-qc5-acceptance-run.md).
 

@@ -1229,7 +1229,11 @@ services:
       # janitor. Turn it on WITH `knowledge_glossary_mirror_repaired_total` watched —
       # a healthy system converges to zero repairs per sweep, so sustained repair volume
       # is the real alarm.
-      KNOWLEDGE_MIRROR_AUTO_REPAIR: ${KNOWLEDGE_MIRROR_AUTO_REPAIR:-}
+      # ⚠️ `:-false`, NOT `:-` like KNOWLEDGE_VECTOR_DB_URL above. That idiom passes an
+      # EMPTY STRING when the variable is unset, which a `str` field accepts and a `bool`
+      # field does not: pydantic raises `bool_parsing` on "" and the service refuses to
+      # start. Copied blindly, this line took knowledge-service down on the next restart.
+      KNOWLEDGE_MIRROR_AUTO_REPAIR: ${KNOWLEDGE_MIRROR_AUTO_REPAIR:-false}
       # Pass-2 precision filter — NO env config (D-WX-PRECISION-FILTER-MODEL-ARCH).
       # Was a hardcoded env UUID of one user's model, submitted as user_model scoped
       # to the request's user → 404 for every other user → decoupled fold stall (D-WX
