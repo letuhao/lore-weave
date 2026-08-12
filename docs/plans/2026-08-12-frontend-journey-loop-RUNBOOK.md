@@ -164,6 +164,46 @@ The tool loop could only ever see the last two, and only when I set them up by h
 
 ---
 
+## Before the first journey — pre-flight, and none of it is optional
+
+1. **Every running container is on its CURRENT image.** Compare
+   `docker image inspect infra-<svc>:latest --format '{{.Id}}'` against
+   `docker inspect infra-<svc>-1 --format '{{.Image}}'` for all 33 buildable services.
+   🔴 **`docker compose build` printing `Built` is NOT evidence** — it prints that for a fully cached
+   build. Measured 2026-08-12: after a full build, **33 of 33 containers were still on the previous
+   image** until `up -d` recreated them. Starting the loop there would have tested yesterday's
+   binaries with today's confidence.
+2. **The frontend is rebuilt with `--build-arg VITE_API_BASE=`** and its bundle timestamp is today.
+   A tsc failure otherwise leaves nginx serving a stale bundle, and every finding downstream is
+   suspect.
+3. **Re-derive the denominator** from `loreweave_agent_registry` — published `workflows` and
+   `skills`. Do not read this file's table.
+4. **Confirm** `google/gemma-4-26b-a4b-qat` (`lm_studio`) is still this account's active `chat`
+   default in `user_default_models`. Confirm it; do not set it.
+5. **The gateway federates** — `tools/list` returns the full catalogue (315 at writing). A partial
+   catalogue means a provider failed to federate and journeys will fail for the wrong reason.
+
+---
+
+## Why each loop rule exists — the precedent, not the principle
+
+The goal prompt states these as rules. Here is what each one cost.
+
+| rule | the failure it prevents |
+|---|---|
+| the **defect** is the unit, not the journey | PO correction 2026-08-12. Tool-loop #311 fixed two tools in one iteration; the second has no ledger row |
+| the **one-mechanism exception** | the opposite mistake — splitting a mechanism across cycles is the half-fix, committed **five times** in the tool loop |
+| **one at a time, never reorder** | the tool loop's stop hook fired on exactly this: a progress report delivered while executable work remained |
+| the **ledger is the authority**, not my summary | a self-derived total always reads "done" |
+| a falsifier **RED on the original defect** | a guard never proven red is decoration. #312: a guard stayed green while the real check was deleted, because `mrows.Err()` contains `rows.Err()` |
+| **LIVE through the browser, no typed arguments** | the reason this loop exists. 88.1% of 4,175 recorded failures cannot occur when the caller writes the arguments |
+| **images verified current** | #310, the docker-cp false-green, and the 33-of-33 finding above |
+| **never type a denominator** | the most repeated instruction of the last loop, and still the easiest to break |
+| **not terminal** | "mostly works" is how a loop ends without finishing |
+| **defer, record, continue** | 29 DQs were raised this way and not one of them stopped the run |
+
+---
+
 ## Stop condition
 
 **The loop ends when every declared journey — re-derived from the registry at entry — is `proven`
