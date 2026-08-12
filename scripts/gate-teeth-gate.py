@@ -159,7 +159,16 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: so it reported **2** against a real **49** for months; and the reach floor added alongside
 #: it was itself unreachable, because `set -euo pipefail` kills the script at the failing
 #: `find` before the floor can speak. The bite found the second one.
-NO_PROOF_BASELINE = 40
+#: 2026-08-12 (c): 40 -> 39. `language-rule-lint.sh`, enforcing the LOCKED I3 amendment. Its
+#: `run_lint` now takes the config AND the services root, so the selftest drives the WHOLE gate
+#: against a synthetic tree — both its rules live in loops rather than functions, and proving
+#: `detect_lang` alone would have said nothing about either. Two findings came out of the
+#: writing, both in code added minutes earlier: a reach floor placed ABOVE the violation report
+#: turned a real PRR-16 finding into a misuse exit 2; and a second floor on directories walked
+#: was strictly SHADOWED (a comparison needs a directory to exist, so `scanned == 0` implies
+#: `compared == 0`) — deletable with the suite green, so it was deleted rather than kept as
+#: decoration.
+NO_PROOF_BASELINE = 39
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
