@@ -104,7 +104,8 @@ baseline; the batch committed.**
 | # | batch | gates | state |
 |---|---|---|---|
 | `GT1` | registry membership — the smallest two | `capacity-budget-lint.sh` · `service-acl-matrix-lint.sh` | ✅ **43 → 41**, `baed59cad`. 5 bite arms, all byte-exact |
-| `GT2` | ~~registry membership — the rest of the shape~~ **MISGROUPED, see `GTD-3`** | `admin-command-registry-lint.sh` · `dep-pinning-lint.sh` | ⬜ |
+| `GT2` | ~~registry membership — the rest of the shape~~ **MISGROUPED, see `GTD-3`** | `dep-pinning-lint.sh` | ⬜ |
+| `GT2d` | handler-registry membership | `admin-command-registry-lint.sh` | ✅ **39 → 38.** 5 bite arms (marker parser · receiver narrowing · the case fold · membership · the exempt pragma). **Its scans have ZERO subjects** — see `GT-ADMIN-NO-SUBJECT` |
 | `GT2c` | config-vs-tree conformance — moved here from `GT2` | `language-rule-lint.sh` (the LOCKED I3 amendment) | ✅ **40 → 39.** `run_lint` parameterised on config + services root, so 5 bite arms drive the WHOLE gate end-to-end: the outer `Cargo.toml` marker, the parse block-end rule, the I3 comparison, PRR-21 completeness, and the reach floor. Two self-inflicted findings — `GTD-6`, `GTD-7` |
 | `GT2b` | forbidden-shape scanners — moved here from `GT2` | `dependency-registry-lint.sh` | ✅ **41 → 40.** 4 bite arms (one Go shape · one Rust shape · the exemption widened · the walk pointed at nothing), all byte-exact. Two defects fixed in passing — see `GTD-4`, `GTD-5` |
 | `GT3` | drift / mirror checks | `read-audit-query-type-drift-lint.sh` · `transitions-validation-lint.sh` · `runbook-drift-check.sh` · `projection-coverage-lint.sh` | ⬜ |
@@ -126,6 +127,7 @@ right**.
 | id | what | why not here |
 |---|---|---|
 | `GT-STRUCTURAL-DETECTION` | the ratchet counts a `selftest()` it cannot evaluate (§1.1) | fixing it means executing every gate's self-test and judging it, which is `gate-bite-harness`'s job — the two mechanisms already exist and the gap is that nothing joins them. A real row, deliberately not solved by this board |
+| `GT-ADMIN-NO-SUBJECT` | `admin-command-registry-lint` walks `services/` and matches **nothing**: `// ADMIN-SQL:` and `// ADMIN-RPC:` occur **0** times, `func (… *AdminHandler)` **0** times. Its rule is now proven to bite, but it has nothing to bite in this tree, and its old message read as verified admin coverage | **not resolved by making it red** — zero markers is the TRUE state and failing on the truth is cry-wolf. The gate now prints its subject count and says nothing was compared. The real question is whether the marker convention should be adopted (the live admin surface is the 10 registry YAMLs + the Go dispatcher) or the gate retired; that is a design call, not a teeth call |
 | `GT-PERF-BENCH` | `perf/bench-gate.sh` SKIPs in `--run-all` (*"needs a live stack"*) | a gate that cannot run here cannot be bitten here; it needs the stack, and a self-test for it would be testing the skip |
 
 ---

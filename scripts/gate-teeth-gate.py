@@ -168,7 +168,16 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: was strictly SHADOWED (a comparison needs a directory to exist, so `scanned == 0` implies
 #: `compared == 0`) — deletable with the suite green, so it was deleted rather than kept as
 #: decoration.
-NO_PROOF_BASELINE = 39
+#: 2026-08-12 (d): 39 -> 38. `admin-command-registry-lint.sh`, and the proof is only half the
+#: story: measured while writing it, **that gate has ZERO SUBJECTS** — `// ADMIN-SQL:` and
+#: `// ADMIN-RPC:` occur 0 times across `services/`, and `func (… *AdminHandler)` occurs 0
+#: times. It walked the tree, matched nothing, and printed *"no orphan ADMIN-SQL/RPC markers"*,
+#: which reads as verified coverage of a convention this repo does not write. NOT resolved by
+#: making it red — zero markers is the TRUE state, and failing on the truth is cry-wolf. The
+#: gate now prints the subject count and says outright that nothing was compared; the coverage
+#: gap is tracked as `GT-ADMIN-NO-SUBJECT`. A proof that the rule bites and a statement that it
+#: has nothing to bite are two different facts, and this baseline only ever counted the first.
+NO_PROOF_BASELINE = 38
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
