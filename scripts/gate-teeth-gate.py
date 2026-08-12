@@ -227,7 +227,20 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #:
 #: Its trailing `exit 0` after the python block was CHECKED rather than assumed: `set -e`
 #: aborts on a python exit 1 first, so drift was reported. Not every suspicious line is a bug.
-NO_PROOF_BASELINE = 33
+#: 2026-08-12 (i): 33 -> 32. `tracing-completeness-lint.sh`, the second DISARMED gate found on
+#: this board: default `warn` mode printed **49** violations and exited 0, so "it passed" and
+#: "49 handlers have no tracing" were the same observable. Its header promised *"flip to error
+#: mode in cycle 33+"* — measured, that flip is in **no** deferral row and **no** handoff line.
+#: A prose promise several cycles overdue with nothing to wake it (`dependency-registry-lint` at
+#: least has `DEFERRED 082`).
+#:
+#: **Armed with a RATCHET rather than a flip.** Flipping today reds the build on 49 pre-existing
+#: violations — a migration, not a lint change. A falling baseline catches the thing that
+#: actually matters day to day: a NEW untraced handler reds immediately, in warn mode, today.
+#: Both directions are bitten, because a ratchet that only reds upward never falls.
+#: Also 48s -> 2s: it ran one or two `grep` processes per file across 707 files; `git grep`
+#: does the same work in two.
+NO_PROOF_BASELINE = 32
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
