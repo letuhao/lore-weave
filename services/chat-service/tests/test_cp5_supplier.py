@@ -91,17 +91,21 @@ class TestTheSupplierIsReadableFromTheContract:
 class TestTheRefusalTellsTheModelWhoOwesIt:
 
     def test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING(self):
-        """A source-level check on the shipped path: the branch must exist and must key off the
-        DECLARED supplier, not off a list of tool names kept in the stream module."""
-        src = (pathlib.Path(__file__).resolve().parents[1]
-               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
-        assert "declared_supplier(_c_block, a)" in src, (
-            "the missing-argument message does not consult the declared supplier, so the two "
-            "opposite situations still share one sentence"
-        )
-        assert "NOT yours to invent" in src
-        assert 'if declared_supplier(_c_block, a) in ("context", "plan")' in src or \
-               'declared_supplier(_c_block, a) in ("context", "plan")' in src
+        """The branch must exist and must key off the DECLARED supplier, not off a list of tool
+        names kept in the stream module.
+
+        Asserted BEHAVIOURALLY now rather than by substring. The arms moved into
+        `_missing_args_message` when the undeclared case was split out, and a source-level grep for
+        the old inline expression would have gone red on a pure refactor while staying green on a
+        message that consulted nothing — the wrong way round for a guard.
+        """
+        from app.services.stream_service import _missing_args_message
+        block = {"argument_supplier": {"book_id": "context — the ambient book"}}
+        assert "NOT yours to invent" in _missing_args_message("book_read", ["book_id"], block)
+        # …and a supplier the contract calls the model's own must NOT get that sentence.
+        model_block = {"argument_supplier": {"items": "model — the caller writes these"}}
+        assert "NOT yours to invent" not in _missing_args_message(
+            "book_write", ["items"], model_block)
 
     def test_A_MODEL_SUPPLIED_ARGUMENT_KEEPS_THE_ORIGINAL_MESSAGE(self):
         """`body` and `items` are the model's to write. Rewriting their message as *"the runtime
@@ -110,3 +114,60 @@ class TestTheRefusalTellsTheModelWhoOwesIt:
         owed = [p for p in ("kind", "limit")
                 if declared_supplier(block, p) in ("context", "plan")]
         assert owed == [], f"{owed} would wrongly be reported as runtime-owed"
+
+
+class TestAnUndeclaredArgumentIsNotCalledContent:
+    """The third case CP-5.4 folded into the model-supplied arm.
+
+    🔴 MEASURED LIVE 2026-08-12, journey `draw-a-map`: `world_map_create` was called without
+    `world_id` and refused with *"These carry the actual CONTENT (not ids the system already
+    fills) … Do not call it with only ids or empty arguments."* The one missing argument IS an id.
+    The model was told the thing it lacked was not the thing it lacked, stopped calling tools, and
+    reported *"I have initialized the map"* over a map that never existed. Only 12 of the 315
+    federated tools declare a contract, so undeclared is the COMMON path.
+    """
+
+    def test_an_UNDECLARED_id_is_never_described_as_not_an_id(self):
+        from app.services.stream_service import _missing_args_message
+        msg = _missing_args_message("world_map_create", ["world_id"], {})
+        assert "not ids the system already fills" not in msg, (
+            "the refusal asserts the missing argument is not an id, and it is one"
+        )
+        assert "Do not call it with only ids" not in msg
+        assert "world_id" in msg
+
+    def test_an_UNDECLARED_id_is_given_the_move_that_obtains_it(self):
+        """C-12: the rejection names what WOULD be legal. For an id that is 'go list them'."""
+        from app.services.stream_service import _missing_args_message
+        msg = _missing_args_message("world_map_create", ["world_id"], {})
+        assert "LISTS or SEARCHES" in msg
+        assert "do NOT guess" in msg or "Do NOT guess" in msg
+
+    def test_a_DECLARED_context_argument_still_says_not_yours_to_invent(self):
+        """The CP-5.4 arm must be untouched by the new one."""
+        from app.services.stream_service import _missing_args_message
+        block = {"argument_supplier": {"book_id": "context — the ambient book"}}
+        msg = _missing_args_message("book_read", ["book_id"], block)
+        assert "NOT yours to invent" in msg
+
+    def test_a_DECLARED_model_argument_still_gets_the_CONTENT_message(self):
+        """And so must the arm it was folded into — an undeclared arg borrowed this sentence, a
+        genuinely model-supplied one is entitled to it."""
+        from app.services.stream_service import _missing_args_message
+        block = {"argument_supplier": {"entities": "model — the caller writes these"}}
+        msg = _missing_args_message("glossary_propose_entities", ["entities"], block)
+        assert "carry the actual CONTENT" in msg
+
+    def test_the_CALL_SITE_uses_the_helper_not_its_own_sentence(self):
+        """Guard the call site, not the helper: a message builder nothing calls is decoration, and
+        the inline copy is exactly what shipped the defect."""
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "_ma_msg = _missing_args_message(" in src, (
+            "the S02 refusal path does not call _missing_args_message, so the undeclared arm "
+            "cannot reach a live call"
+        )
+        assert src.count("These carry the actual CONTENT") == 1, (
+            "the model-supplied sentence exists in more than one place; the inline copy is how "
+            "the undeclared case silently inherited it"
+        )

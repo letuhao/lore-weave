@@ -1912,6 +1912,61 @@ def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     return bool(_missing_required_names(args_obj, tool_def))
 
 
+def _missing_args_message(tool: str, missing: list[str], contract: dict | None) -> str:
+    """The refusal for a call still missing required args — keyed off who DECLARES each one.
+
+    CP-5.4 split this into two arms, `context|plan` ("not yours to invent") and everything else
+    ("these carry the actual CONTENT"). There is a THIRD case it folded into the second, and the
+    fold makes a claim the runtime cannot support: **the tool declares no supplier at all.**
+
+    🔴 MEASURED LIVE 2026-08-12, journey `draw-a-map`. `world_map_create` was called without
+    `world_id`, and the refusal read: *"missing required argument(s): ['world_id']. These carry the
+    actual CONTENT (not ids the system already fills) — e.g. a list of the items to create, or the
+    search text. … Do not call it with only ids or empty arguments."* The one missing argument IS an
+    id, so the model was told the thing it was missing was not the thing it was missing, and told
+    not to do the thing it needed to do. It stopped calling tools and reported *"I have initialized
+    the map"* over a map that was never created. Only **12** of the 315 federated tools carry a
+    contract, so the undeclared case is the common one, not the exotic one.
+
+    Being honest here is not a reword: the old sentence asserts a FACT about these arguments
+    (*they are not ids*) that is derived from nothing when no contract declares them. This arm
+    asserts nothing it cannot know, and names both moves so a caller missing an id has one — which
+    is the same standard C-12 sets for a rejection, and the same standard the `context|plan` arm
+    already meets.
+    """
+    from app.agentruntime.toolcontract import declared_supplier
+
+    block = contract if type(contract) is dict else {}
+    owed = [a for a in missing if declared_supplier(block, a) in ("context", "plan")]
+    if owed:
+        return (
+            f"'{tool}' is missing {owed}, and {'these are' if len(owed) > 1 else 'this is'} "
+            f"NOT yours to invent: the runtime supplies "
+            f"{'them' if len(owed) > 1 else 'it'} from the current context or an "
+            f"active plan, and has none right now. Establish that context first "
+            f"(e.g. list or open the book you mean, then call this with the id it "
+            f"returns). Do NOT guess a value."
+        )
+    if any(declared_supplier(block, a) is None for a in missing):
+        # Undeclared: say so, and give the id move FIRST — that is the class this arm was
+        # measured failing on. Never guess a value on the model's behalf.
+        return (
+            f"'{tool}' is missing required argument(s): {missing}, and this tool does not "
+            "declare which side supplies them — so do NOT guess a value. If one of them names "
+            "another record (an id), obtain it from the tool that LISTS or SEARCHES those "
+            "records and pass back the id it returns; the ambient book is filled in for you, "
+            "but nothing else is. Otherwise it is content only you can write: read the tool's "
+            "schema for its exact shape, fill it in, and call again."
+        )
+    return (
+        f"'{tool}' is missing required argument(s): {missing}. "
+        "These carry the actual CONTENT (not ids the system already fills) — "
+        "e.g. a list of the items to create, or the search text. Read the "
+        "tool's schema for their exact shape, fill them in, and call again. "
+        "Do not call it with only ids or empty arguments."
+    )
+
+
 async def _stream_with_tools(
     model_source: str,
     model_ref: str,
@@ -4728,13 +4783,7 @@ async def _stream_with_tools(
                             "rather than retrying with empty arguments."
                         )
                     else:
-                        _ma_msg = (
-                            f"'{c['name']}' is missing required argument(s): {_missing_args}. "
-                            "These carry the actual CONTENT (not ids the system already fills) — "
-                            "e.g. a list of the items to create, or the search text. Read the "
-                            "tool's schema for their exact shape, fill them in, and call again. "
-                            "Do not call it with only ids or empty arguments."
-                        )
+                        _ma_msg = None  # built below, once the declared contract is resolved
                     # ── CP-5.4 · WHO OWES THIS ARGUMENT ──────────────────────────────────────
                     # 🔴 One sentence was covering two OPPOSITE situations. Measured over 266
                     # missing-argument failures / 87 sessions: the largest single case is
@@ -4748,28 +4797,19 @@ async def _stream_with_tools(
                     #
                     # The supplier is read from the tool's DECLARED contract (5.1's
                     # `argument_supplier` member), so this is the contract doing work rather than
-                    # a table of tool names kept here.
-                    _owed = []
-                    try:
-                        from app.agentruntime.toolcontract import (
-                            declared_supplier, resolve_contract,
-                        )
-                        _c_block, _ = resolve_contract(
-                            cat_index.get(c["name"]) or plain_index.get(c["name"]) or {},
-                            _tool_contract_registry())
-                        _owed = [a for a in _missing_args
-                                 if declared_supplier(_c_block, a) in ("context", "plan")]
-                    except Exception:
-                        _owed = []
-                    if _owed:
-                        _ma_msg = (
-                            f"'{c['name']}' is missing {_owed}, and {'these are' if len(_owed) > 1 else 'this is'} "
-                            f"NOT yours to invent: the runtime supplies "
-                            f"{'them' if len(_owed) > 1 else 'it'} from the current context or an "
-                            f"active plan, and has none right now. Establish that context first "
-                            f"(e.g. list or open the book you mean, then call this with the id it "
-                            f"returns). Do NOT guess a value."
-                        )
+                    # a table of tool names kept here. All three arms — owed, UNDECLARED and
+                    # model-supplied — live in `_missing_args_message` so the undeclared case
+                    # cannot silently inherit the model-supplied sentence again.
+                    if _ma_msg is None:
+                        _c_block = {}
+                        try:
+                            from app.agentruntime.toolcontract import resolve_contract
+                            _c_block, _ = resolve_contract(
+                                cat_index.get(c["name"]) or plain_index.get(c["name"]) or {},
+                                _tool_contract_registry())
+                        except Exception:
+                            _c_block = {}
+                        _ma_msg = _missing_args_message(c["name"], _missing_args, _c_block)
                     working.append({
                         "role": "tool", "tool_call_id": c["id"],
                         "content": tool_result_content({"error": "missing_required_args", "message": _ma_msg}),

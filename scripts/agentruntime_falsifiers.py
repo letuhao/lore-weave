@@ -1343,14 +1343,45 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
         (f"{PKG}/toolcontract.py", 'SUPPLIERS = ("model", "context", "plan")',
                                    'SUPPLIERS = ("model",)'),
     ],
+    # 🔴 The FIRST version of this row flipped `if _owed:` to `if False:` — which disables the
+    # branch but leaves the SOURCE STRINGS the guard grepped for, so it stayed green: a
+    # source-level guard can only be reddened by removing what it reads. The guard is BEHAVIOURAL
+    # now (the arms moved into `_missing_args_message` when the undeclared case was split out), so
+    # disabling the branch is exactly the right mutation and the old anchor is gone with the old
+    # inline code.
     "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
-        # 🔴 The first version flipped `if _owed:` to `if False:` — which disables the branch but
-        # leaves the SOURCE STRINGS this guard greps for, so it stayed green. A source-level guard
-        # can only be reddened by removing what it reads.
+        (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
+    ],
+    # ── the UNDECLARED arm (journey loop D-FJ-2) ────────────────────────────────────────────
+    # Disabling the arm restores the ORIGINAL behaviour exactly: an undeclared argument falls
+    # through to the model-supplied sentence, which is what told a live run that a missing
+    # `world_id` was "not an id".
+    "test_an_UNDECLARED_id_is_never_described_as_not_an_id": [
         (f"{CS}/app/services/stream_service.py",
-         "                        _owed = [a for a in _missing_args\n"
-         "                                 if declared_supplier(_c_block, a) in (\"context\", \"plan\")]",
-         "                        _owed = []"),
+         "    if any(declared_supplier(block, a) is None for a in missing):",
+         "    if False and any(declared_supplier(block, a) is None for a in missing):"),
+    ],
+    "test_an_UNDECLARED_id_is_given_the_move_that_obtains_it": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if any(declared_supplier(block, a) is None for a in missing):",
+         "    if False and any(declared_supplier(block, a) is None for a in missing):"),
+    ],
+    "test_a_DECLARED_context_argument_still_says_not_yours_to_invent": [
+        (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
+    ],
+    # Widening the undeclared arm to swallow DECLARED arguments takes the CONTENT sentence away
+    # from the model-supplied case it is right for — the same error pointed the other way.
+    "test_a_DECLARED_model_argument_still_gets_the_CONTENT_message": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if any(declared_supplier(block, a) is None for a in missing):",
+         "    if any(declared_supplier(block, a) is not None for a in missing):"),
+    ],
+    # A call-site guard, so it must be reddened by removing what it READS: put the sentence back
+    # inline, which is precisely the shape that shipped the defect.
+    "test_the_CALL_SITE_uses_the_helper_not_its_own_sentence": [
+        (f"{CS}/app/services/stream_service.py",
+         '                        _ma_msg = _missing_args_message(c["name"], _missing_args, _c_block)',
+         '                        _ma_msg = "These carry the actual CONTENT (not ids)"'),
     ],
     "test_A_MODEL_SUPPLIED_ARGUMENT_KEEPS_THE_ORIGINAL_MESSAGE": [
         # Report the model's own content as runtime-owed — the same error pointed the other way.
