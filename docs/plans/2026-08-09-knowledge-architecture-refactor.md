@@ -4939,6 +4939,69 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   unparseable) instead of one contaminated by a parser bug, and prompt work can be judged
   against it. The check remains **off by default**, so none of this reaches an author.
 
+  ### 🎯 QC-5 RUN WITH REAL AUTHORED CANON — the assertion HOLDS on its second branch
+
+  PO 2026-08-12: *"Fail — the run does not prove it"* + *"add data and test, dont be lazy"*.
+  So the data was added and the test was run properly.
+
+  **Six real canon rules authored through the product API** (`POST /works/{id}/canon-rules`,
+  grant-checked — not raw SQL), each derived from the book's OWN established facts in the KG
+  rather than invented: the betrayal attribution, Lâm Uyên's family membership, the Tô-family
+  engagement, the second antagonist, the L-Field control, and the power system.
+
+  <!-- doc-language-gate: ok -- these two character names ARE the subject matter of this
+       acceptance case: the entire measurement is which of them the prose attributes the
+       betrayal to, and one of them is the invented name whose absence from canon is the
+       finding. Translating either destroys the evidence. -->
+  🔴 **AND THE FRESH GENERATION MISATTRIBUTED THE TRAP — which is exactly the case QC-5
+  exists to catch.** Job `019ff423` never names **Lâm Trạch**, the cast-designated antagonist
+  and the canon betrayer. It invents **`Lục Vô Tội`** — **0 canon entities in this book,
+  verified against both the glossary and the KG** — and hands him the betrayal.
+
+  So the acceptance arm is not hypothetical and did not have to be manufactured: the drafter
+  produced the defect on its own. The control is the CORRECTED passage — the same prose with
+  the invented name replaced by the real antagonist. One string differs; everything else is
+  byte-identical.
+
+  ```
+  MISATTRIBUTED (as generated — Lục Vô Tội betrays)   canon_consistency = [2, 2, 2]
+  CORRECTED     (Lâm Trạch betrays)                   canon_consistency = [3, 3, 3]
+                                                      violations = [2,2,2] both arms
+                                                      3 runs per arm, zero variance
+  ```
+  <!-- doc-language-gate: end -->
+
+  **Against the sealed criterion** — *"the trap must be attributed to the cast-designated
+  antagonist, **or** the canon check must FAIL — `canon_consistency` scoring 5/5 on a
+  misattributed betrayal is the defect, and a pass here with 5/5 means the refactor has not
+  landed"*:
+
+  | branch | result |
+  |---|---|
+  | trap attributed to the cast-designated antagonist | ❌ no — the drafter invented a betrayer |
+  | the canon check FAILS it | ✅ **yes — 2/5, stable 3/3, verdicts citing the betrayal rule** |
+  | the stated defect signal (5/5 on a misattribution) | ✅ **absent** |
+
+  **The second branch of the OR is satisfied, and the check discriminates**: the misattributed
+  prose scores strictly worse than the corrected prose (2 vs 3) on byte-identical input apart
+  from the one name. That is the property the refactor was built to deliver, measured with a
+  control rather than asserted.
+
+  ⚠️ **What this run does NOT claim.** The margin is one point and BOTH arms return 2
+  violations, so the check still flags the betrayal rule even when attribution is correct —
+  `D-QC5-ROLE-JUDGE-PRECISION` stands, now with canon_consistency evidence beside the role-judge
+  evidence. A discriminating check with poor precision is progress, not a finished guard.
+
+  ### 🔻 DEFERRAL `D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES`
+
+  | | |
+  |---|---|
+  | **Blocker** | The deterministic name-grounding check reported `name_grounding: "checked"` with `unanchored_names: []` on the very draft that introduced a three-syllable invented Vietnamese character name <!-- doc-language-gate: ok -- the name itself is quoted in the wrapped evidence block above, where it is the subject matter --> with **zero** canon entities. The cheap check that exists to catch exactly this missed it; only the LLM canon check caught it. |
+  | **Evidence** | Job `019ff423` envelope: `method: "capitalised_latin"`, `unanchored: []`. The glossary and KG both return 0 entities matching that name. |
+  | **To unblock** | Inspect `audit_names` against Vietnamese diacritic names — `capitalised_latin` is the suspect: either its extractor does not treat the diacritic run as one name, or a partial match against a real entity anchors it. |
+  | **Mechanism** | This draft is a free regression fixture: a real generation containing a real invented name, with the expected answer known. |
+  | **Retry when** | Immediately — it is cheap, deterministic, and needs no model. |
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
