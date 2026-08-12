@@ -1508,3 +1508,11 @@ direction**: a marker that had no entity, then had one bound, cannot be restored
 
 Whenever a field distinguishes absent from null, the reversal has two shapes, and only one of them
 is exercised by the obvious test. Test the direction that starts from empty.
+
+### METHOD — check the reverse exists before believing "Reversible" (#318)
+
+`world_move_book` advertised itself as reversible. Every form of the reverse was rejected: a null
+`world_id`, an omitted one, an empty string, and a speculative `clear_world` flag. REST had the
+capability all along (`removeBookFromWorld`), so only the agent surface was missing it.
+
+A one-word claim in a description is a capability assertion. Call the reverse.
