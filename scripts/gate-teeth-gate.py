@@ -193,7 +193,19 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: Also collapsed a warn arm that fired on **36 of 36** subjects (zero digest-pinned FROMs exist
 #: anywhere) from 36 identical lines to one ratio. A warning on everything is a warning on
 #: nothing; the ratio still moves the day someone pins one. `GT-DOCKER-WARN-100PCT`.
-NO_PROOF_BASELINE = 37
+#: 2026-08-12 (f): 37 -> 35. `read-audit-query-type-drift-lint.sh` +
+#: `transitions-validation-lint.sh`, and each shipped a different way of passing over nothing.
+#:
+#: The drift gate is ONE STRING COMPARISON between two grep outputs, and **two empty sets are
+#: equal**. Break either pattern — a renamed constraint, a reformatted YAML — and both sides
+#: collapse to "", the equality holds, and it printed *"PASS — CHECK == YAML SSOT (0 ids)"*.
+#: A drift detector reporting agreement because it parsed nothing is the purest form of the
+#: defect it exists to catch, and the `(0 ids)` in its own success line was the tell.
+#:
+#: The transitions gate opened with `if [[ ! -f "$target" ]]; then echo "nothing to lint";
+#: exit 0; fi` — **one `git mv` from permanently green**, silently, with a cheerful message.
+#: The file existing today is the only reason it never bit. A vanished subject is a finding.
+NO_PROOF_BASELINE = 35
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
