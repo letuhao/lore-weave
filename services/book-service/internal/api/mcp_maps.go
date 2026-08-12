@@ -738,6 +738,15 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 	if err != nil {
 		return nil, mapUpdateMarkerOut{}, errors.New("marker_id must be a UUID")
 	}
+	// #316: refuse a call with nothing to change. Without this it ran, touched updated_at and
+	// reported success — measured live, an empty call moved updated_at from …606677Z to …632087Z
+	// with every field identical, which the editor renders as "edited". clear_entity counts as a
+	// field: unbinding an entity is a real change even though it sets nothing else.
+	if in.X == nil && in.Y == nil && in.Label == nil && in.MarkerType == nil &&
+		!in.ClearEntity && strings.TrimSpace(in.EntityID) == "" {
+		return nil, mapUpdateMarkerOut{}, errors.New(
+			"provide at least one of x, y, label, marker_type, entity_id or clear_entity to update")
+	}
 	setClauses := []string{"updated_at=now()"}
 	args := []any{markerID, ownerID}
 	idx := 3
@@ -785,16 +794,27 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 	}
 	// Owner-scoped via a JOIN to world_maps.owner_user_id — a foreign/missing marker updates 0
 	// rows → uniform "marker not found". Atomic single statement (no read-then-write race).
+	// `map_markers old` joined alongside so the statement also returns the PRE-update row, which is
+	// what the undo hint below is built from — no second read, so no window in which the values
+	// reported as "prior" are already someone else's edit. Every column is alias-qualified: with
+	// the table joined twice, a bare `label`/`x`/`entity_id` would be ambiguous and Postgres would
+	// reject the whole statement (the #315 lesson, which only a live call caught).
 	query := fmt.Sprintf(
-		`UPDATE map_markers m SET %s FROM world_maps wm
-		 WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2
-		 RETURNING m.id, m.label, m.x, m.y, m.entity_id, m.marker_type, m.updated_at`,
+		`UPDATE map_markers m SET %s FROM world_maps wm, map_markers old
+		 WHERE m.id=$1 AND m.id=old.id AND m.map_id=wm.id AND wm.owner_user_id=$2
+		 RETURNING m.id, m.label, m.x, m.y, m.entity_id, m.marker_type, m.updated_at,
+		           old.label, old.x, old.y, old.entity_id, old.marker_type`,
 		strings.Join(setClauses, ", "))
 	var mk markerOut
 	var id uuid.UUID
 	var entityID *uuid.UUID
 	var updatedAt time.Time
-	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &mk.Label, &mk.X, &mk.Y, &entityID, &mk.MarkerType, &updatedAt)
+	var priorLabel string
+	var priorX, priorY float64
+	var priorEntity *uuid.UUID
+	var priorType *string
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &mk.Label, &mk.X, &mk.Y, &entityID, &mk.MarkerType, &updatedAt,
+		&priorLabel, &priorX, &priorY, &priorEntity, &priorType)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, mapUpdateMarkerOut{}, errors.New("marker not found")
 	}
@@ -807,7 +827,28 @@ func (s *Server) toolWorldMapUpdateMarker(ctx context.Context, _ *mcp.CallToolRe
 		mk.EntityID = &eid
 	}
 	mk.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-	return nil, mapUpdateMarkerOut{Marker: mk}, nil
+	// Undo hint (#316). This tool had none, which put the map tools in a perverse state after
+	// #313: the description tells the agent to move a pin with THIS tool rather than remove+add,
+	// because the marker_id stays stable — and remove_marker was the one that could be undone.
+	//
+	// The entity is asymmetric and is where a careless hint would corrupt the marker: replaying
+	// entity_id restores a binding, but a marker that had NO entity needs clear_entity=true,
+	// because an omitted entity_id means "leave unchanged" and would silently keep whatever this
+	// update bound. marker_type is always sent, "" when it was unset, since that is what clears it.
+	undoArgs := map[string]any{
+		"marker_id": id.String(), "label": priorLabel, "x": priorX, "y": priorY,
+	}
+	if priorType != nil {
+		undoArgs["marker_type"] = *priorType
+	} else {
+		undoArgs["marker_type"] = ""
+	}
+	if priorEntity != nil {
+		undoArgs["entity_id"] = priorEntity.String()
+	} else {
+		undoArgs["clear_entity"] = true
+	}
+	return undoResult("world_map_update_marker", undoArgs), mapUpdateMarkerOut{Marker: mk}, nil
 }
 
 // ── world_map_update_region ──────────────────────────────────────────────────

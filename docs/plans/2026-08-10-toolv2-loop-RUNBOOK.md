@@ -1498,3 +1498,13 @@ calling the deployed tool surfaced it — a string-built SQL statement is not ty
 Go compiler and every source-reading test are blind to it by construction.
 
 A static guard now pins `m.version+1`, but the guard was written *after* the live call found it.
+
+### METHOD — an "omitted means unchanged" field needs an explicit clear in its undo (#316)
+
+`world_map_update_marker`'s `entity_id` is omit-to-leave-unchanged, with a separate
+`clear_entity` flag. So an undo hint that simply replays the prior values is **wrong in one
+direction**: a marker that had no entity, then had one bound, cannot be restored by omitting
+`entity_id` — that means "keep it". It needs `clear_entity: true`.
+
+Whenever a field distinguishes absent from null, the reversal has two shapes, and only one of them
+is exercised by the obvious test. Test the direction that starts from empty.
