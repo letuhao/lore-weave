@@ -661,9 +661,11 @@ async def translation_patch_block(
 @mcp_server.tool(
     name="translation_update_settings",
     description=(
-        "Update a book's translation settings (target language, model, prompts, etc.). "
-        "Only the fields you pass are changed; omitted fields keep their value. "
-        "Auto-applies; reversible by setting the prior values back. Book-scoped (edit)."
+        "Update a book's translation settings: target_language, model_source and "
+        "model_ref — those three, and nothing else. It does NOT set prompts; there is no "
+        "prompt argument, and a prompt passed here is ignored without error. Only the "
+        "fields you pass are changed; omitted fields keep their value. Auto-applies; "
+        "reversible by setting the prior values back. Book-scoped (edit)."
     ),
     meta=require_meta(
         "A", "book",
