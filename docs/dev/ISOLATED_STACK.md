@@ -54,9 +54,11 @@ postgres            5555  ->  25555
 redis               6399  ->  26399
 neo4j (bolt)        7688  ->  27688
 neo4j (browser)     7475  ->  27475
-book-service        8204  ->  28204
+auth-service        8204  ->  28204
+book-service        8205  ->  28205
 glossary-service    8211  ->  28211
 knowledge-service   8216  ->  28216
+composition-service 8217  ->  28217
 api-gateway-bff     3123  ->  23123
 frontend            5174  ->  25174
 ```
