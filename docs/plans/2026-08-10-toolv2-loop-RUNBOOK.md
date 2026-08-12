@@ -1516,3 +1516,11 @@ is exercised by the obvious test. Test the direction that starts from empty.
 capability all along (`removeBookFromWorld`), so only the agent surface was missing it.
 
 A one-word claim in a description is a capability assertion. Call the reverse.
+
+### METHOD — a comment about a sibling's limitation goes stale when the sibling is fixed (#319)
+
+`world_delete`'s comment asserted that "`world_move_book` requires a UUID world_id — there is no
+detach". #318 added `clear_world`, so that sentence was false **one iteration after it was
+written**, in a file I had edited in between without noticing.
+
+When a fix removes a limitation, grep for the other places that cite it.
