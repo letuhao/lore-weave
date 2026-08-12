@@ -1627,6 +1627,20 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             "partitions_read": 0,
             "partitions_unreadable": unreadable,
             "note": note + ".",
+            # #307: the SAME omission #251 fixed on kg_multi_query, in the same file,
+            # left behind because that fix touched only the handler under test. Both
+            # early returns must carry the key set their populated path returns, or
+            # `result["meta"]["truncated"]` is a KeyError exactly when nothing was
+            # readable. Zeros are the honest answer for an empty rollup.
+            "node_cap_hit": False,
+            "meta": {
+                "detail": args.detail,
+                "nodes_total": 0,
+                "nodes_returned": 0,
+                "edges_total": 0,
+                "edges_returned": 0,
+                "truncated": False,
+            },
         }
 
     async with neo4j_session() as session:

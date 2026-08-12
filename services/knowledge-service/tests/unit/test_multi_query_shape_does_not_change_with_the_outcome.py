@@ -40,6 +40,25 @@ def _empty_branch() -> str:
     return body[start: body.index("async with neo4j_session()", start)]
 
 
+def _world_empty_branch() -> str:
+    body = SRC.read_text(encoding="utf-8").replace(chr(13), "")
+    start = body.index("this world has no KG partitions you can read")
+    return body[start: body.index("async with neo4j_session()", start)]
+
+
+def test_BOTH_empty_returns_carry_meta():
+    """#307 CORRECTION — #251 fixed kg_multi_query's empty return and left kg_world_query's,
+    in the SAME FILE, with the same shape. Measured: a real (empty) world returned meta None.
+
+    Asserting over BOTH branches by name, because fixing the handler under test and leaving its
+    twin is the failure this loop has now repeated five times."""
+    for label, branch in (("multi_query", _empty_branch()), ("world_query", _world_empty_branch())):
+        assert '"meta": {' in branch, f"{label}: the empty return dropped meta again"
+        assert '"node_cap_hit": False' in branch, f"{label}: node_cap_hit missing"
+        assert '"truncated": False' in branch, f"{label}: an empty result is complete, not cut short"
+        assert '"detail": args.detail' in branch, f"{label}: detail must be echoed, not hardcoded"
+
+
 def test_the_empty_union_still_carries_meta():
     branch = _empty_branch()
     assert '"meta": {' in branch, (
