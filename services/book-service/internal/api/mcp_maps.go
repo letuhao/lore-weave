@@ -552,16 +552,42 @@ func (s *Server) toolWorldMapRemoveRegion(ctx context.Context, _ *mcp.CallToolRe
 	if err != nil {
 		return nil, mapRemoveOut{}, errors.New("region_id must be a UUID")
 	}
-	tag, err := s.pool.Exec(ctx, `
+	// RETURNING the whole region (#314), for the reason its twin needed it (#313) and one more:
+	// this tool's restore recipe was not merely lossy, it was UNEXECUTABLE. The description said
+	// "re-add it with the same polygon to restore", and `name` is a REQUIRED argument of
+	// world_map_add_region. Measured live, following it exactly returned
+	// `required: missing properties: ["name"]` — and the removal had answered {removed true} with
+	// no _meta, so the name and entity_id were gone with nowhere to read them from. The agent's
+	// only remaining move would have been to invent a name for the user's region.
+	var mapIDOut uuid.UUID
+	var name string
+	var polygonJSON []byte
+	var entityID *uuid.UUID
+	err = s.pool.QueryRow(ctx, `
 DELETE FROM map_regions rg USING world_maps wm
-WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2`, regionID, ownerID)
+WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2
+RETURNING rg.map_id, rg.name, rg.polygon, rg.entity_id`,
+		regionID, ownerID).Scan(&mapIDOut, &name, &polygonJSON, &entityID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapRemoveOut{}, errors.New("region not found")
+	}
 	if err != nil {
 		return nil, mapRemoveOut{}, errors.New("failed to remove region")
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, mapRemoveOut{}, errors.New("region not found")
+	// The polygon is stored as JSON. It must go back into the hint as the [[x,y],…] ARRAY that
+	// add_region's schema expects, never as a JSON string — replaying a string would fail the
+	// array validation, which is exactly the unexecutable-undo this fix exists to end.
+	var polygon [][]float64
+	if err := json.Unmarshal(polygonJSON, &polygon); err != nil {
+		return nil, mapRemoveOut{}, errors.New("failed to remove region")
 	}
-	return nil, mapRemoveOut{Removed: true}, nil
+	undoArgs := map[string]any{
+		"map_id": mapIDOut.String(), "name": name, "polygon": polygon,
+	}
+	if entityID != nil {
+		undoArgs["entity_id"] = entityID.String()
+	}
+	return undoResult("world_map_add_region", undoArgs), mapRemoveOut{Removed: true}, nil
 }
 
 // ── world_map_update ─────────────────────────────────────────────────────────
@@ -885,8 +911,10 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 		s.toolWorldMapRemoveMarker)
 
 	addTool(srv, "world_map_remove_region",
-		"Remove a region from a map you own. Undoes world_map_add_region (re-add it with "+
-			"the same polygon to restore).",
+		"Remove a region from a map you own. Undoes world_map_add_region — the result's "+
+			"undo_hint carries the removed region's full state (name, polygon, and its entity_id "+
+			"when set), so replay that to restore it. The polygon alone is not enough: "+
+			"world_map_add_region requires a name.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove region", "delete area"}),
 		s.toolWorldMapRemoveRegion)
 

@@ -60,12 +60,14 @@ func TestOptionalFieldsAreOmittedRatherThanBlank(t *testing.T) {
 
 // The description is what an agent follows. It must not prescribe the lossy recipe again.
 func TestTheDescriptionNoLongerPrescribesALossyRestore(t *testing.T) {
-	src := mustReadFile(t, "mcp_maps.go")
-	if strings.Contains(src, "re-add it with the same label + coords to restore") {
+	// Scoped to the registration block for the same reason as the region twin: what matters is
+	// the string shipped to the model, not prose in a comment that may quote the old recipe.
+	desc := toolRegistration(t, "world_map_remove_marker")
+	if strings.Contains(desc, "re-add it with the same label + coords to restore") {
 		t.Error("the description tells the agent to restore a marker from label + coords alone, " +
 			"which measurably drops entity_id and marker_type")
 	}
-	if !strings.Contains(src, "undo_hint carries the removed marker's full state") {
+	if !strings.Contains(desc, "undo_hint carries the removed marker's full state") {
 		t.Error("the description does not point at the undo_hint, so an agent has no reason to " +
 			"look for it")
 	}

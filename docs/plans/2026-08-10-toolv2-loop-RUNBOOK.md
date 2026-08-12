@@ -1481,3 +1481,9 @@ One removal returned a hint missing both optional fields, and it never reproduce
 run where I had not confirmed the row in `map_markers` first, so there is no evidence the marker
 ever carried them. Recorded as an anomaly, not explained away — and the four runs that *did* check
 the row first all matched.
+
+### METHOD — assert on the string shipped to the model, not the file (#314)
+
+The "description no longer prescribes the bad recipe" test matched the whole file and went red on
+my own code comment, which quotes the old recipe to explain why it was wrong. Scope description
+assertions to the `addTool(...)` registration block. The #313 twin was rescoped the same way.
