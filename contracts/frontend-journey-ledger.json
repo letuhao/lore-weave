@@ -123,6 +123,11 @@
       "state": "blocked",
       "surface": "unrestricted (system skill)",
       "note": "BLOCKED. Run on book 019ff61b from plain prose, no operator-typed tool argument: 'Remember that Iseul is left-handed, and tell me what you now know about her from the graph' — a request squarely in this skill's declared domain ('Knowledge-graph + memory grounding and story search'). NEITHER half ran: no memory_remember, no graph read. The turn suspended on a kg_add_nodes Tier-A card; the card was approved in the browser and the resume DID fire (POST /tool-results 200), but the step-runner then redrove an UNRELATED workflow — 'rail step-runner: driving vision-to-book → plan_propose_spec (redrive 1/8, strength=enforce)' on a book where the user had asked about memory and the graph — and the turn persisted outcome='crashed' at 270 chars. Two things compounded, both already on the board: the rail precedence half of OBS-15 (vision-to-book was pinned at 7/9 and won over the request's own domain) and the crashed-turn mode of OBS-13. Recorded blocked rather than retried indefinitely, and NOT credited to the knowledge skill on the strength of graph work done in earlier journeys — kg-build exercised those tools, but this skill's own journey did not complete."
+    },
+    "skill:plan_forge": {
+      "state": "proven",
+      "surface": "unrestricted (system skill)",
+      "note": "PROVEN through the browser on book 019ff61b (fresh session, after the previous one was cleared), driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument: 'Plan out the whole book for me — the overall arc and the major beats.' The skill's declared domain is 'PlanForge novel-system planning workflows', and the turn exercised it end to end: composition_arc_suggest, plan_propose_spec, composition_outline_node_edit and composition_find_references all ran, outcome completed. It also RECOVERED unaided — composition_outline_node_edit failed once and the model retried it successfully in the same turn. MEASURED: plan_run reached 'compiled' and the book gained 3 structure_node and 4 outline_node, on a book that had none before this turn."
     }
   },
   "defects": {
