@@ -230,9 +230,17 @@ LIMIT $2 OFFSET $3`, ownerID, limit, offset)
 	worlds := make([]worldToolDetail, 0)
 	for rows.Next() {
 		d, err := scanWorldDetail(rows)
-		if err == nil {
-			worlds = append(worlds, d)
+		if err != nil {
+			// #312: skipping the row was worse here than anywhere else -- the pagination
+			// envelope below is built from len(worlds), so a dropped row misreports `returned`
+			// against a `total` that came from a separate COUNT, and a caller paging on
+			// next_offset would step straight over the missing record.
+			return nil, worldListOut{}, errors.New("failed to list worlds")
 		}
+		worlds = append(worlds, d)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, worldListOut{}, errors.New("failed to list worlds")
 	}
 	env, g := listPage("worlds", len(worlds), total, offset, "world_list")
 	return nil, worldListOut{Worlds: worlds, Total: total, Page: env, Guidance: g}, nil

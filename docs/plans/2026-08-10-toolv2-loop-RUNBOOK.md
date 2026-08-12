@@ -1449,3 +1449,19 @@ vanish, the blobs stay, forever.
 I missed this in #308 because every world I deleted there had already had its maps deleted by hand,
 one at a time, through the tool that *does* clean up. **When a delete cascades, list what the
 cascade skips: anything outside the database.**
+
+### DQ-29 — the scan-skip shape outside the world/map feature (#312)
+
+`if rows.Scan(...) == nil { append }` — a row that fails to read is dropped and the shortened list
+returned as complete — also appears in `audio.go:472`, `import.go:342`,
+`mcp_tools_structure.go:638` and `mcp_tools_write.go:436`. Those belong to other tools, already
+concluded, with different result semantics (one is a filename list, one a chapter-id list).
+
+Fixed here: all five sites in the world/map feature. The other four are recorded rather than swept
+in, because "while I was in there" is how a scoped fix becomes an unreviewed one.
+
+### METHOD — falsify the guard, not just the fix (#312)
+
+The iteration-error count used `strings.Count(src, "rows.Err()")`. `mrows.Err()` **contains**
+`rows.Err()`, so the count was inflated and deleting a real guard left the test green. Only
+injecting the defect exposed it. A guard that has never been proven red is decoration.

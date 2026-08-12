@@ -255,9 +255,17 @@ LIMIT $2 OFFSET $3
 		var createdAt, updatedAt *time.Time
 		var bookCount int
 		var bibleBookID, bibleChapterID *uuid.UUID
-		if err := rows.Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount, &bibleBookID, &bibleChapterID); err == nil {
-			items = append(items, worldResponse(id, owner, name, desc, bookCount, bibleBookID, bibleChapterID, createdAt, updatedAt))
+		// #312: a scan error fails the request. A short list rendered as the user's complete
+		// set of worlds is worse than an error they can retry.
+		if err := rows.Scan(&id, &owner, &name, &desc, &createdAt, &updatedAt, &bookCount, &bibleBookID, &bibleChapterID); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list worlds")
+			return
 		}
+		items = append(items, worldResponse(id, owner, name, desc, bookCount, bibleBookID, bibleChapterID, createdAt, updatedAt))
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list worlds")
+		return
 	}
 	var total int
 	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM worlds WHERE owner_user_id=$1`, ownerID).Scan(&total)
@@ -500,7 +508,13 @@ LIMIT $2 OFFSET $3
 		var desc *string
 		var createdAt, updatedAt *time.Time
 		var chapterCount int
-		if err := rows.Scan(&id, &owner, &title, &desc, &state, &createdAt, &updatedAt, &chapterCount); err == nil {
+		// #312: same reasoning as listWorlds — a dropped member book reads as a world that
+		// does not contain it.
+		if err := rows.Scan(&id, &owner, &title, &desc, &state, &createdAt, &updatedAt, &chapterCount); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+			return
+		}
+		{
 			items = append(items, map[string]any{
 				"book_id":         id,
 				"owner_user_id":   owner,
@@ -513,6 +527,10 @@ LIMIT $2 OFFSET $3
 				"updated_at":      updatedAt,
 			})
 		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+		return
 	}
 	var total int
 	_ = s.pool.QueryRow(ctx, `SELECT COUNT(*) FROM books WHERE world_id=$1 AND is_bible=false AND lifecycle_state!='purge_pending'`, worldID).Scan(&total)
@@ -566,7 +584,11 @@ ORDER BY b.created_at DESC
 	for rows.Next() {
 		var id, owner uuid.UUID
 		var title, state string
-		if err := rows.Scan(&id, &owner, &title, &state); err == nil {
+		if err := rows.Scan(&id, &owner, &title, &state); err != nil {
+			writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+			return
+		}
+		{
 			items = append(items, map[string]any{
 				"book_id":         id,
 				"owner_user_id":   owner,
@@ -575,6 +597,10 @@ ORDER BY b.created_at DESC
 				"world_id":        worldID,
 			})
 		}
+	}
+	if err := rows.Err(); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to list world books")
+		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }

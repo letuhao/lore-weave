@@ -414,12 +414,21 @@ WHERE world_id=$1 AND owner_user_id=$2 ORDER BY created_at DESC`, worldID, owner
 	for rows.Next() {
 		var id, wid uuid.UUID
 		var d worldMapDetail
-		if rows.Scan(&id, &wid, &d.Name, &d.ImageObjectKey, &d.Version) == nil {
-			d.MapID = id.String()
-			d.WorldID = wid.String()
-			s.withImageURL(&d)
-			maps = append(maps, d)
+		// #312: a scan error FAILS the tool. Skipping the row instead returned a shorter list
+		// presented as the complete set of maps in this world -- the silent-success class that
+		// toolWorldMapGet, twenty lines up in this same file, already refuses by name.
+		if err := rows.Scan(&id, &wid, &d.Name, &d.ImageObjectKey, &d.Version); err != nil {
+			return nil, mapListOut{}, errors.New("failed to list maps")
 		}
+		d.MapID = id.String()
+		d.WorldID = wid.String()
+		s.withImageURL(&d)
+		maps = append(maps, d)
+	}
+	// An iteration error (a connection dropped mid-read) truncates the result set. Without this
+	// check the caller is handed the prefix as if it were everything.
+	if err := rows.Err(); err != nil {
+		return nil, mapListOut{}, errors.New("failed to list maps")
 	}
 	return nil, mapListOut{Maps: maps}, nil
 }
