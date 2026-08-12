@@ -1423,3 +1423,19 @@ that handle "for authoring lore into it" — and the agent has no next move.
 Measured: 27 of my 28 worlds are in this state, but all 27 are June–July smoke/E2E worlds; the
 only real world has a full handle. Whether to backfill legacy worlds or add a provision verb is a
 product decision.
+
+### DQ-28 — should an orphan sweeper for mediaBucket exist? (#310)
+
+`world_map_delete` (and its REST twin, and the format-change path in `maps_image.go`) now **log**
+a failed blob removal instead of discarding it. That makes a leak discoverable, but nothing
+reclaims the 3 objects already orphaned in the bucket, and the same discard-on-failure shape
+appears in `audio.go` and `media.go`.
+
+Measured: 3 of 3 map base-images in storage belong to maps that no longer exist. Whether to build
+a storage reconciler is a platform decision.
+
+### METHOD — a comment that names a mechanism is a claim to check (#310)
+
+"a stray object is swept, never surfaced as a tool error" justified discarding an error for as long
+as it survived review. There is no sweeper. Grep for the mechanism a comment invokes before
+accepting the behaviour it excuses.

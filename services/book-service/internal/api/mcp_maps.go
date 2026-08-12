@@ -17,6 +17,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -454,10 +455,19 @@ func (s *Server) toolWorldMapDelete(ctx context.Context, _ *mcp.CallToolRequest,
 	if _, err := s.pool.Exec(ctx, `DELETE FROM world_maps WHERE id=$1 AND owner_user_id=$2`, mapID, ownerID); err != nil {
 		return nil, mapDeleteOut{}, errors.New("failed to delete map")
 	}
-	// Best-effort blob cleanup: the row is already gone, so a storage hiccup must NOT
-	// fail the delete (a stray object is swept, never surfaced as a tool error).
+	// Best-effort blob cleanup: the row is already gone, so a storage hiccup must NOT fail the
+	// delete. But it must not vanish either (#310). The discarded error used to be justified with
+	// "a stray object is swept" — there is no sweeper. Nothing in this service or any other
+	// collects orphaned media objects, so a failure here leaked the object permanently AND
+	// silently: no log, no metric, nothing an operator could act on. Measured at the time of the
+	// fix: all 3 map base-images in the bucket belonged to maps that no longer exist, and the only
+	// way to find that out was to list the bucket by hand. Logging the key turns a permanent
+	// invisible leak into a discoverable one; see DQ-28 on whether a sweeper should exist.
 	if imageKey != nil && *imageKey != "" && s.minio != nil {
-		_ = s.minio.RemoveObject(ctx, mediaBucket, *imageKey, minio.RemoveObjectOptions{})
+		if err := s.minio.RemoveObject(ctx, mediaBucket, *imageKey, minio.RemoveObjectOptions{}); err != nil {
+			slog.WarnContext(ctx, "world_map_delete: orphaned map base image (delete succeeded, blob remains)",
+				"map_id", mapID.String(), "object_key", *imageKey, "error", err)
+		}
 	}
 	return nil, mapDeleteOut{Deleted: true}, nil
 }
