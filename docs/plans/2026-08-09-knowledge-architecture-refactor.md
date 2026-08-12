@@ -5106,6 +5106,72 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   retired as unable to express the failure), and treat "same rule flagged on both arms" as the
   regression signal rather than the score.
 
+  ### 🔴 ROOT CAUSE FOUND — the glossary→KG mirror is 46% incomplete, and nothing detects it
+
+  Chasing QC-5's "invented character" to its origin produced a far larger finding, and
+  **retracts two claims made earlier in this section.**
+
+  **RETRACTED (1):** *"the drafter invented a character with zero canon entities"*. It did not.
+  `plan_bootstrap_proposal` (2026-08-03, status `applied`) legitimately declared three new
+  cast members; the character is a real, authored glossary entity.
+  **RETRACTED (2):** *"zero canon entities"* — that check queried **Neo4j**, not the glossary.
+  The entity exists in the glossary. It is missing from the KG.
+
+  **The chain, each step measured:**
+
+  ```
+  plan_bootstrap_proposal (applied)  declared 3 entities, applied_results records all 3 "created"
+  glossary_entities                  all 3 present            ✓
+  outbox_events                      all 3 emitted AND published on 2026-08-03   ✓
+  KG (Neo4j)                         1 of 3 present           ✗   <- the loss is HERE
+  ```
+
+  **The consumer was working at the time**: the survivor's KG node was written at `05:47:19`,
+  fifteen seconds after its event at `05:47:04`. So this is not an outage — three
+  structurally identical payloads (same `book_id`, `kind`, `op`, same `emitted_at` second;
+  only name and id differ) arrived and one materialised.
+
+  **The handler works TODAY**, proven by replaying the exact stored payload through the exact
+  handler the consumer runs:
+
+  ```
+  KG nodes before replay: 0
+  handler returned without raising
+  KG nodes after replay : 1
+  ```
+
+  So the events were lost in delivery/processing on 2026-08-03, the code has since been fixed
+  (`D-T27-LIVE-REPLAY` closed handlers that never ran), and **nothing back-fills what was lost
+  while it was broken.**
+
+  🔴 **SCOPE — this is not one character:**
+
+  ```
+  glossary entities for the acceptance book : 48
+  KG entities carrying a glossary id        : 26
+  MISSING from the KG                       : 22   (46%)
+  ```
+
+  **`fact_for_check` reads the KG.** So every canon check in this architecture has been
+  reasoning over a cast with nearly half its members invisible — which is why the acceptance
+  snapshot returned 16 entities for a 30-id cast, and why a legitimately authored character
+  looked like an invention. **A silent 46% hole in the mirror is a stronger finding than any
+  judge-precision result in this section, and it invalidates the premise of several of them.**
+
+  ### 🔻 DEFERRAL `D-GLOSSARY-KG-MIRROR-HAS-NO-RECONCILER`
+
+  | | |
+  |---|---|
+  | **Blocker** | The glossary is the SSOT and the KG is its projection, but the projection is at-least-once delivery with **no reconciliation**. An event lost while a handler was broken is lost permanently: nothing compares the two stores, nothing re-emits, and no check reports the divergence. Measured at **22 of 48 (46%)** on the acceptance book. |
+  | **Evidence** | The chain above, every step measured, plus a live replay proving the handler is correct now. The gap is not the handler — it is the absence of anything that notices. |
+  | **To unblock** | A reconciler: enumerate glossary entities per book, anti-join against KG `glossary_entity_id`, re-emit or MERGE the difference. It is the same shape as `reconcile-by-truth` already used elsewhere in this repo, and it needs no model. A *detector* (count divergence, alarm) is worth shipping even before the repairer. |
+  | **Mechanism** | The anti-join count IS the metric: it must trend to zero and stay there. `48 vs 26` is the baseline. |
+  | **Retry when** | Immediately. This blocks QC-5 meaningfully — an acceptance test over canon cannot mean much while 46% of canon is absent from the store the check reads. |
+
+  ⚠️ **One dev-data change:** the replay probe created the KG node for the entity it tested
+  (a genuine repair — the glossary says that entity exists). The other 21 were left alone;
+  hand-repair is not the fix, the reconciler is.
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
