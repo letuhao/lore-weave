@@ -65,7 +65,7 @@ EXEMPT_DIRS = (
 
 # The ceiling can only fall. Raising it is a deliberate act with a reason, not a fix for a
 # red build — that is the whole contract of a shrink-only gate.
-MAX_CONCRETE_IMPORTERS = 69
+MAX_CONCRETE_IMPORTERS = 67
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
@@ -92,7 +92,12 @@ MAX_CONCRETE_IMPORTERS = 69
 # rather than reaching for `neo4j_repos`, so the divergence it reports is measured against
 # whichever adapter T43 selects — a detector bound to Neo4j would have to be rewritten by
 # the engine swap it is supposed to survive.
-MIN_GRAPHSTORE_ADOPTERS = 11
+#
+# **13** — T17 batch: `routers/internal_kg_neighborhood.py` and `routers/internal_wiki.py`.
+# Both asked the port's own question (one entity plus its capped one-hop neighbourhood)
+# while reaching past it to the same `neo4j_repos` function, so neither produced a shadow
+# observation for T43 to measure. Ceiling 69 -> 67 in the same move.
+MIN_GRAPHSTORE_ADOPTERS = 13
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

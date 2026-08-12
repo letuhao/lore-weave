@@ -1781,7 +1781,17 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   the baseline · the docstring exclusion removed (prose reported as violation) · the adapter dirs
   stop counting as adapters.
 
-- [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: 6 of 21 cleared**
+- [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
+  69 → 67, `GraphStore` adopters 11 → 13** (batch 2026-08-13: `internal_kg_neighborhood.py`,
+  `internal_wiki.py` — both asked the port's own question while reaching past it to the same
+  `neo4j_repos` function). The five tests that mocked the repo function went red on the swap and
+  were repointed at the port: **a migration whose tests stay green never moved the binding.**
+  Next batch is blocked on a design call, not on work — `public/relations.py`,
+  `public/events.py` and `internal_timeline.py` need operations the port does not have
+  (get/invalidate/recreate a relation; get/archive/merge an event; a paginated timeline browse
+  with totals, participants and free text). Growing the port for them is T43's scope question —
+  *does the port own paginated browse queries?* — and the port's own rule is that it grows by
+  demand, so the demand should be stated before the method is.
   🔴 **NOW ON THE CRITICAL PATH (X3, 2026-08-11).** This read as background cleanup while the
   engine swap sat in the tail. With the engine moved to layer 1, **port adoption is what makes a
   swap actually work** — an unmigrated module is one that breaks when the engine changes.

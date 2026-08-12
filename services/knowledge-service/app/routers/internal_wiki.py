@@ -37,7 +37,7 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.entities import get_neighborhood_by_glossary_id
+from app.adapters.graph_store_provider import get_graph_store
 from app.wiki.context import DEFAULT_KG_LIMIT, gather_entity_context, gather_kg_facts
 from app.wiki.fingerprint import stable_hash
 from app.wiki.writeback import source_texts
@@ -144,8 +144,9 @@ async def get_wiki_neighborhood(
     """C5 (D4-03) — read an entity's 1-hop KG neighborhood for the
     glossary wiki renderer. Read-only; never writes Neo4j (Q2)."""
     async with neo4j_session() as session:
-        detail = await get_neighborhood_by_glossary_id(
-            session,
+        # T17 — through the port. Same domain question as the KG-neighborhood endpoint,
+        # and it was reaching past the port to the same repo function.
+        detail = await get_graph_store(session).neighborhood(
             user_id=str(req.user_id),
             glossary_entity_id=str(req.glossary_entity_id),
             rel_cap=req.rel_cap,
