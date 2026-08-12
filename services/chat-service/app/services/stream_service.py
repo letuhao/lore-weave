@@ -1912,6 +1912,75 @@ def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     return bool(_missing_required_names(args_obj, tool_def))
 
 
+def _unwrap_single_element_scalar_args(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `["vi"]` → `"vi"` for a param the schema declares SCALAR. Returns the names repaired.
+
+    🔴 MEASURED LIVE 2026-08-12, journey `translation-pass` (book 019f9a02-f3a3…). The model called
+    translation_start_job with `target_language: ["vi"]` and was refused: *"Input should be 'en',
+    'vi', … (you sent ['vi'])"*. The refusal is exemplary — it names the legal set AND what was sent
+    — and the turn still ended there with the journey unfinished. This is the *typed params* class,
+    16.8% of the recorded failure corpus, and a one-element list where a scalar is declared is the
+    most mechanical shape in it: the value is already correct, only its container is wrong.
+
+    THE GUARD IS THE WHOLE POINT, because unwrapping the wrong param would silently corrupt a call
+    rather than fail it. A param is repaired ONLY when the schema says it cannot be an array:
+
+    * `type` may be a UNION LIST (`["null", "array"]`), so an array member anywhere disqualifies it —
+      testing `type != "array"` alone would unwrap a legitimately-list-typed argument.
+    * `items`, `anyOf`, `oneOf` and `$ref` mean the schema is richer than this repair can reason
+      about, so it declines rather than guesses.
+    * A list of length != 1 is never touched: `[]` and `["vi","en"]` are real disagreements about
+      cardinality, not a container slip, and they must still reach the refusal.
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    repaired: list[str] = []
+    for name, value in list(args_obj.items()):
+        if not isinstance(value, list) or len(value) != 1:
+            continue
+        spec = props.get(name)
+        if not isinstance(spec, dict):
+            continue
+        # `anyOf`/`oneOf` is the SHAPE THE REAL CATALOGUE USES, not an exotic case: pydantic emits
+        # `anyOf: [{enum, type: string}, {type: null}]` for every optional enum, which is what
+        # translation_start_job.target_language actually declares. Declining all unions would have
+        # left this repair unable to fire on the very call that motivated it — a fix that is
+        # decoration. So flatten one level and require EVERY branch to be scalar-or-null: a union
+        # with an array or object branch is still refused, which keeps the safety property intact.
+        branches = spec.get("anyOf") or spec.get("oneOf")
+        if branches is not None:
+            if not isinstance(branches, list) or not branches:
+                continue
+            if not all(isinstance(b, dict) for b in branches):
+                continue
+            types = [t for b in branches for t in (
+                b.get("type") if isinstance(b.get("type"), list) else [b.get("type")])]
+            if any("items" in b or "$ref" in b or "anyOf" in b or "oneOf" in b for b in branches):
+                continue
+        else:
+            if any(k in spec for k in ("items", "allOf", "$ref")):
+                continue
+            declared = spec.get("type")
+            types = declared if isinstance(declared, list) else [declared]
+        # "null" is permitted alongside a scalar (that IS the optional shape), but every remaining
+        # member must be scalar and none may be an array.
+        concrete = [t for t in types if t != "null"]
+        if "array" in types or not concrete or not all(
+            t in ("string", "integer", "number", "boolean") for t in concrete
+        ):
+            continue
+        inner = value[0]
+        if isinstance(inner, (dict, list)):
+            continue
+        args_obj[name] = inner
+        repaired.append(name)
+    return repaired
+
+
 #: How many recovery tools one refusal may arm. A refusal names the one or two tools that unblock
 #: it; a text that "names" more than this is almost certainly prose that happens to contain tool
 #: names, and arming a handful of those would spend the surface budget the hot set needs.
@@ -4812,9 +4881,18 @@ async def _stream_with_tools(
                 # (writes). Give SPECIFIC, actionable guidance naming the missing args; after the
                 # per-turn cap, tell the model to stop. The measured mid-tier failure: gemma called
                 # glossary_propose_entities with no `entities` and glossary_search with no `query`.
-                _missing_args = _missing_required_names(
-                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
-                )
+                # D-FJ-7 — repair `["vi"]` → `"vi"` where the schema declares a SCALAR, before the
+                # missing-arg check and before dispatch. The value the model chose was already
+                # right; only its container was wrong, and a refusal the caller does not recover
+                # from ends the journey just as dead as a wrong value would.
+                _tool_def_for_args = cat_index.get(c["name"]) or plain_index.get(c["name"])
+                _unwrapped = _unwrap_single_element_scalar_args(args_obj, _tool_def_for_args)
+                if _unwrapped:
+                    logger.info(
+                        "unwrapped single-element list arg(s) %s for %s (session=%s) — the schema "
+                        "declares them scalar", _unwrapped, c["name"], session_id,
+                    )
+                _missing_args = _missing_required_names(args_obj, _tool_def_for_args)
                 if _missing_args:
                     blank_tool_args_streak += 1
                     if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:

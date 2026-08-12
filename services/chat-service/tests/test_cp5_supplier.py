@@ -218,3 +218,106 @@ class TestAnUndeclaredArgumentIsNotCalledContent:
             "the model-supplied sentence exists in more than one place; the inline copy is how "
             "the undeclared case silently inherited it"
         )
+
+
+class TestASingleElementListForAScalarArgIsRepaired:
+    """🔴 MEASURED LIVE 2026-08-12, journey `translation-pass` (book 019f9a02-f3a3…).
+
+    translation_start_job was called with target_language=["vi"] and refused: "Input should be 'en',
+    'vi', … (you sent ['vi'])". The refusal names the legal set and what was sent, and the turn
+    still ended there with the journey unfinished. The value was already correct; only its container
+    was wrong.
+    """
+
+    @staticmethod
+    def _def(name, spec):
+        return {"function": {"name": "t", "parameters": {"properties": {name: spec}}}}
+
+    def test_a_scalar_enum_gets_its_value_unwrapped(self):
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        args = {"target_language": ["vi"]}
+        got = _unwrap_single_element_scalar_args(
+            args, self._def("target_language", {"type": "string", "enum": ["en", "vi"]}))
+        assert got == ["target_language"]
+        assert args["target_language"] == "vi"
+
+    def test_an_ARRAY_typed_arg_is_never_unwrapped(self):
+        """The control that matters most: unwrapping a real list silently corrupts the call.
+
+        🔴 The first version declared `{"type": "array", "items": {...}}`, which the `items` check
+        already skips — so it stayed green with the array-type test deleted and the harness reported
+        "the guard requires nothing". The discriminating spec is an array with NO `items`, where
+        only `"array" in types` stands between a declared list and a flattened one.
+        """
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        args = {"entity_ids": ["abc"]}
+        got = _unwrap_single_element_scalar_args(
+            args, self._def("entity_ids", {"type": "array"}))
+        assert got == []
+        assert args["entity_ids"] == ["abc"], "a declared array argument was flattened to a scalar"
+
+    def test_a_UNION_type_containing_array_is_not_unwrapped(self):
+        """JSON Schema `type` can be a LIST, and reading only part of it re-opens the hole.
+
+        🔴 The first version used `["null", "array"]`, where dropping the array member leaves
+        `null` — still not scalar, so it declined anyway and the guard required nothing. The
+        discriminating union is `["string", "array"]`: honour only the scalar member and the value
+        IS unwrapped; the array member has to disqualify it.
+        """
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        args = {"tags": ["x"]}
+        got = _unwrap_single_element_scalar_args(
+            args, self._def("tags", {"type": ["string", "array"]}))
+        assert got == []
+        assert args["tags"] == ["x"]
+
+    def test_a_list_of_MORE_THAN_ONE_is_left_alone(self):
+        """['vi','en'] is a real disagreement about cardinality, not a container slip — it must
+        still reach the refusal rather than be silently truncated to its first element."""
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        args = {"target_language": ["vi", "en"]}
+        assert _unwrap_single_element_scalar_args(
+            args, self._def("target_language", {"type": "string"})) == []
+        assert args["target_language"] == ["vi", "en"]
+
+    def test_an_UNDECLARED_param_is_left_alone(self):
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        args = {"mystery": ["v"]}
+        assert _unwrap_single_element_scalar_args(args, self._def("other", {"type": "string"})) == []
+        assert args["mystery"] == ["v"]
+
+    def test_the_CALL_SITE_repairs_before_the_missing_arg_check(self):
+        """Guard the call site: repairing after validation would change nothing a caller sees."""
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "_unwrapped = _unwrap_single_element_scalar_args(" in src
+        i_fix = src.index("_unwrapped = _unwrap_single_element_scalar_args(")
+        i_chk = src.index("_missing_args = _missing_required_names(")
+        assert i_fix < i_chk, "the repair runs after the missing-argument check"
+
+
+    def test_the_REAL_optional_enum_shape_from_the_catalogue_is_repaired(self):
+        """The shape that actually motivated this, copied from the live catalogue rather than
+        invented: translation_start_job.target_language declares
+        `anyOf: [{enum:[...], type: string}, {type: null}]` — pydantic's rendering of `X | None`.
+
+        🔴 The first version of the repair declined every `anyOf`, so it could not fire on the one
+        call it was written for. A rule that never reaches the real corpus is decoration; this guard
+        is what stops it regressing to that.
+        """
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        spec = {"anyOf": [{"enum": ["en", "vi", "ja"], "type": "string"}, {"type": "null"}],
+                "default": None, "title": "Target Language"}
+        args = {"target_language": ["vi"]}
+        got = _unwrap_single_element_scalar_args(args, self._def("target_language", spec))
+        assert got == ["target_language"], "the real optional-enum shape was not repaired"
+        assert args["target_language"] == "vi"
+
+    def test_a_UNION_with_an_ARRAY_branch_is_still_refused(self):
+        """The safety property must survive the anyOf widening: a union that CAN be a list is never
+        flattened, or the widening would have traded a refused call for a corrupted one."""
+        from app.services.stream_service import _unwrap_single_element_scalar_args
+        spec = {"anyOf": [{"type": "string"}, {"type": "array"}]}
+        args = {"scope": ["x"]}
+        assert _unwrap_single_element_scalar_args(args, self._def("scope", spec)) == []
+        assert args["scope"] == ["x"]

@@ -1352,6 +1352,74 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
         (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
     ],
+    # ── ["vi"] for a scalar enum (journey loop D-FJ-7) ──────────────────────────────────────
+    # Returning nothing restores the ORIGINAL behaviour: the container slip reaches the refusal and
+    # the turn ends there.
+    "test_a_scalar_enum_gets_its_value_unwrapped": [
+        (f"{CS}/app/services/stream_service.py",
+         "    repaired: list[str] = []",
+         "    return []\n    repaired: list[str] = []"),
+    ],
+    # Flattening a declared list is a silently corrupted call rather than a refused one — strictly
+    # worse than the defect. 🔴 The first falsifier here deleted the `"array" in types` clause and
+    # the guard stayed GREEN, because for a BARE array the positive scalar requirement below is
+    # what declines it; the array clause only decides the UNION case (covered by its own guard).
+    # The harness calling that "the guard requires nothing" is what located the clause that
+    # actually protects this case.
+    # Two edits, because the array clause and the positive scalar requirement each decline a bare
+    # array on their own — disabling either alone leaves the other holding, and the harness reports
+    # "requires nothing". Together they are the no-type-guard state this control exists to forbid.
+    "test_an_ARRAY_typed_arg_is_never_unwrapped": [
+        (f"{CS}/app/services/stream_service.py",
+         '        if "array" in types or not concrete or not all(',
+         "        if not concrete and False or not all("),
+        (f"{CS}/app/services/stream_service.py",
+         '            t in ("string", "integer", "number", "boolean") for t in concrete',
+         "            True for t in concrete"),
+    ],
+    # `type` can be a UNION LIST; normalising to a bare string loses the array member.
+    "test_a_UNION_type_containing_array_is_not_unwrapped": [
+        (f"{CS}/app/services/stream_service.py",
+         "        types = declared if isinstance(declared, list) else [declared]",
+         "        types = [declared] if not isinstance(declared, list) else [declared[0]]"),
+    ],
+    # Truncating a genuine multi-value list to its first element is a silent data loss.
+    "test_a_list_of_MORE_THAN_ONE_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py",
+         "        if not isinstance(value, list) or len(value) != 1:",
+         "        if not isinstance(value, list) or len(value) < 1:"),
+    ],
+    # Repairing a param the schema never declared is guessing.
+    "test_an_UNDECLARED_param_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py",
+         "        if not isinstance(spec, dict):\n            continue",
+         "        if not isinstance(spec, dict):\n            spec = {\"type\": \"string\"}"),
+    ],
+    # Declining every union again puts the repair back where it could not fire on the real
+    # catalogue shape (pydantic's `X | None` → anyOf[enum, null]) — a fix that is decoration.
+    "test_the_REAL_optional_enum_shape_from_the_catalogue_is_repaired": [
+        (f"{CS}/app/services/stream_service.py",
+         '        branches = spec.get("anyOf") or spec.get("oneOf")',
+         "        branches = None if True else spec.get(\"anyOf\")"),
+    ],
+    # Widening to unions must not trade a refused call for a corrupted one: an array branch has to
+    # keep disqualifying the whole union.
+    # Two edits for the same reason as the bare-array control: the array clause and the positive
+    # scalar requirement each decline this union alone.
+    "test_a_UNION_with_an_ARRAY_branch_is_still_refused": [
+        (f"{CS}/app/services/stream_service.py",
+         '        if "array" in types or not concrete or not all(',
+         "        if not concrete and False or not all("),
+        (f"{CS}/app/services/stream_service.py",
+         '            t in ("string", "integer", "number", "boolean") for t in concrete',
+         "            True for t in concrete"),
+    ],
+    # A call-site/order guard, reddened by moving the repair after the check it must precede.
+    "test_the_CALL_SITE_repairs_before_the_missing_arg_check": [
+        (f"{CS}/app/services/stream_service.py",
+         "                _unwrapped = _unwrap_single_element_scalar_args(args_obj, _tool_def_for_args)",
+         "                _unwrapped = []"),
+    ],
     # ── arming the tools a refusal NAMES (journey loop D-FJ-4) ──────────────────────────────
     # Returning nothing restores the ORIGINAL behaviour exactly: the refusal still names the
     # recovery tools and they stay off-surface, which is the live failure.
