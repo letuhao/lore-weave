@@ -1,5 +1,35 @@
 # QC-5 re-run against the complete cast — 2026-08-12
 
+> # 🔴 RETRACTED, SAME DAY, BY A BETTER EXPERIMENT
+>
+> **The verdict below — "the check cannot distinguish a misattributed betrayal from a
+> correct one" — is WRONG. The check discriminates. My experiment did not.**
+>
+> The two arms were built by substituting one name for another in the generated draft. I
+> never checked what that draft says about the substituted character. It says this, once,
+> and nothing else:
+>
+> <!-- doc-language-gate: ok -- the sentence IS the evidence; it is what the draft says about the character -->
+> > *Nhưng ở góc khuất của đại sảnh, Lục Vô Tội chỉ đứng đó, im lặng như một pho tượng đá.*
+> > ("But in a hidden corner of the hall, Lục Vô Tội just stood there, silent as a stone statue.")
+> <!-- doc-language-gate: end -->
+>
+> **He never betrays anyone.** The passage attributes the betrayal to nobody by name — it
+> says "the betrayers" (plural, unnamed) and "betrayed by blood kin". So "arm A" was not a
+> misattributed betrayal and "arm B" was not a corrected one; they were the same passage
+> with a *bystander* renamed. Identical verdicts on identical content is **correct
+> behaviour**, and I reported it as a defect.
+>
+> And the arm-B reasoning I called "actively wrong" — *"shows that Lin Zhe is not the
+> betrayer but rather a cold and unfeeling observer"* — is **exactly right**. That is
+> precisely what the passage shows. The judge read it correctly and I did not.
+>
+> The valid experiment, and the real result, are in
+> [`2026-08-12-qc5-discrimination-valid.md`](2026-08-12-qc5-discrimination-valid.md).
+>
+> What survives from below: the canon-snapshot numbers (16 → 43), the note that this
+> case's two principals were never missing from the mirror, and the artefact accounting.
+
 **Verdict: still does not pass. The original failure mode is GONE; a different one is in
 its place.**
 

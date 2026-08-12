@@ -4416,8 +4416,44 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   one commit BEFORE the task that makes it pass, so it would have failed and read as a regression.)*
   ---
   ---
-  🔴 **QC-5 RE-RUN 2026-08-12 against the COMPLETE cast. RESULT: still FAIL — and the failure
-  has MOVED.** Full evidence:
+  ✅ **QC-5's ACCEPTANCE ASSERTION PASSES. Measured 2026-08-12 with a valid experiment.**
+  [`docs/measurements/2026-08-12-qc5-discrimination-valid.md`](../measurements/2026-08-12-qc5-discrimination-valid.md).
+
+  One sentence inserted into the untouched draft, identical in both arms **except the named
+  betrayer** — so the attribution is the only variable. Six rules, three runs per arm:
+
+  <!-- doc-language-gate: ok -- the two names ARE the experiment's single variable -->
+  ```
+  ARM WRONG  (Lục Vô Tội — not the antagonist)   score=2  betrayal rule flagged: YES   x3
+  ARM CANON  (Lâm Trạch — the cast antagonist)   score=3  betrayal rule flagged: YES   x3
+  CONTROL    (a passage that cannot violate)     score=5  violations=0                 x2
+  ```
+  <!-- doc-language-gate: end -->
+
+  <!-- doc-language-gate: ok -- the judge's reasoning names the two characters; WHICH one it names is the result -->
+  A misattributed betrayal scores **2 of 5** and is rejected naming the right reason —
+  *"according to [R1], Lâm Trạch is the one who betrayed Lâm Uyên, not Lục Vô Tội."*
+  <!-- doc-language-gate: end -->
+  Nothing scores 5/5, so the criterion's inverted trap (a green that means failure) is not
+  triggered. The canon arm's residual flag is a **different, correct** objection: R1 ends
+  *"no one else is the betrayer"* and the untouched draft says "the betrayers", plural.
+  Rule-id → verdict binding also holds at **six** rules, which is the fix
+  `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` reopened — previously only validated on two.
+
+  🔴 **RETRACTED, SAME DAY — the verdict I published hours earlier was WRONG.** I reported
+  *"the check cannot distinguish a misattributed betrayal from a correct one"* and called its
+  arm-B reasoning *"actively wrong"*. Both claims came from an invalid experiment: its arms
+  were built by substituting one name for another in the generated draft, and **the draft
+  mentions that character exactly once, standing silently in a corner.** It never names a
+  betrayer at all. So the substitution renamed a *bystander*, both arms carried identical
+  content, and identical verdicts were correct behaviour. The reasoning I called wrong —
+  *"shows that he is not the betrayer but rather a cold and unfeeling observer"* — is exactly
+  what the passage shows. **The judge read it correctly and I did not.** An A/B whose arms do
+  not differ in the measured variable yields a stable, confident, meaningless result; read the
+  fixture before trusting the contrast.
+
+  ~~**QC-5 RE-RUN 2026-08-12 against the COMPLETE cast. RESULT: still FAIL — and the failure
+  has MOVED.**~~ Superseded; kept for the record. Full text:
   [`docs/measurements/2026-08-12-qc5-rerun-complete-cast.md`](../measurements/2026-08-12-qc5-rerun-complete-cast.md).
 
   The 2026-08-11 run was measured against a KG missing 17 of 43 entities. That hole is closed,
