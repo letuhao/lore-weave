@@ -1352,6 +1352,45 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
         (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
     ],
+    # ── a rail write stalled with NO tool named (journey loop D-FJ-8) ───────────────────────
+    # Returning nothing restores the ORIGINAL blind spot: a turn that called nothing and named no
+    # tool slips through and the author is told work happened.
+    "test_a_turn_that_called_NOTHING_with_a_rail_write_outstanding_is_caught": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if attempted or not rail_progress:\n        return None",
+         "    if True or attempted or not rail_progress:\n        return None"),
+    ],
+    # Dropping the attempted-empty test nudges a model that DID try and already has honest feedback.
+    "test_a_turn_that_ATTEMPTED_a_tool_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if attempted or not rail_progress:",
+         "    if not rail_progress:"),
+    ],
+    # Dropping the tier test fires on a READ, where nothing was claimed to have changed.
+    "test_a_rail_whose_next_step_is_a_READ_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py",
+         '        if tool_tier(catalog_index[tool]) in ("A", "W", "S"):',
+         "        if True:"),
+    ],
+    # Without the rail_progress test an ordinary conversation is nudged.
+    "test_no_rail_means_no_nudge": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if attempted or not rail_progress:",
+         "    if attempted:"),
+    ],
+    # A completed rail has no next step; treating a missing step as actionable invents one.
+    "test_a_rail_with_NO_next_step_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py",
+         "        if not tool or tool not in catalog_index:\n            continue",
+         "        tool = tool or next(iter(catalog_index), None)\n"
+         "        if not tool or tool not in catalog_index:\n            continue"),
+    ],
+    # The directive must not assert a claim it never measured.
+    "test_the_DIRECTIVE_for_this_arm_claims_nothing_it_did_not_measure": [
+        (f"{CS}/app/services/stream_service.py",
+         'f"[SYSTEM DIRECTIVE] This turn called no tool at all, and "',
+         'f"[SYSTEM DIRECTIVE] You just described using "'),
+    ],
     # ── ["vi"] for a scalar enum (journey loop D-FJ-7) ──────────────────────────────────────
     # Returning nothing restores the ORIGINAL behaviour: the container slip reaches the refusal and
     # the turn ends there.

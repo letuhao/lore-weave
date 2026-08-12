@@ -983,6 +983,45 @@ def _narrated_uncalled_writes(
     )
 
 
+def _rail_write_step_stalled(
+    rail_progress: list | None, *, catalog_index: dict, attempted: set[str],
+) -> str | None:
+    """The WRITE tool a rail is waiting on, when this turn called NOTHING AT ALL.
+
+    🔴 THE SISTER CASE `_narrated_uncalled_writes` STRUCTURALLY CANNOT SEE. That guard finds a
+    claimed write by intersecting the prose with real tool NAMES, which is the right design — no
+    NLP, no tense-guessing — but it only fires when the model names a tool. MEASURED LIVE
+    2026-08-12, book 019f9a02-f3a3…: asked "Please translate this book into Vietnamese for me now",
+    the model answered *"I've started the translation for Chapter 1 into Vietnamese. I'll monitor
+    the progress…"* with ZERO tool calls, outcome='completed', and no job row. It named no tool, so
+    the intersection was empty and nothing was logged. The plainer phrasing — the one a user
+    actually gets — was invisible.
+
+    This arm stays mechanical by refusing to read the prose at all. It uses only:
+
+    * `attempted` is EMPTY — the turn called nothing, so nothing can have changed. A turn that
+      tried and failed already has honest feedback and is deliberately excluded, exactly as the
+      sister guard excludes it.
+    * a rail has a next actionable step whose tool is a WRITE tier — so there was a concrete,
+      journey-declared action outstanding, not merely a conversation in progress.
+
+    It deliberately does NOT infer that the model *claimed* anything: the directive built from this
+    asserts only what is measured (no tool ran, this step is outstanding), because a runtime that
+    accuses the model of a claim it did not make is the same false-report defect pointed the other
+    way — and this loop has already fixed three of those.
+    """
+    if attempted or not rail_progress:
+        return None
+    for prog in rail_progress:
+        step = getattr(prog, "next_step", None)
+        tool = getattr(step, "tool", None) if step is not None else None
+        if not tool or tool not in catalog_index:
+            continue
+        if tool_tier(catalog_index[tool]) in ("A", "W", "S"):
+            return tool
+    return None
+
+
 async def _flush_activated_tools(pool, session_id, activation_state: dict | None) -> None:
     """D-TOOLLOAD-LOST-ON-SUSPEND — persist the tools this turn activated.
 
@@ -3185,6 +3224,15 @@ async def _stream_with_tools(
                     catalog_index=cat_index,
                     attempted=turn_attempted,
                 )
+                # D-FJ-8 — the sister case: the turn called NOTHING and a rail's next write step is
+                # still outstanding. Named no tool, so the intersection above is empty.
+                _stalled_tool = None
+                if not _narrated:
+                    _stalled_tool = _rail_write_step_stalled(
+                        rail_progress, catalog_index=cat_index, attempted=turn_attempted,
+                    )
+                    if _stalled_tool:
+                        _narrated = [_stalled_tool]
                 if _narrated:
                     _nw_guards = {
                         "under_cap": narrated_write_nudges < NARRATED_WRITE_NUDGE_CAP,
@@ -3223,21 +3271,40 @@ async def _stream_with_tools(
                                     catalog=discovery_catalog, context_length=context_length,
                                 )
                                 activation_state["dirty"] = True
+                        # The two arms must not share one sentence: the stalled-rail arm never read
+                        # the prose, so logging "named in prose" for it would assert something
+                        # unmeasured — the same false-report shape the directive above is careful
+                        # to avoid. Caught by reading this line's own output on a live run.
                         logger.warning(
-                            "D-NARRATED-WRITE (session=%s): the turn is ending with write "
-                            "tool(s) named in prose but never called: %s — nudging once "
+                            "D-NARRATED-WRITE (session=%s): %s: %s — nudging once "
                             "(armed off-surface: %s)",
-                            session_id, _narrated, _armed or "—",
+                            session_id,
+                            ("the turn called NO tool while a rail's next write step is "
+                             "outstanding" if _stalled_tool else
+                             "the turn is ending with write tool(s) named in prose but never "
+                             "called"),
+                            _narrated, _armed or "—",
                         )
                         if trace is not None:
                             trace.add("compile", "T6", "tools",
                                       f"narrated_write:{','.join(_narrated)}", is_error=True)
                         working.append({"role": "assistant", "content": "".join(text_parts)})
                         working.append({"role": "user", "content": (
-                            "[SYSTEM DIRECTIVE] You just described using "
-                            f"{', '.join(_narrated)}, but you did not call "
-                            + ("it" if len(_narrated) == 1 else "them")
-                            + " — nothing was written and the author will find nothing.\n"
+                            # The stalled-rail arm must NOT say "you just described using X" — it
+                            # never read the prose and does not know whether anything was claimed.
+                            # Asserting a claim the runtime did not measure would be the same
+                            # false-report defect this guard exists to stop, pointed the other way.
+                            (
+                                f"[SYSTEM DIRECTIVE] This turn called no tool at all, and "
+                                f"{_stalled_tool} is the next outstanding step of the journey you "
+                                "are on — so nothing was written and the author will find "
+                                "nothing.\n"
+                                if _stalled_tool else
+                                "[SYSTEM DIRECTIVE] You just described using "
+                                f"{', '.join(_narrated)}, but you did not call "
+                                + ("it" if len(_narrated) == 1 else "them")
+                                + " — nothing was written and the author will find nothing.\n"
+                            )
                             + (
                                 f"{', '.join(_armed)} "
                                 + ("is" if len(_armed) == 1 else "are")

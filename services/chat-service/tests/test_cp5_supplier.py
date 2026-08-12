@@ -321,3 +321,67 @@ class TestASingleElementListForAScalarArgIsRepaired:
         args = {"scope": ["x"]}
         assert _unwrap_single_element_scalar_args(args, self._def("scope", spec)) == []
         assert args["scope"] == ["x"]
+
+
+class TestAStalledRailWriteIsCaughtWhenNoToolWasNamed:
+    """🔴 MEASURED LIVE 2026-08-12, book 019f9a02-f3a3…. Asked "Please translate this book into
+    Vietnamese for me now", the model answered "I've started the translation for Chapter 1 into
+    Vietnamese. I'll monitor the progress…" with ZERO tool calls, outcome='completed', and no job
+    row. It named no tool, so `_narrated_uncalled_writes` (which intersects prose with real tool
+    NAMES) saw nothing and no D-NARRATED-WRITE line was logged. The plainer phrasing — the one a
+    user actually gets — was structurally invisible.
+    """
+
+    class _Step:
+        def __init__(self, tool): self.tool = tool
+
+    class _Prog:
+        def __init__(self, tool): self.next_step = TestAStalledRailWriteIsCaughtWhenNoToolWasNamed._Step(tool)
+
+    # The catalogue shape tool_tier actually reads: `_meta` lives INSIDE `function`.
+    WRITE = {"translation_start_job": {"function": {"_meta": {"tier": "A"}}}}
+
+    def test_a_turn_that_called_NOTHING_with_a_rail_write_outstanding_is_caught(self):
+        from app.services.stream_service import _rail_write_step_stalled
+        got = _rail_write_step_stalled(
+            [self._Prog("translation_start_job")], catalog_index=self.WRITE, attempted=set())
+        assert got == "translation_start_job"
+
+    def test_a_turn_that_ATTEMPTED_a_tool_is_left_alone(self):
+        """A model that tried and got a real error already has honest feedback — nudging there is
+        noise, and the sister guard excludes it for the same reason."""
+        from app.services.stream_service import _rail_write_step_stalled
+        assert _rail_write_step_stalled(
+            [self._Prog("translation_start_job")], catalog_index=self.WRITE,
+            attempted={"translation_coverage"}) is None
+
+    def test_a_rail_whose_next_step_is_a_READ_is_left_alone(self):
+        """Nothing was claimed to have changed, so there is nothing for the author to not find."""
+        from app.services.stream_service import _rail_write_step_stalled
+        assert _rail_write_step_stalled(
+            [self._Prog("translation_coverage")],
+            catalog_index={"translation_coverage": {"function": {"_meta": {"tier": "R"}}}},
+            attempted=set()) is None
+
+    def test_no_rail_means_no_nudge(self):
+        """An ordinary conversation with no journey outstanding must never be nudged."""
+        from app.services.stream_service import _rail_write_step_stalled
+        assert _rail_write_step_stalled(None, catalog_index=self.WRITE, attempted=set()) is None
+        assert _rail_write_step_stalled([], catalog_index=self.WRITE, attempted=set()) is None
+
+    def test_a_rail_with_NO_next_step_is_left_alone(self):
+        from app.services.stream_service import _rail_write_step_stalled
+        class _Done: next_step = None
+        assert _rail_write_step_stalled([_Done()], catalog_index=self.WRITE, attempted=set()) is None
+
+    def test_the_DIRECTIVE_for_this_arm_claims_nothing_it_did_not_measure(self):
+        """It never read the prose, so it must not say "you just described using X" — asserting an
+        unmeasured claim is the same false-report defect pointed the other way."""
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "This turn called no tool at all" in src
+        assert "_stalled_tool = _rail_write_step_stalled(" in src
+        # 🔴 CAUGHT ON A LIVE RUN by reading this guard's own log output: the two arms shared one
+        # WARNING line, so the stalled-rail arm logged "named in prose" about prose it never read.
+        # The directive was careful and the log was not.
+        assert "the turn called NO tool while a rail's next write step is " in src
