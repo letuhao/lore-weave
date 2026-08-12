@@ -294,7 +294,7 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: Same root as the third finding: `DASH_ROOT` was read at script LOAD, so every probe ran
 #: against the real `dashboards/` tree and passed by accident. A self-test that never reaches
 #: its own fixture is worse than none — it reports coverage of inputs it never read.
-NO_PROOF_BASELINE = 11
+NO_PROOF_BASELINE = 10
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
@@ -319,6 +319,11 @@ DELEGATES_PROOF = {
         "a 10-line wrapper around migration-idempotency-validator.py, which carries the "
         "`--self-test` (8 checks, each proven to fire on its own bad shape) and is what "
         "`$@` forwards to",
+    "runbook-verification-lint.sh":
+        "a wrapper around runbook-verification-lint.py, which carries the `--self-test` "
+        "(17 cases, 14 bitten) and is what `$@` forwards to. The checker used to be a "
+        "`python3 - <<'PY'` heredoc inside the wrapper, which is why it had no proof: a "
+        "heredoc has no name, so there was nothing a case could call",
 }
 
 # A non-zero exit, in every form these scripts actually use. The first version of this
