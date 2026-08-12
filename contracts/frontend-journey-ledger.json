@@ -81,6 +81,12 @@
       "surface": "unrestricted",
       "declared_steps": 4,
       "note": "BLOCKED on D-FJ-14. Run on book 019ff4cf-2143-7a5f-9cc4-0cf62e286432 (11 draft entities from the proven populate-from-notes journey — exactly this workflow's input). Driven from plain prose, no operator-typed tool argument. The rail pinned — 'intent pinned workflow(s) [entity-triage]', 'rail entity-triage: 0/4 steps done, next=glossary_curation_list' — and step 1 (glossary_curation_list) ran green. Step 2 (glossary_propose_curation) was then refused TWICE for D-FJ-14 and the journey has no finished outcome: all 11 entities remain status='draft', so nothing was half-applied. The refusal itself is exemplary — it names the exact type mismatch and shows the offending value — so this is a recovery failure, not a message failure."
+    },
+    "lore-so-far": {
+      "state": "blocked",
+      "surface": "{book}",
+      "declared_steps": 1,
+      "note": "BLOCKED on D-FJ-15. Run on book 019f9cf7 from plain prose with no operator-typed tool argument. The rail pinned and named its only step (story_search) — and that step was never called; the rail stands at 0/1. The model answered from ambient context, correctly, which is exactly why this is blocked rather than proven: the workflow's promise ('Answer using only what the reader has read so far') is enforced by the step that did not run, so a right answer here proves nothing about the cutoff. Not dressed up as proven on the strength of a good-looking reply."
     }
   },
   "defects": {
@@ -181,6 +187,13 @@
       "lives_in": "chat-service tool-argument repair (array-of-string receiving array-of-object)",
       "title": "entity_ids arrived as a list of OBJECTS that re-stated the sibling args",
       "note": "MEASURED LIVE 2026-08-12, book 019ff4cf. glossary_propose_curation was called with op='status_change', status='active', and entity_ids=[{'entity_id': '019ff551-…', 'status': 'active'}, …] — a list of OBJECTS where the schema declares a list of STRINGS, each object re-stating the `status` that was already a sibling argument. Refused twice with an exemplary message that names the exact mismatch and shows the offending value ('has type \"object\", want \"string\"'), and the model did not recover: all 11 entities remain status='draft'. Note the keys arrive double-quoted ('\"entity_id\"'), which is its own signal about how the model serialised them. SAME FAMILY AS D-FJ-7, DIFFERENT SHAPE — that one was a container slip (list where a scalar is declared); this is a list of single-meaningful-key objects where a list of scalars is declared, with the object's other key duplicating a sibling arg. D-FJ-7's repair deliberately declines anything with `items`, so it does not and should not touch this. The repairable rule to evaluate in its own cycle: when a declared array-of-string receives an array of objects, and each object carries a key matching the parameter's SINGULAR name (entity_id for entity_ids), unwrap to that value — with the same safety discipline D-FJ-7 used, i.e. decline whenever the shape is richer than the rule can reason about, since a wrong unwrap corrupts a write rather than refusing it."
+    },
+    "D-FJ-15": {
+      "state": "open",
+      "found_by": "lore-so-far",
+      "lives_in": "the lore-so-far rail / story_search step-runner (the spoiler cutoff is only applied by the step that was skipped)",
+      "title": "The spoiler-safe answer was produced WITHOUT the tool that makes it spoiler-safe",
+      "note": "MEASURED LIVE 2026-08-12, book 019f9cf7. Asked 'What do we know about Elara so far? No spoilers past where I have read', the rail pinned correctly — 'intent pinned workflow(s) [lore-so-far]', 'rail lore-so-far: 0/1 steps done, next=story_search' — and the model NEVER CALLED story_search. It answered from chapter text already sitting in this session's context (the same chapter had been translated earlier in the session) and produced a correct, grounded answer: Elara is a cartographer, works with parchment and ink and 'a specialized eraser made of a fine, grey dust of the void'. 🔴 THE CORRECT ANSWER IS NOT EVIDENCE THE GUARANTEE WORKS. lore-so-far's entire purpose is 'Answer using only what the reader has read so far', and the reading-position cutoff is applied BY story_search. Answering from ambient context bypasses it. Here that was harmless because the book has one chapter and it was already in context; on a book with many chapters and a reader partway through, the same behaviour answers past the cutoff and the spoiler promise is silently void. This is the degrade-safe class: a guarantee that holds only when a step runs, on a path where the step can be skipped without anything noticing. For its own cycle: whether the rail should REQUIRE story_search before an answer on this surface, and whether an answer produced without it should say so."
     }
   },
   "carried_observations": [
