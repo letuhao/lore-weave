@@ -254,7 +254,18 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: Reported rather than enforced: **54 of the 100 declared metrics are emitted nowhere in code**
 #: (`GT-OBS-UNEMITTED`). Planned or rot — this gate cannot tell which, and stating the number
 #: beats implying zero.
-NO_PROOF_BASELINE = 31
+#: 2026-08-12 (k): 31 -> 30. `slo-latency-lint.py` — and this one was already GOOD: a missing
+#: config exits 2, an empty `endpoints:` exits 2, it prints its count. The first gate on this
+#: board whose reach was sound before I touched it, which is worth recording because the run's
+#: other twelve were not. It gained 14 self-test cases and one `GT-F5` shrink arm on
+#: `LATENCY_HEAVY` (measured: all four names real, 0 dead rows — the arm lands while the answer
+#: is still zero, which is the right moment).
+#:
+#: The case worth keeping: `p95_ms: true`. **`True` IS an `int` in Python**, so without the
+#: explicit `isinstance(p95, bool)` guard a boolean sails through as the number 1 — a positive
+#: number, and a passing SLO. The guard was already there; nothing proved it was load-bearing
+#: until its own bite arm removed it and watched the case go red.
+NO_PROOF_BASELINE = 30
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
