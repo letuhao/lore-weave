@@ -4721,28 +4721,47 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   moved it `5 → 2` with two rules; sixteen real facts moved it not at all. So wiring facts
   would have been work done on a guess, and would NOT have made QC-5 evaluable.
 
-  🔴 **THE DEEPER MEASUREMENT — the position-windowed snapshot is EMPTY at the acceptance
-  position.** The same call returns:
+  ### ⛔ RETRACTED — I MEASURED THE WRONG AXIS, AND THE SUBSTRATE IS FINE
+
+  ~~The position-windowed snapshot is EMPTY at the acceptance position.~~ **That claim was
+  mine and it was wrong.** I called `fact-for-check` with `at_order=11`, the raw chapter
+  number. The reading axis is `sort_order × EVENT_ORDER_CHAPTER_STRIDE` (1 000 000) — the
+  product converts correctly in `scene_at_order()`; my probe did not.
 
   ```
-  fact-for-check @ at_order=11 (the acceptance chapter, 30-entity cast)
-    entities   16
-    relations   0
-    events      0
+  at_order = 11           ->  16 entities,   0 relations,  0 events     <- my error
+  at_order = 11_000_000   ->  16 entities,  31 relations,  4 events     <- the real axis
   ```
 
-  **Zero relations and zero events at the chapter the acceptance case is about.** This is
-  `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` confirmed independently at the data layer: 12 of the
-  book's 25 relations carry no story position, the betrayal edge among them, and an as-of read
-  **correctly** excludes a positionless edge. The machinery is behaving exactly as T36
-  specifies; there is simply nothing placed for it to return.
+  ✅ **So the substrate is POPULATED at the acceptance chapter: 31 relations and 4 events.**
+  T36's position-windowed machinery is not merely correct in principle, it has real placed data
+  at the position the acceptance case turns on. **The recommendation built on the wrong number
+  is withdrawn**: nobody needs to backfill relation positions — they are already placed. The
+  20 % that are positionless (10 of 41) are a separate, smaller tail, not the blocker.
 
-  🎯 **This changes the recommendation, so it is stated plainly rather than left implicit.**
-  Authoring `canon_rule` rows WOULD make `canon_consistency` move — the bite proves it — but it
-  would exercise the **authored rule table**, not the position-windowed relation path this
-  refactor was built to deliver. **Placing the book's relations on story positions is the
-  option that actually tests the architecture.** A green obtained the first way would look like
-  the acceptance test passing while the thing under test stayed unexercised.
+  ⚠️ **How the error survived so long is the lesson.** Two independent numbers agreed with it —
+  `canon_rule` really is empty for this book, and the raw-axis snapshot really did return zero —
+  and one true fact next to one false one reads as corroboration. The check that would have
+  caught it immediately is the one the repo already writes down for cross-service integers:
+  `glossary_client.py:690` warns that *"the two scales differ by `EVENT_ORDER_CHAPTER_STRIDE`,
+  so a caller that [mixes them]"* gets exactly this. I read that warning after publishing the
+  claim rather than before making the call.
+
+  🎯 **WHAT SURVIVES THE CORRECTION — re-measured on the correct axis, with 47 real facts
+  (16 entities + all 31 relations), not the 16 the broken probe built:**
+
+  ```
+  present_facts = []                        ->  5 / 5 / 4 / canon 5 · 0 violations
+  present_facts = 47 real facts (w/ 31 rel) ->  5 / 5 / 5 / canon 5 · 0 violations
+  ```
+
+  **`canon_consistency` still does not respond to `present_facts`** — it moved `5 → 2` for two
+  `active_rules` and does not move for 47 facts. That finding is unchanged and is now tested
+  against a snapshot that actually contains relations.
+
+  **So the remaining gap is narrower than I reported:** the acceptance book has **0 `canon_rule`
+  rows**, and `canon_consistency` reads only that table. The KG side is populated and windowed
+  correctly.
 
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**

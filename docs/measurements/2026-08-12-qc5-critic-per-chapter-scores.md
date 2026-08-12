@@ -6,6 +6,22 @@
 > of — was scored against nothing. A bite with two injected rules proves the machinery does
 > respond, and in the same run proves the per-rule verdicts are **not per-rule**.
 
+> ## ⛔ CORRECTION, appended 2026-08-12 — one claim in this document was WRONG
+>
+> A later section of the plan (and commit `2efa2f701`) reported *"the position-windowed
+> snapshot is empty at the acceptance position — 0 relations, 0 events"*. **That was my
+> measurement error, not a defect.** I called `fact-for-check` with `at_order=11`, the raw
+> chapter number; the reading axis is `sort_order × EVENT_ORDER_CHAPTER_STRIDE` (1 000 000).
+>
+> ```
+> at_order = 11           ->  16 entities,   0 relations,  0 events   <- wrong axis
+> at_order = 11_000_000   ->  16 entities,  31 relations,  4 events   <- correct
+> ```
+>
+> The substrate is populated and T36's windowing is working. **What this document says about
+> `canon_rule` being empty, and about the per-rule verdict defect, is unaffected** — those were
+> measured on their own terms and re-confirmed afterwards.
+
 ## Why this run existed
 
 `D-QC5-FULL-FLOW-CAPTURE` closed three of the four artefacts QC-5 names and recorded the
