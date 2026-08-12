@@ -294,7 +294,7 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: Same root as the third finding: `DASH_ROOT` was read at script LOAD, so every probe ran
 #: against the real `dashboards/` tree and passed by accident. A self-test that never reaches
 #: its own fixture is worse than none — it reports coverage of inputs it never read.
-NO_PROOF_BASELINE = 7
+NO_PROOF_BASELINE = 6
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
