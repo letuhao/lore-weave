@@ -1465,3 +1465,19 @@ in, because "while I was in there" is how a scoped fix becomes an unreviewed one
 The iteration-error count used `strings.Count(src, "rows.Err()")`. `mrows.Err()` **contains**
 `rows.Err()`, so the count was inflated and deleting a real guard left the test green. Only
 injecting the defect exposed it. A guard that has never been proven red is decoration.
+
+### METHOD — a documented reversal is a claim to execute, not to read (#313)
+
+`world_map_remove_marker` said "re-add it with the same label + coords to restore". Running exactly
+that produced a marker with `entity_id: null, marker_type: null` — the pin lost its link to the
+entity it represented, and the values were gone from the database and had never been returned.
+
+Reading the sentence would not have found it. **Perform the documented undo and diff the result
+against what you removed.**
+
+### METHOD — an unverified starting state is not evidence (#313)
+
+One removal returned a hint missing both optional fields, and it never reproduced. It was the one
+run where I had not confirmed the row in `map_markers` first, so there is no evidence the marker
+ever carried them. Recorded as an anomaly, not explained away — and the four runs that *did* check
+the row first all matched.

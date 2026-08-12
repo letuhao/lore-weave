@@ -503,16 +503,44 @@ func (s *Server) toolWorldMapRemoveMarker(ctx context.Context, _ *mcp.CallToolRe
 	}
 	// Owner-scoped via a JOIN to world_maps.owner_user_id — a foreign/missing marker
 	// deletes 0 rows → uniform "marker not found" (no cross-owner existence oracle).
-	tag, err := s.pool.Exec(ctx, `
+	//
+	// RETURNING the whole marker (#313), not just a row count. This tool advertises itself as the
+	// undo of world_map_add_marker and prescribed the reversal in its own description: "re-add it
+	// with the same label + coords to restore". Measured, that recipe is LOSSY — add_marker also
+	// carries entity_id and marker_type, so a marker removed at
+	// {label Ironhold, x .25, y .75, marker_type city, entity_id ...beef0} came back as
+	// {entity_id null, marker_type null} when restored exactly as instructed. The values were not
+	// recoverable either: the row was deleted and the response was {removed true} with no _meta at
+	// all. So the undo hint now carries every field add_marker accepts, the same shape world_update
+	// already uses for its reversal.
+	var mapIDOut uuid.UUID
+	var label string
+	var x, y float64
+	var entityID *uuid.UUID
+	var markerType *string
+	err = s.pool.QueryRow(ctx, `
 DELETE FROM map_markers m USING world_maps wm
-WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2`, markerID, ownerID)
+WHERE m.id=$1 AND m.map_id=wm.id AND wm.owner_user_id=$2
+RETURNING m.map_id, m.label, m.x, m.y, m.entity_id, m.marker_type`,
+		markerID, ownerID).Scan(&mapIDOut, &label, &x, &y, &entityID, &markerType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, mapRemoveOut{}, errors.New("marker not found")
+	}
 	if err != nil {
 		return nil, mapRemoveOut{}, errors.New("failed to remove marker")
 	}
-	if tag.RowsAffected() == 0 {
-		return nil, mapRemoveOut{}, errors.New("marker not found")
+	undoArgs := map[string]any{
+		"map_id": mapIDOut.String(), "label": label, "x": x, "y": y,
 	}
-	return nil, mapRemoveOut{Removed: true}, nil
+	// Only present when set: add_marker treats both as optional, and sending an empty string for
+	// entity_id would fail its UUID parse rather than restore anything.
+	if entityID != nil {
+		undoArgs["entity_id"] = entityID.String()
+	}
+	if markerType != nil && *markerType != "" {
+		undoArgs["marker_type"] = *markerType
+	}
+	return undoResult("world_map_add_marker", undoArgs), mapRemoveOut{Removed: true}, nil
 }
 
 func (s *Server) toolWorldMapRemoveRegion(ctx context.Context, _ *mcp.CallToolRequest, in mapRemoveRegionIn) (*mcp.CallToolResult, mapRemoveOut, error) {
@@ -849,8 +877,10 @@ func (s *Server) registerMapTools(srv *mcp.Server) {
 		s.toolWorldMapDelete)
 
 	addTool(srv, "world_map_remove_marker",
-		"Remove a marker from a map you own. Undoes world_map_add_marker (re-add it with "+
-			"the same label + coords to restore).",
+		"Remove a marker from a map you own. Undoes world_map_add_marker — the result's "+
+			"undo_hint carries the removed marker's full state (label, x, y, and its entity_id / "+
+			"marker_type when set), so replay that to restore it. Re-adding from the label and "+
+			"coords alone drops the entity link and the marker type.",
 		lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeNone, nil, []string{"remove pin", "delete marker"}),
 		s.toolWorldMapRemoveMarker)
 
