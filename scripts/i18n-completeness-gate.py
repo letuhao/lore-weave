@@ -74,7 +74,11 @@ def check_root(prefix: str, LOCALES: Path, staged_mode: bool, sf: set) -> tuple[
     """Check one locale tree. Returns (problems, n_locales, n_namespaces_checked)."""
     en_dir = LOCALES / SRC
     if not en_dir.is_dir():
-        return ([], 0, 0)
+        # NOT a skip. `en` is the authored source; if it is missing the whole tree
+        # goes unchecked, and the old `return ([], 0, 0)` said so by saying
+        # nothing. Renaming one `en/` retired half this gate silently.
+        return ([f"{prefix}{SRC}/ — MISSING; the authored source locale is the whole "
+                 f"basis of this check, so its absence is misuse, not parity"], 0, 0)
     all_ns = sorted(f.name for f in en_dir.glob("*.json"))
     locales = sorted(d.name for d in LOCALES.iterdir()
                      if d.is_dir() and d.name != SRC and not d.name.startswith("_"))
@@ -106,8 +110,11 @@ def check_root(prefix: str, LOCALES: Path, staged_mode: bool, sf: set) -> tuple[
                 n = sum(len(v) for v in fj.values()) if isinstance(fj, dict) else 0
                 if n:
                     problems.append(f"{loc}/_FAILED.json — {n} unresolved keys (re-run the tool)")
-            except Exception:
-                pass
+            except Exception as e:  # noqa: BLE001
+                # `except: pass` made a CORRUPT failure file indistinguishable from
+                # no failures — the one file whose whole job is to report them.
+                problems.append(f"{loc}/_FAILED.json — unreadable ({type(e).__name__}); "
+                                f"a failure log that cannot be read is not an empty one")
         for ns in ns_to_check:
             en_keys = {k for k, v in _load(en_dir / ns).items() if isinstance(v, str)}
             lp = LOCALES / loc / ns
@@ -122,17 +129,61 @@ def check_root(prefix: str, LOCALES: Path, staged_mode: bool, sf: set) -> tuple[
     return ([f"{prefix}{p}" for p in problems], len(locales), len(ns_to_check))
 
 
-def main() -> int:
-    staged_mode = "--staged" in sys.argv
-    sf = staged_files() if staged_mode else set()
+SKIP_DIRS = {".git", "node_modules", ".claude", "target", "dist", "build",
+             ".venv", "venv", "__pycache__", ".next"}
+
+
+def discover_locale_roots(repo: Path = REPO) -> list[str]:
+    """Every `.../locales/en` directory in the tree, as a `.../locales/` prefix.
+
+    THE MECHANISM THIS GATE'S HEADER EARNED. It documents, in eight lines, the day
+    a SECOND locale tree appeared and was validated by the first — and then fixed
+    it by hardcoding two roots, which is the same list one tree from now. A root
+    that exists and is not enumerated is now a finding."""
+    found: list[str] = []
+    for path in repo.rglob("locales"):
+        if not path.is_dir():
+            continue
+        if any(part in SKIP_DIRS for part in path.parts):
+            continue
+        if not (path / SRC).is_dir():
+            continue
+        found.append(path.relative_to(repo).as_posix() + "/")
+    return sorted(found)
+
+
+def check(repo: Path = REPO, roots=None, staged_mode: bool = False,
+          sf: set | None = None) -> int:
+    """The REAL checker, parameterised so `--self-test` can drive it over a
+    synthetic tree instead of re-implementing its rules."""
+    roots = LOCALE_ROOTS if roots is None else roots
+    sf = set() if sf is None else sf
 
     problems: list[str] = []
     n_loc = n_ns = 0
-    for prefix, root in LOCALE_ROOTS:
+    for prefix, root in roots:
         probs, nl, nn = check_root(prefix, root, staged_mode, sf)
         problems += probs
         n_loc += nl
         n_ns += nn
+
+    if not staged_mode:
+        # ── DISCOVERY ARM (NV-3): an enumerated root list is default-uncovered.
+        enumerated = {pfx for pfx, _ in roots}
+        for pfx in discover_locale_roots(repo):
+            if pfx not in enumerated:
+                problems.append(
+                    f"{pfx} — a locale tree with an `en/` source that LOCALE_ROOTS does not "
+                    f"list. It is checked by nothing; this is the 2026-07-30 game-client bug "
+                    f"repeating, and the reason this arm exists.")
+        # ── REACH FLOOR (GT-F3): the counts this gate already printed, refused
+        # when they are zero. "0 locale-dirs x 0 namespaces at full parity" was a
+        # clean bill of health for an empty scan.
+        if n_loc == 0 or n_ns == 0:
+            print(f"i18n-completeness-gate: ERROR — {n_loc} locale-dir(s) x {n_ns} "
+                  f"namespace(s). Parity across nothing is not parity (BDR-82).",
+                  file=sys.stderr)
+            return 2
 
     if problems:
         scope = "staged" if staged_mode else "full-repo"
@@ -144,9 +195,115 @@ def main() -> int:
             print(f"  … +{len(problems) - 60} more")
         return 1
 
-    print(f"i18n-completeness-gate: OK — {len(LOCALE_ROOTS)} tree(s), "
+    print(f"i18n-completeness-gate: OK — {len(roots)} tree(s), "
           f"{n_loc} locale-dir(s) x {n_ns} namespace(s) at full `en` parity")
     return 0
+
+
+# ── SELF-TEST ────────────────────────────────────────────────────────────────
+def self_test() -> int:
+    import contextlib
+    import io
+    import tempfile
+
+    failures = 0
+
+    def probe(name: str, want: int, files: dict[str, str], *, roots=None,
+              staged_mode: bool = False, sf: set | None = None) -> None:
+        nonlocal failures
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d)
+            for rel, body in files.items():
+                fp = root / rel
+                fp.parent.mkdir(parents=True, exist_ok=True)
+                fp.write_text(body, encoding="utf-8")
+            use = ([("app/locales/", root / "app" / "locales")]
+                   if roots is None else
+                   [(pfx, root / pfx.rstrip("/")) for pfx in roots])
+            try:
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        contextlib.redirect_stderr(io.StringIO()):
+                    got = check(root, use, staged_mode, sf)
+            except Exception as e:  # noqa: BLE001
+                failures += 1
+                print(f"  FAIL {name}: raised {type(e).__name__}: {e}")
+                return
+        ok = got == want
+        failures += 0 if ok else 1
+        print(f"  {'ok  ' if ok else 'FAIL'} {name}: rc={got} (want {want})")
+
+    EN = '{"greeting": "hello", "bye": "goodbye"}'
+    VI = '{"greeting": "xin chao", "bye": "tam biet"}'
+    print("i18n-completeness-gate --self-test")
+
+    probe("full parity passes", 0, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI})
+
+    probe("a MISSING key in a locale fails", 1, {
+        "app/locales/en/common.json": EN,
+        "app/locales/vi/common.json": '{"greeting": "xin chao"}'})
+    probe("an EMPTY string counts as missing", 1, {
+        "app/locales/en/common.json": EN,
+        "app/locales/vi/common.json": '{"greeting": "xin chao", "bye": ""}'})
+    probe("a MISSING namespace file fails", 1, {
+        "app/locales/en/common.json": EN, "app/locales/en/other.json": EN,
+        "app/locales/vi/common.json": VI})
+    probe("a non-empty _FAILED.json fails", 1, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "app/locales/vi/_FAILED.json": '{"common": ["greeting"]}'})
+    probe("...but an EMPTY _FAILED.json does not", 0, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "app/locales/vi/_FAILED.json": "{}"})
+    probe("an UNREADABLE _FAILED.json fails rather than reading as empty", 1, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "app/locales/vi/_FAILED.json": "{oops"})
+
+    # non-string values are not translatable keys
+    probe("a non-string en value is not required of locales", 0, {
+        "app/locales/en/common.json": '{"greeting": "hello", "max": 5}',
+        "app/locales/vi/common.json": '{"greeting": "xin chao"}'})
+
+    # the missing-source rule
+    # A HEALTHY sibling tree is required here: with only the broken one, the
+    # locale/namespace counts are zero and the reach floor answers first, so the
+    # probe would pass on the floor rather than on the missing-source rule.
+    probe("a tree whose en/ is MISSING fails", 1, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "other/locales/vi/common.json": VI},
+        roots=["app/locales/", "other/locales/"])
+
+    # THE DISCOVERY ARM
+    probe("an UNLISTED locale tree with an en/ source fails", 1, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "other/locales/en/common.json": EN, "other/locales/vi/common.json": VI})
+    probe("...and passes once it is listed", 0, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "other/locales/en/common.json": EN, "other/locales/vi/common.json": VI},
+        roots=["app/locales/", "other/locales/"])
+    probe("...but a locales dir with NO en/ is not a tree", 0, {
+        "app/locales/en/common.json": EN, "app/locales/vi/common.json": VI,
+        "other/locales/vi/common.json": VI})
+
+    # the floor
+    probe("zero locale dirs is misuse, not parity", 2, {
+        "app/locales/en/common.json": EN})
+
+    if failures:
+        print(f"i18n-completeness-gate --self-test: {failures} rule(s) did not behave")
+        return 2
+    print("i18n-completeness-gate --self-test: every rule bites, and none cries wolf")
+    return 0
+
+
+def main() -> int:
+    if "--self-test" in sys.argv or "--selftest" in sys.argv:
+        return self_test()
+    rc = self_test()
+    if rc:
+        return rc
+    print()
+    staged_mode = "--staged" in sys.argv
+    return check(REPO, LOCALE_ROOTS, staged_mode, staged_files() if staged_mode else set())
 
 
 if __name__ == "__main__":
