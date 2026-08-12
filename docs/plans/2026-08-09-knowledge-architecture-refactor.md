@@ -4904,6 +4904,41 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `test_unterminated_json_degrades_to_empty` caught my FIRST repair inventing a verdict from a
   half-written object, and the fix is that it now always cuts back to the last complete element.
 
+  #### 🔄 `D-QC5-ROLE-JUDGE-PRECISION` RE-DERIVED AGAINST THE REPAIRED PARSER — 2026-08-12
+
+  Its own text said the three batch sizes should be re-run on a stronger model *before*
+  touching the prompt again. They were re-run first on the SAME model against the fixed
+  parser, because every original measurement passed through the discard. Identical draft,
+  identical snapshot, identical critic:
+
+  ```
+                        NOW (repaired)              RECORDED (broken parser)
+  batch = 20     affirmed  6 · 0 unparseable                0
+  batch =  5     affirmed  3 · 0 unparseable                4
+  batch =  1     affirmed  9 · 0 unparseable               12
+  ```
+
+  **Zero unparseable calls across all 26.** The `batch=20 → 0 affirmed` datapoint is gone, and
+  it was never the model: one long reply, discarded whole for a missing brace. That single
+  number anchored the *"isolation does not help; it hurts"* reading and the conclusion that
+  followed it — **a larger batch produces a longer reply, which is likelier to be truncated,
+  which manufactures precisely the observed monotonic spread.**
+
+  **What changes:** the prescription *"it needs a MORE CAPABLE judge"* is withdrawn as
+  unsupported. The model answered 20/20 with reasons on the very call that was recorded as
+  producing nothing.
+
+  **What does NOT change — the deferral stays OPEN, on narrower and firmer grounds:**
+  - the spread is real but halved (range 12 → 6), so the check is still **batch-sensitive on
+    byte-identical input**, which no shipping guard should be;
+  - **all of these are affirmed contradictions on a chapter whose attribution is CORRECT**, so
+    the precision problem recorded earlier stands undiminished — a check that fires 6 times on
+    correct prose still trains an author to ignore it.
+
+  The next attempt now has an honest baseline (`6 / 3 / 9` at batches `20 / 5 / 1`, 0
+  unparseable) instead of one contaminated by a parser bug, and prompt work can be judged
+  against it. The check remains **off by default**, so none of this reaches an author.
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
