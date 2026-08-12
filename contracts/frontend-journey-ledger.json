@@ -54,6 +54,13 @@
       "surface": "{book,editor,studio}",
       "declared_steps": 5,
       "note": "BLOCKED on D-FJ-13. Run on book 019ff497-dff3-7f26-9565-7e284f7ca71c, the only book carrying the workflow's stated precondition ('Needs a story plan already in place': plan_run 'compiled', 3 structure_node, 6 outline_node, from the proven vision-to-book run). This journey surfaced FOUR defects, each with its own row, falsifier and commit: D-FJ-10 (the workflow's own description did not pin it), D-FJ-11 (a fabricated plan id refused only on its format), D-FJ-12 (the owed refusal knew the emitting tool and did not name it), and now D-FJ-13. PROGRESS IS REAL AND MEASURED: before D-FJ-10 the workflow was never pinned and not one of its five steps was reached; after it, plus a FRESH session (the old one carried several turns of the model asserting it was stuck), the model reached the rail's actual first step — 'rail autonomous-drafting: 0/5 steps done, next=plan_bootstrap_propose' — called plan_bootstrap_propose, and passed its Tier-A gate. It then failed on D-FJ-13, a real id of the wrong type. chapters=0, so nothing was half-written. Not proven, and not dressed up as proven."
+    },
+    "build-a-book": {
+      "state": "proven",
+      "surface": "{book,editor,studio}",
+      "declared_steps": 3,
+      "modules_crossed": 2,
+      "note": "PROVEN end to end through the browser on book 019ff4cf-2143-7a5f-9cc4-0cf62e286432, driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument — the only text supplied was 'Turn this into a real plan for me — the story arc and a chapter-by-chapter outline I can build from.' MEASURED: plan_propose_spec succeeded, plan_run reached status='compiled', and the book gained 3 structure_node (arcs: The Forged Path / The Rising Tide / The Salt Cartographer) and 9 outline_node — which IS the 'story arc and chapter-by-chapter outline' the workflow's description promises. 🔴 THE OUTLINE IS GROUNDED IN THIS BOOK, not generic, and that is the check worth recording: every proper noun in it entered the glossary through the populate-from-notes journey — Cauldron Bay, Saltreading, The Long Sight, Warden Emet Sooll, the Ashmere tollhouse, Drowning debt, Rho Delkanen, 'true chart', the Tidewright monopoly. Two journeys composing on the same book is the flywheel working, and it is why a generic-looking plan would have been caught here. Steps 2-3 (composition_arc_suggest, composition_outline_node_edit) were not called: they refine and edit an existing outline, and step 1's compile cascade already produced the declared deliverable. NO DEFECT SURFACED. (A kg_add_nodes call sits on its Tier-A gate — the model going beyond the rail, which is the gate working, not a failure.)"
     }
   },
   "defects": {
