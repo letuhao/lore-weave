@@ -127,10 +127,22 @@ func (s *Server) toolWorldDelete(ctx context.Context, _ *mcp.CallToolRequest, in
 	// world delete SET-NULLs them (orphaning the user's books), which an agent must not do
 	// implicitly. The count is owner-scoped, so a non-owner sees 0 and falls through to the
 	// owner-scoped DELETE below → uniform "world not found" (no existence oracle).
+	//
+	// `trashed` is excluded alongside `purge_pending` (#308). It counted before, which made the
+	// refusal unsatisfiable: `delete_book` moves a book to `trashed`, so following the message's
+	// own "delete them first" left the count unchanged, and `world_move_book` requires a UUID
+	// world_id — there is no detach, so "move them out" only relocates the block to the next
+	// world. The single state that cleared it was `purge_pending`, reachable only through
+	// `purge_book` — an irreversible permanent destroy. A guard whose stated purpose is to keep
+	// the user's books from being discarded must not have "destroy them forever" as its only
+	// exit. A book the user has already thrown away is not one the agent is discarding on their
+	// behalf; SET NULL leaves it intact in the trash, which is the "your own books survive"
+	// behaviour the purge helper below describes.
 	var memberBooks int
 	if err := s.pool.QueryRow(ctx, `
 SELECT count(*) FROM books
-WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false AND lifecycle_state!='purge_pending'`,
+WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=false
+  AND lifecycle_state NOT IN ('purge_pending','trashed')`,
 		worldID, ownerID).Scan(&memberBooks); err != nil {
 		return nil, worldDeleteOut{}, errors.New("failed to resolve world")
 	}

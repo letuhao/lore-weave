@@ -1386,3 +1386,21 @@ not something the code implies.
 Not blocking #289: the tool's own contract (propose, never create) is verified, and the human
 review step is exactly where a bogus tool would be caught today.
 
+
+### DQ-26 — should a trashed book still count as a world member? (#308)
+
+`world_delete`'s guard no longer counts `trashed` books, because `delete_book` produces exactly
+that state and there is no detach on `world_move_book`, so the refusal's own remedy could not
+clear it. But the world's **read** paths (`worlds.go:187/478/509/548`) still exclude only
+`purge_pending`, so a trashed book keeps counting toward `book_count` and keeps appearing in the
+world's member list.
+
+Not resolved here: whether a book in the trash should show as a member of a world is a product
+decision about the world detail view, and the tool under test was `world_delete`.
+
+### METHOD — read the state, not the row's existence (#307 → #308)
+
+In #307 I recorded that `world_delete` "left the bible book behind". I had queried `count(*)` and
+seen 1. The row existing was the **purge queue working** — `lifecycle_state` was `purge_pending`
+with `purge_eligible_at` stamped, which I never read. A surviving row is not a surviving object
+when the schema has a lifecycle column. The #307 ledger note now carries the correction.
