@@ -85,9 +85,9 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
         raise ToolExecutionError(
             "this project has no embedding model configured — call "
             "kg_project_set_embedding_model first (pick one of your embedding models "
-            "with settings_list_models), then retry this build. That is the ONLY "
-            "precondition: kg_run_benchmark rates the model's retrieval but does not "
-            "gate the build (advisory since 2026-07-27)"
+            "with settings_list_models), then retry this build. kg_run_benchmark rates "
+            "the model's retrieval but does NOT gate this build (advisory since "
+            "2026-07-27)"
         )
 
     # D-RE-OTHER-AGENTIC-EFFORT: clamp the requested effort to the caller's grant at MINT
@@ -241,7 +241,35 @@ async def _handle_kg_build(ctx: "ToolContext", args: KgBuildArgs) -> dict:
 
     if args.target == "graph":
         if not args.llm_model:
-            raise ToolExecutionError("target=graph requires llm_model (the extraction LLM model ref)")
+            # 🔴 REPORT EVERY UNMET PRECONDITION AT ONCE. target=graph has TWO gates — this one
+            # and the project's embedding model, checked in `_handle_kg_build_graph` — and they
+            # used to be discovered one call at a time. Measured live 2026-08-12 (journey
+            # `kg-build`, project 019ff497-e068…): call 1 was refused for llm_model; call 2 added
+            # it and was refused for the embedding model with *"That is the ONLY precondition"* —
+            # a sentence that denies the gate the SAME call had just failed. The model then
+            # retried the identical arguments and told the author "I've started building the
+            # connection map" over a build that never started.
+            #
+            # The exclusivity claim was meant to say only that `kg_run_benchmark` is advisory, so
+            # it now says exactly that and nothing more. The project read happens only on this
+            # failure path, and any error it raises (missing project, no grant) is the same error
+            # the graph handler would raise a moment later — so it is left to propagate rather
+            # than swallowed into a second incomplete answer.
+            unmet = ["llm_model (the extraction LLM model ref — pick one with settings_list_models)"]
+            owner, _level = await _resolve_project_owner_and_level(ctx, GrantLevel.EDIT)
+            project = await ctx.projects_repo.get(owner, ctx.project_id)
+            if project is None:
+                raise ToolExecutionError("project not found")
+            if not project.embedding_model:
+                unmet.append(
+                    "an embedding model on the project — call kg_project_set_embedding_model "
+                    "(pick one of your embedding models with settings_list_models)"
+                )
+            raise ToolExecutionError(
+                f"target=graph is missing {len(unmet)} precondition(s): " + "; ".join(unmet)
+                + ". Satisfy them all, then retry this build. kg_run_benchmark rates a model's "
+                  "retrieval but does NOT gate this build (advisory since 2026-07-27)"
+            )
         return await _handle_kg_build_graph(ctx, KgBuildGraphArgs(
             project_id=args.project_id,
             llm_model=args.llm_model,
