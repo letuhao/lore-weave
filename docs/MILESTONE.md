@@ -131,11 +131,31 @@
 knowing what the engine supports — every field a builder offers is a promise the engine must keep
 (`AUTHOR-1`, `LIM-1`). `engine_default.toml` is the engine's own declaration of that surface.
 
-**Open gaps:** `G-S3` lore bible has no schema/producer · `G-S4` pre-manifest stub undefined ·
-`G-S5a` engine's authorable surface not enumerated for authors · `G-S7a` zero realities ever ·
-`G-S7b` **the meta database does not exist** and `migrations/meta/` is a second migration tree with
-no manifest or gate · `G-S8a` `reality_registry` has no owner · `G-S8b` `loreweave` is the sole
-Postgres login role and is superuser.
+**Open gaps — re-measured 2026-08-12, and FIVE OF SEVEN WERE FALSE.** Each was one command away, and
+each had been discharged days earlier by a track that updated its own board and not this file. The
+S7 row directly above was updated on 2026-08-11 while this paragraph beneath it was not.
+
+| gap | claim as written | measured 2026-08-12 | command |
+|---|---|---|---|
+| `G-S3` | lore bible has no schema/producer | **STILL TRUE** — 17 design docs, zero code | `ls docs/03_planning/BOOK_TO_GAME/` |
+| `G-S4` | pre-manifest stub undefined | **STILL TRUE** — not a named artifact anywhere | repo-wide grep |
+| `G-S5a` | the engine's authorable surface is not enumerated for authors | ❌ **FALSE** — `contracts/ruleset/authorable-surface.v1.yaml`, 72 keys / 8 patch types, gated | `ls contracts/ruleset/authorable-surface.v1.yaml` |
+| `G-S7a` | zero realities have ever existed | ❌ **FALSE** — **10** | `SELECT count(*) FROM reality_registry` |
+| `G-S7b` | the meta database does not exist; `migrations/meta/` has no manifest or gate | ❌ **FALSE** — **29 tables, 39 migrations**, and `scripts/migration-manifest-gate.py` exists | `SELECT count(*) FROM pg_tables …`; `ls scripts/migration-manifest-gate.py` |
+| `G-S8a` | `reality_registry` has no owner | ❌ **FALSE** — `owner_user_id` exists, live both tiers (`W6`) | `information_schema.columns` |
+| `G-S8b` | `loreweave` is the sole Postgres login role and is superuser | ❌ **FALSE** — **3** login roles; `loreweave_provisioner` is `CREATEDB`-only (`W7`) | `SELECT count(*) FROM pg_roles WHERE rolcanlogin` |
+
+> **This paragraph is why `CR-PROSE-CLAIMS` is carried open.** Every false entry is a *sentence*, so
+> the figures gate shipped in `e66eb7d9d` cannot see any of them — it measures numbers in a
+> marker-delimited window, and these are prose in a bullet list. Five stale claims in the file
+> CLAUDE.md calls the progress SSOT and instructs every session to read **before assuming a track is
+> dormant** — which is precisely the decision they would corrupt. See
+> [`2026-08-12-spec-status-as-schema.md`](specs/2026-08-12-spec-status-as-schema.md) §2.5: this is
+> now the largest single cluster of measured instances, and it is *not* in a spec status line.
+
+**So the real remaining gaps are `G-S3` and `G-S4`** — the two ends are built, and what is missing is
+the middle: the authored concept has no schema, and the artifact between it and the manifest has no
+definition.
 
 ---
 
