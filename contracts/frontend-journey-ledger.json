@@ -108,6 +108,11 @@
       "declared_steps": 4,
       "modules_crossed": 2,
       "note": "PROVEN end to end through the browser on a FRESH book 019ff61b-7ece-777a-a006-b9bd0ca7eb0c (created for this run precisely because the workflow needs a book with no categories), driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument — the only text supplied was 'Set up this book's world categories for me so I have somewhere to file characters, places and terms.' ALL FOUR declared steps ran in order: glossary_list_system_standards, glossary_adopt_standards (which raised its confirm card), the confirm, and glossary_book_ontology_read. MEASURED: the book went from 0 categories to 14 — character, location, item, event, terminology, power_system, organization, technique, species, relationship, plot_arc, trope, social_setting, unknown — which includes all three the user actually asked for (characters, places, terms). NO DEFECT SURFACED. Note this run only happened because the browser's access token had expired mid-loop and a fresh dev session was minted against the auth service's own JWT secret and an existing session row; that is a dev-environment operation, recorded so the run is reproducible rather than mysterious."
+    },
+    "skill:glossary": {
+      "state": "proven",
+      "surface": "unrestricted (system skill)",
+      "note": "PROVEN through the browser on the fresh book 019ff61b, driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument: 'Add Iseul Vantar to my glossary as a character — a young cartographer of the Tidewright Guild.' The skill's declared domain is 'Glossary/lore entity workflows — search, propose, confirm', and that is what happened: glossary_book_ontology_read, glossary_list_system_standards and glossary_propose_entities all ran green, and SSOT shows entity 'Iseul Vantar' status='draft' — proposed for review rather than committed, which is the correct end-state for a propose. HONEST LIMIT: 3 skills were in context for the turn (the chip reads '39 công cụ · 3 kỹ năng · 14,581 tok') and the UI does not name WHICH three, so the skill row's identity was not separately verified; the evidence here is the declared domain outcome, measured in the database. That the panel cannot name its own loaded skills is recorded as OBS-16. This journey also surfaced D-FJ-16."
     }
   },
   "defects": {
@@ -215,6 +220,13 @@
       "lives_in": "the lore-so-far rail / story_search step-runner (the spoiler cutoff is only applied by the step that was skipped)",
       "title": "The spoiler-safe answer was produced WITHOUT the tool that makes it spoiler-safe",
       "note": "MEASURED LIVE 2026-08-12, book 019f9cf7. Asked 'What do we know about Elara so far? No spoilers past where I have read', the rail pinned correctly — 'intent pinned workflow(s) [lore-so-far]', 'rail lore-so-far: 0/1 steps done, next=story_search' — and the model NEVER CALLED story_search. It answered from chapter text already sitting in this session's context (the same chapter had been translated earlier in the session) and produced a correct, grounded answer: Elara is a cartographer, works with parchment and ink and 'a specialized eraser made of a fine, grey dust of the void'. 🔴 THE CORRECT ANSWER IS NOT EVIDENCE THE GUARANTEE WORKS. lore-so-far's entire purpose is 'Answer using only what the reader has read so far', and the reading-position cutoff is applied BY story_search. Answering from ambient context bypasses it. Here that was harmless because the book has one chapter and it was already in context; on a book with many chapters and a reader partway through, the same behaviour answers past the cutoff and the spoiler promise is silently void. This is the degrade-safe class: a guarantee that holds only when a step runs, on a path where the step can be skipped without anything noticing. For its own cycle: whether the rail should REQUIRE story_search before an answer on this surface, and whether an answer produced without it should say so."
+    },
+    "D-FJ-16": {
+      "state": "open",
+      "found_by": "glossary (skill)",
+      "lives_in": "frontend/src/features/chat/components/ContextBreakdownPanel.tsx + i18n/locales/*/chat.json",
+      "title": "The context panel renders raw i18n KEYS for any backend category the locale does not declare",
+      "note": "MEASURED LIVE 2026-08-12 in the book studio's context panel, which displayed 'context_panel.cat.summary, context_panel.cat.chapter, context_panel.cat.reasoning' verbatim, beside correctly translated siblings. ContextBreakdownPanel builds the key by STRING JOIN — t(`context_panel.cat.${row.key}`) at four call sites — over whatever `key` the backend sends. MEASURED KEY SETS: en declares 12 cat keys (attached_context, book_note, frontend_tool_schemas, history, mcp_tool_schemas, memory_knowledge, plan_nudge, skills, steering, system_prompt, tool_results, working_memory) and NO locale is missing any relative to en — so this is not a translation-coverage gap. The three keys the UI showed exist in NO locale, including English: the BACKEND produces categories outside the set the FE declares, and the join renders them raw. This is the freeform-contract shape: an open key space across a service boundary, where a new backend category silently becomes a dotted identifier in the user's face rather than a missing-translation warning. For its own cycle: close the set (a runtime mirror of the category enum plus a `satisfies Record<Category, true>` on the locale, so a new backend category fails the build rather than the UI), and decide the fallback for an unknown key — a humanised label beats the raw key either way."
     }
   },
   "carried_observations": [
@@ -277,6 +289,10 @@
     {
       "id": "OBS-15",
       "note": "Two intent-pin instances remain after D-FJ-9, and they are a different sub-mechanism from the inflection fix. (a) PRECEDENCE: 'Please set up this book's world categories, capture the cast … connect them so I can see how they relate, and give me a chapter plan' still pins ['kg-build'], because it genuinely matches kg-build's `how.*(they).*(relate)`. Both matches are defensible; there is no rule for which wins, and vision-to-book has no patterns of its own (it is mode-pinned by the binding, per the module's own docstring). (b) COVERAGE: autonomous-drafting's patterns (`draft.*next.*(chapter|few)`, `keep (writing|drafting)`, `write.*(several|multiple).*chapter`, `draft.*while i`) match none of 'Set this book drafting itself chapter by chapter from the plan', so that journey never started. Both are unit-testable with no model in the loop."
+    },
+    {
+      "id": "OBS-16",
+      "note": "The context panel reports a skill COUNT ('3 kỹ năng') and never the skill NAMES, so an operator cannot tell which skills shaped a turn — which is exactly what a skill journey needs to verify. The advertised-tools log line names every tool; the skill set has no equivalent. Cheap observability gap with an outsized cost for this loop's remaining 4 skill journeys."
     }
   ],
   "deferred_questions": {
