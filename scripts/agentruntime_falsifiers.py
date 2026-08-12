@@ -1352,6 +1352,36 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
         (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
     ],
+    # ── arming the tools a refusal NAMES (journey loop D-FJ-4) ──────────────────────────────
+    # Returning nothing restores the ORIGINAL behaviour exactly: the refusal still names the
+    # recovery tools and they stay off-surface, which is the live failure.
+    "test_the_tools_a_refusal_names_are_selected_for_arming": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if not error_text or not catalog:\n        return []",
+         "    if True or not error_text or not catalog:\n        return []"),
+    ],
+    # Drop the already-active filter and a tool the model can already see is re-armed, spending
+    # surface budget on a tool that needed none.
+    "test_a_tool_ALREADY_on_the_surface_is_not_rearmed": [
+        (f"{CS}/app/services/stream_service.py",
+         "        if name not in already_active and re.search(",
+         "        if re.search("),
+    ],
+    # The substring control: matching without word boundaries arms `kg_build` off `kg_build_wiki`.
+    "test_a_SUBSTRING_of_a_tool_name_does_not_arm_it": [
+        (f"{CS}/app/services/stream_service.py",
+         'rf"\\b{re.escape(name)}\\b", error_text)',
+         'rf"{re.escape(name)}", error_text)'),
+    ],
+    # A call-site guard, reddened by removing what it reads. 🔴 The first version substituted an
+    # undefined name, which broke the module import so a DIFFERENT test failed first and the
+    # runner reported a bystander — the falsifier measured collection, not the guard. This one is
+    # valid Python that keeps every name defined and only disables the arming.
+    "test_the_CALL_SITE_arms_what_the_refusal_named": [
+        (f"{CS}/app/services/stream_service.py",
+         "                    _recovery = _tools_named_in_refusal(",
+         "                    _recovery = [] and _tools_named_in_refusal("),
+    ],
     # ── the UNDECLARED arm (journey loop D-FJ-2) ────────────────────────────────────────────
     # Disabling the arm restores the ORIGINAL behaviour exactly: an undeclared argument falls
     # through to the model-supplied sentence, which is what told a live run that a missing

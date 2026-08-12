@@ -116,6 +116,53 @@ class TestTheRefusalTellsTheModelWhoOwesIt:
         assert owed == [], f"{owed} would wrongly be reported as runtime-owed"
 
 
+class TestARefusalArmsTheToolsItNames:
+    """🔴 MEASURED LIVE 2026-08-12, journey `kg-build` (session 019ff498-7603…).
+
+    kg_build refused with "call kg_project_set_embedding_model first (pick one of your embedding
+    models with settings_list_models)". Both tools are federated, and NEITHER was in that turn's
+    advertised surface. The model understood the requirement, wrote "I'll get to work on setting
+    that up now" three times, never called either tool, retried kg_build unchanged, and asked the
+    author whether to keep trying. An instruction naming an unreachable tool cannot be followed.
+    """
+
+    def test_the_tools_a_refusal_names_are_selected_for_arming(self):
+        from app.services.stream_service import _tools_named_in_refusal
+        err = ("this project has no embedding model configured — call "
+               "kg_project_set_embedding_model first (pick one of your embedding models with "
+               "settings_list_models), then retry this build")
+        catalog = {"kg_project_set_embedding_model": {}, "settings_list_models": {}, "kg_build": {}}
+        got = _tools_named_in_refusal(err, catalog, {"kg_build"})
+        assert got == ["kg_project_set_embedding_model", "settings_list_models"]
+
+    def test_a_tool_ALREADY_on_the_surface_is_not_rearmed(self):
+        from app.services.stream_service import _tools_named_in_refusal
+        catalog = {"settings_list_models": {}}
+        assert _tools_named_in_refusal("use settings_list_models", catalog,
+                                       {"settings_list_models"}) == []
+
+    def test_a_SUBSTRING_of_a_tool_name_does_not_arm_it(self):
+        """`kg_build` sits inside `kg_build_wiki`. A substring test would arm the wrong tool off its
+        own refusal — the mrows.Err()/rows.Err() shape that kept a guard green while the check it
+        named was deleted."""
+        from app.services.stream_service import _tools_named_in_refusal
+        catalog = {"kg_build": {}}
+        assert _tools_named_in_refusal("kg_build_wiki failed", catalog, set()) == [], (
+            "a tool name matched inside a LONGER tool name"
+        )
+
+    def test_the_CALL_SITE_arms_what_the_refusal_named(self):
+        """Guard the call site: a selector nothing calls changes no live turn."""
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        # The ASSIGNMENT, not the bare name: `def _tools_named_in_refusal(` also contains
+        # "_tools_named_in_refusal(", so grepping for that alone stays green with the call site
+        # deleted — the guard would have been guarding its own definition.
+        assert "_recovery = _tools_named_in_refusal(" in src
+        assert "no tool_load needed" in src
+        assert "merge_activated_tools" in src
+
+
 class TestAnUndeclaredArgumentIsNotCalledContent:
     """The third case CP-5.4 folded into the model-supplied arm.
 

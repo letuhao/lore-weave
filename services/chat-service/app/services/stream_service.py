@@ -1912,6 +1912,47 @@ def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     return bool(_missing_required_names(args_obj, tool_def))
 
 
+#: How many recovery tools one refusal may arm. A refusal names the one or two tools that unblock
+#: it; a text that "names" more than this is almost certainly prose that happens to contain tool
+#: names, and arming a handful of those would spend the surface budget the hot set needs.
+_RECOVERY_ARM_CAP = 3
+
+
+def _tools_named_in_refusal(error_text: str, catalog: dict, already_active) -> list[str]:
+    """Catalogue tools a REFUSAL told the caller to use, and that it cannot currently see.
+
+    🔴 **A REFUSAL THAT NAMES AN UNREACHABLE TOOL IS AN INSTRUCTION THE CALLER CANNOT FOLLOW.**
+    Measured live 2026-08-12, journey `kg-build` (session 019ff498-7603…): kg_build refused with
+    *"call kg_project_set_embedding_model first (pick one of your embedding models with
+    settings_list_models)"*. Both tools are federated -- they are in the gateway's 315-tool list --
+    but NEITHER was in that turn's advertised surface, which carried kg_build and not them. The
+    model understood the requirement, wrote *"I'll get to work on setting that up now"* three
+    times, never called either tool, retried kg_build unchanged, and ended by asking the author
+    whether to keep trying. The project's embedding_model was NULL and the account owns an active
+    embedding model, so the journey was satisfiable the whole time.
+
+    This is the same decision the dispatch chokepoint already makes for an off-surface tool the
+    model DID call ("making it round-trip through tool_list/tool_load to be told 'yes, that one' is
+    ceremony a weak model fails") and that D-NARRATED-WRITE makes for a tool the model merely
+    NAMED. A tool the RUNTIME named, in the sentence explaining how to proceed, is the strongest of
+    the three cases and was the only one not covered.
+
+    Whole-word matching, never substring: `kg_build` occurs inside `kg_build_wiki`, so a substring
+    test would arm the wrong tool off its own refusal -- the `mrows.Err()`/`rows.Err()` shape that
+    kept a guard green while the check it named was gone.
+    """
+    if not error_text or not catalog:
+        return []
+    found = [
+        name for name in catalog
+        if name not in already_active and re.search(rf"\b{re.escape(name)}\b", error_text)
+    ]
+    # Longest first: when a refusal names both `kg_build` and `kg_build_wiki`, the specific tool is
+    # the one it is steering toward. Then a stable order so the armed set is reproducible.
+    found.sort(key=lambda n: (-len(n), n))
+    return sorted(found[:_RECOVERY_ARM_CAP])
+
+
 def _missing_args_message(tool: str, missing: list[str], contract: dict | None) -> str:
     """The refusal for a call still missing required args — keyed off who DECLARES each one.
 
@@ -5501,6 +5542,34 @@ async def _stream_with_tools(
                 # or apologize for a non-error. Applies to the success payload only.
                 if ok and _is_confirm_card_result(tool_payload):
                     _tool_content = (_tool_content or "") + _CONFIRM_CARD_STOP_NOTE
+                # D-FJ-4 — ARM THE TOOLS THE REFUSAL NAMED. A refusal that says "call X first" is
+                # an instruction the model cannot follow when X is off-surface, and it answers by
+                # narrating the fix and retrying the same failing call. Same decision the dispatch
+                # chokepoint makes for an off-surface tool the model DID call, one step earlier.
+                if not ok and discovery:
+                    _recovery = _tools_named_in_refusal(
+                        envelope.get("error") or "", cat_index, active_tool_names)
+                    if _recovery:
+                        from app.services.tool_surface import merge_activated_tools
+                        active_tool_names.update(_recovery)
+                        if activation_state is not None:
+                            activation_state["activated_tools"] = merge_activated_tools(
+                                activation_state["activated_tools"], _recovery,
+                                catalog=discovery_catalog, context_length=context_length,
+                            )
+                            activation_state["dirty"] = True
+                        _tool_content = (_tool_content or "") + (
+                            "\n\n[SYSTEM] " + ", ".join(_recovery) + " "
+                            + ("is" if len(_recovery) == 1 else "are")
+                            + " now available to you on this turn — no tool_load needed. Call "
+                            + ("it" if len(_recovery) == 1 else "them")
+                            + " to clear this, then retry. Do not repeat the call that just failed "
+                            "without changing something."
+                        )
+                        logger.info(
+                            "armed recovery tool(s) %s named in %s's refusal (session=%s)",
+                            _recovery, c["name"], session_id,
+                        )
                 working.append({
                     "role": "tool", "tool_call_id": c["id"],
                     "content": _tool_content,
