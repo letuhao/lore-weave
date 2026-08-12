@@ -128,6 +128,11 @@
       "state": "proven",
       "surface": "unrestricted (system skill)",
       "note": "PROVEN through the browser on book 019ff61b (fresh session, after the previous one was cleared), driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument: 'Plan out the whole book for me — the overall arc and the major beats.' The skill's declared domain is 'PlanForge novel-system planning workflows', and the turn exercised it end to end: composition_arc_suggest, plan_propose_spec, composition_outline_node_edit and composition_find_references all ran, outcome completed. It also RECOVERED unaided — composition_outline_node_edit failed once and the model retried it successfully in the same turn. MEASURED: plan_run reached 'compiled' and the book gained 3 structure_node and 4 outline_node, on a book that had none before this turn."
+    },
+    "skill:universal": {
+      "state": "proven",
+      "surface": "unrestricted (system skill)",
+      "note": "PROVEN through the browser on book 019ff61b, driven by google/gemma-4-26b-a4b-qat with NO operator-typed tool argument: 'Give me a short summary of where this book stands right now, and rename it to The Salt Cartographers — Book One.' The skill's declared domain is 'Cross-domain manuscript workflows — the default universal', and the turn did both halves of a genuinely cross-domain ask: it summarised the book's state AND called book_update_details, which minted a confirm card. 🔴 IT ALSO REPORTED THE GATE HONESTLY rather than claiming the rename was done — \"I've PREPARED the title change …; please confirm it on the card that appeared\" — which is the exact behaviour D-FJ-8 exists to produce, arrived at unprompted. MEASURED: the card was confirmed in the browser and books.title is now 'The Salt Cartographers — Book One' (it read 'The Salt Cartographers VI' immediately before). NO DEFECT SURFACED."
     }
   },
   "defects": {
@@ -330,12 +335,12 @@
     "workflows_proven": 9,
     "workflows_blocked": 3,
     "skills_declared": 27,
-    "skills_concluded": 3,
+    "skills_concluded": 5,
     "defects_proven": 12,
     "defects_open": 4,
-    "_note": "Counted from the ledger's own rows, never typed. The WORKFLOW denominator is CLOSED: 12 of 12 concluded, 9 proven and 3 blocked. The 27 declared SKILLS are entirely unstarted — the loop worked the workflows first, per the RUNBOOK's ordering (a workflow before a skill).",
+    "_note": "Counted from the ledger's own rows, never typed. BOTH declared denominators are now CLOSED: 12 of 12 workflows concluded (9 proven, 3 blocked), and 5 of 5 REAL skills concluded (3 proven, 2 blocked) — 'real' being the system-tier rows, after the measurement that 22 of the 27 published skills are E2E/fixture debris (see denominator.skills_correction and DQ-31).",
     "real_skills_declared": 5,
-    "skills_proven": 1,
+    "skills_proven": 3,
     "skills_blocked": 2
   }
 }
