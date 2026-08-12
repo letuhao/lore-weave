@@ -88,6 +88,16 @@ count would scatter the shapes and pay the design cost every time.
 gate that cannot say what it scanned cannot be believed when it says it found nothing (`BDR-82`,
 and §1.3 measured it twice out of two).
 
+**`GT-F5` · Every EXEMPTION LIST gains a SHRINK ARM in the same edit** (sealed 2026-08-12, from
+evidence rather than principle). Three allowlists in a row needed one and none had it:
+`projection-coverage`'s 12 rows, `runbook-drift-check`'s 23 (**91% dead**), and by extension any
+list to come. A row dies two ways — its **subject disappears**, or its **reason expires** — and both
+must red. An exemption with no expiry is permanent by default, and the `runbook-drift` case shows
+that is not merely untidy: each of its 21 dead names would have silently satisfied a stale runbook
+reference, i.e. the allowlist could hide the very drift the gate detects. **Reversal trigger:** none.
+The repo already had the pattern twice (`deferral-gate`'s `PROSE_ONLY`, `dp-oracle-coverage`'s
+`NO_PRODUCER`); this fork stops it being rediscovered a fourth time.
+
 **`GT-F4` · The baseline moves only DOWN, and only after the bite.** The ratchet already refuses to
 pass until the number follows a drop; it must never be raised to accommodate a gate that lost its
 proof. **Reversal trigger:** a scope widening that legitimately adds unproven gates — the 2026-08-10
@@ -108,7 +118,7 @@ baseline; the batch committed.**
 | `GT2d` | handler-registry membership | `admin-command-registry-lint.sh` | ✅ **39 → 38.** 5 bite arms (marker parser · receiver narrowing · the case fold · membership · the exempt pragma). **Its scans have ZERO subjects** — see `GT-ADMIN-NO-SUBJECT` |
 | `GT2c` | config-vs-tree conformance — moved here from `GT2` | `language-rule-lint.sh` (the LOCKED I3 amendment) | ✅ **40 → 39.** `run_lint` parameterised on config + services root, so 5 bite arms drive the WHOLE gate end-to-end: the outer `Cargo.toml` marker, the parse block-end rule, the I3 comparison, PRR-21 completeness, and the reach floor. Two self-inflicted findings — `GTD-6`, `GTD-7` |
 | `GT2b` | forbidden-shape scanners — moved here from `GT2` | `dependency-registry-lint.sh` | ✅ **41 → 40.** 4 bite arms (one Go shape · one Rust shape · the exemption widened · the walk pointed at nothing), all byte-exact. Two defects fixed in passing — see `GTD-4`, `GTD-5` |
-| `GT3` | drift / mirror checks | `runbook-drift-check.sh` | ⬜ |
+| `GT3c` | runbook ↔ service drift | `runbook-drift-check.sh` | ✅ **34 → 33.** 4 bite arms. Its allowlist was **91% dead** — see `GTD-12`. `GT3` is now CLOSED |
 | `GT3b` | registry coverage + exemption hygiene | `projection-coverage-lint.sh` | ✅ **35 → 34.** 3 bite arms. Its allowlist had **no shrink arm** — see `GTD-11` |
 | `GT3a` | drift / mirror checks — done | `read-audit-query-type-drift-lint.sh` · `transitions-validation-lint.sh` | ✅ **37 → 35.** 6 bite arms. Each shipped a DIFFERENT way of passing over nothing — `GTD-9`, `GTD-10` |
 | `GT4` | observability inventory | `tracing-completeness-lint.sh` · `observability-inventory-lint.sh` · `dashboard-validator.sh` · `alert-rule-validator.sh` · `slo-latency-lint.py` | ⬜ |
@@ -142,6 +152,7 @@ right**.
 | id | what happened |
 |---|---|
 | `GTD-1` | **The first bite arm certified nothing and looked like a pass.** Blanking the whole meta-write alternation red the self-test — but on its FIRST case, so it proved `contracts/meta` was live and said nothing about the other two. A bite that reds for the wrong reason is a bite that certifies coverage it never exercised. Split into one arm per alternative. |
+| `GTD-12` | **A second allowlist, 91% dead, and this one could hide the drift it guards against.** `runbook-drift-check`'s `KNOWN_LOGICAL` held 23 names described as *"canonical platform names that aren't yet `services/` dirs"* — **19 of them ARE `services/` dirs** (they shipped) and 2 more are cited by no runbook. **Two** were load-bearing. Worse than dead weight: each of the 21 would have silently satisfied a stale runbook reference, which is exactly the drift this gate detects. Trimmed to two with both shrink arms. Third allowlist in this repo to need them — `GT-F2` should probably become *"every exemption list gets a shrink arm in the same edit"*. |
 | `GTD-11` | **A 12-row allowlist with no shrink arm — an exemption permanent by default.** `projection-coverage-lint` reds when a registered event has no projection, but nothing red when an allowlisted event was **deregistered** (the row outlives its subject) or when one **gained a projection** (the reason expired). The `npc.said` row literally documents its own retirement trigger in prose — *"when the actor/NPC track ships an emitter, this row must be replaced"* — and no mechanism could notice. This repo already solved it twice (`deferral-gate`'s `PROSE_ONLY` shrink, `dp-oracle-coverage`'s `NO_PRODUCER`); this gate just never got the arm. Measured clean on landing: 0 stale, 0 expired. **Its docstring was also stale** — *"5/14 registered events are projected"* against a measured **4/16**, i.e. claim rot in the header of a gate. |
 | `GTD-10` | **`transitions-validation-lint` was one `git mv` from permanently green.** Its first statement was `if [[ ! -f "$target" ]]; then echo "nothing to lint"; exit 0; fi`. Rename or move `contracts/meta/transitions.yaml` and the gate reports success forever, with a cheerful message explaining why. The file existing today is the only reason it never bit. An EMPTY file was the same story by a second road — all three heuristics are trivially satisfied by no content. Both are now exit 2. |
 | `GTD-9` | **`read-audit-query-type-drift-lint` called two empty sets agreement.** The entire gate is one string comparison between two grep outputs; if either pattern stops matching, both sides become `""`, the equality holds, and it prints *"PASS — CHECK == YAML SSOT (**0 ids**)"*. A drift detector that reports agreement because it parsed nothing is the defect it exists to catch, wearing its own success message — and the `(0 ids)` was printed on every run for anyone who looked. Floor added BEFORE the comparison, because after it the answer is already wrong. |

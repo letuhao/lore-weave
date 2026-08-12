@@ -216,7 +216,18 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: Its docstring also claimed *"5/14 registered events are projected"* while the gate reported
 #: **4/16** — claim rot in the header of a gate. The ratio is printed at runtime now and no
 #: longer restated where nothing measures it.
-NO_PROOF_BASELINE = 34
+#: 2026-08-12 (h): 34 -> 33. `runbook-drift-check.sh`. Its `KNOWN_LOGICAL` allowlist described
+#: itself as *"canonical platform names that aren't yet services/ dirs"* and was measured **91%
+#: dead**: of 23 names, **19 ARE services/ dirs** (they shipped — the real source of truth
+#: covers them) and 2 more are cited by no runbook. Exactly TWO were load-bearing. That is not
+#: only dead weight: any of the 21 would have silently satisfied a stale runbook reference,
+#: which is the drift this gate exists to detect. Trimmed to two, with both shrink arms so it
+#: cannot regrow silently — the same pair added to `projection-coverage-lint` an hour earlier,
+#: which is now the third allowlist in this repo to need them.
+#:
+#: Its trailing `exit 0` after the python block was CHECKED rather than assumed: `set -e`
+#: aborts on a python exit 1 first, so drift was reported. Not every suspicious line is a bug.
+NO_PROOF_BASELINE = 33
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
