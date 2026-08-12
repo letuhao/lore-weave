@@ -385,3 +385,75 @@ class TestAStalledRailWriteIsCaughtWhenNoToolWasNamed:
         # WARNING line, so the stalled-rail arm logged "named in prose" about prose it never read.
         # The directive was careful and the log was not.
         assert "the turn called NO tool while a rail's next write step is " in src
+
+
+class TestAFabricatedRuntimeOwnedIdIsTreatedAsMissing:
+    """🔴 MEASURED LIVE 2026-08-12, journey `autonomous-drafting`, book 019ff497.
+
+    The model called plan_compile with run_id="run_12345_placeholder" and the tool answered "run_id
+    must be a UUID" -- correct about the TYPE, silent about the thing that matters. run_id is a PLAN
+    value emitted by plan_propose_spec; it is not the model's to invent, so arguing about its format
+    invites a better-formatted invention. CP-5.4 learned this for MISSING arguments; a fabricated one
+    is the same state with a placeholder written over it.
+    """
+
+    PLAN = {"argument_supplier": {"run_id": "plan — emitted by a prior plan_propose_spec step"}}
+
+    def test_the_LIVE_placeholder_is_caught(self):
+        from app.services.stream_service import _invented_supplier_ids
+        assert _invented_supplier_ids({"run_id": "run_12345_placeholder"}, self.PLAN) == ["run_id"]
+
+    def test_a_VALID_uuid_is_accepted_even_if_it_is_the_wrong_row(self):
+        """Whether it is the RIGHT row is the tool's question, not ours — refusing a well-formed id
+        here would break every legitimate plan-bound call."""
+        from app.services.stream_service import _invented_supplier_ids
+        assert _invented_supplier_ids(
+            {"run_id": "019ff486-8eaf-7c6d-97f2-e0567037bffd"}, self.PLAN) == []
+
+    def test_a_MODEL_supplied_id_is_none_of_our_business(self):
+        from app.services.stream_service import _invented_supplier_ids
+        block = {"argument_supplier": {"arc_id": "model — the caller's choice"}}
+        assert _invented_supplier_ids({"arc_id": "arc_1"}, block) == []
+
+    def test_an_UNDECLARED_id_is_left_alone(self):
+        """D-FJ-2's rule: with no declaration the runtime knows nothing and must not guess."""
+        from app.services.stream_service import _invented_supplier_ids
+        assert _invented_supplier_ids({"run_id": "whatever"}, {}) == []
+
+    def test_a_NON_id_argument_is_never_touched(self):
+        from app.services.stream_service import _invented_supplier_ids
+        block = {"argument_supplier": {"mode": "plan — chosen by the rail"}}
+        assert _invented_supplier_ids({"mode": "rules"}, block) == []
+
+    def test_the_refusal_is_the_OWED_sentence_not_a_type_complaint(self):
+        """The whole point: the model must be told it does not own this value, not that it spelled
+        it wrong."""
+        from app.services.stream_service import _missing_args_message
+        msg = _missing_args_message("plan_compile", ["run_id"], self.PLAN)
+        assert "NOT yours to invent" in msg
+        assert "must be a UUID" not in msg
+
+    def test_the_CALL_SITE_drops_the_fabricated_value_before_dispatch(self):
+        """Guard the call site: leaving the placeholder in args would send it to the tool anyway and
+        the honest message would be decoration."""
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "_invented_ids = _invented_supplier_ids(" in src
+        assert "args_obj.pop(_nm, None)" in src
+
+    def test_the_CONTRACT_declares_the_ids_the_live_run_fabricated(self):
+        """A checker with nothing to check is decoration -- plan_compile.run_id must be DECLARED, or
+        the undeclared arm stays silent and this never fires."""
+        assert declared_supplier(contract_for("plan_compile"), "run_id") == "plan"
+        assert declared_supplier(contract_for("plan_bootstrap_apply"), "proposal_id") == "plan"
+
+    def test_a_non_uuid_CONTEXT_id_is_left_alone(self):
+        """🔴 THE CONTROL THE SUITE HAD TO TEACH ME. The first draft also fired on `context` ids and
+        deleted `book_id="b1"` — a value the RUNTIME injects upstream and which is not guaranteed to
+        be a UUID — breaking the dispatch entirely (5 tests red). A context id is not the one the
+        model invents; a plan id is."""
+        from app.services.stream_service import _invented_supplier_ids
+        block = {"argument_supplier": {"book_id": "context — the ambient book"}}
+        args = {"book_id": "b1"}
+        assert _invented_supplier_ids(args, block) == []
+        assert args["book_id"] == "b1"

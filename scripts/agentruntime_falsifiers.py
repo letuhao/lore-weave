@@ -1352,6 +1352,54 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     "test_THE_MESSAGE_DISTINGUISHES_OWED_FROM_MISSING": [
         (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
     ],
+    # ── a fabricated runtime-owed id (journey loop D-FJ-11) ─────────────────────────────────
+    "test_the_LIVE_placeholder_is_caught": [
+        (f"{CS}/app/services/stream_service.py", "    out: list[str] = []",
+         "    return []\n    out: list[str] = []"),
+    ],
+    # Accepting nothing is as wrong as accepting everything: a VALID plan id must dispatch.
+    # 🔴 The first falsifier here replaced UUID(value) with `pass`, which makes the checker accept
+    # EVERYTHING — and this guard asserts acceptance, so it stayed green ("requires nothing"). To red
+    # an acceptance guard you must make it REJECT.
+    "test_a_VALID_uuid_is_accepted_even_if_it_is_the_wrong_row": [
+        (f"{CS}/app/services/stream_service.py", "            UUID(value)",
+         "            raise ValueError('injected')"),
+    ],
+    "test_a_MODEL_supplied_id_is_none_of_our_business": [
+        (f"{CS}/app/services/stream_service.py", '        if declared_supplier(contract, name) != "plan":',
+         '        if declared_supplier(contract, name) not in ("plan", "model"):'),
+    ],
+    # D-FJ-2's rule: with no declaration the runtime knows nothing and must not guess.
+    # 🔴 Two edits: the early `not contract` return ALSO protects this case, so treating an
+    # undeclared supplier as `plan` alone left the guard green.
+    "test_an_UNDECLARED_id_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py",
+         "    if not isinstance(args_obj, dict) or not contract:",
+         "    if not isinstance(args_obj, dict):"),
+        (f"{CS}/app/services/stream_service.py", '        if declared_supplier(contract, name) != "plan":',
+         '        if (declared_supplier(contract, name) or "plan") != "plan":'),
+    ],
+    "test_a_NON_id_argument_is_never_touched": [
+        (f"{CS}/app/services/stream_service.py", '        if not name.endswith("_id"):', "        if False:"),
+    ],
+    # 🔴 The control the SUITE taught: including `context` deleted book_id="b1", a value the runtime
+    # injects upstream and which is not guaranteed to be a UUID — 5 tests red on the first draft.
+    "test_a_non_uuid_CONTEXT_id_is_left_alone": [
+        (f"{CS}/app/services/stream_service.py", '        if declared_supplier(contract, name) != "plan":',
+         '        if declared_supplier(contract, name) not in ("plan", "context"):'),
+    ],
+    "test_the_refusal_is_the_OWED_sentence_not_a_type_complaint": [
+        (f"{CS}/app/services/stream_service.py", "    if owed:", "    if False and owed:"),
+    ],
+    # A checker nothing calls is decoration, and the placeholder would reach the tool anyway.
+    "test_the_CALL_SITE_drops_the_fabricated_value_before_dispatch": [
+        (f"{CS}/app/services/stream_service.py", "                        _invented_ids = _invented_supplier_ids(args_obj, _inv_block)",
+         "                        _invented_ids = []"),
+    ],
+    # A checker with nothing DECLARED to check is the same decoration, one layer out.
+    "test_the_CONTRACT_declares_the_ids_the_live_run_fabricated": [
+        ("contracts/agent-runtime-tool-contracts.json", '    "plan_compile": {', '    "plan_compile_disabled": {'),
+    ],
     # ── a rail write stalled with NO tool named (journey loop D-FJ-8) ───────────────────────
     # Returning nothing restores the ORIGINAL blind spot: a turn that called nothing and named no
     # tool slips through and the author is told work happened.

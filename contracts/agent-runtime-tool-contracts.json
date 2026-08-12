@@ -584,6 +584,28 @@
         ],
         "_verified_against": "the UNION of top-level keys across EVERY recorded successful result in loreweave_chat, 2026-08-10, with occurrence counts. A single sampled result CANNOT verify a shape: the first pass here sampled the SHORTEST recorded result per tool and produced shapes that were subsets, and for the two polymorphic tools it named one arm as if it were the whole contract. n=184 successes; `results` and `summary` in all 184, `guidance` in 5."
       }
+    },
+    "plan_compile": {
+      "_why": "MEASURED LIVE 2026-08-12 (journey autonomous-drafting, book 019ff497): the model called this with run_id='run_12345_placeholder' and was refused 'run_id must be a UUID' — correct about the TYPE and silent about the thing that matters. run_id is a PLAN value emitted by plan_propose_spec; it is not the model's to invent, and until this row existed nothing could say so.",
+      "identifier_resolution": {
+        "run_id": "an opaque id emitted by plan_propose_spec; there is no name to resolve it from.",
+        "book_id": "an opaque id; the ambient book."
+      },
+      "argument_supplier": {
+        "run_id": "plan — emitted by a prior plan_propose_spec step; the model has no way to know it",
+        "book_id": "context — the runtime supplies the ambient book",
+        "arc_id": "model — which arc to compile is genuinely the caller's choice"
+      }
+    },
+    "plan_bootstrap_apply": {
+      "_why": "The same shape one step earlier in the autonomous-drafting rail: the workflow's own inputs_map binds proposal_id to preview-chapters.proposal_id, which IS the definition of a plan-supplied argument.",
+      "identifier_resolution": {
+        "proposal_id": "an opaque id emitted by plan_bootstrap_propose."
+      },
+      "argument_supplier": {
+        "proposal_id": "plan — emitted by the preceding plan_bootstrap_propose step",
+        "book_id": "context — the runtime supplies the ambient book"
+      }
     }
   }
 }

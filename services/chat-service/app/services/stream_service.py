@@ -2061,6 +2061,51 @@ def _tools_named_in_refusal(error_text: str, catalog: dict, already_active) -> l
     return sorted(found[:_RECOVERY_ARM_CAP])
 
 
+def _invented_supplier_ids(args_obj: dict, contract: dict | None) -> list[str]:
+    """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
+
+    🔴 MEASURED LIVE 2026-08-12, journey `autonomous-drafting` (book 019ff497). The model called
+    plan_compile with `run_id="run_12345_placeholder"` and the tool answered *"run_id must be a
+    UUID"* — correct about the TYPE, and silent about the thing that matters: `run_id` is a PLAN
+    value emitted by plan_propose_spec. It is not the model's to invent at all, so arguing about its
+    format invites a better-formatted invention. This is the identical lesson CP-5.4 already learned
+    for MISSING arguments ("you forgot something" vs "I owe you this"), one state to the right: the
+    argument is PRESENT and fabricated, so the missing-arg path never runs and the honest sentence
+    never fires.
+
+    Deliberately narrow, because a false positive here would refuse a legitimate call:
+
+    * only `*_id` names — the convention for an opaque identifier, and the shape a placeholder gets
+      invented for;
+    * only where the CONTRACT declares the supplier **`plan`**. A `model`-supplied id is the
+      caller's to choose and none of this function's business; an UNDECLARED one is D-FJ-2's
+      territory — silence, not a guess; and `context` is EXCLUDED deliberately. 🔴 The first draft
+      included context and the suite caught it firing on `book_id="b1"`: a context id is injected by
+      the runtime upstream of this point and is not guaranteed to be a UUID, so treating a non-UUID
+      one as fabricated deleted a value the runtime itself had supplied and broke the dispatch. A
+      `plan` id is the one the model has no way to know and therefore the one it invents;
+    * only a non-empty string that does not parse as a UUID. A valid UUID is accepted even if it is
+      wrong, because *whether it is the right row* is the tool's question, not ours.
+    """
+    from app.agentruntime.toolcontract import declared_supplier
+
+    if not isinstance(args_obj, dict) or not contract:
+        return []
+    out: list[str] = []
+    for name, value in args_obj.items():
+        if not name.endswith("_id"):
+            continue
+        if declared_supplier(contract, name) != "plan":
+            continue
+        if not isinstance(value, str) or not value.strip():
+            continue
+        try:
+            UUID(value)
+        except (ValueError, AttributeError, TypeError):
+            out.append(name)
+    return sorted(out)
+
+
 def _missing_args_message(tool: str, missing: list[str], contract: dict | None) -> str:
     """The refusal for a call still missing required args — keyed off who DECLARES each one.
 
@@ -4959,7 +5004,29 @@ async def _stream_with_tools(
                         "unwrapped single-element list arg(s) %s for %s (session=%s) — the schema "
                         "declares them scalar", _unwrapped, c["name"], session_id,
                     )
+                # D-FJ-11 — an id the contract says the RUNTIME owes, filled in with a fabricated
+                # value. Treated exactly like the missing case, because it IS the missing case with
+                # a placeholder written over it: the model does not have this value either way, and
+                # arguing about the format only invites a better-formatted invention.
+                _invented_ids: list[str] = []
+                if _tool_def_for_args:
+                    try:
+                        from app.agentruntime.toolcontract import resolve_contract as _rc
+                        _inv_block, _ = _rc(_tool_def_for_args, _tool_contract_registry())
+                        _invented_ids = _invented_supplier_ids(args_obj, _inv_block)
+                    except Exception:
+                        _invented_ids = []
+                    if _invented_ids:
+                        for _nm in _invented_ids:
+                            args_obj.pop(_nm, None)
+                        logger.info(
+                            "dropped fabricated runtime-owed id(s) %s from %s (session=%s) — the "
+                            "contract declares them context/plan-supplied",
+                            _invented_ids, c["name"], session_id,
+                        )
                 _missing_args = _missing_required_names(args_obj, _tool_def_for_args)
+                if _invented_ids:
+                    _missing_args = sorted(set(_missing_args) | set(_invented_ids))
                 if _missing_args:
                     blank_tool_args_streak += 1
                     if blank_tool_args_streak >= BLANK_TOOL_ARGS_CAP:
