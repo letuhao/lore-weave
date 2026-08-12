@@ -112,3 +112,58 @@ async def test_judge_prose_malformed_json_yields_empty_not_crash():
     out = await critic.judge_prose(judge, user_id="u", model_source="user_model", model_ref="m",
                                    passage="p", active_rules=[], present_facts=[], profile=NEUTRAL)
     assert out["violations"] == [] and out["coherence"] is None  # degraded, not raised
+
+
+# ── per-rule attribution (D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE, 2026-08-12) ──
+
+_RULES = [
+    {"rule_id": "0331a53f-0000-0000-0000-000000000001", "text": "rule one"},
+    {"rule_id": "6e153c35-0000-0000-0000-000000000002", "text": "rule two"},
+]
+
+
+def test_rules_are_shown_under_short_labels_not_their_uuids():
+    """🔴 REGRESSION. The prompt used to render `- [<uuid>] text` and ask the judge to echo
+    the uuid back per verdict. Measured on QC-5: given one rule the passage contradicts and
+    one it plainly confirms, the judge marked BOTH violated and copied the same `why` to each.
+    A 36-char uuid is not a label a model carries accurately through a long passage.
+    """
+    _, user = critic.build_critique_prompt("passage", _RULES, [], NEUTRAL)
+    assert "[R1]" in user and "[R2]" in user
+    for r in _RULES:
+        assert r["rule_id"] not in user, (
+            "a rule uuid is back in the prompt — the judge will be asked to echo it again"
+        )
+
+
+def test_a_label_is_mapped_back_to_its_real_rule_id():
+    out = critic.map_rule_tokens(
+        [{"rule_id": "R2", "violated": True, "span": "s", "why": "w"}], _RULES)
+    assert [v["rule_id"] for v in out] == [_RULES[1]["rule_id"]]
+
+
+def test_an_unmappable_label_is_DROPPED_rather_than_passed_through():
+    """The half that makes this a fix and not a rename.
+
+    The old shape accepted whatever string landed in `rule_id`, so a copied or invented id
+    became a verdict about a real rule the judge was never asked about. A verdict nobody can
+    attribute is not evidence; it is noise with a citation.
+    """
+    out = critic.map_rule_tokens([
+        {"rule_id": "R9", "violated": True, "span": "", "why": "off the end"},
+        {"rule_id": "totally-made-up", "violated": True, "span": "", "why": "invented"},
+        {"rule_id": "R1", "violated": True, "span": "", "why": "real"},
+    ], _RULES)
+    assert [v["why"] for v in out] == ["real"]
+
+
+def test_a_judge_that_echoes_the_real_id_is_still_attributable():
+    """Tolerance, not laxity: some judges echo the id anyway, and that verdict CAN be
+    attributed — dropping it would lose a true finding to a formatting preference."""
+    out = critic.map_rule_tokens(
+        [{"rule_id": _RULES[0]["rule_id"], "violated": True, "span": "", "why": "w"}], _RULES)
+    assert [v["rule_id"] for v in out] == [_RULES[0]["rule_id"]]
+
+
+def test_labels_are_one_based():
+    assert (critic.rule_token(0), critic.rule_token(1)) == ("R1", "R2")

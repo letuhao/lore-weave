@@ -104,6 +104,41 @@ def normalize_critique(parsed: dict[str, Any] | None) -> dict[str, Any]:
     return crit
 
 
+def rule_token(index: int) -> str:
+    """The label a rule is shown under, and the only thing the judge is asked to echo.
+
+    Positional and short on purpose — see the note in `build_critique_prompt`. 1-based
+    because `[R0]` reads like an error to both a model and a human.
+    """
+    return f"R{index + 1}"
+
+
+def map_rule_tokens(
+    violations: list[dict[str, Any]], active_rules: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Translate `R<n>` labels back to real rule ids, DROPPING anything unrecognised.
+
+    Dropping is the point. The previous shape accepted whatever string the judge put in
+    `rule_id`, so a copied or invented id became a verdict about a real rule that the judge
+    had never actually been asked about. An unmappable label means the verdict cannot be
+    attributed, and a finding nobody can attribute is not evidence — it is noise with a
+    citation. Tolerant of a judge that echoes the real id anyway (some do), because that is
+    still an attributable verdict.
+    """
+    by_token = {rule_token(i): r.get("rule_id") for i, r in enumerate(active_rules)}
+    known_ids = {str(r.get("rule_id")) for r in active_rules if r.get("rule_id")}
+    out: list[dict[str, Any]] = []
+    for v in violations:
+        raw = str(v.get("rule_id", "")).strip().strip("[]")
+        mapped = by_token.get(raw.upper())
+        if mapped is None and raw in known_ids:
+            mapped = raw          # the judge echoed the real id — still attributable
+        if mapped is None:
+            continue
+        out.append({**v, "rule_id": str(mapped)})
+    return out
+
+
 def build_critique_prompt(
     passage: str, active_rules: list[dict[str, Any]], present_facts: list[str],
     profile: BookProfile,
@@ -119,13 +154,32 @@ def build_critique_prompt(
         "dimensions, each an integer 0-5: coherence (logical flow), voice_match "
         "(consistency with the work's voice), pacing (fit to the scene's beat), and "
         "canon_consistency (does it contradict any active canon rule or established "
-        "fact). For each active rule the passage contradicts, add a violation with "
-        "its rule_id, a short contradicting span, and why. Return ONLY a JSON object "
+        "fact). Each active rule is labelled [R1], [R2] and so on. For each active rule the "
+        "passage contradicts, add a violation whose rule_id is that rule's label exactly, "
+        "with a short contradicting span, and a `why` that describes THAT rule — never "
+        "repeat another rule's reason. Return ONLY a JSON object "
         '{"coherence":int,"voice_match":int,"pacing":int,"canon_consistency":int,'
         '"violations":[{"rule_id":str,"violated":true,"span":str,"why":str}]}.'
         + lang
     )
-    rules_block = "\n".join(f'- [{r.get("rule_id")}] {r.get("text", "")}' for r in active_rules) or "(none)"
+    # ⚠️ RULES ARE LABELLED R1..Rn, NOT BY THEIR UUID — and that is the fix, not a tidy-up.
+    #
+    # This block used to render `- [<uuid>] <text>` and ask the judge to echo the uuid back in
+    # each verdict. Measured 2026-08-12 (QC-5, `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`): given
+    # one rule the passage flatly contradicts and one its first sentence plainly confirms, the
+    # judge returned BOTH as `violated: true` **carrying the same `why` verbatim** — the reason
+    # belonging to the other rule. Stable 3/3 on byte-identical input, so it is structural, not
+    # sampling noise.
+    #
+    # A 36-character uuid is not a label a model can carry accurately through a long passage;
+    # it is a string to be approximated. A short positional token is, and the same defect one
+    # judge over (`judge_role_attribution`, *"the verdict attached to the wrong relationship —
+    # subject-id keying → per-statement token"*) was closed exactly this way. `map_rule_tokens`
+    # maps them back and DROPS anything unrecognised, so a copied or invented label can no
+    # longer reach an author as a verdict about a real rule.
+    rules_block = "\n".join(
+        f'- [{rule_token(i)}] {r.get("text", "")}' for i, r in enumerate(active_rules)
+    ) or "(none)"
     facts_block = "\n".join(f"- {f}" for f in present_facts) or "(none)"
     user = (
         f"ACTIVE CANON RULES:\n{rules_block}\n\n"
@@ -175,4 +229,23 @@ async def judge_prose(
         logger.info("judge_prose job status=%s → degraded", job.status)
         return {**{d: None for d in _DIMENSIONS}, "violations": [], "error": f"critic_{job.status}"}
     content = extract_judge_content(job.result)
-    return normalize_critique(parse_critique_json(content))
+    crit = normalize_critique(parse_critique_json(content))
+    # Attribute the verdicts before anyone sees them. Done here rather than inside
+    # `normalize_critique` so that function stays a pure shape-normaliser with no knowledge of
+    # which rules were sent — the mapping needs the request, not just the response.
+    raw_violations = crit.get("violations", [])
+    crit["violations"] = map_rule_tokens(raw_violations, active_rules)
+    # A DROP MUST BE VISIBLE. `map_rule_tokens` discards a verdict it cannot attribute, which
+    # is right — but discarding silently would turn "the judge answered about a rule we never
+    # sent" into "the judge found nothing", and those two need opposite responses. Without
+    # this line a mapping bug and a clean passage are the same observation, which is the
+    # failure this whole task exists to stop being possible.
+    dropped = len(raw_violations) - len(crit["violations"])
+    if dropped:
+        logger.warning(
+            "judge_prose dropped %d unattributable verdict(s) of %d (labels=%r, rules=%d) — "
+            "the judge answered about something it was not asked about",
+            dropped, len(raw_violations),
+            [str(v.get("rule_id"))[:24] for v in raw_violations], len(active_rules),
+        )
+    return crit

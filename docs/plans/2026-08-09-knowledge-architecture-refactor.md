@@ -4647,6 +4647,62 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | The bite is cheap, deterministic and reproducible: two rules, one job, one endpoint. `0331a53f`/`6e153c35` at `violated=true,true` is the baseline; `true,false` with distinct reasons is the target. |
   | **Retry when** | Immediately — it is the next unit of QC-5, not a wait. It does not need a PO decision and it does not need a stronger model (unlike `D-QC5-ROLE-JUDGE-PRECISION`, this failure is deterministic and structural, not a calibration gap). |
 
+  #### ✅ `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` — FIXED AND RE-MEASURED, 2026-08-12
+
+  The deferral said *"Retry when: Immediately — it does not need a PO decision"*, so it was
+  fixed inside this checkpoint rather than parked beside it.
+
+  **Cause:** the prompt rendered rules as `- [<uuid>] <text>` and asked the judge to echo the
+  uuid per verdict. A 36-character uuid is not a label a model carries accurately through 4109
+  characters of prose — it is a string to be approximated. Fixed the way the same defect was
+  closed one judge over: short positional labels `R1..Rn`, mapped back server-side by
+  `map_rule_tokens`, which **DROPS** anything unattributable instead of passing an invented
+  label through as a verdict about a real rule.
+
+  ```
+  BEFORE  both rules violated=true, the SAME `why` verbatim on each      (stable 3/3)
+  AFTER   R1 (contradicted) violated=true with its own reason
+          R2 (satisfied control) NOT flagged
+          canon_consistency 3 · 0 unattributable drops                   (stable 3/3)
+  ```
+
+  🔴 **AND THE FIRST ATTEMPT MADE IT WORSE — caught only because the run was live.** The same
+  edit added a prompt clause: *"Add a violation ONLY for a rule the passage CONTRADICTS. A rule
+  the passage confirms, or does not mention, is not a violation."* Measured: **0 violations on
+  3/3 runs and `canon_consistency` back to 5/5** — the judge stopped reporting the blatant
+  contradiction entirely. **That is QC-5's own defect signal** (*a 5/5 on contradicted canon*),
+  and it is the identical trap already recorded for `judge_role_attribution`: *"the prompt's
+  'not mentioned ⇒ not a contradiction' exemption defeating the very case the check exists to
+  catch."* Reverted the clause, kept the labels, re-measured — which is how the variable was
+  isolated rather than guessed.
+
+  ⚠️ **MY OWN BITE FIXTURE CONTAMINATED THE FIRST POST-FIX RUN.** The injected rules were
+  prefixed `QC5-BITE-CONTRADICTED:` / `QC5-BITE-SATISFIED:` — strings that look exactly like
+  identifiers. The judge echoed *those* as the `rule_id` instead of `R1`, the mapper dropped
+  the verdict, and the result read as "the fix silenced the check". It was the fixture. Rules
+  rewritten as plain sentences, re-run. **The only reason this was diagnosable is the drop
+  logging added in the same change** — `map_rule_tokens` discarding silently would have made a
+  mapping loss and a clean passage the same observation, which is the exact failure this task
+  exists to end.
+
+  ```
+  judge_prose dropped 1 unattributable verdict(s) of 1 (labels=['QC5-BITE-CONTRADICTED'], rules=2)
+  ```
+
+  **QC:** 3599 composition unit tests pass (+5 new, each bitten: reverting to uuid labelling
+  reds the label test; passing unmappable labels through reds the drop test) · gates green ·
+  the live re-run above is the smoke, against an image rebuilt for it.
+
+  ### 🔻 DEFERRAL `D-QUALITY-REPORT-CANON-UNANCHORED` — a SECOND call site scored against nothing
+
+  | | |
+  |---|---|
+  | **Blocker** | `build_quality_report` calls `judge_prose` with **`active_rules=[]` hardcoded**, exactly like the critique endpoint's `present_facts=[]`. Its `canon_consistency` dimension and its `violations[]` are therefore judged with no canon supplied — the same "scored against nothing" defect QC-5 measured, at a second surface. |
+  | **Evidence** | `quality_report.py:125`. Surfaced by the attribution fix: `test_report_both_ok` asserted one surviving violation, and the verdict it was asserting on carried an INVENTED rule label, because no rule was ever sent. That assertion had been green since it was written. |
+  | **To unblock** | Decide what canon a quality report should be anchored to (the work's active rules, most likely) and pass it. Not done here: it is a different feature surface from QC-5's acceptance path, and guessing the intended source would be worse than recording it. |
+  | **Mechanism** | The updated test now asserts **0** violations with the reason written beside it, so restoring a non-zero expectation requires deciding what rules to send — the assertion cannot drift back quietly. |
+  | **Retry when** | Whoever owns the quality report picks the rule source. No PO decision is required for the fix itself. |
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
