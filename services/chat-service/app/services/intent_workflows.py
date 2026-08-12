@@ -31,7 +31,9 @@ import re
 # lowercase-matched against the user's message. Kept SPECIFIC to avoid mis-pinning.
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("entity-triage", [
-        r"\btriage\b",
+        # Same inflection blindness as translation-pass below: "triaging"/"triaged" are the natural
+        # forms and the bare stem missed both.
+        r"\btriag(e|es|ed|ing)\b",
         r"clean\s+up.*(suggestion|inbox|pile|entit|character|item)",
         r"review.*(inbox|suggestion)",
         r"(keep|throw).*(junk|out).*(character|entit|item|suggestion)",
@@ -63,7 +65,15 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"plan\s+out.*(story|novel|book)",
     ]),
     ("translation-pass", [
-        r"\btranslate\b",
+        # 🔴 `\btranslate\b` MATCHED NEITHER "translating" NOR "translation" — the two forms a user
+        # is most likely to write, for the rail literally named `translation-pass`. MEASURED LIVE
+        # 2026-08-12: "Check what in this book still needs translating into Vietnamese, and bring
+        # the translation up to date" pinned NOTHING; the turn engaged a stale vision-to-book rail
+        # instead and no translation tool was ever called. A word-boundary match on a bare verb STEM
+        # is blind to ordinary English morphology, and this table is matched against a human
+        # sentence. Reproduced with no model in the loop: intent_pinned_workflows(that sentence)
+        # returned [].
+        r"\btranslat(e|es|ed|ing|ion|ions)\b",
         r"english\s+reader",
         r"(only|just).*(what\s+changed|the\s+new|dirty)",
         r"translation\s+pass",
