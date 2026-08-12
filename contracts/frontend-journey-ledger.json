@@ -1,0 +1,65 @@
+{
+  "ledger_version": 1,
+  "runbook": "docs/plans/2026-08-12-frontend-journey-loop-RUNBOOK.md",
+  "denominator": {
+    "derived_at": "2026-08-12",
+    "source": "loreweave_agent_registry",
+    "query": "select 'workflow',status,tier,array_to_string(surfaces,',') from workflows group by ... union all select 'skill',... from skills group by ...",
+    "published_workflows": 12,
+    "published_skills": 27,
+    "total_declared_journeys": 39,
+    "note": "Re-derived by live query at entry, never read from the RUNBOOK table. Ordering: workflows before skills; within workflows the surface with the most declared members first -- {book,editor}=5, then {book,editor,studio}=4, unrestricted=2, {book}=1. Within a surface group, by declared step count descending (a longer state machine fails in more ways), tie-broken by slug."
+  },
+  "preflight": {
+    "state": "hardened",
+    "note": "The RUNBOOK's gate 1 ('every running container is on its CURRENT image') was measured GREEN -- 35/35 infra containers matched their :latest image id -- and was STILL INSUFFICIENT. container==image does not imply image==source. infra-composition-service:latest was built 2026-08-12T04:54Z from a stale build context: its /app/app/services/plan_forge_service.py was 1990 lines with 0 occurrences of _compile_blocked_message where HEAD has 2058 lines and 2, and the image carried db/repositories/epub_import_hierarchy.py, a file absent from HEAD and absent from disk. The first defect this loop 'found' (plan_compile raising the bare 'validation failed -- compile blocked') was therefore an artifact of code deleted from the repo on 2026-08-11, and that evidence was discarded. AMENDMENT, now applied every entry: compare SOURCE to IMAGE by content -- per-file md5 of every *.py under services/<svc>/app against /app/app in the running container (exact, all 10 Python services), and for compiled services grep the running binary for a string literal introduced by that service's most recent commit. Measured after the fix: 10/10 Python services difflines=0; book-service carries 'FROM worlds old' (#319, 2026-08-12), glossary-service 'CANNOT re-add the same code' (02beee08c), catalog-service 'titleMatchesQuery' (fdb8a8b49), agent-registry-service 'surfaces where this workflow is advertised' (14e8804ce). Timestamps are NOT evidence: the stale COPY layer was dated 11:54 local while the file it copied was last modified at 05:15 local."
+  },
+  "journeys": {
+    "vision-to-book": {
+      "state": "proven",
+      "surface": "{book,editor}",
+      "declared_steps": 9,
+      "modules_crossed": 3,
+      "note": "PROVEN end to end through the browser at localhost:5174, driven by google/gemma-4-26b-a4b-qat via lm_studio (this account's active `chat` default, confirmed in user_default_models, not set for the run). NO ARGUMENT WAS TYPED BY THE OPERATOR: the only text supplied was the user's prose story idea; the model derived every tool argument from it. SELECTION worked -- it called workflow_load unprompted and entered the rail. DERIVATION worked -- glossary_extract_entities_from_doc built a document from the prose and recovered the six entities the prose names. CHAINING worked across a module boundary -- kg_add_nodes was gated with {entity_ids:[6 uuids], mode:'from_glossary', project_id} where the ids came from glossary_propose_entities and project_id from kg_project_create, none of them handed to it. COMPOSITION worked -- the confirm gate on apply-categories and the Tier-A gate on kg_add_nodes both surfaced and both resumed correctly. SURFACING was verified against SSOT rather than trusted: the FE renders a FAILED tool call with border-destructive/text-destructive against border-accent for a success, which is why plan_compile's failure was visible at all -- checked as a control before it was filed as a defect, and it refuted the claim. FINAL MEASURED STATE (book 019ff497-dff3-7f26-9565-7e284f7ca71c): 6 categories, 6 glossary entities, plan_run status='compiled', 3 structure_node (arcs), 6 outline_node (the chapter plan), 0 chapters -- correct, since drafting is the model's offered next step, not this workflow's. The journey surfaced defect D-FJ-1 (its own row, its own falsifier, its own commit)."
+    }
+  },
+  "defects": {
+    "D-FJ-1": {
+      "state": "proven",
+      "found_by": "vision-to-book",
+      "lives_in": "services/composition-service/app/engine/plan_forge/ingest.py::_section_level",
+      "title": "A plan with TWO OR MORE arcs parsed to zero arcs -- and the guidance told the caller to send the shape it had just sent",
+      "note": "MECHANISM. _section_level descends past a lone top heading whenever the level below it holds >=2 siblings, which is how it tells a document TITLE ('# Dracula's Legacy' + 4 sections) from a lone real section. A story plan is written '# 1. Arc Overview' then one '## ' per arc. With ONE arc the level below holds 1 and the `len(children) < 2` guard stops the descent BY LUCK; with the ordinary THREE arcs it holds 3, so the rule descended, read '# 1. Arc Overview' as the document's title, and promoted each ARC to a top-level section. The kind matcher cannot place an arc's name, so all three landed in `unclassified` and the spec parsed ZERO arcs. Both '# 1. Arc Overview' documents in the corpus behind the original rule happened to hold a single arc, so the shape was never actually protected -- the docstring's own table records the case as 'L2 has 1 -> STAY'. WHY IT IS UNRECOVERABLE, not merely wrong: plan_propose_spec is honest -- it returned problem='no_arcs_parsed' and guidance saying 'do NOT tell the author the plan is ready ... source_markdown must open with the line \"# 1. Arc Overview\" ... then one \"## \" heading per ARC, and under each arc one \"### \" heading per beat'. The model had ALREADY sent exactly that. An instruction the caller cannot satisfy is a loop, and the turn ended with the author told a chapter plan was 'ready to see and adjust' over a book with 0 structure_node, 0 outline_node and 0 chapters. FIX. In _section_level, stop descending when the lone heading at the current level is one the author NUMBERED (`_NUMBERED_SECTION = ^#{1,6}\\s+\\d+[.)]\\s`). This is the parent-level twin of the `_DOTTED_SUB` rule already trusted one level down: `N.M` is the author saying 'this is part of section N', a bare `N.` is the author saying 'this IS section N'. It is the AUTHOR's signal, not the vocabulary's -- descending on 'is this heading a known kind?' was tried first by the original author and misread '# Story Premise: ...' as a section because 'premise' is vocabulary. The space after the dot is required, so '# 1.1 Ho So' remains a dotted sub-heading. All five unnumbered corpus titles descend exactly as before. CODE. Falsifier test_a_numbered_section_with_SEVERAL_arcs_is_still_not_a_title proven RED on the ORIGINAL defect, failing with the live symptom verbatim ('3 section(s) were read but matched no known kind: The Forged Path, The Salted Truth, The Great Unmapping'), then GREEN. Full suite 3739 passed / 403 skipped; a clean-HEAD worktree control ran 3738 passed, i.e. exactly the one test added and no regression. (One parallel-scheduling flake seen once in test_pack_budget_language_parity::test_vietnamese_is_not_starved_by_an_over_counting_encoder -- passed in isolation, passed in the clean-HEAD control, passed on re-run; pre-existing order dependence, carried below, not caused by this change.) LIVE. A/B through the browser, same prose, same model, same journey, only the fix differing -- book 019ff482 (before): problem='no_arcs_parsed', arcs=[], empty_read=true, unclassified=[3 arcs], sections_read=3, plan_run='proposed', structure_node=0, outline_node=0. Book 019ff497 (after): problem=null, arcs=3 ['The Forged Path','The Salt's Secret','The Great Unmapping'], events=6, unclassified=[], sections_read=1, plan_run='compiled', structure_node=3, outline_node=6. DATA. The 6 outline nodes are the chapter plan the author was promised and are grounded in the submitted prose ('Iseul discovers the first discrepancy in a most critical map.', 'The truth threatens the survival of Ashmere.', ...). Deployed by content, not by 'Built': image rebuilt and containers force-recreated, then per-file md5 of all 242 *.py verified difflines=0 against source on both composition-service and composition-worker."
+    }
+  },
+  "carried_observations": [
+    {
+      "id": "OBS-1",
+      "note": "FE agent-status reads 'Dang chay cong cu - <tool>' (running tool) while chat-service has already persisted outcome=awaiting_input for the turn. Observed at both gates, on the verified stack, in every run. Turn-outcome and call-outcome are two vocabularies; the chip is showing the last call and calling it the turn's state."
+    },
+    {
+      "id": "OBS-2",
+      "note": "chat-service terminal-persist wrote the SAME assistant message id twice with conflicting outcomes: first outcome=crashed, then outcome=awaiting_input (session 019ff466-c571-7843-a67f-a0083b40b982, msg d6393215-c9c5-4ef5-b60c-f76d2012d06f, 0 chars both times). A gate-suspended turn appears to transit through 'crashed'."
+    },
+    {
+      "id": "OBS-3",
+      "note": "Tier-A permission card renders three buttons localized ('Cho phep mot lan', 'Luon cho phep', 'Tu choi') and the fourth raw English ('Never allow') -- one missing key in one component. Same class: the confirm card title 'Set up your book's world', the 'Did <tool_name>' lines under 'Da lam giup ban', and the book-ceiling error 'book limit reached (200) - delete or purge a book first', all English inside a Vietnamese UI."
+    },
+    {
+      "id": "OBS-4",
+      "note": "stream_service logged \"intent pinned workflow(s) ['kg-build'] from the user's request\" for prose that is almost a paraphrase of vision-to-book's own description. Both rails were then tracked and the correct one ran, so the run recovered -- but the pin chose the wrong workflow."
+    },
+    {
+      "id": "OBS-5",
+      "note": "book-service: countActiveBooks reads then INSERT writes outside one transaction, so concurrent creates can both pass the ceiling. Measured: 201 active novels against maxBooksPerUser=200, unreachable through either gated path alone. The HTTP and MCP create paths share the pattern."
+    },
+    {
+      "id": "OBS-6",
+      "note": "GET /v1/notifications/stream returned 500 on cold boot, then ERR_INCOMPLETE_CHUNKED_ENCODING on later loads. Did not affect the journey."
+    },
+    {
+      "id": "OBS-7",
+      "note": "composition-service test_pack_budget_language_parity::test_vietnamese_is_not_starved_by_an_over_counting_encoder failed once under `-n auto --dist load` and passed in isolation, in a clean-HEAD control, and on re-run. Pre-existing order dependence, not caused by D-FJ-1."
+    }
+  ]
+}
