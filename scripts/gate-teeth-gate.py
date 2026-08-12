@@ -240,7 +240,21 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: Both directions are bitten, because a ratchet that only reds upward never falls.
 #: Also 48s -> 2s: it ran one or two `grep` processes per file across 707 files; `git grep`
 #: does the same work in two.
-NO_PROOF_BASELINE = 32
+#: 2026-08-12 (j): 32 -> 31. `observability-inventory-lint.sh`. A carefully-maintained gate — its
+#: header records two `NV-4` findings it already survived — that nonetheless opened with
+#: `if [[ ! -f "$inventory" ]]; then echo "skipping"; exit 0; fi`. **One `git mv` from
+#: permanently green**, and the second gate on this board with that exact line
+#: (`transitions-validation` was the first). Now exit 2.
+#:
+#: Its EMITTED side also had no floor. The declared side fails loudly when it empties — every
+#: emitted symbol becomes undeclared — but if the literal regex stops matching or the roots
+#: move, `emitted` is empty, the comparison loop runs zero times and it prints PASS. Measured
+#: reach: 1086 files scanned, 46 emitted literals, 100 declared.
+#:
+#: Reported rather than enforced: **54 of the 100 declared metrics are emitted nowhere in code**
+#: (`GT-OBS-UNEMITTED`). Planned or rot — this gate cannot tell which, and stating the number
+#: beats implying zero.
+NO_PROOF_BASELINE = 31
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
