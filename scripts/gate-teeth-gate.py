@@ -151,7 +151,15 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: removed one at a time — the last of those because blanking the whole pattern reds on the
 #: FIRST case and says nothing about the other two. Both also gained REACH FLOORS: a walk that
 #: reaches zero services now exits 2 instead of printing PASS (`BDR-82`).
-NO_PROOF_BASELINE = 41
+#: 2026-08-12 (b): 41 -> 40. `dependency-registry-lint.sh`, and it is the case that most needed
+#: a proof: in its DEFAULT mode it prints violations and exits 0, so "it passed" and "it found
+#: 49 problems" were the same observable. A disarmed gate can still be shown to BITE — the mode
+#: is a policy decision (DEFERRED 082), the predicate is a rule, and the proof is of the rule.
+#: Two defects fell out of writing it: the violation counter incremented once per GREP BLOCK,
+#: so it reported **2** against a real **49** for months; and the reach floor added alongside
+#: it was itself unreachable, because `set -euo pipefail` kills the script at the failing
+#: `find` before the floor can speak. The bite found the second one.
+NO_PROOF_BASELINE = 40
 
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
