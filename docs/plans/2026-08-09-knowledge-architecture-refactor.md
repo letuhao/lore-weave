@@ -35,7 +35,16 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: T17 — grow the port by demand (`merge_fact`, 5 calls / 5 modules), or a Phase 6 task.**
+**RESUME: ⏸ QC-5 — POST-REVIEW. STOPPED AND WAITING. All four artefacts now exist; the
+acceptance assertion is still unproven, and the reason is newly measured.**
+
+⚠️ **The RESUME pointer was wrong and is corrected here.** It read *"T17"* — a Phase 6 task —
+while **QC-5, this refactor's own stated acceptance test, was still `[~]`**. The GOAL has two
+halves (*"the architecture is implemented correctly AND a live run proves it"*), and T17 serves
+neither: it is port growth, not proof. The plan's own register says so — *"this is the
+refactor's stated acceptance test, so its being blocked is the single most important thing in
+this plan's status."* Advancing past it would have been the fourth instance in this arc of
+work that looks like progress while the thing being claimed goes unmeasured.
 
 ✅ **OD-1 IS DONE AND T30 IS CLOSED (2026-08-12). `D-GLOSSARY-EVENTS-NO-SOT` is discharged.**
 
@@ -4576,6 +4585,72 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   attempt should re-run these three batch sizes on a stronger model **before** touching the
   prompt again — if the spread collapses, the model was the variable; if it does not, the task
   shape itself is wrong and the check should be reconsidered rather than tuned.
+
+  #### ▶ THE FOURTH ARTEFACT IS NOW CAPTURED — 2026-08-12, and it is a FAIL
+
+  `POST /v1/composition/jobs/{job_id}/critique` — the `judge_prose` pass — run on **all four**
+  completed drafts of the acceptance book. Full write-up:
+  [`docs/measurements/2026-08-12-qc5-critic-per-chapter-scores.md`](../measurements/2026-08-12-qc5-critic-per-chapter-scores.md).
+
+  | job | chars | coherence | voice | pacing | **canon_consistency** | violations |
+  |---|---|---|---|---|---|---|
+  | `019ff029` (ch. 11, the acceptance chapter) | 4109 | 5 | 4 | 5 | **0** | 0 |
+  | `019ff034` | 8019 | 5 | 5 | 4 | **5** | 0 |
+  | `019ff025` | 4762 | 5 | 5 | 4 | **5** | 0 |
+  | `019ff011` | 8556 | 5 | 5 | 4 | **5** | 0 |
+
+  🔴 **THE NUMBER QC-5 IS WRITTEN IN TERMS OF WAS SCORED AGAINST NOTHING.** Three chapters
+  score exactly `canon_consistency 5/5`, which read literally is the task's own failure signal
+  (*"a pass here with 5/5 means the refactor has not landed"*). It is neither pass nor fail,
+  and the reason is measured rather than argued:
+
+  ```
+  canon_rule rows for the acceptance project    0
+  canon_rule rows for the acceptance book       0
+  canon_rule rows repo-wide                    52   (50 active, 46 projects)
+  ```
+
+  The endpoint resolves rules at critique time (`canon.list_active(job.project_id)` → empty)
+  and passes **`present_facts=[]` hardcoded** at the call site. Both inputs to the canon
+  dimension are empty, so a 5/5 means *"nothing to contradict"* and the 0/5 on chapter 11 is a
+  worst-possible score **citing no violation at all**. **QC-5's criterion is unevaluable on
+  this book** — the same shape as `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` one layer over: the
+  assertion is sound, the acceptance corpus cannot carry it.
+
+  🧪 **BITE — two rules injected, one the passage flatly contradicts, one it plainly
+  satisfies; deleted after the run.** Identical job, judge, passage and critic:
+
+  ```
+                     coherence  voice  pacing  canon_consistency  violations
+  0 rules (baseline)     5        4       5           0               0
+  2 rules (bite)         4        5       3           2               2
+  ```
+
+  **The machinery works** — rules reach the judge, the score moves, and the contradicted rule
+  is flagged with the correct reason. **And the control was flagged too, carrying the other
+  rule's reason verbatim.** *"Lam Uyen is a member of the Lam family"* — confirmed by the
+  passage's first sentence — returns `violated: true` with the *"Lam Trach died"* explanation.
+  **Stable across three byte-identical runs**, so unlike the `judge_role_attribution` spread
+  (0 / 4 / 12) this is deterministic and is a property of the check.
+
+  ⚠️ **`coherence 5 → 4` and `pacing 5 → 3` on byte-identical prose.** Nothing changed but the
+  presence of two canon rules in the prompt. The three craft dimensions are supposed to be
+  independent of the rule list; they are not.
+
+  ### 🔻 DEFERRAL `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`
+
+  | | |
+  |---|---|
+  | **Blocker** | `judge_prose` returns a `violations[]` entry keyed to a rule id whose `why` belongs to a DIFFERENT rule, and marks a plainly-satisfied rule `violated: true`. A per-rule verdict that cannot say which rule it is about is not a per-rule verdict; an author acting on it is sent to fix a sentence that is already correct. |
+  | **Evidence** | Both verdicts, verbatim, in the write-up — identical `why` strings on two rules that the passage settles in opposite directions. Reproduced 3/3 on byte-identical input. |
+  | **To unblock** | Nothing external. The same defect class is already recorded one judge over (*"the verdict attached to the wrong relationship (subject-id keying → per-statement token)"*), and that one was fixed by keying the verdict to a per-statement token rather than to a subject id. The fix here is the same shape. **Fix that first, then re-run this bite** — the injected rule pair is the regression test and takes one call. |
+  | **Mechanism** | The bite is cheap, deterministic and reproducible: two rules, one job, one endpoint. `0331a53f`/`6e153c35` at `violated=true,true` is the baseline; `true,false` with distinct reasons is the target. |
+  | **Retry when** | Immediately — it is the next unit of QC-5, not a wait. It does not need a PO decision and it does not need a stronger model (unlike `D-QC5-ROLE-JUDGE-PRECISION`, this failure is deterministic and structural, not a calibration gap). |
+
+  ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
+  unproven — for a newly-measured reason. **A green would have been the accounting artefact**
+  this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
+  passing canon check and are nothing of the kind.
 
   #### ⚠️ ONE ARTEFACT QC-5 NAMES THAT THIS RUN DID NOT PRODUCE
 
