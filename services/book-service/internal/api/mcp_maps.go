@@ -872,6 +872,12 @@ func (s *Server) toolWorldMapUpdateRegion(ctx context.Context, _ *mcp.CallToolRe
 	if err != nil {
 		return nil, mapUpdateRegionOut{}, errors.New("region_id must be a UUID")
 	}
+	// #317: refuse a call with nothing to change — same shape as #315/#316. Measured live, an
+	// empty call moved updated_at from …802859Z to …81511Z with every field identical.
+	if in.Polygon == nil && in.Name == nil && !in.ClearEntity && strings.TrimSpace(in.EntityID) == "" {
+		return nil, mapUpdateRegionOut{}, errors.New(
+			"provide at least one of polygon, name, entity_id or clear_entity to update")
+	}
 	setClauses := []string{"updated_at=now()"}
 	args := []any{regionID, ownerID}
 	idx := 3
@@ -912,17 +918,27 @@ func (s *Server) toolWorldMapUpdateRegion(ctx context.Context, _ *mcp.CallToolRe
 		args = append(args, entityID)
 		idx++
 	}
+	// `map_regions old` joined alongside so the same statement returns the PRE-update row for the
+	// undo hint — no second read, hence no window in which the "prior" values are already someone
+	// else's. Alias-qualified throughout: map_regions is joined twice, and an unqualified column
+	// makes Postgres reject the statement, which #315 proved is invisible to the compiler and to
+	// every source-reading test.
 	query := fmt.Sprintf(
-		`UPDATE map_regions rg SET %s FROM world_maps wm
-		 WHERE rg.id=$1 AND rg.map_id=wm.id AND wm.owner_user_id=$2
-		 RETURNING rg.id, rg.name, rg.polygon, rg.entity_id, rg.updated_at`,
+		`UPDATE map_regions rg SET %s FROM world_maps wm, map_regions old
+		 WHERE rg.id=$1 AND rg.id=old.id AND rg.map_id=wm.id AND wm.owner_user_id=$2
+		 RETURNING rg.id, rg.name, rg.polygon, rg.entity_id, rg.updated_at,
+		           old.name, old.polygon, old.entity_id`,
 		strings.Join(setClauses, ", "))
 	var rg regionOut
 	var id uuid.UUID
 	var polygonJSON []byte
 	var entityID *uuid.UUID
 	var updatedAt time.Time
-	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &rg.Name, &polygonJSON, &entityID, &updatedAt)
+	var priorName string
+	var priorPolygonJSON []byte
+	var priorEntity *uuid.UUID
+	err = s.pool.QueryRow(ctx, query, args...).Scan(&id, &rg.Name, &polygonJSON, &entityID, &updatedAt,
+		&priorName, &priorPolygonJSON, &priorEntity)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, mapUpdateRegionOut{}, errors.New("region not found")
 	}
@@ -938,7 +954,24 @@ func (s *Server) toolWorldMapUpdateRegion(ctx context.Context, _ *mcp.CallToolRe
 		rg.EntityID = &eid
 	}
 	rg.UpdatedAt = updatedAt.UTC().Format(time.RFC3339Nano)
-	return nil, mapUpdateRegionOut{Region: rg}, nil
+	// Undo hint (#317). The polygon is DECODED back into [[x,y],…] before it goes into the hint:
+	// the column is JSON, and replaying the raw bytes would send a JSON string against a schema
+	// expecting an array — the same uncallable undo #314 fixed on the remove path. The entity
+	// carries the same asymmetry as #316: a region that had none needs clear_entity=true, because
+	// an omitted entity_id means "leave unchanged" and would keep whatever this update bound.
+	var priorPolygon [][]float64
+	if err := json.Unmarshal(priorPolygonJSON, &priorPolygon); err != nil {
+		return nil, mapUpdateRegionOut{}, errors.New("failed to read region")
+	}
+	undoArgs := map[string]any{
+		"region_id": id.String(), "name": priorName, "polygon": priorPolygon,
+	}
+	if priorEntity != nil {
+		undoArgs["entity_id"] = priorEntity.String()
+	} else {
+		undoArgs["clear_entity"] = true
+	}
+	return undoResult("world_map_update_region", undoArgs), mapUpdateRegionOut{Region: rg}, nil
 }
 
 // registerMapTools registers the W10-M2 world-map MCP tools.
