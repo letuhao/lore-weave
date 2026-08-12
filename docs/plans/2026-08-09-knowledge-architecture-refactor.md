@@ -5049,6 +5049,63 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | `truth_source` is already on the envelope, so once wired, a regression back to the proxy is visible rather than silent. |
   | **Retry when** | Immediately — no PO decision, no model, and the acceptance draft is a ready-made fixture with a known answer. |
 
+  ### ⛔ QC-5 VERDICT: **DOES NOT PASS** — forensics on the verdicts, not the scores
+
+  The earlier entry concluded *"the check discriminates"* from a `2/5` vs `3/5` score gap.
+  **That inference was wrong and is withdrawn.** Dumping every verdict and resolving each
+  `rule_id` to its rule text refutes it on two independent counts.
+
+  <!-- doc-language-gate: ok -- the character names ARE the evidence here: the finding is which
+       rule each reason is ABOUT, and that is identifiable only by the names it discusses.
+       Paraphrasing them erases the entire result. -->
+  **(1) The verdicts are attached to the WRONG RULE.** Rule `…eac59d2c4593` is rule 4,
+  *"Huyết Vô Thường is Lâm Uyên's opponent"*. The verdict cited against it argues:
+  - **arm A** — about **Tô Thanh Dao**, who is rule 3's subject, not rule 4's;
+  - **arm B** — *"Lâm Uyên điều khiển L-Field…"*, which is **rule 5's text verbatim**.
+  <!-- doc-language-gate: end -->
+
+  So `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` is **NOT closed**, and the earlier claim that it
+  was is retracted. The `R1..Rn` labels made the response FORMAT reliable; they did not make
+  the model's attention reliable. **That fix was validated on a two-rule fixture, where the
+  labels were trivially separable — at six rules it breaks again.** A fixture that cannot
+  express the failure cannot verify the fix, which is the same lesson this plan records for
+  synthetic controls generally.
+
+  **(2) The betrayal rule is flagged on CORRECT prose too.**
+
+  | | betrayal rule flagged | the reason given |
+  |---|---|---|
+  | arm A · misattributed | yes | correctly names the invented betrayer — a TRUE positive |
+  | arm B · corrected | **yes** | *"he stays silent"* — not a canon contradiction, a FALSE positive |
+
+  Both arms return two violations; only the score differs. **The check does not separate a
+  misattributed betrayal from a correct one by its findings** — an author reading the verdicts
+  would be told the same rule is broken either way.
+
+  🔴 **Against the sealed criterion**, honestly applied:
+
+  | branch | result |
+  |---|---|
+  | trap attributed to the cast-designated antagonist | ❌ no — the drafter invented a betrayer |
+  | the canon check FAILS it | ⚠️ **on the letter only** — 2/5 is not 5/5, but 3/5 on CORRECT prose is not a pass either |
+  | does the check distinguish the defect? | ❌ **no** — same rule flagged in both arms, verdicts mis-attributed |
+
+  The criterion's *number* is satisfied; its *purpose* is not. `canon_consistency` never
+  reaching 5/5 on either arm means the run cannot demonstrate that the refactor catches the
+  misattribution — it demonstrates only that this judge marks something wrong in every draft.
+  **Recording that as a pass would be precisely the accounting artefact
+  `scripts/plan-final-verification.py` exists to prevent.**
+
+  ✅ **What IS proven and is not in doubt:** the pipeline runs end-to-end on real data — the
+  position-windowed KG read (24 roles in force at the acceptance position), role-check
+  dispatch, judge response, verdict parse, findings in the envelope. The ARCHITECTURE's read
+  path is live-proven. What fails is the JUDGE layer on top of it.
+
+  **Next unit, and it is now precisely scoped:** re-open
+  `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` with a SIX-rule fixture (the two-rule one is
+  retired as unable to express the failure), and treat "same rule flagged on both arms" as the
+  regression signal rather than the score.
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a
