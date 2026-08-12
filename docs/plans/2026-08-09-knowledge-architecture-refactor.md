@@ -5253,8 +5253,8 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   |---|---|
   | **Blocker** | ~~The projection is at-least-once delivery with no reconciliation.~~ **CLOSED 2026-08-12.** Detector + repairer both shipped, and the divergence on the acceptance book is **17 → 0**, verified in Neo4j directly rather than by asking the detector about its own repair. What remains open is the *scheduling* question (below), not the mechanism. |
   | **Evidence** | The chain above, every step measured. Then: `missing 17` → repair re-emitted 17 → `missing 0` within one relay cycle. Independently: Neo4j went **26 → 43** nodes carrying a glossary id, and all 17 formerly-missing ids are present (`found_of_17: 17`). |
-  | **Mechanism** | `GET …/glossary-mirror-drift` measures, `POST …/glossary-mirror-repair` closes. The count is the metric and it is now machine-produced. |
-  | ~~Still open~~ | ~~Nothing RUNS the detector.~~ **CLOSED 2026-08-12** — see the sweeper below. |
+  | **To unblock** | ~~A reconciler: enumerate glossary entities per book, anti-join against KG `glossary_entity_id`, re-emit the difference.~~ **DONE** — detector (`glossary-mirror-drift`), repairer (`glossary-mirror-repair`, re-emitting through the SSOT's outbox), and the six-hourly sweeper that runs them. ~~Nothing RUNS the detector~~ closed with the sweeper. |
+  | **Mechanism** | `GET …/glossary-mirror-drift` measures, `POST …/glossary-mirror-repair` closes, `knowledge_glossary_mirror_missing` is the metric an alert watches. Machine-produced now, not hand-queried. |
   | **Retry when** | Nothing outstanding. **No longer blocks QC-5**, which is the point: the acceptance test now reads a complete cast. |
 
   #### ✅ SHIPPED THIS CYCLE — the sweeper, which is what makes it a reconciler
@@ -5615,6 +5615,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Blocker** | `upsert_relation` takes `valid_from_ordinal` and has **no `valid_to_ordinal`**. The port can OPEN a story interval and cannot CLOSE one — while `relations_for` documents the half-open convention `valid_from <= N < valid_to`. So an adapter must implement an upper bound **no port caller can produce**, and no conformance test can exercise it through the port. |
   | **Evidence** | The first cut of the test asserted the upper bound and died on `TypeError: upsert_relation() got an unexpected keyword argument 'valid_to_ordinal'`. The Cypher does implement it (`r.valid_to_ordinal IS NULL OR $as_of_ordinal < r.valid_to_ordinal`, visible in the adapter's query) — it is simply unreachable from the port. |
   | **Why it matters** | Closing intervals is exactly what **T36** was about: **175 relations that had already ended were served as currently true.** A second adapter (AGE) could get the upper bound wrong and this suite would not see it. |
+  | **To unblock** | Give the port a way to CLOSE an interval — either `valid_to_ordinal` on `upsert_relation` or a separate close operation — then extend `test_as_of_respects_the_interval_start` to assert the upper bound through the port. Alternatively declare the relation WRITE path out of port scope deliberately and say so, so the gap is a decision rather than an omission. |
   | **Mechanism** | The test `test_as_of_respects_the_interval_start` names this deferral in its docstring and covers the lower bound only, so the gap is stated where a reader meets it rather than in a note elsewhere. |
   | **Retry when** | T42 designs the AGE adapter — that is when a second implementation of the upper bound first exists, and when the port either grows a close operation or the write path is declared out of port scope deliberately. |
 - [~] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
@@ -5824,6 +5825,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Blocker** | `status_at_order` and `events_in_window` are not implemented on AGE. The event/status surface is a distinct subsystem (`:Event`, `:EntityStatus`, three time axes) and porting it is its own slice, not a tail of this one. |
   | **Evidence** | Both raise `NotImplementedError` naming this deferral. The conformance suite covers the other 7 methods across all three adapters. |
   | **Why raise instead of return empty** | **T43 compares this adapter against Neo4j.** A silent `[]`/`{}` would make a **coverage** gap look like a **data** difference — and worse, would satisfy the plan's own shadow-coverage floor (*"no cutover while any port operation has zero shadow observations"*) while proving nothing. An operation that answers wrongly is more dangerous than one that refuses. |
+  | **To unblock** | ~~Implement `status_at_order` and `events_in_window` on AGE (`:Event`/`:EntityStatus` across the three time axes) and extend the conformance suite from 7 methods to 9.~~ ✅ **DONE 2026-08-12.** |
   | **Mechanism** | The raise itself: T43 cannot record an observation for these two without failing loudly, so the coverage floor stays honest. |
   | **Retry when** | ~~T43 needs event-surface parity, or the engine decision selects AGE.~~ ✅ **CLOSED 2026-08-12.** |
 
@@ -6028,6 +6030,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Blocker** | Zero application modules import `GraphStore` or construct an adapter, while 71 bind `neo4j_repos` directly. Three conforming adapters exist and none is reachable. |
   | **Evidence** | `port-adoption-gate` (above). `grep` for `ports.graph_store` and for any adapter constructor outside `app/adapters/` both return empty. |
   | **Why it blocks T43** | A shadow comparison needs real traffic through the port. With no callers, every operation has zero observations and the coverage floor cannot be satisfied by waiting — the engine cannot be chosen on measurement, which is the method X1 insisted on. |
+  | **To unblock** | Migrate application modules off `neo4j_repos` onto `GraphStore`, raising `port-adoption-gate`'s floor with each one. **Partly done** — the floor has moved 0 → 11 (T17 batches plus the mirror detector), so the port is reachable and T43 can observe real traffic; the ceiling of 69 direct binders is what remains. |
   | **Mechanism** | The **floor** in `port-adoption-gate`: the moment a module adopts `GraphStore`, the gate reds demanding the floor be raised, so adoption is recorded rather than drifting. |
   | **Retry when** | T17's migration reaches the graph read/write sites. **This is now the critical path to T43**, not background cleanup. |
 - [~] **T41** — ~~⛔ RE-SCOPE AFTER the engine decision, do not build first~~ ✅ **BUILT 2026-08-12**
@@ -6090,6 +6093,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Blocker** | `glossary_entities` is the Postgres SSOT for entity **identity**, so nodes and anchors re-project cleanly. Extraction-derived **relations** have no Postgres original — they are produced by the LLM pipeline from chapter text. A rebuild therefore restores the cast, not the web. |
   | **Evidence** | `rebuild_entities_from_glossary` writes entities only; the drill asserts entity counts and says nothing about edges, deliberately. |
   | **Why it is stated rather than glossed** | The three claims T41 underwrites are about **DR and rollback**. "The graph is rebuildable" is true of identity and false of relations, and letting the stronger reading stand would make the disaster story sound better than it is — the precise failure this plan keeps finding (a green check standing in for a claim nobody measured). |
+  | **To unblock** | Either give relations a Postgres original (so they re-project like identity does), or accept re-extraction as the recovery path and measure its cost — a PO call, because it is LLM spend per chapter. Until one of those, the DR claim must keep saying "identity, not edges". |
   | **Mechanism** | The module docstring and this row both name the boundary; the drill's assertions are entity-scoped, so nobody can read edge-recovery into a passing run. |
   | **Retry when** | Either re-extraction is accepted as the relation-recovery path (it costs LLM spend — a PO call), or relations gain a Postgres original. **Neither is in this plan's scope.** |
 - [~] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
