@@ -1439,3 +1439,13 @@ a storage reconciler is a platform decision.
 "a stray object is swept, never surfaced as a tool error" justified discarding an error for as long
 as it survived review. There is no sweeper. Grep for the mechanism a comment invokes before
 accepting the behaviour it excuses.
+
+### METHOD — a database cascade does not run application cleanup (#311)
+
+`world_maps.world_id` is `ON DELETE CASCADE`, so deleting a world drops its map rows. The maps'
+base images are removed by Go code in `world_map_delete` — code a cascade never executes. The rows
+vanish, the blobs stay, forever.
+
+I missed this in #308 because every world I deleted there had already had its maps deleted by hand,
+one at a time, through the tool that *does* clean up. **When a delete cascades, list what the
+cascade skips: anything outside the database.**

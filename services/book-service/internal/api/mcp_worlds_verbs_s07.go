@@ -17,10 +17,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/minio/minio-go/v7"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
@@ -197,6 +199,34 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=true AND lifecycle_state!='p
 		worldID, ownerID); err != nil {
 		return false, err
 	}
+	// The world's maps go with it via world_maps.world_id ON DELETE CASCADE — in the DATABASE.
+	// Their base images do not (#311). world_map_delete removes a map's blob in application code,
+	// and a cascade never runs that code, so every map image in a deleted world was orphaned in
+	// storage permanently. This is not the failed-RemoveObject edge case #310 covered: no removal
+	// was even attempted. It is the mechanism behind the orphans measured there — all 3 map images
+	// in the bucket belonged to maps that no longer existed. Collect the keys while the rows still
+	// exist; the removal happens after the commit.
+	var imageKeys []string
+	rows, err := tx.Query(ctx, `
+SELECT image_object_key FROM world_maps
+WHERE world_id=$1 AND owner_user_id=$2 AND image_object_key IS NOT NULL AND image_object_key<>''`,
+		worldID, ownerID)
+	if err != nil {
+		return false, err
+	}
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			rows.Close()
+			return false, err
+		}
+		imageKeys = append(imageKeys, k)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, err
+	}
+
 	tag, err := tx.Exec(ctx, `DELETE FROM worlds WHERE id=$1 AND owner_user_id=$2`, worldID, ownerID)
 	if err != nil {
 		return false, err
@@ -206,6 +236,17 @@ WHERE world_id=$1 AND owner_user_id=$2 AND is_bible=true AND lifecycle_state!='p
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return false, err
+	}
+
+	// After the commit only: the rows are gone for good, so a storage failure must not fail the
+	// delete — but it is logged with the key, never discarded (#310).
+	if s.minio != nil {
+		for _, k := range imageKeys {
+			if err := s.minio.RemoveObject(ctx, mediaBucket, k, minio.RemoveObjectOptions{}); err != nil {
+				slog.WarnContext(ctx, "world delete: orphaned map base image (world deleted, blob remains)",
+					"world_id", worldID.String(), "object_key", k, "error", err)
+			}
+		}
 	}
 	return true, nil
 }
