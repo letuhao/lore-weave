@@ -4853,6 +4853,57 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   than presenting the null as confirmation — a null that means "not asked" and a null that
   means "asked and lost the answer" are exactly what this change exists to separate.
 
+  ### 🎯 THE END-TO-END LIVE RUN WORKS — 2026-08-12. THE JUDGE WAS NEVER THE PROBLEM.
+
+  ```
+  job 019ff423   role_check: "checked"   violations: 7   status: checked
+  worker: canon role check: 24 of the roles in force at this position are named in the
+          draft (tiers both/object-only/subject-only = 15/3/6); sending 20 to the judge
+  ```
+
+  **The whole chain, live, on the acceptance book at the acceptance chapter:** position-windowed
+  KG read → role-check dispatch → the judge answers → verdicts parse → findings reach the
+  envelope. `role_check: "checked"` is the field added hours earlier reporting a judge that
+  actually ran.
+
+  🔴 **AND THE BLOCKER WAS A ONE-BYTE PARSE DISCARD, NOT A MODEL LIMIT.** The stored reply from
+  the "failed" run was read back in full:
+
+  ```
+  usage: input_tokens 1915, output_tokens 684 · finish_reason "stop"
+  content: {"verdicts":[{"entity_id":"role_0",...}, … {"entity_id":"role_19",...}]     <- no final }
+  ```
+
+  The judge had answered **all twenty roles with reasons**. The reply was missing exactly one
+  character — the outer closing brace — and `_balanced_json_objects` only finds BALANCED
+  objects, so `parse_judge_verdicts` returned `{}` and the caller reported *"produced NO
+  verdicts … the role check did not run"*. Fixed with a conservative tail repair
+  (`repair_truncated_json`): it only CLOSES what is open, drops a half-written final element
+  rather than guessing it, and refuses genuinely malformed input. Replayed against the real
+  discarded payload: **20 verdicts recovered, 4 violated.**
+
+  ⚠️ **`tokens_used = 0` IS A SEPARATE METERING BUG, AND IT IS WHAT MISLED ME.** The
+  `llm_jobs.tokens_used` column read zero while `result.usage.output_tokens` read 684. I took
+  the column at face value and concluded "the model returned nothing" — the conclusion that
+  produced *"needs a more capable judge"*. **Recorded as `D-LLM-JOBS-TOKENS-USED-NOT-METERED`**:
+  a usage column that disagrees with the usage payload will mislead every future investigation
+  the same way, and it silently under-reports spend.
+
+  ⛔ **THIS UNDERMINES A RECORDED CONCLUSION — `D-QC5-ROLE-JUDGE-PRECISION` MUST BE RE-DERIVED.**
+  That deferral concluded *"this check must not ship on this judge model at any batch size or
+  wording"* from three experiments — including the `0 / 4 / 12` spread on byte-identical input
+  and calls that *"returned no parseable JSON at all"*. **Every one of those measurements ran
+  through the broken parser.** A batch that produced a longer reply was likelier to be
+  truncated and discarded entirely, which manufactures exactly that spread. The precision
+  concern is still real and still open — this run produced **7 findings on a chapter whose
+  attribution is correct** — but the *cause* attributed to the model is now unsafe, and the
+  three batch sizes should be re-run against the repaired parser before anyone changes models.
+
+  **QC:** 1026 SDK · 3699 composition · 4186 knowledge — all green. Bite: removing the repair
+  call reds all three truncation tests; the pre-existing
+  `test_unterminated_json_degrades_to_empty` caught my FIRST repair inventing a verdict from a
+  half-written object, and the fix is that it now always cuts back to the last complete element.
+
   ⚠️ **QC-5 STAYS `[~]`.** All four artefacts now exist, and the acceptance assertion is still
   unproven — for a newly-measured reason. **A green would have been the accounting artefact**
   this plan's verification script exists to prevent: three chapters at 5/5 look exactly like a

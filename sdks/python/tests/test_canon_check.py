@@ -188,3 +188,53 @@ class TestCanonCandidateBase:
         assert c.source == "score_symbolic"
         assert c.status == "gone"
         assert c.confirmed is None
+
+
+# ── truncated-tail repair (2026-08-12) ────────────────────────────────────────
+
+def test_a_reply_missing_only_its_closing_brace_is_recovered():
+    """🔴 REGRESSION, from a real discarded judge reply.
+
+    Composition job `019ff401` asked 20 roles; the judge answered all 20 with reasons
+    (`output_tokens: 684`, `finish_reason: "stop"`) and omitted exactly ONE character — the
+    outer closing brace. `_balanced_json_objects` finds only BALANCED objects, so it yielded
+    nothing, `parse_judge_verdicts` returned `{}`, and the caller reported "the role check did
+    not run". Twenty good verdicts discarded over one byte — and the investigation that
+    followed concluded the model was incapable. It was not.
+    """
+    body = ('{"verdicts":[{"entity_id":"role_0","violated":false,"why":"ok"},'
+            '{"entity_id":"role_1","violated":true,"why":"contradicts"}]')  # no final }
+    out = parse_judge_verdicts(body)
+    assert set(out) == {"role_0", "role_1"}
+    assert out["role_1"]["violated"] is True
+
+
+def test_a_reply_cut_off_mid_verdict_drops_that_one_and_keeps_the_rest():
+    """The repair CLOSES what is open; it never invents a value. A half-written final verdict
+    is dropped, so a repaired reply is a strict prefix of what the model actually said."""
+    body = ('{"verdicts":[{"entity_id":"role_0","violated":false,"why":"ok"},'
+            '{"entity_id":"role_1","violated":tr')
+    out = parse_judge_verdicts(body)
+    assert set(out) == {"role_0"}, f"got {set(out)} — a truncated verdict must not be guessed"
+
+
+def test_a_reply_cut_off_inside_a_string_is_still_salvaged():
+    body = ('{"verdicts":[{"entity_id":"role_0","violated":false,"why":"ok"},'
+            '{"entity_id":"role_1","violated":true,"why":"the reason was cut off here')
+    out = parse_judge_verdicts(body)
+    assert set(out) == {"role_0"}
+
+
+def test_genuinely_malformed_json_is_still_refused():
+    """The negative control. Without it a repair that closed anything would 'recover' garbage,
+    which is worse than reporting nothing: an unparseable reply would become confident
+    verdicts."""
+    assert parse_judge_verdicts("}{ this is not json at all ][") == {}
+    assert parse_judge_verdicts("") == {}
+    assert parse_judge_verdicts("no json here") == {}
+
+
+def test_a_balanced_reply_is_untouched_by_the_repair():
+    body = '{"verdicts":[{"entity_id":"role_0","violated":true,"why":"w"}]}'
+    out = parse_judge_verdicts(body)
+    assert out == {"role_0": {"violated": True, "why": "w"}}
