@@ -23,8 +23,11 @@ RUNBOOK gives the test.
 THE LOOP
 One journey at a time, in the order the RUNBOOK derives. Never choose, reorder,
 batch, skip or defer one yourself. On `proven` or `blocked`, immediately derive
-the next and run it. Do not return control while executable work remains. The
-ledger is the progress authority -- not this prompt, not any summary I write.
+the next and run it. Do not return control while executable work remains, and
+THE GOAL IS NOT COMPLETE while a declared journey has no conclusion. Never stop
+with a handoff, a progress report, or a question I could have answered by
+measuring. The ledger is the progress authority -- not this prompt, not any
+summary I write.
 
 THE BAR -- all three, for every defect
 CODE: tests, plus a falsifier proven RED on the ORIGINAL defect.
@@ -36,6 +39,11 @@ NOT TERMINAL
 converted, tested, investigated, "mostly works", "known issue", "ready for next",
 "continue?". Only `proven` or `blocked`. A failed verification does not advance
 the loop: investigate, fix, rerun, verify again.
+
+FIXING
+Fix the defect where it LIVES -- another service, the frontend, a skill body, a
+workflow row, a tool description. PROSE IS NOT THE LEVER: rewording a message is
+not a fix without new evidence.
 
 BLOCKED BY A PRODUCT DECISION
 Record the question and its evidence as the next DQ, then continue. Do not ask,
