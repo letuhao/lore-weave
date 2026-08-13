@@ -150,7 +150,7 @@ BASELINE: dict[str, tuple[int, int]] = {
     "DP-A": (0, 6),
     "DP-R": (0, 0),
     "DP-T": (0, 0),
-    "DP-Ch": (0, 12),
+    "DP-Ch": (0, 11),
 }
 
 

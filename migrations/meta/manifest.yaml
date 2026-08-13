@@ -257,3 +257,9 @@ migrations:
     breaking: false
     dependencies: []
     description: "meta — DP-C8 capability store: the session registry the specs referenced but never declared"
+
+  - id: "040_tier_policy"
+    version: 40
+    breaking: false
+    dependencies: []
+    description: "meta — DP-C4 tier policy registry + per-service capability grants; unblocks 5 of the control plane's 8 UNIMPLEMENTED RPCs"
