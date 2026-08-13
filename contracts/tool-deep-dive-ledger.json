@@ -1019,6 +1019,14 @@
       "cycle": 26,
       "group": "A#1 among unconcluded (3 live, 3 total, 3 calls)",
       "note": "PROVEN with NO defect — and this cycle is what proved the previous four conclusions WRONG. All 3 recorded calls are this loop's own cycle-22 debris, each sending a BOOK id in motif_id, each correctly refused. 🔴 THE HOT-SEED BUDGET IS NOT A BLOCKER, BECAUSE tool_load BYPASSES IT. On the editor surface this tool was withheld with 'hot_seed | did not fit the hot_seed token budget (2000 tok)' — the same record I had been reading as BLOCKED for four cycles. Asked in prose to 'load the tool composition_motif_get by name, then call it', the model ran tool_load({name:'composition_motif_get'}) and then the tool itself, successfully. That is the platform's DESIGNED path for the lazy tail — the same tool_list -> tool_load route that reached the deprecated tools in cycles 8, 10, 14 and 19 — and it means a budget-dropped tool is un-seeded, not unreachable. LIVE (session 019ff929, editor surface): tool_load by name, then composition_motif_get({motif_id: '019f6c22-…'}), ok=true. DATA (owning store loreweave_composition.motif): code 'e2e.reversal.1784225649612', name 'E2E Reversal 1784225649612', status 'archived', kind 'sequence' — every field matching the store row. An ARCHIVED motif is still returned to its owner, which is right for a get-by-id. SHIP: a BOOK id in motif_id gets 'not found or not accessible'; a non-UUID gets the actionable \"motif_id must be a UUID — received 'all'\"; and a STRANGER asking for this PRIVATE motif gets 'not found or not accessible', so a private motif cannot be probed for existence."
+    },
+    "composition_get_mine_job": {
+      "state": "proven",
+      "provider": "composition",
+      "tier": "R (scope book)",
+      "cycle": 27,
+      "group": "A#1 among unconcluded (1 live, 22 total, 22 calls)",
+      "note": "PROVEN with NO defect, despite a 100% failure rate (22 of 22). Twenty-one of those are the SAME job_id 019f7e7f-8805-… polled repeatedly on 2026-07-20, and that job does not exist in loreweave_composition.generation_job in any state — the invented/stale id class of cycles 19 and 22, unrepairable and correctly refused. The 22nd is this loop's own missing-argument call from today. LIVE (session 019ff929, editor surface, via the lazy-tail path): the model ran tool_load({name:'composition_get_mine_job'}) then the tool with the job_id, ok=true. It took two asks — the first turn answered from conversation context without calling anything, which is worth noting for a POLL tool: a model that answers a status question from memory rather than polling will report a stale status confidently. DATA (owning store generation_job): status 'completed', operation 'draft_chapter', cost_usd 0.0000 — matching the store row exactly. FALSIFIER: any other status or operation would refute it. SHIP: the recorded nonexistent job and a STRANGER asking for a real one BOTH get 'not found or not accessible', so job ownership cannot be enumerated; a missing job_id is refused by the validator with 'Field required. You sent no arguments at all'; a non-UUID gets \"job_id must be a UUID — received 'all'\". NOTED, NOT FILED: the description scopes this tool to MOTIF jobs ('the mining / arc-import / conformance / translate job a confirmed Tier-W motif action returns'), but it happily returns a draft_chapter generation job. Behaviour is BROADER than the promise, in the safe direction — ownership is still enforced — the same shape as cycle 9's OBS-T18, and there is no measured failure attributable to it."
     }
   },
   "defects": {
@@ -1315,9 +1323,9 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 26,
+    "tools_concluded": 27,
     "tools_in_cycle": 0,
-    "tools_proven": 26,
+    "tools_proven": 27,
     "tools_blocked": 0,
     "defects_proven": 19,
     "defects_open": 0,
