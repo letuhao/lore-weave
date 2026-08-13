@@ -120,7 +120,23 @@ pub trait DpAggregate: Send + Sync + 'static {
     /// them has a registered event to name: making it required would have meant
     /// eleven fixtures inventing eleven event types, which is the second
     /// vocabulary the original argument was right to fear.
-    const EVENT_TYPE: &'static str = crate::DEFAULT_SDK_EVENT_TYPE;
+    /// **A CLOSED SET**, not one name — corrected by `DF5`.
+    ///
+    /// `DF1b-i` shipped this as a single `EVENT_TYPE`, which was right while an
+    /// aggregate wrote one event. It is wrong the moment one writes several:
+    /// the game tier's encounter line emits `proposal.rejected` AND three
+    /// `turn.*` outcomes, and modelling that as four aggregates was refused by
+    /// `dp-aggregate-gate`'s `R4` — `TYPE_NAME` is a CACHE-KEY token, so four
+    /// impls under one name are four cache entries for one logical aggregate,
+    /// under four coherency contracts.
+    ///
+    /// So the SET belongs to the aggregate (which events this line may carry)
+    /// and the CHOICE belongs to the write (which one happened). Both halves
+    /// are checked: the write names one, and the SDK refuses a name that is not
+    /// in this slice — an `enum`-shaped guarantee over `&'static str`, which is
+    /// the same closed-set discipline the Frontend-Tool Contract requires of a
+    /// tool argument.
+    const EVENT_TYPES: &'static [&'static str] = &[crate::DEFAULT_SDK_EVENT_TYPE];
 
     /// Whether [`crate::Encode`] produces the event's JSON body (`DF1b-i`).
     ///

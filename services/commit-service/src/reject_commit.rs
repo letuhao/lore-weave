@@ -40,37 +40,6 @@ use dp::{scope::ChannelScope, tier::T2, DpAggregate, DpError, Encode, KeyId, Ses
 use dp_kernel::channel::ChannelWriter;
 use dp_kernel::dp_channel::{KernelChannelWriteBackend, PgChannelTree};
 
-/// The channel-scoped aggregate an admission refusal writes.
-///
-/// `aggregate_type` stays `combat_session` and the id stays `enc-{channel}`:
-/// this continues the channel's existing aggregate line, and renaming it would
-/// orphan every row already written against it. The name is legacy vocabulary
-/// (`D-14`) and is not this change's to rewrite.
-pub struct ProposalRejected;
-
-impl DpAggregate for ProposalRejected {
-    type Tier = T2;
-    type Scope = ChannelScope;
-    type Id = String;
-    type Delta = serde_json::Value;
-    type Projection = ();
-    const TYPE_NAME: &'static str = "combat_session";
-    /// Registered in `contracts/events/_registry.yaml` by `DFO-4`, which found
-    /// that the one domain event this system produces in anger had no contract.
-    const EVENT_TYPE: &'static str = "proposal.rejected";
-    const PAYLOAD_IS_JSON: bool = true;
-    /// `T6`. Stamped by the WRITER — `PID-D5` removed this from the proposal
-    /// wire format because reading it off an untrusted payload let a proposal
-    /// pick its own privilege tier.
-    const EVENT_CATEGORY: Option<&'static str> = Some("T6");
-}
-
-impl Encode for ProposalRejected {
-    fn encode(d: &serde_json::Value) -> Result<Vec<u8>, DpError> {
-        serde_json::to_vec(d).map_err(|e| DpError::BackendIo(Box::new(e)))
-    }
-}
-
 /// Everything the writer node needs to make SDK writes on its channel: a
 /// session ADDRESSED to that channel, and a backend carrying the node's facts.
 ///
@@ -134,14 +103,17 @@ pub fn commit_rejection(
     let id = KeyId::new(format!("enc-{channel}")).ok_or_else(|| DpError::SessionNotFound {
         session_id: format!("enc-{channel} is not a legal DP-K7 key segment"),
     })?;
-    let key = dp::cache_key!(channel: ctx, T2, ProposalRejected, id.clone())
+    let key = dp::cache_key!(channel: ctx, T2, CombatSession, id.clone())
         .ok_or_else(|| DpError::SessionNotFound {
             session_id: format!(
                 "the writer's session is not in channel {channel}, so it has no DP-K7 channel key"
             ),
         })?;
     let body = serde_json::json!({ "rejected_at_stage": stage, "reason": reason });
-    let ack = dp::t2_write_channel::<ProposalRejected, _>(
+    // No per-write metadata: a refusal's envelope facts are all declarations
+    // (`EVENT_CATEGORY`) or node facts (the digest, the turn counter). The
+    // RESOLVED path is the one with a per-write `input_id`.
+    let ack = dp::t2_write_channel::<CombatSession, _>(
         backend,
         ctx,
         now_ms,
@@ -149,6 +121,129 @@ pub fn commit_rejection(
         &key,
         expected_version,
         body,
+        "proposal.rejected",
+        None,
     )?;
     Ok(ack.position)
+}
+
+/// `DF5` — the encounter's own event set, on ONE aggregate.
+///
+/// # `R4` is why this is one type and not four
+///
+/// The first attempt gave each outcome its own `DpAggregate`, all four naming
+/// `TYPE_NAME = "combat_session"`. `dp-aggregate-gate`'s `R4` refused it, and
+/// the reason is the cache: **`TYPE_NAME` is a cache-key token**, so four impls
+/// under one name are four cache entries for one logical aggregate, under four
+/// coherency contracts.
+///
+/// That refusal is what moved `EVENT_TYPE` off the aggregate. The SET of events
+/// this line may carry is a property of the aggregate; WHICH one happened is a
+/// property of the write. `EVENT_TYPES` below is the closed set, and
+/// `t2_write_channel` refuses a name outside it.
+pub struct CombatSession;
+
+impl DpAggregate for CombatSession {
+    type Tier = T2;
+    type Scope = ChannelScope;
+    type Id = String;
+    type Delta = serde_json::Value;
+    type Projection = ();
+    const TYPE_NAME: &'static str = "combat_session";
+    /// All four registered in `contracts/events/_registry.yaml` — one by
+    /// `DFO-4`, three by `DF5`, each of which found the event written by the
+    /// live spine with no contract at all.
+    const EVENT_TYPES: &'static [&'static str] = &[
+        "proposal.rejected",
+        "turn.resolved",
+        "turn.discarded",
+        "turn.buffered",
+    ];
+    const PAYLOAD_IS_JSON: bool = true;
+    const EVENT_CATEGORY: Option<&'static str> = Some("T6");
+}
+
+impl Encode for CombatSession {
+    fn encode(d: &serde_json::Value) -> Result<Vec<u8>, DpError> {
+        serde_json::to_vec(d).map_err(|e| DpError::BackendIo(Box::new(e)))
+    }
+}
+
+/// Commit one island resolution through the SDK (`DF5`).
+///
+/// This is the hop the actor hub is on: `events` is the hub's fold made
+/// durable — `commit-service::domain::Actor` holds an `actor_hub::Actor`, the
+/// island resolves against it, and what comes out the other side is what this
+/// writes.
+///
+/// `metadata` is the per-write half `DF5` added to the SDK: the `input_id` that
+/// caused this resolution and which admission stages did not run. Neither is a
+/// property of the aggregate (so not a const) nor of the node (so not the
+/// backend) — they are facts about THIS write, and there was nowhere to put
+/// them until now.
+#[allow(clippy::too_many_arguments)]
+pub fn commit_resolution(
+    backend: &KernelChannelWriteBackend,
+    ctx: &SessionContext,
+    now_ms: u64,
+    channel: i64,
+    expected_version: u64,
+    outcome: ResolutionKind,
+    payload: serde_json::Value,
+    metadata: &serde_json::Value,
+) -> Result<u64, DpError> {
+    let id = KeyId::new(format!("enc-{channel}")).ok_or_else(|| DpError::SessionNotFound {
+        session_id: format!("enc-{channel} is not a legal DP-K7 key segment"),
+    })?;
+    let meta = serde_json::to_vec(metadata).map_err(|e| DpError::BackendIo(Box::new(e)))?;
+
+    // The match is on a CLOSED enum, not on a string, so a fourth outcome is a
+    // compile error rather than a silently unwritten event.
+    let ack = match outcome {
+        ResolutionKind::Applied => {
+            let key = dp::cache_key!(channel: ctx, T2, CombatSession, id.clone())
+                .ok_or_else(|| no_channel(channel))?;
+            dp::t2_write_channel::<CombatSession, _>(
+                backend, ctx, now_ms, id, &key, expected_version, payload,
+                "turn.resolved", Some(&meta),
+            )
+        }
+        ResolutionKind::Discarded => {
+            let key = dp::cache_key!(channel: ctx, T2, CombatSession, id.clone())
+                .ok_or_else(|| no_channel(channel))?;
+            dp::t2_write_channel::<CombatSession, _>(
+                backend, ctx, now_ms, id, &key, expected_version, payload,
+                "turn.discarded", Some(&meta),
+            )
+        }
+        ResolutionKind::Buffered => {
+            let key = dp::cache_key!(channel: ctx, T2, CombatSession, id.clone())
+                .ok_or_else(|| no_channel(channel))?;
+            dp::t2_write_channel::<CombatSession, _>(
+                backend, ctx, now_ms, id, &key, expected_version, payload,
+                "turn.buffered", Some(&meta),
+            )
+        }
+    }?;
+    Ok(ack.position)
+}
+
+/// Which arm of `sim_core::Outcome` this resolution was.
+///
+/// A local enum rather than taking `Outcome` itself: this module would then
+/// depend on the simulation kernel to write an event, and the dependency it
+/// needs is on the DECISION, not on the machinery that made it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResolutionKind {
+    Applied,
+    Discarded,
+    Buffered,
+}
+
+fn no_channel(channel: i64) -> DpError {
+    DpError::SessionNotFound {
+        session_id: format!(
+            "the writer's session is not in channel {channel}, so it has no DP-K7 channel key"
+        ),
+    }
 }

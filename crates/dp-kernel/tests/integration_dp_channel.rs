@@ -63,7 +63,7 @@ impl DpAggregate for NpcSaid {
     type Delta = serde_json::Value;
     type Projection = ();
     const TYPE_NAME: &'static str = "dp_channel_domain_fixture";
-    const EVENT_TYPE: &'static str = "npc.said";
+    const EVENT_TYPES: &'static [&'static str] = &["npc.said"];
     const PAYLOAD_IS_JSON: bool = true;
 }
 impl Encode for NpcSaid {
@@ -81,7 +81,7 @@ impl DpAggregate for LiesAboutJson {
     type Delta = ();
     type Projection = ();
     const TYPE_NAME: &'static str = "dp_channel_liar_fixture";
-    const EVENT_TYPE: &'static str = "npc.said";
+    const EVENT_TYPES: &'static [&'static str] = &["npc.said"];
     const PAYLOAD_IS_JSON: bool = true;
 }
 impl Encode for LiesAboutJson {
@@ -213,7 +213,10 @@ async fn a_channel_write_through_the_sdk_lands_on_the_channel() {
     // build one — this ctx has been moved into `child`, so it is Some.
     let key = dp::cache_key!(channel: &ctx, T2, Chatter, id)
         .expect("the session is in a channel, so it has a channel key");
-    let ack = dp::t2_write_channel::<Chatter, _>(&backend, &ctx, 0, KeyId::from(id), &key, 0, 42)
+    let ack = dp::t2_write_channel::<Chatter, _>(
+        &backend, &ctx, 0, KeyId::from(id), &key, 0, 42,
+        dp::DEFAULT_SDK_EVENT_TYPE, None,
+    )
         .expect("write through the SDK");
     assert_eq!(ack.position, 1, "the channel allocated position 1");
 
@@ -274,7 +277,9 @@ async fn a_domain_event_keeps_its_name_and_its_shape() {
     let id = Uuid::new_v4();
     let key = dp::cache_key!(channel: &ctx, T2, NpcSaid, id).expect("channel key");
     let body = serde_json::json!({ "npc_id": "n-1", "utterance": "well met" });
-    dp::t2_write_channel::<NpcSaid, _>(&backend, &ctx, 0, KeyId::from(id), &key, 0, body.clone())
+    dp::t2_write_channel::<NpcSaid, _>(
+        &backend, &ctx, 0, KeyId::from(id), &key, 0, body.clone(), "npc.said", None,
+    )
         .expect("write through the SDK");
 
     let (etype, payload): (String, serde_json::Value) = sqlx::query_as(
@@ -318,7 +323,7 @@ async fn a_payload_that_lies_about_being_json_is_refused_not_wrapped() {
     let id = Uuid::new_v4();
     let key = dp::cache_key!(channel: &ctx, T2, LiesAboutJson, id).expect("channel key");
     let err = dp::t2_write_channel::<LiesAboutJson, _>(
-        &backend, &ctx, 0, KeyId::from(id), &key, 0, (),
+        &backend, &ctx, 0, KeyId::from(id), &key, 0, (), "npc.said", None,
     )
     .expect_err("a non-JSON payload under PAYLOAD_IS_JSON must be refused");
     let msg = format!("{err}");
@@ -427,6 +432,7 @@ async fn the_channel_backend_refuses_a_request_with_no_channel() {
             event_type: dp::DEFAULT_SDK_EVENT_TYPE,
             payload_is_json: false,
             event_category: None,
+            metadata_json: None,
             channel: None,
             payload: &[],
             expected_version: 0,
@@ -472,6 +478,7 @@ async fn the_channel_backend_refuses_another_channels_write() {
             event_type: dp::DEFAULT_SDK_EVENT_TYPE,
             payload_is_json: false,
             event_category: None,
+            metadata_json: None,
             // Channel 8, while the lease is for channel 7.
             channel: Some(test_channel(8)),
             payload: &[],

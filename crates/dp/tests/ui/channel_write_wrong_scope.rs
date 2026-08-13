@@ -48,6 +48,12 @@ impl dp::WriteBackend for NoBackend {
 fn main() {
     let ctx: &dp::SessionContext = todo!();
     // A reality-scoped aggregate through the channel-scoped door. Must not compile.
-    let _ =
-        dp::t2_write_channel::<Ledger, _>(&NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64);
+    // Every OTHER argument is correct — including `DF5`'s event choice and
+    // metadata — so the ONLY thing wrong with this call is the scope. Without
+    // that, the file would fail to compile for the wrong reason and the pin
+    // would stop testing DP-A14.
+    let _ = dp::t2_write_channel::<Ledger, _>(
+        &NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64,
+        dp::DEFAULT_SDK_EVENT_TYPE, None,
+    );
 }

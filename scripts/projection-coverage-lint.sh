@@ -61,6 +61,12 @@ declare -A allow=(
   # read models, and this gate scans the latter. Retires the day a
   # read-model needs refusal history.
   [proposal.rejected]="by-design: projected to the CLIENT WIRE (commit-service wire.rs + game-server turnOutcome.ts), not to a read model"
+  # Same mechanism as proposal.rejected above, and the same TURN_OUTCOME_TYPES
+  # set consumes them. Registered by DF5, which found all three absent while
+  # looking for the aggregate the actor hub reaches.
+  [turn.resolved]="by-design: projected to the CLIENT WIRE (commit-service wire.rs + game-server turnOutcome.ts), not to a read model"
+  [turn.discarded]="by-design: projected to the CLIENT WIRE; the discard arm of the same TurnOutcome frame"
+  [turn.buffered]="by-design: projected to the CLIENT WIRE; the buffered arm, which advances nothing"
   [xreality.canon.promoted]="by-design: cross-reality trigger consumed by meta-worker canon_writer fanout"
   [canon.change.recorded]="by-design: meta-worker canon_history_writer (append-only history table)"
   [admin.canon.override.requested]="by-design: meta-worker override writers (audit), not projected"

@@ -208,6 +208,33 @@ impl WriteBackend for KernelChannelWriteBackend {
                 if let Some(cat) = req.event_category {
                     obj.insert("event_category".into(), cat.into());
                 }
+                // `DF5` — the CALLER's per-write facts (`input_id`, which
+                // admission stages did not run). Merged rather than replacing:
+                // the `dp_*` keys above are the SDK's own record of how the
+                // write was made, and a caller silently dropping them would
+                // leave a row nobody can trace back to a tier or a key.
+                //
+                // A non-object is REFUSED for the reason the payload is:
+                // `events.metadata` carries `jsonb_typeof(...) = 'object'`, so
+                // a bare array would be rejected by Postgres several layers
+                // later with a message about a constraint instead of a caller.
+                if let Some(raw) = req.metadata_json {
+                    let v: serde_json::Value = serde_json::from_slice(raw).map_err(|e| {
+                        DpError::BackendIo(
+                            format!("{} supplied metadata that is not JSON: {e}",
+                                    req.aggregate_type).into(),
+                        )
+                    })?;
+                    let extra = v.as_object().ok_or_else(|| {
+                        DpError::BackendIo(
+                            format!("{} supplied metadata that is not a JSON OBJECT",
+                                    req.aggregate_type).into(),
+                        )
+                    })?;
+                    for (k, val) in extra {
+                        obj.insert(k.clone(), val.clone());
+                    }
+                }
                 if let Some(c) = &self.turn_counter {
                     // `CWC-A2` — a DECIMAL STRING, not a JSON number: the
                     // browser consuming this through the publisher loses

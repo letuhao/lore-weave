@@ -108,8 +108,8 @@ pub struct WriteRequest<'a> {
     pub cache_key: &'a str,
     /// The encoded delta.
     pub payload: &'a [u8],
-    /// The domain event this write records (`DF1b-i`), from
-    /// [`DpAggregate::EVENT_TYPE`].
+    /// The domain event this write records — the one CHOSEN from
+    /// [`DpAggregate::EVENT_TYPES`] and validated against it (`DF5`).
     ///
     /// Travels as data for the same reason the tier does: the backend
     /// dispatches on it at runtime, and the caller's side of the boundary is
@@ -121,6 +121,24 @@ pub struct WriteRequest<'a> {
     /// The event-taxonomy category, from [`DpAggregate::EVENT_CATEGORY`]
     /// (`DF1b-ii`). `None` for an aggregate that declares none.
     pub event_category: Option<&'static str>,
+    /// PER-WRITE envelope metadata as a JSON object, UTF-8 (`DF5`).
+    ///
+    /// # Why this is a per-write argument and the other three are declarations
+    ///
+    /// `EVENT_TYPE`, `PAYLOAD_IS_JSON` and `EVENT_CATEGORY` are facts about
+    /// WHAT THE AGGREGATE IS, so they live on the aggregate. `ruleset_digest`
+    /// and the turn counter are facts about the WRITER NODE, so the backend
+    /// holds them. This is the third kind: a fact about **this one write** —
+    /// the `input_id` that caused it, which admission stages did not run — and
+    /// it cannot come from either of the other two places without being wrong
+    /// for the next write.
+    ///
+    /// Bytes rather than a `serde_json::Value` for the reason this crate keeps
+    /// having: `crate-purity-gate` pins its externals to `{uuid}`. The backend
+    /// parses, and REFUSES a non-object — the same refusal `payload_is_json`
+    /// gets, because `events.metadata` carries the same
+    /// `jsonb_typeof(...) = 'object'` CHECK.
+    pub metadata_json: Option<&'a [u8]>,
     /// The channel this write is addressed to, or `None` for a reality-scoped
     /// write.
     ///
@@ -222,9 +240,18 @@ where
         aggregate_id: id,
         tier: <T as Tier>::LEVEL,
         cache_key: key,
-        event_type: A::EVENT_TYPE,
+        // The reality forms take no per-write choice, so they use the
+        // aggregate's FIRST declared event. Honest for the single-element set
+        // every reality aggregate has today, and the day one declares two this
+        // line is where the choice has to be threaded.
+        event_type: A::EVENT_TYPES.first().copied().unwrap_or(crate::DEFAULT_SDK_EVENT_TYPE),
         payload_is_json: A::PAYLOAD_IS_JSON,
         event_category: A::EVENT_CATEGORY,
+        // The reality forms take no per-write metadata: nothing calls them yet,
+        // and adding a parameter to four signatures for zero callers would be
+        // surface built ahead of its need. `t2_write_channel` is where the
+        // production caller lives, so that is where it is threaded.
+        metadata_json: None,
         // A reality-scoped aggregate has no channel to be addressed to, and
         // the bound above is what makes that a fact rather than a hope.
         channel: None,
@@ -246,6 +273,7 @@ where
 /// [`ChannelId`]. The read side made that choice first; two halves of one
 /// surface disagreeing about where an address comes from would be worse than
 /// either convention.
+#[allow(clippy::too_many_arguments)]
 fn write_at_tier_channel<A, T, B>(
     backend: &B,
     ctx: &SessionContext,
@@ -254,6 +282,8 @@ fn write_at_tier_channel<A, T, B>(
     key: &str,
     expected_version: u64,
     delta: A::Delta,
+    event_type: &'static str,
+    metadata_json: Option<&[u8]>,
 ) -> Result<WriteAck, DpError>
 where
     T: Tier,
@@ -261,6 +291,18 @@ where
     B: WriteBackend,
 {
     guard(ctx, now_ms)?;
+
+    // `DF5` — the chosen event must be one the AGGREGATE declares. A free
+    // string here would put an unregistered vocabulary next to
+    // `contracts/events/_registry.yaml`, which is exactly what the original
+    // one-type-per-backend design was right to fear; the closed set is how the
+    // choice stays inside it.
+    if !A::EVENT_TYPES.contains(&event_type) {
+        return Err(DpError::CapabilityDenied {
+            aggregate: A::TYPE_NAME,
+            tier: <T as Tier>::LEVEL,
+        });
+    }
 
     // Checked BEFORE the backend is touched, and before the delta is even
     // encoded — the same ordering, and the same words, as the read side.
@@ -281,9 +323,10 @@ where
         aggregate_id: id,
         tier: <T as Tier>::LEVEL,
         cache_key: key,
-        event_type: A::EVENT_TYPE,
+        event_type,
         payload_is_json: A::PAYLOAD_IS_JSON,
         event_category: A::EVENT_CATEGORY,
+        metadata_json,
         channel: Some(channel),
         payload: &payload,
         expected_version,
@@ -383,6 +426,7 @@ where
 /// backend it is handed either holds the lease for this channel or refuses.
 /// A second node to route to does not exist yet, and a router with one node is
 /// a mock wearing a distributed system's costume.
+#[allow(clippy::too_many_arguments)]
 pub fn t2_write_channel<A, B>(
     backend: &B,
     ctx: &SessionContext,
@@ -391,18 +435,25 @@ pub fn t2_write_channel<A, B>(
     key: &str,
     expected_version: u64,
     delta: A::Delta,
+    // Which of `A::EVENT_TYPES` this write records (`DF5`).
+    event_type: &'static str,
+    // Per-write envelope metadata; see `WriteRequest::metadata_json`.
+    metadata_json: Option<&[u8]>,
 ) -> Result<WriteAck, DpError>
 where
     A: DpAggregate<Tier = T2, Scope = ChannelScope> + Encode,
     B: WriteBackend,
 {
-    write_at_tier_channel::<A, T2, B>(backend, ctx, now_ms, id, key, expected_version, delta)
+    write_at_tier_channel::<A, T2, B>(
+        backend, ctx, now_ms, id, key, expected_version, delta, event_type, metadata_json,
+    )
 }
 
 /// `DP-Ch14` — T3 durable-sync write to a CHANNEL.
 ///
 /// Same shape and same limits as [`t2_write_channel`]; the tier bound is
 /// `DP-R5`.
+#[allow(clippy::too_many_arguments)]
 pub fn t3_write_channel<A, B>(
     backend: &B,
     ctx: &SessionContext,
@@ -411,12 +462,18 @@ pub fn t3_write_channel<A, B>(
     key: &str,
     expected_version: u64,
     delta: A::Delta,
+    // Which of `A::EVENT_TYPES` this write records (`DF5`).
+    event_type: &'static str,
+    // Per-write envelope metadata; see `WriteRequest::metadata_json`.
+    metadata_json: Option<&[u8]>,
 ) -> Result<WriteAck, DpError>
 where
     A: DpAggregate<Tier = T3, Scope = ChannelScope> + Encode,
     B: WriteBackend,
 {
-    write_at_tier_channel::<A, T3, B>(backend, ctx, now_ms, id, key, expected_version, delta)
+    write_at_tier_channel::<A, T3, B>(
+        backend, ctx, now_ms, id, key, expected_version, delta, event_type, metadata_json,
+    )
 }
 
 #[cfg(test)]
