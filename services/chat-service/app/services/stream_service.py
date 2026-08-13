@@ -1020,6 +1020,7 @@ def _narrated_uncalled_writes(
 
 def _rail_write_step_stalled(
     rail_progress: list | None, *, catalog_index: dict, attempted: set[str],
+    intent_slugs: frozenset[str] = frozenset(),
 ) -> str | None:
     """The WRITE tool a rail is waiting on, when this turn called NOTHING AT ALL.
 
@@ -1047,7 +1048,26 @@ def _rail_write_step_stalled(
     """
     if attempted or not rail_progress:
         return None
-    for prog in rail_progress:
+    # D-FJ-17 — when THIS turn's own words pinned a rail, only that rail may claim the
+    # nudge. `_pinned_slugs` is `binding + intent`, so the standing mode binding's rail
+    # always sorted FIRST and won a search that never looked at what was asked.
+    #
+    # Measured live 2026-08-13 (session 019ff929, throwaway book 019ff8f5): the author
+    # asked "What canon rules have I declared for this book?", which deterministically
+    # pinned `canon-check` (next step: composition_list_canon_rules, a READ, advertised
+    # in both passes). The turn called nothing, so this guard fired — and returned
+    # `kg_add_nodes`, the outstanding write of the STALE `vision-to-book` rail from an
+    # earlier journey. The directive sent pass 2 to answer that instead, and the author
+    # got a paragraph about a character named Vela Ostrand appended to a fabricated
+    # "you haven't declared any canon rules yet".
+    #
+    # A guard that drags a turn onto work the user did not ask about is worse than one
+    # that stays quiet: the honest outcome here is NO nudge, because the pinned rail's
+    # own next step is a read and this guard is deliberately writes-only.
+    _rails = rail_progress
+    if intent_slugs:
+        _rails = [p for p in rail_progress if getattr(p, "slug", None) in intent_slugs]
+    for prog in _rails:
         step = getattr(prog, "next_step", None)
         tool = getattr(step, "tool", None) if step is not None else None
         if not tool or tool not in catalog_index:
@@ -1103,6 +1123,7 @@ def _rail_is_in_flight(
     resumed_mid_rail: bool,
     step_tools_succeeded: list[str],
     step_tools_attempted: list[str],
+    asked_for_it_and_called_nothing: bool = False,
 ) -> bool:
     """D-RAIL-INFLIGHT-ON-ATTEMPT — is a pinned rail live enough for the P-1 step-runner
     to re-steer the model this turn?
@@ -1124,8 +1145,36 @@ def _rail_is_in_flight(
 
     **Intent is what makes a rail live: the model reached for the step.** Whether the
     platform let the call through is precisely the situation the directive exists to
-    re-steer — so a failed attempt must not read as "no rail here"."""
-    return bool(resumed_mid_rail or step_tools_succeeded or step_tools_attempted)
+    re-steer — so a failed attempt must not read as "no rail here".
+
+    D-FJ-18 — and the THIRD clause closes the rest of that same hole, because all three of
+    the above still require the model to have reached for SOMETHING. A turn that calls
+    nothing at all had no mechanism whatsoever when the outstanding step is a READ: the
+    D-FJ-8 narrated-write arm is deliberately writes-only ("nothing was claimed to have
+    changed, so there is nothing for the author to not find"), and this gate wanted an
+    attempt that never happened.
+
+    MEASURED LIVE 2026-08-13 (session 019ff929, book 019ff8f5): asked "What canon rules have
+    I declared for this book?", the turn pinned `canon-check` (next step
+    composition_list_canon_rules, advertised), called NOTHING, and answered *"I checked the
+    consistency rules for this book, and you haven't declared any canon rules yet"* while
+    the owning store held one active rule. A fabricated absence is the read-side twin of a
+    hallucinated write and is worse in one way: the author is told their own data is not
+    there, and has no reason to go and look.
+
+    `asked_for_it_and_called_nothing` is deliberately the narrowest possible opening — the
+    rail was pinned by THIS turn's own words (intent_pinned_workflows, deterministic, no
+    LLM) AND the turn emitted no tool call at all. It cannot hijack an ordinary
+    conversation, because an ordinary conversation pins no rail; and the drive it unlocks is
+    confined to the intent-pinned rail at the call site, so it can never re-steer the turn
+    onto some other journey's outstanding work (that is D-FJ-17, fixed in the same cycle).
+    """
+    return bool(
+        resumed_mid_rail
+        or step_tools_succeeded
+        or step_tools_attempted
+        or asked_for_it_and_called_nothing
+    )
 
 
 def _braces_balanced(text: str) -> bool:
@@ -2568,6 +2617,9 @@ async def _stream_with_tools(
     # rail's progress (drop a finished step's tool so a weak model can't repeat it). None/empty
     # ⇒ no gating (the advertise surface is byte-identical). See rail_gate_suppressions.
     rail_progress: list | None = None,
+    # D-FJ-17 — the rails THIS turn's user message pinned (intent_pinned_workflows), as
+    # distinct from the ones the standing mode binding pins. Empty ⇒ no preference.
+    rail_intent_slugs: frozenset[str] = frozenset(),
     # True on a RESUME that suspended mid-rail: the rail is definitionally in flight, so the
     # driver may fire even though this turn's only action was the (frontend) confirm — which
     # executes off the backend chokepoint and so is not in turn_succeeded.
@@ -2829,6 +2881,13 @@ async def _stream_with_tools(
         # bubble). Each pass's opening tokens are held while they prefix-match this
         # accumulator; a full match is swallowed, a divergence is flushed unchanged.
         turn_text_so_far = ""
+        # D-FJ-19 — True when the PREVIOUS pass ended by injecting a synthetic role=user
+        # directive (rail re-drive, narrated-write nudge). Such a pass answers a NEW
+        # instruction, so its prose is a separate answer and needs a seam. A pass that merely
+        # follows tool RESULTS is a continuation of the same thought and must NOT be broken —
+        # pinned by test_one_tool_pass_then_text_pass, where the model streams "Let me check."
+        # then " Kai is a knight." and the existing join is already right.
+        _directive_before_this_pass = False
         iteration = -1
         while True:
             iteration += 1
@@ -3312,6 +3371,22 @@ async def _stream_with_tools(
                                 # diverged → not an echo: flush everything held, unchanged
                                 _delta = _echo_buf
                             _echo_buf = ""
+                        # D-FJ-19 — a multi-pass turn persists ONE assistant message built by
+                        # concatenating every pass's yielded content, and nothing separated
+                        # them. Measured live 2026-08-13: "…I can help you set them
+                        # up.I checked your consistency rules…" — two answers welded into one
+                        # sentence, mid-word to a reader. Any turn the rail re-drives has two
+                        # or more passes, so this is the normal shape, not an edge case.
+                        # Inserted at the FIRST real delta of a later pass, so a single-pass
+                        # turn is byte-identical and an echo-suppressed pass adds nothing.
+                        if (
+                            not text_parts
+                            and _directive_before_this_pass
+                            and _delta.strip()
+                            and turn_text_so_far.strip()
+                            and not turn_text_so_far.endswith("\n")
+                        ):
+                            _delta = "\n\n" + _delta.lstrip()
                         text_parts.append(_delta)
                         turn_text_so_far += _delta
                         content_hold += _delta
@@ -3511,6 +3586,26 @@ async def _stream_with_tools(
                 # of one decision drift apart.)
                 _step_tools_hit = sorted(set(turn_succeeded) & _rail_all_step_tools)
                 _step_tools_tried = sorted(set(fail_by_tool_error) & _rail_all_step_tools)
+                # D-FJ-18 — the turn asked for this journey in its own words and then called
+                # nothing at all. See _rail_is_in_flight; the drive it unlocks is confined to
+                # the intent-pinned rail below so it cannot become D-FJ-17 one layer down.
+                _asked_and_called_nothing = bool(rail_intent_slugs) and not turn_attempted
+                # D-FJ-17 (step-runner arm) — when THIS turn's words pinned a rail, the
+                # step-runner drives THAT rail and no other, for the whole turn. Confining
+                # only the zero-call entry was not enough: measured live 2026-08-13, once
+                # the pinned `canon-check` step succeeded the confinement lifted (a step tool
+                # had now hit), the full spec list came back, and redrives 2-4 went to
+                # `vision-to-book → kg_add_nodes` — a rail the standing mode binding pinned,
+                # not the author. They asked one question and the reply ended with two
+                # paragraphs about knowledge-graph nodes they never mentioned.
+                #
+                # The binding's rail is not lost, only deferred: the next turn that does not
+                # pin one drives it as before.
+                _drive_specs = rail_specs
+                if rail_intent_slugs:
+                    _drive_specs = [
+                        spec for spec in (rail_specs or ()) if spec[0] in rail_intent_slugs
+                    ] or rail_specs
                 _rail_guards = {
                     "driver_on": bool(settings.rail_driver_enabled),
                     "have_specs": bool(rail_specs),
@@ -3528,6 +3623,7 @@ async def _stream_with_tools(
                         resumed_mid_rail=bool(rail_in_flight),
                         step_tools_succeeded=_step_tools_hit,
                         step_tools_attempted=_step_tools_tried,
+                        asked_for_it_and_called_nothing=_asked_and_called_nothing,
                     ),
                 }
                 if all(_rail_guards.values()):
@@ -3540,7 +3636,7 @@ async def _stream_with_tools(
                     from loreweave_agent_control import decide_rail_drive
                     _verdict = await decide_rail_drive(
                         probe_fn=probe_book_state,
-                        rail_specs=rail_specs, book_id=rail_book_id, user_id=user_id,
+                        rail_specs=_drive_specs, book_id=rail_book_id, user_id=user_id,
                         turn_start_counts=rail_turn_start_counts, turn_succeeded=turn_succeeded,
                         async_tools=rail_async_tools, nudged_out=rail_twice_nudged,
                         nudge_counts=rail_nudge_counts,
@@ -3571,6 +3667,7 @@ async def _stream_with_tools(
                     # content), so the synthetic user directive never reaches history or the UI.
                     working.append({"role": "assistant", "content": "".join(text_parts)})
                     working.append({"role": "user", "content": _verdict.directive_text})
+                    _directive_before_this_pass = True  # D-FJ-19
                     rail_redrive_count += 1
                     rail_drove_this_turn = True  # drop the stateful chain head at turn end
                     logger.info(
@@ -3614,6 +3711,7 @@ async def _stream_with_tools(
                 if not _narrated:
                     _stalled_tool = _rail_write_step_stalled(
                         rail_progress, catalog_index=cat_index, attempted=turn_attempted,
+                        intent_slugs=rail_intent_slugs,
                     )
                     if _stalled_tool:
                         _narrated = [_stalled_tool]
@@ -3673,6 +3771,7 @@ async def _stream_with_tools(
                             trace.add("compile", "T6", "tools",
                                       f"narrated_write:{','.join(_narrated)}", is_error=True)
                         working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
                         working.append({"role": "user", "content": (
                             # The stalled-rail arm must NOT say "you just described using X" — it
                             # never read the prose and does not know whether anything was claimed.
@@ -7749,6 +7848,7 @@ async def stream_response(
         # Action-space gating — turn-start RailProgress for the pinned rails (parallel to
         # _rail_specs); the advertise chokepoint drops finished steps' tools per the gate mode.
         rail_progress=_rail_progress_objs or None,
+        rail_intent_slugs=frozenset(_intent_slugs),
     ):
         yield line
 
@@ -8129,6 +8229,9 @@ async def _emit_chat_turn(
     # Action-space gating — turn-start RailProgress objects for the pinned rails (parallel to
     # rail_specs); forwarded to the tool loop's advertise chokepoint. None on the resume caller.
     rail_progress: list | None = None,
+    # D-FJ-17 — the rails THIS turn's user message pinned, forwarded so the stalled-write
+    # nudge cannot drag the turn onto an unrelated rail's outstanding step.
+    rail_intent_slugs: frozenset[str] = frozenset(),
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -8513,6 +8616,7 @@ async def _emit_chat_turn(
                 rail_in_flight=rail_in_flight,
                 rail_user_abandoned=user_abandoned_rail(user_message_content),
                 rail_progress=rail_progress,
+                rail_intent_slugs=rail_intent_slugs,
             )
         else:
             chunk_stream = _stream_via_gateway(
