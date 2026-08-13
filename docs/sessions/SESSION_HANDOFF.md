@@ -1,10 +1,53 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — two verification tracks closed: gate-teeth at ZERO, and the data plane is now MEASURED (2026-08-13, branch `feat/game-logic`)
+## ▶ GAME BUILD — the data foundation now has DATA IN IT: the SDK has production callers, end to end (2026-08-14, branch `feat/game-logic`)
 
-**HEAD:** `44b2bd0b5` · **NO ACTIVE run-state — all three are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `c717e2129` · **NO ACTIVE run-state — all four are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — `G-S3` (give the lore bible a shape).** Both verification tracks are DONE;
+> **▶ DO NEXT — see the four OPEN ROWS at the end of
+> [`2026-08-13-data-foundation-dataflow-RUN-STATE.md`](../plans/2026-08-13-data-foundation-dataflow-RUN-STATE.md).**
+> The board `DF1`..`DF5` is closed; what is left there is `DFO-6` (the workspace needs one DB per
+> live suite), `DFO-7` (**`bin/spine.rs --drain-once` HANGS**, at `HEAD`, measured with this whole
+> change stashed), and the two Redis roles `DP-X2` names that are still unbuilt.
+>
+> ---
+>
+> ## ▶ THE DATA FOUNDATION, BUILT (2026-08-13/14) — 16 commits, `718c29fc9`..`c717e2129`
+>
+> **The audit that opened it:** `crates/dp` exposed six primitives and **ZERO production call
+> sites**. The only `t2_write` in the tree was inside `dp_backend`'s own `#[cfg(test)]`; the two
+> services depending on `dp` used it solely for `RealityId`. `redis` was in **one** Cargo.toml in
+> the Rust tree and **zero** DP crates. The control plane declared 14 RPCs and 8 returned
+> `UNIMPLEMENTED`. **A contract with no traffic** — the actor hub's own failure shape (91 tests,
+> zero consumers) one layer down, with the tests to match.
+>
+> | row | what shipped | evidence |
+> |---|---|---|
+> | `DF1` | the write surface's missing CHANNEL half + the first production caller | a real `proposal.rejected` row, `channel_id`/`channel_event_id`/`writer_epoch` all set |
+> | `DF2` | `040_tier_policy` (`DP-C4` transcribed) + `GetTierPolicy` answers | **`UNIMPLEMENTED_METHODS` 8 → 7**; 11/11 constraint bites |
+> | `DF3` | the T0–T2 cache — `CacheBackend` seam + `RedisCache` | **643.62µs** mean over 200 gets vs `DP-T2`'s **<10ms** budget |
+> | `DF4` | `DP-R2`'s tier table, and a gate that DISCOVERS aggregates | exactly **1** doc in the tree had a tier table before: the one defining the template |
+> | `DF5` | the full dataflow | five hops, every id pasted; `spine.rs` builds **no envelope at all** now |
+>
+> **`SWEEP_RC=0`** — `gate-wiring-gate --run-all`, 89 GREEN / 0 RED / 1 SKIP.
+>
+> **What the measurements kept finding, five times:** a fix that shipped without its consumer.
+> `recovery::turn_number` was queried, returned, printed and DROPPED while `spine.rs` re-seeded 0 —
+> so every restart rewound a counter `turnOutcome.ts` calls *"authoritative from the COMMIT"*. Two
+> `DEFERRED_VARIANTS` blockers had been satisfied since slice 4. `proposal.rejected` and three
+> `turn.*` events were written by the live spine and read by two projectors with **no registry
+> entry**. `DP-R2` had one compliant document, and it was the template. Each was found by looking,
+> and each is now mechanised.
+>
+> **And the gates corrected me four times**, which is the part worth keeping: `R10` refused a macro
+> after I wrote a comment claiming it did not apply; `R4` then proved `DF1b-i`'s `EVENT_TYPE`
+> design wrong three commits after it shipped; `reality-id-adoption` caught a bare `Uuid` beside a
+> verified `RealityId`; and `dp-r2-tier-table-gate`'s own bite rows found a guard in it with no
+> case. **Twelve drift rows are in the run-state's §5.**
+>
+> ---
+>
+> Both verification tracks are DONE;
 > the product is what has not moved. `G-S3` + `G-S4` are the missing MIDDLE of BOOK → REALITY
 > and the only thing on the critical path — see [`docs/MILESTONE.md`](../MILESTONE.md) §build
 > index. A smaller warm-up if you want one: **`DPD-6`** below.
