@@ -963,6 +963,14 @@
       "cycle": 19,
       "group": "A#1 among unconcluded (0 live, 55 total, 65 calls)",
       "note": "PROVEN with NO defect, despite an 85% failure rate (55 of 65) — the highest survivor in the cohort after glossary_list_chapter_links. Every failure is ONE call repeated: {book_id: 019f9c91-b02d-…, chapter_id: 019f9c91-b2e7-…}, all on 2026-07-26, split 33 refusals and 22 repeated-failure guards. THE CHAPTER SIMPLY DOES NOT EXIST. Checked in the owning store: no chapter with that id, in any state; the book exists and has exactly ONE chapter. The two ids are DIFFERENT (so this is not the duplicate-identifier family) and the chapter_id shares the book's timestamp prefix `019f9c91-`, which is the signature of an id invented to look plausible rather than read from a list — the 'id invented whole' mode duplicate_identifier's own docstring names. There is nothing to repair: an invented id cannot be resolved, and refusing is the only correct answer. The runtime's per-turn guard bounded each attempt at two, which is why 65 calls became 33 refusals rather than an unbounded loop. LIVE (session 019ffae2), reached the deprecated way: the model resolved both ids via book_structure_read, loaded book_get_chapter by name, and called it — model-derived arguments throughout. DATA (owning store loreweave_book): the returned chapter_id and title 'The Cartographer Wakes' match the pinned falsifier exactly, and the payload carries the real prose (668 bytes of body) plus total_blocks — not just metadata. SHIP - every refusal probed, and the interesting one is the SCOPING. Asked for a chapter that exists but belongs to ANOTHER book, it answers with the SAME message as a chapter that does not exist anywhere ('no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'), so a caller cannot use it to discover that a chapter exists elsewhere. A missing chapter_id is refused by the validator naming the property; a non-UUID gets 'chapter_id must be a UUID'; a stranger gets 'book not accessible'. The refusal already names the tool that fixes it, which is the actionable form this loop has repeatedly found missing on its siblings."
+    },
+    "kg_list_templates": {
+      "state": "proven",
+      "provider": "knowledge",
+      "tier": "R",
+      "cycle": 20,
+      "group": "A#1 among unconcluded (0 live, 51 total, 70 calls)",
+      "note": "PROVEN with NO defect. The 51 failures decompose into 36 repeat-guard (all 2026-07-14), 10 scope-value errors and 5 older pydantic validation errors — none of them the tool misbehaving today. THE SCOPE ARG IS PROPERLY DECLARED, which is the contrast with cycle 12's T12-D1: it is an `anyOf` of a string ENUM, an ARRAY of that enum, and null, with the description spelling out 'Pass ONE value as a plain string (a one-element list is tolerated and unwrapped). Omit for both.' Every recorded bad value is refused with the actionable form — the legal set, plus what was sent and its TYPE: \"Input should be 'system' or 'user' (you sent 'all')\", \"(you sent a str)\", \"(you sent a list)\". AND THE TWO-ELEMENT LIST HAS ITS OWN MESSAGE. ['system','user'] — 3 recorded calls — is refused with \"`scope` must be a single value ('system' or 'user'), not a list — omit it entirely to get both\", which names the exact fix rather than restating the type. LIVE (session 019ffaea). From 'What knowledge-graph schema templates can I base a project on? List the built-in ones', the model called kg_list_templates({scope:'system'}) — the scope value derived from 'the built-in ones' — and answered accurately with the templates and their real descriptions. DATA (owning store loreweave_knowledge.kg_graph_schemas): scope='system' returns exactly the 7 non-deprecated system codes the store holds — drama, fantasy, general, historical, mystery, romance, xianxia-harem — with no extras and none missing. scope='user' returns 0, correct for an account that owns no user templates. Omitted returns the same 7 (system + own user). 🔴 AND THE TENANCY CONTROL HOLDS: called as a STRANGER it still returns the 7 system templates and NO user templates, which is exactly what the repo's clause `(scope='system') OR (scope='user' AND scope_id=$user)` promises. A stranger seeing another user's template would have refuted it. 🔴 MY OWN FIRST READING SAID 'zero templates' AND WAS WRONG — the fourth false alarm this session caught by a control. This tool returns its payload ONLY as content[0].text (a JSON string) and emits NO structuredContent, so a probe reading structuredContent sees nothing. Recorded as OBS-T29 because every knowledge-service tool shares that shape."
     }
   },
   "defects": {
@@ -1250,14 +1258,18 @@
     {
       "id": "OBS-T28",
       "note": "THE MODEL REACHED FOR A WRITE TOOL TO PERFORM A READ FOR THE THIRD TIME TODAY, and this time only a required-argument check stopped it. Session 019ffac5, prose 'read me the full text of its first chapter': the model called book_chapter_save_draft three times with commit_message='Reading chapter 1' and NO body, was refused each time for the missing `body`, and the turn crashed after 11 calls. Chapter 1 is unchanged (word_count 121, updated_at untouched). With OBS-T16 (book_update_details as a scratchpad, stopped by a Tier-W card) and OBS-T22 (save_draft overwriting a real chapter, NOT stopped because of a standing approval), that is three instances in one day of the same behaviour, stopped by three DIFFERENT mechanisms and once not stopped at all. The pattern deserves its own treatment rather than three separate footnotes: a model that cannot complete a read substitutes a write."
+    },
+    {
+      "id": "OBS-T29",
+      "note": "knowledge-service's MCP tools return their payload ONLY in content[0].text as a JSON STRING and emit no structuredContent — measured 2026-08-13 on kg_list_templates, and consistent with cycle 9's finding that kg_project_create declares outputSchema: null. It cost this loop a false alarm: a probe reading structuredContent reported 'zero templates' for a tool that was correctly returning seven. Any cycle on a knowledge-service tool must parse content[0].text, and any consumer written against structuredContent will silently see nothing. Whether these tools SHOULD emit structuredContent (as book-service and glossary-service do) is worth asking, since the difference is invisible until something reads the wrong half."
     }
   ],
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 19,
+    "tools_concluded": 20,
     "tools_in_cycle": 0,
-    "tools_proven": 17,
+    "tools_proven": 18,
     "tools_blocked": 2,
     "defects_proven": 19,
     "defects_open": 0,
