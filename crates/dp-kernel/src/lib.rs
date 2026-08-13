@@ -103,6 +103,9 @@ pub mod aggregate;
 pub mod canon_cache;
 pub mod channel;
 pub mod dp_backend;
+/// `DF1a` — the CHANNEL half of `dp`'s seams: the write backend over
+/// `ChannelWriter`, and the first production `ChannelTree`.
+pub mod dp_channel;
 pub mod canon_history;
 pub mod capacity;
 pub mod dependencies;

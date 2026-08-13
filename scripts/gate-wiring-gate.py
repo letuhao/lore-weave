@@ -467,6 +467,13 @@ def run_all() -> int:
         # day it was written rather than after a flaky sweep, which is the only
         # cheap moment to do it.
         "scripts/dp-oracle-bite-gate.py",
+        # `DF1a`. Mutates `crates/dp` AND `crates/dp-kernel` and runs cargo on
+        # dp-kernel, and imports the 5b harness for its read/restore/lock
+        # machinery — every reason 5c, 5d and G3 are here. Listed on the day it
+        # was written; the lock already refused it once during DF1a, against a
+        # STALE lock left by a killed dp-oracle-bite-gate, which is the failure
+        # mode arriving before the flaky sweep rather than after.
+        "scripts/dp-df1a-bite-gate.py",
         # `W7-SHELL-UNCOVERED`. Mutates `infra/db-ensure.sh` and, on a box with
         # the compose Postgres up, CREATEs and DROPs a throwaway role while
         # doing it. Both halves are reasons it must not run beside anything

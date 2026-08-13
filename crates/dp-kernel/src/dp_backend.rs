@@ -188,7 +188,7 @@ impl<S: EventStore> ReadBackend for KernelReadBackend<S> {
 /// Hand-rolled rather than taking a dependency for eleven lines. It is the
 /// standard alphabet with padding; `crates/dp`'s `Decode` impls are the only
 /// readers and they decode what this produces.
-fn b64(bytes: &[u8]) -> String {
+pub(crate) fn b64(bytes: &[u8]) -> String {
     const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
