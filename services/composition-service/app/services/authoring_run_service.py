@@ -600,12 +600,16 @@ class EngineCriticSeam:
     else the run's params.model_ref (same-model critique is weaker but better
     than no net; the caller opts into a distinct judge via critic_model_ref).
 
+    Canon (C2, 2026-08-13) — CLOSED. Those bearer-side helpers were private to
+    `routers/plan.py`, so this seam had nothing to copy and judged with empty
+    active_rules/present_facts: `canon_consistency` was a self-consistency read
+    of the passage, and QC-5's assertion (a misattributed betrayal must not
+    score 5/5) could not fail for the right reason. The sequence now lives once
+    in `engine/canon_bible.py` and all three callers import it; the verdict
+    carries `canon_grounding` (as_of | untimed | empty) so a weakly-grounded
+    score is never mistaken for a grounded one.
+
     Honest v1 gaps (stubbed, by design not omission):
-    * canon grounding — the Quality Report endpoint renders a canon block from
-      the kal cast roster + genre convention (bearer-side helpers private to
-      that router); this headless seam passes empty active_rules/present_facts,
-      so `canon_consistency` judges from the passage alone. Wiring the roster
-      canon is a follow-up (needs those helpers extracted).
     * cost — the LLM SDK Job carries no cost field (the exact reason the
       drafting seam falls back to authoring_unit_estimate_usd), so a COMPLETED
       critique reports authoring_critic_estimate_usd and a degraded one 0.
@@ -644,9 +648,11 @@ class EngineCriticSeam:
     ) -> CriticVerdict:
         # Deferred imports (EngineDraftingSeam precedent) — keep module light.
         from app.clients.book_client import get_book_client
+        from app.clients.kal_client import get_kal_client
         from app.clients.llm_client import get_llm_client
         from app.db.pool import get_pool
         from app.db.repositories.works import WorksRepo
+        from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
         from app.engine.prose_doc import tiptap_doc_to_text
         from app.mcp.service_bearer import mint_service_bearer
@@ -685,11 +691,28 @@ class EngineCriticSeam:
             logger.debug("critic source-language resolve failed (using auto)",
                          exc_info=True)
 
+        # C2 — the canon the judge is graded against. Until 2026-08-13 this was two empty
+        # lists, so `canon_consistency` was a self-consistency reading of the passage: the
+        # judge could not fail QC-5's assertion (a misattributed betrayal must not score 5/5)
+        # because it was never told who betrayed whom. Same bible the quality-report endpoint
+        # builds, same `present_facts` shape `build_quality_report` uses — one home, three
+        # callers (engine/canon_bible.py).
+        bible = await canon_for_chapter(
+            kal=get_kal_client(), book=get_book_client(), book_id=book_id,
+            chapter_id=chapter_id, user_id=created_by, bearer=bearer,
+            source_language=profile.source_language,
+        )
         critique = await judge_prose(
             get_llm_client(), user_id=str(created_by),
             model_source=model_source, model_ref=str(model_ref),
-            passage=text, active_rules=[], present_facts=[], profile=profile,
+            passage=text, active_rules=[], present_facts=bible.as_present_facts(),
+            profile=profile,
         )
+        # The grounding rides the verdict. A `canon_consistency` scored against an `untimed`
+        # or `empty` bible is a weaker number than one scored `as_of`, and nothing downstream
+        # could tell them apart while the seam reported only the score.
+        critique = {**critique, "canon_grounding": bible.grounding,
+                    "canon_as_of": bible.as_of, "canon_cast_size": bible.cast_size}
         severity, summary = verdict_from_critique(critique)
         # judge_prose degrades internally (error marker) — spend unknown there,
         # bill 0; a completed critique bills the estimate (no SDK cost field).

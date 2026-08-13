@@ -56,7 +56,11 @@ from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.middleware.jwt_auth import get_bearer_token, get_current_user
 from app.packer.pack import OwnershipError
-from app.engine.heal_canon import cast_from_state, convention_for, render_canon
+from app.engine.canon_bible import (
+    book_genre_tags as _book_genre_tags,
+    canon_for_chapter,
+    cast_roster as _cast_roster,
+)
 from app.engine.prose_doc import tiptap_doc_to_text
 from app.packer.profile import from_settings
 from app.worker.events import enqueue_job
@@ -167,78 +171,6 @@ async def _book_chapter_ids(book: BookClient, book_id: UUID, bearer: str) -> lis
                                                      "detail": str(exc)}) from exc
 
 
-async def _cast_roster(
-    kal: KalClient, book_id: UUID, user_id: UUID, *, strict: bool = False
-) -> list[dict]:
-    """The book's full cast as `{entity_id, name}`, read through the KAL (INV-KAL).
-
-    Drains the KAL `roster` keyset cursor to completion (D4 / §12.5.2): the prior
-    glossary `list_entities` path read only the first page and ignored `next_cursor`,
-    silently truncating the cast at ~100 — so a deep book's planner saw an incomplete
-    roster. The KAL roster is bounded-per-page, COMPLETE-in-aggregate; the client
-    follows `next_cursor` until null.
-
-    Default (non-strict): empty/partial on outage (the packer just gets a thin/no roster).
-    `strict=True` raises `RosterIncomplete` on a truncated drain so a caller that treats the
-    cast as AUTHORITATIVE (commit-time entity validation) can skip instead of false-rejecting
-    a valid id in a dropped page. `user_id` is forwarded as the KAL tenancy identity.
-
-    ── WHY THIS SURVIVES T7, per caller ──────────────────────────────────────────────────
-    T7 moved the CANON BIBLE reads onto `state@as_of` (`_canon_cast_at`), because a bible is a
-    claim about what is true AT the chapter being written. Every remaining caller here answers
-    a different question — "does this entity belong to this book" or "what do I label it" —
-    and for those the untimed catalogue is the CORRECT read, not a leftover:
-
-    - **existence / tenancy validation** (`present_entity` at commit, the motif-swap and
-      role-rebind binding targets): an entity introduced in chapter 50 is a perfectly valid
-      binding target while planning chapter 10. Gating membership on a story position would
-      reject valid ids for the reason that they are not born yet.
-    - **label resolution** (`entity → name` for the bound-motif render): the display name of a
-      binding, not a canon claim. `roster`'s id+name projection is exactly this.
-    - **`/decompose`'s cast**: the plan spans the whole book, so no single position exists to
-      read it at. The per-chapter grounding happens downstream, where a position does exist.
-
-    A caller that ever needs "who was alive / what was their rank THEN" belongs on
-    `_canon_cast_at`, not here. Documented rather than left silent: an untimed read that
-    *should* have been timed is invisible in the output — it just quietly describes the end of
-    the book."""
-    return await kal.roster(book_id, user_id=user_id, strict=strict)
-
-
-async def _canon_cast_at(
-    kal: KalClient, book: BookClient, book_id: UUID, chapter_id: UUID, user_id: UUID,
-) -> list[dict]:
-    """The cast AS OF the chapter being worked on — the input to `render_canon`.
-
-    This is the read the refactor exists for. `_cast_roster` above enumerates every entity
-    that ever existed in the book with NO story position, so a canon bible built from it
-    describes the end of the book: a character who dies in chapter 40 is alive in it while
-    healing chapter 12, and their final rank is stated as their current one. `state@as_of`
-    answers at the position instead.
-
-    The position is the chapter's `sort_order` — the book position, the same axis
-    `entity_facts.valid_from_ordinal` is written on (extraction sources it from book-service's
-    `sort_order` for exactly this reason). A job-relative or list index here would silently
-    answer about a different chapter.
-
-    Degrades to `_cast_roster` and says so: an unresolvable position (a chapter book-service
-    does not know, or a sort-orders outage) leaves the caller with the untimed catalogue,
-    which is what it had before this task. The WARN is the detector — an ungrounded-in-time
-    bible is not visible in the output, only in this line.
-    """
-    orders = await book.get_chapter_sort_orders([chapter_id])
-    as_of = orders.get(str(chapter_id))
-    if not isinstance(as_of, int):
-        logger.warning(
-            "canon cast for book %s chapter %s has NO resolved story position (sort_order "
-            "absent) — falling back to the untimed roster; the bible will describe the end "
-            "of the book, not this chapter", book_id, chapter_id)
-        return await _cast_roster(kal, book_id, user_id)
-    logger.info("canon cast resolved story position: book=%s chapter=%s as_of=%d",
-                book_id, chapter_id, as_of)
-    return cast_from_state(await kal.state(book_id, as_of=as_of, user_id=user_id))
-
-
 class SelfHealProposeRequest(BaseModel):
     chapter_id: UUID
     model_source: str = Field(min_length=1, max_length=50)
@@ -285,10 +217,13 @@ async def self_heal_propose_endpoint(
     profile = from_settings(work.settings)
     canon = body.canon
     if not canon:
-        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
-        # AS OF the chapter being healed, not the end of the book (T7).
-        cast = await _canon_cast_at(kal, book, work.book_id, body.chapter_id, user_id)
-        canon = render_canon(cast, convention=convention_for(genre_tags, profile.source_language))
+        # ONE home for the bible (engine/canon_bible.py) — this sequence was written out
+        # here twice and nowhere else, which is why the headless D5 critic seam had no
+        # canon to copy from and judged `canon_consistency` against the passage alone.
+        canon = (await canon_for_chapter(
+            kal=kal, book=book, book_id=work.book_id, chapter_id=body.chapter_id,
+            user_id=user_id, bearer=bearer, source_language=profile.source_language,
+        )).text
 
     heal_input = {
         "worker_op": "self_heal_propose", "chapter_text": text, "canon": canon,
@@ -353,11 +288,13 @@ async def quality_report_endpoint(
     profile = from_settings(work.settings)
     canon = body.canon
     if not canon:
-        genre_tags = await _book_genre_tags(book, work.book_id, bearer)
-        # AS OF the chapter being reported on (T7) — a quality report that grades chapter 12
-        # against end-of-book canon manufactures "inconsistencies" the author never wrote.
-        cast = await _canon_cast_at(kal, book, work.book_id, body.chapter_id, user_id)
-        canon = render_canon(cast, convention=convention_for(genre_tags, profile.source_language))
+        # ONE home for the bible (engine/canon_bible.py). AS OF the chapter being reported
+        # on (T7) — a report that grades chapter 12 against end-of-book canon manufactures
+        # "inconsistencies" the author never wrote.
+        canon = (await canon_for_chapter(
+            kal=kal, book=book, book_id=work.book_id, chapter_id=body.chapter_id,
+            user_id=user_id, bearer=bearer, source_language=profile.source_language,
+        )).text
 
     qr_input = {
         "worker_op": "quality_report", "chapter_text": text, "canon": canon,
@@ -528,21 +465,6 @@ def _decompose_response(result) -> dict:
             }
         out["chapters"].append(ch)
     return out
-
-
-async def _book_genre_tags(book: BookClient, book_id: UUID, bearer: str) -> list[str]:
-    """The book's genre tags for motif retrieval (best-effort — an empty list just
-    means the retriever's genre ∩ pre-filter matches nothing, so no motif binds; the
-    planner degrades to invent cleanly). Reads the `genres`/`genre_tags` field off the
-    book object if present."""
-    try:
-        b = await book.get_book(book_id, bearer)
-    except BookClientError:
-        return []
-    if not b:
-        return []
-    raw = b.get("genres") or b.get("genre_tags") or []
-    return [str(g) for g in raw if isinstance(g, (str,)) and g.strip()]
 
 
 @router.post("/works/{project_id}/outline/decompose")

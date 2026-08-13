@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `C2` — ground the D5 critic seam in the roster canon.**
-See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. **C1 is DONE** — the critic runs on QC-5's flow and scored `canon_consistency 5/5` from `active_rules=[]`, `present_facts=[]`; the number exists and is ungrounded. C2 extracts the roster-canon helpers out of `routers/plan.py::quality_report_endpoint` and feeds them in, then INVERTS `tests/unit/test_engine_critic_seam_canon.py`.
+**RESUME: `C3` — drive the acceptance chapters with a DISTINCT critic and paste the scores.**
+See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. **C1 and C2 are DONE** — the critic is grounded (`canon_grounding: as_of`, 13 cast members) and the bible has one home, `engine/canon_bible.py`. C3 must set `critic_model_ref` (S6: C1/C2 let the drafter judge itself) and record that `active_rules` is still empty, so `violations[]` cannot fire.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -4630,6 +4630,83 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   ---
+  ### ✅ C2 2026-08-13 — the critic is grounded; **one home for the bible**, and an outage that read as a verdict
+
+  The *(genre tags → cast as-of the chapter → render)* sequence was written out inline at **two**
+  endpoints in `routers/plan.py` and nowhere else, so the headless D5 seam — which has no
+  bearer-side router to copy from — had nothing to reuse and judged with empty canon. A third
+  inline copy would have made it three. It now lives once in **`app/engine/canon_bible.py`**,
+  with three callers: self-heal, quality-report, and the seam.
+
+  **Live proof, isolated stack, rebuilt service AND worker** (run `019ff9cf-eb9b-…`, acceptance
+  book chapter 11):
+
+  ```
+                      C1 (before)        C2 (after)
+  canon_consistency          5                 2
+  canon_grounding        (absent)          as_of
+  canon_as_of            (absent)             11
+  canon_cast_size        (absent)             13     <- the judge holds 13 cast members
+  severity                    ok              warn
+  ```
+
+  ⚠️ **The 5 → 2 move is NOT evidence that the judge now catches canon violations.** The prompt
+  changed, and every dimension moved (`voice_match` 5 → 2). What is proven is what the table
+  says: the bible **arrives**, read at the chapter's story position, with a non-empty cast.
+  Whether it *discriminates* is C4's question, and stating otherwise here would be the third
+  time in this arc that a moved number got read as a working check.
+
+  🔴 **THE RUN CAUGHT A DEFECT IN C2'S OWN INSTRUMENTATION.** The first grounded run reported
+
+  ```
+  canon_grounding : as_of        <- reads as "grounded"
+  canon_cast_size : 0
+  ```
+
+  and the log said `kal state@11 unavailable for book … : [Errno -2] Name or service not known`.
+  `KalClient.state` degrades a transport failure to `[]` **by contract**, and a genre-convention
+  block renders with nobody in it — so the bible's text was non-empty, and my first cut called
+  that `as_of`. **A field that says "grounded" when the canon read failed launders an outage
+  into a verdict**, which is worse than having no field. `grounding` now has a fourth value,
+  `convention_only`, and the cast — not the text — is what earns a position.
+
+  **Root cause of the outage:** `knowledge-gateway` was never started in `lw-iso`. Not a code
+  defect; the isolated stack runs a subset by design (95.7 GB host, memory note in
+  `ISOLATED_STACK.md`). Started it, re-ran, `entities: 20` at `as_of=11`. **Standing rule 2 paid
+  for itself twice in one batch** — `cast_size: 0` and `grounding: as_of` were both numbers that
+  read as success.
+
+  **BITE ×2**, each red on the value and not on a stack trace:
+
+  ```
+  1. present_facts=bible.as_present_facts()  ->  present_facts=[]
+     E  AssertionError: the seam is judging without canon again — this is the C1 defect returning
+     E  assert ([])
+  2. `if not cast:`  ->  `if False and not cast:`
+     E  AssertionError: assert 'as_of' == 'convention_only'
+  ```
+
+  **QC (a) gates:** plan-verify PASS · the full pre-commit battery green. No new gate, so no
+  `--selftest` owed.
+  **QC (b) the seam:** `iso.sh build composition-service composition-worker` — **both**, then
+  `grep`-verified inside each container that the running image carries `bible.as_present_facts`
+  and `canon_bible.py`. The run above crosses composition → knowledge-gateway → knowledge-service
+  → book-service.
+  **QC (c) real data:** a real draft revision per run; the KAL returned 20 entities at `as_of=11`,
+  13 of which carry a name fact and reach the bible (`cast_from_state` drops the nameless — an
+  entity with no name at that position grounds nothing).
+
+  ```
+  3609 passed — composition-service unit suite
+  ```
+
+  🔻 **KNOWN LIMIT, and it is C4's input, not a silent gap.** `active_rules` is **still `[]`**.
+  The bible goes in as `present_facts`, exactly the shape `build_quality_report` uses — so
+  `violations[]` stays empty by construction, because a violation is keyed to a **rule id** and
+  there are no rules. QC-5's assertion wants a misattributed betrayal to surface; a facts-only
+  grounding can move the score but cannot name the rule it broke. C4 must either accept a score
+  as the signal or say plainly that the rule channel is unwired.
+
   ### ✅ C1 2026-08-13 — the critic DOES run on QC-5's flow, and it judges with **no canon**
 
   **The 2026-08-13 drafting run below measured the wrong surface.** It drove

@@ -194,35 +194,39 @@ async def test_canon_cast_reads_state_at_the_chapters_sort_order():
     # The position must be the CHAPTER's book position, not an index the router happened to
     # have. Asserting the value passed to `state` is the whole point: an off-by-one or a
     # job-relative index answers confidently about a different chapter.
-    from app.routers.plan import _canon_cast_at
+    from app.engine.canon_bible import canon_cast_at
 
     chapter = uuid.uuid4()
     e1 = str(uuid.uuid4())
     kal = _StubKal([_entity(e1, name="Alice", role="protagonist")])
     book = _StubBook({str(chapter): 12})
 
-    cast = await _canon_cast_at(kal, book, BOOK, chapter, USER)
+    cast, as_of = await canon_cast_at(kal, book, BOOK, chapter, USER)
 
     assert kal.state_calls == [12]
     assert kal.roster_calls == 0
     assert cast == [{"name": "Alice", "role": "protagonist", "entity_id": e1}]
+    # C2: the position is RETURNED, not only logged — a degrade nobody can observe
+    # from the result is a degrade that gets reported as a success.
+    assert as_of == 12
 
 
 async def test_canon_cast_falls_back_to_the_untimed_roster_and_warns(caplog):
     # An unresolvable position degrades to what the caller had before this task — but LOUDLY.
     # An ungrounded-in-time bible is invisible in the output; this WARN is its only detector.
-    from app.routers.plan import _canon_cast_at
+    from app.engine.canon_bible import canon_cast_at
 
     chapter = uuid.uuid4()
     kal = _StubKal([])
     book = _StubBook({})   # book-service knows no sort_order for this chapter
 
     with caplog.at_level("WARNING"):
-        cast = await _canon_cast_at(kal, book, BOOK, chapter, USER)
+        cast, as_of = await canon_cast_at(kal, book, BOOK, chapter, USER)
 
     assert kal.state_calls == []
     assert kal.roster_calls == 1
     assert cast == [{"entity_id": "r1", "name": "FromRoster", "kind": None}]
+    assert as_of is None   # C2: the caller can SEE it fell back
     assert any("NO resolved story position" in r.getMessage() for r in caplog.records), caplog.text
 
 
