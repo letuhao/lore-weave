@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
+import logging
 import httpx
 from loreweave_internal_client import InternalClientError
 
@@ -37,6 +38,8 @@ __all__ = [
 
 # Safety cap on the field-map drain: 500 pages × ≤200/page = 100k entities, far past any real
 # book's cast — bounds a pathological never-null cursor without truncating a real cast.
+logger = logging.getLogger(__name__)
+
 _MAX_FIELDMAP_PAGES = 500
 
 
@@ -170,41 +173,45 @@ class GlossaryClient:
         the bug the roster drain fixed: complete cast, but incomplete fields). We follow
         `next_cursor` to completion so the field map covers the WHOLE cast. `limit` becomes the
         page size; a safety cap bounds a pathological never-null cursor."""
-        url = f"{self._base}/internal/books/{book_id}/entities"
-        page_size = max(1, min(limit, 200))
-        out: list[GlossaryEntity] = []
-        cursor: str | None = None
-        for _ in range(_MAX_FIELDMAP_PAGES):
-            params = {"limit": str(page_size)}
-            if cursor:
-                params["cursor"] = cursor
-            resp = await self._get(
-                url,
-                headers={"X-Internal-Token": self._internal_token},
-                params=params,
-            )
-            payload = resp.json()
-            for r in _as_rows(payload):
-                out.append(
-                    GlossaryEntity(
-                        entity_id=str(r.get("id") or r.get("entity_id") or ""),
-                        name=neutralize_injection(r.get("name") or r.get("canonical_name")),
-                        kind=str(r.get("kind") or r.get("kind_code") or r.get("kind_name") or ""),
-                        # The internal entities endpoint returns the authored canon under
-                        # `short_description` (the column, F-C12-1) — fall back to the legacy
-                        # `description` key. The contradiction check reads this.
-                        description=neutralize_injection(
-                            r.get("short_description") or r.get("description")
-                        ),
-                    )
+        # T38 B3 — through the KAL when one is configured. The KAL's `cast` read carries the
+        # SAME projection this method was reaching into glossary's `/internal/.../entities` to
+        # get (kind + short_description), so the direct read is no longer the only way to have
+        # it. The glossary path stays as the fallback for a deployment with no KAL configured —
+        # deleting it would turn a missing URL into a missing feature.
+        if self._kal is not None:
+            rows, truncated = await self._kal.cast(book_id=book_id, limit=max(1, min(limit, 200)))
+            if truncated:
+                # Loud, not swallowed: an incomplete field map is the exact bug this method's
+                # own docstring says the drain exists to prevent.
+                logger.warning(
+                    "lore-enrichment: KAL cast drain hit its page cap for book %s — the field "
+                    "map is INCOMPLETE; the tail of the cast has empty kind/description",
+                    book_id,
                 )
-            nxt = payload.get("next_cursor") if isinstance(payload, dict) else None
-            # Stop at the end, or if the server echoes the same cursor (stuck) — no re-fetch loop.
-            if not nxt or nxt == cursor:
-                break
-            cursor = nxt
-        return out
-
+            return [
+                GlossaryEntity(
+                    entity_id=r.entity_id,
+                    name=neutralize_injection(r.name or r.cached_name),
+                    kind=r.kind,
+                    description=neutralize_injection(r.short_description),
+                )
+                for r in rows
+            ]
+        # T38 B3 — the direct glossary read is GONE, not merely bypassed. It was already
+        # unreachable: `knowledge_gateway_url` carries a default and both `list_entities`
+        # construction sites pass it, so the "fallback" could not fire — and while it sat here
+        # the reader gate correctly refused to shrink, because a path that exists is a path
+        # that can be taken.
+        #
+        # Refusing beats answering wrongly (the rule A1-A3 applied to the AGE adapter): a
+        # KAL-less client silently returning [] here would read as "this book has no cast",
+        # which is the same shape as the silent truncation this whole drain exists to end.
+        raise GlossaryServiceError(
+            "lore-enrichment: no KAL configured, so the entity field map cannot be read "
+            "(INV-KAL: entity knowledge is read through the KAL, not glossary /internal). "
+            "Construct GlossaryClient with kal_base_url=settings.knowledge_gateway_url.",
+            retryable=False,
+        )
     async def list_enrichment_coverage(
         self, *, book_id: UUID, limit: int = 200
     ) -> list[EntityCoverageRow]:

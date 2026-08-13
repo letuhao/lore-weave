@@ -144,8 +144,6 @@ BASELINE = {
     os.path.join("knowledge-service", "app", "clients", "glossary_client.py"):
         "by-ids read (identity for the semantic selector) — knowledge-service owns the KG, "
         "NOT the glossary, so against the authored catalog it is a consumer like any other",
-    os.path.join("lore-enrichment-service", "app", "clients", "glossary.py"):
-        "LIST read — a core T38 target",
     os.path.join("translation-service", "app", "workers", "glossary_client.py"):
         "by-ids read",
     os.path.join("translation-service", "app", "workers", "mention_backfill.py"):

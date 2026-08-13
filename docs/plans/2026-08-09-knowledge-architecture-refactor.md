@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B3` — migrate the first pinned consumers onto `cast`; the reader gate shrinks per consumer.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 DONE** (gate ceiling **64 → 59**, floor **14 → 17**; conformance **40 → 67**); **A7+ is HELD** on a scoping decision — `D-T17-SWEEP-IS-NOT-MECHANICAL` measured that 56 of the 59 remaining bindings live in **T25** (vector) and **T35** (identity) work, so A's remainder should likely be re-ordered behind them. Workstream **B is unblocked by both** and is where execution continues: **B1+B2 DONE** — the KAL grew `GET /v1/kal/books/{book_id}/cast`, the detail read T38's census showed was missing (0 of 10 consumers could use `roster`), with an EXPLICIT `truncated` flag. B3 moves the first consumers and owes the live smoke B2 could not have. See **▶ EXECUTION PLAN** below.
+**RESUME: `B4` — migrate the two remaining LIST readers (`translation/mention_backfill`, `worker-ai/clients`) onto `cast`.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** on a scoping decision (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B3 DONE:** the KAL grew `cast` (declared in the frozen `kal.v1.yaml`), and the first consumer migrated — **`authored-catalog-reader-gate` 9/10 → 8/9**, its first shrink, with a live smoke reading **36 entities, 36 with kind, 36 with description** through gateway → glossary on rebuilt images. B4 takes the two remaining LIST readers, which `cast` already serves. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6545,6 +6545,83 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ---
+  ### ✅ B3 2026-08-13 — first consumer migrated; **the reader gate shrinks for the first time**
+
+  ```
+  authored-catalog-reader-gate   9 files / 10 call sites  ->  8 files / 9 call sites
+  ```
+
+  `lore-enrichment-service/app/clients/glossary.py` — a **core T38 target** in the baseline —
+  now reads its entity field map through the KAL's `cast`. Three moving parts:
+
+  1. **The contract first.** `kal.v1.yaml` is FROZEN and versioned, so `cast` + `CastEntry` are
+     declared there in the same commit as the route. A gateway route the contract does not know
+     about is an undeclared surface, and the contract is the thing consumers are told to trust.
+  2. **The client grows `cast()` returning `(rows, truncated)`** — never a bare list. The drain
+     has a page cap, and hitting it means the answer is INCOMPLETE, which is the exact failure
+     `_list_entities_glossary`'s own docstring describes: *"a single page would only carry the
+     FIRST ~100-200 entities' fields — leaving the tail of a large cast with empty
+     kind/description … complete cast, but incomplete fields."*
+  3. **The direct glossary read is DELETED, not bypassed** — and that is what let the gate move.
+
+  🔴 **The gate refused to shrink while the fallback existed, and it was right.** The first cut
+  routed through the KAL and *kept* the glossary page as a "fallback for a deployment with no
+  KAL". The gate still read 9/10, because **a path that exists is a path that can be taken**.
+  Measured: `knowledge_gateway_url` carries a default and **both** `list_entities` construction
+  sites pass it — the fallback was already unreachable. It now raises, naming INV-KAL, because
+  a KAL-less client returning `[]` would read as *"this book has no cast"*: the same shape as
+  the silent truncation the drain exists to end.
+
+  🔴 **Six tests went red, and none of them were testing what they appeared to test.** Three
+  (`bare_list_payload`, `internal_token_header`, `502_retryable`) used `list_entities` merely as
+  a *vehicle* for client machinery — header, envelope tolerance, retry — all of which the
+  sibling `list_enrichment_coverage` already covers; repointed there. Two pinned the tolerant
+  LEGACY envelope (`entities`/`id`/`canonical_name`/`kind_name`) of a page that no longer
+  exists; rewritten against the reads `list_entities` actually makes, keeping the assertions
+  that still mean something (CJK round-trip, authored canon in `description`). One documented
+  the removed fallback and is now its refusal test.
+
+  **BITE:**
+
+  ```
+  disable the KAL branch in the field-map read
+     E  GlossaryServiceError: lore-enrichment: no KAL configured, so the entity field map
+        cannot be read (INV-KAL …)
+  ```
+
+  ⚠️ The first attempt at that bite printed `38 passed` because the exact-match replace hit
+  **two** identical `if self._kal is not None:` lines and asserted a single match, so nothing
+  was mutated. Re-cut by line number — the fourth time this session that a CRLF/ambiguity
+  mismatch produced a green that meant nothing.
+
+  **QC (a) gates:** `authored-catalog-reader-gate` **PASS at 8/9**, baseline shrunk in this
+  commit (rule 5), `--selftest` passes — *"detects a call, ignores a docstring, crosses a
+  nested-quote interpolation … (non-vacuous)"*. `gateway-domain-logic-gate` PASS.
+  **QC (b) the seam — the smoke B2 was owed.** Both `knowledge-gateway` and
+  `lore-enrichment-service` rebuilt, then `grep`-verified inside each container that the running
+  image carries the new code. The real consumer, driven in-container against the acceptance
+  book through gateway → glossary:
+
+  ```
+  entities: 36
+  with kind: 36 | with description: 36
+  ```
+
+  Every row carried both fields — which is the point: the old direct page delivered them for
+  the first ~100-200 only, and `roster` alone delivers neither.
+  **QC (c) real data:** the 36 rows above are the acceptance book's real cast, read live.
+
+  ```
+  1261 passed, 162 skipped — lore-enrichment-service
+  Test Suites: 6 passed · Tests: 30 passed — knowledge-gateway
+  ```
+
+  **Nine call sites remain pinned.** Four are `entities/by-ids` (a different question — an id
+  LIST, not a page), two are eval scripts on `canon-content`, one is the `assistant.controller`
+  DELETE the baseline already labels as not T38's, and two are the remaining LIST reads
+  (`translation/mention_backfill`, `worker-ai/clients`) — both now served by `cast`, and both
+  B4's.
+
   ### ✅ B1+B2 2026-08-13 — the KAL grows `cast`, the detail read T38's census said was missing
 
   B1 was a design batch, and design alone is a prose-only cycle — so the contract and the

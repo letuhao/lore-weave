@@ -236,6 +236,43 @@ paths:
                   next_cursor: { type: string, nullable: true }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/kal/books/{book_id}/cast:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: cursor, in: query, required: false, description: "Keyset cursor; same axis as roster", schema: { type: string } }
+      - { name: limit, in: query, required: false, schema: { type: integer, default: 200, maximum: 500 } }
+    get:
+      tags: [reads]
+      summary: cast — the DETAIL read beside roster (T38)
+      description: |
+        `roster` is projection-restricted to id+name+kind, and T38's census found **0 of 10** pinned
+        consumers could migrate onto it: four went to glossary's `entities/by-ids` for the detail, two
+        need `aliases`, one needs `kind` + `short_description`. `cast` is the missing rung — roster's page
+        shape with the projection those consumers actually read, over ONE book.
+
+        It does NOT replace either neighbour, and that is deliberate. `roster` stays narrow because it is
+        the enumeration every indexing pass drains end-to-end; widening it would charge that cost to
+        readers that never asked. `entities/by-ids` stays because it answers a different question —
+        "these specific entities", keyed by an id list, not "a page of this book".
+
+        `truncated` is EXPLICIT, never inferred from a short page. A caller that stops at
+        `items.length < limit` is guessing, and the guess is wrong exactly when the upstream capped it —
+        the silent truncation that once cut a deep book's cast at ~100 while reporting a complete-looking
+        count.
+      responses:
+        '200':
+          description: One page; drain `next_cursor` to completion for the full cast
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, truncated]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CastEntry' } }
+                  next_cursor: { type: string, nullable: true }
+                  truncated: { type: boolean, description: "True while more pages remain; NEVER inferred by the caller" }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/kal/books/{book_id}/state:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -742,6 +779,16 @@ components:
         entity_id: { type: string, format: uuid }
         name: { type: string }
         kind: { type: string, nullable: true }
+    CastEntry:
+      type: object
+      required: [entity_id, name]
+      properties:
+        entity_id: { type: string, format: uuid }
+        name: { type: string }
+        cached_name: { type: string, nullable: true, description: "Carried because two pinned consumers read it BY THIS NAME" }
+        kind: { type: string, nullable: true }
+        aliases: { type: array, items: { type: string }, description: "Surface forms; [] when none, never absent" }
+        short_description: { type: string, nullable: true }
     StateEntity:
       type: object
       required: [entity_id, facts]
