@@ -140,6 +140,23 @@ def _check_dim(dim: int) -> None:
         )
 
 
+def _parse_vector(raw: str | None) -> list[float] | None:
+    """`vector::text` comes back as `[0.1,0.2,…]`. Parsed here rather than by registering
+    an asyncpg codec: the codec is process-global and this is one column on one query.
+
+    Returns None on anything unparseable instead of raising. A search that died because one
+    row's vector was malformed would take out the whole result set to protect a diversity
+    re-rank that degrades perfectly well without it — MMR already skips hits whose vector is
+    None (`if hit.vector is not None`), which is the behaviour every non-vector caller gets.
+    """
+    if not raw:
+        return None
+    try:
+        return [float(x) for x in raw.strip("[]").split(",") if x]
+    except ValueError:
+        return None
+
+
 def _vector_literal(embedding: list[float]) -> str:
     """pgvector's text input form. Passed as text and cast with `::vector` at the call
     site rather than pulling in the `pgvector` package for a codec — one dependency, for
@@ -167,6 +184,7 @@ CREATE TABLE IF NOT EXISTS {table} (
     source_lang     text NOT NULL DEFAULT 'unknown',
     mixed           boolean NOT NULL DEFAULT false,
     content_hash    text,
+    created_at      timestamptz NOT NULL DEFAULT now(),
     updated_at      timestamptz NOT NULL DEFAULT now(),
     -- Identity is (user, source, chunk): re-embedding an edited chunk must REPLACE. A
     -- surrogate key alone would let a re-embed double every hit's recall silently.
@@ -197,6 +215,15 @@ CREATE TABLE IF NOT EXISTS {table} (
 # test database got them and passed. The search would then fail at runtime on exactly the
 # installations that have data. This ALTER is what makes `ensure_vector_schema` idempotent in
 # the sense it already claims: safe on every start, for old and new schemas alike.
+# T24b — same reasoning as the entity backfill below, on the passage table. `created_at`
+# and the two columns the drawer read needs must appear on schemas created BEFORE this
+# change, or the migrated reader fails at runtime on exactly the installations that have
+# data while every fresh test database passes.
+_PASSAGE_READ_BACKFILL = (
+    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()",
+    "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS block_index integer",
+)
+
 _ENTITY_LIFECYCLE_BACKFILL = (
     "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS project_id text",
     "ALTER TABLE {table} ADD COLUMN IF NOT EXISTS archived boolean NOT NULL DEFAULT false",
@@ -219,6 +246,8 @@ async def ensure_vector_schema(pool: asyncpg.Pool, dims: tuple[int, ...] | None 
             ptable, etable = passage_table(dim), entity_table(dim)
             await conn.execute(_PASSAGE_DDL.format(table=ptable, dim=dim))
             await conn.execute(_ENTITY_DDL.format(table=etable, dim=dim))
+            for stmt in _PASSAGE_READ_BACKFILL:
+                await conn.execute(stmt.format(table=ptable))
             for stmt in _ENTITY_LIFECYCLE_BACKFILL:
                 await conn.execute(stmt.format(table=etable))
             for scope, table in (("passage", ptable), ("entity", etable)):
@@ -251,6 +280,10 @@ async def ensure_vector_schema(pool: asyncpg.Pool, dims: tuple[int, ...] | None 
 _PASSAGE_ATTRS = (
     "text", "source_type", "source_id", "chunk_index",
     "is_hub", "chapter_index", "canon", "source_lang",
+    # T24b — parity with the Neo4j arm, which already returns all three. A migrated reader
+    # reads one shape; two adapters that disagree about which keys exist turn the cutover
+    # into a per-backend bug hunt, which is the whole thing the port is for.
+    "project_id", "created_at", "block_index",
 )
 
 # Columns returned for an entity hit (T25b). Short by comparison with passages, and that
@@ -337,6 +370,7 @@ class PgVectorStore:
         dim: int,
         k: int = 10,
         filter: VectorFilter | None = None,
+        include_vectors: bool = False,
     ) -> tuple[str, list[object], list[str]]:
         """The query `search` runs, without running it. Returns `(sql, params, filters)`.
 
@@ -429,6 +463,11 @@ class PgVectorStore:
         select = (
             f"SELECT id::text AS record_id, 1 - (embedding <=> {vec}) AS score, "
             f"{', '.join(_PASSAGE_ATTRS)}"
+            # The stored vector, aliased so the row key matches the port's field name.
+            # Cast to text and parsed back rather than returned raw: asyncpg has no codec
+            # for pgvector's type, and registering one would put a driver-level extension
+            # in the composition root for one caller's benefit.
+            + (", embedding::text AS vector" if include_vectors else "")
         )
         sql = (
             f"{select} FROM {table} WHERE {' AND '.join(where)} "
@@ -445,10 +484,12 @@ class PgVectorStore:
         dim: int,
         k: int = 10,
         filter: VectorFilter | None = None,
+        include_vectors: bool = False,
     ) -> list[VectorHit]:
         started = time.perf_counter()
         sql, params, applied = self.build_search_sql(
-            scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k, filter=filter,
+            scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k,
+            filter=filter, include_vectors=include_vectors,
         )
         # Only used for the log line below; the SQL itself came from the builder.
         table = passage_table(dim) if scope == "passage" else entity_table(dim)
@@ -475,6 +516,7 @@ class PgVectorStore:
                 score=float(r["score"]),
                 scope=scope,
                 attributes={a: r[a] for a in attrs},
+                vector=_parse_vector(r["vector"]) if include_vectors else None,
             )
             for r in rows
         ]

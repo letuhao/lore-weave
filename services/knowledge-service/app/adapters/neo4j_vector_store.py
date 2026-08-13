@@ -65,6 +65,7 @@ class Neo4jVectorStore:
         dim: int,
         k: int = 10,
         filter: VectorFilter | None = None,
+        include_vectors: bool = False,
     ) -> list[VectorHit]:
         f = filter or VectorFilter()
         started = time.perf_counter()
@@ -81,6 +82,7 @@ class Neo4jVectorStore:
                 limit=k,
                 oversample_factor=_OVERSAMPLE_FACTOR,
                 include_drafts=f.include_drafts,
+                include_vectors=include_vectors,
             )
             out = [
                 VectorHit(
@@ -103,6 +105,12 @@ class Neo4jVectorStore:
                         # the chapter — degraded in a way no test would notice, because the
                         # hit is otherwise perfectly well formed.
                         "block_index": getattr(h.passage, "block_index", None),
+                        # T24b — the drawer read needs both, and neither was here. The
+                        # public DrawerSearchHit surfaces `project_id` and `created_at`;
+                        # a caller migrated onto this port without them would have had to
+                        # drop two fields from a shipped API response to go through it.
+                        "project_id": getattr(h.passage, "project_id", None),
+                        "created_at": getattr(h.passage, "created_at", None),
                     },
                     vector=h.vector,
                 )

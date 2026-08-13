@@ -39,7 +39,12 @@ class _RecordingStore:
         self.name = name
         self.searched: list[str] = []
 
-    async def search(self, *, scope, user_id, embedding, dim, k=10, filter=None):
+    async def search(self, *, scope, user_id, embedding, dim, k=10, filter=None,
+                     include_vectors=False):
+        # T24b — the flag is accepted rather than dropped. A double whose signature is
+        # NARROWER than the port's fails at the call, which is how this one caught the
+        # parameter being added; keeping it narrow would just move the break later.
+        self.include_vectors_seen = include_vectors
         self.searched.append(scope)
         return []
 

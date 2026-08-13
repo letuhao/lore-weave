@@ -95,15 +95,21 @@ class DualWriteVectorStore:
         dim: int,
         k: int = 10,
         filter: VectorFilter | None = None,
+        include_vectors: bool = False,
     ) -> list[VectorHit]:
         hits = await self._primary.search(
             scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k, filter=filter,
+            include_vectors=include_vectors,
         )
         if self._shadow_read_rate <= 0.0 or self._rng.random() >= self._shadow_read_rate:
             if self._shadow_read_rate > 0.0:
                 vector_shadow_read_total.labels(outcome="skipped_sampling").inc()
             return hits
         await self._compare(
+        # `include_vectors` is deliberately NOT forwarded to the shadow: the comparison is
+        # over `record_id` sets and nothing else, so asking the secondary for k×dim floats
+        # would pay the whole payload to discard it. Omitted on purpose, said here so it
+        # does not read as the parameter having been missed.
             hits, scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k, filter=filter,
         )
         return hits

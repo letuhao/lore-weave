@@ -188,6 +188,42 @@ over anything.
 `search/retriever.py`) onto `VectorStore` through a provider, exactly as `get_graph_store` does
 for the graph. T25 then becomes what it claims to be: flip the provider, drop the Neo4j indexes.
 
+
+**Measured in T24b, and it splits the task in two — DECIDED.** "Wire three readers onto the
+port" assumed the port could serve them. It could not serve **any** of the three:
+
+| reader | what the port could not give it |
+|---|---|
+| `search/retriever.py` | nothing — `vector_hit_to_raw_hit` was built by T25b and has **zero callers** |
+| `routers/public/drawers.py` | `project_id` and `created_at`, both fields of the *published* `DrawerSearchHit` |
+| `context/selectors/passages.py` | the stored VECTOR — MMR diversity computes hit-to-hit cosine from `hit.vector` |
+
+The third is the sharp one. `VectorHit.vector` has existed since T14 and **no adapter could
+ever populate it**: `search()` had no `include_vectors`, so the Neo4j adapter called
+`find_passages_by_vector` without it, the repo default `False` won, and `vector=h.vector`
+assigned `None` on every hit forever. The port promised a field no caller could obtain. So the
+L3 selector was not un-migrated for want of effort — the capability was missing.
+
+So:
+
+* **T24b-a — the port can serve all three readers.** `search(include_vectors=…)`; the two
+  drawer fields and `block_index` projected by *both* backends; a `created_at` column plus the
+  `ADD COLUMN IF NOT EXISTS` backfill that keeps a pre-T24b deployment working. Done, with
+  four bites.
+* **T24b-b — flip the three call sites onto `get_vector_store`.** This is where the live
+  smoke belongs: a read-path cutover that changes which store answers a user-visible search is
+  exactly a batch that crosses a service seam, and QC (b) is not satisfiable from unit tests.
+
+Splitting here rather than shipping half a wiring is the same call `vector_store_provider.py`
+already records for the write path — *"the read cutover needs its own task and its own
+evidence."* -b is that evidence.
+
+**And the parity is enforced, not asserted.** Neo4j builds its attributes as a dict literal,
+Postgres from a column tuple, in two files with nothing relating them — the seven-names-in-a-
+Go-const-block shape this repo has a gate for. `test_the_two_real_backends_agree_on_a_passage_hits_attribute_KEYS`
+reads the Neo4j keys out of the adapter's **AST** and compares them to `_PASSAGE_ATTRS`, so a
+key added to one and not the other reds by name.
+
 ### 3.2 The restore drill's recall gap is accepted and documented — **DECIDED**
 *Replaces `D-T25B-SOAK`.* `pg_restore` rebuilds the ANN graph rather than copying it, so
 post-restore top-10 overlap was 7/10 at 20 000 rows. **Data recovery is promised; *result*

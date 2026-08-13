@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T24b` — wire `VectorStore` into the three readers (SPEC §3.1), so T25 has something to cut over.** ✅ `A8` is DONE (`facts_for` on the port + all three adapters, conformance **72 → 82**).
+**RESUME: `T24b-b` — flip `search/retriever.py`, `routers/public/drawers.py` and `context/selectors/passages.py` onto `get_vector_store` (SPEC §3.1), with the live smoke a read-path cutover owes.** ✅ `A8` DONE (conformance **72 → 82**) · ✅ `T24b-a` DONE — the port can now serve all three readers, which measured it could not: `VectorHit.vector` had been unpopulatable since T14.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -7435,6 +7435,86 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **`D-PORT-CANNOT-OBSERVE-FACT-STATE` is DISCHARGED** — the deferral A7 wrote, closed by the
   spec section that replaced it (§1.1). ✅ Two rules that could not exist now exist, and one of
   them reds on the mutation that proved the old one hollow.
+
+
+  ### ✅ T24b-a 2026-08-13 — the port could not serve **any** of the three readers
+
+  ```
+  knowledge-service unit   4221 -> 4224      pg vector integration   21 -> 24
+  ```
+
+  **Rule 8 split the task before a line was written.** T24b reads *"wire three readers onto
+  `VectorStore`"*, which assumes the port can serve them. Measured, it could serve none:
+
+  ```
+  search/retriever.py          nothing missing — vector_hit_to_raw_hit (T25b) has ZERO callers
+  routers/public/drawers.py    project_id, created_at — both on the PUBLISHED DrawerSearchHit
+  context/selectors/passages.py the stored VECTOR — MMR cosine reads hit.vector
+  ```
+
+  🔴 **`VectorHit.vector` HAS EXISTED SINCE T14 AND NO ADAPTER COULD EVER POPULATE IT.**
+  `search()` had no `include_vectors`, so the Neo4j adapter called `find_passages_by_vector`
+  without it, the repo's `include_vectors: bool = False` default won, and `vector=h.vector`
+  assigned `None` on every hit forever. A promised field no caller could obtain — the same
+  class as the provider nothing constructed, and it reads as built. The L3 selector was
+  therefore not un-migrated for want of effort: **the capability was absent**, and MMR
+  diversity across the main context path is what needed it.
+
+  🔧 **The two backends disagreed about a passage hit's shape and nothing said so.** Neo4j
+  built `attributes` as a dict literal; Postgres from a column tuple; two files, no relation.
+  `project_id` / `created_at` / `block_index` were in one and not the other. That drift is
+  silent on both sides — the hit is perfectly well formed, every test written against the
+  backend that has the key passes, and the migrated reader gets `None`, which reads as *"this
+  passage has no chapter"* rather than *"this backend never sent one"*. The parity rule reads
+  the Neo4j keys out of the adapter's **AST** rather than a re-typed list, and names the
+  drifted key: *"only in Neo4j: ['created_at']"*.
+
+  ⚠️ **The schema change ships with its backfill, for the reason T25b already learned here.**
+  A column added to `CREATE TABLE` appears on every fresh test database and on **no deployment
+  that already has data** — so the search fails at runtime on exactly the installations that
+  matter, having passed everything. `_PASSAGE_READ_BACKFILL` is `ADD COLUMN IF NOT EXISTS`,
+  and the rule reconstructs a pre-T24b table and asks `ensure_vector_schema` to fix it.
+
+  ⚠️ **A test double with a NARROWER signature than the port caught the change** —
+  `_RecordingStore.search()` had no `include_vectors` and died at the call. Widened rather
+  than worked around; a narrow double only moves the break later.
+
+  **BITE ×4, each red for its own reason:**
+
+  ```
+  1. fake: vector=None regardless of the flag
+     E  include_vectors=True returned no vector — MMR diversity silently degrades to none
+  2. pg:   drop "created_at" from _PASSAGE_ATTRS
+     E  the two adapters disagree about a passage hit's shape — only in Neo4j: ['created_at']
+  3. pg:   return r["vector"] raw instead of _parse_vector(...)      ← THE FAKE CANNOT SEE THIS
+     E  the stored vector came back as str — not parsed into floats, so MMR's cosine sees a string
+     E  isinstance('[1,0,0,0,…]', list)
+  4. pg:   skip the _PASSAGE_READ_BACKFILL loop
+     E  ensure_vector_schema left a pre-T24b table unmigrated
+  ```
+
+  **Bite 3 is why the live backend is not optional.** asyncpg has no codec for pgvector's
+  type, so the column comes back through `embedding::text` and is parsed. A fake hands back
+  the list it was given and exercises none of that: the raw string is perfectly truthy, and
+  MMR would score garbage. Same lesson as `cached_aliases`/`kind_code` — one layer down.
+
+  **QC (a) gates:** all 99 green; `db-safety-gate` exit 0; plan-verify PASS. No new gate, none
+  owed — the parity rule is a unit test because it reads source, not a running system.
+  **QC (b) the seam:** N/A **for -a** — port + adapters only, no call site changed, no wire
+  surface. It is emphatically NOT N/A for **-b**, which is why -b is its own batch: flipping
+  the reader changes which store answers a user-visible search.
+  **QC (c) real data:** 24 rules against a real `loreweave/postgres-knowledge:18` (`lw-vec-t24b`,
+  throwaway :7995) — real `vector(384)` columns, real diskann indexes, real round trips.
+
+  ```
+  4224 passed — knowledge-service unit suite
+  24 passed  — pg vector integration, live pgvector + vectorscale
+  ```
+
+  **NEXT: T24b-b** — flip `search/retriever.py`, `routers/public/drawers.py` and
+  `context/selectors/passages.py` onto `get_vector_store`, with the live smoke a read-path
+  cutover owes. `vector_hit_to_raw_hit` has been sitting unused since T25b; it gets its first
+  caller there.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

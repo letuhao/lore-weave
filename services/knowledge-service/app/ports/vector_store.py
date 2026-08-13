@@ -160,11 +160,23 @@ class VectorStore(Protocol):
         dim: int,
         k: int = 10,
         filter: VectorFilter | None = None,
+        include_vectors: bool = False,
     ) -> list[VectorHit]:
         """Top-`k` by cosine similarity within the scope, highest first.
 
         `dim` is passed separately from `len(embedding)` because it selects the index
         family: a mismatch is a caller bug worth failing on, not something to infer.
+
+        `include_vectors=False` is the default and it is the reason `VectorHit.vector` was
+        dead on arrival: the field has been on the hit since T14, no caller could ask for it,
+        and every adapter therefore returned `None` while the port promised a vector. MMR
+        diversity in the L3 selector needs the stored vectors to compute hit-to-hit cosine,
+        so this is what makes that caller portable at all — a store that cannot hand back the
+        vector it stored is not substitutable for one that can.
+
+        It is opt-in because the payload is real: `k` vectors at `dim` floats is 4–12 KB per
+        hit at the pool sizes the selector uses, and the two readers that only rank by score
+        should not pay for it.
         """
         ...
 

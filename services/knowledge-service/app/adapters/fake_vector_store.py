@@ -88,6 +88,7 @@ class FakeVectorStore:
         dim: int,
         k: int = 10,
         filter: VectorFilter | None = None,
+        include_vectors: bool = False,
     ) -> list[VectorHit]:
         f = filter or VectorFilter()
         hits: list[VectorHit] = []
@@ -119,6 +120,12 @@ class FakeVectorStore:
                     "chapter_index": rec.chapter_index,
                     "canon": rec.canon,
                     "source_lang": rec.source_lang,
+                    # T24b — the drawer read needs both; the real adapters return them,
+                    # so a fake that omitted them would let a consumer test pass against
+                    # a hit shape no backend produces.
+                    "project_id": rec.project_id,
+                    "created_at": getattr(rec, "created_at", None),
+                    "block_index": getattr(rec, "block_index", None),
                 }
             else:
                 attributes = {"anchor_score": None}
@@ -128,6 +135,10 @@ class FakeVectorStore:
                 score=_cosine(embedding, rec.embedding),
                 scope=scope,
                 attributes=attributes,
+                # Honoured rather than ignored: `include_vectors=False` returning a vector
+                # anyway would let a caller depend on a payload the real adapters do not
+                # send unless asked, and the bug would surface only in production.
+                vector=list(rec.embedding) if include_vectors else None,
             ))
 
         # Descending score; ties keep insertion order (Python's sort is stable), which is

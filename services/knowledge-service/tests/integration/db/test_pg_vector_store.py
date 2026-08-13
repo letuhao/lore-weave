@@ -578,3 +578,100 @@ async def test_the_diskann_index_is_usable_at_all(store, vector_pool):
         f"the planner ignored the diskann index (used {used or 'none'}) — it builds but "
         "does not serve, which no correctness test would notice"
     )
+
+
+# ── include_vectors, against the real driver (T24b) ──────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_include_vectors_returns_the_STORED_vector_and_off_returns_none(store):
+    """🔴 **The fake cannot prove this one.** Postgres hands the column back through
+    `embedding::text` and `_parse_vector` reads it, because asyncpg has no codec for
+    pgvector's type — a round trip through a string that a fake, which just hands back the
+    list it was given, never exercises at all. The failure it guards is a `vector` that
+    arrives as the literal string `"[0.1,0.2]"`: perfectly truthy, and MMR's cosine then
+    raises or silently scores garbage.
+
+    Both directions, and the OFF direction is the expensive one: a store that always
+    returned the vector would make every caller that never asked pay `k × dim` floats.
+    """
+    await store.upsert(_passage("with-vec", _axis(0)))
+
+    off = await store.search(scope="passage", user_id=_USER, embedding=_axis(0), dim=_DIM, k=5)
+    assert off and off[0].vector is None, (
+        "a search that did not ask for vectors got one — the payload is now unconditional")
+
+    on = await store.search(scope="passage", user_id=_USER, embedding=_axis(0), dim=_DIM,
+                            k=5, include_vectors=True)
+    assert on, "the seeded passage did not come back at all"
+    got = on[0].vector
+    assert isinstance(got, list) and len(got) == _DIM, (
+        f"the stored vector came back as {type(got).__name__} — not parsed into floats, so "
+        f"MMR's cosine sees a string")
+    assert all(isinstance(x, float) for x in got), "the parsed vector holds non-floats"
+    assert got == pytest.approx(_axis(0), abs=1e-5), (
+        "the vector that came back is not the one that was stored")
+
+
+@pytest.mark.asyncio
+async def test_a_passage_hit_carries_the_columns_the_DRAWER_READ_publishes(store):
+    """`project_id` and `created_at` are fields of the public `DrawerSearchHit` response.
+    They were absent from this backend's projection, so a reader migrated onto the port
+    would have had to DROP two fields from a shipped API to go through it — which reads to
+    a client as "the server stopped sending them", not as a migration."""
+    await store.upsert(_passage("published", _axis(0)))
+    hit = (await store.search(scope="passage", user_id=_USER, embedding=_axis(0),
+                              dim=_DIM, k=5))[0]
+    assert hit.attributes["project_id"] == _PROJECT
+    assert hit.attributes["created_at"] is not None, (
+        "created_at came back NULL — the column exists but nothing defaults it")
+    assert "block_index" in hit.attributes, "block_index is not projected"
+
+
+@pytest.mark.asyncio
+async def test_the_read_columns_are_ADDED_to_a_pre_t24b_table(vector_pool):
+    """The same failure mode `test_entity_lifecycle_columns_are_added_to_a_pre_t25b_table`
+    exists for: a column added to the CREATE TABLE appears on every fresh test database and
+    on NO deployment that already has data. The search would then fail at runtime on exactly
+    the installations that matter, having passed every test.
+
+    So the old shape is reconstructed and `ensure_vector_schema` is asked to fix it.
+    """
+    table = passage_table(_DIM)
+    async with vector_pool.acquire() as conn:
+        await conn.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+        # A pre-T24b passage table: no created_at, no block_index.
+        await conn.execute(
+            f"CREATE TABLE {table} ("
+            f"  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),"
+            f"  user_id text NOT NULL, project_id text,"
+            f"  source_type text NOT NULL, source_id text NOT NULL,"
+            f"  chunk_index integer NOT NULL, text text NOT NULL,"
+            f"  embedding vector({_DIM}) NOT NULL, embedding_model text,"
+            f"  is_hub boolean NOT NULL DEFAULT false, chapter_index integer,"
+            f"  canon boolean NOT NULL DEFAULT true,"
+            f"  source_lang text NOT NULL DEFAULT 'unknown',"
+            f"  mixed boolean NOT NULL DEFAULT false, content_hash text,"
+            f"  updated_at timestamptz NOT NULL DEFAULT now(),"
+            f"  UNIQUE (user_id, source_type, source_id, chunk_index))"
+        )
+
+    await ensure_vector_schema(vector_pool, dims=(_DIM, _OTHER_DIM))
+
+    async with vector_pool.acquire() as conn:
+        cols = {
+            r["column_name"] for r in await conn.fetch(
+                "SELECT column_name FROM information_schema.columns WHERE table_name = $1",
+                table,
+            )
+        }
+    assert {"created_at", "block_index"} <= cols, (
+        f"ensure_vector_schema left a pre-T24b table unmigrated: has {sorted(cols)}")
+
+    # And the projection actually works against the migrated table, which is the thing the
+    # column check alone does not prove.
+    store = PgVectorStore(vector_pool)
+    await store.upsert(_passage("after-migrate", _axis(0)))
+    hit = (await store.search(scope="passage", user_id=_USER, embedding=_axis(0),
+                              dim=_DIM, k=5))[0]
+    assert hit.attributes["created_at"] is not None
