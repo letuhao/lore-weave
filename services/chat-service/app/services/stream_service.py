@@ -2017,6 +2017,77 @@ def _flat_declared_types(spec: dict) -> list | None:
     return declared if isinstance(declared, list) else [declared]
 
 
+def _unwrap_object_items_for_string_array(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `entity_ids: [{"entity_id": "<uuid>", "status": "active"}]` -> `["<uuid>"]`.
+
+    🔴 MEASURED LIVE 2026-08-12 (journey `entity-triage`, book 019ff4cf) and reproduced deliberately
+    on 2026-08-13: glossary_propose_curation was called with op='status_change', status='active' and
+    `entity_ids` holding OBJECTS where the schema declares an array of STRINGS, each object
+    re-stating the `status` that was already a sibling argument. The validator refuses it before the
+    tool runs, and the journey ended with all 11 entities still `draft`.
+
+    Third in the same family, and the safety discipline is the same as its two siblings — a wrong
+    unwrap CORRUPTS a write rather than refusing it, so every uncertain shape is DECLINED:
+
+    * the param must declare `type: array` with `items.type` exactly `string` (one union level
+      flattened); anything richer is declined;
+    * EVERY element must be an object — a mixed list is a shape this rule cannot reason about;
+    * each object must carry the parameter's SINGULAR key (`entity_ids` -> `entity_id`) holding a
+      non-empty string; no singular key, no repair;
+    * 🔴 and an object key that ALSO exists as a top-level sibling argument must AGREE with it. The
+      measured payload repeated `status: "active"` next to the sibling `status: "active"` — harmless
+      redundancy. A DISAGREEMENT is a real ambiguity about which value the caller meant, and
+      dropping the object's copy would silently pick one. Decline instead.
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    fixed: list[str] = []
+    for name, value in list(args_obj.items()):
+        if not isinstance(value, list) or not value:
+            continue
+        if not all(isinstance(el, dict) for el in value):
+            continue
+        spec = props.get(name)
+        if type(spec) is not dict:  # shape varies from the sibling repairs ON PURPOSE — identical
+            continue                # bodies make a registered falsifier's anchor match twice
+        # NOT `_flat_declared_types`: that helper vetoes any schema carrying `items`, which is
+        # right for its two SCALAR callers and exactly backwards here — `items` is the thing this
+        # rule needs to read. A union (anyOf/oneOf) around an array is declined outright rather
+        # than flattened, because the branch that matched is then a guess.
+        if spec.get("anyOf") or spec.get("oneOf") or "$ref" in spec or "allOf" in spec:
+            continue
+        declared = spec.get("type")
+        declared_list = declared if type(declared) is list else [declared]
+        if "array" not in [t for t in declared_list if t]:
+            continue
+        items = spec.get("items")
+        if not isinstance(items, dict) or items.get("type") != "string":
+            continue
+        singular = name[:-1] if name.endswith("s") else ""
+        if not singular:
+            continue
+        picked: list[str] = []
+        for el in value:
+            inner = el.get(singular)
+            if not isinstance(inner, str) or not inner.strip():
+                picked = []
+                break
+            # A key that restates a sibling must AGREE with it; a contradiction is ambiguity.
+            if any(k in args_obj and k != name and args_obj[k] != v for k, v in el.items()):
+                picked = []
+                break
+            picked.append(inner)
+        if not picked:
+            continue
+        args_obj[name] = picked
+        fixed.append(name)
+    return fixed
+
+
 def _stringify_int_args_declared_string(args_obj: dict, tool_def: dict | None) -> list[str]:
     """Repair `chapter: 1` → `chapter: "1"` for a param the schema declares STRING-only.
 
@@ -5128,6 +5199,12 @@ async def _stream_with_tools(
                     )
                 # Sibling repair: a JSON NUMBER where the schema declares string-only. Same class,
                 # same discipline — see _stringify_int_args_declared_string.
+                _objs = _unwrap_object_items_for_string_array(args_obj, _tool_def_for_args)
+                if _objs:
+                    logger.info(
+                        "unwrapped object-item arg(s) %s for %s (session=%s) — the schema declares "
+                        "an array of strings", _objs, c["name"], session_id,
+                    )
                 _stringified = _stringify_int_args_declared_string(args_obj, _tool_def_for_args)
                 if _stringified:
                     logger.info(
