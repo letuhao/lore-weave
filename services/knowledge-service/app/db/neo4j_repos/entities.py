@@ -458,7 +458,17 @@ async def merge_entity_at_id(
 # without a fragile created_at==updated_at heuristic. ON MATCH never sets it, so
 # `coalesce(e.__was_created, false)` is false on an existing node. Existing callers
 # that read only `record["e"]` are unaffected by the extra return column.
-_UPSERT_ANCHOR_CYPHER = """
+# T35c — which node the anchor upsert should land on. See `upsert_glossary_anchor_counted`
+# for why: after a glossary rename the recomputed hash matches nothing, and MERGEing on it
+# trips the UNIQUE constraint on `glossary_entity_id` rather than quietly duplicating.
+_RESOLVE_ANCHOR_ID_CYPHER = """
+OPTIONAL MATCH (byId:Entity {id: $canonical_id, user_id: $user_id})
+OPTIONAL MATCH (byAnchor:Entity {user_id: $user_id, project_id: $project_id,
+                                 glossary_entity_id: $glossary_entity_id})
+RETURN coalesce(byId.id, byAnchor.id, $canonical_id) AS eid
+"""
+
+_UPSERT_ANCHOR_CYPHER = """
 MERGE (e:Entity {id: $id})
 ON CREATE SET
   e.__was_created = true,
@@ -527,14 +537,21 @@ async def upsert_glossary_anchor(
     archived_at clearing) are also overwritten to handle the
     "deleted then recreated in glossary" restore path.
 
-    **Known limitation — glossary rename to a different canonical
-    name.** The canonical_id is derived from `name`+`kind`. If a
-    glossary edit changes the name such that
-    `canonicalize_entity_name(new) != canonicalize_entity_name(old)`,
-    this function creates a NEW node instead of renaming the
-    existing one. K11.5b's `link_to_glossary` will own the rename
-    path (lookup-by-glossary_entity_id, then update name in place).
-    Tracked as a K11.5b acceptance criterion.
+    ✅ **FIXED (T35c, 2026-08-14) — the rename limitation is gone.** This docstring used to
+    read: *"Known limitation — glossary rename to a different canonical name … this function
+    creates a NEW node instead of renaming the existing one",* tracked as a K11.5b acceptance
+    criterion that `link_to_glossary` would own. It never could: this pre-loader runs on
+    EVERY extraction pass and does not consult `link_to_glossary`.
+
+    And it was worse than the sentence said. `:Entity(user_id, project_id,
+    glossary_entity_id)` is UNIQUE, so the "NEW node" was never created — the write RAISED
+    `ConstraintValidationFailed`, breaking the anchor pre-load for that entity on every pass
+    after a rename. Measured by the test before the fix.
+
+    `upsert_glossary_anchor_counted` now resolves the target id first (see
+    `_RESOLVE_ANCHOR_ID_CYPHER`), preferring a node at the derived id and falling back to
+    whichever node already holds the glossary anchor. Pinned by
+    `test_the_anchor_PRELOADER_does_not_mint_a_duplicate_on_rename`.
     """
     entity, _ = await upsert_glossary_anchor_counted(
         session,
@@ -572,6 +589,33 @@ async def upsert_glossary_anchor_counted(
         kind=kind,
         canonical_version=canonical_version,
     )
+    # T35c — RESOLVE before minting, the third application of `merge_entity`'s safety
+    # property (after the enrichment anchor in T35a). This function's own docstring carried
+    # the admission: *"Known limitation — glossary rename to a different canonical name …
+    # this function creates a NEW node instead of renaming the existing one."*
+    #
+    # It is worse than the docstring says. `:Entity(user_id, project_id, glossary_entity_id)`
+    # is UNIQUE, so the second node does not quietly appear — the write RAISES
+    # `ConstraintValidationFailed`, and this pre-loader runs on EVERY extraction pass. One
+    # glossary rename therefore breaks extraction for that entity until someone intervenes.
+    #
+    # ⚠️ The coalesce order is NOT load-bearing here, and saying so is the point. On the
+    # enrichment anchor it is — `enriched-promote` deliberately re-anchors a glossary id onto
+    # a different entity, and reversing the order there reds a rule. This pre-loader has no
+    # such path: it always loads the entity the glossary names, so `byAnchor` first would be
+    # equally correct. Bitten to confirm — reversing it leaves all 32 rules green.
+    #
+    # The order is kept identical to the other two writers anyway, so that one shape and one
+    # reasoning cover all three. What IS load-bearing is that a resolution happens at all;
+    # bite 1 (`RETURN $canonical_id`) reds.
+    resolved = await run_read(
+        session, _RESOLVE_ANCHOR_ID_CYPHER,
+        user_id=user_id, canonical_id=canonical_id,
+        project_id=project_id, glossary_entity_id=glossary_entity_id,
+    )
+    async for rec in resolved:
+        canonical_id = rec["eid"]
+        break
     canonical_name = canonicalize_entity_name(name)
     aliases_with_display = list(aliases or [])
     if name not in aliases_with_display:

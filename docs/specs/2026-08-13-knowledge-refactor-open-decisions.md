@@ -309,6 +309,23 @@ remaining callers are not migrations: `entities.py` holds the derivation legitim
 is a storage detail), `recanon_honorifics.py` is a one-shot backfill whose purpose is
 recomputing ids, and `fake_graph_store.py` mirrors the real adapter by design.
 
+**T35c (2026-08-14) — T35's minting half is CLOSED, and "48 join sites" was the wrong
+target.** `Entity.id` is stable: no writer recomputes-and-misses any more, so joining on it is
+correct and the readers never needed repointing. The remainder was always writers that MERGE
+on a hash of mutable properties, and there were **three**: `merge_entity`, the enrichment
+anchor (T35a), and `upsert_glossary_anchor` — the Pass 0 pre-loader that runs on every
+extraction pass. Each is now resolve-first.
+
+The pre-loader's own docstring had admitted the defect and described it wrongly: it said a
+rename *"creates a NEW node"*, but `:Entity(user_id, project_id, glossary_entity_id)` is
+UNIQUE, so the write **raises** and the anchor pre-load stays broken for that entity on every
+later pass. Measured, not inferred.
+
+**What T35 does NOT still owe:** the four remaining `derived-entity-id-gate` callers are a
+storage-layer mint (`entities.py`), a mint fallback (`enrichment.py`), a one-shot backfill
+(`recanon_honorifics.py`) and a test double (`fake_graph_store.py`). None is a migration; the
+gate falls only if the derivation is retired outright, which nothing now depends on.
+
 ### 4.2 T37's command producer follows T36's shape — **DECIDED**
 *Replaces `D-T37-COMPOSITION-COMMAND-PRODUCER`.* The producer writes role facts in the shape
 T36 defines. Building it earlier would ship a command surface whose payload is still moving;

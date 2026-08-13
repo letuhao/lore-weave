@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35c` — repoint the JOIN SITES off `Entity.id` onto the glossary anchor (SPEC §4.1). That is the whole-graph half; the three remaining `derived-entity-id-gate` callers are NOT migrations (storage-layer mint, one-shot backfill, test double).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` · ✅ `T35b` — **and the rename is now PROVED LIVE**: a real `glossary.entity_updated` carrying a rename AND a re-kind through the deployed consumer left the node's id and anchor intact, one node, while the recomputed hash diverged to something the graph does not contain. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**.
+**RESUME: `T36` — role facts (SPEC §6.1 sequences `T35 → T36 → T37 → T32/T33 → QC-6`).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` · ✅ `T35b` · ✅ `T35c` — **T35's minting half is CLOSED**: three writers MERGEd on a hash of mutable properties (`merge_entity`, the enrichment anchor, the anchor pre-loader); each is now resolve-first, and the rename is proved live through the deployed consumer with the id and anchor intact. `glossary_sync` was accused and measured innocent. ⚠️ What T35 still owes is NOT the join sites — `e.id` is stable, so joining on it is correct. The 4 remaining `derived-entity-id-gate` callers are a storage-layer mint, a one-shot backfill, and a test double: none is a migration. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8083,6 +8083,84 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   whose purpose IS recomputing ids; `fake_graph_store.py` mirrors the real adapter and moves
   with it. The genuine remainder is repointing the **join sites** off `Entity.id`, which is the
   whole-graph change the gate's docstring warns about.
+
+
+  ### 🔴 T35c 2026-08-14 — the THIRD writer with the same defect, and its docstring admitted it
+
+  ```
+  integration-db   438 -> 439 passed
+  ```
+
+  T35c was scoped as *"repoint the 48 join sites off `Entity.id`"*. **Measured first, that is
+  not what is left.** `e.id` is already stable — no writer recomputes-and-misses any more
+  after `merge_entity`, T35a and T35b — so a join on it is correct. The remainder was never
+  the readers; it is writers that MERGE on the recomputed hash. There was one left:
+
+  ```python
+  # upsert_glossary_anchor — Pass 0, extraction/anchor_loader.py, EVERY extraction pass
+  MERGE (e:Entity {id: $id})        # $id = entity_canonical_id(name, kind)
+  ```
+
+  🔧 **Its own docstring carried the admission**, which is how a defect survives three years:
+
+  > **Known limitation — glossary rename to a different canonical name.** … this function
+  > creates a NEW node instead of renaming the existing one. K11.5b's `link_to_glossary` will
+  > own the rename path. Tracked as a K11.5b acceptance criterion.
+
+  `link_to_glossary` could never own it: **this pre-loader runs on every extraction pass and
+  does not consult it.**
+
+  🔴 **AND IT IS WORSE THAN THE SENTENCE SAYS.** `:Entity(user_id, project_id,
+  glossary_entity_id)` is UNIQUE, so the "NEW node" is never created — the write **RAISES**:
+
+  ```
+  E  neo4j.exceptions.ConstraintError: ConstraintValidationFailed
+     Node(1) already exists with label `Entity` and properties
+     `user_id`='u-t35-…', `project_id`='p-t35c', `glossary_entity_id`='g-preload-rename'
+  ```
+
+  So one glossary rename does not duplicate an anchor — it **breaks the anchor pre-load for
+  that entity on every subsequent extraction pass**. A documented limitation describing the
+  wrong failure, for a path that runs constantly.
+
+  ✅ Fixed with the same resolution as the other two writers, and the docstring rewritten from
+  a limitation into a pin.
+
+  **BITE ×2 — and the second one CORRECTED MY OWN COMMENT:**
+
+  ```
+  1. resolution removed (`RETURN $canonical_id AS eid`)
+     E  neo4j.exceptions.ConstraintError: ConstraintValidationFailed   <- the defect, restored
+  2. coalesce order reversed (byAnchor before byId)
+     -> 32 passed, 5 skipped        <- GREEN. The order is NOT load-bearing here.
+  ```
+
+  I had copied the enrichment anchor's justification — *"the coalesce order is the safety
+  property"* — into this comment. **It is true there and not here.** `enriched-promote`
+  deliberately re-anchors a glossary id onto a different entity, so the order matters on that
+  writer; this pre-loader always loads the entity the glossary names, so `byAnchor` first
+  would be equally correct. The comment now says that, and says the bite is what measured it.
+  The order is kept identical anyway so one shape covers all three writers.
+
+  **QC (a) gates:** all 99 green; `db-safety-gate` exit 0; `derived-entity-id-gate` PASS at 4
+  (unchanged — this batch fixed a writer, it retired no derivation); plan-verify PASS.
+  **QC (b) the seam:** N/A for the fix itself — it is one repo function, no wire surface, no
+  new service call. The path it serves (`glossary.entity_updated` → anchor pre-load → Neo4j)
+  was driven end-to-end through the deployed consumer in T35b's live proof, which is the same
+  rename that reds this defect.
+  **QC (c) real data:** the rule runs against a real throwaway Neo4j with the real UNIQUE
+  constraint — which is the whole finding, since a fake would have duplicated silently and
+  reported the wrong failure mode.
+
+  ```
+  4228 passed — unit · 439 passed, 367 skipped — integration-db
+  ```
+
+  **Three writers, one defect, three batches.** `merge_entity` (before this session), the
+  enrichment anchor (T35a), the anchor pre-loader (T35c) — each MERGEd on a hash of mutable
+  properties, and each was found only by writing a rename test against a real engine. The
+  glossary sync (T35b) was accused of it and measured innocent. That is the whole of T35's
+  minting half.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

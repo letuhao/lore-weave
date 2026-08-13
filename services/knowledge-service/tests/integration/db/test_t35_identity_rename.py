@@ -32,6 +32,7 @@ from app.db.neo4j_repos.entities import (
     link_to_glossary,
     merge_entity,
     sync_glossary_entity_node,
+    upsert_glossary_anchor_counted,
 )
 from app.db.neo4j_repos.enrichment import upsert_enriched_anchor
 from loreweave_extraction.canonical import entity_canonical_id
@@ -367,3 +368,53 @@ async def test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id(neo4j_driver,
             "the id CHANGED on rename — every join that stored it now points at nothing")
         assert (rec["name"], rec["kind"]) == ("Kai Sr.", "faction"), (
             "the rename did not land: ON MATCH must update the properties it is given")
+
+
+@pytest.mark.asyncio
+async def test_the_anchor_PRELOADER_does_not_mint_a_duplicate_on_rename(
+    neo4j_driver, test_user
+):
+    """🔴 The THIRD writer with the same defect, and its docstring said so.
+
+    `upsert_glossary_anchor` (Pass 0, `extraction/anchor_loader.py`) MERGEs on
+    `MERGE (e:Entity {id: $id})` where `$id` is the recomputed hash — and its own docstring
+    carried the admission:
+
+        **Known limitation — glossary rename to a different canonical name.** … this
+        function creates a NEW node instead of renaming the existing one.
+
+    A documented defect is still a defect. It was tracked as "K11.5b's `link_to_glossary`
+    will own the rename path", but the pre-loader runs on every extraction pass and does not
+    consult `link_to_glossary` — so after any glossary rename, the next extraction mints a
+    second anchor for the same authored entity, and both carry `glossary_entity_id` (the
+    UNIQUE constraint is on the property, and the second write moves it).
+
+    Same fix as `merge_entity` and the enrichment anchor: resolve first, prefer a node at the
+    caller's id, fall back to the one already holding the glossary anchor.
+    """
+    P = "p-t35c"
+    G = "g-preload-rename"
+    async with neo4j_driver.session() as session:
+        first, created = await upsert_glossary_anchor_counted(
+            session, user_id=test_user, project_id=P, glossary_entity_id=G,
+            name="Kai", kind="character", aliases=[])
+        assert created, "the pre-loader did not create the anchor"
+
+        # The author renames AND re-kinds in the glossary; the next extraction pass
+        # pre-loads the anchor under the NEW name.
+        again, created_again = await upsert_glossary_anchor_counted(
+            session, user_id=test_user, project_id=P, glossary_entity_id=G,
+            name="Kai Sr.", kind="faction", aliases=["Kai"])
+
+        assert await _count(session, test_user, P) == 1, (
+            "the anchor pre-loader minted a SECOND node after a rename — it MERGEs on the "
+            "recomputed hash, which the renamed node no longer carries")
+        assert not created_again, "the second call reported a CREATE — it minted"
+        assert again.id == first.id, (
+            "the surviving node changed identity; every join that stored the id is now stale")
+
+        res = await session.run(
+            "MATCH (e:Entity {user_id: $u, glossary_entity_id: $g}) RETURN count(e) AS n",
+            u=test_user, g=G)
+        rec = await res.single()
+        assert rec["n"] == 1, f"{rec['n']} nodes claim the glossary anchor"
