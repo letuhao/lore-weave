@@ -227,7 +227,32 @@
         "idempotency": "a single request must create exactly one chapter",
         "gate": "Tier-A card before the insert"
       },
-      "editor_context": true
+      "editor_context": true,
+      "defects": [
+        {
+          "id": "D-XWIRE-RESULT",
+          "summary": "An id the platform published as `chapter_id` in a tool result was accepted as `book_id` on a later call in the same turn. book_chapter_create was refused 'book not accessible' on 3/3 chat-panel runs; zero chapters created. The same scenario WITH editor context created one every time.",
+          "invariant": "An id argument must be of the type its parameter names. An id THIS PLATFORM published under a different name is a cross-wire by construction — repair it at the single arg chokepoint. An id the turn never published is left strictly alone, so a deliberate cross-book call still works.",
+          "chokepoint": "services/chat-service/app/services/stream_service.py::_inject_context_ids (both call sites), fed by app/services/id_ledger.py",
+          "test_file": "services/chat-service/tests/test_id_from_a_tool_result_is_not_a_book_id.py",
+          "red_on_original": "Restored the original defect (ledger not consulted at the chokepoint): test_a_chapter_id_supplied_as_book_id_is_repaired FAILED, the other 4 stayed green — including the deliberate-cross-book invariant, so the injection is not merely disabling the branch wholesale.",
+          "past_incidents_checked": "D-FJ-20 (2026-08-13, editor chapter_id as book_id for plan_propose_spec) — covered by the predecessor and re-asserted by test_d_fj_20_still_holds_without_a_ledger. S06 (2026-07-11, mistranscribed UUID) — covered by the existing _is_uuid branch, untouched. Corpus sweep: 232 recorded calls refused 'not accessible' with a UUID book_id; of 53 distinct ids exactly ONE is a chapter id (4 calls, all plan_propose_spec = the D-FJ-20 incident) and 51 no longer exist, so the corpus cannot separate deleted fixtures from hallucinations. My first guess of a 232-call epidemic was REFUTED by this check; the finding rests on today's live K=3 evidence.",
+          "live_after": "chapters 1 -> 2 on 3/3 runs, ok:true, exactly one chapter per run, cross-wire repair logged 3 times in chat-service."
+        }
+      ],
+      "suite": {
+        "service": "chat-service",
+        "command": "python -m pytest tests/ -q",
+        "exit_code": 0,
+        "passed": 3154,
+        "skipped": 3,
+        "failed": 0
+      },
+      "deploy": {
+        "verified_by_content": true,
+        "how": "md5 of services/chat-service/app/services/{stream_service,id_ledger}.py vs /app/app/... in infra-chat-service-1 — both MATCH; plus a whole-app property (62 .py files under app/services in both), because verifying only the symbol I just added cannot detect a stale image.",
+        "rebuilt": "docker compose up -d --build --force-recreate chat-service"
+      }
     },
     {
       "id": "composition-diagnostics",
@@ -342,7 +367,32 @@
         "idempotency": "a single request must create exactly one chapter",
         "gate": "Tier-A card before the insert"
       },
-      "editor_context": false
+      "editor_context": false,
+      "defects": [
+        {
+          "id": "D-XWIRE-RESULT",
+          "summary": "An id the platform published as `chapter_id` in a tool result was accepted as `book_id` on a later call in the same turn. book_chapter_create was refused 'book not accessible' on 3/3 chat-panel runs; zero chapters created. The same scenario WITH editor context created one every time.",
+          "invariant": "An id argument must be of the type its parameter names. An id THIS PLATFORM published under a different name is a cross-wire by construction — repair it at the single arg chokepoint. An id the turn never published is left strictly alone, so a deliberate cross-book call still works.",
+          "chokepoint": "services/chat-service/app/services/stream_service.py::_inject_context_ids (both call sites), fed by app/services/id_ledger.py",
+          "test_file": "services/chat-service/tests/test_id_from_a_tool_result_is_not_a_book_id.py",
+          "red_on_original": "Restored the original defect (ledger not consulted at the chokepoint): test_a_chapter_id_supplied_as_book_id_is_repaired FAILED, the other 4 stayed green — including the deliberate-cross-book invariant, so the injection is not merely disabling the branch wholesale.",
+          "past_incidents_checked": "D-FJ-20 (2026-08-13, editor chapter_id as book_id for plan_propose_spec) — covered by the predecessor and re-asserted by test_d_fj_20_still_holds_without_a_ledger. S06 (2026-07-11, mistranscribed UUID) — covered by the existing _is_uuid branch, untouched. Corpus sweep: 232 recorded calls refused 'not accessible' with a UUID book_id; of 53 distinct ids exactly ONE is a chapter id (4 calls, all plan_propose_spec = the D-FJ-20 incident) and 51 no longer exist, so the corpus cannot separate deleted fixtures from hallucinations. My first guess of a 232-call epidemic was REFUTED by this check; the finding rests on today's live K=3 evidence.",
+          "live_after": "chapters 1 -> 2 on 3/3 runs, ok:true, exactly one chapter per run, cross-wire repair logged 3 times in chat-service."
+        }
+      ],
+      "suite": {
+        "service": "chat-service",
+        "command": "python -m pytest tests/ -q",
+        "exit_code": 0,
+        "passed": 3154,
+        "skipped": 3,
+        "failed": 0
+      },
+      "deploy": {
+        "verified_by_content": true,
+        "how": "md5 of services/chat-service/app/services/{stream_service,id_ledger}.py vs /app/app/... in infra-chat-service-1 — both MATCH; plus a whole-app property (62 .py files under app/services in both), because verifying only the symbol I just added cannot detect a stale image.",
+        "rebuilt": "docker compose up -d --build --force-recreate chat-service"
+      }
     }
   ],
   "_generator": "scengen.py",

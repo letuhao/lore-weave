@@ -127,9 +127,30 @@ class Gate:
                         f"[{t['tool']}] CODE deployed",
                         "deployed image not verified BY CONTENT against source")
 
+    #: Words that mean "I did not do this". A ship_audit is a record of what was EXERCISED, and
+    #: an entry that says it is owed is a to-do wearing an audit's clothes.
+    OWED = ("owed", "not yet", "todo", "tbd", "pending", "n/a", "later", "skip")
+
     def ship(self, t: dict) -> None:
-        self._check(bool(t.get("ship_audit")), f"[{t['tool']}] SHIP audit",
+        """SHIP is the bar that separates a POC from a product, so it is the easiest to fake.
+
+        🔴 THE FIRST VERSION CHECKED ONLY THAT THE FIELD WAS NON-EMPTY, AND I IMMEDIATELY FILLED
+        IT WITH "owed — a book with zero outline nodes" AND GOT A GREEN GATE. Every machine bar
+        passed, the batch read as concluded, and not one refusal, tenancy check or empty case had
+        actually been run. A presence check cannot tell an audit from a promise to do one; it has
+        to read what the entry SAYS.
+        """
+        audit = t.get("ship_audit")
+        self._check(bool(audit), f"[{t['tool']}] SHIP audit",
                     "record the refusal/gate/empty-case sweep, not just the happy path")
+        if not isinstance(audit, dict):
+            return
+        owed = [k for k, v in audit.items()
+                if isinstance(v, str) and any(w in v.lower()[:40] for w in self.OWED)]
+        self._check(
+            not owed, f"[{t['tool']}] SHIP exercised",
+            f"{len(owed)} case(s) recorded as not done ({', '.join(sorted(owed))}) — a ship_audit "
+            "is what was EXERCISED. Run them, or conclude the tool `blocked` and say why")
 
     def run(self) -> bool:
         for t in self.b.get("tools", []):
@@ -153,6 +174,35 @@ def cmd_check(a) -> int:
         print("\nThe batch may NOT be concluded. Each line above names the evidence that is "
               "missing, not an opinion about it.")
     return 0 if passed else 1
+
+
+def cmd_refresh(a) -> int:
+    """Re-read the JUDGEMENT fields from the scenario spec into an existing evidence file.
+
+    The measured fields — runs, store snapshots, counts — are never touched: they were written by
+    the run and re-running is the only way to change them. Only falsifier / ship_audit / defects
+    are refreshed, because those are mine to write and a ten-minute live re-run is not the right
+    price for recording a defect I found while reading the results.
+
+    The separation is the point. What the harness measured and what I assert live in different
+    files, and this copies strictly one way.
+    """
+    bp = pathlib.Path(a.batch)
+    batch = json.loads(bp.read_text(encoding="utf-8"))
+    spec = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))
+    by_scenario = {s["id"]: s for s in spec["scenarios"]}
+    n = 0
+    for t in batch.get("tools", []):
+        sc = by_scenario.get(t.get("scenario"))
+        if not sc:
+            continue
+        for field in ("falsifier", "ship_audit", "defects", "suite", "deploy"):
+            if field in sc:
+                t[field] = sc[field]
+                n += 1
+    bp.write_text(json.dumps(batch, indent=2, ensure_ascii=False) + chr(10), encoding="utf-8")
+    print(f"refreshed {n} judgement field(s) in {bp} from {a.scenarios}")
+    return 0
 
 
 def cmd_conclude(a) -> int:
@@ -187,6 +237,10 @@ def main() -> int:
     c = sub.add_parser("check")
     c.add_argument("batch")
     c.set_defaults(fn=cmd_check)
+    r = sub.add_parser("refresh")
+    r.add_argument("batch")
+    r.add_argument("scenarios")
+    r.set_defaults(fn=cmd_refresh)
     d = sub.add_parser("conclude")
     d.add_argument("batch")
     d.add_argument("--tool", required=True)
