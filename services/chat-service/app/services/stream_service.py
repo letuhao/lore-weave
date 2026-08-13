@@ -1591,7 +1591,10 @@ def _unwrap_wrapped_args(args_obj: dict, tool_def: dict | None) -> dict:
     if not isinstance(args_obj, dict) or len(args_obj) != 1:
         return args_obj
     key = next(iter(args_obj))
-    if key not in ("args", "arguments"):
+    # `params` measured 2026-08-09 (14 calls, book_read): the model wrapped the whole payload
+    # in the JSON-RPC envelope name it had just seen on the wire. Same shape, same guard — a
+    # tool that REALLY declares `params` is left alone by the `key in props` check below.
+    if key not in ("args", "arguments", "params"):
         return args_obj
     inner = args_obj[key]
     if not isinstance(inner, dict):
@@ -1621,6 +1624,63 @@ _SCALAR_ID_ARGS = frozenset({
     # therefore correctly excluded. Small subject, stated plainly: 3 calls in 1 session.
     "model_ref",
 })
+
+
+# ── T16-D1: the right id under the wrong KEY ────────────────────────────────────────────────
+#
+# `_coerce_listed_scalar_ids` above fixes a wrong VALUE shape under the right key. This fixes the
+# mirror case — the right value under a near-miss KEY — and it is the larger population.
+#
+# MEASURED 2026-08-09/10 on `book_read`, which refused 89 calls for a missing `book_id`. Only 33
+# of those were genuinely empty. The other 56 CARRIED THE CORRECT UUID:
+#
+#     {"id": "019fccd7-…"}          19 calls
+#     {"ids": ["019fccd7-…"]}       13 calls
+#     {"book_ids": ["019fccd7-…"]}   8 calls
+#     {"params": {"book_id": …}}    14 calls   (fixed by _unwrap_wrapped_args above)
+#
+# The model had the id, had just read it out of `book_list`, and named the field wrongly. The
+# runtime answered "is missing ['book_id'] … NOT yours to invent", which is true of the FIELD and
+# false of the situation.
+#
+# DECLINES ANYTHING IT CANNOT REASON ABOUT, the same rule the rest of this family follows,
+# because a wrong graft corrupts a call instead of refusing it:
+#   * exactly ONE required `*_id` property may be missing — with two, filling either is a guess;
+#   * the donor key must be `id`, `ids`, or the plural of the target (`book_id` -> `book_ids`);
+#   * the donor key must NOT itself be declared by the schema — a tool that really takes `ids`
+#     keeps it;
+#   * the value must be a string, or a ONE-element list of a string; a longer list is a genuine
+#     collection and is left alone.
+def _alias_id_keys(target: str) -> frozenset[str]:
+    """The near-miss donor keys for a required scalar id param."""
+    return frozenset({"id", "ids", target + "s"})
+
+
+def _repair_aliased_required_id(args_obj: dict, tool_def: dict | None) -> dict:
+    """Move a required `*_id` the model put under `id`/`ids`/`<param>s` back onto its own key."""
+    if not isinstance(args_obj, dict) or not tool_def:
+        return args_obj
+    params = ((tool_def.get("function") or {}).get("parameters") or {})
+    props = params.get("properties") or {}
+    required = params.get("required") or []
+    missing = [r for r in required if isinstance(r, str) and r.endswith("_id") and r not in args_obj]
+    if len(missing) != 1:
+        return args_obj
+    target = missing[0]
+    donors = _alias_id_keys(target)
+    present = [k for k in args_obj if k in donors and k not in props]
+    if len(present) != 1:
+        return args_obj
+    raw = args_obj[present[0]]
+    if isinstance(raw, list):
+        if len(raw) != 1:
+            return args_obj
+        raw = raw[0]
+    if not isinstance(raw, str) or not raw.strip():
+        return args_obj
+    repaired = {k: v for k, v in args_obj.items() if k != present[0]}
+    repaired[target] = raw
+    return repaired
 
 
 def _coerce_listed_scalar_ids(args_obj: dict) -> dict:
@@ -4745,6 +4805,13 @@ async def _stream_with_tools(
                 )
                 # Undo a 1-element-list wrapping of a scalar id arg (gemma: project_id=[uuid]).
                 _coerce_listed_scalar_ids(args_obj)
+                # T16-D1 — and the mirror case: the right id under a near-miss KEY (`id`, `ids`,
+                # `<param>s`). Measured on book_read, where 56 of 89 "missing book_id" refusals
+                # were carrying the correct UUID all along. Runs AFTER the wrapper unwrap so a
+                # `{"params": {...}}` payload is already flat by the time this looks at it.
+                args_obj = _repair_aliased_required_id(
+                    args_obj, cat_index.get(c["name"]) or plain_index.get(c["name"])
+                )
                 # Undo a STRUCTURED arg sent as stringified JSON (gemma: save_draft body="[{...}]").
                 # Measured live in M0a — this is why the flagship's drafted chapter was always empty.
                 _coerce_json_string_structs(
