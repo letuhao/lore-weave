@@ -296,6 +296,19 @@ caller was passing the recomputed hash to the fact `MATCH`, a second defect insi
 into the repo left `derived-entity-id-gate` at **5 → 5**. The layer is right now; the count
 falls when the derivation goes.
 
+**T35b (2026-08-14) — `glossary_sync.py` was never a minting site; the description was stale.**
+`_GLOSSARY_ANCHOR_SYNC_CYPHER` MERGEs on `(user_id, project_id, glossary_entity_id)` and uses
+the derived id only in `ON CREATE SET`. A rename finds the same node by anchor, so there is no
+second hash to miss — and `ON MATCH SET` *not* rewriting `e.id` is correct, not the defect: an
+opaque id that changed on rename would break every join that stored it. True before T17 moved
+the MERGE into the repo and keyed it on the anchor; carried forward unmeasured since.
+`derived-entity-id-gate` 5 → 4.
+
+**What is actually left of T35** is repointing the **join sites** off `Entity.id`. The three
+remaining callers are not migrations: `entities.py` holds the derivation legitimately (minting
+is a storage detail), `recanon_honorifics.py` is a one-shot backfill whose purpose is
+recomputing ids, and `fake_graph_store.py` mirrors the real adapter by design.
+
 ### 4.2 T37's command producer follows T36's shape — **DECIDED**
 *Replaces `D-T37-COMPOSITION-COMMAND-PRODUCER`.* The producer writes role facts in the shape
 T36 defines. Building it earlier would ship a command surface whose payload is still moving;

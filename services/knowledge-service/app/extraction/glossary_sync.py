@@ -33,7 +33,7 @@ from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.entities import sync_glossary_entity_node
-from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
+from loreweave_extraction.canonical import canonicalize_entity_name
 
 __all__ = ["sync_glossary_entity_to_neo4j"]
 
@@ -66,7 +66,6 @@ async def sync_glossary_entity_to_neo4j(
     Returns a dict with the node id and whether it was created or updated.
     """
     canonical_name = canonicalize_entity_name(name)
-    canonical_id = entity_canonical_id(user_id, project_id, name, kind)
 
     # The MERGE moved to `neo4j_repos/entities.py` (plan T17) — including the
     # D-KG-GLOSSARY-FK-GLOBAL-UNIQUE reasoning about why `project_id` is part of the key.
@@ -77,7 +76,6 @@ async def sync_glossary_entity_to_neo4j(
         # property, so "global" is this caller's sentinel choice, not a storage default.
         project_id=project_id or "global",
         glossary_entity_id=glossary_entity_id,
-        canonical_id=canonical_id,
         name=name,
         canonical_name=canonical_name,
         kind=kind,

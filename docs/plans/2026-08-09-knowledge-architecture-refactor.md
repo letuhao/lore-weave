@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35b` — the two whole-graph callers, `db/neo4j_repos/entities.py` (the join sites) and `extraction/glossary_sync.py` (the original defect site), SPEC §4.1. Take them with a fresh context: `derived-entity-id-gate`'s own docstring says a half-migrated live graph gives no way to tell which half is which.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` — the enrichment writer, which was still minting AND stealing the glossary anchor after a rename, proved over the live HTTP endpoint. port-adoption-gate **64 → 57**; conformance **40 → 82**. ⚠️ `derived-entity-id-gate` is **5 → 5**: T35a RELOCATED a derivation, it did not retire one.
+**RESUME: `T35c` — repoint the JOIN SITES off `Entity.id` onto the glossary anchor (SPEC §4.1). That is the whole-graph half; the three remaining `derived-entity-id-gate` callers are NOT migrations (storage-layer mint, one-shot backfill, test double).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` · ✅ `T35b`. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**. ⚠️ T35b's live smoke proved the MINT path (4/4 anchored through the real event consumer) but NOT the rename: `mirror-repair` only re-emits entities the graph is MISSING, so a rename of a present entity runs no sync at all — and the stable id it reported was stable because nothing touched it.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -7954,6 +7954,113 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `glossary_sync.py` (the original defect site) are the whole-graph half the gate's docstring
   warns about; `recanon_honorifics.py` is a one-shot backfill whose purpose IS recomputing
   ids; `fake_graph_store.py` mirrors the real adapter and moves with it.
+
+
+  ### ✅ T35b 2026-08-14 — the "defect site" was not one, measured
+
+  ```
+  derived-entity-id-gate   5 -> 4      integration-db  437 -> 438 passed
+  ```
+
+  The gate's baseline described `extraction/glossary_sync.py` as **"THE defect site: computes
+  it, `ON MATCH SET` never rewrites `e.id`"**. Measured before building anything, that is
+  **stale**:
+
+  ```cypher
+  MERGE (e:Entity {user_id: $user_id, project_id: $project_id, glossary_entity_id: $glossary_entity_id})
+  ON CREATE SET e.id = $canonical_id, …
+  ON MATCH SET  e.name = $name, …            -- no e.id
+  ```
+
+  The MERGE keys on the **stable glossary anchor**, and the derived id appears only in
+  `ON CREATE` — as the value to mint *with*. A rename finds the same node by anchor and
+  updates it in place: there is no second hash to miss. And `ON MATCH SET` not rewriting
+  `e.id` is the **correct** behaviour, not the defect — an opaque id that changed on rename
+  would break every join that stored it, which is the whole point of opaque identity.
+
+  The description was true before T17 moved this MERGE into the repo and keyed it on the
+  anchor. It has been carried forward since. Now it is a rule instead of a claim.
+
+  ✅ **So T35b is the T35a migration again**: the derivation moves into
+  `neo4j_repos/entities.py`, where minting is a storage detail, and the service-layer module
+  stops needing to know that `Entity.id` is `hash(name, kind)`.
+
+  🔻 **`derived-entity-id-gate` 5 → 4, and unlike T35a this is a REAL shrink** — `entities.py`
+  was already on the baseline, so nothing new went on. The number moved in this commit.
+
+  **BITE ×2, both red on the value** *(and one red for the WRONG reason first: `grep -n` and
+  the bite helper disagreed by eleven lines because the file had **12 bare-LF lines among 3459
+  CRLF** — a mixed-ending file I created with an earlier edit. Normalised, re-cut, re-run. The
+  first mutation had landed on `e.anchor_score = 1.0` and produced a `CypherSyntaxError`.)*
+
+  ```
+  1. MERGE keyed on the derived id instead of the anchor
+     E  no node carries the glossary anchor after a sync — the MERGE is not keyed on
+        `glossary_entity_id`, so nothing can ever be found by it again
+  2. ON MATCH SET e.id = $canonical_id   (i.e. "fix" the thing the row called the defect)
+     E  the id CHANGED on rename — every join that stored it now points at nothing
+     E  assert 'f6ad4e73…' == 'd3bdd67e…'
+  ```
+
+  Bite 2 is the interesting one: it makes the code do what the stale description implied it
+  *should*, and the rule reds. That is the measurement that retires the description.
+
+  The first cut of the rule failed as `TypeError: 'NoneType' object is not subscriptable` —
+  substantively right, illegibly stated. Hardened to assert the anchor lookup found something,
+  so the red now names the fault.
+
+  **QC (a) gates:** all 99 green; `derived-entity-id-gate` **5 → 4** with `--selftest` passing
+  and its baseline comment rewritten to record why the old entry was wrong; plan-verify PASS.
+
+  **QC (b) THE LIVE SMOKE — partial, and the gap is stated rather than papered over.**
+  `lw-iso-knowledge-service` rebuilt and recreated; the code proved present in the running
+  container before anything was driven:
+
+  ```
+  //app/app/db/neo4j_repos/entities.py     "T35b — DERIVED HERE"      x1
+  //app/app/extraction/glossary_sync.py    "entity_canonical_id"      x0
+  ```
+
+  Driven live against the isolated stack's real glossary corpus (1748 authored entities) via
+  `POST /internal/projects/{id}/glossary-mirror-repair`, which fans out to the consumer that
+  calls `sync_glossary_entity_node`:
+
+  ```
+  before: entities 0, anchored 0
+  detected_missing 1677 · requested 100 · reemitted 100 · failed_ids []
+  after:  entities 4, anchored 4        (first batch through the consumer)
+    959ddac6…  三妖          terminology   anchor 019fbc43-3450…
+    f0fe1001…  九頭雉雞精     character     anchor 019fbc43-3341…
+    2294e842…  八百鎮諸侯     organization  anchor 019fbc43-3378…
+  ```
+
+  **4 of 4 anchored** — the deployed derivation mints correctly through the real event path.
+
+  ⚠️ **The RENAME half was NOT exercised live, and the result that looked like it was is the
+  reason to say so.** I renamed an entity in the isolated glossary DB, re-ran the repair, and
+  read back *"one node, id `f0fe1001…` unchanged"* — which reads exactly like the claim being
+  proved. It is not. **`mirror-repair` only re-emits entities the graph is MISSING**
+  (`detected_missing`), so an entity that already exists is skipped and no sync ran at all. The
+  stable id was stable because nothing touched it. The rename was reverted in the isolated DB.
+
+  So the id-stability claim rests on
+  `test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id` against a **real throwaway
+  Neo4j** — a real engine, not a fake, with both bites red — and NOT on the live run. Driving
+  a rename end-to-end needs the `glossary.entity_updated` event, which the repair endpoint
+  does not emit for a present entity.
+
+  **QC (c) real data:** four real `:Entity` nodes mirrored from a real 1748-entity authored
+  glossary, through the deployed consumer.
+
+  ```
+  4228 passed — unit · 438 passed, 367 skipped — integration-db
+  ```
+
+  **T35's callers: 4 remain, and the two heavy ones are what is left.** `entities.py` holds the
+  derivation legitimately now (storage layer); `recanon_honorifics.py` is a one-shot backfill
+  whose purpose IS recomputing ids; `fake_graph_store.py` mirrors the real adapter and moves
+  with it. The genuine remainder is repointing the **join sites** off `Entity.id`, which is the
+  whole-graph change the gate's docstring warns about.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

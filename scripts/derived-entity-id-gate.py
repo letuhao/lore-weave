@@ -45,7 +45,20 @@ SCAN_ROOT = os.path.join(ROOT, "services", "knowledge-service", "app")
 # MENTION the function. Sizing T35 off the grep would have over-stated the migration by 2.2x,
 # and an over-stated checklist hides the real remainder inside noise (the same mistake T17's
 # "still owed" paragraph made). These five actually CALL it.
-# ⚠️ **STILL FIVE** (2026-08-13, T35). `routers/internal_enrichment.py` came OFF and
+# **5 -> 4** (2026-08-14, T35b): `extraction/glossary_sync.py` is OFF, and unlike T35a
+# this one is a real shrink — the derivation moved into `neo4j_repos/entities.py`,
+# which was ALREADY on the baseline, so nothing new went on.
+#
+# Its old entry read *"THE defect site: computes it, ON MATCH SET never rewrites e.id"*.
+# Measured 2026-08-14, that was STALE. `_GLOSSARY_ANCHOR_SYNC_CYPHER` MERGEs on
+# `(user_id, project_id, glossary_entity_id)` — the stable anchor — and uses the derived
+# id only in `ON CREATE SET`. A rename finds the same node by anchor, so there is no
+# second hash to miss, and NOT rewriting `e.id` is correct: an opaque id that changed on
+# rename would break every join that stored it. True before T17 moved the MERGE into the
+# repo and keyed it on the anchor; not true since. Pinned by
+# `test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id`.
+
+# ⚠️ **STILL FIVE** (2026-08-13, T35a). `routers/internal_enrichment.py` came OFF and
 # `db/neo4j_repos/enrichment.py` went ON, because the derivation MOVED rather than went
 # away. That is the honest count and it is worth stating: the batch fixed a real defect
 # and did **not** move this gate. Where to mint when nothing exists yet is a storage
@@ -57,7 +70,6 @@ BASELINE = {
     os.path.join("db", "migrations", "recanon_honorifics.py"):  "one-shot backfill (Phase 7 owns it — D-T17-BACKFILL-CYPHER)",
     os.path.join("db", "neo4j_repos", "enrichment.py"):         "the enrichment anchor's MINT-IF-ABSENT fallback (T35 2026-08-13 — moved here from routers/internal_enrichment.py; the router should not know the id is a hash)",
     os.path.join("db", "neo4j_repos", "entities.py"):           "the entity MERGE + reads — the join sites",
-    os.path.join("extraction", "glossary_sync.py"):             "THE defect site: computes it, ON MATCH SET never rewrites e.id",
 }
 
 CALL_RE = re.compile(r"(?<![A-Za-z0-9_])entity_canonical_id(?![A-Za-z0-9_])")

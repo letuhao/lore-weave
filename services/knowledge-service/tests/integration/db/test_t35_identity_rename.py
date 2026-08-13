@@ -28,7 +28,11 @@ import uuid
 import pytest
 import pytest_asyncio
 
-from app.db.neo4j_repos.entities import link_to_glossary, merge_entity
+from app.db.neo4j_repos.entities import (
+    link_to_glossary,
+    merge_entity,
+    sync_glossary_entity_node,
+)
 from app.db.neo4j_repos.enrichment import upsert_enriched_anchor
 from loreweave_extraction.canonical import entity_canonical_id
 
@@ -305,3 +309,61 @@ async def test_enrichment_anchor_is_still_idempotent_and_still_frees_a_GENUINELY
         holders = [r["id"] async for r in res]
         assert holders == [other.id], (
             f"the anchor did not move to the new claimant, or two nodes hold it: {holders}")
+
+
+# ── T35b · the glossary sync is NOT a minting site, measured rather than assumed ──
+
+
+@pytest.mark.asyncio
+async def test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id(neo4j_driver, test_user):
+    """The plan lists `extraction/glossary_sync.py` as *"THE defect site: computes it,
+    `ON MATCH SET` never rewrites `e.id`"*. **Measured, that is stale.**
+
+    `_GLOSSARY_ANCHOR_SYNC_CYPHER` MERGEs on `(user_id, project_id, glossary_entity_id)` —
+    the STABLE anchor — and touches the derived id only in `ON CREATE SET e.id = …`, i.e. as
+    the value to mint WITH. So a rename finds the same node by anchor and updates it in
+    place. There is no second hash to miss, and `ON MATCH SET` not rewriting `e.id` is the
+    CORRECT behaviour, not the defect: an opaque id that changed on rename would break every
+    join that stored it.
+
+    The characterisation was true before T17 moved this MERGE into the repo and keyed it on
+    the anchor. This rule pins the current behaviour so the claim is checkable rather than
+    inherited, and so a future edit that re-keys the MERGE onto the derived id reds here
+    instead of shipping the enrichment defect all over again.
+    """
+    P = "p-t35b"
+    G = "g-sync-rename"
+    async with neo4j_driver.session() as session:
+        await sync_glossary_entity_node(
+            session, user_id=test_user, project_id=P, glossary_entity_id=G,
+            name="Kai", canonical_name="kai", kind="character",
+            aliases=[], short_description="")
+        res = await session.run(
+            "MATCH (e:Entity {user_id: $u, glossary_entity_id: $g}) RETURN e.id AS id",
+            u=test_user, g=G)
+        rec = await res.single()
+        assert rec is not None, (
+            "no node carries the glossary anchor after a sync — the MERGE is not keyed on "
+            "`glossary_entity_id`, so nothing can ever be found by it again")
+        minted_id = rec["id"]
+        assert minted_id, "the sync did not mint an id"
+
+        # The author renames AND re-kinds — both hash inputs change at once, which is the
+        # case the 2026-08-02 backfill actually took.
+        await sync_glossary_entity_node(
+            session, user_id=test_user, project_id=P, glossary_entity_id=G,
+            name="Kai Sr.", canonical_name="kai sr.", kind="faction",
+            aliases=["Kai"], short_description="")
+
+        assert await _count(session, test_user, P) == 1, (
+            "the glossary sync minted a SECOND node on rename — the MERGE is keyed on the "
+            "derived hash, not on the glossary anchor")
+        res = await session.run(
+            "MATCH (e:Entity {user_id: $u, glossary_entity_id: $g}) "
+            "RETURN e.id AS id, e.name AS name, e.kind AS kind",
+            u=test_user, g=G)
+        rec = await res.single()
+        assert rec["id"] == minted_id, (
+            "the id CHANGED on rename — every join that stored it now points at nothing")
+        assert (rec["name"], rec["kind"]) == ("Kai Sr.", "faction"), (
+            "the rename did not land: ON MATCH must update the properties it is given")

@@ -3434,7 +3434,6 @@ async def sync_glossary_entity_node(
     user_id: str,
     project_id: str,
     glossary_entity_id: str,
-    canonical_id: str,
     name: str,
     canonical_name: str,
     kind: str,
@@ -3450,6 +3449,17 @@ async def sync_glossary_entity_node(
     Glossary entities are user-curated: `confidence=1.0` and they bypass the quarantine
     pipeline entirely.
     """
+    # T35b — DERIVED HERE, not by the caller, for the same reason the enrichment anchor's
+    # derivation moved in T35a: what to mint an id AS is a storage detail, and a service-layer
+    # module computing it has to know that `Entity.id` is `hash(name, kind)`.
+    #
+    # ⚠️ It is used ONLY in `ON CREATE SET` below. The MERGE keys on the glossary anchor, so a
+    # rename finds the same node and `e.id` is never recomputed — which is correct, not the
+    # defect the plan's row describes: an opaque id that changed on rename would break every
+    # join that stored it. Pinned by
+    # `test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id`.
+    canonical_id = entity_canonical_id(
+        user_id, None if project_id == "global" else project_id, name, kind)
     result = await session.run(
         _GLOSSARY_ANCHOR_SYNC_CYPHER,
         user_id=user_id, project_id=project_id,
