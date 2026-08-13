@@ -652,6 +652,7 @@ class EngineCriticSeam:
         from app.clients.llm_client import get_llm_client
         from app.db.pool import get_pool
         from app.db.repositories.works import WorksRepo
+        from app.db.repositories.canon_rules import CanonRulesRepo
         from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
         from app.engine.critic_policy import resolve_critic_refs
@@ -707,10 +708,15 @@ class EngineCriticSeam:
         # Best-effort source_language (de-bias §2.6: judge in the book's
         # language) from the book's marked Work — 'auto' when unresolvable.
         profile = BookProfile()
+        # The canon rules are keyed on the WORK's knowledge project_id, not the book id — the
+        # same resolve the drafting seam does at :329. Threaded out of this block rather than
+        # re-resolved, so the rules and the language always describe the SAME Work.
+        rules_project_id = None
         try:
             marked = await WorksRepo(get_pool()).resolve_by_book(book_id)
             if len(marked) == 1:
                 profile = from_settings(marked[0].settings)
+                rules_project_id = marked[0].project_id
         except Exception:  # noqa: BLE001 — language resolve is best-effort
             logger.debug("critic source-language resolve failed (using auto)",
                          exc_info=True)
@@ -726,10 +732,33 @@ class EngineCriticSeam:
             chapter_id=chapter_id, user_id=created_by, bearer=bearer,
             source_language=profile.source_language,
         )
+        # C5 (PO 2026-08-13) — the ATTRIBUTION channel. Until now `active_rules` was `[]`, so
+        # `map_rule_tokens` could attribute nothing and dropped every verdict: measured on the
+        # acceptance book, **7 raw findings across 3 chapters, 7 discarded**, while the report
+        # showed `violations: []` — byte-identical to "the passage is clean". The score could
+        # say something was wrong; nothing could say WHAT.
+        #
+        # Same source as the critique endpoint, deliberately: one definition of "an enforceable
+        # canon rule", not a second one grown for the headless path. Its CC2 rule is honoured
+        # too — re-resolved HERE, at critique time, so a rule the author deleted or archived
+        # between drafting and judging is never enforced.
+        active_rules: list[dict[str, Any]] = []
+        if rules_project_id is not None:
+            try:
+                rules = await CanonRulesRepo(get_pool()).list_active(rules_project_id)
+                active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
+            except Exception:  # noqa: BLE001 — advisory, like every other read in this seam
+                logger.warning("critic: active canon rules unreadable — judging without the "
+                               "attribution channel", exc_info=True)
+        else:
+            logger.warning("critic: no unambiguous marked Work for book %s — no canon rules, "
+                           "so findings cannot be attributed", book_id)
+
         critique = await judge_prose(
             get_llm_client(), user_id=str(created_by),
             model_source=model_source, model_ref=str(model_ref),
-            passage=text, active_rules=[], present_facts=bible.as_present_facts(),
+            passage=text, active_rules=active_rules,
+            present_facts=bible.as_present_facts(),
             profile=profile,
         )
         # The grounding rides the verdict. A `canon_consistency` scored against an `untimed`
@@ -739,7 +768,11 @@ class EngineCriticSeam:
                     "canon_as_of": bible.as_of, "canon_cast_size": bible.cast_size,
                     # WHO judged, by S6's classification. `same_as_drafter` and
                     # `not_configured` both mean the prose graded itself.
-                    "critic_status": judge.status.value, "critic_ref": str(model_ref)}
+                    "critic_status": judge.status.value, "critic_ref": str(model_ref),
+                    # How many rules the judge was actually given. `violations: []` beside
+                    # `rules: 0` means "nothing to attribute to"; beside `rules: 6` it means
+                    # "the judge found nothing" — two states that read identically without it.
+                    "active_rule_count": len(active_rules)}
         severity, summary = verdict_from_critique(critique)
         # judge_prose degrades internally (error marker) — spend unknown there,
         # bill 0; a completed critique bills the estimate (no SDK cost field).

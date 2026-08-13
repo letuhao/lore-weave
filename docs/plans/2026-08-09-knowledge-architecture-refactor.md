@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B8` — decide whether `CastEntry` grows `attributes`, then migrate the last consumer.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B7 DONE:** the KAL grew `cast` and `cast/by-ids`, five consumers migrated, and **`authored-catalog-reader-gate` fell 10 → 4 call sites**. Of the four left, **one** is real T38 work (`knowledge-service`, which needs `include_attributes` — a projection decision), two are eval scripts, and one is the `assistant.controller` DELETE the baseline already excludes. See **▶ EXECUTION PLAN** below.
+**RESUME: `A7` — `merge_fact` + `maintenance` on the port (PO chose to build ahead of T35).**
+**Three PO decisions taken 2026-08-13 (second round):** `active_rules` ← the canon-rule corpus · T17 ← **push the real port growth now**, ahead of T35 · `CastEntry` ← **grow `attributes`**. **C5 is DONE:** the attribution channel is wired and caught a misattribution the breaker paused a run for (2 violations, real rule ids). **QC-5 still `[~]`** — `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` is superseded by **`D-QC5-PIPELINE-NOT-REPRODUCIBLE`**: three runs of the same chapter gave `severe / warn / ok`, one of them the 5/5 QC-5 calls the defect. ⚠️ **A7 carries a stated risk** — building `merge_fact`/`maintenance` before T35 settles identity is the shape that produced the `triage_apply` false match; the PO chose it knowingly. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -5057,6 +5057,86 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   ---
+  ### 🎯 C5 2026-08-13 — the attribution channel is WIRED, it caught a misattribution, and **QC-5 still does not go `[x]`**
+
+  PO decision (2026-08-13): *`active_rules` comes from the canon-rule corpus the critique
+  endpoint uses.* Wired into `EngineCriticSeam` — same `CanonRulesRepo.list_active`, keyed on
+  the Work's `project_id` threaded out of the marked-Work resolve the seam already did, so the
+  rules and the language always describe the SAME Work. Its CC2 rule is honoured too: rules are
+  re-resolved **at critique time**, so one the author deleted between drafting and judging is
+  never enforced.
+
+  ✅ **IT WORKS, AND IT CAUGHT EXACTLY THE THING QC-5 WAS WRITTEN FOR.** Run
+  `019ffad4-74f4-…`, acceptance book chapter 11, distinct critic, 6 active rules:
+
+  ```
+  severity severe · canon_consistency 2 · active_rule_count 6
+  violations_raw 2 · dropped 0 · KEPT 2        <- attributed, not discarded
+  breaker: critic_severe — "2 canon violation(s) [019ff43e-602f-…, 019ff43e-606b-…]"
+  ```
+
+  Both ids are **real rows** in `canon_rule` for this Work. The first rule states, in English,
+  *"the antagonist is the protagonist's adversary"* — and the violation says the draft had that
+  antagonist operating the formation imprisoning the protagonist, i.e. **an action given to the
+  wrong character.** That is QC-5's assertion in its own words: *"the trap must be attributed to
+  the cast-designated antagonist, **or** the canon check must FAIL."* The check FAILED, named
+  the rule, and **the D5 breaker paused the run.**
+
+  🔴 **AND THEN I RAN IT TWICE MORE, WHICH IS WHY QC-5 STAYS `[~]`.** Same chapter, same two
+  models, same six rules:
+
+  ```
+  run   severity   canon   rules   raw   dropped   kept
+  A     severe       2       6      2       0       2      <- attributed, breaker fired
+  B     warn         4       6      2       2       0      <- found 2, attributed NEITHER
+  C     ok           5       6      0       0       0      <- found nothing at all
+  ```
+
+  **One run in three scores `5/5` — the exact defect signature QC-5 names.** Another finds two
+  problems and can attribute neither, which is only visible because C3 shipped
+  `violations_dropped`; without it run B and run C would both read `violations: []`.
+
+  ⚠️ **Precisely what varies, because it matters:** each run RE-DRAFTS the chapter, so the three
+  verdicts are on three different drafts. This is **not** proof that the judge alone is
+  nondeterministic — it is proof that *the pipeline* is, and that is the thing QC-5 measures. A
+  single run of it cannot be an acceptance test either way.
+
+  **BITE:**
+
+  ```
+  rules = await CanonRulesRepo(...).list_active(...)   ->   rules = []
+    E  AssertionError: the judge was handed no rules — findings cannot be attributed,
+       which is the C1 defect in its second form
+    E  assert [] == ['ee154d63-…']
+  ```
+
+  **QC (a) gates:** all 99 green; plan-verify PASS. No new gate, none owed.
+  **QC (b) the seam:** `composition-service` **and** `composition-worker` rebuilt, `grep`-verified
+  in-container (`active_rule_count` present). Three live runs against the acceptance book.
+  **QC (c) real data:** 6 real canon rules, 2 real rule ids on the violations, real drafts.
+
+  ```
+  3616 passed — composition-service unit suite
+  ```
+
+  ### 🔻 DEFERRAL `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — **superseded by** `D-QC5-PIPELINE-NOT-REPRODUCIBLE`
+
+  The attribution channel is wired and demonstrated. What replaced it is a sharper problem.
+
+  ### 🔻 DEFERRAL `D-QC5-PIPELINE-NOT-REPRODUCIBLE`
+
+  | | |
+  |---|---|
+  | **Blocker** | Three runs of the same chapter with the same models and the same six canon rules produced `severe / warn / ok` and `canon_consistency` 2 / 4 / 5. One in three is the 5/5 QC-5 calls the defect. An acceptance test whose verdict changes between runs cannot certify anything — passing once proves the pipeline CAN catch it, never that it DOES. |
+  | **Evidence** | Runs A/B/C on chapter 11, 2026-08-13: `raw 2 dropped 0 kept 2` (breaker fired, 2 real rule ids) · `raw 2 dropped 2 kept 0` (found two, attributed neither) · `raw 0 dropped 0 kept 0`. Each run re-drafts, so the variance is the PIPELINE's, not the judge's alone — which is the thing QC-5 measures. |
+  | **Mechanism** | `violations_dropped` / `violations_raw_count` (C3) and `active_rule_count` (C5) ride every verdict, so the three outcomes are distinguishable in the report rather than collapsing into `violations: []`. Run B is invisible without them. The deferral reports its own colour. |
+  | **To unblock** | Decide what the acceptance measurement IS: N runs with a stated pass rule (e.g. "≥2 of 3 must attribute"), or a fixed draft judged N times to separate drafter variance from judge variance, or a temperature/seed pin on the critic. All three are cheap; which one is the acceptance test is a PO call, because it defines what "the refactor landed" means. |
+  | **Retry when** | The measurement rule is chosen. The machinery is done — this is a definition, not a build. |
+
+  ⚠️ **Still not driven through the studio UI.** QC-5 says *"end-to-end through the real
+  frontend"*; C3 and C5 drove `POST /authoring-runs` with the same user's auth. Restated, not
+  closed — and now the smaller of the two gaps.
+
   ### ⏸ C4 2026-08-13 — QC-5 evaluated against a real flow number. **It does NOT go `[x]`.**
 
   QC-5's assertion, verbatim:

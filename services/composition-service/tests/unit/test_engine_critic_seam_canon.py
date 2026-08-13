@@ -217,3 +217,55 @@ async def test_a_self_witnessed_verdict_SAYS_SO(judged):
         "the drafter graded its own prose and the verdict did not say so"
     )
     assert verdict.detail["critic_ref"] == drafter
+
+
+async def test_the_judge_IS_GIVEN_the_active_canon_rules(judged, monkeypatch):
+    """C5 — the ATTRIBUTION channel, which was empty until the PO decided its source.
+
+    `map_rule_tokens` drops any verdict it cannot attribute, correctly — but with
+    `active_rules=[]` there is nothing to attribute TO, so every finding was discarded and
+    `violations: []` read as "the passage is clean". Measured on the acceptance book: 7 raw
+    findings across 3 chapters, 7 dropped.
+
+    Same source as the critique endpoint (`CanonRulesRepo.list_active`), on purpose: one
+    definition of "an enforceable canon rule", not a second grown for the headless path.
+    """
+    from uuid import uuid4
+
+    import app.db.repositories.canon_rules as canon_rules_mod
+    import app.db.pool as db_pool
+    from types import SimpleNamespace
+
+    project_id = uuid4()
+    rule = SimpleNamespace(id=uuid4(), text="Only the antagonist may betray the heir.")
+
+    class _Repo:
+        def __init__(self, _pool): ...
+        async def list_active(self, pid):
+            assert pid == project_id, "the rules were read for the wrong Work"
+            return [rule]
+
+    class _Works:
+        def __init__(self, _pool): ...
+        async def resolve_by_book(self, _book_id):
+            return [SimpleNamespace(settings={}, project_id=project_id)]
+
+    monkeypatch.setattr(db_pool, "get_pool", lambda: object())
+    monkeypatch.setattr(canon_rules_mod, "CanonRulesRepo", _Repo)
+    import app.db.repositories.works as works_mod
+    monkeypatch.setattr(works_mod, "WorksRepo", _Works)
+
+    verdict = await EngineCriticSeam().critique(
+        created_by=uuid4(), book_id=uuid4(), chapter_id=uuid4(), plan_run_id=uuid4(),
+        params={"model_ref": str(uuid4()), "model_source": "user_model"},
+    )
+
+    passed = judged.kwargs["active_rules"]
+    assert [r["rule_id"] for r in passed] == [str(rule.id)], (
+        "the judge was handed no rules — findings cannot be attributed, which is the C1 defect "
+        "in its second form"
+    )
+    assert passed[0]["text"] == rule.text
+    # And the COUNT rides the verdict: `violations: []` beside `rules: 0` means "nothing to
+    # attribute to"; beside `rules: 1` it means "the judge found nothing".
+    assert verdict.detail["active_rule_count"] == 1
