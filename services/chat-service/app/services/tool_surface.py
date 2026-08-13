@@ -104,6 +104,45 @@ ALWAYS_HOT_WRITES: frozenset[str] = frozenset({
     "book_update_details",
 })
 
+#: D-FJ-23 — the PRIMARY READ of each domain, kept hot for the same reason and by the same
+#: mechanism as ALWAYS_HOT_WRITES. The mirror was missing, and the asymmetry had a cost.
+#:
+#: The size tie-break in `_budget_names_impl` orders reads by ASCENDING schema size, which is
+#: inversely correlated with how central a tool is: a primary read takes filters (project_id,
+#: detail, limit, include_archived) and documents them, while a peripheral one takes a single
+#: id. Measured on the live 315-tool catalogue, the editor seed filled with `book_scene_get`,
+#: `glossary_entity_get_genres` and `glossary_book_sync_available` while `book_read`,
+#: `book_list`, `composition_list_outline` and `composition_list_canon_rules` were all dropped.
+#: Fitting the MOST tools is not fitting the RIGHT ones.
+#:
+#: What that cost, both measured live 2026-08-13 on the editor surface with the tool absent
+#: from the wire and the model answering from nothing:
+#:   "I checked the consistency rules for this book, and you haven't declared any canon rules
+#:    yet"  — the store held one.
+#:   "I checked your current outline, and it is currently empty" — the store held seven nodes.
+#: A fabricated absence is the read-side twin of a hallucinated write, and worse in one way:
+#: the author is told their own data is not there, so they have no reason to go and look.
+#:
+#: Deliberately SMALL and explicit, like ONESHOT_CREATE_TOOLS and ALWAYS_HOT_WRITES — one
+#: entry per domain, each the tool a plain question about that domain must land on, and each
+#: one measured as starved (hot_seed withholds across the corpus: book_search 175, book_list
+#: 147, composition_list_outline 149, composition_list_canon_rules 145, book_read 137). Not a
+#: heuristic, and not a place to add a tool because it seems useful: every addition spends the
+#: authoring surface's prefix.
+ALWAYS_HOT_READS: frozenset[str] = frozenset({
+    # book — what is IN this book, and what does a chapter say
+    "book_list",
+    "book_read",
+    # composition — the two questions an author asks about their own plan
+    "composition_list_outline",
+    "composition_list_canon_rules",
+    # NOTE: `book_search` is starved hardest of all (175) and is DELIBERATELY NOT here yet.
+    # It is a query tool, not the answer to "what have I got" — the model reaches it through
+    # discovery once it knows what it is looking for, and the four above are what a cold
+    # question needs. Revisit with evidence, not with intuition.
+})
+
+
 
 def _tool_tokens(td: dict) -> int:
     """U-1 · **count the COMPOSED form.** `estimate_tokens` weights per codepoint and its Vietnamese
@@ -206,13 +245,40 @@ def _budget_names_impl(
     kept: set[str] = {n for n in want if n not in defs}  # non-catalog → passthrough
     used = 0
     # WS-1b: keep the allowlisted canon-write tools hot UNCONDITIONALLY (they were starved by
-    # the read-first ordering below). Only those already candidates for this surface, and their
-    # (small) token cost is charged against the budget so the remaining reads still fit.
-    for nm in ALWAYS_HOT_WRITES:
+    # the read-first ordering below). Only those already candidates for this surface.
+    #
+    # 🔴 D-FJ-23 — THEIR COST NO LONGER CHARGES THE DISCOVERY SEED, because charging it made
+    # the reservation eat the whole budget on the ONE surface that matters most.
+    #
+    # The comment on HOT_SEED_TOKEN_BUDGET says 2000 "keeps ~4-6 common tools hot". Measured
+    # 2026-08-13 against the live 315-tool catalogue, per surface:
+    #
+    #   editor (glossary+composition+book)  196 candidates → 4 kept, ALL 4 the reservation
+    #                                       (1986 of 2000 tokens), READS THAT FIT: ZERO
+    #   book-scoped (glossary)               54 candidates → 8 kept, 2 reserved, 6 reads
+    #   knowledge                            36 candidates → 8 kept, 3 reserved, 5 reads
+    #
+    # The allowlist is declared per TOOL but its cost compounds per SURFACE, and the editor is
+    # the only surface carrying glossary + composition + book writes at once. So on the surface
+    # built for authoring, the hot seed was 100% writes and a plain question — "what canon
+    # rules have I set?", "show me my outline" — landed on a model with no read tool at all.
+    # It answered from nothing: "you haven't declared any canon rules yet" with one in the
+    # store, "your outline is currently empty" with seven nodes in it.
+    #
+    # Two halves tuned in the same week and never against each other: the budget was halved
+    # 4000→2000 (F12 A/B, 2026-07-21) while `book_update_details` was ADDED to this allowlist
+    # (dogfood 2026-07-21) precisely because the budget had starved it. Every such rescue eats
+    # the seed that starves the next tool.
+    #
+    # An unconditional allowlist competing for a budget is a contradiction in terms. This is
+    # the same call D-RAIL-OWN-BUDGET already made twenty lines below for a pinned rail: a
+    # curated, bounded set gets its own ceiling instead of competing with discovery. The cost
+    # is explicit and bounded by the allowlist itself (7 tools, ~3.1K tokens if a surface
+    # carries them all) rather than silently deleting the read surface.
+    for nm in ALWAYS_HOT_WRITES | ALWAYS_HOT_READS:
         td = defs.get(nm)
         if td is not None:
             kept.add(nm)
-            used += _tool_tokens(td)
     ordered = sorted(
         ((n, td) for n, td in defs.items() if n not in kept),
         # CP-4.d — the DEFINITION is read, never the name. `kv[1]` is the tool def and it was
