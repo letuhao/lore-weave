@@ -939,6 +939,14 @@
       "cycle": 16,
       "group": "A#1 among unconcluded (0 live, 95 total, 196 calls)",
       "note": "BLOCKED — not because the tool is broken, but because IT CANNOT BE REACHED FROM PROSE ON EITHER SURFACE. One defect was found and SHIPPED on the way (T16-D1). DEFECT SHIPPED. Of 95 failures, 89 were 'missing book_id' and only 33 of those were genuinely empty — 56 carried the CORRECT uuid under a near-miss key ({id} x19, {ids:[…]} x13, {book_ids:[…]} x8, {params:{book_id:…}} x14). Fixed, falsified with four injections, full suite green (3046 passed), deployed, and verified BY CONTENT inside the container on all four recorded shapes — while the 33 genuinely empty ones still refuse. 🔴 THE BLOCKER, MEASURED ACROSS FOUR ATTEMPTS ON TWO SURFACES. Asked in plain prose to read a chapter, the model NEVER called book_read. On the universal /chat surface (sessions 019ffac5, 019ffac9) it called book_chapter_save_draft — a WRITE — three times with commit_message='Reading chapter 1' and no body, then crashed the turn; asked again naming book_read explicitly it looped book_list five times, once with a book_id spliced together out of a book id and a chapter id. On the BOOK STUDIO surface, where `book` is the hot domain and book_id is ambient, it reached for book_chapter_save_draft again. AND THE RUNTIME'S OWN RECORDS SAY WHY. book_read was never advertised in any of them. On the universal surface it was withheld twice as `domain_not_selected` ('domain not in this turn's hot set (knowledge)') and twice as `token_budget`. On the STUDIO surface — the book-authoring surface — it was withheld as `hot_seed`: 'did not fit the hot_seed token budget (2000 tok)', while the book tools that WERE advertised are book_chapter_save_draft and book_update_details. BOTH WRITES. The budget kept the writes and dropped the read, so a model asked to read had only a write to reach for. That is the causal explanation for OBS-T16, OBS-T22 and OBS-T28 — three write-for-read substitutions in one day, one of which overwrote a real chapter. NO WRITE LANDED in any attempt here: every save_draft call was refused for a missing `body`, and chapter 1 still reads word_count 121 with updated_at untouched. WHAT IS PROVEN: called directly, the tool is correct — cycle 8 used it to verify a restored chapter body, and this cycle used it again to read back the author's prose after the OBS-T22 repair. Its DATA is faithful. What cannot be shown is a model reaching it from prose, so LIVE is unmet and 'proven' would be a lie. Recorded as DQ-T6."
+    },
+    "book_list": {
+      "state": "proven",
+      "provider": "book",
+      "tier": "R (scope book)",
+      "cycle": 17,
+      "group": "A#1 (5 live, 21 total, 232 calls)",
+      "note": "PROVEN with NO defect. ITS 5 'LIVE' FAILURES ARE THIS LOOP'S OWN DEBRIS, and the ledger says so rather than letting the number stand: all 9 of today's failures come from cycle 11's and cycle 16's sessions, and 8 are the repeat-guard firing while the model looped book_list — precisely BECAUSE it could not reach book_read (cycle 16's blocker). The 9th is a book_id the model spliced out of a book id and a chapter id. So this tool's live signal was manufactured by the defect recorded one cycle earlier. LIVE (session 019ffad3). From 'What's the table of contents for my book …? Just the chapter list', the model called book_list({kind:'books'}) to find the book — a model-derived call — and then used book_structure_read for the outline itself, which is the right tool for a TOC. DATA (owning store loreweave_book.books), and THE FIRST READING LOOKED LIKE A DEFECT. The store holds 87 active books owned by this account; the tool reported total=82. The gap is exactly the handler's own predicate: `is_bible=false AND kind<>'diary' AND lifecycle_state='active'` — 87 active minus 4 bibles minus 1 diary = 82, matching the tool exactly. My falsifier had the wrong predicate, not the tool. That is the third time this session a control has refuted my own alarm (cycle 12's empty catalogue, cycle 15's provider_kind, this). SHIP - all four kinds and every bound swept against known state: kind omitted defaults to books (82, is_complete false, correctly paged); kind=chapters returns exactly the 2 chapters the store holds; kind=revisions returns 5, matching that chapter's draft_revision_count; kind=scenes returns 0 for a book with none. The multi-id refusals name exactly what to pass — 'kind=chapters needs book_id — pass the book whose chapters to list' and 'kind=revisions needs book_id + chapter_id' — which is the actionable form this loop has repeatedly found missing elsewhere. An out-of-enum kind is refused by the validator naming the legal set (this tool declares its enum properly, unlike catalog's sort in cycle 12). limit over max clamps; offset past the end returns 0 items with total still 82 and is_complete true; a stranger gets 'book not accessible'."
     }
   },
   "defects": {
@@ -1231,9 +1239,9 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 16,
+    "tools_concluded": 17,
     "tools_in_cycle": 0,
-    "tools_proven": 14,
+    "tools_proven": 15,
     "tools_blocked": 2,
     "defects_proven": 19,
     "defects_open": 0,
