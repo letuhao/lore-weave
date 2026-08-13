@@ -1,10 +1,59 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the gate-teeth board is CLOSED at ZERO, and the audit of it found two HIGH defects (2026-08-13, branch `feat/game-logic`)
+## ▶ GAME BUILD — two verification tracks closed: gate-teeth at ZERO, and the data plane is now MEASURED (2026-08-13, branch `feat/game-logic`)
 
-**HEAD:** `5b11e4a0d` · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `44b2bd0b5` · **NO ACTIVE run-state — all three are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — `G-S3` (give the lore bible a shape).** The gate-teeth track is DONE.
+> **▶ DO NEXT — `G-S3` (give the lore bible a shape).** Both verification tracks are DONE;
+> the product is what has not moved. `G-S3` + `G-S4` are the missing MIDDLE of BOOK → REALITY
+> and the only thing on the critical path — see [`docs/MILESTONE.md`](../MILESTONE.md) §build
+> index. A smaller warm-up if you want one: **`DPD-6`** below.
+>
+> ---
+>
+> ## ▶ THE DATA PLANE, MEASURED (2026-08-13) — `docs/plans/2026-08-13-data-plane-coverage-RUN-STATE.md`
+>
+> **The question "is the data plane complete?" now has a number instead of an impression.**
+> `scripts/dp-invariant-coverage-gate.py` parses the 84 declared invariants out of
+> `06_data_plane/*.md` and walks 4397 files for citations, in TWO TIERS — `sited` (the id
+> appears at an enforcement site) and `proven` (it appears in a test) — because
+> [standards §C](../standards/README.md) asks for both.
+>
+> | family | declared | sited | **enforced** | **specified-not-built** |
+> |---|---|---|---|---|
+> | `DP-T` | 4 | 4 | 4 | 0 |
+> | `DP-R` | 8 | 8 | 7 | 1 |
+> | `DP-A` | 19 | 19 | 17 | 2 |
+> | `DP-Ch` | 53 | 53 | 33 | **20** |
+> | **total** | **84** | **84** | **61** | **23** |
+>
+> **sited 51 → 84/84 · proven 37 → 65/84.** All four families at zero uncited.
+>
+> **⚠ THE FINDING: 23 invariants specify primitives that DO NOT EXIST**, and 20 of those are
+> the whole back half of the channel family (docs 16–20). Measured in code, comments stripped:
+> `BubbleUpAggregator` 0 · `RedactionPolicy` 0 · `channel_pause` 0 · `route_to_writer` 0 ·
+> `subscribe_many` 0 · `channel_tree` 0 · `channel_changes` 0 · `histogram_buckets` 0 ·
+> `signing_key_rotation` 0 · `fan_out_batch` 0 · no DP metrics module · no per-level retention.
+> They are **not** a gap to go fix — they are a design tier nobody has built yet, and each is
+> now a row in `CHANNEL_SPECIFIED_NOT_BUILT` (`crates/dp/tests/spec_oracle_channels.rs`) that
+> **reds the day its subject arrives**, which is the day the rule becomes violable.
+>
+> **Two exemption tables, both with shrink arms:** `UNSITED_OK` (21 — correctly unsited, because
+> an invariant with no subject has no enforcement site to cite) and `PHANTOM_OK` (2 — `DP-R9`
+> and `DP-R10` are not invariants at all; they are placeholders in a numbering instruction, and
+> `99_open_questions.md` records that a proposed `DP-R9` was **rejected**).
+>
+> **`DPD-6` is the one thing left, and it is small.** The standards index §F says
+> `DP-Ch1–Ch37`; the docs declare `Ch1..Ch53`. **16 ids read as ungoverned** in the file
+> CLAUDE.md sends every agent to. Deliberately not fixed inside a plan file — amending a
+> standard is its own change.
+>
+> Fourteen drift entries (`DPD-1`..`DPD-14`) are in the run-state §5. The recurring shape, five
+> times: **a string that looks like a subject** — a word in an unrelated README, a symbol inside
+> the oracle that counts it at zero, a `DetRng` from another crate, a doc comment saying
+> "unbuilt", and a document's own filename. Each read as evidence that something exists.
+>
+> ---
 >
 > **`GATE-TEETH` IS CLOSED.** `NO_PROOF_BASELINE` walked **28 → 0** across `GT5`–`GT8`;
 > `gate-teeth-gate` reports *99 CI-invoked gates, 99 with a red-ability proof, 0 held at
