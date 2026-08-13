@@ -57,10 +57,19 @@ condition override any prompt, summary or progress note.
 Carried verbatim in force from the journey RUNBOOK:
 
 1. **Pre-flight is by CONTENT, not by tag.** `container == image` does not imply `image == source`.
-   Every entry: per-file md5 of every `*.py` under `services/<svc>/app` against `/app/app` in the
-   running container for all 10 Python services (`difflines=0`), and for compiled services a grep of
-   the running binary for a string literal introduced by that service's most recent commit.
-   Timestamps are not evidence.
+   Run [`scripts/tool-loop-preflight.sh`](../../scripts/tool-loop-preflight.sh) at every entry and
+   require `PREFLIGHT_FAIL=0`. Part 1 is a per-file md5 of every `*.py` under `services/<svc>/app`
+   against `/app/app`; Part 2 greps each compiled service's RUNNING BINARY for a string literal that
+   must also be present in HEAD. Timestamps are not evidence.
+
+   🔴 **PART 2 EXISTS BECAUSE PART 1 SILENTLY SKIPPED EVERY COMPILED SERVICE.** On 2026-08-13 the
+   gate printed `glossary-service SKIP (no services/glossary-service/app)` and I read it as benign —
+   it is Go, there is no `app/`. The glossary binary in the running container was then measured to
+   PREDATE commit `02beee08c`: `already_trashed` and `glossary_user_restore` were in it,
+   `KEEPS ITS CODE reserved` and `CANNOT re-add the same code` were not. **A SKIP that always prints
+   is indistinguishable from a pass.** Each probe now asserts its literal is present in HEAD's source
+   first, so an edited sentence fails loudly as `PROBE-ROTTED` instead of passing on a literal
+   nothing emits any more.
 2. **A control that can refute my own claim runs BEFORE the claim is filed.** Several "defects" in the
    previous loop were killed by their own controls; that is the mechanism working.
 3. **The ledger is the progress authority.** Counts are read from its rows, never typed.
@@ -78,13 +87,31 @@ SOURCE:  the ai-gateway's federated catalogue (tools/list), which is what the mo
 COHORT:  every federated tool, grouped by provider.
 ```
 
+**Ownership** is read from each provider's OWN `tools/list` (`AI_GATEWAY_PROVIDERS` gives
+`provider=<url>`; the URL's hostname is the repo service), never from the tool-name prefix — a
+consumer-local tool's name can lie about its owner and a prefix table misattributes it silently.
+Measured 2026-08-13: 312 of the 315 federated tools are claimed by a provider; `propose_edit`,
+`tool_list` and `tool_load` are gateway-local.
+
 **Ordering** (fully determined, no discretion):
 
 | Group | Membership | Order within group |
 |---|---|---|
-| **A** | tools with ≥1 recorded FAILED call in `loreweave_chat` | failure count desc, then name |
+| **A** | tools with ≥1 recorded FAILED call in `loreweave_chat` | **live** failures desc, then total failures desc, then name |
 | **B** | tools with recorded calls and zero failures | call count desc, then name |
 | **C** | tools never called | provider (most tools first), then name |
+
+A **live** failure is one recorded AFTER the last commit to the tool's owning service — i.e. one the
+deployed code could still produce.
+
+🔴 **THE `live` QUALIFIER IS A CORRECTION, MADE 2026-08-13 AFTER THE ORDERING MIS-RANKED.** The
+first version ranked group A by total failures, which treats the whole corpus as a statement about
+the current code. It is not. `glossary_propose_curation` ranked FIRST with 29 failures — and 26 of
+them, its entire dominant mode, are dated 2026-08-10 06:28–07:03Z, while the commit that fixed them
+(`cc41f8c2f`, *"the dispatch was dropping the field it then demanded"*) landed at 15:41Z the same
+day. The ordering was pointing at a tool whose failures could no longer happen, and would have gone
+on pointing there forever. Total failures stays as the tiebreak, so a tool with only historical
+failures still sits in A rather than vanishing into B.
 
 Rationale, so it is not re-litigated: group A is the demonstrably-not-shippable set, group B is what
 real traffic depends on, group C is the untested tail. A tool's position is a measurement, not a

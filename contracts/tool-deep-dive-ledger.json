@@ -8,7 +8,7 @@
     "federated_tools": 315,
     "recorded_calls": 8494,
     "distinct_tools_called": 142,
-    "ordering_rule": "A: >=1 recorded FAILED call, by failure count desc then name. B: called, zero failures, by call count desc then name. C: never called, by provider size desc then name.",
+    "ordering_rule": "A: >=1 recorded FAILED call, ranked by LIVE failures desc (a failure recorded AFTER the last commit to the tool's OWNING SERVICE, i.e. one the deployed code could still produce), then total failures desc, then name. B: called, zero failures, by call count desc then name. C: never called, by provider size desc then name.",
     "group_sizes": {
       "A": 18,
       "B": 105,
@@ -38,94 +38,130 @@
     "note": "THE COHORT IS THE FEDERATED CATALOGUE -- what the model can actually reach -- not a repo grep of @mcp_server.tool. 19 further tool names appear in the recorded corpus but are NOT federated: chat-service's own core/frontend surface (confirm_action, workflow_list, workflow_load, load_skill, run_subagent, chat_search_sessions, ui_navigate, ui_open_studio_panel, propose_edit's siblings), the DEPRECATED find_tools, echo_test, a stale dotted alias 'plan_forge.plan_propose_spec', a renamed book_update_meta/glossary_list_kinds/compose_prose, and three u_a2bbc662_* rows from a user-connected MCP server. They are a DIFFERENT surface with a different owner and are not in this cohort; recorded here so their absence is a measurement, not an oversight.",
     "group_A": [
       {
-        "tool": "glossary_propose_curation",
-        "fails": 29,
-        "calls": 72
-      },
-      {
         "tool": "book_chapter_save_draft",
-        "fails": 5,
-        "calls": 251
+        "live_fails": 5,
+        "total_fails": 5,
+        "calls": 251,
+        "service": "book-service"
       },
       {
-        "tool": "composition_package_tree",
-        "fails": 4,
-        "calls": 12
-      },
-      {
-        "tool": "book_read",
-        "fails": 3,
-        "calls": 196
-      },
-      {
-        "tool": "glossary_entity_set_attributes",
-        "fails": 3,
-        "calls": 12
-      },
-      {
-        "tool": "plan_bootstrap_propose",
-        "fails": 3,
-        "calls": 3
-      },
-      {
-        "tool": "plan_propose_spec",
-        "fails": 3,
-        "calls": 163
-      },
-      {
-        "tool": "book_chapter_create",
-        "fails": 2,
-        "calls": 196
-      },
-      {
-        "tool": "composition_diagnostics",
-        "fails": 2,
-        "calls": 5
-      },
-      {
-        "tool": "glossary_propose_new_attribute",
-        "fails": 2,
-        "calls": 14
-      },
-      {
-        "tool": "glossary_search",
-        "fails": 2,
-        "calls": 217
+        "tool": "glossary_propose_curation",
+        "live_fails": 1,
+        "total_fails": 29,
+        "calls": 72,
+        "service": "glossary-service"
       },
       {
         "tool": "translation_start_job",
-        "fails": 2,
-        "calls": 6
-      },
-      {
-        "tool": "composition_outline_node_edit",
-        "fails": 1,
-        "calls": 6
-      },
-      {
-        "tool": "glossary_list_ai_suggestions",
-        "fails": 1,
-        "calls": 93
-      },
-      {
-        "tool": "glossary_ontology_upsert",
-        "fails": 1,
-        "calls": 2
-      },
-      {
-        "tool": "glossary_propose_entities",
-        "fails": 1,
-        "calls": 298
+        "live_fails": 1,
+        "total_fails": 2,
+        "calls": 6,
+        "service": "translation-service"
       },
       {
         "tool": "kg_build",
-        "fails": 1,
-        "calls": 2
+        "live_fails": 1,
+        "total_fails": 1,
+        "calls": 2,
+        "service": "knowledge-service"
+      },
+      {
+        "tool": "composition_package_tree",
+        "live_fails": 0,
+        "total_fails": 5,
+        "calls": 15,
+        "service": "composition-service"
+      },
+      {
+        "tool": "plan_bootstrap_propose",
+        "live_fails": 0,
+        "total_fails": 4,
+        "calls": 6,
+        "service": "composition-service"
+      },
+      {
+        "tool": "plan_propose_spec",
+        "live_fails": 0,
+        "total_fails": 4,
+        "calls": 164,
+        "service": "composition-service"
+      },
+      {
+        "tool": "book_read",
+        "live_fails": 0,
+        "total_fails": 3,
+        "calls": 196,
+        "service": "book-service"
+      },
+      {
+        "tool": "glossary_entity_set_attributes",
+        "live_fails": 0,
+        "total_fails": 3,
+        "calls": 12,
+        "service": "glossary-service"
+      },
+      {
+        "tool": "book_chapter_create",
+        "live_fails": 0,
+        "total_fails": 2,
+        "calls": 196,
+        "service": "book-service"
+      },
+      {
+        "tool": "composition_diagnostics",
+        "live_fails": 0,
+        "total_fails": 2,
+        "calls": 5,
+        "service": "composition-service"
+      },
+      {
+        "tool": "glossary_propose_new_attribute",
+        "live_fails": 0,
+        "total_fails": 2,
+        "calls": 14,
+        "service": "glossary-service"
+      },
+      {
+        "tool": "glossary_search",
+        "live_fails": 0,
+        "total_fails": 2,
+        "calls": 217,
+        "service": "glossary-service"
+      },
+      {
+        "tool": "composition_outline_node_edit",
+        "live_fails": 0,
+        "total_fails": 1,
+        "calls": 6,
+        "service": "composition-service"
+      },
+      {
+        "tool": "glossary_list_ai_suggestions",
+        "live_fails": 0,
+        "total_fails": 1,
+        "calls": 93,
+        "service": "glossary-service"
+      },
+      {
+        "tool": "glossary_ontology_upsert",
+        "live_fails": 0,
+        "total_fails": 1,
+        "calls": 2,
+        "service": "glossary-service"
+      },
+      {
+        "tool": "glossary_propose_entities",
+        "live_fails": 0,
+        "total_fails": 1,
+        "calls": 298,
+        "service": "glossary-service"
       },
       {
         "tool": "plan_compile",
-        "fails": 1,
-        "calls": 4
+        "live_fails": 0,
+        "total_fails": 1,
+        "calls": 4,
+        "service": "composition-service"
       }
     ],
     "group_B": [
@@ -430,6 +466,10 @@
         "calls": 2
       },
       {
+        "tool": "composition_find_references",
+        "calls": 2
+      },
+      {
         "tool": "composition_outline_node_update",
         "calls": 2
       },
@@ -471,10 +511,6 @@
       },
       {
         "tool": "composition_conformance_status",
-        "calls": 1
-      },
-      {
-        "tool": "composition_find_references",
         "calls": 1
       },
       {
@@ -638,6 +674,18 @@
       "composition_switch_active_work",
       "composition_task_provide_input",
       "composition_write_prose",
+      "plan_apply_revision",
+      "plan_bootstrap_apply",
+      "plan_find_missing_material",
+      "plan_get_missing_material",
+      "plan_handoff_autofix",
+      "plan_interpret_feedback",
+      "plan_keep_material",
+      "plan_link",
+      "plan_pass_status",
+      "plan_review_checkpoint",
+      "plan_self_check",
+      "plan_validate",
       "glossary_book_revert",
       "glossary_book_sync_apply",
       "glossary_book_sync_available",
@@ -671,6 +719,19 @@
       "book_structure_edit",
       "book_structure_part_archive",
       "book_structure_read",
+      "world_create",
+      "world_delete",
+      "world_get",
+      "world_map_delete",
+      "world_map_get",
+      "world_map_list",
+      "world_map_remove_marker",
+      "world_map_remove_region",
+      "world_map_update",
+      "world_map_update_marker",
+      "world_map_update_region",
+      "world_move_book",
+      "world_update",
       "kg_build_wiki",
       "kg_create_node",
       "kg_entity_edge_timeline",
@@ -687,31 +748,11 @@
       "kg_view_edit",
       "kg_view_upsert",
       "kg_world_query",
-      "world_create",
-      "world_delete",
-      "world_get",
-      "world_map_delete",
-      "world_map_get",
-      "world_map_list",
-      "world_map_remove_marker",
-      "world_map_remove_region",
-      "world_map_update",
-      "world_map_update_marker",
-      "world_map_update_region",
-      "world_move_book",
-      "world_update",
-      "plan_apply_revision",
-      "plan_bootstrap_apply",
-      "plan_find_missing_material",
-      "plan_get_missing_material",
-      "plan_handoff_autofix",
-      "plan_interpret_feedback",
-      "plan_keep_material",
-      "plan_link",
-      "plan_pass_status",
-      "plan_review_checkpoint",
-      "plan_self_check",
-      "plan_validate",
+      "lore_ask",
+      "lore_browse_entities",
+      "lore_entity",
+      "memory_forget",
+      "memory_timeline",
       "settings_get_defaults",
       "settings_get_profile",
       "settings_model_register",
@@ -735,20 +776,39 @@
       "registry_update_workflow",
       "jobs_cancel",
       "jobs_pause",
-      "lore_ask",
-      "lore_browse_entities",
-      "lore_enrichment_auto_enrich",
-      "lore_entity",
-      "memory_forget",
-      "memory_timeline",
       "catalog_get_book",
-      "catalog_list_public_books"
-    ]
+      "catalog_list_public_books",
+      "lore_enrichment_auto_enrich"
+    ],
+    "re_derived_at": "2026-08-13 (cycle 2 entry)",
+    "ownership": {
+      "source": "each provider's OWN tools/list, reached via AI_GATEWAY_PROVIDERS (provider=<url>; the URL hostname IS the repo service). NEVER the tool-name prefix.",
+      "providers": {
+        "knowledge": "knowledge-service",
+        "glossary": "glossary-service",
+        "jobs": "jobs-service",
+        "book": "book-service",
+        "composition": "composition-service",
+        "translation": "translation-service",
+        "settings": "provider-registry-service",
+        "lore_enrichment": "lore-enrichment-service",
+        "catalog": "catalog-service",
+        "registry": "agent-registry-service"
+      },
+      "tools_claimed_by_a_provider": 312,
+      "gateway_local_unclaimed": [
+        "propose_edit",
+        "tool_list",
+        "tool_load"
+      ],
+      "note": "312 of 315 federated tools are claimed by a backend provider; the other three are the gateway's own discovery/edit surface. Measured, not assumed - a consumer-local tool's NAME can lie about its owner and a prefix table misattributes it silently."
+    },
+    "ordering_correction": "THE FIRST ORDERING MIS-RANKED, AND IT WOULD HAVE KEPT DOING SO. Ranking group A by TOTAL failures treats the whole recorded corpus as a statement about the CURRENT code. glossary_propose_curation ranked first with 29 failures; 26 of them - its entire dominant mode, the model sending singular `entity_id` where op=status_change reads `entity_ids` - are dated 2026-08-10 06:28-07:03Z, and the commit that fixed them (cc41f8c2f, 'the dispatch was dropping the field it then demanded') landed 15:41Z the same day. Its coalesce is in the source AND in the deployed binary, and only ONE failure postdates it. The corrected rule ranks on live failures and moves book_chapter_save_draft (5 live of 5 total, in 251 calls) to the head. Recorded here rather than silently reordered: cycle 2 follows the corrected measurement, and glossary_propose_curation keeps its place at A#2."
   },
   "preflight": {
-    "state": "green",
+    "state": "hardened (part 2 added)",
     "measured_at": "2026-08-13 (entry)",
-    "note": "Inherited verbatim from the journey RUNBOOK and re-run at entry. Per-file md5 (CRLF-normalised) of every *.py under services/<svc>/app against /app/app in the running container: chat-service 131/131, composition-service 242/242, knowledge-service 301/301, translation-service 85/85, composition-worker 242/242, translation-worker 85/85, worker-ai 24/24 -- all difflines=0. IT CAUGHT ONE ON THE FIRST RUN: infra-composition-worker-1 was difflines=4 on mcp/server.py because  does not rebuild the worker image that shares its source; rebuilt and force-recreated, then green. Compiled/TS services carry no new commits since their content-verified literals (glossary 02beee08c, book-service a8bed0921, catalog fdb8a8b49, agent-registry 14e8804ce, provider-registry 517acf5b9, ai-gateway/bff/frontend unchanged since 2026-08-02/03)."
+    "note": "Inherited verbatim from the journey RUNBOOK and re-run at entry. Per-file md5 (CRLF-normalised) of every *.py under services/<svc>/app against /app/app in the running container: chat-service 131/131, composition-service 242/242, knowledge-service 301/301, translation-service 85/85, composition-worker 242/242, translation-worker 85/85, worker-ai 24/24 -- all difflines=0. IT CAUGHT ONE ON THE FIRST RUN: infra-composition-worker-1 was difflines=4 on mcp/server.py because  does not rebuild the worker image that shares its source; rebuilt and force-recreated, then green. Compiled/TS services carry no new commits since their content-verified literals (glossary 02beee08c, book-service a8bed0921, catalog fdb8a8b49, agent-registry 14e8804ce, provider-registry 517acf5b9, ai-gateway/bff/frontend unchanged since 2026-08-02/03). || AMENDED 2026-08-13, and the amendment caught a live staleness on its first run. Part 1 covers only Python services and printed 'glossary-service SKIP (no services/glossary-service/app)' at every entry - which I read as benign, since it is Go. Measured directly, the RUNNING glossary binary PREDATED commit 02beee08c: `already_trashed` and `glossary_user_restore` were present, `KEEPS ITS CODE reserved` and `CANNOT re-add the same code` were not. A SKIP that always prints is indistinguishable from a pass. The gate now lives at scripts/tool-loop-preflight.sh and has a PART 2 that greps each compiled service's running binary for a literal which must ALSO be present in HEAD's source - so an edited sentence fails loudly as PROBE-ROTTED instead of passing on a literal nothing emits any more. glossary-service was rebuilt and force-recreated; all five compiled probes and every Python service now pass (PREFLIGHT_FAIL=0). NOTE ON MY OWN EARLIER CLAIM: cycle 1 asserted the compiled services were current 'since their verified literals' on the strength of git log dates. That was an inference, not a measurement, and it was wrong for glossary-service."
   },
   "tools": {
     "plan_bootstrap_propose": {
