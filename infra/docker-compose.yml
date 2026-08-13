@@ -1559,6 +1559,8 @@ services:
       # with every other service's GLOSSARY_*_URL=:8088. NOT a model backend (a
       # plain service-to-service internal URL); auth reuses X-Internal-Token.
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      # T38 B6 — entity knowledge is read through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       # Phase 4b-γ: SDK posts to provider-registry's internal LLM
       # gateway for entity/relation/event/fact extraction jobs.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085

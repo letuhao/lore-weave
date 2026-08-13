@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Post, Query, Body, Req, UseGuards } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query, Body, Req, UseGuards, HttpCode } from '@nestjs/common';
 import { ctxFromReq, glossary, knowledge } from './downstream.js';
 import { temporalCapability } from './temporal.js';
 import { KalAuthGuard } from '../auth/kal-auth.guard.js';
@@ -203,6 +203,11 @@ export class KalReadController {
   // POST, not GET, and not a query param on `cast`: an id list is unbounded in principle, and
   // a caller pinning 200 entities would build a URL long enough to be truncated by something
   // in the middle — silently, and as a shorter answer rather than an error.
+  // 200, not Nest's default 201 for @Post. This is a READ that happens to carry its key set
+  // in a body, and a client checking `status != 200` gets zero rows from a 201 — measured
+  // live: "by-ids requested: 3 | names returned: 0", with the gateway answering 201 and the
+  // consumer discarding the payload as an error.
+  @HttpCode(200)
   @Post('cast/by-ids')
   async castByIds(
     @Param('bookId') bookId: string,

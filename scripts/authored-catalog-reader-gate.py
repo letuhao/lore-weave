@@ -146,8 +146,6 @@ BASELINE = {
         "NOT the glossary, so against the authored catalog it is a consumer like any other",
     os.path.join("translation-service", "app", "workers", "glossary_client.py"):
         "by-ids read",
-    os.path.join("worker-ai", "app", "clients.py"):
-        "LIST read + by-ids read — a core T38 target",
 }
 
 

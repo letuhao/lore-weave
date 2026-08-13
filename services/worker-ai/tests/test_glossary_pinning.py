@@ -51,8 +51,10 @@ async def test_fetch_entities_by_ids_returns_names():
     names = await gc.fetch_entities_by_ids(book_id, ["e1", "e2"])
 
     assert names == ["PanGu", "Nuwa"]
-    # Hits the SAME internal endpoint the knowledge-service selector uses.
-    assert f"/internal/books/{book_id}/entities/by-ids" in captured["url"]
+    # T38 B6 — through the KAL now (INV-KAL), not glossary /internal. The projection is
+    # identical (`cast/by-ids` returns `cast`'s shape), so the assertions above are unchanged;
+    # only the boundary moved, which is what a migration should look like from a test.
+    assert f"/v1/kal/books/{book_id}/cast/by-ids" in captured["url"]
     # Reuses the existing X-Internal-Token — NO new secret.
     assert captured["token"] == "tok"
     assert b"e1" in captured["body"] and b"e2" in captured["body"]

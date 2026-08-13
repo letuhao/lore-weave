@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B6` — migrate `worker-ai/clients.py` (both reads now have a KAL destination).**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B5 DONE:** the KAL grew `cast` **and** `cast/by-ids`, both declared in the frozen `kal.v1.yaml`; two consumers migrated — **`authored-catalog-reader-gate` 10 → 8 call sites**. B5 built a destination rather than migrating one caller through a gap: **five** of the eight remaining sites are `by-ids` reads that had nowhere to go. The gate is unchanged at 7/8 by design — B5 shipped no migration. See **▶ EXECUTION PLAN** below.
+**RESUME: `B7` — the four `entities/by-ids` consumers, which now have `cast/by-ids` to move onto.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B6 DONE:** the KAL grew `cast` **and** `cast/by-ids` (both in the frozen `kal.v1.yaml`), three consumers migrated, and **`authored-catalog-reader-gate` fell 10 → 6 call sites**. **T38's original target — the authored-catalog LIST readers — is COMPLETE**; the six remaining are four `by-ids` reads, one eval script, and the `assistant.controller` DELETE the baseline already excludes. Three live field/status mismatches were caught by smokes and none by unit tests (`cached_aliases`/`aliases`, `kind_code`/`kind`, `201`/`200`). See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6545,6 +6545,66 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ---
+  ### ✅ B6 2026-08-13 — `worker-ai` migrated, both reads at once; **the smoke caught two more of my bugs**
+
+  ```
+  authored-catalog-reader-gate   7 files / 8 call sites  ->  6 files / 6 call sites
+  ```
+
+  `worker-ai/app/clients.py` held a LIST read **and** a by-ids read, so its pin could only come
+  off when both moved — which is why B5 built `cast/by-ids` first. Both now go through the KAL.
+
+  🔴 **THE LIVE SMOKE FOUND TWO DEFECTS THE UNIT TESTS COULD NOT.** First run:
+
+  ```
+  LIST page items: 5 | with kind: 0 | with aliases: 1
+  by-ids requested: 3 | names returned: 0
+  ```
+
+  1. **`by-ids` answered `201`, and the client discards anything that is not `200`.** NestJS
+     defaults `@Post` to 201, and this is a READ that merely carries its key set in a body.
+     The jest specs call the controller **method** directly, so they never see a status code —
+     the whole class of bug is invisible below HTTP. Fixed with `@HttpCode(200)`.
+  2. **`kind` was empty on every row.** The KAL's `cast` names the field `kind`; the glossary
+     LIST payload named it `kind_code`, and the consumer looked up only the old key.
+
+  ```
+  after:  LIST page items: 5 | with kind: 5 | with aliases: 1
+          by-ids requested: 3 | names returned: 3
+  ```
+
+  ⚠️ **That is the THIRD field/status mismatch this workstream, and all three were found live:**
+  `cached_aliases` vs `aliases` (B4), `kind_code` vs `kind` (here), `201` vs `200` (here). The
+  pattern is worth naming: **when a consumer moves to a new boundary, the payload keys move
+  with it, and a unit test written by the same author who wrote the mapping agrees with the
+  mapping.** Only a real payload disagrees. Each one read as a plausible number — `36`, `0`,
+  `0` — rather than an error.
+
+  **BITE:**
+
+  ```
+  revert the by-ids read to glossary /internal
+    E  AssertionError: assert '/v1/kal/books/…/cast/by-ids' in
+       'http://glossary-service:8211/internal/books/…/entities/by-ids'
+  ```
+
+  **QC (a) gates:** `authored-catalog-reader-gate` **PASS at 6/6**, baseline shrunk in this
+  commit, `--selftest` passes. All 99 gates green.
+  **QC (b) the seam:** `knowledge-gateway` and `worker-ai` rebuilt; env + code `grep`-verified
+  in-container (`KAL=http://knowledge-gateway:3000`, two `v1/kal/books` call sites). The numbers
+  above are that smoke, run twice — once to find the bugs, once to prove the fixes.
+  **QC (c) real data:** five real entities of the acceptance book, three names resolved by id.
+
+  ```
+  511 passed — worker-ai · Tests: 32 passed — knowledge-gateway
+  ```
+
+  **Six call sites remain, and none of them is a LIST read.** Four are `entities/by-ids`
+  (composition, knowledge, translation — each now has `cast/by-ids` as a destination), one is
+  the `assistant.controller` DELETE the baseline already labels as **not T38's**, and one is an
+  eval script on `canon-content`. **T38's original target — the authored-catalog LIST readers —
+  is complete.**
+
   ### ✅ B5 2026-08-13 — the KAL grows `cast/by-ids`, because **five** pinned sites needed it, not one
 
   ```
