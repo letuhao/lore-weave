@@ -10,7 +10,10 @@ which mangles `sh -c 'echo $VAR'` and silently yields an empty string.
 """
 import json, io, os, sys, urllib.request
 
-SP = os.path.dirname(os.path.abspath(__file__))
+# Honour TOOLLOOP_WORKDIR exactly as derive-tool-order.py does. The RUNBOOK states BOTH scripts
+# read their inputs from it; this one did not, so a run that dumped its inputs to a workdir
+# silently read a stale owners set from the repo directory instead.
+SP = os.environ.get("TOOLLOOP_WORKDIR") or os.path.dirname(os.path.abspath(__file__))
 raw = io.open(os.path.join(SP, "providers.txt"), encoding="utf-8").read().strip()
 itok = io.open(os.path.join(SP, "itok.txt"), encoding="utf-8").read().strip()
 USER = "019d5e3c-7cc5-7e6a-8b27-1344e148bf7c"
@@ -74,6 +77,25 @@ for part in raw.split(","):
     for t in tools:
         owner[t["name"]] = {"provider": name, "service": svc}
     print(f"  {name:16s} {svc:28s} tools={len(tools)}")
+
+# A federated-catalogue tool that NO provider claims is served by the gateway ITSELF - tool_list,
+# tool_load and propose_edit. They are NOT "unknown owner", and leaving them unstamped is not
+# harmless: derive-tool-order.py treats an unknown owner as "cannot prove historical, so treat
+# every failure as LIVE", which is fail-safe for a genuine unknown and simply WRONG here.
+# Measured 2026-08-13: that fallback put tool_list at the head of group A with 1180 "live"
+# failures - every one of them dated 2026-07-20, and every one of them chat-service's
+# turn-level duplicate-call guard ("You have already called ... this turn") rather than the tool
+# failing at all. The next cycle would have gone deep on a phantom.
+try:
+    _cat = json.load(io.open(os.path.join(SP, "tools.json"), encoding="utf-8"))
+    _names = [t["name"] for t in _cat["result"]["tools"]]
+except Exception as exc:
+    print(f"  tools.json unreadable ({exc}); gateway-local tools left UNOWNED")
+    _names = []
+_local = [n for n in _names if n not in owner]
+for n in _local:
+    owner[n] = {"provider": "gateway-local", "service": "ai-gateway"}
+print("gateway-local (unclaimed by any provider):", _local)
 
 io.open(os.path.join(SP, "owners.json"), "w", encoding="utf-8").write(
     json.dumps({"providers": providers, "owner": owner}, indent=1))

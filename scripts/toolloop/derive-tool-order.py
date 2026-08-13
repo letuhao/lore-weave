@@ -22,13 +22,28 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 owners = json.load(io.open(os.path.join(SP, "owners.json"), encoding="utf-8"))["owner"]
 cat = [x["name"] for x in json.load(io.open(os.path.join(SP, "tools.json"), encoding="utf-8"))["result"]["tools"]]
 
+def _utc_naive(value):
+    """Both sides of the live/historical cutoff must be naive UTC.
+
+    Call timestamps come out of psql as `at time zone 'UTC'`, i.e. naive UTC. A commit time
+    dumped as %cI carries an offset and comparing the two raises. Worse than the raise: a commit
+    time dumped in LOCAL wall-clock with no offset compares SILENTLY and skews the cutoff by the
+    local offset (+07:00 here) - enough to reclassify a whole afternoon of failures as
+    historical. So normalise here rather than trusting the dump.
+    """
+    parsed = dt.datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        return parsed
+    return parsed.astimezone(dt.timezone.utc).replace(tzinfo=None)
+
+
 last = {}
 for line in io.open(os.path.join(SP, "svc_last_commit.tsv"), encoding="utf-8"):
     if "\t" not in line:
         continue
     s, iso = line.rstrip("\n").split("\t", 1)
     if iso.strip():
-        last[s] = dt.datetime.fromisoformat(iso.strip())
+        last[s] = _utc_naive(iso.strip())
 
 total_f = collections.Counter()
 live_f = collections.Counter()
@@ -50,7 +65,7 @@ for line in io.open(os.path.join(SP, "calls_ts.tsv"), encoding="utf-8"):
         live_f[tool] += 1        # unknown owner ⇒ cannot prove it is historical ⇒ treat as live
         continue
     try:
-        when = dt.datetime.fromisoformat(ts)
+        when = _utc_naive(ts)
     except ValueError:
         live_f[tool] += 1
         continue
