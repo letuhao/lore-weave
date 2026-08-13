@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T36` — role facts (SPEC §6.1 sequences `T35 → T36 → T37 → T32/T33 → QC-6`).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` · ✅ `T35b` · ✅ `T35c` — **T35's minting half is CLOSED**: three writers MERGEd on a hash of mutable properties (`merge_entity`, the enrichment anchor, the anchor pre-loader); each is now resolve-first, and the rename is proved live through the deployed consumer with the id and anchor intact. `glossary_sync` was accused and measured innocent. ⚠️ What T35 still owes is NOT the join sites — `e.id` is stable, so joining on it is correct. The 4 remaining `derived-entity-id-gate` callers are a storage-layer mint, a one-shot backfill, and a test double: none is a migration. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**.
+**RESUME: `T37` — composition-service becomes a KAL command producer (SPEC §4.2), now that T36 has settled the payload shape it writes.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T38` · ✅ `T42a`. 🔻 **39 → 42 done, and three of those were MIS-MARKED rather than newly built.** T36, T38 and T42a each carried pasted evidence, closed deferrals and green bites and sat `[~]` on inertia — the same disease as the four stale RESUME pointers this plan was restructured to fix, and the reason a session can look for work that is finished. Each was RE-VERIFIED before the box moved (T36: composition 3723 passed + the spend-default bite; T38: reader gate 3/3; T42a: conformance 82 passed against real Neo4j + AGE), never flipped on the prose alone. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -4891,8 +4891,29 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   have over-stated the migration by **2.2×**, and an over-stated checklist hides the real
   remainder inside noise, which is precisely the mistake T17's "still owed" paragraph made.
 
-- [~] **T36** — Roles as relation facts with story intervals (**M2**)
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.1. Unfinished, not undecided.
+- [x] **T36** — Roles as relation facts with story intervals (**M2**) ✅ **CLOSED 2026-08-14**
+  🔻 **The row was MIS-MARKED, and that is the finding.** All three halves below carry
+  pasted evidence and bites; its deferral was retracted 2026-08-11 with *"Neither blocker
+  survives"*; and the block ends *"QC-5 can now run with the role check on"*. It sat `[~]`
+  anyway, which is the same disease as the four stale RESUME pointers this plan was
+  restructured to fix: **a plan that under-reports its own state sends the next session
+  looking for work that is done.**
+
+  **Re-verified before flipping the box, rather than trusting the prose (2026-08-14):**
+  `roles_at_position` (l.156), `roles_in_draft` (l.187) and `judge_role_attribution`
+  (l.315) are all present in `app/engine/canon_check.py`; `recreate_relation` carries
+  `valid_from_ordinal` on the port (Half 3's authoring fix); **composition-service
+  3723 passed, 403 skipped**, and the 14 role rules pass.
+
+  **BITE — the spend default is still enforced by a test, not by a comment:**
+  ```
+  role_check: bool = False  ->  True
+  E  AssertionError: no judge call may happen with the role check off
+  E  assert 1 == 0
+  FAILED tests/test_canon_check.py::test_check_canon_does_not_run_the_role_check_by_default
+  ```
+  Restored -> 6 passed. That is the bite worth re-running: `role_check` costs a second
+  judge call on most scenes, and rule 4 says a token-spending toggle fails closed.
   Closes `D-CANON-CHECK-BLIND-TO-ROLE`, the refactor's stated acceptance case.
   (depends on T35)
   ---
@@ -6728,8 +6749,13 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **To unblock** | One of: (a) the drafting flow invokes the D5 critic so a chapter carries a `canon_consistency`; (b) QC-5's criterion is restated against what the flow DOES produce — the guard's per-check statuses and coverage — which is a different and arguably better test, since a per-check report cannot round up to a pass; or (c) the acceptance test is declared to be the direct-critique assertion only, and the flow capture drops the `canon_consistency` wording. **(b) or (c) is a plan edit, not code.** |
   | **Mechanism** | The measurement file records both coverages side by side, so the disagreement is visible rather than inferable. Any future run that reports a flow-level `canon_consistency` contradicts this row and closes it. |
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
-- [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §5.2. Unfinished, not undecided.
+- [x] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
+  ✅ **CLOSED 2026-08-14 — re-verified, not assumed.** `authored-catalog-reader-gate` PASS at
+  **3 files / 3 call sites**, exactly the pinned set. T38's migration target was **10 → 3**, and
+  the three that remain are the ones it was never for: two eval scripts on `canon-content`
+  (*"not a runtime path, migrate last"* in the baseline) and the `assistant.controller` DELETE
+  the baseline itself labels *"a WRITE … NOT T38's to migrate"*. Nothing in this block names
+  outstanding work; it sat `[~]` on inertia.
   ---
   ### ✅ B8 2026-08-13 — `CastEntry` grows `attributes`; **T38's last real consumer is migrated**
 
@@ -8179,8 +8205,13 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 > by `/aif-improve +check` on 2026-08-12 — **T42a–T42d** — because the adapter as written had no
 > harness to be judged against and no engine to run on.
 
-- [~] **T42a** — **Adapter-parameterised behavioural conformance suite** *(NEW — do this FIRST)*
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.4. Unfinished, not undecided.
+- [x] **T42a** — **Adapter-parameterised behavioural conformance suite** *(NEW — do this FIRST)*
+  ✅ **CLOSED 2026-08-14 — re-verified against all three adapters.**
+  `tests/integration/db/test_graph_store_conformance.py` with `CONFORMANCE_REQUIRE_REAL=1`,
+  a real Neo4j and a real AGE container: **82 passed, 15 skipped**. The suite this task exists
+  to create not only exists, it has grown from 40 rules to 82 across A1–A8 and every skip is
+  asserted rather than assumed. The only *"not yet"* in the block below is narrative about a
+  git incident, not owed work.
   ---
   ### 🔴 A0 2026-08-13 — **the batch was already done, and I nearly destroyed it proving that**
 
