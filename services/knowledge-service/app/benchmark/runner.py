@@ -37,7 +37,7 @@ import asyncpg
 
 from app.clients.embedding_client import EmbeddingClient
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.passages import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
+from app.domain.passage_contract import KNOWN_SOURCE_TYPES, SUPPORTED_PASSAGE_DIMS
 from app.db.repositories.projects import ProjectsRepo
 from .core import (
     AsyncBenchmarkRunner,

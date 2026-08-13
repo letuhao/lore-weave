@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A6` — class (a) only: lift the remaining engine-layer CONSTANTS into the domain.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0–A5 DONE.** Gate: ceiling **64 → 60**, floor **14 → 17**. 🔴 **A5 measured the sweep and re-scoped it** — `D-T17-SWEEP-IS-NOT-MECHANICAL`: 51 of the 60 remaining binders need port operations that do not exist, 5 belong to the vector layer **T25 deletes**, and the one module the port already covers is a known FALSE match. A6 takes the cheap honest class only (`SUPPORTED_PASSAGE_DIMS` ×12 and friends); the real port growth waits on **T35**. See **▶ EXECUTION PLAN** below.
+**RESUME: `A7` — the remaining class (a) constants, then hand T17 back for re-ordering.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0–A6 DONE.** Gate: ceiling **64 → 59**, floor **14 → 17**; conformance **40 → 67 passed / 9 skipped**. `D-T17-SWEEP-IS-NOT-MECHANICAL` is measured and holding: class (a) yielded ONE freed module because most constant-importers also call vector operations **T25 deletes**. **A second PO question is now owed** — whether T17's remainder should be re-ordered behind **T25** (vector) and **T35** (identity), which is where 56 of the 59 remaining bindings actually live. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -1961,6 +1961,65 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   ---
+  ### ✅ A6 2026-08-13 — class (a): three constant families out of the engine layer
+
+  ```
+  port-adoption-gate   ceiling 60 -> 59     floor 17 (unchanged)
+  ```
+
+  Three vocabularies that had been living in `db/neo4j_repos/` moved to `app/domain/`, each
+  re-exported so every existing importer keeps working and there is still exactly **one**
+  definition:
+
+  * `KNOWN_SOURCE_TYPES` + `SUPPORTED_PASSAGE_DIMS` → `app/domain/passage_contract.py`
+  * `MemoryFactType` / `StoryFactType` / `FactType` + the three derived tuples →
+    `app/domain/fact_types.py`
+
+  🎯 **`SUPPORTED_PASSAGE_DIMS` had the proof written on it already — by the POSTGRES adapter:**
+
+  > *"`vector(n)` is a TYPED column … the dim set has to be closed for the table name to be
+  > safe to interpolate. It already is — `SUPPORTED_PASSAGE_DIMS`, which `passages.py` has
+  > been validating against for the same reason (Cypher could not parameterise a property
+  > name; SQL cannot parameterise a relation name). **Same barrier, same closed set, one
+  > place.**"* — `app/adapters/pg_vector_store.py`
+
+  **Two engines, opposite query languages, one closed set** — and to learn which embedding
+  dimensions the platform accepts, the Postgres store was importing its rival. That is the
+  clearest single case in the whole sweep of a constant counted as a graph binding.
+
+  ⚠️ **Only ONE module was actually freed, and the ceiling moved by one, not by four.** The
+  other three constant-importers (`pg_vector_store`, `benchmark/runner`,
+  `benchmark/mode3_query_runner`, `context/selectors/passages`) still call **real vector
+  operations** — `find_passages_by_vector`, `count_passages_by_source_types` — which **T25
+  deletes**, not the port. Moving their constants removed a false signal without freeing them,
+  and saying "four modules migrated" would have been counting edits instead of bindings.
+  `tools/definitions.py` — which builds MCP tool schemas and touches no Cypher — is the one
+  that came free, for a tuple of six strings.
+
+  **BITE:**
+
+  ```
+  revert `from app.domain.fact_types import MEMORY_FACT_TYPES` in tools/definitions.py
+     -> [port-adoption-gate] 60 module(s) bind `neo4j_repos` directly (ceiling 59)
+     -> [port-adoption-gate] FAIL — direct binding GREW to 60.
+  restored -> PASS at 59
+  ```
+
+  **QC (a) gates:** `port-adoption-gate` PASS at the new ceiling, moved in this commit (rule 5),
+  `--selftest` passes. `db-safety-gate` exit 0. `graph-port-gate` PASS.
+  **QC (b) the seam:** N/A — imports moved inside one service; no wire contract, no seam.
+  **QC (c) real data:** N/A — a binding migration produces no data.
+
+  ```
+  4216 passed — knowledge-service unit suite
+  ```
+
+  **`D-T17-SWEEP-IS-NOT-MECHANICAL` holds, and A6 is its first measured instalment:** class (a)
+  had ~12 candidate modules by import count and yielded **one** freed module, because most of
+  them import a constant *and* a vector operation. The remaining class-(a) work is worth doing
+  for honesty — a constant in the engine package is a lie about coupling — but it will not
+  empty the ceiling.
+
   ### 🔴 A5 2026-08-13 — **"sweep the remaining 61 in batches of ~8" cannot happen. Measured.**
 
   ```

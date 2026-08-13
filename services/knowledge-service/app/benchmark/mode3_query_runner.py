@@ -20,10 +20,8 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import (
-    SUPPORTED_PASSAGE_DIMS,
-    find_passages_by_vector,
-)
+from app.db.neo4j_repos.passages import find_passages_by_vector
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 
 from .core import ScoredResult
 

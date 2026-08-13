@@ -52,11 +52,8 @@ from app.context.intent.classifier import Intent, IntentResult
 from app.context.query_embedding import embed_query_cached
 from loreweave_llm.errors import LLMError, LLMTransientRetryNeededError
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import (
-    PassageSearchHit,
-    SUPPORTED_PASSAGE_DIMS,
-    find_passages_by_vector,
-)
+from app.db.neo4j_repos.passages import PassageSearchHit, find_passages_by_vector
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)

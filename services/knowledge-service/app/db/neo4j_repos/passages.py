@@ -47,19 +47,16 @@ __all__ = [
     "get_chapter_index_for_source",
 ]
 
-# C8 (D-K19e-γa-01) — closed set of recognised source_type values on
-# :Passage nodes. Single source of truth consumed by:
-#   - drawers.py router (Literal validation + response padding)
-#   - count_passages_by_source_type (key padding so every type appears
-#     even at 0 count)
-# Add a member here first before writing a new source_type producer.
-KNOWN_SOURCE_TYPES: frozenset[str] = frozenset({"chapter", "chat", "glossary"})
+# MOVED to `app.domain.passage_contract` (T17 A6) — a fact about the CORPUS, not this
+# engine. Re-exported so every existing importer keeps working and there is still exactly
+# ONE definition.
+from app.domain.passage_contract import KNOWN_SOURCE_TYPES  # noqa: E402,F401
 
 logger = logging.getLogger(__name__)
 
-# Mirror the entity-vector index dims (KSA §3.4.B). New dims added
-# here must also get a matching CREATE VECTOR INDEX in neo4j_schema.cypher.
-SUPPORTED_PASSAGE_DIMS: tuple[int, ...] = (384, 1024, 1536, 2560, 3072)
+# MOVED to `app.domain.passage_contract` (T17 A6) — the POSTGRES adapter validates against
+# the same closed set, which is the proof it was never this engine's fact. Re-exported.
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS  # noqa: E402,F401
 class Passage(BaseModel):
     """Pydantic projection of a `:Passage` node.
 

@@ -65,7 +65,10 @@ from typing import Awaitable, Callable
 
 import asyncpg
 
-from app.db.neo4j_repos.passages import SUPPORTED_PASSAGE_DIMS
+# T17 A6 — the closed dim set comes from the DOMAIN. This adapter importing it from the
+# Neo4j package was the clearest case in the sweep: a Postgres store reaching into a
+# rival engine to learn which embedding dimensions the platform accepts.
+from app.domain.passage_contract import SUPPORTED_PASSAGE_DIMS
 from app.ports.vector_store import (
     EntityVectorRecord,
     PassageVectorRecord,

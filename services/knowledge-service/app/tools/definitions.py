@@ -23,7 +23,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from app.db.neo4j_repos.facts import MEMORY_FACT_TYPES
+# T17 A6 — the fact-type vocabulary comes from the DOMAIN. This module builds MCP tool
+# schemas and touches no Cypher; it was counted as a graph-engine binder for a tuple.
+from app.domain.fact_types import MEMORY_FACT_TYPES
 from app.tools.graph_schema_tools import (
     GRAPH_SCHEMA_ARG_MODELS,
     GRAPH_SCHEMA_TOOL_DEFINITIONS,
