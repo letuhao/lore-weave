@@ -586,6 +586,41 @@ ONESHOT_CREATE_TOOLS: dict[str, str] = {"kg_project_create": "project_id"}
 TOOL_LIST_CATEGORY_CAP = 1   # 1 legit list per category; the 2nd (same category) is the loop
 TOOL_LIST_TOTAL_CAP = 5      # total tool_list calls this turn before it is de-advertised
 
+
+# ── T7-D1: `include_deprecated` must default the way the model was TOLD it defaults ──
+# `tool_list` is dispatched CONSUMER-LOCALLY, right here — the ai-gateway's `handleToolList`
+# never runs for a chat turn. Both advertised copies of the schema say `default: false`, with
+# prose the model reads directly: "omit to see only the CURRENT tools; set true only when
+# migrating off an old tool name." This dispatch defaulted it to True, so omitting the arg
+# returned the opposite of the contract.
+#
+# Measured live 2026-08-13, session 019ff9c5: the model omitted the arg and got 307 tools of
+# which 116 were DEPRECATED - 38% of the primary discovery surface was the shrunk-away legacy
+# catalog (`book_get` -> `book_read`, `composition_arc_create` -> `composition_arc_edit`, ...),
+# handed to a weak model as "the complete list".
+#
+# This is K22 inverted. K22 found the advertised default (True) disagreeing with the handler
+# and corrected the ADVERTISEMENT to False - but pointed its regression guard at ai-gateway's
+# handler, so the half that actually executes kept its True and nothing went red for three
+# weeks.
+#
+# A non-boolean is coerced rather than silently dropped: with the default now False, dropping a
+# string "true" would re-create the same lie in the other direction, and that string is exactly
+# what the one caller the prose invites - an agent migrating off an old tool name - is most
+# likely to send.
+def _tool_list_include_deprecated(args_obj: dict) -> bool:
+    """The wire default for `tool_list(include_deprecated=...)`: FALSE, per the advertised schema."""
+    raw = args_obj.get("include_deprecated")
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, str):
+        lowered = raw.strip().lower()
+        if lowered in ("true", "yes", "1"):
+            return True
+        if lowered in ("false", "no", "0"):
+            return False
+    return False
+
 # ── D-REASONING-LOOP: the streaming reasoning-channel loop breaker ────────────
 # Every breaker above fires in the TOOL-CALL loop, on an EMITTED call. A model
 # that thrashes in the *reasoning stream* WITHOUT emitting a call (live incident:
@@ -3742,9 +3777,7 @@ async def _stream_with_tools(
                 if discovery and c["name"] == TOOL_LIST_NAME:
                     args_obj = _parse_tool_args(c["arguments"])
                     category = args_obj.get("category") or None
-                    include_deprecated = args_obj.get("include_deprecated")
-                    if not isinstance(include_deprecated, bool):
-                        include_deprecated = True
+                    include_deprecated = _tool_list_include_deprecated(args_obj)
                     _norm_cat = category or "all"
                     tool_list_total += 1
 
