@@ -167,3 +167,29 @@ def test_a_judge_that_echoes_the_real_id_is_still_attributable():
 
 def test_labels_are_one_based():
     assert (critic.rule_token(0), critic.rule_token(1)) == ("R1", "R2")
+
+
+async def test_a_dropped_verdict_is_visible_ON_THE_CRITIQUE_not_only_in_a_log():
+    """C3 — "found nothing" and "found seven and could not attribute any" must not look alike.
+
+    `map_rule_tokens` drops an unattributable verdict, which is correct. Until now the ONLY
+    detector was a WARNING line, so every consumer of the critique — the D5 Run Report, the
+    quality report, the author — saw `violations: []` for both cases. Measured on the
+    acceptance book: 7 raw verdicts, 7 dropped, `rules=0`, beside `canon_consistency=1`.
+    """
+    judge = FakeJudge(content=json.dumps({
+        "coherence": 4, "voice_match": 1, "pacing": 4, "canon_consistency": 1,
+        "violations": [
+            {"rule_id": "ADDRESS-FORM CONVENTION", "violated": True, "why": "not a rule id"},
+            {"rule_id": "ADDRESS-FORM CONVENTION", "violated": True, "why": "nor is this"},
+        ],
+    }))
+    crit = await critic.judge_prose(
+        judge, user_id="u", model_source="user_model", model_ref="m",
+        passage="prose", active_rules=[], present_facts=["a canon bible"], profile=NEUTRAL,
+    )
+    assert crit["violations"] == []
+    assert crit["violations_raw_count"] == 2
+    assert crit["violations_dropped"] == 2, (
+        "a silent drop is indistinguishable from a clean passage — that is the bug"
+    )

@@ -176,3 +176,44 @@ async def test_an_empty_cast_is_NOT_reported_as_grounded(judged, monkeypatch):
 
     assert verdict.detail["canon_grounding"] == "convention_only"
     assert verdict.detail["canon_cast_size"] == 0
+
+
+async def test_the_verdict_records_WHO_judged(judged):
+    """C3 — S6 classifies the critic, and the classification rides the verdict.
+
+    This seam was an EIGHTH hand-rolled copy of the anti-self-reinforcement rule and did not
+    even implement it: it preferred `critic_model_ref`, silently fell back to the drafter, and
+    told nobody which had happened. A `canon_consistency` produced by the drafter grading its
+    own prose is a self-witness; one produced by an independent model is evidence. They were
+    indistinguishable on the wire.
+    """
+    from uuid import uuid4
+
+    drafter, critic_model = str(uuid4()), str(uuid4())
+    verdict = await EngineCriticSeam().critique(
+        created_by=uuid4(), book_id=uuid4(), chapter_id=uuid4(), plan_run_id=uuid4(),
+        params={"model_ref": drafter, "model_source": "user_model",
+                "critic_model_ref": critic_model, "critic_model_source": "user_model"},
+    )
+    assert verdict.detail["critic_status"] == "configured"
+    assert verdict.detail["critic_ref"] == critic_model
+
+
+async def test_a_self_witnessed_verdict_SAYS_SO(judged):
+    """The counterweight, and the case that matters: no distinct critic configured.
+
+    The seam still judges — an autonomous run has no human to re-ask, so "same-model critique
+    is weaker but better than no net" is the deliberate policy, and it DIVERGES from the
+    routers, which refuse. The divergence is allowed in what happens, never in what is known.
+    """
+    from uuid import uuid4
+
+    drafter = str(uuid4())
+    verdict = await EngineCriticSeam().critique(
+        created_by=uuid4(), book_id=uuid4(), chapter_id=uuid4(), plan_run_id=uuid4(),
+        params={"model_ref": drafter, "model_source": "user_model"},
+    )
+    assert verdict.detail["critic_status"] == "not_configured", (
+        "the drafter graded its own prose and the verdict did not say so"
+    )
+    assert verdict.detail["critic_ref"] == drafter

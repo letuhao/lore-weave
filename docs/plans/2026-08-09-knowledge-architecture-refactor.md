@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `C3` — drive the acceptance chapters with a DISTINCT critic and paste the scores.**
-See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. **C1 and C2 are DONE** — the critic is grounded (`canon_grounding: as_of`, 13 cast members) and the bible has one home, `engine/canon_bible.py`. C3 must set `critic_model_ref` (S6: C1/C2 let the drafter judge itself) and record that `active_rules` is still empty, so `violations[]` cannot fire.
+**RESUME: `C4` — apply QC-5's inverted criterion, then ⏸ STOP for POST-REVIEW.**
+See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. **C1–C3 are DONE.** The critic is grounded (`as_of`, 13 cast), judged by a DISTINCT model (`critic_status: configured`), and the violations channel is measured: **7 findings across 3 chapters, all 7 dropped** because `active_rules=[]`. C4 must weigh that against QC-5's assertion — and against the fact that the same chapter scored `severe` in one run and `warn` in the next.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -4630,6 +4630,95 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   ---
+  ### ✅ C3 2026-08-13 — three chapters, a DISTINCT critic, and seven findings that were being thrown away
+
+  Run `019ff9de-4afd-…`, acceptance book chapters 11–13, drafter `019ebb72-…`
+  (`gemma-4-26b-a4b-qat`), critic `51ea9fd7-…` (`gemma-4-26b-a4b`) — a different
+  `(provider_kind, provider_model_name)`, which is what S6 calls a different judge.
+
+  ```
+   ch  sev     coh voi pac canon  grounding  cast  raw  drop  critic_status
+   11  warn      5   2   4     2  as_of        13    1     1  configured
+   12  warn      5   2   4     2  as_of        13    3     3  configured
+   13  ok        5   4   5     4  as_of        13    3     3  configured
+                                                        ─────
+                                          7 findings, 7 discarded
+  ```
+
+  🔴 **THE JUDGE FOUND SEVEN THINGS AND EVERY ONE WAS DROPPED.** `map_rule_tokens` discards a
+  verdict it cannot attribute — correctly, *"a finding nobody can attribute is not evidence, it
+  is noise with a citation"* — but `active_rules=[]`, so **`rules=0`** and nothing is
+  attributable. The report showed `violations: []`, which is byte-identical to *the passage is
+  clean*.
+
+  The code had already seen this risk and half-solved it. `critic.py` says, above the drop:
+
+  > *"A DROP MUST BE VISIBLE. … discarding silently would turn 'the judge answered about a rule
+  > we never sent' into 'the judge found nothing', and those two need opposite responses."*
+
+  — and then made it visible **in a log line only**. The Run Report, the quality report and the
+  author all read the critique dict, and to them the two cases were the same observation.
+  `violations_dropped` / `violations_raw_count` now ride the critique. The cause is still
+  `active_rules=[]`; this is the symptom made legible, so a reader knows to fix the *rules*, not
+  the prose.
+
+  🔴 **THE SEAM WAS AN EIGHTH COPY OF THE S6 RULE — AND DID NOT IMPLEMENT IT.** `critic_policy.py`
+  opens by counting seven hand-rolled sites and warning that *"a rule that lives in seven places
+  gets amended in six"*. This seam was the eighth: it preferred `critic_model_ref`, silently fell
+  back to the drafter, and **told nobody which had happened**. A `canon_consistency` produced by
+  a model grading its own prose is a self-witness; one from an independent model is evidence;
+  they were indistinguishable on the wire. The seam now resolves through `resolve_critic_refs`
+  and the verdict carries `critic_status` + `critic_ref`.
+
+  ⚠️ **The seam DIVERGES from the routers on purpose.** They refuse a non-distinct critic; this
+  one judges anyway — an autonomous run has no human to re-ask, and *"same-model critique is
+  weaker but better than no net"*. The divergence is in the consequence, never in what is known.
+  **C1 and C2 both ran `not_configured`** — the drafter graded itself, and neither run said so.
+  That is why C3 exists as its own batch.
+
+  ⚠️ **A test caught me misusing the policy I was adopting.** I passed the drafter's
+  `model_source` as a fallback for the critic's, which classifies *"no critic at all"* as
+  `INCOMPLETE` (a misconfiguration with a fix) instead of `NOT_CONFIGURED` (nothing is wrong,
+  the tier is off) — the exact two states `critic_policy` was written to keep apart. Its own
+  test found it; review did not.
+
+  🔴 **THE JUDGE IS NOT DETERMINISTIC, AND QC-5 MUST KNOW.** The same three chapters, same
+  models, run twice twenty minutes apart:
+
+  ```
+  run 019ff9d6 : ch12 -> canon_consistency=1, severity=SEVERE  -> the D5 breaker PAUSED the run
+  run 019ff9de : ch12 -> canon_consistency=2, severity=warn    -> the run completed
+  ```
+
+  Both readings are defensible; the threshold between them is not stable across runs. **A single
+  run is not an acceptance measurement**, and C4 must not treat one number as a verdict.
+
+  ✅ **The breaker itself works end-to-end.** In run `019ff9d6` the severe verdict stopped an
+  autonomous run mid-flight (`breaker_state: {reason: critic_severe, unit_index: 1}`) and left
+  chapter 13 undrafted — the D5 mechanism doing exactly what 07S §10 specifies, on real prose,
+  from a grounded judgement.
+
+  **BITE ×2**, each red on the value:
+
+  ```
+  1. crit["violations_dropped"] = dropped  ->  = 0
+     E  AssertionError: a silent drop is indistinguishable from a clean passage — that is the bug
+     E  assert 0 == 2
+  2. "critic_status": judge.status.value  ->  "configured"
+     E  AssertionError: the drafter graded its own prose and the verdict did not say so
+     E  assert 'configured' == 'not_configured'
+  ```
+
+  **QC (a) gates:** plan-verify PASS · full pre-commit battery green. No new gate, none owed.
+  **QC (b) the seam:** both `composition-service` and `composition-worker` rebuilt, then
+  `grep`-verified inside the worker container (`critic_status` ×2, `violations_dropped` ×1).
+  **QC (c) real data:** three chapters drafted and critiqued, $0.18, 13 cast members read at
+  `as_of` per chapter, 7 raw findings recorded.
+
+  ```
+  3614 passed — composition-service unit suite
+  ```
+
   ### ✅ C2 2026-08-13 — the critic is grounded; **one home for the bible**, and an outage that read as a verdict
 
   The *(genre tags → cast as-of the chapter → render)* sequence was written out inline at **two**

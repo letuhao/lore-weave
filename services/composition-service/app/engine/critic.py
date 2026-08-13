@@ -241,6 +241,17 @@ async def judge_prose(
     # this line a mapping bug and a clean passage are the same observation, which is the
     # failure this whole task exists to stop being possible.
     dropped = len(raw_violations) - len(crit["violations"])
+    # ...and visible TO THE CONSUMER, not only to a log reader. The line below was the whole
+    # detector, and a log line is not readable by the Run Report, the quality report, or the
+    # author looking at the score — all of whom see `violations: []` and cannot tell "the
+    # passage is clean" from "the judge found seven things and none could be attributed".
+    # Measured 2026-08-13 (C3): chapter 12 of the acceptance book produced **7 raw verdicts,
+    # 7 dropped, rules=0** while the report showed an empty violations list beside
+    # `canon_consistency=1`. The score carried the finding; the channel meant to name it was
+    # silently empty. `active_rules` being empty is the CAUSE, this field is the SYMPTOM made
+    # legible — a caller can now see it must fix the rules, not the prose.
+    crit["violations_dropped"] = dropped
+    crit["violations_raw_count"] = len(raw_violations)
     if dropped:
         logger.warning(
             "judge_prose dropped %d unattributable verdict(s) of %d (labels=%r, rules=%d) — "

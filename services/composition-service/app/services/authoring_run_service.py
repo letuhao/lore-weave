@@ -654,10 +654,34 @@ class EngineCriticSeam:
         from app.db.repositories.works import WorksRepo
         from app.engine.canon_bible import canon_for_chapter
         from app.engine.critic import judge_prose
+        from app.engine.critic_policy import resolve_critic_refs
         from app.engine.prose_doc import tiptap_doc_to_text
         from app.mcp.service_bearer import mint_service_bearer
         from app.packer.profile import BookProfile, from_settings
 
+        # C3 — S6 decides WHO judges, and the answer is recorded. This seam used to be an
+        # EIGHTH hand-rolled copy of the anti-self-reinforcement rule (`critic_policy.py`
+        # counted seven and says why that matters: "a rule that lives in seven places gets
+        # amended in six"). It did not even implement the rule — it preferred
+        # `critic_model_ref`, silently fell back to the drafter, and told nobody which had
+        # happened, so a self-witnessed `canon_consistency` was indistinguishable from an
+        # independently judged one.
+        #
+        # The seam DELIBERATELY diverges from the routers on the consequence: they REFUSE a
+        # non-distinct critic, this one judges anyway ("same-model critique is weaker but
+        # better than no net" — an autonomous run has no human to re-ask). The difference is
+        # in what happens, never in what is known: `critic_status` rides the verdict either
+        # way.
+        # Both args are the CRITIC's own refs, un-defaulted. Passing the drafter's source as a
+        # fallback here classifies "no critic configured at all" as INCOMPLETE (a
+        # half-written critic, which is a misconfiguration with a fix) instead of
+        # NOT_CONFIGURED (nothing is wrong, the tier is simply off) — the exact two states
+        # `critic_policy` exists to keep apart. Caught by its own test, not by review.
+        judge = resolve_critic_refs(
+            params.get("critic_model_source"),
+            params.get("critic_model_ref"),
+            params.get("model_ref"),
+        )
         model_ref = params.get("critic_model_ref") or params.get("model_ref")
         if not model_ref:
             return CriticVerdict(
@@ -712,7 +736,10 @@ class EngineCriticSeam:
         # or `empty` bible is a weaker number than one scored `as_of`, and nothing downstream
         # could tell them apart while the seam reported only the score.
         critique = {**critique, "canon_grounding": bible.grounding,
-                    "canon_as_of": bible.as_of, "canon_cast_size": bible.cast_size}
+                    "canon_as_of": bible.as_of, "canon_cast_size": bible.cast_size,
+                    # WHO judged, by S6's classification. `same_as_drafter` and
+                    # `not_configured` both mean the prose graded itself.
+                    "critic_status": judge.status.value, "critic_ref": str(model_ref)}
         severity, summary = verdict_from_critique(critique)
         # judge_prose degrades internally (error marker) — spend unknown there,
         # bill 0; a completed critique bills the estimate (no SDK cost field).
