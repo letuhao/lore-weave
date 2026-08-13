@@ -52,8 +52,9 @@
       ],
       "falsifier": "REFUTED IF: any run's after-snapshot differs from its before-snapshot (a read that writes), OR the reply names a chapter/entity that is not in the fixture — the fixture holds exactly one chapter ('Chapter I - The Ember Codex') and three glossary entities (Aldric Vane, Mira Solene, Ember Codex), so any fourth name is fabricated.",
       "ship_audit": {
-        "empty_case": "owed — a book with no chapters and no entities",
-        "refusals": "owed — a book_id owned by another user must refuse, not return an empty tree"
+        "empty_case": "EXERCISED, K=3 (docs/eval/toolloop/2026-08-14/batch1-empty.json): a book with one chapter and nothing else. Called 3/3, store unchanged 3/3, and the reply was specific and true — '1 chapter', 'no structured story plan', the chapter 'unplanned'. No fabricated content.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'not found or not accessible'. No leak.",
+        "gate": "Tier R — no approval card, and none was raised on any run."
       }
     },
     {
@@ -108,9 +109,9 @@
       ],
       "falsifier": "REFUTED IF: the model reports a spec was created and the composition store shows no new row after the approval was granted (a silent success), OR a spec row appears WITHOUT the approval card ever being raised (a Tier-A write that skipped its gate), OR the run is left suspended while the reply claims the work is done.",
       "ship_audit": {
-        "empty_case": "owed — no source_markdown supplied",
-        "refusals": "owed — another user's book_id",
-        "gate": "the Tier-A approval card must be raised BEFORE any row is written"
+        "empty_case": "EXERCISED, K=3: on an empty book the tool was NOT reached on 3/3 (the turn bootstrapped the glossary ontology instead and wrote to 6 glossary tables on 2/3). Against the seeded fixture it was reached 3/3. Recorded as a finding, not waived.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'not found or not accessible'. No leak.",
+        "gate": "Tier A — the approval card was raised and had to be granted before any write; the run stayed suspended on 3/3 until it was."
       }
     },
     {
@@ -165,9 +166,9 @@
       ],
       "falsifier": "REFUTED IF: after an approved run the named entity's attributes are unchanged in loreweave_glossary, OR the change lands on a DIFFERENT entity than the one the prose named (the fixture seeds three, so a mis-resolve is visible), OR the reply claims the edit was applied while the store is unchanged.",
       "ship_audit": {
-        "empty_case": "owed — an entity_id that does not exist",
-        "refusals": "owed — an entity in another user's book",
-        "gate": "Tier-A card before the attribute write"
+        "empty_case": "EXERCISED, K=3: with no entities seeded the tool was correctly NOT called (0/3), the store was unchanged 3/3, and the reply was an honest miss — \"I couldn't find an element named 'Aldric Vane' in your story bible.\" This is the case the loop has twice seen fail in the opposite direction.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Probed at its real boundary — the ENTITY, seeded in the other user's book, because a placeholder entity_id only reaches validation ('entity_id must be a UUID') and a validation error is not a refusal. With both real ids: refused 'book not accessible', and the entity row was re-read and UNCHANGED (cached_name and updated_at identical).",
+        "gate": "Tier A — card raised and granted on 3/3 of the seeded runs before the write landed."
       }
     },
     {
@@ -222,10 +223,10 @@
       ],
       "falsifier": "REFUTED IF: chapters for the throwaway book do not go from 1 to 2 after an approved run, OR they go to 3+ from a single request (a duplicate write, which is what 251 recorded calls and 5 live failures make plausible), OR a chapter appears with no approval card raised.",
       "ship_audit": {
-        "empty_case": "owed — a book with no chapters yet (this fixture has 1)",
-        "refusals": "owed — another user's book_id",
-        "idempotency": "a single request must create exactly one chapter",
-        "gate": "Tier-A card before the insert"
+        "empty_case": "EXERCISED, K=3: creating a chapter needs no prior content, so this is the absent case that should still SUCCEED — and it did, 3/3, chapters 0->1 with exactly one chapter per request.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'book not accessible'. No leak.",
+        "gate": "Tier A — card raised on every run; no chapter appeared before it was granted.",
+        "idempotency": "EXERCISED: one chapter per request on 3/3 seeded and 3/3 empty runs — the duplicate-write case in the falsifier did not occur."
       },
       "editor_context": true,
       "defects": [
@@ -306,8 +307,9 @@
       ],
       "falsifier": "REFUTED IF: any run's after-snapshot differs from its before-snapshot, OR the reply reports concrete problems about content the fixture does not contain — a diagnostics tool that narrates plausible issues without reading is the same failure as answering 'you have no canon rules' over a populated table.",
       "ship_audit": {
-        "empty_case": "owed — a project with nothing wrong",
-        "refusals": "owed — another user's book_id"
+        "empty_case": "EXERCISED, K=3: called 3/3, store unchanged 3/3, and the reply reported the one real condition ('Unplanned Chapter: Chapter I — The Ember Codex') rather than inventing problems.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'not found or not accessible'. No leak.",
+        "gate": "Tier R. NOTE, carried as a finding: on the SEEDED runs this read-intent turn proposed a Tier-A WRITE (composition_error_block_edit) and left the run suspended on 3/3. The store was unchanged only because the card was never granted — under this account's 46 standing approvals it would have executed unseen."
       }
     },
     {
@@ -362,10 +364,10 @@
       ],
       "falsifier": "CONTROL for the editor_context confound. With a chapter open, 'write a chapter' plausibly means 'write THIS chapter', and the model chose book_chapter_save_draft 3/3. This run asks the same thing from the chat panel with NO chapter open. REFUTED IF: the model still edits the existing chapter rather than creating one — which would mean editor_context is not the cause and the selection defect is real on its own.",
       "ship_audit": {
-        "empty_case": "owed — a book with no chapters yet (this fixture has 1)",
-        "refusals": "owed — another user's book_id",
-        "idempotency": "a single request must create exactly one chapter",
-        "gate": "Tier-A card before the insert"
+        "empty_case": "EXERCISED, K=3: creating a chapter needs no prior content, so this is the absent case that should still SUCCEED — and it did, 3/3, chapters 0->1 with exactly one chapter per request.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'book not accessible'. No leak.",
+        "gate": "Tier A — card raised on every run; no chapter appeared before it was granted.",
+        "idempotency": "EXERCISED: one chapter per request on 3/3 seeded and 3/3 empty runs — the duplicate-write case in the falsifier did not occur."
       },
       "editor_context": false,
       "defects": [
