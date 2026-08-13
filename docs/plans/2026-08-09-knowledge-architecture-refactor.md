@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A4` — migrate `public/relations.py`, `public/events.py`, `internal_timeline.py`; the ceiling falls 64 → 61.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0** needed no build. **A1–A3 DONE:** eight operations on the port and its adapters, conformance 40 → **67 passed / 9 skipped**. A1 caught AGE serving soft-invalidated edges; A2 and A3 each registered an honest AGE deferral (`D-AGE-EVENT-WRITE-UNIMPLEMENTED`, `D-AGE-BROWSE-PAGES-IN-PYTHON`) rather than shipping an adapter that answers wrongly. **A4 is the first batch that moves the gate**: three consumers migrate and `port-adoption-gate` falls 64 → 61 in the same commit. See **▶ EXECUTION PLAN** below.
+**RESUME: `A5` — sweep the next ~8 of the 61 remaining `neo4j_repos` binders.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0–A4 DONE:** eight operations on the port + 3 adapters (conformance 40 → **67 passed / 9 skipped**), three consumers migrated, and **`port-adoption-gate` moved for the first time: ceiling 64 → 61, floor 14 → 17**, both in the same commit. A5–A11 sweep the remaining 61 binders ~8 at a time, pasting both numbers before and after. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -1957,6 +1957,68 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   ---
+  ### ✅ A4 2026-08-13 — three consumers migrated; **the gate moves for the first time**
+
+  ```
+  port-adoption-gate   ceiling 64 -> 61     floor 14 -> 17
+  ```
+
+  `public/relations.py` · `public/events.py` · `internal_timeline.py` now reach the graph
+  through `GraphStore`. Every operation they needed was grown in A1–A3 **by their own demand** —
+  the port did not guess a surface and then look for callers.
+
+  🔴 **26 TESTS WENT RED, AND THAT IS THE POINT.** A4's criterion says it in as many words:
+  *"a migration whose tests stay green never moved the binding."* The tests patched
+  `app.routers.public.relations.get_relation` — a module-level name the router no longer has —
+  so a migration that left them green would have been patching a function the code does not
+  call. Repointed at `Neo4jGraphStore.<method>`, which is what the router now reaches through
+  `get_graph_store(session)`; the call-arg assertions survive unchanged because the port drops
+  only the `session` positional.
+
+  `test_internal_timeline` needed more than a rename: it asserted `after_order`/`before_order`,
+  and the port's browse says `after`/`before` with the axis as a value. Both assertions moved
+  to the port's vocabulary rather than the repo's.
+
+  🔧 **The ceiling fell 64 → 62 at first, not 61** — `internal_timeline` still imported
+  `EVENT_ORDER_CHAPTER_STRIDE` from `neo4j_repos`, so it stayed a "binder" for a constant.
+  **The comment I had just written argued against that**: the stride is a fact about the BOOK,
+  not about a graph engine. Moved to `app/domain/graph_models.py` and **re-exported** from
+  `neo4j_repos.events` so all eight existing importers keep working and there is still exactly
+  ONE definition — a second literal is precisely the divergence its own docstring warns would
+  "corrupt the timeline". Ceiling then fell to 61.
+
+  **BITE ×2 — one for the code, one for the gate:**
+
+  ```
+  1. One call site reverted to the concrete repo (dynamic import, so the gate cannot see it)
+     E  AssertionError: assert 500 == 404
+        …the migrated path is what the endpoint test actually measures.
+
+  2. A REAL re-import: `from app.db.neo4j_repos.relations import get_relation`
+     [port-adoption-gate] 62 module(s) bind `neo4j_repos` directly (ceiling 61)
+     [port-adoption-gate] FAIL — direct binding GREW to 62.
+  ```
+
+  ⚠️ **Bite 1 reds the tests but NOT the gate**, because it re-enters the concrete layer through
+  a runtime `__import__` rather than an import statement, and the gate reads the AST. Worth
+  recording rather than glossing: the gate's teeth are against *imports*, which is the shape a
+  regression actually takes in review, but it is not a proof that no module can reach
+  `neo4j_repos` by other means. Bite 2 is the one that measures the gate.
+
+  **QC (a) gates:** `port-adoption-gate` **PASS at the new numbers**, both moved in this commit
+  (rule 5), and its `--selftest` passes — *"distinguishes a real import from a docstring and a
+  comment, in both directions (non-vacuous)"*. `graph-port-gate` PASS. `db-safety-gate` exit 0.
+  **QC (b) the seam:** N/A — the three modules are HTTP routers whose behaviour is unchanged;
+  no wire contract moved, so there is nothing a live smoke could distinguish. The 4216-test
+  suite exercises all three endpoints through `TestClient`.
+  **QC (c) real data:** N/A — a binding migration produces no data.
+
+  ```
+  4216 passed — knowledge-service unit suite
+  ```
+
+  **Remaining for A5–A11:** 61 binders, ~8 per batch, ratcheting both numbers each time.
+
   ### ✅ A3 2026-08-13 — `events_page`, and the comment it overrules is quoted beside the decision
 
   ```

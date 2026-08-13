@@ -374,3 +374,19 @@ class EvidenceWriteResult(BaseModel):
     evidence_count: int
     mention_count: int
     created: bool
+
+
+# ── the reading axis (T17 A4) ────────────────────────────────────────────────
+#
+# CM4 — reading-order (`event_order`) scale. `event_order = chapter sort_order × this
+# stride + within-chapter index`, so the axis is dense at chapter granularity. **Single
+# source of truth** — the write path (`pass2_writer`) AND the backfill MUST import this; a
+# divergence would put their event_orders on different scales and corrupt the timeline. It
+# is also the chapter→order contract a composition spoiler-cutoff uses: "canon before
+# chapter N" = `before_order N × EVENT_ORDER_CHAPTER_STRIDE`.
+#
+# It lives HERE and not in `neo4j_repos` because it is a fact about the BOOK, not about a
+# graph engine. Leaving it there made every consumer of the reading axis — including ones
+# that touch no Cypher at all — count as bound to the concrete layer, which is both untrue
+# and, for `port-adoption-gate`, indistinguishable from a real binding.
+EVENT_ORDER_CHAPTER_STRIDE = 1_000_000

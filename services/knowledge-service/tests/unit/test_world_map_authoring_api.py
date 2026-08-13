@@ -178,7 +178,7 @@ def test_create_entity_rejects_blank_name(mock_merge):
 # ── POST /v1/knowledge/relations ─────────────────────────────────────
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
 @patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
 def test_create_relation_happy(mock_recreate):
     mock_recreate.return_value = _relation_stub("borders")
@@ -199,7 +199,7 @@ def test_create_relation_happy(mock_recreate):
         _teardown()
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
 @patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
 def test_create_relation_missing_endpoint_409(mock_recreate):
     mock_recreate.return_value = None  # an endpoint entity isn't this user's
@@ -214,7 +214,7 @@ def test_create_relation_missing_endpoint_409(mock_recreate):
         _teardown()
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
 @patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
 def test_create_relation_rejects_self_loop(mock_recreate):
     client = _make_client()
@@ -237,7 +237,7 @@ def test_create_relation_rejects_self_loop(mock_recreate):
 # author-declared roles were exactly the ones the canon check could never see.
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
 @patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
 def test_create_relation_forwards_the_story_position(mock_recreate):
     mock_recreate.return_value = _relation_stub("enemy_of")
@@ -254,7 +254,7 @@ def test_create_relation_forwards_the_story_position(mock_recreate):
         _teardown()
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
 @patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
 def test_create_relation_position_is_optional_and_defaults_to_none(mock_recreate):
     """ADDITIVE — an existing caller that sends no position is unchanged."""
@@ -271,7 +271,7 @@ def test_create_relation_position_is_optional_and_defaults_to_none(mock_recreate
         _teardown()
 
 
-@patch("app.routers.public.relations.recreate_relation", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_graph_store.Neo4jGraphStore.recreate_relation", new_callable=AsyncMock)
 @patch("app.routers.public.relations.neo4j_session", new=lambda: _noop_session())
 def test_create_relation_rejects_a_negative_position(mock_recreate):
     """The axis starts at 0; a negative ordinal is a caller bug, not a wildcard."""

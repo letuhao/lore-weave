@@ -45,7 +45,10 @@ logger = logging.getLogger(__name__)
 # different scales and corrupt the timeline). It is also the chapter→order
 # contract a future composition spoiler-cutoff uses: "canon before chapter N"
 # = before_order N × EVENT_ORDER_CHAPTER_STRIDE.
-EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
+# MOVED to `app.domain.graph_models` (T17 A4) — a fact about the BOOK, not the engine.
+# Re-exported so every existing importer keeps working and there is still exactly ONE
+# definition; a second literal here is the divergence the comment above warns about.
+from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE  # noqa: E402,F401
 
 # Null-order sort sentinel: events with no event_order sink to the end of the
 # timeline. Must exceed any real event_order (= max chapter sort_order × stride

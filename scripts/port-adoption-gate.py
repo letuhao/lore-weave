@@ -70,7 +70,7 @@ EXEMPT_DIRS = (
 # `Relation` and `Event` from the implementation it exists to abstract. Two model-only
 # importers followed. This is the ceiling becoming ABLE to fall — before it, no amount of
 # call-site migration could reach zero.
-MAX_CONCRETE_IMPORTERS = 64
+MAX_CONCRETE_IMPORTERS = 61
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
@@ -111,7 +111,7 @@ MAX_CONCRETE_IMPORTERS = 64
 # live in the concrete layer — `ports/graph_store.py` is itself counted for exactly
 # that reason. Moving the models is a separate slice; the number stays honest until
 # then rather than being redefined to look better.
-MIN_GRAPHSTORE_ADOPTERS = 14
+MIN_GRAPHSTORE_ADOPTERS = 17
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"

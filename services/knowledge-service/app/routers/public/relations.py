@@ -23,12 +23,13 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
 
 from app.db.neo4j import neo4j_session
-from app.db.neo4j_repos.relations import (
-    Relation,
-    get_relation,
-    invalidate_relation,
-    recreate_relation,
-)
+# T17 A4 — through the GraphStore PORT. This router asks nothing Neo4j-specific: it
+# fetches, invalidates and recreates edges, all three of which the port grew in A1
+# BY THIS ROUTER'S DEMAND. Binding it to the concrete layer bought nothing and cost
+# substitutability — T43 picks the engine on measurement, and an operation reachable
+# only through `neo4j_repos` produces no shadow observations to measure.
+from app.adapters.graph_store_provider import get_graph_store
+from app.domain.graph_models import Relation
 from app.events.outbox_emit import (
     RELATION_CORRECTED,
     emit_correction,
@@ -54,7 +55,8 @@ async def get_relation_endpoint(
     """Fetch a single relation by id (for the FE correction dialog). 404 on
     cross-user / missing."""
     async with neo4j_session() as session:
-        rel = await get_relation(session, user_id=str(user_id), relation_id=relation_id)
+        store = get_graph_store(session)
+        rel = await store.get_relation(user_id=str(user_id), relation_id=relation_id)
     if rel is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relation not found")
     return rel
@@ -68,9 +70,10 @@ async def invalidate_relation_endpoint(
     """User marks a relation wrong → soft-invalidate (set valid_until). Emits a
     `spurious-drop` correction (after=null). Idempotent."""
     async with neo4j_session() as session:
-        before = await get_relation(session, user_id=str(user_id), relation_id=relation_id)
-        invalidated = await invalidate_relation(
-            session, user_id=str(user_id), relation_id=relation_id,
+        store = get_graph_store(session)
+        before = await store.get_relation(user_id=str(user_id), relation_id=relation_id)
+        invalidated = await store.invalidate_relation(
+            user_id=str(user_id), relation_id=relation_id,
         )
     if invalidated is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="relation not found")
@@ -113,8 +116,9 @@ async def correct_relation_endpoint(
     Emits a `predicate-fix` correction. `after` is read POST-write so it
     reflects the live (resurrected) edge, not the request payload."""
     async with neo4j_session() as session:
-        before = await get_relation(
-            session, user_id=str(user_id), relation_id=body.old_relation_id,
+        store = get_graph_store(session)
+        before = await store.get_relation(
+            user_id=str(user_id), relation_id=body.old_relation_id,
         )
         if before is None:
             raise HTTPException(
@@ -124,8 +128,7 @@ async def correct_relation_endpoint(
         # we 409 and leave the OLD edge intact — never a half-applied state
         # (old-invalidated-but-no-replacement). Only invalidate once the
         # replacement exists.
-        new_rel = await recreate_relation(
-            session,
+        new_rel = await store.recreate_relation(
             user_id=str(user_id),
             subject_id=body.subject_id,
             predicate=body.predicate,
@@ -140,12 +143,12 @@ async def correct_relation_endpoint(
         # is a no-op that maps onto the same id, in which case skip — recreate
         # already revived it).
         if new_rel.id != body.old_relation_id:
-            await invalidate_relation(
-                session, user_id=str(user_id), relation_id=body.old_relation_id,
+            await store.invalidate_relation(
+                user_id=str(user_id), relation_id=body.old_relation_id,
             )
         # Re-read so `after` reflects the live edge (F3 — not the request).
-        after = await get_relation(
-            session, user_id=str(user_id), relation_id=new_rel.id,
+        after = await store.get_relation(
+            user_id=str(user_id), relation_id=new_rel.id,
         )
     await emit_correction(
         event_type=RELATION_CORRECTED,
@@ -207,8 +210,8 @@ async def create_relation_endpoint(
             detail="subject_id and object_id must differ",
         )
     async with neo4j_session() as session:
-        rel = await recreate_relation(
-            session,
+        store = get_graph_store(session)
+        rel = await store.recreate_relation(
             user_id=str(user_id),
             subject_id=body.subject_id,
             predicate=body.predicate,
