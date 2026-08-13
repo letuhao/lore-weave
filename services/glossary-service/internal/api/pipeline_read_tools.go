@@ -243,8 +243,35 @@ func (s *Server) toolListMergeCandidates(ctx context.Context, _ *mcp.CallToolReq
 	return nil, mergeCandidatesOut{Candidates: cands, Truncated: truncated}, nil
 }
 
+// T10-D1 — `book_id` is NOT optional here, and `,omitempty` was advertising that it was.
+//
+// The repo states the pairing rule in bookToolAuthAmbient's own comment: "Use ONLY on a tool
+// tagged WithAmbientBook (its book_id schema must be optional)." An optional `book_id` is the
+// ADVERTISED half of the ambient contract — the model may omit it and the book is resolved from
+// the envelope's X-Book-Id. All three tools on this struct call the NON-ambient bookToolAuth and
+// carry no WithAmbientBook tag, so they promised the contract without implementing it.
+//
+// MEASURED 2026-08-13, same envelope, same omission, over the real wire with X-Book-Id set and
+// no book_id argument:
+//
+//	glossary_get_entity          (WithAmbientBook) -> ok, resolved from the envelope
+//	glossary_search              (WithAmbientBook) -> ok, resolved from the envelope
+//	glossary_list_chapter_links                    -> "book_id must be a UUID"
+//	glossary_list_entity_revisions                 -> "book_id must be a UUID"
+//	glossary_get_entity_evidence                   -> "book_id must be a UUID"
+//
+// The message is wrong twice over: inside a book studio the caller followed the schema, and it
+// sent no book_id at all rather than a malformed one. Marking the field required moves the
+// refusal to the schema validator, which names the missing property instead.
+//
+// DECLARED REQUIRED rather than made ambient ON PURPOSE. These three are legacy — folded into
+// glossary_get_entity.include, "kept for existing callers only" — and every one of the 264
+// recorded calls already passes book_id, so nothing that works today stops working. Making them
+// ambient would add a capability to tools slated for removal; whether the OTHER 37 non-ambient
+// glossary tools that declare book_id optional should be declared-required or made ambient is a
+// service-wide product decision, recorded as DQ-T4 rather than guessed at here.
 type bookEntityToolIn struct {
-	BookID   string `json:"book_id,omitempty" jsonschema:"the book (UUID)"`
+	BookID   string `json:"book_id" jsonschema:"the book (UUID)"`
 	EntityID string `json:"entity_id" jsonschema:"the entity (UUID)"`
 }
 type chapterLinksOut struct {
