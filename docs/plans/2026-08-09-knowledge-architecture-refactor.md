@@ -4445,6 +4445,45 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | T35 lands — and **re-run the count FIRST**, because *"must be 0"* is the acceptance criterion and **2819** is where it starts. |
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
+  ---
+  ### 🎯 DRAFTING RUN 2026-08-13 — three chapters drafted; the flow's canon check covers 1 of 3
+  Full evidence: [`docs/measurements/2026-08-13-qc5-drafting-run.md`](../measurements/2026-08-13-qc5-drafting-run.md).
+
+  ```
+  ch  words   canon_cast  plan_liveness  name_grounding  coverage           violations
+  11    759   no_rules    no_position    checked         [name_grounding]        0
+  12    918   no_rules    no_position    checked         [name_grounding]        0
+  13    972   no_rules    no_position    checked         [name_grounding]        0
+  ```
+
+  2649 words generated (all three were `word_count 0` first, so genuine), accepted into the book
+  at draft revision 2. **Artefacts 2 and 4 are now captured; 3 is partial.**
+
+  🔴 **ZERO VIOLATIONS ACROSS THREE CHAPTERS SAYS ALMOST NOTHING.** One check of three
+  evaluated on every chapter:
+  * `canon_cast: no_rules` is **not** "the rules are missing" — the work has **six active
+    rules** and the API serves them. `NO_RULES` is `check_over`'s label for an EMPTY CORPUS,
+    and this corpus is the RESOLVED cast: every member returned
+    `{'source': 'none', 'status': 'unknown'}`, so 5 − 5 = 0. *(I first read it the other way
+    and corrected myself — the enum name invites the wrong reading.)*
+  * `plan_liveness: no_position` — no reading position, so the windowed read cannot run.
+    `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`, still open.
+  * `critic: null` — the 4-dimension `judge_prose` scores come from the **D5 continuity
+    critic**, a pass this endpoint does not run. Recorded before under
+    `D-QC5-FULL-FLOW-CAPTURE`; now confirmed end-to-end rather than by reading code.
+
+  **The assertion and the FLOW disagree about coverage.** The two-arm experiment fed rules to
+  the critique endpoint and got a real judgement (2 vs 3, correct reasons). The drafting flow's
+  own canon check, same book, evaluated one check of three. **QC-5 is written in terms of
+  `canon_consistency`, and the flow does not produce it.**
+
+  **Glossary delta: 0** — and structurally so. Extraction runs on the published/parsed path,
+  not on a draft write; three accepted drafts change no glossary rows.
+
+  ⚠️ **Not driven through the studio UI.** The task says "through the real frontend"; the UI's
+  plan-driven drafting sits behind the agent-run surface, which I could not locate as a single
+  control. This drives the same endpoint with the same user's auth. A real gap against the
+  wording, stated rather than glossed.
   `docs/specs/.../README.md`: *"Its shape is the design's own test: fix the design, then **re-run
   this book**."*
   Re-run the Mị Đế authoring flow **end-to-end through the real frontend**, same plan, same cast <!-- doc-language-gate: ok -- the book title is the cited corpus subject of the acceptance case -->
