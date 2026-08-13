@@ -44,6 +44,9 @@ from collections import Counter
 
 import httpx
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from store_snapshot import diff as store_diff, snapshot  # noqa: E402
+
 BASE = "http://localhost:5174"
 AUTH_FILE = pathlib.Path(__file__).with_name("fe_runner_auth.json")
 
@@ -185,20 +188,41 @@ async def main_async(scenarios, repeats, concurrency):
                     return {"scenario": sc["id"], "rep": i, "error": f"{type(e).__name__}: {e}",
                             "text": "", "tool_calls": [], "surface": None}
 
-        jobs = [one(sc, i) for sc in scenarios for i in range(repeats)]
-        for coro in asyncio.as_completed(jobs):
-            r = await coro
-            results.append(r)
-            mark = "!" if r.get("error") else "."
-            print(mark, end="", flush=True)
+        async def scenario_block(sc):
+            """One scenario: snapshot, K repeats, snapshot, diff.
+
+            🔴 CONCURRENCY IS ACROSS SCENARIOS, NEVER ACROSS REPEATS. The repeats of one
+            scenario share a book, so running them at once would interleave their writes and
+            make the store diff unattributable — the diff would say "something wrote" without
+            saying which run did it, which is exactly the ambiguity the DATA bar exists to
+            remove. Scenarios are isolated from each other by having their own book, so those
+            CAN overlap.
+            """
+            book = sc.get("book_id")
+            before = snapshot(book) if book else {}
+            out = []
+            for i in range(repeats):
+                r = await one(sc, i)
+                out.append(r)
+                print("!" if r.get("error") else ".", end="", flush=True)
+            after = snapshot(book) if book else {}
+            d = store_diff(before, after)
+            for r in out:
+                r["store"] = {"before": before, "after": after}
+                r["store_diff"] = d
+            return out
+
+        blocks = await asyncio.gather(*[scenario_block(sc) for sc in scenarios])
+        for grp in blocks:
+            results.extend(grp)
     print()
     return results
 
 
 def report(results, scenarios, repeats):
     by = {sc["id"]: sc for sc in scenarios}
-    print(f"\n{'scenario':<28} {'runs':<5} {'tool called':<12} {'surface has tool':<17} errors")
-    print("-" * 92)
+    print(f"\n{'scenario':<28} {'runs':<5} {'tool called':<12} {'surface has tool':<17} {'err':<7} store")
+    print("-" * 108)
     for sid, sc in by.items():
         rs = [r for r in results if r.get("scenario") == sid]
         want = sc.get("expect_tool")
@@ -207,8 +231,16 @@ def report(results, scenarios, repeats):
             1 for r in rs
             if want and want in json.dumps((r.get("surface") or {}).get("advertised") or {}))
         errs = sum(1 for r in rs if r.get("error"))
+        d = next((r.get("store_diff") for r in rs if r.get("store_diff")), {})
+        store = "CHANGED: " + ", ".join(sorted(d)) if d else "unchanged"
         print(f"{sid:<28} {len(rs):<5} {f'{called}/{len(rs)}':<12} "
-              f"{f'{surfaced}/{len(rs)}':<17} {errs}")
+              f"{f'{surfaced}/{len(rs)}':<17} {errs:<7} {store}")
+        if d and sc.get("intent") == "read":
+            # The strongest assertion in the loop, and it needs no per-tool knowledge: a turn
+            # that asked to LOOK must not change anything. Measured 2026-08-13: five read
+            # turns took outline_node from 3 to 6 while the reply called it "your current
+            # plan".
+            print(f"    ^ READ-INTENT TURN WROTE TO THE STORE — a defect whatever it said")
     print("\nA scenario is only informative across REPEATS — the consumer is stochastic, so "
           "'1/5 called' is a finding and '5/5 surfaced, 0/5 called' is a different finding "
           "from '0/5 surfaced'.")
