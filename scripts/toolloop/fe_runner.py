@@ -133,59 +133,128 @@ async def _json(client, auth, method, path, **kw):
     raise RuntimeError("unreachable")
 
 
+async def _drain(client, auth, method, url, body, out, timeout):
+    """Read one AG-UI stream into `out`. Returns True if it completed, False on a 401 retry."""
+    async with client.stream(method, url, headers=auth.headers(), json=body,
+                             timeout=timeout) as r:
+        if r.status_code == 401:
+            await r.aread()
+            await auth.refresh(client)
+            return False
+        r.raise_for_status()
+        async for line in r.aiter_lines():
+            if not line.startswith("data: "):
+                continue
+            try:
+                ev = json.loads(line[6:])
+            except ValueError:
+                continue
+            t = ev.get("type")
+            out["events"][t] += 1
+            if t == "RUN_STARTED":
+                out["run_id"] = ev.get("runId")
+            elif t == "TEXT_MESSAGE_CONTENT":
+                out["text"] += ev.get("delta", "")
+            elif t == "CUSTOM" and ev.get("name") == "agentSurface":
+                # 🔴 KEEP EVERY PASS, NOT THE LAST ONE. Keeping only the last inverted a
+                # real measurement: `composition_list_canon_rules` was CALLED on 3 of 3
+                # runs and the report said it was surfaced on 0 of 3, because the model
+                # called it in pass 1 and the final pass — the one whose surface survived
+                # — no longer advertised it. "Called a tool it was never shown" is an
+                # impossible reading that a single sample made look real.
+                out["surfaces"].append(ev.get("value") or {})
+                out["surface"] = ev.get("value")
+            elif t in ("TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_ARGS"):
+                out["tool_calls"].append(ev)
+                # TOOL_CALL_ARGS arrives as JSON deltas keyed by call id; the approval card
+                # is only readable once they are joined.
+                if t == "TOOL_CALL_ARGS":
+                    cid = ev.get("toolCallId")
+                    if cid:
+                        out["_args"][cid] = out["_args"].get(cid, "") + (ev.get("delta") or "")
+            elif t == "RUN_ERROR":
+                out["error"] = str(ev)[:300]
+    return True
+
+
+def pending_approval(out) -> dict | None:
+    """The Tier-A `tool_approval` card this turn is suspended on, if any.
+
+    🔴 A SUSPENDED RUN IS NOT A QUIET RUN, AND READING IT AS ONE INVERTS THE WHOLE WRITE BAR.
+    When a Tier-A tool is not on the user's allowlist the run SUSPENDS: the stream ends normally,
+    the store is untouched, and nothing errored. A harness that does not look for the card reads
+    that as "the model declined to write" — so every write tool in the catalogue would report a
+    clean, empty, entirely fictional result. The card is a TOOL_CALL_START whose accumulated args
+    carry `kind == "tool_approval"` (chat-service stream_service, RAID C2).
+    """
+    for cid, raw in (out.get("_args") or {}).items():
+        try:
+            a = json.loads(raw)
+        except ValueError:
+            continue
+        if isinstance(a, dict) and a.get("kind") == "tool_approval":
+            return {"tool_call_id": cid, "tool": a.get("tool"), "tier": a.get("tier"),
+                    "args": a.get("args"), "approval_kinds": a.get("approval_kinds")}
+    return None
+
+
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
-                    thinking=False, effort="off", timeout=180.0):
-    """One real turn. Returns the parsed AG-UI stream, not a rendering of it."""
-    body = {"content": content, "thinking": thinking, "reasoning_effort": effort}
+                    thinking=False, effort="off", timeout=180.0,
+                    permission_mode="write", approve=None, max_approvals=3):
+    """One real turn, including the approvals a user would have clicked.
+
+    `approve` is the outcome to send when the run suspends on a Tier-A card — `approved_once`,
+    `approved_always`, `denied`, `denied_always`, or None to leave it suspended. None is the
+    DEFAULT and read-intent scenarios must keep it: approving on a turn that only asked to look
+    would make the harness itself the thing that wrote, and the store diff would then be evidence
+    about me rather than about the product.
+    """
+    body = {"content": content, "thinking": thinking, "reasoning_effort": effort,
+            # The FE sends this on every message (useChatMessages, default 'write'); omitting it
+            # falls back to the ACCOUNT pref before 'write', so a harness that leaves it out runs
+            # in whatever mode the account happens to carry while the browser runs in the mode
+            # the user picked. Currently identical on this account (behavior={}), which is
+            # exactly why it would have gone unnoticed.
+            "permission_mode": permission_mode}
     if book_id and chapter_id:
         body["editor_context"] = {"book_id": book_id, "chapter_id": chapter_id}
     if book_id:
         body["book_context"] = {"book_id": book_id}
 
     out = {"text": "", "tool_calls": [], "surface": None, "surfaces": [], "run_id": None,
-           "events": Counter(), "error": None}
+           "events": Counter(), "error": None, "_args": {}, "approvals": []}
+    url = f"{BASE}/v1/chat/sessions/{session_id}/messages"
     for attempt in (1, 2):
         try:
-            async with client.stream(
-                "POST", f"{BASE}/v1/chat/sessions/{session_id}/messages",
-                headers=auth.headers(), json=body, timeout=timeout,
-            ) as r:
-                if r.status_code == 401 and attempt == 1:
-                    await r.aread()
-                    await auth.refresh(client)
-                    continue
-                r.raise_for_status()
-                async for line in r.aiter_lines():
-                    if not line.startswith("data: "):
-                        continue
-                    try:
-                        ev = json.loads(line[6:])
-                    except ValueError:
-                        continue
-                    t = ev.get("type")
-                    out["events"][t] += 1
-                    if t == "RUN_STARTED":
-                        out["run_id"] = ev.get("runId")
-                    elif t == "TEXT_MESSAGE_CONTENT":
-                        out["text"] += ev.get("delta", "")
-                    elif t == "CUSTOM" and ev.get("name") == "agentSurface":
-                        # 🔴 KEEP EVERY PASS, NOT THE LAST ONE. Keeping only the last inverted a
-                        # real measurement: `composition_list_canon_rules` was CALLED on 3 of 3
-                        # runs and the report said it was surfaced on 0 of 3, because the model
-                        # called it in pass 1 and the final pass — the one whose surface survived
-                        # — no longer advertised it. "Called a tool it was never shown" is an
-                        # impossible reading that a single sample made look real.
-                        out["surfaces"].append(ev.get("value") or {})
-                        out["surface"] = ev.get("value")
-                    elif t in ("TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_ARGS"):
-                        out["tool_calls"].append(ev)
-                    elif t == "RUN_ERROR":
-                        out["error"] = str(ev)[:300]
-            return out
+            if await _drain(client, auth, "POST", url, body, out, timeout):
+                break
         except httpx.HTTPError as e:
             if attempt == 2:
                 out["error"] = f"{type(e).__name__}: {e}"
                 return out
+
+    # Resume loop — one pass per card, capped. The cap is not politeness: a model that
+    # re-proposes the same write after every approval would otherwise run forever, and an
+    # unbounded approver is indistinguishable from a harness that wants the write to happen.
+    for _ in range(max_approvals if approve else 0):
+        card = pending_approval(out)
+        if not card or not out.get("run_id"):
+            break
+        out["approvals"].append({"tool": card["tool"], "outcome": approve})
+        out["_args"] = {}
+        try:
+            ok = await _drain(
+                client, auth, "POST",
+                f"{BASE}/v1/chat/sessions/{session_id}/tool-results",
+                {"run_id": out["run_id"], "tool_call_id": card["tool_call_id"],
+                 "outcome": approve},
+                out, timeout)
+            if not ok:
+                break
+        except httpx.HTTPError as e:
+            out["error"] = f"resume {type(e).__name__}: {e}"
+            break
+    out["pending_approval"] = pending_approval(out)
     return out
 
 
@@ -211,7 +280,9 @@ async def run_scenario(client, auth, sc, idx, fx):
     })
     sid = sess.get("session_id") or sess.get("id")
     res = await send_turn(client, auth, sid, sc["prompt"],
-                          book_id=fx.book_id, chapter_id=fx.chapter_id)
+                          book_id=fx.book_id, chapter_id=fx.chapter_id,
+                          permission_mode=sc.get("permission_mode", "write"),
+                          approve=sc.get("approve"))
     res["session_id"] = sid
     res["scenario"] = sc["id"]
     res["rep"] = idx
@@ -327,6 +398,7 @@ def report(results, scenarios, repeats):
         called = sum(1 for r in rs if want and want in called_names(r))
         surfaced = sum(1 for r in rs if want and want in surfaced_names(r))
         errs = sum(1 for r in rs if r.get("error"))
+        susp = sum(1 for r in rs if r.get("pending_approval"))
         # Each repeat has its OWN book, so each diff belongs to exactly one turn. Reporting
         # the COUNT rather than the first non-empty one is the difference between "the store
         # changed at some point" and "2 of 5 turns wrote" — only the second is a distribution,
@@ -336,6 +408,9 @@ def report(results, scenarios, repeats):
         store = (f"WROTE {len(wrote)}/{len(rs)}: " + ", ".join(tables)) if wrote else "unchanged"
         print(f"{sid:<28} {len(rs):<5} {f'{called}/{len(rs)}':<12} "
               f"{f'{surfaced}/{len(rs)}':<17} {errs:<7} {store}")
+        if susp:
+            print(f"    ^ left SUSPENDED on a Tier-A approval card in {susp}/{len(rs)} runs "
+                  f"— not a refusal by the model, a card waiting for a click")
         if wrote and sc.get("intent") == "read":
             # The strongest assertion in the loop, and it needs no per-tool knowledge: a turn
             # that asked to LOOK must not change anything. Measured 2026-08-13: five read
@@ -378,6 +453,10 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
                 "surfaced": sc.get("expect_tool") in surfaced_names(r),
                 "called_tools": sorted(called_names(r)),
                 "error": r.get("error"),
+                # A suspended run has no error, no store change and a perfectly calm reply.
+                # Recording the card is what stops that reading as "the model declined to write".
+                "approvals": r.get("approvals") or [],
+                "left_suspended": bool(r.get("pending_approval")),
                 "store": r.get("store") or {},
                 "store_diff": r.get("store_diff") or {},
                 "answer": (r.get("text") or "")[:2000],
@@ -397,6 +476,7 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
             "surfaced_count": sum(1 for r in runs if r["surfaced"]),
             "called_count": sum(1 for r in runs if r["called"]),
             "wrote_count": sum(1 for r in runs if r["store_diff"]),
+            "suspended_count": sum(1 for r in runs if r["left_suspended"]),
         })
     return {"batch": batch_id, "generated_by": "fe_runner", "tools": tools}
 
