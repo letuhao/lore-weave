@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37b-planforge` — grow `ProposedChar.roles: list[{predicate, object}]`, ask the cast prompt for it, and land it WITH the cast-plan eval (SPEC §4.2c). The path it will use is now PROVEN END TO END.** 🔻 **T37's acceptance number MOVED: `relation 0` → `relation 1`**, live, through the real endpoint with a real JWT against the acceptance book — `HTTP 201`, `inserted: true`, `valid_from_ordinal 12000000`, episode NULL. The defect the first smoke found was MINE, not the fact core's: `source_episode_id` is an FK to `episodes` and the producer minted one to satisfy a `required` field. A plan-authored role has no episode. ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`.
+**RESUME: `T37b-planforge` part 2 — the CALLER. The plan can now SAY a role (`ProposedChar.roles`, prompt + tolerant parser, 5 rules, 2 bites); nothing yet carries it to the KAL. Append each parsed role at `planned_chapter × EVENT_ORDER_CHAPTER_STRIDE`, wire the close path a plan revision owes (§4.2b), and run the cast-plan EVAL that §4.2c says this prompt change must land with.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`. 🔻 **T37's acceptance number is PROVEN: `relation 0` → `relation 1`**, live, HTTP 201 through the studio path — so the write end is no longer in doubt; what is owed is the plan-time producer reaching it.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8438,6 +8438,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   kind: the studio can declare one, it lands on the reading axis, and the canon check's as-of
   read can see it. The planforge half (SPEC §4.2c) writes the roles a plan *implies* and is
   still owed — but the path it will use is now proven end to end.
+
+
+  ### ✅ T37b-planforge (part 1) 2026-08-14 — the plan can now SAY a role
+
+  ```
+  composition-service   3733 -> 3738 passed
+  ```
+
+  SPEC §4.2c decided it: ask the model for the structure it is already producing, rather than
+  parse the prose back out. `ProposedChar` grows `roles: list[{predicate, object}]`, the cast
+  prompt asks for it **alongside** `relationships`, and `parse_cast` reads it defensively.
+
+  **Additive, and the prose stays.** `relationships` is what the packer grounds drafts on;
+  `roles` is what `append_role_fact` needs. Two different questions, and dropping the prose to
+  make room would degrade the draft prompt to serve the graph — a trade the graph does not get
+  to make. The prompt now asks for both and the rule asserts both are still asked for.
+
+  🔧 **The rules are about TOLERANCE, not happy-path shape**, because the input is a model:
+
+  * a cast with **no** `roles` key still parses (older model · prompt predating the field ·
+    truncated array) — losing a whole cast because the graph wanted a new field would be a far
+    worse regression than a plan with no roles;
+  * **half a role is DROPPED, not written as a blank claim.** A role with an empty side is a
+    canon claim about nothing, and every layer below would accept it — `attr_or_predicate` and
+    `value` are plain strings from here to Postgres. Dropped at the parse, because the model is
+    the thing being tolerated and the producer should not re-litigate it;
+  * `roles` arriving as a string / dict / int / null degrades to `[]` rather than taking the
+    character down — `parse_cast`'s whole contract is *never raises*.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. `if pred and obj:` -> `if True:`
+     E  a half-formed role survived the parse: [{'predicate': 'betrayed', …},
+        {'predicate': '', 'object': 'Mira'}, {'predicate': 'allied_with', 'object': ''}, …]
+  2. `if not isinstance(v, list):` -> `if False:`
+     E  TypeError: 'NoneType' object is not iterable
+  ```
+
+  Bite 2 is the tolerance guard doing its job: without it a model that answers `"roles": null`
+  raises inside a function whose contract is that it never does, and the caller's degrade-safe
+  `[]` becomes a 500 in the planning pipeline.
+
+  **QC (a) gates:** all 99 green; plan-verify PASS. **3738 passed, 403 skipped.**
+  **QC (b) the seam:** N/A for this half — the prompt and parser are in-process, and the write
+  path they feed was proved end to end already (`relation 0 -> 1`, HTTP 201, live).
+  **QC (c) real data:** N/A — no LLM call made. ⚠️ **The cast-plan EVAL is what part 2 owes**
+  (SPEC §4.2c): this changes an LLM output contract, and a prompt edit that shifts `is_new`
+  classification or cast sizing is a regression the graph write is not worth. The change is
+  additive by construction — one more key requested, none removed, and the parser tolerates
+  its absence — but "additive by construction" is an argument, and the eval is the measurement.
+
+  **What remains of T37b is the CALLER**: planforge appending each parsed role at
+  `planned_chapter × EVENT_ORDER_CHAPTER_STRIDE`, plus the close path a plan revision owes
+  (§4.2b). The plan can now say a role; nothing yet carries it to the KAL.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
