@@ -842,6 +842,14 @@
       "cycle": 4,
       "group": "A#1 among unconcluded (1 live failure of 2 total, in 6 calls)",
       "note": "PROVEN. One defect found and fixed inside the cycle (T4-D1, the cost gate that estimated zero), with its falsifier proven RED on the original and the fix re-proven live. ORDERING NOTE: both of this tool's recorded failures are `target_language: ['vi']` at 2026-08-12 10:19Z and 10:34Z, and D-FJ-7's unwrap repair landed at 10:50Z. They are HISTORICAL — the same shape as glossary_propose_curation's. It ranked as 'live' only because the ordering's cutoff keys on the OWNING service (translation-service) while the fix lives in chat-service. VERIFIED rather than assumed: the DEPLOYED unwrap helper, run on the exact recorded payload against the live catalogue schema, returns ['target_language'] and rewrites ['vi'] -> 'vi' while leaving the legitimately-array `chapter_ids` untouched. LIVE (passes): from 'Translate chapter 1 of this book into Vietnamese for me' on the throwaway book 019ff8f5, the model called translation_coverage then translation_start_job with {book_id, chapter_ids:[...], target_language:'vi'} — a SCALAR, so D-FJ-7's repair correctly did nothing and logged nothing. The class-C cost card was confirmed in the browser. DATA (passes): translation_jobs row status='completed', total_chapters=1, completed_chapters=1, failed_chapters=0, cost_usd=0.004485; chapter_translations status='completed' with input_tokens=400, output_tokens=219, and translated_body_json holding REAL Vietnamese against the English source — 'The ink was still wet, a dark smear against the vellum…' -> 'Mực vẫn còn ướt, một vệt đen lem luốc trên nền giấy da cừu trông giống một vết thương hơn là một đường bờ biển…'. REMAINING BEFORE THIS TOOL CAN BE CONCLUDED: fix T4-D1 with a falsifier proven RED on the original, translation-service suite green, deploy verified by content, re-run live and confirm the card now states a real cost; then the SHIP audit (force_retranslate, a chapter with no prose, an unsupported target_language, a second identical call). SHIP (audited past the happy path): an unsupported target_language is refused with the legal set; a second identical call returns the SAME estimate (50 tokens, priced) rather than drifting; the retranslate-dirty scope is untouched. 🔴 ONE GAP LEFT AS AN OBSERVATION, NOT A DEFECT: chapter_ids=[] is ACCEPTED and mints a confirm card for translating nothing (input_tokens 0, priced false). It is harmless — the job would cost nothing — but it asks a human to consent to a no-op, which is the same 'a blank reads as free' shape T4-D1 was about. Recorded as OBS-T11 rather than fixed, because whether an empty selection should refuse or no-op is a product choice, not a measurement."
+    },
+    "kg_build": {
+      "state": "blocked",
+      "provider": "knowledge",
+      "tier": "W (class-C, paid, async)",
+      "cycle": 5,
+      "group": "A#1 among unconcluded (1 live failure of 2 calls)",
+      "note": "BLOCKED, and kg_build is not what is broken. Every point at which the tool was reached, it behaved correctly. WHAT WAS PROVEN LIVE in this cycle, on the throwaway book 019ff8f5 (2 chapters with real prose, project 019ff8f6 with no embedding model and 0 entities — the exact precondition state): the model called kg_build with a DERIVED project_id and got D-FJ-3's fixed refusal naming BOTH unmet preconditions in ONE message ('target=graph is missing 2 precondition(s): llm_model …; an embedding model on the project — call kg_project_set_embedding_model …'), and D-FJ-4's arming fired on it: 'armed recovery tool(s) [kg_project_set_embedding_model, kg_run_benchmark, settings_list_models] named in kg_build's refusal'. The model then DID call settings_list_models — the armed tool. Both of the journey loop's fixes re-proven live in a fresh context. 🔴 THE BLOCKER IS A DIFFERENT TOOL. kg_build's precondition cannot be satisfied because `kg_project_set_embedding_model` was called with a PREFIXED id — embedding_model='user_model_id:019e7f71-0271-722f-9c9c-3f049c0b26f4' — and refused with 'embedding model probe failed: embedding failed (400): {\"code\":\"EMBED_VALIDATION\",\"message\":\"invalid model_ref\"}'. MEASURED CONTROL: the SAME id without the `user_model_id:` prefix is accepted (project now carries embedding_model=019eeb08-8bff-75cb-8e86-700efd4033b5, embedding_dimension=1024), so the value the model chose was right and only its FORM was wrong — the D-FJ-7 / T2-D3 / T3-D1 family again, a fourth shape. Under the HARD CYCLE BOUNDARY that is kg_project_set_embedding_model's cycle, not this one, so it is recorded and NOT fixed here. 🔴 AND THEN THE TURN NARRATED SUCCESS. With the precondition satisfied by setup, asked to start the build, the model made ZERO tool calls and answered 'I've initiated the graph extraction job… I have selected Gemma-4 26B FD4-067 for the extraction'. No kg_build call, no confirm card, no job. Same shape as OBS-T5 and as the journey loop's DQ-30, now on an EXPENSIVE job. SO THE LIVE BAR IS NOT MET AND IS NOT CLAIMED: there is no successful kg_build execution with model-derived arguments in this cycle. It is recorded BLOCKED rather than proven on the strength of the refusals working, and rather than proven on the journey loop's earlier kg-build run. NEXT CYCLE SHOULD BE kg_project_set_embedding_model — it is the concrete blocker."
     }
   },
   "defects": {
@@ -952,15 +960,23 @@
     {
       "id": "OBS-T11",
       "note": "translation_start_job accepts chapter_ids=[] and mints a confirm card titled 'Translate 0 chapter(s)' with input_tokens=0, priced=false — asking a human to approve a paid action that would do nothing. Measured 2026-08-13. Harmless in cost terms; recorded because it is the same shape as T4-D1 (a blank estimate reading as 'free') and because whether an empty selection should REFUSE or no-op is a product choice."
+    },
+    {
+      "id": "OBS-T12",
+      "note": "kg_project_set_embedding_model refuses a model id the caller prefixed with its source: the model sent 'user_model_id:019e7f71-0271-722f-9c9c-3f049c0b26f4' and got 'invalid model_ref'. The bare UUID is accepted (verified as a control). Fourth shape in the argument-form family after D-FJ-7 (['vi'] for a scalar), T2-D3 (1 for a string) and T3-D1 (objects for an array of strings) — this one is a scalar string carrying a SOURCE PREFIX. Recorded 2026-08-13; it is the blocker for kg_build (cycle 5) and belongs to its own cycle."
+    },
+    {
+      "id": "OBS-T13",
+      "note": "A second narrated write, this time over an EXPENSIVE job. Asked to start the graph build with the precondition satisfied, the turn made ZERO tool calls and replied 'I've initiated the graph extraction job… I have selected Gemma-4 26B FD4-067 for the extraction'. No kg_build call, no confirm card, no job row. With OBS-T5 that is twice in one session on books with no rail pinned, which is where D-FJ-8's guard has no anchor. Reinforces the journey loop's DQ-30."
     }
   ],
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. `in_cycle` is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 4,
+    "tools_concluded": 5,
     "tools_in_cycle": 0,
     "tools_proven": 4,
-    "tools_blocked": 0,
+    "tools_blocked": 1,
     "defects_proven": 8,
     "defects_open": 0,
     "deferred_questions": 1
