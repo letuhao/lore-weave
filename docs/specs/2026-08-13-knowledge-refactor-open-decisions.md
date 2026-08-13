@@ -364,6 +364,43 @@ plus the studio's backend endpoint; the studio UI rides with T51.
 **The acceptance test for both is one number.** T36 measured `relation 0` in `entity_facts`.
 T37 is done when a real run turns that into a non-zero count and the canon check reads it.
 
+### 4.2c The plan-time producer needs a STRUCTURED role, and the plan has none — **DECIDED (2026-08-14)**
+
+Measured before building the planforge caller (rule 8), and it re-scopes T37b.
+`cast_plan.ProposedChar` carries:
+
+```python
+relationships: str = ""      # free-text ties to other cast ("huynh trưởng of Lâm Uyển")  # doc-language-gate: ok -- the code comment verbatim; paraphrasing it would hide that the field holds prose
+```
+
+**Free text, not a `(subject, predicate, object)` triple.** `append_role_fact` needs
+`attr_or_predicate` and `value` as separate fields, so plan-time authorship has nothing of the
+right shape to send. Nothing else in the engine carries a structured tie — `grep` for
+`predicate` outside `canon_check.py` returns only unrelated boolean predicates.
+
+This is the same class as the two batches rule 8 already caught this session: *"migrate X"*
+that turns out to be *"X has nowhere to go yet."*
+
+**DECIDED: ask the model for the structure it is already producing.** `ProposedChar` grows
+`roles: list[{predicate, object}]` alongside `relationships`, and the cast prompt asks for
+both. The information is in the model's answer today; it is only being requested as prose.
+
+**Not chosen: parsing the free text into triples.** It would need either an LLM pass (a second
+spend on data the first pass already had) or a heuristic, and a heuristic over multilingual
+free text is precisely the over-extraction class the plan already records against the
+extractor — `"Sự phản bội tại khởi đầu" -[betrayed]->` <!-- doc-language-gate: ok -- a stored node name from the cited corpus; translating it would break the identity the evidence turns on --> is an event phrase promoted to a
+character by exactly that kind of parsing. A role fact minted from a mis-parse is worse than
+no role fact: it is a canon claim the guard will enforce.
+
+**`relationships` stays.** It is prose the packer already uses for context, and the structured
+`roles` field is additive — the two answer different questions and dropping the prose to make
+room would degrade the prompt to serve the graph.
+
+⚠️ **This touches an LLM output contract**, so it lands with the cast-plan eval rather than
+beside it: a prompt change that shifts `is_new` classification or cast sizing would be a
+regression the graph write is not worth. That is the sequencing, and it is why T37b's
+planforge half is a prompt-and-eval batch, not a client call.
+
 ### 4.3 Causal coverage is measured in QC-6, not before — **DECIDED**
 *Replaces `D-T33-CAUSAL-COVERAGE-UNMEASURED`, `D-QC6-IDENTITY-LIVE-PROOF`.* Both are live
 proofs on real data, and QC-6 is where the plan runs them.
