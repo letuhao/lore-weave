@@ -47,7 +47,7 @@ from app.db.neo4j_repos.enrichment import (
     upsert_enriched_anchor,
     upsert_enriched_fact,
 )
-from loreweave_extraction.canonical import canonicalize_entity_name, entity_canonical_id
+from loreweave_extraction.canonical import canonicalize_entity_name
 from app.middleware.internal_auth import require_internal_token
 
 logger = logging.getLogger(__name__)
@@ -152,9 +152,6 @@ async def enriched_writeback(
     """
     source_type = f"enriched:{req.technique}"
     project_id = str(req.project_id) if req.project_id else None
-    canon_id = entity_canonical_id(
-        str(req.user_id), project_id, req.canonical_name, req.entity_kind
-    )
     canon_name = canonicalize_entity_name(req.canonical_name)
     # The minted-anchor confidence (FIX-2 / WARN-2): when write-back is the
     # entity's actual creator (the anchor did not pre-exist), the anchor is born
@@ -167,11 +164,15 @@ async def enriched_writeback(
         # The anchor upsert moved to `neo4j_repos/enrichment.py` (plan T17) — including
         # the null-before-claim ordering and the strict ON CREATE / ON MATCH split that
         # keep enrichment from ever making a node look like canon.
-        await upsert_enriched_anchor(
+        # T35 — the RESOLVED id, not the recomputed hash. After a glossary rename the real
+        # node keeps its pre-rename `e.id`, so `canon_id` matches nothing; the anchor upsert
+        # resolves to the node that actually holds the glossary anchor and returns it. The
+        # facts below MUST attach to that node — hanging them off the recomputed hash was
+        # how a write-back gave a freshly minted stub the author's character.
+        canon_id = await upsert_enriched_anchor(
             session,
             user_id=str(req.user_id),
             glossary_entity_id=str(req.glossary_entity_id),
-            canon_id=canon_id,
             name=req.canonical_name,
             canon_name=canon_name,
             kind=req.entity_kind,

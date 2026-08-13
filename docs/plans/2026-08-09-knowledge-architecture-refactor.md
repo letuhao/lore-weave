@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35` — opaque identity (SPEC §4.1), which §6.1 sequences FIRST in Phase 5 (`T35 → T36 → T37 → T32/T33 → QC-6`). Its remaining work is the five callers pinned by `derived-entity-id-gate`, and its own gate warns that half-migrating a live graph is worse than not starting — so take it with a fresh context.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9`. port-adoption-gate **64 → 57** this session; conformance **40 → 82**. ⚠️ A9 measured that ALL of class (a) moves the ceiling by **zero** — both shared constants already live in `app/domain/`, and a module falls off only when its LAST repo import goes. Fourteen modules are ONE import from clean; that list is the batch queue, not the constants.
+**RESUME: `T35b` — the two whole-graph callers, `db/neo4j_repos/entities.py` (the join sites) and `extraction/glossary_sync.py` (the original defect site), SPEC §4.1. Take them with a fresh context: `derived-entity-id-gate`'s own docstring says a half-migrated live graph gives no way to tell which half is which.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` — the enrichment writer, which was still minting AND stealing the glossary anchor after a rename, proved over the live HTTP endpoint. port-adoption-gate **64 → 57**; conformance **40 → 82**. ⚠️ `derived-entity-id-gate` is **5 → 5**: T35a RELOCATED a derivation, it did not retire one.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -7833,6 +7833,127 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ```
   4228 passed — knowledge-service unit suite
   ```
+
+
+  ### 🔴 T35a 2026-08-14 — **the minting defect was still live on the enrichment path, and there it STOLE the anchor**
+
+  ```
+  integration-db   437 passed / 367 skipped      derived-entity-id-gate   5 -> 5  (see below)
+  ```
+
+  T35's row records the minting defect as fixed: `merge_entity` resolves by what the node
+  currently says it is, and five tests pin it. **The fix was applied to one writer.**
+  `upsert_enriched_anchor` still did the original thing:
+
+  ```cypher
+  MERGE (e:Entity {id: $canon_id})        -- canon_id = entity_canonical_id(user, project, name, kind)
+  ```
+
+  After a glossary rename the node keeps its pre-rename `e.id`, so the recomputed hash matches
+  nothing and `ON CREATE` mints a second node — the familiar half. **The new half is the
+  statement that runs first:**
+
+  ```cypher
+  MATCH (stale:Entity {user_id: …, glossary_entity_id: …})
+  WHERE stale.id <> $canon_id
+  SET stale.glossary_entity_id = NULL
+  ```
+
+  It exists to free a stale claim before the MERGE, because `:Entity(glossary_entity_id)` is
+  UNIQUE. But after a rename **the real entity IS the node it calls stale** — so a write-back
+  strips the glossary anchor off the author's actual character and hands it to a freshly
+  minted enrichment stub. The glossary's link then points at a node holding nothing but
+  quarantined enrichment facts, while the real node — with every relation, event and fact on
+  it — is silently unanchored. **Worse than a duplicate: a duplicate is visible.**
+
+  **Proved RED before the fix**, the way T35's earlier work was:
+
+  ```
+  E  AssertionError: enrichment write-back minted a SECOND node after a rename — it MERGEd
+     on the recomputed hash, which the renamed node no longer carries
+  E  assert 2 == 1
+  ```
+
+  ✅ **The fix is `merge_entity`'s own safety property, applied here.** Resolve first:
+
+  ```cypher
+  OPTIONAL MATCH (byId:Entity {id: $canon_id, user_id: $user_id})
+  OPTIONAL MATCH (byAnchor:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+  RETURN coalesce(byId.id, byAnchor.id, $canon_id) AS eid
+  ```
+
+  **The order of the `coalesce` IS the safety property.** A node already at the caller's id
+  wins, so this is a strict no-op for every write that works today; the anchor holder is
+  consulted only when nothing sits at that id — exactly the rename/re-kind case. Reversing it
+  hijacks a deliberate re-anchor, and the second bite is that reversal.
+
+  🔧 **`upsert_enriched_anchor` now RETURNS the resolved id, and the facts follow it.** The
+  caller was passing the recomputed hash to `upsert_enriched_fact`'s `MATCH (e:Entity {id:
+  $canon_id})` — so even where the anchor resolved correctly, the facts would have hung off a
+  node the anchor no longer lives on. That was a second defect inside the first.
+
+  **BITE ×2, both red on the value** *(and a third that was red for the WRONG reason — cut at
+  line 62 instead of 61, mutating a closing `"""` into a `SyntaxError`; restored and re-cut)*:
+
+  ```
+  1. coalesce order reversed  (byAnchor before byId)
+     E  the anchor did not move to the new claimant, or two nodes hold it
+     E  assert ['a9bd31c6…'] == ['7bdcbbbd…']
+  2. resolution removed       (`RETURN $canon_id AS eid`)
+     E  enrichment write-back minted a SECOND node after a rename
+     E  assert 2 == 1
+  ```
+
+  Two controls a lazier fix would fail are pinned alongside: re-calling must not duplicate,
+  and a claim held by a **genuinely different** entity must still be released — a fix that
+  simply stopped freeing stale claims passes the rename test and trips the UNIQUE constraint
+  the first time an anchor legitimately moves.
+
+  ⚠️ **`derived-entity-id-gate` DID NOT MOVE, and that is the honest number.** The derivation
+  went from `routers/internal_enrichment.py` into `db/neo4j_repos/enrichment.py`, so one entry
+  came off the baseline and another went on: **5 → 5**. The layer is now right — where to mint
+  when nothing exists yet is a storage detail, and a router computing it had to know that
+  `Entity.id` is `hash(name, kind)`, which is the coupling T35 exists to remove — but *relocating*
+  a derivation is not *retiring* it. The gate falls when the derivation goes, and saying
+  otherwise would be exactly the kind of number rule 2 exists for.
+
+  **QC (a) gates:** all 99 green; `derived-entity-id-gate` PASS at 5 with `--selftest`, its
+  baseline comment rewritten to say why the count is flat; plan-verify PASS.
+  **QC (b) THE LIVE SMOKE — the real HTTP endpoint, rebuilt image, real Neo4j.** Container
+  grepped first: `T35 — DERIVED HERE` present ×1, `entity_canonical_id` in the router **×0**.
+  Then the exact defect scenario over `POST /internal/knowledge/enriched-writeback`:
+
+  ```
+  1. write-back as "Kai"        -> Entity aefa21ca… anchor e2ec0f9e…
+  2. rename in place            -> name 'Kai Sr.', id UNCHANGED (the glossary rename path)
+  3. write-back as "Kai Sr."    -> 200
+
+  MATCH (e:Entity {user_id:…}) RETURN e.id, e.name, e.glossary_entity_id
+    "aefa21ca1bb3ccce538715a37997eca7", "Kai Sr.", "e2ec0f9e-5cd2-41aa-bc95-739bcceab781"
+
+  MATCH (e:Entity)-[r]-(f:Fact) RETURN e.id, type(r), f.dimension
+    aefa21ca…  RELATES_TO  appearance     <- written BEFORE the rename
+    aefa21ca…  RELATES_TO  personality    <- written AFTER it
+
+  labels: Entity 1 · Fact 2
+  ```
+
+  **One entity, both facts on it, anchor intact across the rename.** Before this batch step 3
+  would have minted a second Entity, moved the anchor to it, and attached `personality` there.
+  (First count read `facts 0` because I joined on `:ABOUT`; the enriched edge is
+  `:RELATES_TO`. Re-queried rather than reported — rule 2 on my own smoke.)
+
+  **QC (c) real data:** two real enriched `:Fact` nodes and a real `:Entity` through the live
+  HTTP surface; cleaned up after (`remaining 0`).
+
+  ```
+  4228 passed — unit · 437 passed, 367 skipped — integration-db
+  ```
+
+  **T35's remaining callers: 4 of the 5 are unchanged.** `entities.py` (the join sites) and
+  `glossary_sync.py` (the original defect site) are the whole-graph half the gate's docstring
+  warns about; `recanon_honorifics.py` is a one-shot backfill whose purpose IS recomputing
+  ids; `fake_graph_store.py` mirrors the real adapter and moves with it.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

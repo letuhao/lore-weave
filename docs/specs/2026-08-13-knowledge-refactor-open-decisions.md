@@ -278,6 +278,24 @@ after T17's port growth makes it one change instead of forty-eight. Collision gr
 glossary-side debt and are **not** T35's to fix: T35 makes the KG's id opaque, and a glossary
 that mints colliding names is a separate defect with its own owner.
 
+**T35a (2026-08-14) — the fix belongs at EVERY writer that mints, not just `merge_entity`.**
+Found by building it: `upsert_enriched_anchor` still MERGEd on the recomputed hash, and its
+"free the stale glossary claim" statement — which runs first, because
+`:Entity(glossary_entity_id)` is UNIQUE — treated the author's own renamed character as the
+stale holder. So a write-back after a rename minted a stub **and moved the glossary anchor
+onto it**, leaving the real node silently unanchored. Worse than a duplicate, because a
+duplicate is visible.
+
+The resolution is `merge_entity`'s, and its `coalesce` order is the safety property: a node
+already at the caller's id wins (a strict no-op for every write that works today), and the
+anchor holder is consulted only when nothing is at that id. `upsert_enriched_anchor` now
+returns the resolved id so the facts attach to the node the anchor actually lives on — the
+caller was passing the recomputed hash to the fact `MATCH`, a second defect inside the first.
+
+**Retiring the derivation is not the same as relocating it.** Moving it out of the router and
+into the repo left `derived-entity-id-gate` at **5 → 5**. The layer is right now; the count
+falls when the derivation goes.
+
 ### 4.2 T37's command producer follows T36's shape — **DECIDED**
 *Replaces `D-T37-COMPOSITION-COMMAND-PRODUCER`.* The producer writes role facts in the shape
 T36 defines. Building it earlier would ship a command surface whose payload is still moving;

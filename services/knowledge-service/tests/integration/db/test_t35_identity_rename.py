@@ -29,6 +29,8 @@ import pytest
 import pytest_asyncio
 
 from app.db.neo4j_repos.entities import link_to_glossary, merge_entity
+from app.db.neo4j_repos.enrichment import upsert_enriched_anchor
+from loreweave_extraction.canonical import entity_canonical_id
 
 
 @pytest_asyncio.fixture
@@ -182,3 +184,124 @@ async def test_a_node_at_the_derived_id_still_wins(neo4j_driver, test_user):
             "a node at the derived id must still win — otherwise this change "
             "re-points writes for every canonical-name collision in the graph")
         assert await _count(session, test_user, P) == 2  # decoy untouched
+
+
+# ── T35 · the ENRICHMENT anchor had the same defect, and a worse consequence ──
+
+
+@pytest.mark.asyncio
+async def test_enrichment_writeback_after_a_rename_does_not_mint_or_STEAL_the_anchor(
+    neo4j_driver, test_user
+):
+    """🔴 The minting defect `merge_entity` fixed was still live on the enrichment
+    write-back path, and there it does something worse than duplicate.
+
+    `upsert_enriched_anchor` MERGEd on `entity_canonical_id(user, project, name, kind)`.
+    After a glossary rename the real node keeps its old `e.id`, so the recomputed id matches
+    nothing and `ON CREATE` mints a second node — the familiar half. The new half is the
+    statement that runs FIRST:
+
+        MATCH (stale:Entity {user_id: …, glossary_entity_id: …})
+        WHERE stale.id <> $canon_id
+        SET stale.glossary_entity_id = NULL
+
+    It exists to free a stale claim before the MERGE, because `:Entity(glossary_entity_id)`
+    is UNIQUE. But after a rename **the real entity IS the node it calls stale**, so the
+    anchor is stripped off the author's actual character and handed to a freshly minted
+    enrichment stub. The glossary's link now points at a node that holds nothing but
+    quarantined enrichment facts, and the real node — with every relation, event and fact on
+    it — is silently unanchored.
+
+    Nothing raises. Both nodes are well-formed. This is the same shape as the original
+    defect and it is asserted on both counts: the COUNT (no duplicate) and, load-bearing,
+    WHICH node ends up holding the anchor.
+    """
+    P = "p-t35-enrich"
+    async with neo4j_driver.session() as session:
+        first = await merge_entity(
+            session, user_id=test_user, project_id=P,
+            name="Kai", kind="character", source_type="book_content")
+        renamed = await link_to_glossary(
+            session, user_id=test_user, canonical_id=first.id,
+            glossary_entity_id="g-kai-enrich", name="Kai Sr.", kind="character")
+        assert renamed is not None
+        assert await _count(session, test_user, P) == 1
+
+        # Enrichment write-back sees the entity by its CURRENT name, exactly as
+        # `internal_enrichment.py` computes it from the request payload.
+        await upsert_enriched_anchor(
+            session,
+            user_id=test_user,
+            glossary_entity_id="g-kai-enrich",
+            name="Kai Sr.",
+            canon_name="kai sr.",
+            kind="character",
+            project_id=P,
+            anchor_confidence=0.8,
+            anchor_source_type="enriched:test",
+            origin="enrichment",
+            proposal_id="prop-1",
+            technique="test",
+        )
+
+        assert await _count(session, test_user, P) == 1, (
+            "enrichment write-back minted a SECOND node after a rename — it MERGEd on the "
+            "recomputed hash, which the renamed node no longer carries")
+
+        res = await session.run(
+            "MATCH (e:Entity {user_id: $u, project_id: $p, "
+            "glossary_entity_id: 'g-kai-enrich'}) RETURN e.id AS id",
+            u=test_user, p=P,
+        )
+        holders = [r["id"] async for r in res]
+        assert holders == [first.id], (
+            "the glossary anchor moved OFF the real entity. The 'free the stale claim' "
+            "statement treats the renamed node as stale, so a write-back strips the anchor "
+            f"from the author's character and gives it to an enrichment stub. holders={holders}")
+
+
+@pytest.mark.asyncio
+async def test_enrichment_anchor_is_still_idempotent_and_still_frees_a_GENUINELY_stale_claim(
+    neo4j_driver, test_user
+):
+    """The two controls a resolve-by-anchor fix must not break.
+
+    A fix that simply stopped freeing stale claims would pass the rename test and trip the
+    UNIQUE constraint the first time an anchor genuinely moved between entities — so both
+    directions are pinned: re-calling must not duplicate, and a claim held by a DIFFERENT
+    entity must still be released.
+    """
+    P = "p-t35-enrich2"
+    common = dict(
+        user_id=test_user, glossary_entity_id="g-move", name="Mira", canon_name="mira",
+        kind="character", project_id=P, anchor_confidence=0.8,
+        anchor_source_type="enriched:test", origin="enrichment",
+        proposal_id="prop-2", technique="test",
+    )
+    async with neo4j_driver.session() as session:
+        await upsert_enriched_anchor(session, **common)
+        await upsert_enriched_anchor(session, **common)
+        assert await _count(session, test_user, P) == 1, "re-calling minted a second anchor"
+
+        # A DIFFERENT entity now claims the same glossary id — the case the free-stale
+        # statement exists for. The old holder must be released, not left to trip UNIQUE.
+        # A DIFFERENT entity claims the same glossary id. With the derivation inside the
+        # repo, the caller expresses that by naming the entity — the derived id for
+        # "Mira the Elder" IS `other.id`, because `merge_entity` minted it at that hash and
+        # nothing has renamed it. So `byId` resolves to `other` and the anchor moves, which
+        # is the deliberate re-anchor the coalesce order protects.
+        other = await merge_entity(
+            session, user_id=test_user, project_id=P,
+            name="Mira the Elder", kind="character", source_type="book_content")
+        await upsert_enriched_anchor(
+            session,
+            **{**common, "name": "Mira the Elder", "canon_name": "mira the elder"},
+        )
+        res = await session.run(
+            "MATCH (e:Entity {user_id: $u, project_id: $p, glossary_entity_id: 'g-move'}) "
+            "RETURN e.id AS id",
+            u=test_user, p=P,
+        )
+        holders = [r["id"] async for r in res]
+        assert holders == [other.id], (
+            f"the anchor did not move to the new claimant, or two nodes hold it: {holders}")

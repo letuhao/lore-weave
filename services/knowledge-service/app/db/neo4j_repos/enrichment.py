@@ -33,6 +33,8 @@ clearing it, and it can never remove canon because it filters on this proposal's
 
 from __future__ import annotations
 
+from loreweave_extraction.canonical import entity_canonical_id
+
 from app.db.neo4j_helpers import CypherSession
 
 __all__ = [
@@ -41,6 +43,25 @@ __all__ = [
     "upsert_enriched_anchor",
     "upsert_enriched_fact",
 ]
+
+
+# T35 — RESOLVE the anchor before touching anything, the same safety property
+# `merge_entity` uses. The derived id is a hash of (name, kind); a glossary rename updates
+# the node in place and leaves `e.id` alone, so after a rename the recomputed hash matches
+# NOTHING and the MERGE below used to mint a second node — and the free-stale statement,
+# which runs first, stripped the glossary anchor off the author's real character to give it
+# to that stub.
+#
+# THE ORDER OF THE coalesce IS THE SAFETY PROPERTY. A node already sitting at the caller's
+# id wins, so this is a strict no-op for every write that works today; the anchor holder is
+# consulted only when nothing is at that id — i.e. exactly the rename/re-kind case. Reversing
+# the two would hijack a deliberate re-anchor: `enriched-promote` moving a glossary id to a
+# different entity passes that entity's real id, and it must be honoured.
+_RESOLVE_ANCHOR_CYPHER = """
+OPTIONAL MATCH (byId:Entity {id: $canon_id, user_id: $user_id})
+OPTIONAL MATCH (byAnchor:Entity {user_id: $user_id, glossary_entity_id: $glossary_entity_id})
+RETURN coalesce(byId.id, byAnchor.id, $canon_id) AS eid
+"""
 
 
 _FREE_STALE_GLOSSARY_ANCHOR_CYPHER = """
@@ -162,7 +183,6 @@ async def upsert_enriched_anchor(
     *,
     user_id: str,
     glossary_entity_id: str,
-    canon_id: str,
     name: str,
     canon_name: str,
     kind: str,
@@ -172,23 +192,43 @@ async def upsert_enriched_anchor(
     origin: str,
     proposal_id: str,
     technique: str,
-) -> None:
+) -> str:
     """Ensure the entity anchor exists so the enriched edge has an endpoint.
 
-    Two statements, in this order and not the other: free any stale claim on the glossary
-    id FIRST, then MERGE. Reversing them trips the UNIQUE on `:Entity(glossary_entity_id)`.
+    **Returns the id the anchor actually resolved to**, which is not always `canon_id`: after
+    a glossary rename the real node still carries its pre-rename id (T35). The caller must
+    attach its facts to THIS id — using the recomputed hash would hang them off a node the
+    anchor no longer lives on.
+
+    Three statements, in this order and not another: resolve, free any stale claim on the
+    glossary id, then MERGE. Freeing before the MERGE is required because
+    `:Entity(glossary_entity_id)` is UNIQUE; resolving before the free is what stops the
+    "stale" claim being the author's own renamed character.
     """
+    # T35 — DERIVED HERE, not by the caller. Where to mint when nothing exists yet is a
+    # storage detail of this layer; a router that computes it has to know that `Entity.id`
+    # is `hash(name, kind)`, which is the coupling T35 exists to remove. The caller now
+    # passes what it actually knows — the glossary anchor and the entity's properties.
+    canon_id = entity_canonical_id(user_id, None if project_id == "global" else project_id,
+                                   name, kind)
+    res = await session.run(
+        _RESOLVE_ANCHOR_CYPHER,
+        user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=canon_id,
+    )
+    rec = await res.single()
+    eid = rec["eid"] if rec else canon_id
     await session.run(
         _FREE_STALE_GLOSSARY_ANCHOR_CYPHER,
-        user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=canon_id,
+        user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=eid,
     )
     await session.run(
         _UPSERT_ANCHOR_CYPHER,
-        user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=canon_id,
+        user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=eid,
         name=name, canon_name=canon_name, kind=kind, project_id=project_id,
         anchor_confidence=anchor_confidence, anchor_source_type=anchor_source_type,
         origin=origin, proposal_id=proposal_id, technique=technique,
     )
+    return eid
 
 
 async def upsert_enriched_fact(
