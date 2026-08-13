@@ -25,8 +25,9 @@ use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verd
 use commit_service::spine_args::parse_args;
 use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
-use commit_service::hostclock::now_rfc3339;
 use commit_service::wire::discard_reason_wire;
+// `DF5` — this file builds no event envelope at all now: both commit paths
+// go through the SDK, so the aggregate and the node own what it stamped.
 use commit_service::{epoch_commit, epoch_signal};
 use commit_service::combat::Side;
 use commit_service::{Actor, CombatDomain, CombatState, Vocabulary, COMBAT_V1_JSON};
@@ -34,10 +35,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 
 use commit_service::{reality_bind, reject_commit};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
-use dp_kernel::envelope::EventEnvelope;
 use sim_core::{EntityId, Island, IslandId, Lane, Outcome, SeenWindow, StepStatus};
 use sqlx::postgres::PgPoolOptions;
-use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -297,60 +296,61 @@ async fn main() -> anyhow::Result<()> {
                         .filter(|(_, v)| matches!(v, Verdict::NotRun))
                         .map(|(n, _)| *n)
                         .collect();
-                    aggregate_version += 1;
                     // DP-A17: only an APPLIED resolution consumes the turn.
                     if matches!(outcome, Outcome::Applied { .. }) {
                         turn_number.fetch_add(1, Ordering::SeqCst);
                     }
-                    let env = EventEnvelope {
-                        event_id: Uuid::new_v4(),
-                        event_type: match &outcome {
-                            Outcome::Applied { .. } => "turn.resolved".into(),
-                            Outcome::Discarded { .. } => "turn.discarded".into(),
-                            Outcome::Buffered => "turn.buffered".into(),
-                        },
-                        event_version: 1,
-                        aggregate_id: format!("enc-{}", args.channel),
-                        aggregate_type: "combat_session".into(),
-                        aggregate_version,
-                        reality_id: args.reality,
-                        occurred_at: now_rfc3339(),
-                        recorded_at: now_rfc3339(),
-                        // D1 — STRUCTURED domain facts, never a Debug string.
-                        // A `{:?}` rendering has no stability guarantee, so a
-                        // consumer parsing one is parsing a bug; this payload
-                        // is read directly by the browser.
-                        payload: serde_json::json!({
-                            "island_seq": seq.0.to_string(), // CWC-A2
-                            "events": match &outcome {
-                                Outcome::Applied { events } => serde_json::to_value(events)?,
-                                _ => serde_json::json!([]),
-                            },
-                            "discard_reason": match &outcome {
-                                Outcome::Discarded { reason } => {
-                                    serde_json::json!(discard_reason_wire(reason))
-                                }
-                                _ => serde_json::Value::Null,
-                            },
-                        }),
-                        // D4: EVT envelope fields ride metadata until v2.
-                        metadata: Some(serde_json::json!({
-                            "event_category": "T6",
-                            "input_id": input_id.0.to_string(),
-                            "admission_notrun_stages": notrun,
-                            // CWC-A2 — decimal string, never a number.
-                            "turn_number": turn_number.load(Ordering::SeqCst).to_string(),
-                        })),
-                        // RLS-A13 — see the reject path above. Same island, same
-                        // derived pin: every event this writer commits carries the
-                        // digest of the rules that actually resolved it.
-                        ruleset_digest: Some(isle.digest.to_hex()),
+                    // `DF5` — THROUGH THE SDK, like the refusal path above.
+                    //
+                    // This is the hop the ACTOR HUB is on: `events` is its fold
+                    // made durable — `domain::Actor` holds an
+                    // `actor_hub::Actor`, the island resolves against it, and
+                    // what comes out is what this writes.
+                    let kind = match &outcome {
+                        Outcome::Applied { .. } => reject_commit::ResolutionKind::Applied,
+                        Outcome::Discarded { .. } => reject_commit::ResolutionKind::Discarded,
+                        Outcome::Buffered => reject_commit::ResolutionKind::Buffered,
                     };
-                    let appended = writer.append(&env, &serde_json::json!([])).await?;
+                    // D1 — STRUCTURED domain facts, never a Debug string: a
+                    // `{:?}` rendering has no stability guarantee, and this
+                    // payload is read directly by the browser.
+                    let payload = serde_json::json!({
+                        "island_seq": seq.0.to_string(), // CWC-A2
+                        "events": match &outcome {
+                            Outcome::Applied { events } => serde_json::to_value(events)?,
+                            _ => serde_json::json!([]),
+                        },
+                        "discard_reason": match &outcome {
+                            Outcome::Discarded { reason } => {
+                                serde_json::json!(discard_reason_wire(reason))
+                            }
+                            _ => serde_json::Value::Null,
+                        },
+                    });
+                    // The PER-WRITE half. `event_category`, the digest and the
+                    // turn counter are no longer stamped here — the aggregate
+                    // and the node own those now, so a forgotten one is
+                    // impossible rather than unlikely.
+                    let meta = serde_json::json!({
+                        "input_id": input_id.0.to_string(),
+                        "admission_notrun_stages": notrun,
+                    });
+                    let pos = reject_commit::commit_resolution(
+                        &dp_backend,
+                        &chan_ctx,
+                        reality_bind::now_ms().map_err(|e| anyhow::anyhow!("{e}"))?,
+                        args.channel,
+                        aggregate_version,
+                        kind,
+                        payload,
+                        &meta,
+                    )
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    aggregate_version += 1;
                     committed += 1;
                     println!(
-                        "COMMIT {} → channel_event_id {} ({})",
-                        msg.id, appended.channel_event_id, env.event_type
+                        "COMMIT {} → channel_event_id {pos} ({:?})",
+                        msg.id, kind
                     );
                     to_ack.push(msg.id.clone());
                 }

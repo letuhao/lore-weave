@@ -132,8 +132,7 @@ All of the following, or 45 turns, whichever comes first:
 - [x] `DF3` closed — a Redis-backed cache the SDK reads through for T0–T2, **measured 643.62µs mean over 200 gets against DP-T2's <10ms budget**. Original wording: with a **measured**
       read latency pasted against the `03_tier_taxonomy` budget
 - [x] `DF4` closed — the one production aggregate carries a `DP-R2` tier table, and `scripts/dp-r2-tier-table-gate.py` **machine-checks** it by DISCOVERY, so a new aggregate arrives red rather than unnoticed. **Note the box's own wording:** *"every module touching kernel state"* implied many; measured, there is exactly **one** production `DpAggregate` in the tree. The gate covers all of them because it finds them, not because the number is small
-- [ ] `DF5` closed — the end-to-end dataflow: one player-facing action → actor hub → DP write →
-      projection → wire, **with the ids and payload pasted at each hop**
+- [x] `DF5` closed — five hops, every id pasted (see `§3`). Stated limit: the TS client and the spine BINARY (`DFO-7`) are not driven; every hop shown is production code against a real database
 - [~] `cargo test --workspace -j 4` — **`CARGO_RC=101`, 2505 passed / 1 failed.** The 1 is environmental and attributed (`DFO-6`), NOT this work; a single DSN cannot serve the whole workspace because `rebuilder_live` applies `0002`, which DROPs `events`
 - [x] detached `gate-wiring-gate --run-all` — **`SWEEP_RC=0`**, 89 GREEN / 0 RED / 1 SKIP
 
@@ -153,7 +152,7 @@ All of the following, or 45 turns, whichever comes first:
 | ~~`DF2`~~ | **the control plane's missing tables** — `tier_policy` + `tier_capability` built, `GetTierPolicy` served, `UNIMPLEMENTED_METHODS` 8 → 7 | ✅ **CLOSED** — see `§3` |
 | ~~`DF3`~~ | **the T0–T2 cache** — `CacheBackend` seam + `DP-X3` read-through in `dp`, `RedisCache` in `dp-kernel`. Measured **643.62µs** against a **<10ms** budget | ✅ **CLOSED** — see `§3` |
 | ~~`DF4`~~ | **`DP-R2` tier tables** — the debt paid for the one production aggregate, and `dp-r2-tier-table-gate` DISCOVERS the rest so a new one arrives red | ✅ **CLOSED** — `§3` |
-| `DF5` | **the full dataflow** — actor hub + a control feature + a player feature consuming it, end to end | ⬜ |
+| ~~`DF5`~~ | **the full dataflow** — player action → actor hub → DP write → events row → wire frame, every hop's id pasted | ✅ **CLOSED** — see `§3` |
 
 **`DF1` split in two on its first measurement, and the split IS the finding.** The row assumed a caller could be wired to the existing surface. It cannot: **`WriteRequest` has seven fields and none of them is a channel**, while `SessionContext` carries `current_channel_id` and the READ side takes the channel from exactly there (`read_projection_channel`). So the SDK's write surface is **structurally incapable of producing a channel-ordered event** — and every write `commit-service` actually performs is channel-scoped, riding `ChannelWriter` for its `channel_event_id`, its epoch fence and its `channel_event_index` row.
 
@@ -516,6 +515,55 @@ not, so the first cannot pass by always returning 2. **4/4 red** after the fix.
 wired · `gate-self-tests` 99 green. Six-step bite on the table itself: deleting the row reds the
 gate naming the aggregate and its file, restore byte-exact, green.
 
+### `DF5` — the full dataflow, five hops, every id printed (2026-08-14)
+
+```
+HOP 1  player action      input_id = 48df0060-fb18-487c-adbb-17cf4a1752f6
+HOP 2  actor hub          actor_id = 7 · fold = [{"actor":"7","delta":-3,"quantity_ordinal":0}]
+HOP 3  DP write           channel_event_id = 1 (dp::t2_write_channel)
+HOP 4  events row         event_type = turn.resolved · channel_id = Some(1) ·
+                          channel_event_id = Some(1) · turn_number = "5" ·
+                          ruleset_digest = d1ce5eed…
+HOP 5  wire frame         {"channel_event_id":"1","detail":{"events":[…],"type":"resolved"},
+                           "kind":"resolved","turn_number":"5"}
+```
+
+`turn_number` went **4 → 5**: `DP-A17` says an APPLIED resolution consumes the turn, the mirror of
+`EVT-V4`'s refusal that must not. Started at 4 on purpose — at 0 the claim would pass whether or not
+the counter was read.
+
+**`bin/spine.rs` now builds NO event envelope at all.** Both commit paths go through the SDK, and
+`EventEnvelope`, `now_rfc3339` and `Uuid` became unused imports — the absence is the evidence.
+What it used to stamp by hand at each call site is now owned by whoever owns the fact: the event
+name and category by the aggregate, the `RLS-A13` digest and the turn counter by the writer node,
+`input_id` and the unrun admission stages by the write.
+
+**Two gates corrected the design mid-batch, and both corrections are the finding:**
+
+* **`R10`** refused a `macro_rules!` emitting three impls — after I wrote a comment claiming the rule
+  *"does not reach a service crate"*. It reaches the whole repo. **I asserted an exemption from
+  memory instead of reading the rule.**
+* **`R4`** then refused four aggregates sharing `TYPE_NAME = "combat_session"`: *"two impls under
+  one name = two cache entries for one logical aggregate, under two coherency contracts."*
+  `TYPE_NAME` is a cache-key token. **Which means `DF1b-i` had put `EVENT_TYPE` on the wrong
+  thing** — correct while an aggregate wrote one event, wrong the moment it writes four. Corrected
+  to `EVENT_TYPES` (the closed SET, on the aggregate) + a per-write choice the SDK REFUSES outside
+  it. A free string would have put an unregistered vocabulary beside the registry, which is what
+  the original one-type-per-backend design was right to fear.
+
+**Also closed a contract gap found one path over:** `turn.resolved` / `turn.discarded` /
+`turn.buffered` were written by the live spine since S3b and read by `turnOutcome.ts`, with **no
+schema and no validator entry** — the same absence `DFO-4` found for `proposal.rejected`.
+
+**WHAT THIS IS NOT.** The TypeScript client is not driven: `turnOutcome.ts` is the other side of
+this frame and has its own suite, and asserting the Rust projection while claiming the browser
+rendered it would be the mock-standing-in-for-live shape. The spine BINARY is not driven either —
+`DFO-7`, and it hangs at `HEAD` independently of this work, measured both ways. Every hop above is
+production code against a real database; the boundary is stated rather than blurred.
+
+**Green:** `dp` + `dp-kernel` + `commit-service` **579 passed / 0 failed across 46 suites** ·
+`dp-aggregate-gate`, `dp-r2-tier-table-gate`, `crate-purity-gate`, `file-ceiling-gate` all rc=0.
+
 ---
 
 ## 4 · OPEN ROWS — each must carry a MECHANISM, not prose
@@ -547,4 +595,6 @@ gate naming the aggregate and its file, restore byte-exact, green.
 | `DFD-8` | **I wrote a test against a struct name I never checked** — `recovery::Recovered`, when it is `WriterRecovery`. The test's own subject-assert caught it on the first run, which is the only reason it was not a check that silently passed on nothing. Then its field parser took the DECLARATION line as a field and reported a confident failure about a phantom named `struct WriterRecovery {`. **Both are `§0.5` — a string that looks like a subject — inside the test written to catch producers with no consumer.** Seventh and eighth instances. |
 | `DFD-9` | **I reproduced a documented growth pattern hours after reading the comment that documents it.** `integration_channel_writer.rs` funnels every `ChannelId::unverified` through ONE helper and says why: it went 3 → 8 in a single commit, the ratchet refused, and funnelling makes the count a property of the FILE rather than of how many tests it has. **I read that comment while studying the suite for `DF1a`** — and then added 8 calls across three files and got the identical refusal. Knowing the fix and having read its rationale did not prevent the defect; the GATE did. Which is the standards index's own sentence arriving again: intent is not a mechanism. |
 | `DFD-10` | **Two bite harnesses went red as `MISUSE` because `DF2` moved their anchors, and that is the harnesses working.** Neither scored a false green: each REFUSED to certify a leg it could no longer run. The oracle's failing leg was the `DP-C2` **shrink arm** — *"a register row for a table that DOES have a migration"* — anchored on the very `tier_policy` row the oracle demanded be deleted when `040` landed. The leg's own subject happened to the leg. Worth recording because the tempting fix is to delete a leg whose anchor rotted, and the correct one is to re-point it at a live row. |
+| `DFD-11` | **I wrote a comment claiming an exemption from a gate, and the gate refused the commit.** The three turn outcomes went in as a `macro_rules!` with a note saying `dp-aggregate-gate`'s `R10` *"does not reach a service crate"*. It reaches the whole repo. I reasoned about the gate's scope from memory rather than reading it — and then wrote the conclusion into the source as though it were checked, which is worse than getting it wrong silently: the next reader would have believed it. |
+| `DFD-12` | **`R4` then proved `DF1b-i`'s design wrong, three commits after I shipped it.** `EVENT_TYPE` as an associated const is correct for an aggregate that writes ONE event and incoherent for one that writes four — and the encounter line writes four. Nothing about that was visible when `DF1b-i` landed with its single `proposal.rejected`; it became visible the moment a second event needed the same aggregate. Recorded because the instinct was to add a second aggregate and keep the const, and the gate is the only reason that shape did not ship. |
 | `DFD-1` | **The four days before this file drifted, and no mechanism noticed.** `gate-teeth` and `dp-coverage` were meta-work on the verification layer; `authorable-surface` was the manifest tier; `lore-bible` left the tier entirely and started mapping output onto `progression_kinds` and combat — **features the PO had not finished designing**. Each track individually justified itself, each updated its own board, and nothing held the objective. The `Reconciles:` gate checks that a spec *looked* at the standards index; **no gate asks whether the work is the work that was asked for.** §0.2 is a file, not a gate, and that is a known weaker mechanism — recorded here rather than claimed as solved. |
