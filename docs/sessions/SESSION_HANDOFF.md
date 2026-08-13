@@ -2,7 +2,7 @@
 
 ## ▶ GAME BUILD — the data foundation now has DATA IN IT: the SDK has production callers, end to end (2026-08-14, branch `feat/game-logic`)
 
-**HEAD:** `c717e2129` · **NO ACTIVE run-state — all four are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `618a338b1` · **NO ACTIVE run-state — all four are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
 > **▶ DO NEXT — see the four OPEN ROWS at the end of
 > [`2026-08-13-data-foundation-dataflow-RUN-STATE.md`](../plans/2026-08-13-data-foundation-dataflow-RUN-STATE.md).**
@@ -29,7 +29,17 @@
 > | `DF4` | `DP-R2`'s tier table, and a gate that DISCOVERS aggregates | exactly **1** doc in the tree had a tier table before: the one defining the template |
 > | `DF5` | the full dataflow | five hops, every id pasted; `spine.rs` builds **no envelope at all** now |
 >
-> **`SWEEP_RC=0`** — `gate-wiring-gate --run-all`, 89 GREEN / 0 RED / 1 SKIP.
+> **`SWEEP_RC=0`** — `gate-wiring-gate --run-all`, **90 GREEN / 0 RED / 8 SKIP** (every skip
+> needs a live stack). **`cargo test --workspace`: 2526 passed / 0 failed across 189 suites**,
+> run in the two halves `DFO-6` requires.
+>
+> **The last red was not environmental, and calling it that for three rounds was the mistake.**
+> `rebuilder` could not rebuild ANY projection: `decode_event` reads `ruleset_digest`, and of
+> the two queries feeding it the global pair BUILT their column list from `EVENT_COLUMNS`
+> while the per-aggregate one restated it by hand and dropped the column. **The guard for
+> exactly this was green** — it asserted against the constant, which was correct. Fixed by
+> DERIVING the query from the constant, and the bin now prints each failure's reason instead
+> of only a count.
 >
 > **What the measurements kept finding, five times:** a fix that shipped without its consumer.
 > `recovery::turn_number` was queried, returned, printed and DROPPED while `spine.rs` re-seeded 0 —
