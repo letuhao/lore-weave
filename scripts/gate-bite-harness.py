@@ -1690,6 +1690,66 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '  printf \'%s\' "$1" | grep -qE \'^resources:\'',
          '  printf \'%s\' "$1" | grep -qE \'resources:\''),
     ],
+    # ── DP-COV0 · the data-plane coverage gate ───────────────────────────────
+    # Built 2026-08-13 as the FIRST act of the data-plane run, because every
+    # classification that run makes stands on this gate's number. An
+    # uncalibrated instrument makes the whole run unfalsifiable.
+    "dp-invariant-coverage-gate": [
+        # A DECLARATION is a heading; a mention is not. Loosen the anchor and
+        # prose starts declaring invariants, which would silently inflate the
+        # denominator with ids nobody wrote a rule for.
+        ("a prose mention starts counting as a declaration",
+         'HEADING_RE = re.compile(r"^#+',
+         'HEADING_RE = re.compile(r"(?:^#+)?'),
+        # The phantom rule: an id referenced but declared by no heading is
+        # either a missing section or prose, and must be said out loud.
+        ("an undeclared mention stops being reported",
+         "        if i not in PHANTOM_OK:",
+         "        if False:"),
+        # Both shrink arms on the exemption list. A row that outlives its reason
+        # re-exempts its id the day the id comes back.
+        ("the PHANTOM_OK became-a-rule shrink arm disabled",
+         "        if i in decl:",
+         "        if False:"),
+        ("the PHANTOM_OK no-longer-mentioned shrink arm disabled",
+         "        elif i not in seen:",
+         "        elif False:"),
+        # The two reach floors. A walk that reaches nothing is byte-identical to
+        # full coverage, exit code included.
+        ("the declared-count floor removed",
+         "    if len(decl) < MIN_DECLARED:",
+         "    if False:"),
+        ("the files-walked floor removed",
+         "    if n_files < MIN_FILES:",
+         "    if False:"),
+        # The two tiers must stay distinct: if a tests/ file also counted as an
+        # enforcement SITE, a rule defended only by its own test would read as
+        # sited, and `sited` would stop meaning anything.
+        ("a test file starts counting as an enforcement site too",
+         "                if not whole_test:",
+         "                if True:"),
+        ("the tests/ path rule stops recognising a test",
+         '    return ("/tests/" in parts or "/test/" in parts\n'
+         '            or p.name.startswith("test_") or p.name.endswith("_test.go")\n'
+         '            or p.stem.endswith("_test"))',
+         "    return False"),
+        ("the Rust #[cfg(test)] region stops being read as a test",
+         '    if p.suffix == ".rs":',
+         "    if False:"),
+        # The ratchet, all three directions it can move.
+        ("the uncited ratchet stops reding upward",
+         "        if unc > base_unc:",
+         "        if False:"),
+        ("the uncited ratchet stops reding downward (the worklist never shrinks)",
+         "        elif unc < base_unc:",
+         "        elif False:"),
+        ("the unproven ratchet stops reding upward (a rule loses its test)",
+         "        if unp > base_unp:",
+         "        if False:"),
+        ("the unproven ratchet stops reding downward (progress goes unrecorded)",
+         "        elif unp < base_unp:",
+         "        elif False:"),
+    ],
     "citation-gate": [
         ("the pragma stops exempting", "        if _pragma_covers(lines, i):", "        if False:"),
         ("URLs are no longer blanked",
