@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35c` — repoint the JOIN SITES off `Entity.id` onto the glossary anchor (SPEC §4.1). That is the whole-graph half; the three remaining `derived-entity-id-gate` callers are NOT migrations (storage-layer mint, one-shot backfill, test double).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` · ✅ `T35b`. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**. ⚠️ T35b's live smoke proved the MINT path (4/4 anchored through the real event consumer) but NOT the rename: `mirror-repair` only re-emits entities the graph is MISSING, so a rename of a present entity runs no sync at all — and the stable id it reported was stable because nothing touched it.
+**RESUME: `T35c` — repoint the JOIN SITES off `Entity.id` onto the glossary anchor (SPEC §4.1). That is the whole-graph half; the three remaining `derived-entity-id-gate` callers are NOT migrations (storage-layer mint, one-shot backfill, test double).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a` · ✅ `T35b` — **and the rename is now PROVED LIVE**: a real `glossary.entity_updated` carrying a rename AND a re-kind through the deployed consumer left the node's id and anchor intact, one node, while the recomputed hash diverged to something the graph does not contain. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8036,18 +8036,40 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   **4 of 4 anchored** — the deployed derivation mints correctly through the real event path.
 
-  ⚠️ **The RENAME half was NOT exercised live, and the result that looked like it was is the
-  reason to say so.** I renamed an entity in the isolated glossary DB, re-ran the repair, and
-  read back *"one node, id `f0fe1001…` unchanged"* — which reads exactly like the claim being
-  proved. It is not. **`mirror-repair` only re-emits entities the graph is MISSING**
-  (`detected_missing`), so an entity that already exists is skipped and no sync ran at all. The
-  stable id was stable because nothing touched it. The rename was reverted in the isolated DB.
+  ⚠️ **TWO FALSE NEGATIVES ON THE WAY TO THE RENAME PROOF, both of which read as success.**
 
-  So the id-stability claim rests on
-  `test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id` against a **real throwaway
-  Neo4j** — a real engine, not a fake, with both bites red — and NOT on the live run. Driving
-  a rename end-to-end needs the `glossary.entity_updated` event, which the repair endpoint
-  does not emit for a present entity.
+  *First:* I renamed an entity in the isolated glossary DB, re-ran `mirror-repair`, and read
+  back *"one node, id `f0fe1001…` unchanged"* — which reads exactly like the claim being
+  proved. It was not. **`mirror-repair` only re-emits entities the graph is MISSING**
+  (`detected_missing`), so a present entity is skipped and no sync ran. The id was stable
+  because nothing touched it.
+
+  *Second:* driving the real `glossary.entity_updated` event onto
+  `loreweave:events:glossary` — the stream the deployed consumer reads, exactly what the
+  outbox sweeper writes — ALSO showed the name unchanged. That one was *"not yet processed"*:
+  the consumer was still draining the 100 events the repair had queued, at ~3.5 s each
+  (an embed call per entity). `XPENDING` said 9 in flight. Waiting was the fix, and the
+  diagnosis was different from the first one — which is why both are written down.
+
+  ✅ **THE RENAME IS PROVED LIVE.** A `glossary.entity_updated` carrying a **rename AND a
+  re-kind** — both hash inputs changing at once, the case the 2026-08-02 backfill took —
+  through the deployed consumer into the real graph:
+
+  ```
+  before  f0fe1001c711421ddd396663a1b29db3  九頭雉雞精      character
+  after   f0fe1001c711421ddd396663a1b29db3  九頭雉雞精改名   terminology     <- id UNCHANGED
+
+  nodes bearing either name: 1                                   <- no duplicate minted
+
+  hash(old name, character)   = f0fe1001c711421ddd396663a1b29db3  <- the stored id
+  hash(new name, terminology) = 2c9ce39c6db2b8c2bb63eca4383ce890  <- matches NOTHING
+  ```
+
+  **That last pair is the whole of opaque identity in three lines.** The node kept its id and
+  its glossary anchor across a rename and a re-kind; the recomputed hash now matches nothing,
+  and *that divergence is the design working* — the plan already records that QC-6's
+  "recompute must equal stored id" criterion measures a quantity opaque identity guarantees is
+  non-zero. Reverted afterwards by a second event; the graph and the glossary agree again.
 
   **QC (c) real data:** four real `:Entity` nodes mirrored from a real 1748-entity authored
   glossary, through the deployed consumer.
