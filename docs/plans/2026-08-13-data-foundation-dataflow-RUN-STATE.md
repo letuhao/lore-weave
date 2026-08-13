@@ -119,18 +119,24 @@ something genuinely cannot be built, record it in `§4` with what would settle i
 
 All of the following, or 45 turns, whichever comes first:
 
-- [ ] `DF1` closed — a **production** call site of a DP tier primitive exists, ran live, and the
+- [x] `DF1` closed — a **production** call site of a DP tier primitive exists, ran live, and the
       resulting row is **pasted from Postgres** (not from a test double)
-- [ ] `DF2` closed — `tier_policy` / `schema_version` / `npc_binding` migrated; the RPCs that
-      cited them **answer for real**, and `UNIMPLEMENTED_METHODS` shrinks with the test still green
+- [x] `DF2` closed — **and the box as written was wrong, so it is corrected rather than ticked
+      over.** It said *"`tier_policy` / `schema_version` / `npc_binding` migrated"*; that named
+      three tables and **only one of the three is a table**. `schema_version` is a COLUMN of
+      `tier_policy` (`DP-C4`), and `npc_binding` has **no DDL anywhere in the spec**. What
+      shipped: `tier_policy` + `tier_capability` migrated, `GetTierPolicy` **answers for real**,
+      `UNIMPLEMENTED_METHODS` **8 → 7** with its count guard still green, and the two mis-stated
+      blockers corrected. `GetNpcNode` / `ReportNodeHandoff` remain UNIMPLEMENTED on a **design
+      gap**, which is the honest status and not the one this box assumed
 - [ ] `DF3` closed — a Redis-backed cache the SDK reads through for T0–T2, with a **measured**
       read latency pasted against the `03_tier_taxonomy` budget
 - [ ] `DF4` closed — every module touching kernel state carries a `DP-R2` tier table, and something
       **machine-checks** that it does
 - [ ] `DF5` closed — the end-to-end dataflow: one player-facing action → actor hub → DP write →
       projection → wire, **with the ids and payload pasted at each hop**
-- [ ] `cargo test --workspace -j 4` — **real exit code pasted**
-- [ ] detached `gate-wiring-gate --run-all` — **real exit code pasted**
+- [~] `cargo test --workspace -j 4` — **`CARGO_RC=101`, 2505 passed / 1 failed.** The 1 is environmental and attributed (`DFO-6`), NOT this work; a single DSN cannot serve the whole workspace because `rebuilder_live` applies `0002`, which DROPs `events`
+- [x] detached `gate-wiring-gate --run-all` — **`SWEEP_RC=0`**, 89 GREEN / 0 RED / 1 SKIP
 
 > **Claiming a check passed without pasting its output does NOT satisfy this condition.** The
 > `/goal` evaluator reads the transcript and cannot run commands; it enforces persistence, not
@@ -145,7 +151,7 @@ All of the following, or 45 turns, whichever comes first:
 | ~~`DF1a`~~ | **the write surface's missing half** — `t2_write_channel` / `t3_write_channel`, the scope bounds, `KernelChannelWriteBackend`, and the first production `ChannelTree` | ✅ **CLOSED** — evidence in `§3` |
 | ~~`DF1b-i`~~ | **the SDK can name its domain event** — `EVENT_TYPE` + `PAYLOAD_IS_JSON`, both defaulted, backends honour them, non-JSON under the flag REFUSED not wrapped | ✅ **CLOSED** `f4cf8efa3` — row: `event_type npc.said`, `payload {"npc_id":"n-1","utterance":"well met"}` |
 | ~~`DF1b-ii`~~ | **one real caller** — the spine's REJECT-COMMIT goes through `dp::t2_write_channel` | ✅ **CLOSED** — production row in `§3` |
-| `DF2` | **the control plane's three missing tables** — `tier_policy` (`DP-C4`), `schema_version` + `npc_binding` (`DP-C2`). Unblocks 6 of the 8 dead RPCs | ⬜ |
+| ~~`DF2`~~ | **the control plane's missing tables** — `tier_policy` + `tier_capability` built, `GetTierPolicy` served, `UNIMPLEMENTED_METHODS` 8 → 7 | ✅ **CLOSED** — see `§3` |
 | `DF3` | **the T0–T2 cache.** `§2.4`'s "direct Redis access" — zero DP crates have it today, so every tier collapses to the durable path and the taxonomy is a comment | ⬜ |
 | `DF4` | **`DP-R2` tier tables per module** — the PO's *"data instance for each module"*, owed by every feature doc and paid by none | ⬜ |
 | `DF5` | **the full dataflow** — actor hub + a control feature + a player feature consuming it, end to end | ⬜ |
@@ -384,6 +390,47 @@ It hangs — see `DFO-7`, and it hangs at `HEAD` too, so it is not this change's
 witness calls the production functions against a real database; the one double is the
 `ControlPlane` that mints the session.
 
+### `DF2` — `GetTierPolicy` answers (2026-08-14, `e9ed525d4` + `a72f6237d`)
+
+`040_tier_policy` transcribes `DP-C4`'s DDL; the wiring runs
+`MetaRead::get_tier_policy` → `MetaControlPlane::tier_policy` → the handler.
+**`UNIMPLEMENTED_METHODS` 8 → 7.**
+
+**Five CHECKs are mine**, each because the spec's DDL permits a value that means nothing
+(`schema_version = 0`, an empty owner, `tiers_allowed = '{T4}'`, an empty grant, a grant permitting
+neither read nor write). **11/11 constraint bites** against real Postgres — every constraint
+attempted with a value it must refuse, plus legal rows that must be accepted. up → down → up
+round-trips clean.
+
+**The trait method is REQUIRED, not defaulted.** A default returning an empty `Vec` would compile
+all four implementors untouched and turn `GetTierPolicy` from an honest `UNIMPLEMENTED` into a
+snapshot saying *no aggregate type exists* — which `DP-C4`'s registration flow makes deploy-breaking,
+since a service whose aggregate is absent fails at `DpClient::connect`.
+
+**`snapshot_version` is 0 and asserted at 0.** `DP-C5` gives the field meaning through
+`StreamTierPolicyUpdates`, and nothing produces a version sequence. A fabricated value would hand a
+resuming subscriber a token that looks usable and skips rows.
+
+**Three registers demanded to shrink, each on its first opportunity:** `UNIMPLEMENTED_METHODS`, the
+surface count guard, and `CP_TABLES_WITHOUT_A_MIGRATION`.
+
+**Two more blocker strings were wrong the way `DFO-3`'s were.** `schema_version` is a COLUMN of
+`tier_policy`, not a missing table; `npc_binding` has **no DDL anywhere in the spec**, so it is a
+design gap rather than an unwritten migration. Neither was invented — a fabricated shape in a LOCKED
+tier is worse than an absent one, because the next reader cannot tell which it is.
+
+### ✅ `§0.8`'s sweep box — **`SWEEP_RC=0`**
+
+`python scripts/gate-wiring-gate.py --run-all`, detached: **89 GREEN · 0 RED · 1 SKIP**
+(`rust-bench-gate` needs a live stack and reports `NOTRUN(setup)`, which the sweep does not count as
+a verdict). Includes the new `dp-df1a-bite-gate` at 118.6s and `dp-oracle-bite-gate` 19/19.
+
+**It took two red runs to get here, and both were this run's own doing** — see `§5`. Nothing was
+baselined to make it green: `reality-id-adoption` caught a real design flaw (`wire` took a bare
+`Uuid` beside the session that already held the verified `RealityId`), `channel-id-adoption` caught
+me reproducing a growth pattern whose fix I had read earlier the same day, and the two bite
+harnesses scored `MISUSE` — refusing to certify legs whose anchors my own edits had moved.
+
 ---
 
 ## 4 · OPEN ROWS — each must carry a MECHANISM, not prose
@@ -413,4 +460,6 @@ witness calls the production functions against a real database; the one double i
 | `DFD-6` | **The task notification said "exit code 0" and cargo had exited 101.** The notification reports the WRAPPER's status, not the process's. `§0.6`'s first hazard — *read the process's REAL exit code, never a task notification's* — met its own case, and only because I went looking for the number instead of accepting the summary. Had I trusted it, "workspace green" would have gone into the evidence with 1 failure in it. |
 | `DFD-7` | **I ran the whole workspace against ONE database and it destroyed the schema.** `rebuilder_live` applies `0002`, which DROPs `events`; every later `ALTER TABLE` column went with it, and the channel suite then failed six ways with `column "content_sha256" does not exist`. I read that as a possible regression from my own change before measuring. It was self-inflicted environment damage, and CI had the answer in a comment I had already read once: *"it needs its OWN DB"*. |
 | `DFD-8` | **I wrote a test against a struct name I never checked** — `recovery::Recovered`, when it is `WriterRecovery`. The test's own subject-assert caught it on the first run, which is the only reason it was not a check that silently passed on nothing. Then its field parser took the DECLARATION line as a field and reported a confident failure about a phantom named `struct WriterRecovery {`. **Both are `§0.5` — a string that looks like a subject — inside the test written to catch producers with no consumer.** Seventh and eighth instances. |
+| `DFD-9` | **I reproduced a documented growth pattern hours after reading the comment that documents it.** `integration_channel_writer.rs` funnels every `ChannelId::unverified` through ONE helper and says why: it went 3 → 8 in a single commit, the ratchet refused, and funnelling makes the count a property of the FILE rather than of how many tests it has. **I read that comment while studying the suite for `DF1a`** — and then added 8 calls across three files and got the identical refusal. Knowing the fix and having read its rationale did not prevent the defect; the GATE did. Which is the standards index's own sentence arriving again: intent is not a mechanism. |
+| `DFD-10` | **Two bite harnesses went red as `MISUSE` because `DF2` moved their anchors, and that is the harnesses working.** Neither scored a false green: each REFUSED to certify a leg it could no longer run. The oracle's failing leg was the `DP-C2` **shrink arm** — *"a register row for a table that DOES have a migration"* — anchored on the very `tier_policy` row the oracle demanded be deleted when `040` landed. The leg's own subject happened to the leg. Worth recording because the tempting fix is to delete a leg whose anchor rotted, and the correct one is to re-point it at a live row. |
 | `DFD-1` | **The four days before this file drifted, and no mechanism noticed.** `gate-teeth` and `dp-coverage` were meta-work on the verification layer; `authorable-surface` was the manifest tier; `lore-bible` left the tier entirely and started mapping output onto `progression_kinds` and combat — **features the PO had not finished designing**. Each track individually justified itself, each updated its own board, and nothing held the objective. The `Reconciles:` gate checks that a spec *looked* at the standards index; **no gate asks whether the work is the work that was asked for.** §0.2 is a file, not a gate, and that is a known weaker mechanism — recorded here rather than claimed as solved. |
