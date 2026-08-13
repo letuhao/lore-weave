@@ -175,7 +175,7 @@ def _make_client(
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -216,7 +216,7 @@ def _lang_hit(chunk_index: int, source_lang: str, score: float) -> PassageSearch
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -247,7 +247,7 @@ def test_drawers_language_partition_and_coverage(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -264,7 +264,7 @@ def test_drawers_no_language_has_null_coverage(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -285,7 +285,7 @@ def test_drawers_limit_forwarded(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -315,7 +315,7 @@ def test_drawers_embed_cost_surfaced_for_priced_model(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -340,7 +340,7 @@ def test_drawers_embed_cost_zero_for_free_local_model(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -368,7 +368,7 @@ def test_drawers_embed_cost_null_when_tokens_unreported(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 def test_drawers_whitespace_query_short_circuits(mock_find):
@@ -388,7 +388,7 @@ def test_drawers_whitespace_query_short_circuits(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 def test_drawers_no_embedding_model_configured_returns_empty(mock_find):
@@ -408,7 +408,7 @@ def test_drawers_no_embedding_model_configured_returns_empty(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 def test_drawers_unsupported_dim_returns_empty(mock_find):
@@ -430,7 +430,7 @@ def test_drawers_unsupported_dim_returns_empty(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -469,7 +469,7 @@ def test_drawers_cross_user_project_404():
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 def test_drawers_embedding_error_502(mock_find):
@@ -490,7 +490,7 @@ def test_drawers_embedding_error_502(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 def test_drawers_embedding_error_non_retryable(mock_find):
@@ -509,7 +509,7 @@ def test_drawers_embedding_error_non_retryable(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -540,7 +540,7 @@ def test_drawers_empty_inner_vector_returns_empty(mock_find):
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -612,7 +612,7 @@ def test_drawers_bad_project_uuid_rejected():
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -641,7 +641,7 @@ def test_drawers_source_type_counts_in_response(mock_find, _mock_count_passages)
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(
@@ -662,7 +662,7 @@ def test_drawers_source_type_filter_threads_to_repo(mock_find, _mock_count_passa
 
 
 @patch(
-    "app.routers.public.drawers.find_passages_by_vector",
+    "app.adapters.neo4j_vector_store.find_passages_by_vector",
     new_callable=AsyncMock,
 )
 @patch(

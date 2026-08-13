@@ -825,7 +825,7 @@ def _patch_l3_with_hits(monkeypatch, n: int = 3):
         for i in range(n)
     ]
     monkeypatch.setattr(
-        "app.context.selectors.passages.find_passages_by_vector",
+        "app.adapters.neo4j_vector_store.find_passages_by_vector",
         AsyncMock(return_value=hits),
     )
 

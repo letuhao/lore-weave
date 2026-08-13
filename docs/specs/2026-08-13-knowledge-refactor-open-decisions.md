@@ -176,7 +176,7 @@ accepted**: the CJK/Vietnamese path is the dictionary anchor, not the capitalisa
 
 ## 3 · The vector layer
 
-### 3.1 A new task wires `VectorStore` into the read path — **DECIDED**
+### 3.1 A new task wires `VectorStore` into the read path — **DECIDED · ✅ DONE (T24b-a + T24b-b, 2026-08-13)**
 *Replaces `D-T42D-GRAPHSTORE-HAS-NO-CALLERS`; unblocks T25.*
 
 Measured: `grep` for constructors of `PgVectorStore` / `Neo4jVectorStore` / `DualWriteVectorStore`
@@ -213,6 +213,10 @@ So:
 * **T24b-b — flip the three call sites onto `get_vector_store`.** This is where the live
   smoke belongs: a read-path cutover that changes which store answers a user-visible search is
   exactly a batch that crosses a service seam, and QC (b) is not satisfiable from unit tests.
+  **Done** — the three call sites are on `get_vector_store` (vector read call sites on the repo
+  **3 → 0**), proved in a rebuilt `lw-iso` container against a real Neo4j: `created_at` and
+  `project_id` arriving through the migrated reader, `include_vectors=True -> vector len = 1024`,
+  and the spoiler window dropping chapters 5 and 9 at a cutoff of 4.
 
 Splitting here rather than shipping half a wiring is the same call `vector_store_provider.py`
 already records for the write path — *"the read cutover needs its own task and its own

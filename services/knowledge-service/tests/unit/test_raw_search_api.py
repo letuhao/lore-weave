@@ -131,7 +131,7 @@ def _url(mode="hybrid", query="duel"):
 # ── happy path ───────────────────────────────────────────────────────
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_hybrid_fuses_both_legs(mock_embed, mock_find):
@@ -149,7 +149,7 @@ def test_hybrid_fuses_both_legs(mock_embed, mock_find):
     mock_embed.assert_awaited()
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_mode_semantic_skips_lexical(mock_embed, mock_find):
@@ -182,7 +182,7 @@ def test_no_project_returns_404_not_indexed():
     assert resp.json()["detail"] == "not_indexed"
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_book_service_down_degrades_to_semantic(mock_embed, mock_find):
@@ -230,7 +230,7 @@ def test_bad_mode_rejected():
 # ── KG-ML M4: reader-language resolution chain ───────────────────────
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_no_language_param_resolves_reader_pref(mock_embed, mock_find):
@@ -245,7 +245,7 @@ def test_no_language_param_resolves_reader_pref(mock_embed, mock_find):
     book_client.get_reader_language.assert_awaited_once_with(_BOOK, _USER)
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_explicit_language_param_skips_reader_pref(mock_embed, mock_find):
@@ -259,7 +259,7 @@ def test_explicit_language_param_skips_reader_pref(mock_embed, mock_find):
     book_client.get_reader_language.assert_not_awaited()
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_malformed_language_falls_through_to_reader_pref(mock_embed, mock_find):
@@ -275,7 +275,7 @@ def test_malformed_language_falls_through_to_reader_pref(mock_embed, mock_find):
 
 
 @patch("app.routers.public.raw_search.detect_primary_language")
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_short_query_skips_language_detection(mock_embed, mock_find, mock_detect):
@@ -291,7 +291,7 @@ def test_short_query_skips_language_detection(mock_embed, mock_find, mock_detect
 
 
 @patch("app.routers.public.raw_search.detect_primary_language", return_value="en")
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_long_query_uses_language_detection(mock_embed, mock_find, mock_detect):
@@ -305,7 +305,7 @@ def test_long_query_uses_language_detection(mock_embed, mock_find, mock_detect):
     mock_detect.assert_called_once()
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
@@ -318,7 +318,7 @@ def test_dim_mismatch_degrades_to_lexical(mock_embed, mock_find):
     assert {h["surface"] for h in resp.json()["results"]} == {"draft"}
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_semantic_hit_titles_enriched(mock_embed, mock_find):
@@ -363,7 +363,7 @@ def test_bad_granularity_rejected():
     assert client.get(_url("lexical") + "&granularity=page").status_code == 422
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
@@ -378,7 +378,7 @@ def test_explicit_min_relevance_floors_low_hit(mock_embed, mock_find):
     assert resp.json()["results"] == []
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
@@ -391,7 +391,7 @@ def test_floor_off_by_default_keeps_low_hit(mock_embed, mock_find):
     assert len(resp.json()["results"]) == 1
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
@@ -413,7 +413,7 @@ def test_chapter_mode_caps_across_surfaces(mock_embed, mock_find):
     assert len(rows) == 1  # one row for the chapter despite two surfaces
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_block_mode_keeps_both_surfaces(mock_embed, mock_find):
@@ -446,7 +446,7 @@ def _override_reranker(return_value=None, side_effect=None):
     return rr
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_floors_and_reorders(mock_embed, mock_find):
@@ -470,7 +470,7 @@ def test_rerank_floors_and_reorders(mock_embed, mock_find):
     assert body["results"][0]["relevance"] == 0.8
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_unavailable_degrades(mock_embed, mock_find):
@@ -492,7 +492,7 @@ def test_lexical_mode_skips_rerank():
     rr.rerank.assert_not_awaited()  # lexical is already clean → no rerank
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_false_skips(mock_embed, mock_find):
@@ -505,7 +505,7 @@ def test_rerank_false_skips(mock_embed, mock_find):
     rr.rerank.assert_not_awaited()
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_rerank_skipped_when_project_has_no_rerank_model(mock_embed, mock_find):
@@ -523,7 +523,7 @@ def test_rerank_skipped_when_project_has_no_rerank_model(mock_embed, mock_find):
     assert len(body["results"]) == 2  # both legs retained, unreranked
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_results_carry_relevance(mock_embed, mock_find):
@@ -538,7 +538,7 @@ def test_results_carry_relevance(mock_embed, mock_find):
 # ── D-RAWSEARCH-CANON-WIRING: surface param + owner-only drafts ───────────
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_owner_surface_all_passes_through_to_both_legs(mock_embed, mock_find):
@@ -552,7 +552,7 @@ def test_owner_surface_all_passes_through_to_both_legs(mock_embed, mock_find):
     assert mock_find.await_args.kwargs["include_drafts"] is True
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_collaborator_surface_all_downgraded_to_canon(mock_embed, mock_find):
@@ -679,7 +679,7 @@ def _url_cutoff(chapter_id, mode="hybrid", query="duel"):
     return f"/v1/knowledge/books/{_BOOK}/search?query={query}&mode={mode}&before_chapter_id={chapter_id}"
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_before_chapter_id_drops_future_chapters(mock_embed, mock_find):
@@ -696,7 +696,7 @@ def test_before_chapter_id_drops_future_chapters(mock_embed, mock_find):
     book_client.get_chapter_sort_orders.assert_awaited_once_with([_CUTOFF_CH])
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_before_chapter_id_unresolvable_fails_closed(mock_embed, mock_find):
@@ -711,7 +711,7 @@ def test_before_chapter_id_unresolvable_fails_closed(mock_embed, mock_find):
     assert resp.json()["results"] == []
 
 
-@patch("app.search.retriever.find_passages_by_vector", new_callable=AsyncMock)
+@patch("app.adapters.neo4j_vector_store.find_passages_by_vector", new_callable=AsyncMock)
 @patch("app.search.retriever.neo4j_session", new=lambda: _noop_session())
 @patch("app.search.retriever.embed_query_cached", new_callable=AsyncMock)
 def test_before_chapter_id_omitted_is_author_path(mock_embed, mock_find):

@@ -70,7 +70,13 @@ EXEMPT_DIRS = (
 # `Relation` and `Event` from the implementation it exists to abstract. Two model-only
 # importers followed. This is the ceiling becoming ABLE to fall — before it, no amount of
 # call-site migration could reach zero.
-MAX_CONCRETE_IMPORTERS = 59
+# **58** (2026-08-13, T24b-b) — `context/selectors/passages.py` stopped importing
+# `neo4j_repos.passages` when the L3 selector's vector read moved onto `VectorStore`.
+# The first ceiling drop from a READ-PATH migration rather than a model move: the
+# other two migrated readers still import the module for non-vector names
+# (`SUPPORTED_PASSAGE_DIMS`, `KNOWN_SOURCE_TYPES`, the CJK lexical leg), which is why
+# three call sites became zero and the ceiling fell by only one.
+MAX_CONCRETE_IMPORTERS = 58
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.

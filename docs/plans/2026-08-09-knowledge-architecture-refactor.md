@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T24b-b` — flip `search/retriever.py`, `routers/public/drawers.py` and `context/selectors/passages.py` onto `get_vector_store` (SPEC §3.1), with the live smoke a read-path cutover owes.** ✅ `A8` DONE (conformance **72 → 82**) · ✅ `T24b-a` DONE — the port can now serve all three readers, which measured it could not: `VectorHit.vector` had been unpopulatable since T14.
+**RESUME: `T25` — flip the vector provider and drop the Neo4j vector indexes (SPEC §3.1).** ✅ `A8` DONE (conformance **72 → 82**) · ✅ `T24b` DONE, both halves: the port grew what the readers needed (`include_vectors`, the two published drawer fields, backend key parity) and all three readers are on it — **vector read call sites on the repo: 3 → 0**, proved live in a rebuilt container against a real Neo4j.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -7515,6 +7515,131 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `context/selectors/passages.py` onto `get_vector_store`, with the live smoke a read-path
   cutover owes. `vector_hit_to_raw_hit` has been sitting unused since T25b; it gets its first
   caller there.
+
+
+  ### ✅ T24b-b 2026-08-13 — the three readers are on the port, and the live run proves it
+
+  ```
+  knowledge-service unit   4224 -> 4225      vector read call sites on the repo   3 -> 0
+  ```
+
+  `search/retriever.py`, `routers/public/drawers.py` and `context/selectors/passages.py` now
+  reach vectors through `get_vector_store`. **T25 is a provider flip from here** — which is
+  what T24b existed to make true, and `vector_hit_to_raw_hit` finally has its first caller
+  after being built and unused since T25b.
+
+  🔴 **`include_vectors=False` AT THE SELECTOR'S CALL SITE REDDED NOTHING.** Every one of the
+  thirty selector tests passes on a pool with no vectors, because MMR falls back to
+  word-Jaccard and still returns a plausible ordering. **A selector that silently stopped
+  doing semantic diversity on the main context path would have shipped green.** So the rule
+  makes the two metrics DISAGREE and uses the ordering as the discriminator:
+
+  ```
+  A  rel .9  "alpha beta gamma"        vec [1,0,…]
+  B  rel .8  "alpha beta gamma delta"  vec [0,1,…]   3/4 of A's words, ORTHOGONAL vector
+  C  rel .7  "zeta eta theta iota"     vec [1,0,…]   no shared words, IDENTICAL vector
+
+  cosine  (correct)   B: .7×.8 − .3×0   = .560   C: .7×.7 − .3×1 = .190  ->  A, B, C
+  jaccard (fallback)  B: .7×.8 − .3×.75 = .335   C: .7×.7 − .3×0 = .490  ->  A, C, B
+  ```
+
+  The fake repo honours `include_vectors` exactly as the real one does — vectors only when
+  asked — so the assertion is about the CALL SITE, not about a generous fixture.
+
+  🔧 **A fixture was feeding the migrated MMR the OLD model type and passing.** Biting the
+  cosine branch out surfaced `AttributeError: 'PassageSearchHit' object has no attribute
+  'attributes'` from `test_mmr_stops_at_top_n_not_full_pool`: it built `PassageSearchHit`s,
+  and the code path it exercised never touched the new accessor because every hit had a
+  vector. **One hit without one would have raised in production shape.** Found by a bite on a
+  different rule — the second time this session a bite has caught something it was not aimed
+  at.
+
+  🔧 **The 58 patched call sites moved INTO the adapter, which strengthened them.** The
+  retriever/drawer/selector tests patched `<module>.find_passages_by_vector` — a name those
+  modules no longer import. Repointed at `app.adapters.neo4j_vector_store.find_passages_by_vector`
+  rather than shimmed, so each test now drives the REAL adapter mapping
+  (`PassageSearchHit` → `VectorHit`) instead of bypassing it. None of them asserted on the
+  mock's kwargs, so nothing was weakened to make this work.
+
+  **BITE ×3, each red for its own reason:**
+
+  ```
+  1. selector: include_vectors=True -> False
+     E  the selector did not ask the store for vectors — MMR silently degrades to
+        word-Jaccard on the main context path, with no error anywhere
+  2. selector: force the Jaccard branch (`if False:`)
+     E  MMR ranked by WORD OVERLAP, not embedding cosine
+     E  got ['alpha', 'zeta', 'alpha']; cosine gives ['alpha', 'alpha', 'zeta']
+     (and it reds `test_mmr_stops_at_top_n_not_full_pool` too — see above)
+  3. retriever: drop _window_vector_hits from the semantic leg
+     E  assert {'canon', 'draft'} == {'draft'}      <- a FUTURE chapter reached the reader
+  ```
+
+  **QC (a) gates:** all 99 green; `db-safety-gate` exit 0; plan-verify PASS. `4225 passed`.
+  🔻 **`port-adoption-gate` 59 → 58, moved in this commit (rule 5) — and the GATE caught it,
+  not me.** The commit was refused with *"adoption IMPROVED to 58 but the ceiling still says
+  59"*: `context/selectors/passages.py` stopped importing `neo4j_repos.passages` when its
+  vector read moved onto the port. The first ceiling drop from a READ-PATH migration rather
+  than a model move. It fell by only ONE while three call sites went to zero, because the
+  other two migrated readers still import that module for non-vector names
+  (`SUPPORTED_PASSAGE_DIMS`, `KNOWN_SOURCE_TYPES`, and the CJK lexical leg that will never
+  come through this port).
+
+  **QC (b) THE LIVE SMOKE — rebuilt image, code grepped in the container, real Neo4j.**
+  `lw-iso-knowledge-service` rebuilt and recreated; the new lines proved present *in the
+  running container* before anything was driven:
+
+  ```
+  //app/app/search/retriever.py:1        "T24b-b — through the PORT"
+  //app/app/routers/public/drawers.py:1  "T24b-b — through the PORT"
+  //app/app/context/selectors/passages.py  include_vectors=True  x3
+  ```
+
+  Three passages seeded into the isolated stack's Neo4j (throwaway, rule 6) and read back
+  through the deployed provider:
+
+  ```
+  STORE = Neo4jVectorStore
+  HEAD hits=3
+    id=sm-0 score=1.000 chapter=3 lang=en block=0 project_id='t24b-smoke-proj' created_at=SET vector=absent
+    id=sm-2 score=0.500 chapter=9 lang=zh block=8 project_id='t24b-smoke-proj' created_at=SET vector=absent
+    id=sm-1 score=0.500 chapter=5 lang=en block=4 project_id='t24b-smoke-proj' created_at=SET vector=absent
+  include_vectors=True -> vector len = 1024
+  raw-search mapper: {'chapterId': 'ch-3', 'sortOrder': 3, 'surface': 'canon',
+                      'sourceLang': 'en', 'matchType': 'semantic'} blockIndex= 0
+  spoiler window before_sort_order=4 -> [3]
+  ```
+
+  `created_at=SET` and `project_id` present are **T24b-a's two fields arriving through the
+  migrated reader** — the pair the drawer response publishes and the port could not carry a
+  batch ago. `vector len = 1024` is the field that was unpopulatable since T14, now real,
+  from a real store. `vector=absent` on the default read is the opt-in holding. The window at
+  4 keeps chapter 3 and drops 5 and 9 — fail-closed, against real nodes.
+
+  ⚠️ **Two things the smoke found that no test would have:**
+
+  * **The production passage schema stores `embedding_1024`, not `embedding`.** The index is
+    `FOR (p:Passage) ON (p.embedding_1024)` — dimension-suffixed, one property per dim. The
+    first seed wrote `embedding`, and the result was `HEAD hits=0` from an ONLINE index at
+    100 % population over three nodes that all had a 1024-float list. **An empty result that
+    looks exactly like a broken migration.** Rule 2, and worth writing down for the next
+    person who seeds passages by hand.
+  * **`KNOWLEDGE_VECTOR_DB_URL` is set on `lw-iso` and does not resolve**, so every call
+    logged `T25a: vector secondary UNREACHABLE — serving primary-only this call` and
+    incremented `vector_dual_write_total{outcome="secondary_failed"}`. That is the T25a
+    degradation path working exactly as designed (the primary answered; nothing raised) — but
+    it means that counter is non-zero on this stack for an environment reason, and QC-3 must
+    not read it as a rejected write.
+
+  **QC (c) real data:** three real `:Passage` nodes in a real Neo4j, read through a real
+  vector index, cleaned up after (`remaining 0`).
+
+  ```
+  4225 passed — knowledge-service unit suite
+  ```
+
+  **T24b is COMPLETE.** T25 is now what it always claimed to be: flip the provider, drop the
+  Neo4j indexes.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

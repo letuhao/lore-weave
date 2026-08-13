@@ -25,14 +25,14 @@ from app.clients.embedding_client import EmbeddingClient
 from app.clients.reranker_client import RerankerClient
 from app.config import settings
 from app.context.query_embedding import embed_query_cached
-from app.ports.vector_store import VectorHit
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter, VectorHit
 from app.db.models import Project
 from app.db.neo4j import neo4j_session
 from app.db.neo4j_repos.passages import (
     SUPPORTED_PASSAGE_DIMS,
     PassageSearchHit,
     find_passages_by_fulltext,
-    find_passages_by_vector,
 )
 from app.search.hybrid_fusion import (
     BLOCK_CHAPTER_CAP,
@@ -265,6 +265,28 @@ def _window_raw_passages(raw_hits: list, before_sort_order: int | None) -> list:
     ]
 
 
+def _window_vector_hits(hits: list[VectorHit], before_sort_order: int | None) -> list[VectorHit]:
+    """The same reader window as `_window_raw_passages`, on a port hit.
+
+    A FORK for the same reason `vector_hit_to_raw_hit` is one: the two carry the chapter
+    position in different places (`h.passage.chapter_index` vs `attributes["chapter_index"]`),
+    and `_window_raw_passages` is shared with the CJK lexical leg that will never come through
+    this port. Fail-closed identically — an unknown `chapter_index` is DROPPED, because the
+    alternative fails OPEN and leaks a future chapter into a reader's spoiler window.
+    """
+    if before_sort_order is None:
+        return hits
+    if before_sort_order < 0:
+        return []
+    out = []
+    for h in hits:
+        ci = (h.attributes or {}).get("chapter_index")
+        if ci is not None and ci <= before_sort_order:
+            out.append(h)
+    return out
+
+
+
 async def run_hybrid_search(
     *,
     user_id: UUID,
@@ -331,8 +353,6 @@ async def run_hybrid_search(
         except Exception:
             degraded["cjk_lexical"] = "unavailable"
             return []
-        # W11 reader spoiler cutoff — window on the raw chapter_index (None-preserving)
-        # BEFORE passage_to_hit coerces an unknown chapter to sortOrder 0 (fail-open).
         raw_hits = _window_raw_passages(raw_hits, before_sort_order)
         hits = [passage_to_hit(h, match_type="lexical") for h in raw_hits]
         await enrich_titles(hits, book_client)  # passage hits lack titles
@@ -359,26 +379,33 @@ async def run_hybrid_search(
             return []
         try:
             async with neo4j_session() as session:
-                raw_hits = await find_passages_by_vector(
-                    session,
+                # T24b-b — through the PORT. The provider returns a plain Neo4jVectorStore
+                # unless KNOWLEDGE_VECTOR_DB_URL is set, so with the migration off this is
+                # the same repo call it always was, one method deeper. Nothing about which
+                # store answers is visible from here, which is the point.
+                store = await get_vector_store(session)
+                hits = await store.search(
+                    scope="passage",
                     user_id=str(user_id),
-                    project_id=str(project.project_id),
-                    query_vector=vector,
+                    embedding=vector,
                     dim=project.embedding_dimension,
-                    embedding_model=project.embedding_model,
-                    source_type="chapter",
-                    limit=limit,
-                    include_vectors=False,
-                    # D-RAWSEARCH-CANON-WIRING — owner-only "all" lets drafts through.
-                    include_drafts=(surface == "all"),
+                    k=limit,
+                    filter=VectorFilter(
+                        project_id=str(project.project_id),
+                        embedding_model=project.embedding_model,
+                        source_type="chapter",
+                        # D-RAWSEARCH-CANON-WIRING — owner-only "all" lets drafts through.
+                        include_drafts=(surface == "all"),
+                    ),
                 )
         except ValueError:
             degraded["semantic"] = "embedding_dim_mismatch"
             return []
         # W11 reader spoiler cutoff — window on the raw chapter_index (None-preserving)
         # BEFORE passage_to_hit coerces an unknown chapter to sortOrder 0 (fail-open).
-        raw_hits = _window_raw_passages(raw_hits, before_sort_order)
-        hits = [passage_to_hit(h) for h in raw_hits]
+        # W11 reader spoiler cutoff — window on the raw chapter_index (None-preserving)
+        # BEFORE the mapper coerces an unknown chapter to sortOrder 0 (fail-open).
+        hits = [vector_hit_to_raw_hit(h) for h in _window_vector_hits(hits, before_sort_order)]
         await enrich_titles(hits, book_client)  # semantic hits lack titles
         return hits
 

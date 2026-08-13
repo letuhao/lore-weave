@@ -32,13 +32,14 @@ from app.db.neo4j_repos.passages import (
     KNOWN_SOURCE_TYPES,
     SUPPORTED_PASSAGE_DIMS,
     count_passages_by_source_type,
-    find_passages_by_vector,
 )
 
 # C8 (D-K19e-γa-01) — enum for the source_type filter query param.
 # Mirrors KNOWN_SOURCE_TYPES (single source of truth in the repo); Literal
 # is the only form FastAPI can introspect for 422 validation.
 DrawerSourceType = Literal["chapter", "chat", "glossary"]
+from app.adapters.vector_store_provider import get_vector_store
+from app.ports.vector_store import VectorFilter
 from app.db.repositories.projects import ProjectsRepo
 from app.deps import get_embedding_client, get_projects_repo
 from app.auth.grant_deps import GrantLevel, require_project_grant
@@ -255,16 +256,21 @@ async def search_drawers(
 
     try:
         async with neo4j_session() as session:
-            raw_hits = await find_passages_by_vector(
-                session,
+            # T24b-b — through the PORT. Default-off: with KNOWLEDGE_VECTOR_DB_URL unset the
+            # provider hands back a Neo4jVectorStore over this very session, so the query is
+            # the one this endpoint has always run.
+            store = await get_vector_store(session)
+            raw_hits = await store.search(
+                scope="passage",
                 user_id=str(user_id),
-                project_id=str(project_id),
-                query_vector=query_vector,
+                embedding=query_vector,
                 dim=project.embedding_dimension,
-                embedding_model=project.embedding_model,
-                source_type=source_type,
-                limit=limit,
-                include_vectors=False,
+                k=limit,
+                filter=VectorFilter(
+                    project_id=str(project_id),
+                    embedding_model=project.embedding_model,
+                    source_type=source_type,
+                ),
             )
     except ValueError as exc:
         # Defensive catch for the "query_vector length does not match
@@ -284,19 +290,25 @@ async def search_drawers(
             },
         )
 
+    # T24b-b — built from the port's `attributes`, read with `.get` rather than `[...]`.
+    # The port says `attributes` is a plain mapping whose keys are scope-specific, so a
+    # backend that omits one must produce a degraded hit, not a KeyError that 500s a search.
+    # `project_id` and `created_at` are published fields of this response and were the two
+    # the port did not carry until T24b-a; they are asserted by the parity rule, so an
+    # adapter that drops one reds there rather than silently here.
     hits = [
         DrawerSearchHit(
-            id=h.passage.id,
-            project_id=h.passage.project_id,
-            source_type=h.passage.source_type,
-            source_id=h.passage.source_id,
-            chunk_index=h.passage.chunk_index,
-            text=h.passage.text,
-            is_hub=h.passage.is_hub,
-            chapter_index=h.passage.chapter_index,
-            created_at=h.passage.created_at,
-            raw_score=h.raw_score,
-            source_lang=h.passage.source_lang,
+            id=str(h.record_id),
+            project_id=(h.attributes or {}).get("project_id"),
+            source_type=(h.attributes or {}).get("source_type") or "",
+            source_id=(h.attributes or {}).get("source_id") or "",
+            chunk_index=(h.attributes or {}).get("chunk_index") or 0,
+            text=(h.attributes or {}).get("text") or "",
+            is_hub=bool((h.attributes or {}).get("is_hub")),
+            chapter_index=(h.attributes or {}).get("chapter_index"),
+            created_at=(h.attributes or {}).get("created_at"),
+            raw_score=h.score,
+            source_lang=(h.attributes or {}).get("source_lang") or "unknown",
         )
         for h in raw_hits
     ]
