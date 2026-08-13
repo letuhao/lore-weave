@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `C1` — measure the critic on the flow QC-5 actually names.**
-See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. That plan was **audited before execution and four of its batches were wrong** — including `C1` itself: the D5 critic is already wired into the authoring-run driver, and what is missing is its **canon**, not its call site.
+**RESUME: `C2` — ground the D5 critic seam in the roster canon.**
+See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. **C1 is DONE** — the critic runs on QC-5's flow and scored `canon_consistency 5/5` from `active_rules=[]`, `present_facts=[]`; the number exists and is ungrounded. C2 extracts the roster-canon helpers out of `routers/plan.py::quality_report_endpoint` and feeds them in, then INVERTS `tests/unit/test_engine_critic_seam_canon.py`.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -4630,6 +4630,74 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   ---
+  ### ✅ C1 2026-08-13 — the critic DOES run on QC-5's flow, and it judges with **no canon**
+
+  **The 2026-08-13 drafting run below measured the wrong surface.** It drove
+  `run_chapter_generate` (`worker/operations.py:617`), whose result envelope has **no `critic`
+  key at all** — so `critic: null` was never "a pass nothing invokes". QC-5 names the *authoring
+  flow*, and the authoring flow has run the critic since D5:
+  `authoring_run_service.py:1345` → `EngineCriticSeam` → `judge_prose` → `set_critic_verdict`.
+
+  One run over the acceptance book's chapter 11, isolated stack, `POST /v1/composition/authoring-runs`
+  → `/gate` → `/start`, `critic_enabled: true` (run `019ff9b9-47e5-79f9-9674-69537a8d05bd`,
+  plan run `019fc5f4-…`, drafter `019ebb72-…`):
+
+  ```
+  run       report_ready   spent 0.0600   unit 0 drafted
+  unit 0    pre_revision 019ff927-7a1d-…  ->  post_revision 019ff9b9-c6d6-…   cost 0.0500
+  critic_verdict  severity=ok  cost=0.01
+      coherence=5  voice_match=5  pacing=4  canon_consistency=5   violations=[]
+  ```
+
+  🔴 **`canon_consistency = 5/5`, and it is worth nothing.** The seam hands the judge
+  `active_rules=[]`, `present_facts=[]` — **unconditional literals**, `authoring_run_service.py:691`.
+  Its own docstring says so: *"this headless seam passes empty active_rules/present_facts, so
+  `canon_consistency` judges from the passage alone."* That is `name_truth_source: prompt_proxy`
+  one layer up — a number graded against its own input, indistinguishable downstream from a
+  grounded one. **QC-5's assertion — *a misattributed betrayal must not score 5/5* — cannot fail
+  for the right reason against this seam**, which is why C2 exists.
+
+  ⚠️ **One clause of C1 as written was not measurable and is retracted.** C1 said the report's
+  `detail` would *show* `active_rules`/`present_facts` empty. It does not: `detail` is the raw
+  critique, and it never echoes its inputs. The emptiness is proven at the **call site**, not on
+  the wire — and an observation that cannot discriminate is not evidence (standing rule 3).
+
+  🔴 **The real seam had NO test.** Every driver test injects `FakeCriticSeam` deliberately
+  (*"never the real EngineCriticSeam — it fetches the draft over HTTP"*), so the one thing the
+  seam decides alone — what canon the judge gets — was guarded by nothing.
+  `tests/unit/test_engine_critic_seam_canon.py` now pins it, **as a defect, to be INVERTED by C2
+  and never deleted**, plus a counterweight test so "both are empty" cannot be satisfied by the
+  seam silently not judging at all.
+
+  **BITE** — pass one rule at the call site; the pin must red on the value, not on a stack trace:
+
+  ```
+  active_rules=[{"rule_id": "BITE"}]
+  E  AssertionError: C2 has landed: the seam now carries canon rules — INVERT this test…
+  E  assert [{'rule_id': 'BITE'}] == []
+  2 failed, 2 passed        <- the counterweight stayed GREEN; the pin is not a blanket red
+  ```
+
+  **QC (a) gates:** plan-verify PASS · gate-teeth PASS (73 CI-invoked gates, all able to return
+  non-zero). No new gate, so no `--selftest` owed.
+  **QC (b) the seam:** the live run above IS the smoke — composition-service → composition-worker
+  → book-service → provider-registry. **Not rebuilt, and it did not need to be:** C1 changed no
+  service code, and the running image was verified to carry the exact line under measurement
+  (`grep` in both `composition-service` and `composition-worker`: `active_rules=[], present_facts=[]`
+  at `:691`). Measuring a stale image is the failure that check exists to rule out.
+  **QC (c) real data:** the run wrote a real draft revision (`pre != post`), and the critic
+  received prose — the seam returns `critic skipped (chapter draft has no prose)` otherwise, so
+  a 5/5 on an empty chapter is excluded by construction.
+
+  ```
+  122 passed — composition-service: engine_critic_seam_canon + authoring_runs_service + critic
+  ```
+
+  ⚠️ **C1 used the drafter as its own critic** (`critic_model_ref` unset → `judge_prose` falls
+  back to `params.model_ref`). Deliberate: C1's claim is about *canon*, which no model choice
+  changes. **C3 must set a distinct critic** — S6 exists because a model grading its own prose is
+  a self-witness, and QC-5's number would inherit that on top of the canon gap.
+
   ### 🎯 DRAFTING RUN 2026-08-13 — three chapters drafted; the flow's canon check covers 1 of 3
   Full evidence: [`docs/measurements/2026-08-13-qc5-drafting-run.md`](../measurements/2026-08-13-qc5-drafting-run.md).
 
