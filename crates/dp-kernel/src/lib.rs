@@ -106,6 +106,8 @@ pub mod dp_backend;
 /// `DF1a` — the CHANNEL half of `dp`'s seams: the write backend over
 /// `ChannelWriter`, and the first production `ChannelTree`.
 pub mod dp_channel;
+/// `DF3` — `dp`'s CACHE seam over Redis (DP-A4 role 1, DP-X3's read-through).
+pub mod dp_cache;
 pub mod canon_history;
 pub mod capacity;
 pub mod dependencies;

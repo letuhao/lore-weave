@@ -129,7 +129,7 @@ All of the following, or 45 turns, whichever comes first:
       `UNIMPLEMENTED_METHODS` **8 → 7** with its count guard still green, and the two mis-stated
       blockers corrected. `GetNpcNode` / `ReportNodeHandoff` remain UNIMPLEMENTED on a **design
       gap**, which is the honest status and not the one this box assumed
-- [ ] `DF3` closed — a Redis-backed cache the SDK reads through for T0–T2, with a **measured**
+- [x] `DF3` closed — a Redis-backed cache the SDK reads through for T0–T2, **measured 643.62µs mean over 200 gets against DP-T2's <10ms budget**. Original wording: with a **measured**
       read latency pasted against the `03_tier_taxonomy` budget
 - [ ] `DF4` closed — every module touching kernel state carries a `DP-R2` tier table, and something
       **machine-checks** that it does
@@ -152,7 +152,7 @@ All of the following, or 45 turns, whichever comes first:
 | ~~`DF1b-i`~~ | **the SDK can name its domain event** — `EVENT_TYPE` + `PAYLOAD_IS_JSON`, both defaulted, backends honour them, non-JSON under the flag REFUSED not wrapped | ✅ **CLOSED** `f4cf8efa3` — row: `event_type npc.said`, `payload {"npc_id":"n-1","utterance":"well met"}` |
 | ~~`DF1b-ii`~~ | **one real caller** — the spine's REJECT-COMMIT goes through `dp::t2_write_channel` | ✅ **CLOSED** — production row in `§3` |
 | ~~`DF2`~~ | **the control plane's missing tables** — `tier_policy` + `tier_capability` built, `GetTierPolicy` served, `UNIMPLEMENTED_METHODS` 8 → 7 | ✅ **CLOSED** — see `§3` |
-| `DF3` | **the T0–T2 cache.** `§2.4`'s "direct Redis access" — zero DP crates have it today, so every tier collapses to the durable path and the taxonomy is a comment | ⬜ |
+| ~~`DF3`~~ | **the T0–T2 cache** — `CacheBackend` seam + `DP-X3` read-through in `dp`, `RedisCache` in `dp-kernel`. Measured **643.62µs** against a **<10ms** budget | ✅ **CLOSED** — see `§3` |
 | `DF4` | **`DP-R2` tier tables per module** — the PO's *"data instance for each module"*, owed by every feature doc and paid by none | ⬜ |
 | `DF5` | **the full dataflow** — actor hub + a control feature + a player feature consuming it, end to end | ⬜ |
 
@@ -430,6 +430,54 @@ baselined to make it green: `reality-id-adoption` caught a real design flaw (`wi
 `Uuid` beside the session that already held the verified `RealityId`), `channel-id-adoption` caught
 me reproducing a growth pattern whose fix I had read earlier the same day, and the two bite
 harnesses scored `MISUSE` — refusing to certify legs whose anchors my own edits had moved.
+
+### `DF3` — the T0–T2 cache exists, and it is measurably a cache (2026-08-14)
+
+`redis` was in **one** Cargo.toml in the whole Rust tree (`commit-service`, for its proposal bus)
+and **zero** DP crates, so every tier reached Postgres and `DP-T0..T3` was a taxonomy with one
+implementation. `CacheBackend` is now the third seam beside `ReadBackend`/`WriteBackend`; `dp` owns
+`DP-X3`'s ALGORITHM and `dp-kernel` owns the socket, which is what keeps `crate-purity`'s
+`external: {uuid}` true.
+
+**THE MEASUREMENT — `DP-T2`'s read budget is `<10ms` from cache:**
+
+```
+DP-T2 cache read: mean 643.62µs over 200 gets (budget <10ms)
+```
+
+Local docker Redis, so this is not a production SLO figure — it is evidence the cache path is
+ORDERS faster than the budget rather than accidentally slower, which is the claim worth checking on
+a first wiring.
+
+**Three decisions taken from the spec rather than from taste:**
+
+* **A FAILURE IS NOT A MISS.** `get` returns `Result<Option<_>>`. Flattening the error into
+  `Ok(None)` would be simpler and would make `DP-X10`'s third case unrepresentable — a **T3 write**
+  must return `CircuitOpen{redis}` because it cannot fan out its invalidation, and a T3 write that
+  acked having invalidated nothing is precisely what `DP-X1` says T3 exists to prevent.
+* **THE TIER decides whether a cache is consulted.** `T0::CACHE_TTL` is `None` (`DP-X7`: *"not
+  cached, in-proc only"*), so the branch is on an associated const of the aggregate's own tier, not
+  a runtime flag. A T0 aggregate cannot be cached by mistake.
+* **It caches the BYTES.** `Encode` encodes a `Delta`; a `Projection` is what a read returns. The
+  first draft tried to re-encode the projection and needed an `encode_projection` that does not
+  exist — inventing one would have put two serialisations on one aggregate, and two encoders are
+  two things that can disagree about a byte.
+
+**`PSETEX`, not `set_ex`, and the reason is a bug that never shipped.** `set_ex` takes SECONDS. Safe
+for every `DP-X7` default (shortest is 60 s) and silently wrong for the per-aggregate overrides
+`DP-X7` permits: a 300 ms TTL integer-divides to `0` and the entry is either rejected or stored with
+**no expiry**, which is the *"invalidation loss plus an infinite TTL = permanent stale read"* the
+spec names in as many words. Caught **while drafting**, and pinned live by
+`a_sub_second_ttl_still_expires`.
+
+**Green:** `dp` + `dp-kernel` **453 passed / 0 failed across 18 suites** against live Postgres AND
+live Redis · read-through bites **4/4** genuine, byte-exact · 5 live cache tests including an
+unreachable-cache degrade and a refused zero TTL · `crate-purity` and `dp-aggregate-gate` green.
+
+**Still unbuilt, and named rather than implied:** `DP-X2`'s other two Redis roles. Invalidation
+pub/sub does not exist, and the durable channel stream `dp:events:*` still has **zero producers** —
+`spec_oracle_channels.rs`'s asserted trigger is what will say when it arrives. Calling this batch
+"Redis support" would have covered all three; it built one.
 
 ---
 

@@ -61,6 +61,15 @@ tracing = { workspace = true }
 
 # Cycle 17 (L4.A) — Postgres backend. WRAPPED behind `PgEventStore` (Q-L4A-1)
 # so the `sqlx::PgPool` is never exposed in our public API.
+# `DF3` — DP-A4 role 1: Redis as the CACHE. This crate carries
+# `[package.metadata.dp] dp-crate = true`, which is DP-R3's exemption for
+# holding a raw storage client — and the reason the client belongs HERE rather
+# than in `dp`, which declares no I/O.
+#
+# Measured before adding it: `redis` was in exactly ONE Cargo.toml in the whole
+# Rust tree (commit-service, for its proposal bus) and in zero DP crates, so
+# every tier collapsed to the durable path.
+redis = { workspace = true }
 sqlx = { workspace = true }
 
 # 5-WIRE — the data-plane CONTRACT crate, so this crate can implement
