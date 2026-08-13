@@ -75,6 +75,11 @@ pub const UNIMPLEMENTED_METHODS: &[(&str, &str)] = &[
         "StreamRealityTransitions",
         "nothing publishes reality transitions to subscribe to",
     ),
+    // `DP-A11` — the NPC-to-node binding is what decides the authoritative
+    // single-writer for a non-session-scoped aggregate. The table does not
+    // exist, so the rule has no subject: this row IS DP-A11's status, and
+    // `tests/surface.rs` asserting it is what makes the absence noisy the day
+    // the migration lands.
     ("GetNpcNode", "npc_binding (DP-C2) has no migration in this repo"),
     (
         "ReportNodeHandoff",

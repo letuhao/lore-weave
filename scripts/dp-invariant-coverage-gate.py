@@ -128,7 +128,7 @@ BASELINE: dict[str, tuple[int, int]] = {
     # here: naming an id in this file makes a COPY of this gate count it as a
     # citation, which is what the hygiene case below refuses. The code keeps the
     # number; the run-state keeps the reason.
-    "DP-A": (3, 9),
+    "DP-A": (0, 6),
     "DP-R": (0, 0),
     "DP-T": (0, 0),
     "DP-Ch": (25, 35),

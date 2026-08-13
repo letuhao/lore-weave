@@ -144,6 +144,16 @@ pub trait Tier: sealed::SealedTier + Copy + fmt::Debug + Send + Sync + 'static {
     const COHERENCY: Coherency;
 
     /// `DP-X7` — default cache TTL. `None` for T0, which is not cached.
+    ///
+    /// This is also `DP-A4`'s first role — *"shared hot-path cache (T0
+    /// ephemeral excluded; T1/T2/T3 cache hits served from Redis)"* — as a
+    /// type property rather than a deployment note. `spec_oracle.rs` parses
+    /// the TTL column out of the tier spec and compares it to these
+    /// constants, so editing T0's cell to a duration reds.
+    ///
+    /// A4's other two roles (pub/sub invalidation, streams) are infrastructure
+    /// behaviour and have no subject in this crate — see the §4 row in the
+    /// data-plane coverage run-state rather than a claim here.
     const CACHE_TTL: Option<Duration>;
 
     /// `DP-S3` — p99 budget from SDK call entry to SDK call return, on write.

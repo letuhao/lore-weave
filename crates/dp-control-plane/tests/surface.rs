@@ -225,6 +225,10 @@ async fn every_unimplemented_method_says_so_and_no_other_does() {
         c.get_session_node(pb::GetSessionNodeRequest { session_id: bound.session_id.clone() })
     );
     call!(
+        // `DP-A11`: this assertion is the trigger. When `npc_binding` gains a
+        // migration and this method starts working, this case reds — which is
+        // what forces DP-A11 to be re-classified instead of staying absent in
+        // silence.
         "GetNpcNode",
         c.get_npc_node(pb::GetNpcNodeRequest {
             reality_id: r.clone(),

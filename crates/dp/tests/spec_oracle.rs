@@ -79,6 +79,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
+// `DP-A4` role 1 is PROVEN here: the TTL column is parsed out of the tier spec
+// and compared to `CACHE_TTL`, so `T0`'s `N/A` cannot drift into a duration
+// without this failing. `DP-A8` is proven structurally instead — see the `dp`
+// row in `crate-purity-gate`, which refuses the dependency that would let this
+// crate reimplement what 02_storage owns.
 use dp::{ScopeKind, Tier, TierLevel, T0, T1, T2, T3};
 
 /// `V1-F4(d)` — **the parsers' own teeth.**

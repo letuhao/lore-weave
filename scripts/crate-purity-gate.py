@@ -168,6 +168,13 @@ PURE_CRATES: dict[str, dict[str, set[str]]] = {
     # `dp-control-plane` is DELIBERATELY ABSENT from the workspace set: the SDK
     # reaching the control plane is the exact thing DP-A2 forbids, so its
     # absence here is what refuses it.
+    #
+    # `DP-A8` rides on the same row. "DP does not reimplement event sourcing;
+    # it is a contract layer above it" — and a crate whose only dependency is
+    # `uuid`, reaching no I/O capability, CANNOT append to an event log, drive
+    # an outbox or write a snapshot. Delegation to 02_storage is not a
+    # convention here; it is the only option the dependency set leaves. This
+    # row is what keeps that true.
     "dp": {
         # R1 — workspace-internal, TRANSITIVE. Empty on purpose.
         "workspace": set(),
@@ -405,8 +412,10 @@ def self_test() -> int:
     # finds out which half is which.
     dp = PURE_CRATES.get("dp")
     if dp is None:
-        fails.append("DP-A2: `dp` is not in PURE_CRATES — the data plane's purity, "
-                     "which is an INVARIANT, is guarded by nothing")
+        fails.append("DP-A2 + DP-A8: `dp` is not in PURE_CRATES — the data plane's "
+                     "purity is an INVARIANT (DP-A2), and it is also the only thing "
+                     "making DP-A8 true: a crate that cannot do I/O cannot "
+                     "reimplement event sourcing. Both are guarded by nothing")
     elif dp["external"] != {"uuid"} or dp["workspace"] != set():
         fails.append(
             f"DP-A2: `dp`'s allowed set widened to workspace={sorted(dp['workspace'])} "
