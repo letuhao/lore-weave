@@ -195,6 +195,61 @@ class KalClient:
         logger.info(
             "kal state resolved: book=%s as_of=%s entities=%d", book_id, as_of, len(entities))
         return [e for e in entities if isinstance(e, dict) and e.get("entity_id")]
+    async def append_role_fact(
+        self,
+        book_id: UUID,
+        *,
+        subject_entity_id: UUID | str,
+        predicate: str,
+        object_value: str,
+        valid_from_ordinal: int,
+        source_episode_id: UUID | str,
+        user_id: UUID | str | None = None,
+        writeback_key: str | None = None,
+    ) -> dict[str, Any]:
+        """T37 — composition's FIRST write to the KAL. Appends one role as a
+        `fact_kind='relation'` fact carrying a story interval.
+
+        **This is the write T36 defined and nothing performed.** `entity_facts_kind_chk` has
+        always admitted `'relation'` and `appendFact` has always written any kind; measured
+        2026-08-11 the graph held `attribute 41435 · name 5189 · alias 1868 · **relation 0**`.
+        A schema that permits a row and a writer that never emits one look identical from the
+        database, which is why the count was the measurement that scoped this task.
+
+        Roles are **plan-authored, not extracted** (Q2), so composition — which is where a
+        plan decides who betrays whom and when — is the producer. `valid_from_ordinal` is
+        REQUIRED here rather than optional, unlike the KG's `recreate_relation`: T36 Half 3
+        found that the authoring path had no story axis at all, and that author-declared
+        roles were therefore exactly the ones the canon check could never see (an as-of read
+        excludes positionless edges by design). Making it required means this producer cannot
+        reintroduce that class of invisible role.
+
+        Idempotency is the KAL's, not ours: the append is `ON CONFLICT DO NOTHING` on
+        `UNIQUE(entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
+        source_episode_id)`, so re-authoring the same role at the same position is a no-op
+        and returns the existing fact. `writeback_key` is the Path-A gate when a caller needs
+        a second idempotency scope.
+
+        Raises `httpx.HTTPStatusError` on a 4xx/5xx. Deliberately NOT degrade-tolerant, the
+        opposite of `roster`: a dropped role is a canon fact that silently never existed, and
+        the guard would then pass a scene it should have questioned. A read may degrade; a
+        write may not.
+        """
+        url = f"{self._base_url}/v1/kal/books/{book_id}/facts"
+        body: dict[str, Any] = {
+            "entity_id": str(subject_entity_id),
+            "fact_kind": "relation",
+            "attr_or_predicate": predicate,
+            "value": object_value,
+            "valid_from_ordinal": valid_from_ordinal,
+            "source_episode_id": str(source_episode_id),
+        }
+        if writeback_key is not None:
+            body["writeback_key"] = writeback_key
+        resp = await self._http.post(url, json=body, headers=self._headers(user_id))
+        resp.raise_for_status()
+        return resp.json()
+
 
 
 def init_kal_client() -> KalClient:

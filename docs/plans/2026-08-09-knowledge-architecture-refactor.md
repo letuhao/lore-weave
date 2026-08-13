@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37` — composition-service becomes a KAL command producer (SPEC §4.2), now that T36 has settled the payload shape it writes.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T38` · ✅ `T42a`. 🔻 **39 → 42 done, and three of those were MIS-MARKED rather than newly built.** T36, T38 and T42a each carried pasted evidence, closed deferrals and green bites and sat `[~]` on inertia — the same disease as the four stale RESUME pointers this plan was restructured to fix, and the reason a session can look for work that is finished. Each was RE-VERIFIED before the box moved (T36: composition 3723 passed + the spend-default bite; T38: reader gate 3/3; T42a: conformance 82 passed against real Neo4j + AGE), never flipped on the prose alone. Gates this session: port-adoption **64 → 57**, derived-entity-id **5 → 4**, conformance **40 → 82**.
+**RESUME: `T37b` — the CALLER. `KalClient.append_role_fact` exists and is bitten; what is owed is the composition surface that invokes it, and its live smoke: a real POST producing a real `entity_facts` row so T36's `relation 0` becomes `relation 1`. That count is the only honest acceptance test for T37.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T38` · ✅ `T42a` · ✅ `T37a`. ⚠️ **Which composition surface authors a role is a PO decision** — see the question under T37a. Everything it does not block is built.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8187,6 +8187,74 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   properties, and each was found only by writing a rename test against a real engine. The
   glossary sync (T35b) was accused of it and measured innocent. That is the whole of T35's
   minting half.
+
+
+  ### ✅ T37a 2026-08-14 — composition's FIRST write to the KAL
+
+  ```
+  composition-service   3723 -> 3727 passed
+  ```
+
+  T37's deferral said *"Retry when T36 closes"*. T36 closed this session, so it ran.
+
+  **Measured first, and the transport was already there.** `POST /v1/kal/books/{id}/facts`
+  (`KalWriteController.appendFact`) has existed since the KAL was built, `AppendFactRequest`
+  declares `fact_kind: relation` in the contract, and `entity_facts_kind_chk` has always
+  admitted it. What was missing was a producer — composition is a KAL **reader** only
+  (`roster`, `state`), with no write path at all. T36's own measurement is the scoping number:
+
+  ```
+  attribute 41435 · name 5189 · alias 1868 · relation 0
+  ```
+
+  **A schema that permits a row and a writer that never emits one are indistinguishable from
+  the database.** That is the same shape as the vector provider nothing constructed,
+  `vector_hit_to_raw_hit` with zero callers, and `VectorHit.vector` no caller could request —
+  four instances this session of built-but-unreachable.
+
+  `KalClient.append_role_fact(...)` is that producer's transport.
+
+  🔧 **`valid_from_ordinal` is REQUIRED here, not optional, and that is T36 Half 3's lesson
+  spent rather than repeated.** The KG's authoring path took no position at all, so every
+  author-declared relation came out positionless — and an as-of read excludes positionless
+  edges by design, which meant **the roles that mattered most were the ones the canon check
+  could never see**. A producer that could omit the position would reintroduce that class
+  wholesale. The signature makes it impossible.
+
+  🔧 **The write RAISES; the reads degrade. Opposite conventions, deliberately.** `roster`
+  returns a partial cast on a mid-drain failure because the packer tolerates a thin roster. A
+  dropped role is not a thinner prompt — it is a book in which the betrayal never happened,
+  and the guard then passes the scene it exists to question. A read may degrade; a write may
+  not.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. fact_kind "relation" -> "attribute"
+     E  the producer wrote a fact that is not a relation — T36's whole subject is the
+        relation kind, of which the graph held ZERO
+     E  assert 'attribute' == 'relation'
+  2. drop raise_for_status()
+     E  Failed: DID NOT RAISE <class 'httpx.HTTPStatusError'>
+  ```
+
+  The payload is asserted **field-by-field against `AppendFactRequest`'s `required` list**,
+  because the two sides of this call are in three languages with nothing relating them —
+  schema in YAML, caller in Python, handler in TypeScript forwarding to Go. A renamed key is
+  a 4xx at runtime and green everywhere in between: the `cached_aliases` / `kind_code` class,
+  one layer up.
+
+  **QC (a) gates:** all 99 green; plan-verify PASS. No new gate, none owed.
+  **QC (b) the seam:** ⬜ **OWED, and it is the caller that owes it.** The transport is
+  proved against a mock transport, which is exactly the coverage this plan distrusts. The
+  live smoke belongs to T37b — a real `POST` to the KAL producing a real `entity_facts` row
+  with `fact_kind='relation'`, turning that `relation 0` into a `1`. That count is the only
+  honest acceptance test for this task, and it cannot be run until something calls this.
+  **QC (c) real data:** N/A — no data produced yet, which is the point of the line above.
+
+  ```
+  3727 passed, 403 skipped — composition-service
+  ```
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
