@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `C1` — wire the D5 continuity critic into the drafting flow.**
-See **▶ EXECUTION PLAN** below: three decided workstreams, sixteen batches, order `C → A → B`.
+**RESUME: `C1` — measure the critic on the flow QC-5 actually names.**
+See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. That plan was **audited before execution and four of its batches were wrong** — including `C1` itself: the D5 critic is already wired into the authoring-run driver, and what is missing is its **canon**, not its call site.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -572,72 +572,153 @@ mechanism say the judge model is the limit, so it costs a stronger model or it s
 ---
 
 
-## ▶ EXECUTION PLAN — the three decided workstreams *(written 2026-08-13, after the PO decisions)*
+## ▶ EXECUTION PLAN — every open task, routed *(written 2026-08-13; **audited and corrected the same day, before executing a line of it**)*
 
-**Order: `C → A → B`.** C is the smallest and closes this refactor's own acceptance test. A is
-the largest and unsticks a gate that has not moved in a day. B chains three tasks behind it.
+🔴 **The first cut of this plan was evaluated against the code and four of its batches were
+wrong.** They are corrected below and the wrong versions are stated, not deleted — a plan that
+silently repairs itself teaches nobody. What the audit found:
 
-⚠️ **Batch ids are NOT new plan tasks** — they are the inside of `QC-5`, `T17` and `T38`, which
-stay the checkboxes. A batch is one cycle: BUILD → BITE → QC → EVIDENCE → ADVANCE, and a batch
-with no bite output or no pasted evidence fails closed.
+| # | The first cut said | The code says |
+|---|---|---|
+| 1 | Three workstreams, 16 batches | **Five of 27 open tasks were routed.** The other 22 — the whole vector cutover, all of Phase 7's engine swap, all of Phase 8, and the three closing controls that LAND this plan — appeared nowhere. A plan that cannot reach `T49` is not a plan to finish. |
+| 2 | `C2`: invoke the critic "behind a setting, `knowledge_`-style prefixed" | The critic **is already invoked** (`authoring_run_service.py:1345`), its enable flag *"rides run params, NOT config"* (`config.py:327`), `knowledge_` is another service's namespace, and SET-3 — quoted in that same file — makes a per-book behaviour a `work.settings` key. `/review-impl` caught this exact abuse in this exact file once already. |
+| 3 | `A1`–`A3`: "conformance green on all three adapters" | **There is no behavioural conformance on all three.** `test_graph_store_port.py` instantiates `FakeGraphStore()` 14 times and the other two zero times; the only three-adapter test compares `inspect.signature`. The criterion could not fail — the exact costume-of-evidence this plan forbids. `T42a` fixes it and was not in the plan. |
+| 4 | `A5–A6`: sweep ~57 modules in batches of ~8 | 57 ÷ 8 ≈ **7 batches, not 2.** Workstream A is ~12 batches. |
 
-### Workstream C — QC-5: wire the D5 critic into the flow *(4 batches)*
+**The route: 27 open tasks, nine workstreams, in this order.**
 
-The flow runs the canon GUARD and returns `critic: null`; the 4-dimension `judge_prose` score
-comes from the D5 continuity critic, a pass nothing in the drafting path invokes.
+| | Workstream | Tasks | Why here |
+|---|---|---|---|
+| **C** | QC-5 — ground the critic's canon | `QC-5` | This refactor's own acceptance test. Smallest, and it is the half of the GOAL that says *a live run proves it*. |
+| **A** | T17 — the port owns everything | `T42a`, `T17` | Largest. `T42a` **first**, or every method A adds is unmeasured in two of three adapters. |
+| **B** | T38 — the KAL grows a detail read | `T38`, `T51`, `T39`, `T40` | Consumer migration; `T51` is the same migration on the frontend, `T39`/`T40` unchain behind it. |
+| **E** | Phase 7 — the engine swap | `T42b`, `T42c`, `T42`, `T42d`, `T43`, `T41` | Needs A's port surface complete and its shadow re-derived. |
+| **F** | Phase 3 — the vector cutover | `T25`, `QC-3` | S1, the plan's only hard ceiling; independent of A/B, sequenced after them because it is a data migration and wants a quiet tree. |
+| **G** | Phase 5 — the model | `T32`, `T33`, `T35`, `T36`, `T37`, `QC-6` | `T35` re-keys 48 Cypher sites; doing it **after** A means doing it behind the port instead of in 48 places. |
+| **H** | Phase 8 — TruthStore consolidation | `T44`, `T45`, `T46` | Needs identity (G) settled. |
+| **I** | Phase 9 — closing controls | `T47`, `T48`, `T49` | Docs, `/aif-verify`, handoff + archive. **This is how the plan ends**, and it was missing. |
 
-- **C1** — Locate the D5 critic's entry point and its input contract (passage, rules, cast,
-  model refs). **Done when:** its signature and its caller in the critique path are quoted in
-  the plan, and the difference from `canon_envelope` is stated in one paragraph.
-- **C2** — Invoke it from the chapter-generate path behind a setting, defaulting **off**.
-  Carry `canon_consistency` + the per-dimension scores in `result.critic`. **Done when:** a
-  chapter job returns a non-null `critic`; the setting is `knowledge_`-style prefixed (the
-  `MIRROR_AUTO_REPAIR` lesson); the envelope's key set stays parity-tested.
-  **Bite:** force the critic to error → the chapter must still draft, with `critic` reporting
-  the failure rather than silently null.
-- **C3** — Re-run chapters 11-13 with it on. **Done when:** three per-chapter
-  `canon_consistency` scores are pasted, alongside their guard coverage.
-- **C4** — Evaluate QC-5's criterion end to end. **Done when:** the inverted rule is applied to
-  a real flow number — *a misattributed betrayal must not score 5/5*. QC-5 goes `[x]` or gains
-  a deferral naming exactly what failed.
+⚠️ **C, A and B are batched; E through I are routed, not batched.** A batch list for a task I
+have not measured is fiction, and this plan has been burned by confident detail three times.
+Each of E–I gets its batches from the audit that opens it — the same measure-then-cut discipline
+C, A and B just went through.
 
-### Workstream A — T17: the port owns everything *(7 batches)*
+⚠️ **Batch ids are NOT new plan tasks** — they are the inside of the checkboxes, which stay the
+tasks. A batch is one cycle: BUILD → BITE → QC → EVIDENCE → ADVANCE, and a batch with no bite
+output or no pasted evidence fails closed.
+
+### Workstream C — QC-5: the critic is already wired; its **canon** is not *(4 batches)*
+
+🔴 **The 2026-08-13 drafting run measured a surface QC-5 does not name.** It drove
+`run_chapter_generate` (`worker/operations.py:617`), which returns `canon` and **no `critic` key
+at all** — so `critic: null` was not "a pass nothing invokes", it was *the wrong flow*. QC-5 says
+*"re-run the Mị Đế authoring flow end-to-end"* <!-- doc-language-gate: ok -- the book title is the cited corpus subject of the acceptance case -->
+and the authoring flow **already runs the critic**: `authoring_run_service.py:1345` —
+`if run.params.get("critic_enabled", True)` — → `EngineCriticSeam` → `judge_prose` →
+`set_critic_verdict` → the D3 Run Report.
+
+🎯 **So the defect is one level in, and the seam confesses it in its own docstring:**
+
+> *"canon grounding — … this headless seam passes **empty active_rules/present_facts**, so
+> `canon_consistency` judges **from the passage alone**. Wiring the roster canon is a follow-up
+> (needs those helpers extracted)."* — `authoring_run_service.py`, `EngineCriticSeam`
+
+That is the **same disease** as `name_truth_source: prompt_proxy`, one layer up: a number graded
+against its own input. **QC-5's assertion cannot fail against it** — a misattributed betrayal
+scores 5/5 not because the model missed it but because the canon was never in the prompt. Any
+run done before C2 would produce a `canon_consistency` that looks like a verdict and is not one.
+
+- **C1** — Confirm the two claims above on the running stack, not by reading. **Done when:** an
+  authoring run over one acceptance chapter returns a **non-null `critic_verdict`** on
+  `/authoring-runs/{id}/report`, and its `detail` shows `active_rules`/`present_facts` empty.
+  That is the before-number C2 has to move.
+- **C2** — Extract the canon-roster helpers out of `routers/plan.py::quality_report_endpoint`
+  (the bearer-side helpers the seam's docstring names) and feed real `active_rules` +
+  `present_facts` into `EngineCriticSeam`. **Done when:** the same run reports a
+  `canon_consistency` computed against a non-empty rule set, and the seam still never raises
+  (07S: critic failure degrades to `warn`, never fatal).
+  **Setting tier — the corrected half:** whatever turns this on is a **run param or a
+  `work.settings` key**, never a process-global env flag. `config.py:327` — *"the enable flag
+  rides run params, NOT config"*; SET-3 in the same file; and T36's own note, *"it is no longer
+  an env flag"*, since `96b5ebf2d`.
+  **Bite:** empty the rule set → `canon_consistency` must report ungrounded rather than scoring.
+- **C3** — Drive the acceptance book's chapters through `POST /authoring-runs` with the critic
+  on. **Done when:** per-unit `critic_verdict` (severity + the four dimensions) is pasted for
+  each unit, beside the guard's coverage.
+  ⚠️ QC-5 says *"through the real frontend"* and the last run recorded *"not driven through the
+  studio UI"* as a real gap. If C3 drives the API again, **that gap is restated, not closed** —
+  C4 must say so rather than let the checkbox imply otherwise.
+- **C4** — Apply QC-5's inverted criterion to a real number: **a misattributed betrayal must not
+  score 5/5.** QC-5 goes `[x]`, or gains a deferral naming exactly what failed.
+  ✅ **Not blocked on T36** — T36's three halves are DONE and `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`
+  is CLOSED (*"QC-5 can now run with the role check on"*). The `[~]` on T36 is its remaining
+  producer work, not this dependency.
+
+### Workstream A — T17: the port owns everything *(≈12 batches)*
 
 Every new method costs **port + Fake + Neo4j + AGE + conformance**, and T43's shadow pays for
 each one again. That price was accepted deliberately.
 
-- **A1** — `get_relation` / `invalidate_relation` / `recreate_relation` on the port + 3
-  adapters. **Done when:** conformance green on all three; the AGE adapter either implements
-  or raises `NotImplementedError` naming a deferral (never returns empty — an operation that
-  answers wrongly is worse than one that refuses).
+- **A0 = T42a** — the **adapter-parameterised behavioural conformance suite**, before the port
+  grows by one method. **Done when:** the behavioural tests run against all three adapters from
+  one parameterised fixture, and the suite reds when an adapter is given a wrong answer — not
+  merely a wrong signature. **Without this, every "conformance green" below is vacuous:** the
+  behavioural suite instantiates `FakeGraphStore()` and nothing else, and the checklist tuple in
+  `test_implementations_match_the_port_signatures` is hand-maintained, so an omitted method is
+  silently unchecked. The test says so itself.
+- **A1** — `get_relation` / `invalidate_relation` / `recreate_relation` on the port + 3 adapters.
+  **Done when:** A0's suite is green on all three; the AGE adapter either implements or raises
+  `NotImplementedError` naming a deferral (never returns empty — an operation that answers
+  wrongly is worse than one that refuses).
 - **A2** — `get_event` / `archive_event` / `merge_event` / `update_event_fields`, same shape.
-- **A3** — the paginated browse: `events_page(after, before, axis, participants, q, sort,
-  limit, offset) -> (rows, total)`. **The richest and the one the port's own docstring argued
-  against** — *"a count belongs to a paginated browse, not to 'give me the events in this
-  window'"*. That comment is now overruled by decision; **quote it in the method's docstring
-  next to the decision** so the disagreement stays legible.
+- **A3** — the paginated browse: `events_page(after, before, axis, participants, q, sort, limit,
+  offset) -> (rows, total)`. **The richest and the one the port's own docstring argued against** —
+  *"a count belongs to a paginated browse, not to 'give me the events in this window'"*. That
+  comment is now overruled by decision; **quote it in the method's docstring next to the
+  decision** so the disagreement stays legible.
 - **A4** — Migrate `public/relations.py`, `public/events.py`, `internal_timeline.py`.
-  **Done when:** ceiling falls by 3; tests that patched `neo4j_repos` are repointed at the
+  **Done when:** ceiling falls **64 → 61**; tests that patched `neo4j_repos` are repointed at the
   port — *a migration whose tests stay green never moved the binding*.
-- **A5–A6** — Sweep the remaining ~57 modules in batches of ~8, ratcheting ceiling and floor
+- **A5–A11** — Sweep the remaining **61** binders in batches of ~8, ratcheting ceiling and floor
   every batch. **Done when:** each batch pastes the two numbers before and after.
-- **A7** — Re-run T43's shadow with the new operations. **Done when:** the coverage report
-  names every new method and `cutover_permitted` is re-derived. **A7 can UNDO QC-7's evidence**
-  — a new operation starts at zero observations, so the floor legitimately re-blocks until the
-  shadow sees it. That is the floor working, not a regression.
+  *(The first cut said "A5–A6, ~57 modules": two batches of eight do not cover fifty-seven.)*
+- **A12** — Re-run T43's shadow with the new operations. **Done when:** the coverage report names
+  every new method and `cutover_permitted` is re-derived. **A12 can UNDO QC-7's evidence** — a new
+  operation starts at zero observations, so the floor legitimately re-blocks until the shadow sees
+  it. That is the floor working, not a regression.
 
-### Workstream B — T38: the KAL grows a detail read *(5 batches)*
+### Workstream B — T38: the KAL grows a detail read *(5 batches + T51)*
+
+Gate baseline measured 2026-08-13: **9 files / 10 call sites**, pinned; it can only shrink.
 
 - **B1** — Design the detail read: which fields (`kind`, `aliases`, `short_description`,
-  `cached_name`), bounded page, cursor, and whether it supersedes `entities/by-ids` or sits
-  beside it. **Done when:** the contract is written and the overlap with the existing endpoint
-  is resolved on purpose rather than by accident.
+  `cached_name`), bounded page, cursor, and whether it supersedes `entities/by-ids` or sits beside
+  it. **Done when:** the contract is written and the overlap with the existing endpoint is
+  resolved on purpose rather than by accident.
 - **B2** — Implement in the KAL + a client method with an honest-cap drain (`(rows, truncated)`,
   never a silent truncation).
-- **B3–B4** — Migrate the ten pinned readers in two batches, **shrinking
+- **B3–B4** — Migrate the ten pinned call sites in two batches, **shrinking
   `authored-catalog-reader-gate`'s pinned set per consumer**. The erase site
   (`assistant.controller.ts`) is NOT T38's — it is a write, already labelled in the baseline.
-- **B5** — T39 (invalidate the two caches by digest) and T40 (partition `entity_facts`) unchain.
+- **B5** — `T51` (the frontend surfaces), then `T39` (invalidate the two caches by digest) and
+  `T40` (partition `entity_facts`) unchain.
+
+### Workstreams E–I — routed, with their entry condition
+
+- **E · Phase 7, the engine swap** — `T42b` (AGE in the `postgres-knowledge:18` image) → `T42c`
+  (AGE bootstrap/DDL) → `T42` (the second adapter) → `T42d` (**partly shipped already** —
+  `scripts/port-adoption-gate.py` exists and passes; the row is the remaining teeth) → `T43`
+  (shadow + differential + floor) → `T41`. **Entry:** A12's shadow report re-derived.
+- **F · Phase 3, the vector cutover** — `T25` then `QC-3` (recall on real data, then ⏸ POST-REVIEW).
+  **Entry:** a quiet tree; this is a data migration and wants nothing else moving.
+- **G · Phase 5, the model** — `T35` (opaque identity; 48 Cypher sites) → `T36` (producer half) →
+  `T37` (command producer) → `T32`, `T33` → `QC-6` (identity live proof, ⏸ POST-REVIEW).
+  **Entry:** A complete — `T35` behind the port is one change, in front of it is 48.
+- **H · Phase 8** — `T44`, `T45`, `T46`. **Entry:** G settled; `T46` merges the stores and needs
+  identity first.
+- **I · Phase 9, the close** — `T47` (docs; `Docs: yes` makes it mandatory) → `T48`
+  (`/aif-verify` against this plan) → `T49` (`SESSION_HANDOFF.md` + archive). **Entry:** every
+  other checkbox `[x]` or carrying a five-element deferral.
 
 ### The standing rules for every batch
 
@@ -651,6 +732,10 @@ each one again. That price was accepted deliberately.
 4. **Rebuild BOTH the service and its worker.** `iso.sh build composition-service` does not
    rebuild `composition-worker`, and drafting runs in the worker.
 5. **A gate's number moves in the same commit as the code that moved it.**
+6. **A criterion that cannot fail is not a criterion.** Before writing "X green", open X and
+   check it can go red for the thing being claimed. Finding 3 above is what happens otherwise.
+7. **A switch has a tier before it has a name** — process-global ceiling, per-book setting, or
+   run param. Getting that backwards is the SET-1 abuse this repo has now caught twice.
 
 ## Superseded run-state strata — evidence and commands, **not** "what next"
 
