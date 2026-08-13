@@ -56,6 +56,7 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.db.tool_approvals import approve_tool, get_tool_decision, set_tool_decision
+from app.services.id_ledger import IdLedger
 from app.services.request_mood import request_mood, standing_grant_applies
 from app.db.conversation_search import (
     CONVERSATION_SEARCH_NAME,
@@ -1909,6 +1910,7 @@ def _inject_context_ids(
     chapter_id: str | None,
     project_id: str | None,
     studio: bool = False,
+    id_ledger=None,
 ) -> dict:
     """S02 fix — fill known session context-ids into a backend tool's args when the tool's
     schema ACCEPTS them and the model OMITTED them.
@@ -1986,8 +1988,19 @@ def _inject_context_ids(
                 "turn's known id", key, supplied[:64],
             )
             args_obj[key] = val_s
-        elif isinstance(supplied, str) and supplied in _crosswired_ids(
-            key, book_id=book_id, chapter_id=chapter_id, project_id=project_id,
+        elif isinstance(supplied, str) and (
+            supplied in _crosswired_ids(
+                key, book_id=book_id, chapter_id=chapter_id, project_id=project_id,
+            )
+            # D-XWIRE-RESULT (2026-08-14) — the same cross-wire, but the offending id came from a
+            # TOOL RESULT rather than from the request envelope, so D-FJ-20's three-id evidence
+            # base could not see it. Measured 3/3: `book_list {kind:"chapters"}` returned
+            # `chapter_id: X`, the model then sent `book_chapter_create {book_id: X}`, and the
+            # refusal "book not accessible" gave it nothing to correct — it retried the identical
+            # call and then wandered into an unrelated book of the user's looking for one that
+            # would accept the write. The certainty standard is unchanged: only an id THIS
+            # PLATFORM published under a different name, never a guess at an unknown UUID.
+            or (id_ledger is not None and id_ledger.is_crosswired(key, supplied))
         ):
             # D-FJ-20 — the model put ANOTHER of this turn's own context-ids in this slot.
             # Not a cross-book call and not a hallucination: a demonstrable cross-wiring of
@@ -2907,6 +2920,13 @@ async def _stream_with_tools(
         # A SUCCESS clears the tool's whole map (the loop is broken). Distinct from
         # noop_write_counts (created=false SUCCESSES) and read_call_results (identical SUCCESSES).
         fail_by_tool_error: dict[str, dict[str, int]] = {}
+        # D-XWIRE-RESULT — every `*_id` this turn has PUBLISHED to the model, and the key it was
+        # published under. Turn-scoped on purpose: it is evidence about what this conversation was
+        # told, not a cache of the world, and an id that belonged to a previous turn's book must
+        # never authorise a substitution in this one.
+        _id_ledger = IdLedger()
+        for _k in ("book_id", "chapter_id", "project_id"):
+            _id_ledger.note(_k, (context_ids or {}).get(_k))
         # Per-tool count of repeats this turn that the repeated-READ breaker BLOCKED. It cannot
         # live in `read_call_results`: that map only advances after a real dispatch, and a blocked
         # call never reaches one — which is why the breaker's message said "3 times" on the 3rd
@@ -4905,6 +4925,7 @@ async def _stream_with_tools(
                         chapter_id=(context_ids or {}).get("chapter_id"),
                         project_id=(context_ids or {}).get("project_id"),
                         studio=bool((context_ids or {}).get("studio")),
+                        id_ledger=_id_ledger,
                     )
                     # Phase 0 (frontend-tools → MCP migration) — the MCP-native
                     # validation seam. A frontend tool used to SUSPEND on its raw
@@ -5047,6 +5068,7 @@ async def _stream_with_tools(
                     chapter_id=(context_ids or {}).get("chapter_id"),
                     project_id=(context_ids or {}).get("project_id"),
                     studio=bool((context_ids or {}).get("studio")),
+                    id_ledger=_id_ledger,
                 )
                 # ── CP-3 · THE EXECUTOR SUPPLIES THE IDENTIFIER ─────────────────────────────
                 # 🔴 **POSITION IS THE WHOLE MECHANISM, AND THE FIRST PLACEMENT WAS WRONG.** This
@@ -6288,6 +6310,12 @@ async def _stream_with_tools(
                 elif c["name"] in fail_by_tool_error:
                     fail_by_tool_error.pop(c["name"], None)
                 tool_payload = envelope.get("result") if ok else {"error": envelope.get("error")}
+                # D-XWIRE-RESULT — record every `*_id` this result announced, so a later call in
+                # the same turn that puts one of them in the WRONG slot is a fact rather than a
+                # guess. Successes only: an error payload's ids are the model's own bad input
+                # echoed back, and recording those would teach the ledger the mistake.
+                if ok:
+                    _id_ledger.record(tool_payload)
                 # Track C Phase 2 — count SUCCESSFUL identical reads so the repeated-read
                 # breaker above can short-circuit the next one. Only successes count: a call
                 # that FAILED has not put its answer in the context, so retrying it (with
