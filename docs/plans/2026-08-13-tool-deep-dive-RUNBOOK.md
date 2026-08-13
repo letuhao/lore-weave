@@ -23,10 +23,36 @@ condition override any prompt, summary or progress note.
 > **DEEP, NOT WIDE** — We do not need coverage. We do not need to rush to a total. We need each tool
 > complete and shipped at high grade, not a POC. A tool touched but not shipped is not progress.
 >
-> **THE LOOP** — One tool at a time, in the order this RUNBOOK derives. Never choose, reorder, batch,
-> skip or defer one. On `proven` or `blocked`, immediately derive the next and run it. Do not return
-> control while executable work remains. The ledger is the progress authority — not this file, not any
-> summary I write.
+> **THE LOOP** — In the order this RUNBOOK derives. Never choose, reorder, skip or defer. On
+> `proven` or `blocked`, immediately derive the next and run it. Do not return control while
+> executable work remains. The ledger is the progress authority — not this file, not any summary
+> I write.
+>
+> 🔴 **AMENDED 2026-08-14 — THE UNIT IS A BATCH OF FIVE, AND THE FIX IS ARCHITECTURAL.** The
+> original unit above was one tool per cycle, and this section said NEVER BATCH. That was right
+> while every cycle needed a hand-built browser run; it is wrong now, and it was costing about
+> fifteen cycles a day against a denominator of 285.
+>
+> Two things changed. First, [`scripts/toolloop/fe_runner.py`](../../scripts/toolloop/fe_runner.py)
+> drives the real chat path unattended, with a throwaway book per repeat, so the per-tool cost is
+> a scenario row rather than a session of my attention. Second — and this is the substantive part
+> — batching is what makes the ARCHITECTURAL fix visible. One tool at a time produces one local
+> patch at a time, and this loop has now shipped the same defect twice under that discipline:
+> `book_update_details` starved from the hot seed in v1 (2026-07-21), `composition_list_outline`
+> withheld at `domain_not_selected` in v2 (2026-08-13). Five tools failing the same way in one
+> batch names the invariant; one tool failing alone names a symptom, and a symptom gets an
+> allowlist entry.
+>
+> So: **five tools per batch, exactly one batch active, and a fix must name the invariant it
+> restores and be proven against every past incident of that class.** Adding a name to an
+> allowlist is not a fix. The per-tool bar below is unchanged and still applies to each of the
+> five individually — batching changes the unit of work, never the standard of proof.
+>
+> **THE GATE, NOT MY JUDGEMENT** — [`scripts/toolloop/gate.py`](../../scripts/toolloop/gate.py)
+> `check` decides whether a batch may be concluded. It reads evidence written BY THE RUN
+> (`fe_runner --batch-out`), so the store snapshots and repeat counts it checks cannot be typed
+> by me. A non-zero exit means the batch is not concluded, whatever I believe about it. Never
+> edit the gate to make it pass.
 >
 > **THE BAR — all four, for every tool**
 > - **LIVE**: exercised through the BROWSER at the pinned frontend, driven by the model from plain

@@ -73,19 +73,34 @@ class Gate:
                     f"{len(errs)} run(s) errored; a transport failure is not a model result")
 
     def data(self, t: dict) -> None:
-        snap = t.get("store") or {}
-        has_both = bool(snap.get("before")) and bool(snap.get("after"))
-        self._check(has_both, f"[{t['tool']}] DATA snapshots",
-                    "need the owning store BEFORE and AFTER; the tool's own response is not "
-                    "evidence of what it wrote")
+        """The store bar, checked on EVERY run rather than on one aggregate pair.
+
+        The batch used to carry a single before/after for the whole tool. That shape cannot
+        express the thing the loop most needs to know about a stochastic consumer: WHICH runs
+        wrote. With one book per repeat, each run owns its own snapshot pair, so "2 of 5 turns
+        wrote" is checkable — and a single run that wrote fails the bar even when the other four
+        were clean. An aggregate pair would have averaged that away, and averaging away the one
+        run that damaged the store is exactly how this defect survived two releases.
+        """
+        runs = [r for r in (t.get("runs") or []) if isinstance(r, dict)]
+        # Back-compat: a hand-written batch may still carry one top-level store pair.
+        legacy = t.get("store") or {}
+        pairs = [(r.get("store") or {}) for r in runs] or ([legacy] if legacy else [])
+        with_both = [p for p in pairs if p.get("before") is not None and p.get("after") is not None]
+        self._check(
+            bool(pairs) and len(with_both) == len(pairs),
+            f"[{t['tool']}] DATA snapshots",
+            f"{len(with_both)} of {len(pairs)} run(s) carry the owning store BEFORE and AFTER; "
+            "the tool's own response is not evidence of what it wrote")
         self._check(bool(t.get("falsifier")), f"[{t['tool']}] DATA falsifier",
                     "state explicitly what result would REFUTE this conclusion")
-        if has_both and t.get("intent") == "read":
-            diff = snap["before"] != snap["after"]
+        if with_both and t.get("intent") == "read":
+            wrote = [i for i, p in enumerate(with_both) if p["before"] != p["after"]]
             self._check(
-                not diff, f"[{t['tool']}] DATA read-is-read",
-                "the owning store CHANGED on a read-intent turn — that is a defect whatever the "
-                "model said (measured 2026-08-13: 3 outline rows became 6)")
+                not wrote, f"[{t['tool']}] DATA read-is-read",
+                f"the owning store CHANGED on {len(wrote)} of {len(with_both)} read-intent "
+                f"run(s) (rep {wrote}) — that is a defect whatever the model said "
+                "(measured 2026-08-13: 3 outline rows became 6)")
 
     def code(self, t: dict) -> None:
         for d in t.get("defects") or []:

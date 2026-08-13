@@ -39,6 +39,7 @@ import argparse
 import asyncio
 import json
 import pathlib
+import re
 import sys
 from collections import Counter
 
@@ -46,40 +47,74 @@ import httpx
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from store_snapshot import diff as store_diff, snapshot  # noqa: E402
+from provision import Throwaway  # noqa: E402
 
 BASE = "http://localhost:5174"
-AUTH_FILE = pathlib.Path(__file__).with_name("fe_runner_auth.json")
+ENV_FILE = pathlib.Path(__file__).resolve().parents[2] / "docs" / "dev" / "LOCAL_TEST_ENV.md"
+
+
+def read_credential() -> tuple[str, str]:
+    """The account the loop runs as, read from the git-ignored local env file.
+
+    Deliberately NOT a default, an env var with a fallback, or a constant in this file. A
+    harness that can silently run as SOMEONE ELSE is the failure that put three fabricated
+    chapters into the author's real book: the safe account has to be the only account it can
+    find, and its absence has to stop the run rather than degrade it.
+    """
+    if not ENV_FILE.exists():
+        raise SystemExit(
+            f"{ENV_FILE} does not exist. Copy docs/dev/LOCAL_TEST_ENV.example.md to it and "
+            "fill in the harness account. Do not invent a credential and do not scavenge one "
+            "out of docs/plans/**.")
+    txt = ENV_FILE.read_text(encoding="utf-8")
+    email = re.search(r"^email:\s*(\S+)", txt, re.M)
+    pw = re.search(r"^password:\s*(\S.*?)\s*$", txt[email.end():] if email else "", re.M)
+    if not (email and pw) or pw.group(1).startswith("<"):
+        raise SystemExit(f"{ENV_FILE} has no filled-in email/password pair.")
+    return email.group(1), pw.group(1)
 
 
 class Auth:
-    """Access tokens expire mid-run (measured: a 401 on POST .../messages silently dropped a turn
-    and the harness read it as 'the model chose not to answer'). Refresh on 401, once, then fail
-    loudly — a run that quietly loses turns is worse than a run that stops."""
+    """Log in. Do not scrape.
 
-    def __init__(self, refresh_token: str, access_token: str = ""):
-        self.refresh_token = refresh_token
-        self.access = access_token
+    🔴 THE PREVIOUS VERSION READ A TOKEN OUT OF THE BROWSER, AND IT COST WHOLE RUNS. The
+    refresh token in localStorage is ROTATED and single-use, so a copied one is normally
+    already spent by the time the harness starts; the access token beside it lasts 2h. Past
+    that boundary every turn 401s, and a 401 mid-stream looks EXACTLY like "the model chose
+    not to call anything" in the report. The harness was therefore recording model behaviour
+    that was really an expired credential — the most expensive kind of wrong evidence,
+    because it is indistinguishable from a real finding.
+
+    Logging in with a durable password removes the whole class: the credential cannot be
+    stale, and re-login on a 401 is unlimited rather than one-shot.
+    """
+
+    def __init__(self, email: str, password: str):
+        self.email = email
+        self.password = password
+        self.access = ""
+        self.user_id = ""
+        self.logins = 0
+
+    async def login(self, client: httpx.AsyncClient) -> None:
+        r = await client.post(f"{BASE}/v1/auth/login",
+                              json={"email": self.email, "password": self.password})
+        if r.status_code != 200:
+            raise SystemExit(
+                f"login as {self.email} failed ({r.status_code}: {r.text[:160]}). Fix the "
+                f"credential in {ENV_FILE} — a harness must never fall back to another "
+                "account.")
+        d = r.json()
+        self.access = d.get("access_token") or d.get("accessToken") or ""
+        self.user_id = (d.get("user_profile") or {}).get("user_id", "")
+        self.logins += 1
+        if not self.access:
+            raise SystemExit(f"login returned no access token: {sorted(d)}")
 
     async def refresh(self, client: httpx.AsyncClient) -> None:
-        """The refresh token is ROTATED and single-use, and the browser holds the rotation — so a
-        token copied out of localStorage is usually already spent, while the ACCESS token beside
-        it is good for ~90 minutes. Measured: refresh returned AUTH_TOKEN_EXPIRED on a token
-        captured seconds earlier, and the same file's access token created a session (201).
-        So: use the access token, refresh only when it actually 401s, and if that fails say
-        plainly what to do rather than reporting every scenario as a failure."""
-        r = await client.post(f"{BASE}/v1/auth/refresh",
-                              json={"refresh_token": self.refresh_token})
-        if r.status_code != 200:
-            raise RuntimeError(
-                "auth refresh failed (%s: %s). The refresh token is rotated and single-use — "
-                "reload the LoreWeave tab, then re-export localStorage['lw_auth'] into "
-                "scripts/toolloop/fe_runner_auth.json." % (r.status_code, r.text[:120]))
-        r.raise_for_status()
-        d = r.json()
-        self.access = d.get("accessToken") or d.get("access_token") or ""
-        self.refresh_token = d.get("refreshToken") or d.get("refresh_token") or self.refresh_token
-        if not self.access:
-            raise RuntimeError(f"refresh returned no access token: {list(d)}")
+        """Kept under the old name so every 401 handler keeps working — but it is now a
+        re-login, which cannot be exhausted."""
+        await self.login(client)
 
     def headers(self) -> dict:
         return {"authorization": f"Bearer {self.access}",
@@ -107,7 +142,7 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
     if book_id:
         body["book_context"] = {"book_id": book_id}
 
-    out = {"text": "", "tool_calls": [], "surface": None, "run_id": None,
+    out = {"text": "", "tool_calls": [], "surface": None, "surfaces": [], "run_id": None,
            "events": Counter(), "error": None}
     for attempt in (1, 2):
         try:
@@ -134,7 +169,13 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
                     elif t == "TEXT_MESSAGE_CONTENT":
                         out["text"] += ev.get("delta", "")
                     elif t == "CUSTOM" and ev.get("name") == "agentSurface":
-                        # keep the LAST one: it is the pass that actually reached the model
+                        # 🔴 KEEP EVERY PASS, NOT THE LAST ONE. Keeping only the last inverted a
+                        # real measurement: `composition_list_canon_rules` was CALLED on 3 of 3
+                        # runs and the report said it was surfaced on 0 of 3, because the model
+                        # called it in pass 1 and the final pass — the one whose surface survived
+                        # — no longer advertised it. "Called a tool it was never shown" is an
+                        # impossible reading that a single sample made look real.
+                        out["surfaces"].append(ev.get("value") or {})
                         out["surface"] = ev.get("value")
                     elif t in ("TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_ARGS"):
                         out["tool_calls"].append(ev)
@@ -148,9 +189,16 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
     return out
 
 
-async def run_scenario(client, auth, sc, idx):
-    """One scenario, one repetition, in its OWN session — so repeats cannot contaminate each
-    other through conversation history, which is the whole point of measuring a distribution."""
+async def run_scenario(client, auth, sc, idx, fx):
+    """One scenario, one repetition, in its OWN session AND its OWN book.
+
+    The session is per-repeat so repeats cannot contaminate each other through conversation
+    history. The BOOK is per-repeat for the same reason one level down: if repeat 1 writes
+    when it should not have, repeat 2 would otherwise start from the damaged store and its
+    own diff would come back empty — the defect would appear to happen once and then heal.
+    Per-repeat books make the distribution honest: "3 of 5 runs wrote" is a sentence the
+    harness can actually support.
+    """
     sess = await _json(client, auth, "POST", "/v1/chat/sessions", json={
         # `user_model`, NOT `user`. Guessed wrong once and every turn 502'd with
         # "credential resolution failed" from provider-registry — the session was created
@@ -158,65 +206,115 @@ async def run_scenario(client, auth, sc, idx):
         # failure. Read from the working session's own row rather than invented.
         "model_source": sc.get("model_source", "user_model"),
         "model_ref": sc["model_ref"],
-        "title": f"sweep {sc['id']} #{idx}",
-        **({"book_id": sc["book_id"]} if sc.get("book_id") else {}),
+        "title": f"loop {sc['id']} #{idx}",
+        **({"book_id": fx.book_id} if fx.book_id else {}),
     })
     sid = sess.get("session_id") or sess.get("id")
     res = await send_turn(client, auth, sid, sc["prompt"],
-                          book_id=sc.get("book_id"), chapter_id=sc.get("chapter_id"))
+                          book_id=fx.book_id, chapter_id=fx.chapter_id)
     res["session_id"] = sid
     res["scenario"] = sc["id"]
     res["rep"] = idx
+    res["book_id"] = fx.book_id
+    res["project_id"] = fx.project_id
     return res
 
 
 async def main_async(scenarios, repeats, concurrency):
-    auth_raw = json.loads(AUTH_FILE.read_text(encoding="utf-8"))
-    auth = Auth(auth_raw["refreshToken"], auth_raw.get("accessToken", ""))
+    auth = Auth(*read_credential())
     sem = asyncio.Semaphore(concurrency)
     results = []
 
     async with httpx.AsyncClient(timeout=180.0) as client:
-        if not auth.access:
-            await auth.refresh(client)
+        await auth.login(client)
+        print(f"authenticated as {auth.email} ({auth.user_id})")
 
-        async def one(sc, i):
-            async with sem:
+        async def one_repeat(sc, i):
+            """Provision, run, measure, tear down — one independent repetition.
+
+            🔴 THE FIXTURE IS BUILT AND TORN DOWN INSIDE THE MEASURED UNIT, and the snapshot
+            is taken AFTER seeding. If the seed were inside the before/after window, every
+            scenario would report a store change and the DATA bar would be meaningless —
+            the harness would flag its own setup as the defect.
+
+            MCPDirect calls asyncio.run internally, so provisioning cannot happen on this
+            event loop; to_thread keeps the scenarios genuinely concurrent instead of
+            serialising them behind a nested-loop error.
+            """
+            fx = None
+            try:
+                fx = await asyncio.to_thread(
+                    lambda: Throwaway(f"{sc['id']}-{i}").build(seed=sc.get("seed") or []))
+                before = await asyncio.to_thread(snapshot, fx.book_id)
                 try:
-                    return await run_scenario(client, auth, sc, i)
-                except Exception as e:  # noqa: BLE001 — one bad scenario must not kill the run
-                    return {"scenario": sc["id"], "rep": i, "error": f"{type(e).__name__}: {e}",
-                            "text": "", "tool_calls": [], "surface": None}
+                    r = await run_scenario(client, auth, sc, i, fx)
+                except Exception as e:  # noqa: BLE001 — one bad repeat must not kill the run
+                    r = {"scenario": sc["id"], "rep": i, "text": "", "tool_calls": [],
+                         "surface": None, "surfaces": [], "error": f"{type(e).__name__}: {e}"}
+                after = await asyncio.to_thread(snapshot, fx.book_id)
+                r["store"] = {"before": before, "after": after}
+                r["store_diff"] = store_diff(before, after)
+                return r
+            except Exception as e:  # noqa: BLE001 — a provisioning failure is REPORTED, never
+                # silently skipped: a scenario that vanishes from the report reads as passing.
+                return {"scenario": sc["id"], "rep": i, "text": "", "tool_calls": [],
+                        "surface": None, "surfaces": [], "store_diff": {},
+                        "error": f"PROVISION {type(e).__name__}: {e}"}
+            finally:
+                if fx is not None:
+                    try:
+                        await asyncio.to_thread(fx.teardown)
+                    except Exception as e:  # noqa: BLE001
+                        print(f"\n  ! teardown failed for {fx.book_id}: {e}")
 
         async def scenario_block(sc):
-            """One scenario: snapshot, K repeats, snapshot, diff.
+            """One scenario: K independent repeats, sequential.
 
-            🔴 CONCURRENCY IS ACROSS SCENARIOS, NEVER ACROSS REPEATS. The repeats of one
-            scenario share a book, so running them at once would interleave their writes and
-            make the store diff unattributable — the diff would say "something wrote" without
-            saying which run did it, which is exactly the ambiguity the DATA bar exists to
-            remove. Scenarios are isolated from each other by having their own book, so those
-            CAN overlap.
+            🔴 CONCURRENCY IS ACROSS SCENARIOS, NEVER ACROSS REPEATS OF ONE. Repeats are
+            sequential so the local model serves them one at a time — overlapping them on a
+            single GPU turns a latency measurement into a queueing measurement, and a turn
+            that times out behind three others reads as "the model did not call the tool".
             """
-            book = sc.get("book_id")
-            before = snapshot(book) if book else {}
-            out = []
-            for i in range(repeats):
-                r = await one(sc, i)
-                out.append(r)
-                print("!" if r.get("error") else ".", end="", flush=True)
-            after = snapshot(book) if book else {}
-            d = store_diff(before, after)
-            for r in out:
-                r["store"] = {"before": before, "after": after}
-                r["store_diff"] = d
-            return out
+            async with sem:
+                out = []
+                for i in range(repeats):
+                    r = await one_repeat(sc, i)
+                    out.append(r)
+                    print("!" if r.get("error") else ".", end="", flush=True)
+                return out
 
         blocks = await asyncio.gather(*[scenario_block(sc) for sc in scenarios])
         for grp in blocks:
             results.extend(grp)
     print()
     return results
+
+
+def called_names(r) -> set:
+    """The tools the model actually invoked.
+
+    Reads TOOL_CALL_START's own name field rather than searching the serialised events for the
+    string. A substring search over the dump counts a tool as "called" when its name merely
+    appears inside another call's ARGUMENTS — and `tool_load` takes tool names as arguments, so
+    that false positive fires on exactly the discovery path this loop spends its time in.
+    """
+    out = set()
+    for e in (r.get("tool_calls") or []):
+        n = e.get("toolCallName") or e.get("toolName") or e.get("name")
+        if n:
+            out.add(n)
+    return out
+
+
+def surfaced_names(r) -> set:
+    """Every tool advertised in ANY pass of the turn — core, frontend and activated alike."""
+    out = set()
+    for s in (r.get("surfaces") or ([r["surface"]] if r.get("surface") else [])):
+        adv = (s or {}).get("advertised") or {}
+        for bucket in adv.values():
+            if isinstance(bucket, list):
+                out.update(str(x) for x in bucket)
+    return out
 
 
 def report(results, scenarios, repeats):
@@ -226,24 +324,81 @@ def report(results, scenarios, repeats):
     for sid, sc in by.items():
         rs = [r for r in results if r.get("scenario") == sid]
         want = sc.get("expect_tool")
-        called = sum(1 for r in rs if want and want in json.dumps(r.get("tool_calls") or []))
-        surfaced = sum(
-            1 for r in rs
-            if want and want in json.dumps((r.get("surface") or {}).get("advertised") or {}))
+        called = sum(1 for r in rs if want and want in called_names(r))
+        surfaced = sum(1 for r in rs if want and want in surfaced_names(r))
         errs = sum(1 for r in rs if r.get("error"))
-        d = next((r.get("store_diff") for r in rs if r.get("store_diff")), {})
-        store = "CHANGED: " + ", ".join(sorted(d)) if d else "unchanged"
+        # Each repeat has its OWN book, so each diff belongs to exactly one turn. Reporting
+        # the COUNT rather than the first non-empty one is the difference between "the store
+        # changed at some point" and "2 of 5 turns wrote" — only the second is a distribution,
+        # and a stochastic consumer can only be described by a distribution.
+        wrote = [r for r in rs if r.get("store_diff")]
+        tables = sorted({t for r in wrote for t in (r.get("store_diff") or {})})
+        store = (f"WROTE {len(wrote)}/{len(rs)}: " + ", ".join(tables)) if wrote else "unchanged"
         print(f"{sid:<28} {len(rs):<5} {f'{called}/{len(rs)}':<12} "
               f"{f'{surfaced}/{len(rs)}':<17} {errs:<7} {store}")
-        if d and sc.get("intent") == "read":
+        if wrote and sc.get("intent") == "read":
             # The strongest assertion in the loop, and it needs no per-tool knowledge: a turn
             # that asked to LOOK must not change anything. Measured 2026-08-13: five read
             # turns took outline_node from 3 to 6 while the reply called it "your current
             # plan".
-            print(f"    ^ READ-INTENT TURN WROTE TO THE STORE — a defect whatever it said")
+            print(f"    ^ READ-INTENT TURN WROTE TO THE STORE in {len(wrote)}/{len(rs)} runs "
+                  f"— a defect whatever it said")
     print("\nA scenario is only informative across REPEATS — the consumer is stochastic, so "
           "'1/5 called' is a finding and '5/5 surfaced, 0/5 called' is a different finding "
           "from '0/5 surfaced'.")
+
+
+def emit_batch(results, scenarios, batch_id: str) -> dict:
+    """Write the gate's evidence file FROM THE RUN, never by hand.
+
+    🔴 THE FIELDS THE GATE CHECKS MUST BE MACHINE-FILLED. The bar says "never a typed count",
+    and a batch file I author by hand is precisely where a typed count enters: I would be
+    copying the store diff out of a terminal into the evidence that is then used to prove the
+    store diff. The run writes what it measured; I only ever add the fields that require
+    judgement (falsifier, defects, invariant, ship_audit), and those are the fields the gate
+    checks for PRESENCE rather than for truth.
+
+    One tool row per scenario, because a scenario is the unit that has an expected tool and an
+    intent. Runs carry their own store snapshots — with a book per repeat, every diff belongs to
+    exactly one turn.
+    """
+    by = {sc["id"]: sc for sc in scenarios}
+    tools = []
+    for sid, sc in by.items():
+        rs = [r for r in results if r.get("scenario") == sid]
+        runs = []
+        for r in rs:
+            runs.append({
+                "via": "fe_runner",
+                "rep": r.get("rep"),
+                "book_id": r.get("book_id"),
+                "session_id": r.get("session_id"),
+                "prompt": sc["prompt"],
+                "called": sc.get("expect_tool") in called_names(r),
+                "surfaced": sc.get("expect_tool") in surfaced_names(r),
+                "called_tools": sorted(called_names(r)),
+                "error": r.get("error"),
+                "store": r.get("store") or {},
+                "store_diff": r.get("store_diff") or {},
+                "answer": (r.get("text") or "")[:2000],
+            })
+        tools.append({
+            "tool": sc.get("expect_tool"),
+            "scenario": sid,
+            "intent": sc.get("intent"),
+            # Judgement fields ride through from the SCENARIO SPEC rather than being edited into
+            # the evidence file afterwards. Hand-editing the file the gate reads puts my
+            # keyboard on both sides of the check — the measured fields and the asserted ones
+            # would live in the same document, one save away from each other.
+            "falsifier": sc.get("falsifier"),
+            "ship_audit": sc.get("ship_audit"),
+            "defects": sc.get("defects") or [],
+            "runs": runs,
+            "surfaced_count": sum(1 for r in runs if r["surfaced"]),
+            "called_count": sum(1 for r in runs if r["called"]),
+            "wrote_count": sum(1 for r in runs if r["store_diff"]),
+        })
+    return {"batch": batch_id, "generated_by": "fe_runner", "tools": tools}
 
 
 def main():
@@ -252,6 +407,8 @@ def main():
     ap.add_argument("--repeats", type=int, default=3)
     ap.add_argument("--concurrency", type=int, default=4)
     ap.add_argument("--out", default="")
+    ap.add_argument("--batch-out", default="", help="gate-ready evidence file")
+    ap.add_argument("--batch-id", default="batch")
     a = ap.parse_args()
     scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
     results = asyncio.run(main_async(scenarios, a.repeats, a.concurrency))
@@ -259,6 +416,11 @@ def main():
         pathlib.Path(a.out).write_text(json.dumps(results, indent=2, ensure_ascii=False),
                                        encoding="utf-8")
         print(f"raw results -> {a.out}")
+    if a.batch_out:
+        pathlib.Path(a.batch_out).write_text(
+            json.dumps(emit_batch(results, scenarios, a.batch_id), indent=2, ensure_ascii=False),
+            encoding="utf-8")
+        print(f"gate evidence -> {a.batch_out}")
     report(results, scenarios, a.repeats)
 
 
