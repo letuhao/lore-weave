@@ -249,6 +249,11 @@ def test_implementations_match_the_port_signatures(impl):
                  # without adding it HERE would leave the new operation unchecked in every
                  # adapter -- the checklist is this tuple, so an omission is silent.
                  "add_evidence",
+                 # T17 A1 2026-08-13: the three relation CORRECTION primitives. Listed here
+                 # for the same reason `add_evidence` is -- this tuple IS the checklist, so
+                 # a method added to the port and forgotten here is unchecked in every
+                 # adapter and nothing says so.
+                 "get_relation", "invalidate_relation", "recreate_relation",
                  "status_at_order", "events_in_window"):
         port_sig = inspect.signature(getattr(GraphStore, name))
         impl_sig = inspect.signature(getattr(impl, name))

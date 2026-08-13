@@ -222,6 +222,57 @@ class FakeGraphStore:
         self._relations.append(rel)
         return rel
 
+    async def get_relation(self, *, user_id: str, relation_id: str) -> Relation | None:
+        for r in self._relations:
+            if r.id == relation_id and r.user_id == user_id:
+                return r
+        # A MISS for another user's relation, never an error — the port's
+        # no-existence-oracle rule.
+        return None
+
+    async def invalidate_relation(
+        self, *, user_id: str, relation_id: str, valid_until: datetime | None = None,
+    ) -> Relation | None:
+        rel = await self.get_relation(user_id=user_id, relation_id=relation_id)
+        if rel is None:
+            return None
+        # Idempotent: an already-invalid edge moves to the new instant rather than failing.
+        rel.valid_until = valid_until or _now()
+        rel.updated_at = _now()
+        return rel
+
+    async def recreate_relation(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        source_chapter: str | None = None,
+        valid_from_ordinal: int | None = None,
+    ) -> Relation | None:
+        """Author-asserted: confidence 1.0, and it RESURRECTS a previously invalidated
+        tuple by clearing `valid_until`. Matching ignores `valid_until` for exactly that
+        reason — `upsert_relation`'s scan requires `valid_until is None`, so reusing it
+        here would mint a duplicate beside the invalidated edge instead of reviving it."""
+        for r in self._relations:
+            if (r.user_id == user_id and r.subject_id == subject_id
+                    and r.predicate == predicate and r.object_id == object_id):
+                r.valid_until = None
+                r.confidence = 1.0
+                if valid_from_ordinal is not None:
+                    r.valid_from_ordinal = valid_from_ordinal
+                r.updated_at = _now()
+                return r
+        rel = Relation(
+            id=f"{subject_id}|{predicate}|{object_id}",
+            user_id=user_id, subject_id=subject_id, predicate=predicate,
+            object_id=object_id, confidence=1.0, source_event_ids=[],
+            valid_from_ordinal=valid_from_ordinal, created_at=_now(), updated_at=_now(),
+        )
+        self._relations.append(rel)
+        return rel
+
     async def relations_for(
         self,
         *,

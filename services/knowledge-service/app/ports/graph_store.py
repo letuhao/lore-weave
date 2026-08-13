@@ -36,6 +36,7 @@ that says which of them belong.
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal, Protocol, runtime_checkable
 
 # ⚠️ These come from `app.domain`, NOT from `db/neo4j_repos/` (T17). A port that imports its
@@ -172,6 +173,65 @@ class GraphStore(Protocol):
         edge (`valid_from_ordinal IS NULL`) is EXCLUDED** by an as-of read: it cannot be
         placed on the axis, and including it would silently mix untimed legacy data into an
         answer whose entire value is that it is timed.
+        """
+        ...
+
+    # ── relation corrections (T17/A1) ────────────────────────────────
+    #
+    # The three operations a CORRECTION path needs, which the read/upsert pair cannot
+    # express. They are separate primitives on purpose: `recreate_relation` resurrects a
+    # user-invalidated edge, and folding that into `upsert_relation` would let an extraction
+    # re-run silently revive an edge the author deleted — the exact accident the concrete
+    # repo split them to prevent.
+    #
+    # ⚠️ `invalidate_relation` closes the WALL-CLOCK interval (`valid_until`, a datetime).
+    # It does NOT close the STORY interval (`valid_to_ordinal`, a chapter ordinal), which is
+    # a different axis — see `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL`, still open after this
+    # batch. Two axes, two closes; conflating them is what T45 exists to prevent.
+
+    async def get_relation(self, *, user_id: str, relation_id: str) -> Relation | None:
+        """One edge by its deterministic id, or `None` if no row matches under this user.
+
+        `None` is a MISS, never a permission error — the same no-existence-oracle shape the
+        rest of the port uses: a caller cannot learn that someone else's relation exists.
+        """
+        ...
+
+    async def invalidate_relation(
+        self, *, user_id: str, relation_id: str, valid_until: datetime | None = None,
+    ) -> Relation | None:
+        """Soft-invalidate an edge by stamping `valid_until` (default: now).
+
+        Idempotent — re-invalidating an already-invalid edge moves `valid_until` to the new
+        instant rather than failing, because a correction that errors on a repeat is a
+        correction that cannot be retried after a timeout.
+
+        The default read filters exclude `valid_until IS NOT NULL`, so this hides the edge
+        from every ordinary read without deleting it.
+        """
+        ...
+
+    async def recreate_relation(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        source_chapter: str | None = None,
+        valid_from_ordinal: int | None = None,
+    ) -> Relation | None:
+        """The AUTHOR-asserted edge: confidence 1.0, and it RESURRECTS `valid_until` to NULL
+        if this tuple was previously invalidated (F5).
+
+        That resurrection is why this is not a flag on `upsert_relation`. An extraction
+        writer re-mentioning a pair must never revive an edge a human removed, and a shared
+        entry point with a boolean would make that one wrong argument away.
+
+        `valid_from_ordinal` is the STORY position the author asserts the relation from —
+        the same `event_order` axis the extraction writer stamps. Without it an authored
+        relation is positionless and invisible to every as-of read, which is precisely how
+        T36's roles were authored and then could not be found.
         """
         ...
 

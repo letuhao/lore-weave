@@ -17,6 +17,8 @@ What this file owns is the translation between the port's vocabulary and the rep
 
 from __future__ import annotations
 
+from datetime import datetime
+
 import logging
 import time
 
@@ -33,6 +35,7 @@ from app.db.neo4j_repos.entities import (
 )
 from app.db.neo4j_repos.entity_status import status_at_order
 from app.db.neo4j_repos.events import Event, list_events_filtered, list_events_in_order
+from app.db.neo4j_repos import relations as _rel_repo
 from app.db.neo4j_repos.relations import Relation, create_relation, find_relations_for_entity
 from app.ports.graph_store import EventAxis, RelationDirection
 
@@ -134,6 +137,32 @@ class Neo4jGraphStore:
             confidence=confidence, source_event_id=source_event_id,
             valid_from_ordinal=valid_from_ordinal,
         )
+
+    async def get_relation(self, *, user_id: str, relation_id: str) -> Relation | None:
+        return await _rel_repo.get_relation(
+            self._session, user_id=user_id, relation_id=relation_id)
+
+    async def invalidate_relation(
+        self, *, user_id: str, relation_id: str, valid_until: datetime | None = None,
+    ) -> Relation | None:
+        return await _rel_repo.invalidate_relation(
+            self._session, user_id=user_id, relation_id=relation_id,
+            valid_until=valid_until)
+
+    async def recreate_relation(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        source_chapter: str | None = None,
+        valid_from_ordinal: int | None = None,
+    ) -> Relation | None:
+        return await _rel_repo.recreate_relation(
+            self._session, user_id=user_id, subject_id=subject_id,
+            predicate=predicate, object_id=object_id, source_chapter=source_chapter,
+            valid_from_ordinal=valid_from_ordinal)
 
     async def relations_for(
         self,

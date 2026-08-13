@@ -436,3 +436,91 @@ async def test_evidence_rejects_the_same_caller_errors_everywhere(store):
         await store.add_evidence(
             user_id=u, target_label="Entity", target_id=e.id, source_id="s1",
             extraction_model="m1", confidence=9.0, job_id="j1")
+
+
+# ── relation corrections: the port's newest operations (T17 A1) ──────────────
+
+
+@pytest.mark.asyncio
+async def test_get_relation_finds_it_and_is_a_MISS_for_another_user(store):
+    """`None` must be a miss, not an error and not another user's row. Both halves matter:
+    returning the row leaks across tenants, raising would be an existence oracle."""
+    u, p, other = _ids()
+    a, b = await _pair(store, u, p)
+    made = await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="ally_of", confidence=0.9)
+
+    got = await store.get_relation(user_id=u, relation_id=made.id)
+    assert got is not None and got.id == made.id
+    assert await store.get_relation(user_id=other, relation_id=made.id) is None
+
+
+@pytest.mark.asyncio
+async def test_invalidate_hides_the_edge_from_ordinary_reads_and_is_idempotent(store):
+    """A correction that errors on a repeat cannot be retried after a timeout, so the
+    second call must succeed too."""
+    u, p, _ = _ids()
+    a, b = await _pair(store, u, p)
+    made = await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="ally_of", confidence=0.9)
+    assert len(await store.relations_for(user_id=u, entity_id=a.id)) == 1
+
+    assert await store.invalidate_relation(user_id=u, relation_id=made.id) is not None
+    assert await store.relations_for(user_id=u, entity_id=a.id) == [], (
+        "an invalidated edge is still served by the default read"
+    )
+    assert await store.invalidate_relation(user_id=u, relation_id=made.id) is not None, (
+        "re-invalidating failed — the correction is not retryable"
+    )
+
+
+@pytest.mark.asyncio
+async def test_recreate_RESURRECTS_an_invalidated_edge_rather_than_duplicating_it(store):
+    """The rule the whole primitive exists for (F5). If the adapter matched on
+    `valid_until IS NULL` — as `upsert_relation` does — it would mint a SECOND edge beside
+    the invalidated one, the author's correction would appear to work, and the graph would
+    carry two arcs for one relationship. That failure is invisible from the read side,
+    which returns exactly one edge either way."""
+    u, p, _ = _ids()
+    a, b = await _pair(store, u, p)
+    made = await store.upsert_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="ally_of", confidence=0.9)
+    await store.invalidate_relation(user_id=u, relation_id=made.id)
+
+    revived = await store.recreate_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="ally_of",
+        valid_from_ordinal=7)
+    assert revived is not None
+    assert revived.valid_until is None, "recreate did not clear valid_until"
+    assert revived.confidence == 1.0, "an authored edge is not confidence 1.0"
+
+    # ⚠️ Counting LIVE edges cannot detect the duplicate — it hides behind the very filter
+    # that hides the invalidated original, so `len(live) == 1` holds whether recreate revived
+    # the edge or minted a second one beside it. The first cut of this test asserted exactly
+    # that and stayed GREEN under the mutation it existed to catch; the bite is what found it.
+    #
+    # `get_relation` is the one port read that can SEE an invalidated edge, so it is the only
+    # probe that discriminates: if the original row is still invalid, recreate duplicated.
+    original = await store.get_relation(user_id=u, relation_id=made.id)
+    assert original is not None, "the original edge vanished — recreate deleted rather than revived"
+    assert original.valid_until is None, (
+        "recreate DUPLICATED the arc: the original row is still invalidated, so the author's "
+        "correction created a second edge beside it instead of reviving this one"
+    )
+    live = await store.relations_for(user_id=u, entity_id=a.id)
+    assert len(live) == 1, f"expected exactly one live edge, got {len(live)}"
+
+
+@pytest.mark.asyncio
+async def test_an_authored_relation_carries_its_story_position(store):
+    """T36's binding constraint, as a rule. An authored relation with no
+    `valid_from_ordinal` is positionless and invisible to every as-of read — which is
+    exactly how T36's roles were authored and then could not be found."""
+    u, p, _ = _ids()
+    a, b = await _pair(store, u, p)
+    await store.recreate_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="serves",
+        valid_from_ordinal=12)
+
+    assert len(await store.relations_for(user_id=u, entity_id=a.id, as_of=12)) == 1
+    assert await store.relations_for(user_id=u, entity_id=a.id, as_of=11) == []

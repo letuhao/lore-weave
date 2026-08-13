@@ -400,6 +400,61 @@ class AgeGraphStore:
         rows = await self._run(cy)
         return _to_relation(_props(rows[0]["v"]))
 
+    async def get_relation(self, *, user_id: str, relation_id: str) -> Relation | None:
+        cy = f"""
+        MATCH ()-[r:RELATES_TO {{id: {_lit(relation_id)}, user_id: {_lit(user_id)}}}]->()
+        RETURN r
+        """
+        rows = await self._run(cy)
+        # A MISS for another user's relation — the `user_id` in the pattern makes it a
+        # non-match rather than a filtered read, so there is no existence oracle.
+        return _to_relation(_props(rows[0]["v"])) if rows else None
+
+    async def invalidate_relation(
+        self, *, user_id: str, relation_id: str, valid_until: datetime | None = None,
+    ) -> Relation | None:
+        # Idempotent by construction: SET overwrites whatever `valid_until` held, so
+        # re-invalidating moves the instant instead of failing.
+        stamp = (valid_until or datetime.now(timezone.utc)).isoformat()
+        cy = f"""
+        MATCH ()-[r:RELATES_TO {{id: {_lit(relation_id)}, user_id: {_lit(user_id)}}}]->()
+        SET r.valid_until = {_lit(stamp)}
+        RETURN r
+        """
+        rows = await self._run(cy)
+        return _to_relation(_props(rows[0]["v"])) if rows else None
+
+    async def recreate_relation(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        predicate: str,
+        object_id: str,
+        source_chapter: str | None = None,
+        valid_from_ordinal: int | None = None,
+    ) -> Relation | None:
+        """Author-asserted: confidence 1.0 and `valid_until` RESURRECTED to NULL.
+
+        MERGE matches on (subject, predicate, object, user) WITHOUT `valid_until`, which is
+        the whole point — matching on it would mint a second edge beside the invalidated one
+        instead of reviving it, and the author's correction would silently not take.
+        """
+        cy = f"""
+        MATCH (s:Entity {{id: {_lit(subject_id)}, user_id: {_lit(user_id)}}})
+        MATCH (o:Entity {{id: {_lit(object_id)}, user_id: {_lit(user_id)}}})
+        MERGE (s)-[r:RELATES_TO {{predicate: {_lit(predicate)}, user_id: {_lit(user_id)}}}]->(o)
+        SET r.id         = coalesce(r.id, {_lit(str(uuid4()))}),
+            r.subject_id = {_lit(subject_id)},
+            r.object_id  = {_lit(object_id)},
+            r.confidence = 1.0,
+            r.valid_until = NULL,
+            r.valid_from_ordinal = coalesce({_lit(valid_from_ordinal)}, r.valid_from_ordinal)
+        RETURN r
+        """
+        rows = await self._run(cy)
+        return _to_relation(_props(rows[0]["v"])) if rows else None
+
     async def relations_for(
         self,
         *,
@@ -441,16 +496,24 @@ class AgeGraphStore:
         # not a comparison artifact: a caller would have seen a relation to an entity the
         # author archived.
         peer_live = "p.archived_at IS NULL"
+        # T17 A1 2026-08-13 — the SUPERSEDED filter, which was missing. Neo4j's
+        # `find_relations_for_entity` has always required `r.valid_until IS NULL`; this
+        # adapter did not, so every soft-invalidated edge stayed in ordinary reads. Nothing
+        # saw it: T43's shadow reported 9 of 9 operations AGREEING because no test ever
+        # invalidated an edge and then read it back, and two implementations agree happily
+        # about a case neither one is asked. The conformance rule that found it is
+        # `test_invalidate_hides_the_edge_from_ordinary_reads_and_is_idempotent`.
+        live = "r.valid_until IS NULL"
         out = (
             f"MATCH (a:Entity {{id: {_lit(entity_id)}, user_id: {_lit(user_id)}}})"
             f"-[r:RELATES_TO]->(p:Entity) "
-            f"WHERE p.user_id = {_lit(user_id)} AND {peer_live} AND {conf} AND {window} "
+            f"WHERE p.user_id = {_lit(user_id)} AND {peer_live} AND {live} AND {conf} AND {window} "
             f"RETURN r"
         )
         inc = (
             f"MATCH (p:Entity)-[r:RELATES_TO]->"
             f"(a:Entity {{id: {_lit(entity_id)}, user_id: {_lit(user_id)}}}) "
-            f"WHERE p.user_id = {_lit(user_id)} AND {peer_live} AND {conf} AND {window} "
+            f"WHERE p.user_id = {_lit(user_id)} AND {peer_live} AND {live} AND {conf} AND {window} "
             f"RETURN r"
         )
         parts = {"outgoing": [out], "incoming": [inc], "both": [out, inc]}[direction]

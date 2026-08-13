@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A1` — `get_relation` / `invalidate_relation` / `recreate_relation` on the port + 3 adapters.**
-C1–C4 done; **QC-5 is HELD at its ⏸ POST-REVIEW checkpoint** with `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a PO decision is owed on where `active_rules` comes from for the headless seam. That blocks QC-5 only, so execution continues. **`A0 = T42a` needed no build — it shipped 2026-08-12** (40 passed: 13 rules × 3 adapters + guard); the EXECUTION PLAN's claim that AGE had no behavioural test was STALE, and is retracted in T42a's row. A1 inherits `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` and may close it: `invalidate_relation` is the missing close-an-interval operation. See **▶ EXECUTION PLAN** below.
+**RESUME: `A2` — `get_event` / `archive_event` / `merge_event` / `update_event_fields` on the port + 3 adapters.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (`D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`, PO decision owed on the `active_rules` source). **A0 needed no build** (T42a shipped 2026-08-12). **A1 is DONE:** three relation corrections on the port + 3 adapters, conformance 40 → **52 passed**, and the new rules caught the AGE adapter serving soft-invalidated edges — a divergence T43's shadow called "9 of 9 agreeing" because nothing ever asked it. `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` stays OPEN: `invalidate_relation` closes the WALL-CLOCK interval, the deferral is about the STORY axis, and the fix is `maintain_chain` on the port's write — an A2/A3 decision. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -1956,6 +1956,83 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   stop counting as adapters.
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
+  ---
+  ### ✅ A1 2026-08-13 — the three relation corrections, on the port and all three adapters
+
+  `get_relation` · `invalidate_relation` · `recreate_relation`, added to `GraphStore` and
+  implemented in Fake / Neo4j / AGE, with **four new behavioural rules** in the conformance
+  suite (one body, three adapters):
+
+  ```
+  52 passed  =  17 rules × 3 adapters + 1 non-vacuity guard        (was 40 = 13 × 3 + 1)
+  ```
+
+  They stay three primitives rather than flags on `upsert_relation` for the reason the
+  concrete repo split them: `recreate_relation` RESURRECTS `valid_until` to NULL, and a shared
+  entry point with a boolean would put an extraction re-run one wrong argument away from
+  reviving an edge a human deleted.
+
+  🔴 **THE FIRST RUN FOUND A REAL DIVERGENCE IN THE AGE ADAPTER.** Its `relations_for` never
+  filtered `r.valid_until IS NULL` — Neo4j's `find_relations_for_entity` always has — so
+  **every soft-invalidated edge stayed in ordinary reads**. A correction would appear to work
+  and the edge would keep being served.
+
+  **Nothing saw it, and the reason is the point.** T43's shadow reported *9 of 9 operations
+  agreeing* — because no test ever invalidated an edge and then read it back. **Two
+  implementations agree happily about a case neither one is asked.** A shadow measures
+  agreement; only a conformance rule measures correctness, which is exactly the argument
+  `test_graph_store_conformance.py` opens with.
+
+  🔴 **AND THE BITE CAUGHT MY OWN TEST BEING VACUOUS.** The resurrection rule first asserted
+  `len(live_edges) == 1`. Under the mutation it exists to catch — matching on
+  `valid_until is None`, so recreate mints a second edge instead of reviving — **it stayed
+  green**: the duplicate hides behind the very filter that hides the invalidated original, so
+  the count is 1 either way. `get_relation` is the one port read that can SEE an invalidated
+  edge, and asserting *the original row is live again* is the only probe that discriminates.
+
+  ⚠️ An earlier attempt at that same bite reported `1 passed` because the mutation **never
+  applied** — an exact-match replace failed silently on line endings, so the "bite" ran against
+  unmutated code. Re-cut by line number. *A bite whose mutation did not land is a green that
+  means nothing*, and it looks identical to a passing bite.
+
+  **BITE ×2:**
+
+  ```
+  1. AGE relations_for: drop `AND r.valid_until IS NULL`
+     E  AssertionError: an invalidated edge is still served by the default read
+     FAILED …test_invalidate_hides_the_edge…[age]        1 failed, 51 passed
+
+  2. Fake recreate_relation: match `and r.valid_until is None`
+     E  AssertionError: recreate DUPLICATED the arc: the original row is still invalidated…
+     E  assert datetime(2026,1,1,…) is None
+  ```
+
+  ⚠️ **`D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` IS NOT CLOSED, and the RESUME line that said A1
+  would close it was wrong.** `invalidate_relation` stamps `valid_until` — a **datetime**, the
+  wall-clock axis. The deferral is about `valid_to_ordinal` — a **chapter ordinal**, the story
+  axis. Two axes, two closes; conflating them is what T45 exists to prevent, and I conflated
+  them in a run-state line without opening either.
+
+  **What would actually close it, measured:** the concrete `create_relation` already takes
+  `maintain_chain: bool = False`, which re-derives the `valid_to_ordinal` chain via
+  `temporal.maintain_chain` — *the prior containing edge closes at this ordinal*. **No relation
+  writer anywhere sets `valid_to_ordinal` directly**, and that is deliberate: a raw setter would
+  let a caller write an inconsistent chain. So the port needs `maintain_chain` on
+  `upsert_relation`, not a `valid_to_ordinal` parameter — which is a decision about the write
+  path, and belongs to A2/A3 rather than being smuggled in here.
+
+  **QC (a) gates:** `port-adoption-gate` PASS — ceiling **unchanged at 64**, and correctly so:
+  A1 grows the PORT, it migrates no consumer. The ceiling falls in A4, which is where the plan
+  puts it. `db-safety-gate` exit 0.
+  **QC (b) the seam:** N/A — no service code, no HTTP surface; the port and its adapters are
+  in-process. The live proof is the 52-passed run against a real Neo4j and a real AGE container.
+  **QC (c) real data:** the AGE and Neo4j arms wrote and read real edges — which is how the
+  `valid_until` divergence surfaced at all.
+
+  ```
+  4216 passed — knowledge-service unit suite (signature checklist now names all three)
+  ```
+
   69 → 67, `GraphStore` adopters 11 → 13** (batch 2026-08-13: `internal_kg_neighborhood.py`,
   `internal_wiki.py` — both asked the port's own question while reaching past it to the same
   `neo4j_repos` function). The five tests that mocked the repo function went red on the swap and
