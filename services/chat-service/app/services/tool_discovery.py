@@ -1069,6 +1069,33 @@ def tool_list_result(
         payload_all: dict = {"categories": categories, "count": len(tools)}
         _stamp_always_available(payload_all, catalog, None, exclude)
         return _stamp_incomplete(payload_all, unavailable_providers)
+    if category not in CATEGORY_ENUM:
+        # T7-D3 — a category that is not a domain at all must say SO, not report itself empty.
+        #
+        # This function's contract is that `reason` lets a caller "tell 'no tools' from a bad
+        # guess". It could not: both answered the identical string. MEASURED in recorded traffic
+        # 2026-08-13 — the model sent `book}` (a mangled `book`) twice, plus `learning` and
+        # `media`, and each time was told "no tools currently available in this category". The
+        # `book` domain holds 16 current tools, so a single stray brace told the model the
+        # platform has no book tools.
+        #
+        # `category` declares an enum, but a consumer-local tool is dispatched here WITHOUT the
+        # gateway's JSON-schema validation, so an out-of-enum value arrives intact. The enum is
+        # therefore checked at the only layer that sees the call.
+        return _stamp_incomplete(
+            {
+                "category": category,
+                "count": 0,
+                "tools": [],
+                "reason": (
+                    f"unknown category {category!r} — that is not one of the tool domains, so "
+                    "this is a mistyped or invented name rather than an empty domain. Call "
+                    "tool_list again with one of: " + ", ".join(CATEGORY_ENUM) + "."
+                ),
+                "valid_categories": list(CATEGORY_ENUM),
+            },
+            unavailable_providers,
+        )
     tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
     payload: dict = {"category": category, "count": len(tools), "tools": tools}
     held = _excluded_in_scope(catalog, category, exclude)
