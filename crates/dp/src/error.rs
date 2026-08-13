@@ -61,8 +61,19 @@ use crate::TierLevel;
 /// wall-clock type the channel-lifecycle variants carry. All four arrive with
 /// the surfaces that construct them.
 pub const DEFERRED_VARIANTS: &[(&str, &str)] = &[
-    ("WrongWriterNode", "NodeId"),
-    ("WrongChannelWriter", "NodeId"),
+    // `DFO-3` — these two said `NodeId`, and `NodeId` has existed since slice
+    // 4. The rows were right that the variants are unbuildable and wrong about
+    // WHY, and nothing noticed: the oracle checked implemented-XOR-deferred,
+    // which cannot see a reason go stale. It has an arm for it now.
+    //
+    // The real blocker is one column short of the type: both variants carry a
+    // `NodeId` naming who SHOULD hold the write, and `channel_writer_state` is
+    // `(reality_id, channel_id, current_epoch, last_event_id, updated_at)` —
+    // it can say the epoch you presented is stale, and it cannot say who holds
+    // the lease instead. There is no value to put in the field, and inventing
+    // one would be a lie inside an error type.
+    ("WrongWriterNode", "no writer-node column in channel_writer_state"),
+    ("WrongChannelWriter", "no writer-node column in channel_writer_state"),
     ("ChannelPaused", "Timestamp"),
     ("CausalityWaitTimeout", "CausalityToken"),
     ("TurnSlotHeldBy", "ActorId"),

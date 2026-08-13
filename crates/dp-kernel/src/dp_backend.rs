@@ -172,6 +172,31 @@ impl<S: EventStore> KernelReadBackend<S> {
 
 impl<S: EventStore> ReadBackend for KernelReadBackend<S> {
     fn fetch(&self, req: &dp::ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError> {
+        // `DFO-2` — REFUSE a channel-scoped read rather than answer it wrongly.
+        //
+        // The snapshot store is keyed `(reality, aggregate_type, aggregate_id)`
+        // and has no channel dimension. Before the request carried a channel
+        // this backend could not tell the two apart, so a channel-scoped read
+        // was served from the reality-wide snapshot — and two channels holding
+        // the same aggregate id would have returned each other's state, with
+        // nothing anywhere reporting a problem.
+        //
+        // A confident wrong answer is the worst of the three options. Serving
+        // it correctly needs a channel-aware reader, and that belongs with the
+        // first thing that actually reads a channel back rather than being
+        // built now against no consumer.
+        if let Some(ch) = req.channel {
+            return Err(DpError::ChannelDissolved {
+                channel: format!(
+                    "{} is channel-scoped (channel {}), and the snapshot store is keyed by \
+                     (reality, type, id) with no channel dimension — refusing rather than \
+                     returning the reality-wide row",
+                    req.aggregate_type,
+                    ch.get()
+                ),
+            });
+        }
+
         // The id arrives as a VALUE. It used to be recovered with
         // `key.rsplit(':').next()` — which is the anti-pattern this file's own
         // write-side doc condemns, and was wrong besides: a DP-K7 key with a
@@ -362,6 +387,69 @@ mod tests {
         assert_eq!(meta["dp_cache_key"], key, "the DP-K7 key is recorded with the event");
     }
 
+    /// `DFO-2` — a CHANNEL-scoped read is REFUSED, not answered from the
+    /// reality-wide snapshot.
+    ///
+    /// The snapshot store is keyed `(reality, aggregate_type, aggregate_id)`
+    /// and has no channel dimension. Before `ReadRequest` carried a channel
+    /// this backend could not tell a channel read from a reality read, so it
+    /// served one from the other — and two channels holding the same aggregate
+    /// id would have returned each other's state with nothing reporting a
+    /// problem. A confident wrong answer is worse than either alternative.
+    ///
+    /// Kill-mutation: delete the `req.channel` guard and this returns `Ok(None)`
+    /// — a plain miss, indistinguishable from "no such aggregate", which is
+    /// precisely how the wrongness would have stayed invisible.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_channel_scoped_read_is_refused_rather_than_served_from_the_reality_row() {
+        use crate::event_store::shared_test_suite::InMemoryEventStore;
+        use dp::{BindRequest, ControlPlane, KeyId, SessionContext, VerifiedBind};
+
+        // A RealityId cannot be forged (DP-A12) — it comes from a bind, even
+        // here. That is the property, so the test honours it rather than
+        // reaching for a constructor that deliberately does not exist.
+        struct Cp;
+        impl ControlPlane for Cp {
+            fn verify_bind(&self, req: &BindRequest) -> Result<VerifiedBind, DpError> {
+                Ok(VerifiedBind {
+                    reality: req.reality,
+                    session: Uuid::new_v4(),
+                    capability_secret: "s".into(),
+                    expires_at_ms: 10_000,
+                })
+            }
+        }
+        let ctx = SessionContext::bind(
+            &Cp,
+            BindRequest {
+                reality: Uuid::new_v4(),
+                node: "n".into(),
+                service: dp::ServiceIdentity::new("dp-kernel-test").expect("valid"),
+            },
+            0,
+        )
+        .expect("bind");
+
+        let store = Arc::new(InMemoryEventStore::default());
+        let backend = KernelReadBackend::new(store, Uuid::new_v4()).expect("multi-thread runtime");
+
+        let err = backend
+            .fetch(&dp::ReadRequest {
+                reality: ctx.reality_id(),
+                aggregate_type: "chatter_fixture",
+                aggregate_id: KeyId::from(7u64),
+                cache_key: "k",
+                channel: Some(dp::ChannelId::unverified(4)),
+            })
+            .expect_err("a channel-scoped read must be refused by a channel-blind store");
+
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("channel 4") && msg.contains("no channel dimension"),
+            "the refusal names the channel AND why it cannot be served: {msg}"
+        );
+    }
+
     /// THE REGRESSION, through the real backend.
     ///
     /// `fetch` used to take the last segment of the cache key as the aggregate
@@ -412,6 +500,9 @@ mod tests {
                 aggregate_id: KeyId::from(42u64),
                 // The trailing segment is a SUBKEY, not the id.
                 cache_key: "dp:r:r:t2:sub_fixture:42:equipped",
+                // Reality-scoped: this fixture proves the id is a VALUE, not
+                // parsed back out of the key (DFO-2 added the field).
+                channel: None,
             })
             .expect("fetch");
 

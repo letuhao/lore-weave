@@ -33,7 +33,7 @@
 use crate::aggregate::DpAggregate;
 use crate::cache::KeyId;
 use crate::error::DpError;
-use crate::ids::RealityId;
+use crate::ids::{ChannelId, RealityId};
 use crate::scope::RealityScope;
 use crate::session::{Millis, SessionContext};
 use crate::tier::Tier;
@@ -80,6 +80,24 @@ pub struct ReadRequest<'a> {
     pub aggregate_id: KeyId,
     /// The `DP-K7` cache key, for a cache-first backend to try before the store.
     pub cache_key: &'a str,
+    /// The channel this read is addressed to, or `None` for a reality-scoped
+    /// read (`DFO-2`).
+    ///
+    /// # The same gap the WRITE side had, found by fixing that one
+    ///
+    /// [`read_projection_channel`] checked that the session IS in a channel and
+    /// then built a request that could not say WHICH — so a backend could only
+    /// address it through the cache key, and `dp-kernel`'s snapshot reader
+    /// ignores the key and looks up `(reality, aggregate_type, aggregate_id)`.
+    /// A channel-scoped read was therefore servable only by accident, and two
+    /// channels holding the same aggregate id would have collided silently.
+    ///
+    /// Carrying the channel does not by itself make such a read CORRECT — the
+    /// snapshot store has no channel dimension to look in. What it does is make
+    /// the wrongness visible to the backend, which can now refuse instead of
+    /// answering confidently. The reader that serves it belongs with the first
+    /// thing that needs to read a channel back.
+    pub channel: Option<ChannelId>,
 }
 
 pub trait ReadBackend {
@@ -130,6 +148,9 @@ where
         aggregate_type: A::TYPE_NAME,
         aggregate_id: id,
         cache_key: key,
+        // A reality-scoped aggregate has no channel, and the `Scope` bound
+        // above is what makes that a fact rather than a hope.
+        channel: None,
     };
     match backend.fetch(&req)? {
         Some(bytes) => A::decode(&bytes),
@@ -190,6 +211,9 @@ where
         aggregate_type: A::TYPE_NAME,
         aggregate_id: id,
         cache_key: key,
+        // Checked `is_none()` above, so this is the same channel that check
+        // passed on — taken from the context, never from an argument.
+        channel: ctx.current_channel_id(),
     };
     match backend.fetch(&req)? {
         Some(bytes) => A::decode(&bytes),

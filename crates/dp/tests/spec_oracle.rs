@@ -990,6 +990,47 @@ fn dp_error_matches_dp_k3_or_declares_why_not() {
         }
     }
 
+    // `DFO-3` — A BLOCKER THAT IS SATISFIED IS NOT A BLOCKER.
+    //
+    // The arm above only asks whether a reason was WRITTEN. It cannot notice
+    // that the reason stopped being true, and that is not hypothetical: two
+    // rows named `NodeId` as what they waited on, and `NodeId` has existed
+    // since slice 4. The register was checked, green, and wrong — an
+    // implemented-XOR-deferred check tells you a variant is still absent; it
+    // says nothing about WHY, so the why rots unobserved. That is the
+    // "escape hatch cannot reach its reason" shape from `non-vacuity.md`.
+    //
+    // THE LIMIT, STATED: this only covers blockers written as a bare type
+    // name. A prose blocker ("no writer-node column in channel_writer_state")
+    // is exempt, because there is no mechanical subject to look for — it is
+    // held by the non-empty check above and by a reader. Claiming otherwise
+    // would be the costume this standard exists to strip off.
+    let src: String = ["ids.rs", "session.rs", "error.rs", "aggregate.rs", "tier.rs", "scope.rs"]
+        .iter()
+        .map(|f| crlf_free(&format!("src/{f}")))
+        .collect::<Vec<_>>()
+        .join("\n");
+    for (v, blocker) in dp::error::DEFERRED_VARIANTS {
+        let b = blocker.trim();
+        let is_bare_type = !b.is_empty()
+            && b.chars().next().is_some_and(char::is_uppercase)
+            && b.chars().all(|c| c.is_ascii_alphanumeric());
+        if !is_bare_type {
+            continue;
+        }
+        if ["pub struct ", "pub enum ", "pub type "]
+            .iter()
+            .any(|kw| src.contains(&format!("{kw}{b}")))
+        {
+            problems.push(format!(
+                "deferred `{v}` says it waits on `{b}`, and `{b}` EXISTS in this crate. Either \
+                 the variant is now buildable — build it and delete the row — or the row's real \
+                 blocker is something else and the reason has rotted. A register whose reasons \
+                 are stale is a register nobody can act on."
+            ));
+        }
+    }
+
     assert!(
         problems.is_empty(),
         "DP-K3 and crates/dp/src/error.rs disagree:\n  - {}",

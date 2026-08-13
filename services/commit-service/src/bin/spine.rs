@@ -162,11 +162,11 @@ async fn main() -> anyhow::Result<()> {
     let (mut consumed, mut admitted, mut rejected, mut committed) = (0u64, 0u64, 0u64, 0u64);
     // Continues the channel's existing version line rather than colliding at 1.
     let mut aggregate_version: u64 = recovered.aggregate_version;
-    // DP-A17 turn counter for this channel: an APPLIED resolution advances
-    // it; a validator rejection NEVER does (EVT-V4 — "turn_number /
-    // fiction_clock do NOT advance"; the player retries without burning a
-    // turn slot). Seeded 0 = "never advanced".
-    let mut turn_number: u64 = 0;
+    // DP-A17 turn counter: an APPLIED resolution advances it, a rejection
+    // NEVER does (EVT-V4). SEEDED FROM RECOVERY like `aggregate_version` — it
+    // read `= 0` while `WriterRecovery::turn_number` was queried, printed and
+    // dropped, so restarts rewound it (DFO-5; recovered_values_are_consumed).
+    let mut turn_number: u64 = recovered.turn_number;
 
     loop {
         // DP-K10 step 4. The `?` is the mechanism: a REVOKED session comes

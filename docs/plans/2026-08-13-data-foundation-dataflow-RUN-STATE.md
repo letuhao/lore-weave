@@ -143,7 +143,7 @@ All of the following, or 45 turns, whichever comes first:
 | batch | subject | state |
 |---|---|---|
 | ~~`DF1a`~~ | **the write surface's missing half** — `t2_write_channel` / `t3_write_channel`, the scope bounds, `KernelChannelWriteBackend`, and the first production `ChannelTree` | ✅ **CLOSED** — evidence in `§3` |
-| `DF1b-i` | **the SDK cannot carry a DOMAIN EVENT, and every production write in the tier is one.** `KernelChannelWriteBackend` stamps one hardcoded `event_type`, a base64 blob payload and `ruleset_digest: None`. Routing the spine through it as written would be a REGRESSION, not a wiring | ⬜ |
+| ~~`DF1b-i`~~ | **the SDK can name its domain event** — `EVENT_TYPE` + `PAYLOAD_IS_JSON`, both defaulted, backends honour them, non-JSON under the flag REFUSED not wrapped | ✅ **CLOSED** `f4cf8efa3` — row: `event_type npc.said`, `payload {"npc_id":"n-1","utterance":"well met"}` |
 | `DF1b-ii` | **then** the spine's REJECT-COMMIT goes through the SDK, live, with the row pasted from Postgres | ⬜ |
 | `DF2` | **the control plane's three missing tables** — `tier_policy` (`DP-C4`), `schema_version` + `npc_binding` (`DP-C2`). Unblocks 6 of the 8 dead RPCs | ⬜ |
 | `DF3` | **the T0–T2 cache.** `§2.4`'s "direct Redis access" — zero DP crates have it today, so every tier collapses to the durable path and the taxonomy is a comment | ⬜ |
@@ -265,15 +265,94 @@ compiling untouched while letting a production aggregate say what it really writ
 non-object payload under that flag must be a loud REFUSAL, never a fallback to base64. A fallback
 is how `DF1a`'s NULL-channel write stayed silent for a month.
 
+### `DF1b-ii`, designed from measurement — three envelope facts, three owners
+
+Routing the spine through the SDK still drops three things the wire contract needs. Measured who
+actually reads each:
+
+| fact | who reads it | who should OWN it |
+|---|---|---|
+| `ruleset_digest` | `RLS-A13`'s pin; `epoch_activation_live.rs` asserts it | **the writer node** — it is the digest of the rules the island is running, and today every call site must remember to stamp it. A forgotten one is silent |
+| `turn_number` (metadata, decimal STRING per `CWC-A2`) | **`game-server/src/wire/turnOutcome.ts:125`**, which calls it *"authoritative from the COMMIT — never recomputed here"* | **the channel** — `channel_writer_state.last_turn_number` is DB-authoritative, and `ChannelAppended` already returns it |
+| `event_category` (`"T6"` reject, `"T8"` epoch) | `epoch_activation_live.rs:100` asserts it; **removed from the WIRE by `PID-D5`** because reading it off a proposal was a privilege-escalation bug | **the event type** — it is a property of what the event IS, so it belongs beside `EVENT_TYPE` on the aggregate |
+
+**The split is not a workaround, it is a correction.** Today all three are stamped by hand at each
+call site. Moving each to whoever owns the fact makes a forgotten stamp impossible rather than
+merely unlikely — and `RLS-A13`'s digest is exactly the kind of thing that goes missing quietly.
+
+**⚠ And the measurement turned up a live discrepancy to settle first:** `turnOutcome.ts` says
+`turn_number` is *authoritative from the COMMIT*, but the spine stamps it from a LOCAL counter
+(`turn_number` in `bin/spine.rs`) while the DB's value comes back on `ChannelAppended.turn_number`.
+Those are two sources for one number. Whether they can diverge is `DFO-5` — it must be answered
+before the backend starts stamping from the DB, because if they already differ, moving the source
+would change observable behaviour and look like the SDK's fault.
+
+### The four open rows, cleared 2026-08-13 — and one of them was a live bug
+
+| row | outcome |
+|---|---|
+| `DFO-4` | ✅ `proposal.rejected` registered (`0ae3297c4`) + `ProposalRejectedV1`. `go test ./...` ok |
+| `DFO-5` | ✅ **it was a REAL BUG, and the fix already existed** — see below |
+| `DFO-3` | ✅ both blockers corrected, and the oracle got the arm that would have caught them |
+| `DFO-2` | ✅ `ReadRequest.channel` + the backend REFUSES a channel read it cannot serve |
+
+#### `DFO-5` — the fix was written, and never wired to its consumer
+
+`DFO-5` asked whether the spine's `turn_number` could diverge from the DB's. **It diverges on every
+restart**, and the reason is worse than an oversight:
+
+`recovery::WriterRecovery::turn_number` exists *specifically* to fix this. Its own doc comment says
+so, in the past tense: *"`spine` seeded it to 0 on every start, so a restart silently rewound the
+turn number and every client's `turn_number` went backwards … so it is fixed here rather than left
+as a known-broken sibling."*
+
+It was queried from the database, returned, **printed at `services/commit-service/src/bin/spine.rs:123`** — and then line 169 read
+`let mut turn_number: u64 = 0;`. The producer landed; the consumer did not. **The defect survived
+the commit that claimed to have fixed it.** Its sibling one line up, `aggregate_version`, was wired
+correctly, so two adjacent decisions disagreed in a diff nobody re-read — `NV`'s hardest shape.
+
+It is not cosmetic: `game-server/src/wire/turnOutcome.ts:125` reads `meta.turn_number` and calls it
+*"authoritative from the COMMIT — never recomputed here"* before rendering it.
+
+**The mechanism** is `services/commit-service/tests/recovered_values_are_consumed.rs`: it parses
+`WriterRecovery`'s fields out of the struct (not a hand-written list — a second list is a second
+place to forget) and fails if the spine never READS one outside a `println!`. Bitten by restoring
+the original bug: `produces ["turn_number"], and bin/spine.rs never READS it`, restore byte-exact,
+green.
+
+#### `DFO-3` — a blocker that is satisfied is not a blocker
+
+Two `DEFERRED_VARIANTS` rows said they waited on `NodeId`, which has existed since slice 4. The
+existing arm only asked whether a reason was *written*; an implemented-XOR-deferred check cannot see
+a reason go stale. **The new arm red on both rows on the live tree the moment it was added** — that
+is its bite, unstaged. The real blocker is one column short of the type: `channel_writer_state` can
+say your epoch is stale and cannot say who holds the lease, so `expected: NodeId` has no value to
+carry. The arm's limit is stated in the code: it covers blockers written as a bare type name; a
+prose blocker has no mechanical subject and is held by the non-empty check and a reader.
+
+#### `DFO-2` — the read side got the address, and an honest refusal
+
+`ReadRequest.channel` now carries what `read_projection_channel` already verified. The snapshot
+store has **no channel dimension**, so `KernelReadBackend` cannot serve a channel read — it now
+REFUSES, naming the channel and why, instead of returning the reality-wide row. Two channels holding
+one aggregate id would previously have returned each other's state in silence. Bitten: neutering the
+guard turns the refusal into `Ok(None)`, a plain miss indistinguishable from "no such aggregate",
+which is exactly how the wrongness stayed invisible.
+
+**Green at close:** `dp` + `dp-kernel` **444 passed / 0 failed across 17 suites** against live
+Postgres.
+
 ---
 
 ## 4 · OPEN ROWS — each must carry a MECHANISM, not prose
 
 | id | what | mechanism / what would settle it |
 |---|---|---|
-| `DFO-4` | **`proposal.rejected` is written by the live spine, read by two projectors, and is NOT in `contracts/events/_registry.yaml`** (16 entries; it is absent, as is `dp.write.applied`). So the event validator has no schema for the one domain event this system actually produces in anger | registering it is cheap and in scope for `DF1b-i`, which needs a registered type to point `EVENT_TYPE` at. Recorded separately because it is PRE-EXISTING — found by `DF1b`'s measurement, not caused by it |
-| `DFO-2` | **`ReadRequest` has no channel either.** `read_projection_channel` checks the session IS in a channel, then builds a `ReadRequest` that cannot say WHICH — so the backend addresses it by cache key alone, and `KernelReadBackend` reads snapshots by `(reality, type, id)`, ignoring the key. A channel-scoped read is therefore servable only by accident | the write side's fix is the template: a `channel: Option<ChannelId>` on `ReadRequest`, taken from ctx, plus a channel read backend. Not done here because `DF1` is the WRITE path and a read with no producer to read from would be the orphan shape again — it becomes real the moment `DF5` needs to read back what `DF1b` writes |
-| `DFO-3` | **`DEFERRED_VARIANTS`'s stated blocker for `WrongChannelWriter` is satisfied, and the row is still right.** It names `NodeId`, which has existed since slice 4. The REAL blocker is that `channel_writer_state` has no writer-node column, so the DB can say your epoch is stale but not who holds the lease — `expected: NodeId` has no value to carry. The oracle checks implemented-XOR-deferred and **cannot check that a reason is still the reason** | the corrected blocker is recorded in `dp_channel::channel_err`'s doc comment, where a reader meets it. A mechanism would be an arm asserting each deferred row's blocker type is ABSENT — cheap for a type name, and it would have caught this |
+| `DFO-6` | **`cargo test --workspace` cannot run against ONE database.** `CARGO_RC=101`: **2505 passed / 1 failed**, the one being `rebuilder_round_trip_live_smoke`. Not my diff — no file I touched is in its path, and it references neither the event registry nor `canon_projection`. Two distinct causes, both environmental: (a) `dp_kernel_test` on `infra-postgres-1` has a `vector` CATALOG ROW with no library, so `CREATE EXTENSION IF NOT EXISTS` says *"already exists, skipping"* and every use fails later; (b) the test applies `0002`, which **DROPs `events`** — wiping `content_sha256`, the channel columns, `ruleset_digest` and the turn columns, which is why the channel suite then failed 6 ways. CI gives it its OWN DB for exactly this reason | a dev-side runner that provisions one DB per live suite, mirroring `foundation-ci.yml`'s five. Until then `--workspace` with a single DSN is a trap that reports code failures for a schema someone else dropped |
+| ~~`DFO-5`~~ | ✅ **CLOSED — it was a real bug.** Original: **`turn_number` has two sources.** `turnOutcome.ts:125` calls it *"authoritative from the COMMIT — never recomputed here"*; `bin/spine.rs` stamps it from a local counter, while the DB returns its own on `ChannelAppended.turn_number`. Two sources for one number, and the consumer believes one of them | read both at the same append and compare. A test asserting `metadata.turn_number == ChannelAppended.turn_number` on a live commit would settle it AND keep it settled. Blocks `DF1b-ii`'s move of the stamp to the backend: if they already diverge, moving the source changes behaviour and would look like the SDK's fault |
+| ~~`DFO-4`~~ | ✅ **CLOSED** `0ae3297c4`. Original: **`proposal.rejected` is written by the live spine, read by two projectors, and is NOT in `contracts/events/_registry.yaml`** (16 entries; it is absent, as is `dp.write.applied`). So the event validator has no schema for the one domain event this system actually produces in anger | registering it is cheap and in scope for `DF1b-i`, which needs a registered type to point `EVENT_TYPE` at. Recorded separately because it is PRE-EXISTING — found by `DF1b`'s measurement, not caused by it |
+| ~~`DFO-2`~~ | ✅ **CLOSED** — `ReadRequest.channel` + a refusal the backend can actually make. Original: **`ReadRequest` has no channel either.** `read_projection_channel` checks the session IS in a channel, then builds a `ReadRequest` that cannot say WHICH — so the backend addresses it by cache key alone, and `KernelReadBackend` reads snapshots by `(reality, type, id)`, ignoring the key. A channel-scoped read is therefore servable only by accident | the write side's fix is the template: a `channel: Option<ChannelId>` on `ReadRequest`, taken from ctx, plus a channel read backend. Not done here because `DF1` is the WRITE path and a read with no producer to read from would be the orphan shape again — it becomes real the moment `DF5` needs to read back what `DF1b` writes |
+| ~~`DFO-3`~~ | ✅ **CLOSED** — blockers corrected AND an oracle arm that reds on a satisfied blocker. Original: **`DEFERRED_VARIANTS`'s stated blocker for `WrongChannelWriter` is satisfied, and the row is still right.** It names `NodeId`, which has existed since slice 4. The REAL blocker is that `channel_writer_state` has no writer-node column, so the DB can say your epoch is stale but not who holds the lease — `expected: NodeId` has no value to carry. The oracle checks implemented-XOR-deferred and **cannot check that a reason is still the reason** | the corrected blocker is recorded in `dp_channel::channel_err`'s doc comment, where a reader meets it. A mechanism would be an arm asserting each deferred row's blocker type is ABSENT — cheap for a type name, and it would have caught this |
 | ~~`DFO-1`~~ | ✅ **CLOSED by `DF1a`** — all four write forms now bind `RealityScope`, the two channel forms bind `ChannelScope`, and `tests/ui/write_wrong_scope.rs` + `channel_write_wrong_scope.rs` pin both directions. Original text: **the write side had no `Scope` bound at all.** `read_projection_reality` requires `A: DpAggregate<Scope = RealityScope>` — a wrong-scope read is a **compile error**, and `tests/ui/read_wrong_scope.rs` is that claim executed by rustc. `write_at_tier` bounds `Tier` and **not** `Scope`, and performs no runtime scope check. A channel-scoped aggregate written through `t2_write` is accepted silently | closed by `DF1a` giving the write side both forms with the scope bounds the read side already has, **plus a `tests/ui/write_wrong_scope.rs`** mirroring the read-side trybuild case. Until then the asymmetry is real and undefended |
 
 ---
@@ -288,4 +367,7 @@ is how `DF1a`'s NULL-channel write stayed silent for a month.
 | `DFD-3` | **Two of my five expected-red markers were wrong, and one was wrong in an interesting way.** I wrote each marker from what the mutation *ought* to trigger. For two legs the mutant still Errs — the lazy pool cannot connect — so `expect_err` succeeds and the red is the assertion beneath it. For the ancestors leg, `move_to_channel`'s own cycle check (*"a channel that is its own ancestor is a cycle"*) fires before the witness's assertion — a STRONGER guard than the one that leg aimed at. All three were scored `WRONG-REASON` by the harness's own marker check and corrected against real output. **Without that check all three would have counted as bites**, which is `BDR-50`/`BDR-56` exactly: a red for an unrelated reason is the failure mode that looks most like success. |
 | `DFD-4` | **The bite gate refused to start on a STALE lock** (`exit 2`) left by a `dp-oracle-bite-gate` run I had killed on a 2-minute timeout. The refusal was correct and said exactly what to check; I verified pid 37956 was dead before clearing it rather than deleting the lock on sight. Recorded because §0.6's *"a refusal is exit 2, which is failure evidence, not a passing verification"* met its own case within hours of being written, and because the killed run is itself the hazard: a 2-minute foreground timeout on a harness that needs longer. |
 | `DFD-5` | **I used a heredoc for a patch containing backslash escapes, and bash ate them** — producing a `SyntaxError` from a string literal split across lines. Hazard #5 in `§0.6`, which I wrote into this file this morning, and the eighth recorded instance. Knowing a rule and having it in the file is not the same as following it: **intent is not a mechanism**, which is the standards index's own sentence, arriving here about me. |
+| `DFD-6` | **The task notification said "exit code 0" and cargo had exited 101.** The notification reports the WRAPPER's status, not the process's. `§0.6`'s first hazard — *read the process's REAL exit code, never a task notification's* — met its own case, and only because I went looking for the number instead of accepting the summary. Had I trusted it, "workspace green" would have gone into the evidence with 1 failure in it. |
+| `DFD-7` | **I ran the whole workspace against ONE database and it destroyed the schema.** `rebuilder_live` applies `0002`, which DROPs `events`; every later `ALTER TABLE` column went with it, and the channel suite then failed six ways with `column "content_sha256" does not exist`. I read that as a possible regression from my own change before measuring. It was self-inflicted environment damage, and CI had the answer in a comment I had already read once: *"it needs its OWN DB"*. |
+| `DFD-8` | **I wrote a test against a struct name I never checked** — `recovery::Recovered`, when it is `WriterRecovery`. The test's own subject-assert caught it on the first run, which is the only reason it was not a check that silently passed on nothing. Then its field parser took the DECLARATION line as a field and reported a confident failure about a phantom named `struct WriterRecovery {`. **Both are `§0.5` — a string that looks like a subject — inside the test written to catch producers with no consumer.** Seventh and eighth instances. |
 | `DFD-1` | **The four days before this file drifted, and no mechanism noticed.** `gate-teeth` and `dp-coverage` were meta-work on the verification layer; `authorable-surface` was the manifest tier; `lore-bible` left the tier entirely and started mapping output onto `progression_kinds` and combat — **features the PO had not finished designing**. Each track individually justified itself, each updated its own board, and nothing held the objective. The `Reconciles:` gate checks that a spec *looked* at the standards index; **no gate asks whether the work is the work that was asked for.** §0.2 is a file, not a gate, and that is a known weaker mechanism — recorded here rather than claimed as solved. |
