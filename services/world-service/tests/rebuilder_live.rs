@@ -146,6 +146,26 @@ fn rebuilder_round_trip_live_smoke() {
         &pool,
         "contracts/migrations/per_reality/0009_canon_projection.up.sql",
     ));
+    // 0016 adds `events.ruleset_digest`, and THE EVENT SOURCE READS IT
+    // (`event_source.rs`'s `EVENT_COLUMNS`). Without it every rebuild failed
+    // with `event source: events row decode: no column found for name:
+    // ruleset_digest` — and the bin printed only `failed=1`, so the reason was
+    // invisible until it was made to print.
+    //
+    // This list is the reason the failure looked environmental for three
+    // rounds: it is a HAND-MAINTAINED subset of a growing migration tree, so a
+    // migration that adds a column the decoder reads breaks this test and
+    // nothing connects the two. `0013` is included for the same class —
+    // `content_sha256` is written by the channel path and a future decoder
+    // change would need it.
+    rt.block_on(apply(
+        &pool,
+        "contracts/migrations/per_reality/0013_events_content_sha256.up.sql",
+    ));
+    rt.block_on(apply(
+        &pool,
+        "contracts/migrations/per_reality/0016_events_ruleset_digest.up.sql",
+    ));
 
     // ══ Case A — pc, single-aggregate, TRUNCATE→rebuild ══════════════════════
     let reality_a = Uuid::new_v4();
