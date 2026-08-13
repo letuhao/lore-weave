@@ -955,6 +955,14 @@
       "cycle": 18,
       "group": "A#1 among unconcluded (0 live, 75 total, 424 calls)",
       "note": "PROVEN with NO defect. The most-called tool in group A (424 calls) and its 75 failures decompose into three explained groups: 28 'mcp tool returned unparseable content' ALL from a single minute (2026-07-09 06:52) on ONE book, 23 the repeat-guard, 9 the blank-argument guard, 7 'book not accessible' and 4 the validator naming a missing book_id. THE UNPARSEABLE BURST IS NOT REPRODUCIBLE AND ITS BOOK NO LONGER EXISTS. Payloads here are genuinely large — up to 97,957 bytes in the recorded corpus — which made a transport truncation the first suspect. Tested directly: the largest ontology on a book this account still owns returns 22,820 bytes and parses cleanly, reporting kinds=15 against a store that holds exactly 15. The book behind the 28 failures is absent from book-service entirely (orphaned glossary rows, the same class as cycle 12's orphaned sharing policies), and asking for it now correctly answers 'book not accessible'. LIVE (session 019ffadc). The first attempt routed to the KNOWLEDGE GRAPH — asked for 'lore categories… kinds and genres' the model called kg_project_list + kg_schema_read, the same domain-hot-set effect cycle 3's OBS-T8 recorded. Told plainly it was the GLOSSARY ontology, it ran tool_list(glossary) -> tool_load(glossary_book_ontology_read) -> the tool itself with a model-derived book_id. DATA (owning store loreweave_glossary.book_kinds): the live call returned kinds ['character','location','unknown'] — EXACTLY the store's three codes for that book — plus 1 genre. FALSIFIER: any extra or missing code would refute it; there are none. SHIP - refusals and the ambient contract swept. A missing book_id gives 'book_id is required (a UUID)', the fail-closed message; a non-UUID gives the same; a stranger gets 'book not accessible'. AND THE AMBIENT HALF ACTUALLY WORKS: with book_id omitted but X-Book-Id set, the call succeeds and returns the same three kinds — so this tool's OPTIONAL book_id is correctly paired with real envelope resolution, which is exactly the pairing cycle 10's T10-D1 found MISSING on three of its siblings. It is one of the six that had it right. A book with no ontology returns its single kind rather than erroring."
+    },
+    "book_get_chapter": {
+      "state": "proven",
+      "provider": "book",
+      "tier": "R (scope book) - DEPRECATED, superseded by book_read",
+      "cycle": 19,
+      "group": "A#1 among unconcluded (0 live, 55 total, 65 calls)",
+      "note": "PROVEN with NO defect, despite an 85% failure rate (55 of 65) — the highest survivor in the cohort after glossary_list_chapter_links. Every failure is ONE call repeated: {book_id: 019f9c91-b02d-…, chapter_id: 019f9c91-b2e7-…}, all on 2026-07-26, split 33 refusals and 22 repeated-failure guards. THE CHAPTER SIMPLY DOES NOT EXIST. Checked in the owning store: no chapter with that id, in any state; the book exists and has exactly ONE chapter. The two ids are DIFFERENT (so this is not the duplicate-identifier family) and the chapter_id shares the book's timestamp prefix `019f9c91-`, which is the signature of an id invented to look plausible rather than read from a list — the 'id invented whole' mode duplicate_identifier's own docstring names. There is nothing to repair: an invented id cannot be resolved, and refusing is the only correct answer. The runtime's per-turn guard bounded each attempt at two, which is why 65 calls became 33 refusals rather than an unbounded loop. LIVE (session 019ffae2), reached the deprecated way: the model resolved both ids via book_structure_read, loaded book_get_chapter by name, and called it — model-derived arguments throughout. DATA (owning store loreweave_book): the returned chapter_id and title 'The Cartographer Wakes' match the pinned falsifier exactly, and the payload carries the real prose (668 bytes of body) plus total_blocks — not just metadata. SHIP - every refusal probed, and the interesting one is the SCOPING. Asked for a chapter that exists but belongs to ANOTHER book, it answers with the SAME message as a chapter that does not exist anywhere ('no active chapter with that chapter_id in this book — check the chapter_id (call book_list kind=chapters for valid ids)'), so a caller cannot use it to discover that a chapter exists elsewhere. A missing chapter_id is refused by the validator naming the property; a non-UUID gets 'chapter_id must be a UUID'; a stranger gets 'book not accessible'. The refusal already names the tool that fixes it, which is the actionable form this loop has repeatedly found missing on its siblings."
     }
   },
   "defects": {
@@ -1247,9 +1255,9 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 18,
+    "tools_concluded": 19,
     "tools_in_cycle": 0,
-    "tools_proven": 16,
+    "tools_proven": 17,
     "tools_blocked": 2,
     "defects_proven": 19,
     "defects_open": 0,
