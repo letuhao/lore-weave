@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B4` — migrate the two remaining LIST readers (`translation/mention_backfill`, `worker-ai/clients`) onto `cast`.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** on a scoping decision (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B3 DONE:** the KAL grew `cast` (declared in the frozen `kal.v1.yaml`), and the first consumer migrated — **`authored-catalog-reader-gate` 9/10 → 8/9**, its first shrink, with a live smoke reading **36 entities, 36 with kind, 36 with description** through gateway → glossary on rebuilt images. B4 takes the two remaining LIST readers, which `cast` already serves. See **▶ EXECUTION PLAN** below.
+**RESUME: `B5` — `worker-ai/clients.py` (LIST + by-ids in one file), then T51/T39/T40 unchain.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B4 DONE:** the KAL grew `cast` (declared in the frozen `kal.v1.yaml`) and two consumers migrated — **`authored-catalog-reader-gate` 10 → 8 call sites**. B4's live smoke caught a bug the unit tests agreed with: the gateway read `cached_aliases` (the by-ids shape) while the LIST endpoint returns `aliases`, so every alias list came back EMPTY — **36 forms → 44** after the fix. `KNOWLEDGE_GATEWAY_URL` was set for no service in compose and is now set for translation-service **and its worker**. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6545,6 +6545,87 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ---
+  ### ✅ B4 2026-08-13 — second consumer migrated, and **the live smoke caught a bug the unit tests could not**
+
+  ```
+  authored-catalog-reader-gate   8 files / 9 call sites  ->  7 files / 8 call sites
+  ```
+
+  `translation-service/app/workers/mention_backfill.py` now drains the KAL's `cast` for its
+  surface forms. `roster` could never have served it — surface forms come from `aliases`, and
+  `roster` is id+name.
+
+  🔴 **THE SMOKE CAUGHT A DEFECT IN B2's OWN CODE, AND THE UNIT TESTS AGREED WITH THE BUG.**
+  First live run through the migrated consumer:
+
+  ```
+  entities with surface forms : 36
+  entities with >1 form       : 0        <- every alias list was EMPTY
+  total surface forms         : 36
+  ```
+
+  36 reads like success — it is exactly the cast size — but **zero aliases on a book whose
+  entities have them**. Cause: the gateway read `e.cached_aliases`, which is the
+  **`entities/by-ids` / select-for-context** shape. The LIST endpoint returns **`aliases`**.
+  Measured directly:
+
+  ```
+  UPSTREAM keys: ['aliases', 'entity_id', 'kind_code', 'name', 'short_description']
+  ```
+
+  **The five B2 specs could not catch it, because I wrote the mock from the same wrong
+  assumption** — a mock and an implementation agreeing about a field neither had checked. This
+  is precisely why the live smoke is a separate QC control and not a nicer way of running the
+  unit tests. After accepting both keys:
+
+  ```
+  entities with surface forms : 36
+  entities with >1 form       : 4        <- aliases now flow
+  total surface forms         : 44
+  ```
+
+  🔧 **And the infrastructure gap under B4 was real.** `KNOWLEDGE_GATEWAY_URL` was set for **no
+  service** in `docker-compose.yml` — B3 only worked because lore-enrichment's own config
+  hard-defaults the URL. translation-service defaults it to **empty**, and its sibling KAL
+  client treats unset as *"feature off, return nothing"*: migrating without configuring it
+  would have silently disabled the read. Set for `translation-service` **and**
+  `translation-worker`.
+
+  ⚠️ **I set it on the service first and forgot the worker** — and `mention_backfill` runs in
+  the WORKER. That is the *"`iso.sh build composition-service` does not rebuild
+  composition-worker"* lesson one layer up: the same split, in compose instead of in a build
+  command. Caught before the smoke, by reading the compose block rather than assuming.
+
+  **The migrated read REFUSES rather than degrading.** An empty form map is not a harmless
+  degrade for a COUNT — every mention count computed from it would be zero, and a backfill
+  writing zeroes looks exactly like a book whose entities are never mentioned.
+
+  **BITE:**
+
+  ```
+  stop reading the LIST endpoint's alias key
+     × carries the fields roster strips — that is the whole reason it exists
+       Expected - 4   (the alias array)
+  ```
+
+  **QC (a) gates:** `authored-catalog-reader-gate` **PASS at 7/8**, baseline shrunk in this
+  commit, `--selftest` passes. `gen-isolated-compose --check` OK — 47 ports / 42 services in
+  sync, so the compose edit did not desync the isolated map.
+  **QC (b) the seam:** `knowledge-gateway`, `translation-service` **and** `translation-worker`
+  rebuilt; env + code `grep`-verified inside both translation containers
+  (`KAL=http://knowledge-gateway:3000`, `cast` present). The numbers above are that smoke.
+  **QC (c) real data:** 36 entities / 44 surface forms from the acceptance book, live.
+
+  ```
+  1170 passed — translation-service
+  Tests: 30 passed — knowledge-gateway
+  ```
+
+  **Eight call sites remain.** Four are `entities/by-ids` (an id LIST — a different question),
+  two are eval scripts on `canon-content`, one is the `assistant.controller` DELETE the baseline
+  already labels as not T38's, and one is `worker-ai/clients.py`, which holds **both** a LIST
+  read and a by-ids read in one file — so its pin cannot come off until both move.
+
   ### ✅ B3 2026-08-13 — first consumer migrated; **the reader gate shrinks for the first time**
 
   ```

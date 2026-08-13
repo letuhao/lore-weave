@@ -170,7 +170,17 @@ export class KalReadController {
       name: e.name ?? e.cached_name ?? null,
       cached_name: e.cached_name ?? e.name ?? null,
       kind: e.kind_code ?? e.kind ?? null,
-      aliases: Array.isArray(e.cached_aliases) ? e.cached_aliases : [],
+      // ⚠️ The LIST endpoint returns `aliases`; `cached_aliases` is the by-ids /
+      // select-for-context shape. The first cut read only `cached_aliases` and every entity
+      // came back with [] — invisible to the unit tests, because the mock was written from the
+      // same wrong assumption. The LIVE SMOKE caught it: 36 entities, 0 with a surface form,
+      // on a book whose entities have them. Both keys are accepted so this read cannot be
+      // broken again by whichever upstream shape it is pointed at.
+      aliases: Array.isArray(e.aliases)
+        ? e.aliases
+        : Array.isArray(e.cached_aliases)
+          ? e.cached_aliases
+          : [],
       short_description: e.short_description ?? null,
     }));
     return {

@@ -36,7 +36,11 @@ describe('KalReadController.cast', () => {
       {
         entity_id: 'e1',
         cached_name: 'Kai',
-        cached_aliases: ['Kai', 'the heir'],
+        // The LIST endpoint's REAL key. The first cut of this mock said
+        // `cached_aliases` (the by-ids shape) and passed against a controller that
+        // read the same wrong key — a mock and an implementation agreeing about a
+        // field neither had checked.
+        aliases: ['Kai', 'the heir'],
         short_description: 'the betrayed heir',
         kind_code: 'character',
       },

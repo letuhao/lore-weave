@@ -669,6 +669,12 @@ services:
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
       # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
       KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
+      # T38 B4 — the KAL base URL. translation-service defaults this to EMPTY in its own
+      # config, and its KAL client treats unset as "feature off, return nothing" — so an
+      # unconfigured var here is a silently disabled read, not an error. It was set for NO
+      # service in this file; lore-enrichment only reached the gateway because its config
+      # hard-defaults the URL. Consumers read entity knowledge through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
       NOTIFICATION_SERVICE_INTERNAL_URL: http://notification-service:8091
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
@@ -813,6 +819,11 @@ services:
       # Phase 4c-α: SDK install. Same host as legacy URL.
       PROVIDER_REGISTRY_INTERNAL_URL: http://provider-registry-service:8085
       GLOSSARY_SERVICE_INTERNAL_URL: http://glossary-service:8088
+      # T38 B4 — the WORKER is where mention_backfill runs, so it needs the KAL URL too.
+      # Setting it on translation-service alone would have left the migrated read refusing
+      # in the only process that calls it — the same class as "iso.sh build the service but
+      # not its worker", one layer up in the stack.
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       # M4a: V3 knowledge layer (relations → pronoun/honorific). Empty disables it.
       KNOWLEDGE_SERVICE_INTERNAL_URL: http://knowledge-service:8092
       RABBITMQ_URL: amqp://loreweave:loreweave_dev@rabbitmq:5672/
