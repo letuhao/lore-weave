@@ -161,3 +161,44 @@ tool (~380 tokens). R2 adds at most one read per advertised write.
 The real risk is **synonym quality**: a tool with sloppy synonyms could force itself hot on
 unrelated turns. That is a lint-able, measurable property — and it is strictly better than the
 current state, where a tool with *perfect* synonyms is dropped anyway.
+
+---
+
+## R2 — the measurement, corrected twice (2026-08-14)
+
+Batch 2 derived five tools in RUNBOOK order and `scengen.py` could not write a prompt for two of
+them: `glossary_propose_new_attribute` and `glossary_list_ai_suggestions` declare no
+`_meta.synonyms`. They were emitted with `needs_prompt` and listed rather than skipped — a tool
+that quietly leaves a batch reads as a tool that passed.
+
+**First hypothesis, refuted.** Both descriptions end "NOTE: superseded by …", and the catalogue
+carries a `superseded_by` meta key on 62 tools. The obvious reading is that synonyms are omitted
+deliberately, so the successor takes the routing. Measured against the live catalogue:
+
+```
+315 tools     87 declare no synonyms     62 marked superseded
+of the 87 with no synonyms:  1 is superseded,  86 are not
+superseded tools that DO declare synonyms:  61
+```
+
+So the deliberate-omission story is wrong: supersession and missing synonyms are almost disjoint.
+61 of the 62 superseded tools still declare synonyms, and 86 tools are genuinely unaddressable by
+the surfacing layer's synonym matching. They cluster hard — **glossary 41, kg 31**, which is 72 of
+the 86 in two providers.
+
+**What that means for R1.** R1's answerability pass matches a request against declared synonyms,
+so it is blind to those 86 by construction: they can never be pulled onto the surface by what the
+user said, only by domain selection or an allowlist. That is the same starvation shape as the two
+shipped incidents, with a different cause — not "withheld by a budget" but "never addressable in
+the first place".
+
+**Why the fix is not "write 86 synonym lists".** That is the allowlist shape again: a hand-written
+list per tool, correct on the day it is written, silently stale after the next rename, and with no
+mechanism that notices. R2 remains a CONTRACT plus a LINT — a tool declares the resource it acts
+on and whether it reads or writes it, the registry refuses a tool that declares neither synonyms
+nor a resource, and the surfacing layer can then answer "which tool answers a question about X"
+without anyone maintaining a phrasebook.
+
+The two batch-2 tools get prompts written from their own DESCRIPTIONS in the meantime, marked
+`prompt_source: description (no synonyms — R2)`, so the batch measures whether the missing
+declaration actually costs reachability rather than assuming it.

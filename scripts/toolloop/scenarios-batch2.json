@@ -1,0 +1,287 @@
+{
+  "scenarios": [
+    {
+      "id": "glossary-propose-new-attribute",
+      "tool_under_test": "glossary_propose_new_attribute",
+      "expect_tool": "glossary_propose_new_attribute",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "__HAND_WRITE_ME__ (glossary_propose_new_attribute declares no synonyms)",
+      "prompt_source": null,
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null,
+      "needs_prompt": true
+    },
+    {
+      "id": "composition-outline-node-edit",
+      "tool_under_test": "composition_outline_node_edit",
+      "expect_tool": "composition_outline_node_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please edit outline node. Rename The Ember Codex chapter to The Ember Codex Opens.",
+      "prompt_source": "_meta.synonyms['edit outline node']",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    },
+    {
+      "id": "glossary-list-ai-suggestions",
+      "tool_under_test": "glossary_list_ai_suggestions",
+      "expect_tool": "glossary_list_ai_suggestions",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "__HAND_WRITE_ME__ (glossary_list_ai_suggestions declares no synonyms)",
+      "prompt_source": null,
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null,
+      "needs_prompt": true
+    },
+    {
+      "id": "glossary-ontology-upsert",
+      "tool_under_test": "glossary_ontology_upsert",
+      "expect_tool": "glossary_ontology_upsert",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please add an attribute. Add a category called Factions for the groups in this world.",
+      "prompt_source": "_meta.synonyms['add an attribute']",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    },
+    {
+      "id": "plan-compile",
+      "tool_under_test": "plan_compile",
+      "expect_tool": "plan_compile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please build plan. Use the plan I already have for this book.",
+      "prompt_source": "_meta.synonyms['build plan']",
+      "needs_target": false,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    }
+  ],
+  "_generator": "scengen.py",
+  "_needs_attention": [
+    {
+      "tool": "glossary_propose_new_attribute",
+      "why": "declares no _meta.synonyms — R1's answerability pass is blind to it too (R2)"
+    },
+    {
+      "tool": "glossary_list_ai_suggestions",
+      "why": "declares no _meta.synonyms — R1's answerability pass is blind to it too (R2)"
+    }
+  ]
+}
