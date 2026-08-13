@@ -46,6 +46,11 @@ command -v python >/dev/null 2>&1 || PY=python3
 # T35 — the derived `Entity.id = hash(name, kind)` gains no new callers while
 # D-T35-OPAQUE-IDENTITY is open. The baseline is the migration checklist.
 "$PY" "$ROOT/scripts/derived-entity-id-gate.py"
+# Plan-row honesty — a `[~]` row whose own block reads as finished. WARNING only (exit 0):
+# ticking a box is a judgement about evidence, and a gate that failed the build over one
+# would push people to tick boxes to get green. Found 3 finished-but-unticked rows on
+# 2026-08-14 (T36, T38, T42a) that had sent a session chasing work already done.
+"$PY" "$ROOT/scripts/plan-row-honesty-gate.py"
 # T38 — the authored-catalog readers can only shrink. The two knowledge gates deliberately
 # EXEMPT this surface (it is the authored source, not the bi-temporal substrate), so before
 # this gate existed T38 had no check that could fail — see D-T38-MECHANISM-IS-VACUOUS.

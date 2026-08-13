@@ -8494,6 +8494,55 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `planned_chapter × EVENT_ORDER_CHAPTER_STRIDE`, plus the close path a plan revision owes
   (§4.2b). The plan can now say a role; nothing yet carries it to the KAL.
 
+
+  ### ✅ plan-row-honesty-gate 2026-08-14 — the OTHER direction of plan dishonesty
+
+  ```
+  gates 99 -> 100      and it found a row on its first real run
+  ```
+
+  `plan-final-verification.py` enforces one direction: a `[~]` row must cite a decision, so a
+  task cannot stay open without one. **Nothing enforced the other**, and on 2026-08-14 three
+  rows were found finished-but-unticked in a single hand scan — T36, T38, T42a, each carrying
+  pasted evidence, retracted deferrals and green bites.
+
+  That is the same disease as the four stale RESUME pointers this plan was restructured to
+  fix, running backwards: **a plan that UNDER-reports its own state sends the next session
+  looking for work that is already done.** I read `[~]` as authoritative and planned three
+  batches that did not need doing.
+
+  🔻 **It is a WARNING gate, exit 0 by default, and that is the design.** It cannot know a row
+  is complete — only that the row's own block reads like it. Ticking a box is a judgement
+  about evidence, and a gate that failed the build over one would push people to tick boxes to
+  get green, which is the exact failure it exists to prevent.
+
+  ✅ **It found T43 on its first run against the real plan**, which my hand scan had missed.
+  T43 is correctly open — the coverage floor still blocks (`cutover_permitted: False`) — but
+  its remainder was buried thirty lines deep under a block of ✅ harness evidence. The row now
+  **states it in the header**, including that this session's ten new port operations each
+  start at zero observations (A12's re-run), and the gate goes quiet. That is the intended
+  workflow: *tick it, or say what is owed.*
+
+  ⚠️ **`gate-wiring-gate` reported "all wired or exempted" while this gate was in NO registry
+  and NOT in the pre-commit hook.** Checked directly (`grep -c` on the hook: 0; absent from
+  `EXEMPT`/`KNOWN_RED`/`NEEDS_STACK`/`TOO_SLOW`) rather than trusted — rule 2 on a gate whose
+  entire job is catching unwired gates. It is wired now, beside `derived-entity-id-gate`, but
+  **the wiring check has a hole worth its own batch**: a gate nobody runs is exactly what that
+  gate exists to prevent, and it said OK.
+
+  **SELFTEST — non-vacuous in BOTH directions**, because a noisy honesty gate gets ignored and
+  that is worse than absent:
+
+  ```
+  SELFTEST PASS — flags a finished-looking open row, stays quiet on one that names owed work
+                  and on an already-ticked row
+  ```
+
+  **QC (a):** ships with `--selftest` in the same commit; all 100 gates green; plan-verify PASS
+  at 42 done / 24 tracked.
+  **QC (b) the seam:** N/A — it reads a markdown file.
+  **QC (c) real data:** the real plan, and it changed a real row.
+
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
   (depends on T38)
@@ -9149,6 +9198,11 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   triage are rare and would diverge silently, and the graph feeds canon checks.
   ⚠️ **Rests on T42a**: a shadow comparison between two unproven adapters measures agreement, not
   correctness. Two adapters can agree by sharing a bug.
+  ⬜ **STILL OWED, stated here because it was buried:** the harness is built and run, but the
+  coverage floor **still blocks** (`cutover_permitted: False`) — id-keyed operations remain
+  uncompared, and **this session added ten port operations** (A7's nine + `facts_for`), each of
+  which starts at zero observations. That is A12's re-run, and **the floor re-blocking is the
+  floor working**, not a regression.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**
