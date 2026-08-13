@@ -171,3 +171,9 @@ an empty string with no error.
 
 The loop ends when every tool in the derived cohort is `proven` or `blocked`. It does not end on a
 count, a report, a handoff, or a question that could have been answered by measuring.
+
+**Context exhaustion is not a stop condition — `/compact` and continue.** The ledger is committed and
+`scripts/toolloop/` re-derives the queue, so every cycle is resumable by construction and compaction
+cannot lose a conclusion. Never end a turn citing context, session length or token spend while a tool
+lacks a conclusion, and never decline the next cycle on the grounds it might not fit. See
+[`AGENTS.md`](../../AGENTS.md) § *Session continuity*.

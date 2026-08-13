@@ -264,6 +264,27 @@ A commit is a **task checkpoint, not a session boundary**. Once code is committe
 - Only mention context at all when it is **genuinely near full (>90% used)**. At normal usage (e.g. a 1M window with most of it free) context is a non-issue — say nothing about it.
 - If compaction is truly needed, run `/compact`. Do not ask the user to restart.
 
+**CONTEXT EXHAUSTION IS NOT A STOP CONDITION — COMPACT AND CONTINUE.** This is the rule above, closed
+against the loophole an agent will otherwise find in it. Running low on context is a reason to
+`/compact`, never a reason to end the turn, hand back, or summarise. Specifically, while work remains:
+
+- **Never** end a turn citing context, session length, elapsed time, token spend, or "this has run a
+  long time". None of those are finish lines, and a final report is still a stop.
+- **Never** decline the next unit of work on the grounds that you "might not finish it". Compaction
+  carries the thread; a durable progress file carries the evidence. Judge whether the work is
+  *sound*, not whether it fits in the window you have left.
+- The one honest exception is a **hard, external** blocker — a service that will not start, a
+  credential you do not have, a decision only the human can make. Record it and continue with
+  whatever is not blocked by it.
+
+🔴 **MEASURED 2026-08-13.** In a tool-hardening run under `/goal`, the agent stopped three times: once
+to deliver a progress report, once with a tool left mid-cycle, and once because it judged its
+remaining context too small to finish a fix "soundly". All three were violations — the goal forbade
+each explicitly — and the third was self-inflicted reasoning, not a real limit: auto-compaction was
+available, and the run's own ledger and derivation scripts were committed precisely so any cycle
+could resume. **When the work is made resumable, compaction is safe by construction; the caution is
+already paid for. Spend it.**
+
 The legitimate stop points are the workflow's own PO checkpoints (CLARIFY end, POST-REVIEW) and the user explicitly saying they're done — nothing else.
 
 ### Long autonomous runs — the GOAL COMMITMENT (anti-drift) — MANDATORY
