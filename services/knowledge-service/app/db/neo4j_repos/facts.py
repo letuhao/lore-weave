@@ -38,6 +38,7 @@ from pydantic import BaseModel, Field
 from app.db.neo4j_helpers import CypherSession, run_read, run_write
 from app.db.neo4j_repos.canonical import canonicalize_entity_name, canonicalize_text
 from app.db.neo4j_repos.temporal import (
+    AS_OF_ORDINAL_PREDICATE,
     MAINTAIN_FACT_CHAIN_CYPHER,
     ORDINAL_OPEN_CEILING,
 )
@@ -55,6 +56,7 @@ __all__ = [
     "get_fact",
     "list_facts_by_type",
     "list_facts_for_entity",
+    "facts_for_subject",
     "invalidate_fact",
     "delete_facts_with_zero_evidence",
     "fact_coverage_for_entity",
@@ -713,6 +715,83 @@ async def list_facts_for_entity(
         include_archived=include_archived,
         limit=limit,
     )
+    return [_node_to_fact(record["f"]) async for record in result]
+
+
+# ── facts_for_subject (T17 A8 / SPEC §1.1) ───────────────────────────
+
+# The fact read the port needs to check `merge_fact` (SPEC §1.1), and NOT a rename of
+# `list_facts_for_entity` above — measured before building: that one windows on
+# `from_order <= before_order` (the READING axis, "established by chapter N") and never
+# touches the half-open story interval. This one applies `AS_OF_ORDINAL_PREDICATE`, the
+# LOCKED shared fragment (§12.3.1), so it answers "what held AT N" — a different question
+# whose whole point is that `maintain_chain` closed the interval.
+#
+# Deliberately UNFILTERED by confidence / pending / archived, unlike the L2-loader reads:
+# this is the port's observation surface for a chain, and a rule that cannot see a
+# low-confidence or quarantined member cannot tell "the chain skipped it" from "the filter
+# hid it". Callers wanting the loader's view already have `list_facts_for_entity`.
+_FACTS_FOR_SUBJECT_HEAD = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $subject_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($type IS NULL OR f.type = $type)
+  AND f.valid_until IS NULL
+RETURN DISTINCT f
+ORDER BY coalesce(f.valid_from_ordinal, $null_sink) ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+# The timed read. `f.valid_from_ordinal IS NOT NULL` is measured REDUNDANT for behaviour and
+# kept anyway. Biting it out left the rule GREEN on both engines, because `NULL <= $n` is
+# already null/false and the row drops out regardless — so the clause buys no exclusion the
+# shared predicate does not already give. What it buys is that a reader meets the rule where
+# the query is, instead of having to know Cypher's three-valued logic to see that positionless
+# facts are excluded at all. The bite that DOES red is readmitting them (`IS NULL OR …`),
+# which is what `test_facts_for_EXCLUDES_a_positionless_fact_from_a_TIMED_read` pins.
+_FACTS_FOR_SUBJECT_AS_OF = """
+MATCH (f:Fact)-[:ABOUT]->(e:Entity {id: $subject_id})
+WHERE f.user_id = $user_id
+  AND e.user_id = $user_id
+  AND ($type IS NULL OR f.type = $type)
+  AND f.valid_until IS NULL
+  AND f.valid_from_ordinal IS NOT NULL
+  AND """ + AS_OF_ORDINAL_PREDICATE.format(a="f") + """
+RETURN DISTINCT f
+ORDER BY f.valid_from_ordinal ASC, f.created_at ASC
+LIMIT $limit
+"""
+
+
+async def facts_for_subject(
+    session: CypherSession,
+    *,
+    user_id: str,
+    subject_id: str,
+    type: str | None = None,
+    as_of: int | None = None,
+    limit: int = 100,
+) -> list[Fact]:
+    """Facts ABOUT one subject, head or as-of. See the port's `facts_for` docstring for
+    why this read exists at all: it is what makes the merge checkable."""
+    if not subject_id:
+        raise ValueError("subject_id must be a non-empty string")
+    if limit <= 0:
+        raise ValueError(f"limit must be positive, got {limit}")
+    cypher = _FACTS_FOR_SUBJECT_HEAD if as_of is None else _FACTS_FOR_SUBJECT_AS_OF
+    params: dict[str, Any] = {
+        "user_id": user_id,
+        "subject_id": subject_id,
+        "type": type,
+        "limit": limit,
+    }
+    if as_of is None:
+        # Positionless facts sort LAST in a head read — they have no place on the axis, so
+        # putting them at the front would misread as "earliest".
+        params["null_sink"] = ORDINAL_OPEN_CEILING
+    else:
+        params["as_of_ordinal"] = as_of
+    result = await run_read(session, cypher, **params)
     return [_node_to_fact(record["f"]) async for record in result]
 
 

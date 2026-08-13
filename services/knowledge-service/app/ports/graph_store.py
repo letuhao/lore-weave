@@ -403,6 +403,40 @@ class GraphStore(Protocol):
         """
         ...
 
+    async def facts_for(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        type: str | None = None,
+        as_of: int | None = None,
+        limit: int = 100,
+    ) -> list[Fact]:
+        """The facts ABOUT one subject — the READ that makes `merge_fact` checkable.
+
+        Written for SPEC §1.1. `merge_fact` has two contracts and the port could verify
+        NEITHER, because it could write a fact and not see one: the ordinal CHAIN is
+        re-derived *after* the merge (so the returned `Fact` predates it, and carries no
+        `subject_id` to identify its family), and DUPLICATION is invisible because the id is
+        content-derived — an appending store returns the same id a merging one does.
+        Detecting either needs a COUNT over the family, which is exactly this.
+
+        `as_of=None` reads the HEAD. With `as_of=N` the same half-open story window every
+        other timed read uses applies — `valid_from_ordinal <= N < valid_to_ordinal` — and a
+        POSITIONLESS fact is EXCLUDED, for the reason `relations_for` states: it cannot be
+        placed on the axis, and including it would mix untimed legacy data into an answer
+        whose entire value is that it is timed.
+
+        `type=None` reads every type on the subject. Ordered oldest-first by
+        `valid_from_ordinal` so the chain reads as a chain; a head read that includes
+        positionless facts sorts those last, since they have no place on the axis.
+
+        This does NOT give a caller a way to SET `valid_to_ordinal`, and that stays
+        deliberate (SPEC §1.1): a raw setter lets a caller write an inconsistent chain.
+        `maintain_chain` is the close; this is how you check it worked.
+        """
+        ...
+
     # ── status ───────────────────────────────────────────────────────
 
     async def add_evidence(

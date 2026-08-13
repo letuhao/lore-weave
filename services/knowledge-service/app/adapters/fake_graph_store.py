@@ -398,6 +398,47 @@ class FakeGraphStore:
                 f.valid_to_ordinal = nxt
         return fact
 
+    async def facts_for(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        type: str | None = None,
+        as_of: int | None = None,
+        limit: int = 100,
+    ) -> list[Fact]:
+        """Facts ABOUT one subject (SPEC §1.1) — the read that makes the merge checkable.
+
+        The subject comes from `_fact_subject`, the same side table `merge_fact` writes and
+        its chain maintenance reads: `Fact` itself carries no `subject_id` (the real store
+        attaches the subject with an ABOUT edge), which is precisely why a returned `Fact`
+        could never identify its own family.
+        """
+        out = [
+            f for f in self._facts
+            if f.user_id == user_id
+            and self._fact_subject.get(f.id) == subject_id
+            and (type is None or f.type == type)
+            and f.valid_until is None
+        ]
+        if as_of is not None:
+            # Half-open, and POSITIONLESS EXCLUDED — the rule `relations_for` states. A fact
+            # with no ordinal cannot be placed on the axis; admitting it would mix untimed
+            # rows into an answer whose whole value is that it is timed.
+            out = [
+                f for f in out
+                if f.valid_from_ordinal is not None
+                and f.valid_from_ordinal <= as_of
+                and (f.valid_to_ordinal is None or as_of < f.valid_to_ordinal)
+            ]
+            out.sort(key=lambda f: (f.valid_from_ordinal, f.created_at))
+        else:
+            # Positionless facts sort LAST in a head read, not first: they have no place on
+            # the axis, and leading with them would misread as "earliest".
+            out.sort(key=lambda f: (f.valid_from_ordinal is None,
+                                    f.valid_from_ordinal or 0, f.created_at))
+        return out[:limit]
+
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         for e in self._events:
             if e.id == event_id and e.user_id == user_id:

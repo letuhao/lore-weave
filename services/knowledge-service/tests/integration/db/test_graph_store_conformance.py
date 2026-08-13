@@ -780,3 +780,160 @@ async def test_age_REFUSES_the_fact_write_rather_than_answering_wrongly(store):
     with pytest.raises(NotImplementedError, match="D-AGE-FACT-WRITE-UNIMPLEMENTED"):
         await store.merge_fact(user_id=u, project_id=p, type="attribute", content="x",
                                subject_id="e1", from_order=1, maintain_chain=True)
+
+
+# ── facts_for: the read that makes the merge checkable (T17 A8 / SPEC §1.1) ───
+
+#: AGE refuses the fact WRITE but IMPLEMENTS the read (rule 9: raise only what you cannot
+#: honour). So its arm of these rules seeds with raw Cypher and reads back through the port
+#: — otherwise `AgeGraphStore.facts_for` would ship as code no rule can reach.
+_FACT_WRITE_REFUSERS_READ_OK = {"age"}
+
+
+async def _a_subject(store, u, p, name="Kai"):
+    """A REAL entity, because `merge_fact`'s ABOUT edge is conditional on one existing.
+
+    ⚠️ Measured, not assumed: the older fact rules above pass `subject_id="e1"` — a string
+    naming nothing. On Neo4j that MERGEs no `ABOUT` edge at all (the repo doc says *"when
+    given AND the entity exists for this user"*), while the fake records the subject in a
+    side table regardless. Every rule below would therefore have read an empty list from the
+    real adapter and a full one from the fake, and the honest-looking conclusion would have
+    been "Neo4j's facts_for is broken."
+    """
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name=name, kind="character", source_type="chapter")
+    return e.id
+
+
+async def _seed_age_fact(store, u, p, subject, *, fid, type, content,
+                         vfrom=None, vto=None):
+    """Seed one `(:Fact)-[:ABOUT]->(:Entity)` directly, for the adapter whose only fact
+    write refuses. The READ is what is under test; the seed is scaffolding."""
+    vf = "NULL" if vfrom is None else str(vfrom)
+    vt = "NULL" if vto is None else str(vto)
+    await store._run(
+        f"MATCH (e:Entity {{id: '{subject}', user_id: '{u}'}}) "
+        f"MERGE (f:Fact {{id: '{fid}'}}) "
+        f"SET f.user_id = '{u}', f.project_id = '{p}', f.type = '{type}', "
+        f"    f.content = '{content}', f.canonical_content = '{content}', "
+        f"    f.confidence = 0.9, f.valid_from_ordinal = {vf}, f.valid_to_ordinal = {vt} "
+        f"MERGE (f)-[:ABOUT]->(e) RETURN f")
+
+
+@pytest.mark.asyncio
+async def test_facts_for_sees_the_ORDINAL_CHAIN_that_merge_fact_maintained(store):
+    """🔴 **The rule `merge_fact` could not have.** `test_merge_fact_ACCEPTS_maintain_chain…`
+    above says outright that it proves only that the flag does not raise — the chain is
+    re-derived AFTER the merge, so the returned `Fact` predates it and carries no
+    `subject_id` to re-find its family with. Three earlier versions asserted on that stale
+    object and failed on both real adapters for that reason.
+
+    Reading the family back closes it: the earlier fact must be CLOSED at the later one's
+    ordinal, and the later one must be OPEN. An adapter that accepted the flag and closed
+    nothing leaves every fact open forever — every as-of read then answers with the latest
+    value at every position, which is a book with no history reported as a working timeline.
+    """
+    if _which(store) in _FACT_WRITE_REFUSERS_READ_OK:
+        pytest.skip("AGE refuses the fact write — its read arm is covered by the as_of rules")
+    u, p, _ = _ids()
+    subject = await _a_subject(store, u, p)
+    await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                           content="an outer disciple", subject_id=subject,
+                           from_order=10_000, maintain_chain=True)
+    await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                           content="an inner disciple", subject_id=subject,
+                           from_order=40_000, maintain_chain=True)
+
+    chain = await store.facts_for(user_id=u, subject_id=subject, type="attribute")
+    assert [f.valid_from_ordinal for f in chain] == [10_000, 40_000], (
+        "the family did not come back oldest-first on the story axis")
+    assert chain[0].valid_to_ordinal == 40_000, (
+        "the earlier fact was left OPEN — maintain_chain closed no interval")
+    assert chain[1].valid_to_ordinal is None, "the newest fact must stay open"
+
+
+@pytest.mark.asyncio
+async def test_facts_for_COUNTS_so_a_re_merge_cannot_hide_a_duplicate(store):
+    """🔴 **The other rule the port could not express.** `merge_fact`'s id is derived from
+    its content, so an appending store returns the SAME id a merging one does — the bite on
+    that rule confirmed it: forcing the fake to always create reds nothing. Duplication is
+    only visible as a COUNT over the family, which needs a read.
+    """
+    if _which(store) in _FACT_WRITE_REFUSERS_READ_OK:
+        pytest.skip("AGE refuses the fact write — its read arm is covered by the as_of rules")
+    u, p, _ = _ids()
+    subject = await _a_subject(store, u, p)
+    for _ in range(3):
+        await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="wields the frost blade", subject_id=subject,
+                               from_order=10_000)
+    facts = await store.facts_for(user_id=u, subject_id=subject, type="attribute")
+    assert len(facts) == 1, (
+        f"three merges of one content produced {len(facts)} facts — the store APPENDS")
+
+
+@pytest.mark.asyncio
+async def test_facts_for_as_of_is_HALF_OPEN_at_the_boundary_chapter(store):
+    """`valid_from <= N < valid_to` — the LOCKED convention (§12.3.1), checked at the exact
+    ordinal where an off-by-one lives. At N = the close, the superseded fact is GONE and its
+    successor has taken over; one chapter earlier it is still the answer. Both directions,
+    because a read that returned everything would pass the first assertion alone.
+    """
+    u, p, _ = _ids()
+    subject = await _a_subject(store, u, p)
+    if _which(store) in _FACT_WRITE_REFUSERS_READ_OK:
+        await _seed_age_fact(store, u, p, subject, fid=f"f-old-{subject}",
+                             type="attribute", content="an outer disciple",
+                             vfrom=10_000, vto=40_000)
+        await _seed_age_fact(store, u, p, subject, fid=f"f-new-{subject}",
+                             type="attribute", content="an inner disciple",
+                             vfrom=40_000, vto=None)
+    else:
+        await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="an outer disciple", subject_id=subject,
+                               from_order=10_000, maintain_chain=True)
+        await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="an inner disciple", subject_id=subject,
+                               from_order=40_000, maintain_chain=True)
+
+    before = await store.facts_for(user_id=u, subject_id=subject, type="attribute",
+                                   as_of=39_999)
+    assert [f.content for f in before] == ["an outer disciple"], (
+        "one ordinal BEFORE the close, the superseded fact must still be the answer")
+    at = await store.facts_for(user_id=u, subject_id=subject, type="attribute",
+                               as_of=40_000)
+    assert [f.content for f in at] == ["an inner disciple"], (
+        "AT the close the interval is already shut — half-open, not inclusive")
+
+
+@pytest.mark.asyncio
+async def test_facts_for_EXCLUDES_a_positionless_fact_from_a_TIMED_read(store):
+    """The same rule `relations_for` states, on the other node type: a fact with no ordinal
+    cannot be placed on the axis, so a timed read must not return it — while a HEAD read
+    must, or the chat-tool and legacy facts silently vanish from the codex.
+
+    Both halves are asserted. A read that dropped positionless facts everywhere would pass
+    the exclusion on its own, and that is the more damaging of the two failures.
+    """
+    u, p, _ = _ids()
+    subject = await _a_subject(store, u, p)
+    if _which(store) in _FACT_WRITE_REFUSERS_READ_OK:
+        await _seed_age_fact(store, u, p, subject, fid=f"f-pos-{subject}",
+                             type="attribute", content="positioned", vfrom=10_000)
+        await _seed_age_fact(store, u, p, subject, fid=f"f-null-{subject}",
+                             type="attribute", content="positionless", vfrom=None)
+    else:
+        await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="positioned", subject_id=subject, from_order=10_000)
+        await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="positionless", subject_id=subject)
+
+    head = {f.content for f in
+            await store.facts_for(user_id=u, subject_id=subject, type="attribute")}
+    assert head == {"positioned", "positionless"}, (
+        "a HEAD read must carry the untimed fact — dropping it hides every chat-tool fact")
+    timed = {f.content for f in
+             await store.facts_for(user_id=u, subject_id=subject, type="attribute",
+                                   as_of=10_000)}
+    assert timed == {"positioned"}, (
+        "a positionless fact leaked into a timed read — untimed data in a timed answer")

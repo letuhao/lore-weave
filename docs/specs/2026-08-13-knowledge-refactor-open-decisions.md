@@ -31,7 +31,7 @@ longer a way to keep it open.
 
 ## 1 · The port
 
-### 1.1 `GraphStore` grows a fact read — **DECIDED**
+### 1.1 `GraphStore` grows a fact read — **DECIDED · ✅ DONE (A8, 2026-08-13)**
 *Replaces `D-PORT-CANNOT-OBSERVE-FACT-STATE`, `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL`.*
 
 ```python
@@ -57,6 +57,18 @@ not close one. It still cannot *set* `valid_to_ordinal` directly, and that stays
 raw setter lets a caller write an inconsistent chain. `maintain_chain` is the close, and
 `facts_for` is how you check it worked.
 
+
+**✅ Built in A8.** `facts_for` is on the port and on all three adapters, with four
+conformance rules (chain · duplication-COUNT · half-open boundary · positionless excluded):
+**72 → 82 passed**. The proof that this was the right read is that A7's vacuous bite —
+forcing the fake's `merge_fact` to always create — now reds `3 == 1` on the COUNT rule while
+still passing the content-keyed-id rule it was written against.
+
+**One thing the decision did not anticipate, resolved under rule 9.** AGE IMPLEMENTS this
+read even though its `merge_fact` raises: rule 9 says an adapter raises what it *cannot*
+honour, and a half-open `WHERE` is not `maintain_chain`. The consequence is stated where it
+bites — no rule can seed AGE *through the port*, so the two as-of rules seed raw Cypher and
+read back through the port, rather than let `AgeGraphStore.facts_for` ship unreachable.
 ### 1.2 The port does **not** own janitorial work — **DECIDED**
 *Replaces `D-MAINTENANCE-IS-NINE-JANITORS`.*
 

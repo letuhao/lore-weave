@@ -186,6 +186,29 @@ def _to_relation(props: dict) -> Relation:
     )
 
 
+def _to_fact(props: dict) -> Fact:
+    return Fact.model_validate(
+        {
+            "id": props.get("id", ""),
+            "user_id": props.get("user_id", ""),
+            "project_id": props.get("project_id"),
+            "type": props.get("type", ""),
+            "content": props.get("content", ""),
+            "canonical_content": props.get("canonical_content", props.get("content", "")),
+            "confidence": props.get("confidence", 0.0),
+            "pending_validation": props.get("pending_validation", False),
+            "source_types": props.get("source_types") or [],
+            "source_chapter": props.get("source_chapter"),
+            "from_order": props.get("from_order"),
+            "valid_from_ordinal": props.get("valid_from_ordinal"),
+            "valid_to_ordinal": props.get("valid_to_ordinal"),
+            "event_date_iso": props.get("event_date_iso"),
+            "predicate": props.get("predicate"),
+            "object": props.get("object"),
+        }
+    )
+
+
 #: How many events `events_page` will scan into Python before refusing. A browse that
 #: silently truncated would report a `total` describing the cap, not the corpus.
 _AGE_BROWSE_SCAN_CAP = 5_000
@@ -766,6 +789,62 @@ class AgeGraphStore:
             "forever, and an as-of read then answers with the latest value at every position — "
             "a book with no history, reported as a working timeline."
         )
+
+    async def facts_for(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        type: str | None = None,
+        as_of: int | None = None,
+        limit: int = 100,
+    ) -> list[Fact]:
+        """Facts ABOUT one subject (SPEC §1.1).
+
+        ⚠️ **THIS ONE IS IMPLEMENTED, AND `merge_fact` DIRECTLY ABOVE IS NOT.** That is not an
+        inconsistency — it is what rule 9 actually says. An adapter raises when it CANNOT
+        honour an operation; AGE cannot honour `merge_fact` because `maintain_chain` needs an
+        ordered window over sibling facts in one statement. This is a plain `WHERE`, the same
+        half-open shape `relations_for` already expresses here. Refusing a read AGE can answer
+        would be a lie in the opposite direction, and it would strand any future AGE fact
+        write behind a second refusal it never earned.
+
+        The cost is stated rather than hidden: **no conformance rule can seed this adapter
+        through the port**, because the only fact write refuses. So the fact rules in
+        `test_graph_store_conformance.py` seed AGE with raw Cypher through `_run` and read
+        back through here — the READ is what is under test, and seeding it any other way
+        would leave this method as untested code shipped green.
+        """
+        if not subject_id:
+            raise ValueError("subject_id must be a non-empty string")
+        type_pred = "true" if type is None else f"f.type = {_lit(type)}"
+        if as_of is None:
+            window = "true"
+        else:
+            # Half-open, POSITIONLESS EXCLUDED — the same convention `relations_for` applies
+            # above, spelled out rather than shared because AGE takes literals, not params.
+            # The `IS NOT NULL` is legibility, not behaviour: biting it out stays green here
+            # too, since AGE's NULL comparison already drops the row. Documented so nobody
+            # deletes it believing they found dead weight, and nobody trusts it as a guard.
+            window = (
+                f"f.valid_from_ordinal IS NOT NULL AND f.valid_from_ordinal <= {_lit(as_of)} "
+                f"AND (f.valid_to_ordinal IS NULL OR {_lit(as_of)} < f.valid_to_ordinal)"
+            )
+        cy = (
+            f"MATCH (f:Fact)-[:ABOUT]->(e:Entity {{id: {_lit(subject_id)}, "
+            f"user_id: {_lit(user_id)}}}) "
+            f"WHERE f.user_id = {_lit(user_id)} AND f.valid_until IS NULL "
+            f"AND {type_pred} AND {window} "
+            f"RETURN f"
+        )
+        facts = [_to_fact(_props(row["v"])) for row in await self._run(cy)]
+        # Ordered in Python, not in Cypher: AGE sorts NULLs first under ASC, which would put
+        # positionless facts at the FRONT of a head read and misread as "earliest". Neo4j's
+        # arm uses a null-sink in the ORDER BY for the same reason — two engines, one order,
+        # which is the whole point of T43 being able to compare them.
+        facts.sort(key=lambda f: (f.valid_from_ordinal is None, f.valid_from_ordinal or 0))
+        return facts[:limit]
+
 
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         cy = f"""

@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A8` — `facts_for` on the port + 3 adapters (SPEC §1.1), then T24b (SPEC §3.1).**
-🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 72**, and the critic now attributes violations to real rule ids.
+**RESUME: `T24b` — wire `VectorStore` into the three readers (SPEC §3.1), so T25 has something to cut over.** ✅ `A8` is DONE (`facts_for` on the port + all three adapters, conformance **72 → 82**).
+🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -2090,7 +2090,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   4216 passed — knowledge-service unit suite
   ```
 
-  ### 🔻 DEFERRAL `D-PORT-CANNOT-OBSERVE-FACT-STATE`
+  ### ~~🔻 DEFERRAL `D-PORT-CANNOT-OBSERVE-FACT-STATE`~~ — ✅ **DISCHARGED by A8 (2026-08-13)**, via SPEC §1.1. `facts_for` is on the port and all three adapters; the *To unblock* row below named exactly the shape that was built. Kept unstruck below because its **Evidence** row is the measurement A8 stands on — `2 passed` on the bite that now reds `3 == 1`.
 
   | | |
   |---|---|
@@ -7353,6 +7353,88 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The TTL that remains on the automaton cache is the visible bound: staleness is capped at 300s and cannot become unbounded while this deferral is open. The LRU has no such bound, which is exactly what makes it the part still owed. |
   | **To unblock** | Choose the digest source: (a) a per-project version counter bumped on entity write — cheapest to read, needs a write-path change; (b) `MAX(updated_at)` over the project's entities — no write-path change, one indexed read per lookup; (c) extend this batch's event-driven invalidation to the LRU as well and drop the digest idea entirely, which is what the TTL cache just demonstrated works. (c) is the smallest and is already proven in-repo. |
   | **Retry when** | The PO picks a source, or accepts (c) — the mechanism this batch shipped — as the answer for both caches. |
+
+
+  ### ✅ A8 2026-08-13 — `facts_for` ships, and **A7's vacuous bite now reds**
+
+  ```
+  conformance   72 -> 82 passed / 13 -> 15 skipped        port-adoption-gate  59 / 17 (unchanged)
+  ```
+
+  A7 ended with a finding rather than a feature: **the port could write a fact and not see
+  one**, so neither of `merge_fact`'s two contracts was checkable. SPEC §1.1 decided the read.
+  This batch builds it — and the proof that it was the right read is that the *exact bite that
+  printed `2 passed` in A7 now fails*:
+
+  ```
+  fake: (f for f in self._facts)  ->  (f for f in [])      # force merge_fact to ALWAYS create
+     A7  test_merge_fact_returns_a_CONTENT_KEYED_id      -> 2 passed   ← VACUOUS
+     A8  test_facts_for_COUNTS_so_a_re_merge_cannot_…    -> E  three merges of one content
+                                                               produced 3 facts — the store APPENDS
+                                                            E  assert 3 == 1
+  ```
+
+  Both rules ran under that one mutation and **the A7 rule still passed**, which is the
+  cleanest possible confirmation that its stated weakness was real and not modesty: a
+  content-derived id cannot distinguish a merge from an append. Only a COUNT can.
+
+  🔧 **AGE IMPLEMENTS THIS ONE, AND `merge_fact` DIRECTLY ABOVE IT STILL RAISES.** That looked
+  like an inconsistency and is what rule 9 actually says: an adapter raises what it *cannot*
+  honour. `maintain_chain` needs an ordered window over siblings in one statement; **this is a
+  plain `WHERE`**, the same half-open shape AGE's `relations_for` already expresses. Refusing a
+  read the engine can answer would be a lie in the other direction, and it would strand a
+  future AGE fact-write behind a second refusal it never earned. The cost is paid rather than
+  hidden: no rule can seed AGE *through the port*, so the two as-of rules seed it with raw
+  Cypher and read back through the port — otherwise `AgeGraphStore.facts_for` would have
+  shipped as code no rule can reach.
+
+  🔴 **THE OLDER FACT RULES POINT AT NOTHING, and copying them would have produced a
+  convincing false red.** They pass `subject_id="e1"` — a string naming no entity. Neo4j's
+  `merge_fact` MERGEs the `ABOUT` edge only *"when given AND the entity exists for this
+  user"*, so on the real adapter **no edge is created at all**, while the fake records the
+  subject in a side table regardless. Every rule below would have read an empty list from
+  Neo4j and a full one from the fake, and the natural conclusion — *"Neo4j's `facts_for` is
+  broken"* — would have been wrong. `_a_subject()` resolves a real entity first. Measured
+  before writing the rules, not after they failed.
+
+  ⚠️ **AND MY OWN BITE DISPROVED MY OWN COMMENT.** Both queries carry an explicit
+  `valid_from_ordinal IS NOT NULL`, which I documented as *"NOT redundant… the explicit
+  statement that a positionless fact is EXCLUDED."* Biting it out left the rule **green on
+  both engines**: `NULL <= $n` is already null/false and the row drops out anyway. The clause
+  is legibility, not behaviour, and both comments now say so — a reader who deletes it has
+  found nothing, and a reader who trusts it as the guard is wrong. The bite that *does* red is
+  readmitting them (`IS NULL OR …`), which is what the rule pins.
+
+  **BITE ×3, each red for its own reason:**
+
+  ```
+  1. neo4j: AS_OF_ORDINAL_PREDICATE -> inclusive `$as_of <= f.valid_to_ordinal`
+     E  AssertionError: AT the close the interval is already shut — half-open, not inclusive
+     E  assert ['an outer disciple', 'an inner disciple'] == ['an inner disciple']
+  2. age:   readmit positionless (`IS NULL OR …`) in the timed window
+     E  AssertionError: a positionless fact leaked into a timed read
+     E  assert {'positioned', 'positionless'} == {'positioned'}
+  3. fake:  force merge_fact to always create        (A7's vacuous bite)
+     E  AssertionError: three merges of one content produced 3 facts — the store APPENDS
+  ```
+
+  **QC (a) gates:** all 99 green; `port-adoption-gate` PASS **unchanged at 59/17** — A8 grows
+  the PORT and migrates no consumer, exactly as A1–A3 and A7 did; the ceiling falls when
+  consumers move. `db-safety-gate` exit 0. plan-verify PASS. No new gate, none owed.
+  **QC (b) the seam:** N/A — port + adapters are in-process, no service code, no HTTP surface.
+  The live proof is 82 conformance rules against a real Neo4j (`lw-neo4j-a8`, throwaway
+  :7999) and a real AGE container (`lw-age-t42a`, :7894).
+  **QC (c) real data:** the Neo4j arm wrote and re-read real `:Fact` nodes and their `ABOUT`
+  edges; the AGE arm read real `:Fact` nodes out of a real AGE graph.
+
+  ```
+  4221 passed — knowledge-service unit suite
+  82 passed, 15 skipped — conformance, all three adapters, CONFORMANCE_REQUIRE_REAL=1
+  ```
+
+  **`D-PORT-CANNOT-OBSERVE-FACT-STATE` is DISCHARGED** — the deferral A7 wrote, closed by the
+  spec section that replaced it (§1.1). ✅ Two rules that could not exist now exist, and one of
+  them reds on the mutation that proved the old one hollow.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

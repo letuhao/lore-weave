@@ -231,6 +231,19 @@ class Neo4jGraphStore:
             event_date_iso=event_date_iso, predicate=predicate, object=object,
             maintain_chain=maintain_chain)
 
+    async def facts_for(
+        self,
+        *,
+        user_id: str,
+        subject_id: str,
+        type: str | None = None,
+        as_of: int | None = None,
+        limit: int = 100,
+    ) -> list[Fact]:
+        return await _facts_repo.facts_for_subject(
+            self._session, user_id=user_id, subject_id=subject_id, type=type,
+            as_of=as_of, limit=limit)
+
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         return await _event_repo.get_event(
             self._session, user_id=user_id, event_id=event_id)
