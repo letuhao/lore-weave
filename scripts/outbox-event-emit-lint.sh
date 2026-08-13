@@ -212,7 +212,12 @@ selftest() {
         seed_tree "$d"
         "$setup" "$d"
         set +e
-        ( run_lint "$d" "services/publisher/" ) >/dev/null 2>&1
+        # The owner ratchet's baseline is a fact about the REAL tree (5 of 18).
+        # A synthetic tree has none of those services, so the production default
+        # would red every probe here for a reason none of them is about. Probes
+        # declare their own expected count; `LW_PROBE_OWNERS` defaults to 0.
+        ( LW_OWNERS_RESOLVABLE="${LW_PROBE_OWNERS:-0}" \
+          run_lint "$d" "services/publisher/" ) >/dev/null 2>&1
         got=$?
         set -e
         rm -rf "$d"
@@ -254,6 +259,11 @@ selftest() {
     # migrations gone: the table check would compare every name against an empty
     # set. That is not a violation, it is an inability to check (GTD-9)
     s_no_migs()   { rm -rf "$1/migrations"; }
+    # GT-OUTBOX-SERVICEMAP's ratchet, both directions. The fixture's owner is
+    # `world-service`; creating that directory makes an owner machine-resolvable,
+    # which is precisely the condition under which the deferred derivation
+    # becomes buildable and the row must be deleted.
+    s_owner_real() { mkdir -p "$1/services/world-service"; }
 
     echo "outbox-event-emit-lint --self-test"
 
@@ -277,6 +287,13 @@ selftest() {
     probe "a MISSING allowlist is misuse, not a pass" 2 s_al_gone
     probe "an unparseable allowlist is misuse, not a pass" 2 s_al_broken
     probe "an EMPTY allowlist is misuse, not a pass" 2 s_al_empty
+
+    # ── GT-OUTBOX-SERVICEMAP: the deferral's own wake-up signal ──────────────
+    probe "an owner becoming machine-resolvable reds (the row is dischargeable)" \
+          1 s_owner_real
+    LW_PROBE_OWNERS=1 \
+        probe "an owner that STOPS resolving reds (the allowlist decaying to prose)" \
+              1 s_none
     probe "zero declared tables is misuse, not a violation" 2 s_no_migs
 
     # reach floor

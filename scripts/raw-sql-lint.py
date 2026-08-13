@@ -445,6 +445,29 @@ def self_test() -> int:
           search_dirs=("services", "sdks", "crates"))
     probe("no files anywhere is misuse, not a pass", 2, {}, seed=False)
 
+    # ── the MECHANISM for GT-RAWSQL-RUST-UNSCANNED ───────────────────────────
+    # An ASSERTED TRIGGER, not a comment. The open row says Rust is unscanned:
+    # 63 `.rs` files under `crates/` and `services/` contain SQL keywords and
+    # `SCAN_EXTS` cannot see any of them. A `# TODO(GT-RAWSQL-...)` beside the
+    # tuple would be prose that happens to live in a source file, which this
+    # repo has ruled is NOT a mechanism -- it certified three prose-only
+    # deferrals before the stripper was fixed.
+    #
+    # So the case reds when the SUBJECT ARRIVES. Add `.rs` and this fails,
+    # pointing at the row that must now be deleted. A deferral that cannot
+    # notice its own discharge is how one gets cited as an open blocker in four
+    # places after it was fixed.
+    if ".rs" in SCAN_EXTS:
+        failures += 1
+        print("  FAIL GT-RAWSQL-RUST-UNSCANNED is DISCHARGED: SCAN_EXTS now covers .rs.\n"
+              "       Delete this case and the row in the gate-teeth run-state, and give the\n"
+              "       Rust leg its own detector cases -- the two live signals do not transfer\n"
+              "       (a `{x}` inside a Rust SQL literal is ambiguous between a format!\n"
+              "       interpolation and a Postgres array literal).")
+    else:
+        print("  ok   GT-RAWSQL-RUST-UNSCANNED still open: SCAN_EXTS is "
+              f"{SCAN_EXTS} — the row has a trigger, not a promise")
+
     if failures:
         print(f"raw-sql-lint --self-test: {failures} rule(s) did not behave")
         return 2

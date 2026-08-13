@@ -527,8 +527,28 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '        if p.name == SELF or p.name.startswith("."):\n            continue',
          "        if False:\n            continue"),
         ("the discovery predicate matches everything",
-         '            if advertised_flag(p.read_text(encoding="utf-8", errors="replace")):',
+         '            if advertised_flag(p.read_text(encoding="utf-8", errors="replace"),\n'
+         '                               shell=p.suffix == ".sh"):',
          "            if True:"),
+        # Shell gates joined discovery on 2026-08-12: four of them advertised a
+        # `--self-test` that NOTHING ran, while `gate-teeth-gate` certified them
+        # on the strength of it. Without this row, reverting the glob to `*.py`
+        # retires 34 self-tests and no mutation notices.
+        ("shell gates dropped from discovery",
+         '    candidates = sorted(list(root.rglob("*.py")) + list(root.rglob("*.sh")))',
+         '    candidates = sorted(root.rglob("*.py"))'),
+        # ...and the shell twin of the prose-is-not-a-proof rule. `_code_only`
+        # runs `ast.parse`, which raises on shell and returns the source
+        # UNCHANGED -- so without `_sh_code_only` every one of these files
+        # certifies off its own `#   foo.sh --self-test` usage header.
+        ("shell comments count as code again",
+         "m = FLAG_RE.search(_sh_code_only(src) if shell",
+         "m = FLAG_RE.search(src if shell"),
+        # Exit 2 is CANNOT-RUN. Conflating it with RED trains people to ignore
+        # the driver; conflating it with a PASS is the skip-reads-as-pass bug.
+        ("a NOTRUN flood reports success",
+         "    if notrun and len(notrun) > max(3, len(scripts) // 10):",
+         "    if False:"),
         # M8 -- the predicate counted a MENTION of the flag as having one. A gate
         # in this tree names it in two comments, has no self-test, was invoked,
         # ignored the flag, exited 0, and was counted green.
@@ -539,14 +559,17 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         # equivalent of BDR-30: a mutation whose target no longer exists applies
         # nowhere and reports green.
         ("the predicate counts prose as code again",
-         "    m = FLAG_RE.search(_code_only(src))",
-         "    m = FLAG_RE.search(src)"),
+         "if shell else _code_only(src))",
+         "if shell else src)"),
         ("the routing to self_test() removed",
          '    mode = _route(args)\n    if mode == "self-test":',
          '    mode = _route(args)\n    if False:'),
+        # The recursion moved off the `for` line when shell gates joined
+        # discovery (2026-08-12); the row now names the half it mutates so it is
+        # not the twin of "shell gates dropped from discovery" one row up.
         ("discovery stops being recursive",
-         '    for p in sorted(root.rglob("*.py")):',
-         '    for p in sorted(root.glob("*.py")):'),
+         'list(root.rglob("*.py"))',
+         'list(root.glob("*.py"))'),
         # Targeted at `main`'s floor, not at the assertion inside `self_test`.
         # Mutating a CASE cannot red the suite it belongs to, so the first
         # version of this row surveyed nothing and reported GREEN — which is how

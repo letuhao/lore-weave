@@ -1,10 +1,46 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — a reality is created over HTTP, and the engine's authorable surface is finally stated (2026-08-11, branch `feat/game-logic`)
+## ▶ GAME BUILD — the gate-teeth board is CLOSED at ZERO, and the audit of it found two HIGH defects (2026-08-13, branch `feat/game-logic`)
 
-**HEAD:** `6b8cbf177` · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `5b11e4a0d` · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — `GATE-TEETH-43`'s next batch, or `G-S3` (give the lore bible a shape).**
+> **▶ DO NEXT — `G-S3` (give the lore bible a shape), or `GT-BITES-NOT-REPRODUCIBLE`.**
+>
+> **`GATE-TEETH` IS CLOSED.** `NO_PROOF_BASELINE` walked **28 → 0** across `GT5`–`GT8`;
+> `gate-teeth-gate` reports *99 CI-invoked gates, 99 with a red-ability proof, 0 held at
+> baseline*, and `--list` shows no unproven gate. ~250 self-test cases and ~180 bite arms
+> over 28 gates, every arm six-step with a byte-exact restore. **Not one of the defects it
+> found was the missing self-test** — five shapes, ~45 instances, the most common being a
+> rule that *could not fail*: `prompt-assembly`'s body-never-stored rule (`grep -n` prefixed
+> `LINENO:`, so `^` never reached the SQL), `deploy-freeze`'s break-glass lifting a security
+> freeze for any class, `sdk-dup` at 55% dead baseline.
+>
+> **Then `/review-impl` audited the board and found two HIGH defects the board itself
+> produced** (see `GTD-48`..`GTD-50` in the run-state):
+>
+> 1. **Zeroing the baseline made `gate-teeth-gate` pass over nothing.** `NO_PROOF_BASELINE`
+>    had been doubling as a reach floor by accident — at 34, an empty discovery gave
+>    `0 != 34` and exited 1; at 0 it prints *"PASS — 0 CI-invoked gate(s)"*. Fixed with an
+>    explicit `CI_GATE_FLOOR`; measured rc=1 at 34, rc=0 at 0.
+> 2. **A CI leg was red for a day.** `lint.yml` runs `deploy-class-check.sh --files
+>    /dev/null`; the new empty-list rule (correctly) errors on exactly that. **The sweep
+>    could not have caught it** — `deploy-class-check` matches neither `*-gate` nor `*-lint`,
+>    and `--run-all` invokes gates *bare*, so no argument-bearing CI invocation is covered.
+>
+> Also fixed: `--verify-proofs`' floor had gone stale **by success** (30, written at a
+> population of 42, against a real 90); four shell gates were certified by a `--self-test`
+> nothing ran (`gate-self-tests` was `.py`-only — discovery 65 → 99); and the two prose-only
+> deferrals gained real mechanisms.
+>
+> **▶ THE ONE THING LEFT, and it is the honest limit of all of the above:**
+> **`GT-BITES-NOT-REPRODUCIBLE`** — `gate-bite-harness`'s `MUTATIONS` table covers **7**
+> gates, none of the 28. The ~180 bite arms that justify every certification on this board
+> ran from an uncommitted scratchpad file and exist only in a transcript. `gate-teeth-gate`
+> detects proofs **structurally** and cannot tell a real self-test from an empty one
+> (`GT-STRUCTURAL-DETECTION`), so the number it publishes rests on those arms. Porting them
+> into the harness is what turns this board's claim into a standing check. Substantial but
+> mechanical, and the harness has found a survivor in every round it has ever run —
+> including three of my own rows, an hour old, during this very audit.
 >
 > **⚠ READ THIS BEFORE PICKING UP THE GATEWAY'S WORLD ROUTE.** I recommended it, and it was
 > **wrong**: it is stage `S8` of a pipeline the PO parked the day it was designed, for build-order

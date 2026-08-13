@@ -83,10 +83,47 @@ FLAG = "--self-test"
 FLAG_RE = re.compile(r"--self[-_]?test\b")
 
 
-def advertised_flag(src: str) -> str | None:
+def advertised_flag(src: str, shell: bool = False) -> str | None:
     """The self-test flag THIS script dispatches on, or `None`."""
-    m = FLAG_RE.search(_code_only(src))
+    m = FLAG_RE.search(_sh_code_only(src) if shell else _code_only(src))
     return m.group(0) if m else None
+
+
+def _sh_code_only(src: str) -> str:
+    """`src` with `#` comments blanked. The shell twin of `_code_only`.
+
+    Needed because `_code_only` runs `ast.parse`, which raises on shell source
+    and then returns it UNCHANGED by design -- permissive is right for python,
+    where the alternative is dropping a gate. For shell it would certify a gate
+    on the strength of a COMMENT: every one of these files documents its own
+    usage in a `#   foo.sh --self-test` header line, so failing open here would
+    mean the flag never has to exist. That is `gate-teeth-gate`'s own
+    prose-is-not-a-proof rule, which cost this repo three false certifications
+    when its docstring stripper had the mirror-image bug.
+
+    A `#` inside a quoted string is left alone; over-stripping is the safe
+    direction here, since the cost is one uncovered gate rather than a false
+    pass, and `MIN_EXPECTED` would notice a collapse.
+    """
+    out = []
+    for line in src.split("\n"):
+        stripped = line.lstrip()
+        if stripped.startswith("#"):
+            out.append("")
+            continue
+        # A trailing comment, only when the `#` is not inside quotes.
+        in_s = in_d = False
+        cut = None
+        for i, ch in enumerate(line):
+            if ch == "'" and not in_d:
+                in_s = not in_s
+            elif ch == '"' and not in_s:
+                in_d = not in_d
+            elif ch == "#" and not in_s and not in_d and (i == 0 or line[i - 1].isspace()):
+                cut = i
+                break
+        out.append(line[:cut] if cut is not None else line)
+    return "\n".join(out)
 
 
 def _code_only(src: str) -> str:
@@ -150,11 +187,28 @@ def discover(root: Path | None = None) -> list[Path]:
     """
     root = root or (REPO / "scripts")
     found = []
+    # `*.py` AND `*.sh`. It was python-only until 2026-08-12, and the gap was
+    # invisible for the usual reason: MOST shell gates run their self-test in
+    # BARE mode, so `gate-wiring-gate --run-all` executed it and the convention
+    # looked total. Measured, four did not -- `alert-rule-validator`,
+    # `dashboard-validator`, `observability-inventory-lint`, `runbook-drift-check`
+    # each advertise `--self-test`, are certified by `gate-teeth-gate` on the
+    # strength of it, and NOTHING ran it. Certified by a flag nobody pulls.
+    #
+    # Fixed here rather than in those four files on purpose: making them
+    # self-test in bare mode would restore the convention without restoring the
+    # GUARANTEE, and the fifth shell gate to diverge would be silent all over
+    # again. `NV-3` -- the scope has to reach a file written tomorrow.
+    #
+    # Nearly free: this invokes ONLY the self-test, which runs on fixtures. The
+    # expensive half of a bare run is the production scan, which is not on this
+    # path.
     # **RECURSIVE**, because the hook's trigger is: `^scripts/.*\.py$` matches
     # `scripts/perf/slo_assert.py`, which has a real `--self-test` -- so staging
     # it fired a driver that then did not look at it. The enumerated-list defect
     # one directory level down.
-    for p in sorted(root.rglob("*.py")):
+    candidates = sorted(list(root.rglob("*.py")) + list(root.rglob("*.sh")))
+    for p in candidates:
         # A DOT-PREFIXED file is not a gate. `gate-bite-harness` mutates a gate
         # by writing `.bite-<name>.py` beside the original -- same directory, so
         # `REPO` still resolves -- and that copy sat in the very directory this
@@ -164,8 +218,17 @@ def discover(root: Path | None = None) -> list[Path]:
         # and scratch copies everywhere else too; none of them are gates.
         if p.name == SELF or p.name.startswith("."):
             continue
+        # `*-smoke.sh` is OUT, and not by my choice: `gate-wiring-gate` draws the
+        # same boundary in its own scope note -- every smoke needs a live stack,
+        # and their absence from CI is tracked as its own deferral rather than
+        # papered over here. Sweeping them in made this driver red for a reason
+        # that has nothing to do with a self-test. A SUFFIX CLASS, not a list of
+        # the two that happened to fail.
+        if p.name.endswith("-smoke.sh"):
+            continue
         try:
-            if advertised_flag(p.read_text(encoding="utf-8", errors="replace")):
+            if advertised_flag(p.read_text(encoding="utf-8", errors="replace"),
+                               shell=p.suffix == ".sh"):
                 found.append(p)
         except OSError:
             continue
@@ -175,7 +238,8 @@ def discover(root: Path | None = None) -> list[Path]:
 def flag_for(p: Path) -> str:
     """The spelling `p` dispatches on. Falls back to the canonical one."""
     try:
-        return advertised_flag(p.read_text(encoding="utf-8", errors="replace")) or FLAG
+        return advertised_flag(p.read_text(encoding="utf-8", errors="replace"),
+                               shell=p.suffix == ".sh") or FLAG
     except OSError:
         return FLAG
 
@@ -189,13 +253,20 @@ def argv_for(p: Path) -> list[str]:
     left it GREEN — `NV-3` ("the scope never reaches it") inside the case
     written to prevent exactly this. Caught by biting it.
     """
+    # A shell gate is run by bash with a REPO-RELATIVE path. Relative is not
+    # cosmetic: handing bash an absolute Windows path eats the backslashes and
+    # the child dies at exit 127, which this driver would report as a failing
+    # self-test rather than as its own bug.
+    if p.suffix == ".sh":
+        return ["bash", p.relative_to(REPO).as_posix(), flag_for(p)]
     return [sys.executable, str(p), flag_for(p)]
 
 
 def run_all(scripts: list[Path], run=None) -> int:
     runner = run or (lambda p, argv: subprocess.run(
         argv, cwd=REPO, capture_output=True, text=True, timeout=CHILD_TIMEOUT_S))
-    failed = []
+    failed: list[str] = []
+    notrun: list[str] = []
     for p in scripts:
         t0 = time.time()
         # **A timeout is a FINDING about that gate, not the end of the run.**
@@ -212,6 +283,16 @@ def run_all(scripts: list[Path], run=None) -> int:
             failed.append(p.name)
             continue
         ms = int((time.time() - t0) * 1000)
+        # **Exit 2 is CANNOT-RUN, not FAILED.** This repo's gates use 2 for
+        # misuse / missing prerequisite (`perf/platform-slo.sh` exits 2 when k6
+        # is absent, having already passed the assertion self-test it CAN run).
+        # Calling that RED trains people to ignore this driver, which is how a
+        # real red gets through. The opposite error is worse and is guarded
+        # below: a NOTRUN must never read as a pass.
+        if out.returncode == 2:
+            notrun.append(p.name)
+            print(f"  NOTRUN {p.name:<42} {ms:>6}ms -> prerequisite missing")
+            continue
         ok = out.returncode == 0
         print(f"  {'ok  ' if ok else 'FAIL'} {p.name:<44} {ms:>6}ms")
         if not ok:
@@ -227,7 +308,18 @@ def run_all(scripts: list[Path], run=None) -> int:
         print(f"\ngate-self-tests: {len(failed)} gate(s) RED — {', '.join(failed)}",
               file=sys.stderr)
         return 1
-    print(f"\ngate-self-tests: {len(scripts)} gate self-tests green")
+    # A NOTRUN is honest exactly once. If most of the suite starts reporting it,
+    # the run has stopped being evidence and is reporting success for a corpus it
+    # never executed — a skip that reads as a pass, which this repo has shipped
+    # twice. The bound is a fraction, not a list, so it survives a gate added
+    # tomorrow.
+    if notrun and len(notrun) > max(3, len(scripts) // 10):
+        print(f"\ngate-self-tests: {len(notrun)} of {len(scripts)} self-tests could not run "
+              f"({', '.join(notrun[:6])}…). That is not a pass — the prerequisites collapsed.",
+              file=sys.stderr)
+        return 1
+    tail = f"; {len(notrun)} NOTRUN ({', '.join(notrun)})" if notrun else ""
+    print(f"\ngate-self-tests: {len(scripts) - len(notrun)} gate self-tests green{tail}")
     return 0
 
 
@@ -383,14 +475,60 @@ def self_test() -> int:
         # skipped — `gate-bite-harness` writes exactly this shape beside the
         # original while it mutates it.
         (tmp / ".bite-has-flag.py").write_text('ap.add_argument("--self-test")', encoding="utf-8")
+        # ── SHELL. Discovery was python-only until 2026-08-12, and four shell
+        # gates were certified by `gate-teeth-gate` off a `--self-test` that
+        # nothing ran.
+        (tmp / "has-flag.sh").write_text(
+            'case "$1" in\n  --self-test) selftest ;;\nesac\n', encoding="utf-8")
+        # ...and the shell half of prose-is-not-a-proof. This is NOT the same
+        # case as `comment-only.py`: `_code_only` runs `ast.parse`, which raises
+        # on shell and then returns the source UNCHANGED by design, so the
+        # python path fails OPEN here. Every one of these files documents itself
+        # with a `#   foo.sh --self-test` usage line, so without `_sh_code_only`
+        # the flag would never have to exist.
+        (tmp / "sh-comment-only.sh").write_text(
+            "#!/usr/bin/env bash\n#   run me with --self-test\necho hi\n", encoding="utf-8")
+        # ...and a smoke is out of scope even carrying a real flag — it needs a
+        # live stack, which is the boundary `gate-wiring-gate` already draws.
+        (tmp / "thing-smoke.sh").write_text(
+            'case "$1" in\n  --self-test) selftest ;;\nesac\n', encoding="utf-8")
         got = {p.name for p in discover(tmp)}
-        want = {"has-flag.py", "nested.py", "argv-dispatch.py"}
+        want = {"has-flag.py", "nested.py", "argv-dispatch.py", "has-flag.sh"}
         if got != want:
             failures += 1
             print(f"  FAIL the predicate selected {got}, want {want}")
         else:
             print("  ok  registration is required, mentioning is not enough, "
-                  "subdirectories are covered")
+                  "subdirectories are covered, shell counts, prose does not")
+
+    # ── exit 2 is CANNOT-RUN: neither a failure nor a pass ────────────────────
+    # A NOTRUN is honest exactly once. `perf/platform-slo.sh` exits 2 when k6 is
+    # absent, having already passed the assertion self-test it CAN run — calling
+    # that RED trains people to ignore this driver. But a run where MOST children
+    # cannot run has stopped being evidence, and reporting it green is the
+    # skip-reads-as-pass bug this repo has shipped twice. Both directions, because
+    # a bound written only for the flood leaves the single case failing the hook.
+    class _Rc:
+        def __init__(self, rc):
+            self.returncode, self.stdout, self.stderr = rc, "", ""
+
+    def _drive(codes):
+        fake = [Path(f"g{i}-gate.py") for i in range(len(codes))]
+        with _cl.redirect_stdout(_io2.StringIO()), _cl.redirect_stderr(_io2.StringIO()):
+            it = iter(codes)
+            return run_all(fake, run=lambda _p, _a: _Rc(next(it)))
+
+    for label, codes, want in (
+        ("one NOTRUN among many green is not a failure", [2] + [0] * 19, 0),
+        ("a NOTRUN flood is not a pass", [2] * 20, 1),
+        ("a real red still fails through the NOTRUN path", [2, 1] + [0] * 18, 1),
+    ):
+        got = _drive(codes)
+        if got != want:
+            failures += 1
+            print(f"  FAIL {label}: rc={got} (want {want})")
+        else:
+            print(f"  ok  {label}")
 
     # And a RED gate must fail the run, with its output shown. `run_all` is
     # driven for real with an injected runner -- the defect one directory over

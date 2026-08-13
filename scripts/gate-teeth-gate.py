@@ -296,6 +296,15 @@ RUNNER_LABEL = "gate-wiring-gate --run-all"
 #: its own fixture is worse than none — it reports coverage of inputs it never read.
 NO_PROOF_BASELINE = 0
 
+#: The floor under `--verify-proofs`. Measured 90 on 2026-08-12 (was 30 against a
+#: then-population of 42). Named rather than inline so the test below can drive it.
+VERIFY_PROOF_FLOOR = 70
+
+#: The floor under `ci_invoked_scripts()`. Measured 99 on 2026-08-12. See the
+#: REACH FLOOR note in `main()` for why zeroing the baseline above created the
+#: need for this, and why it is a floor rather than an equality.
+CI_GATE_FLOOR = 80
+
 #: Scripts CI invokes that are NOT gates and are exempt from the HARD rule, with the reason.
 NOT_A_GATE = {
     # Emits a report consumed by a later step / a human; failure is not its job.
@@ -726,10 +735,17 @@ def verify_proofs(invoked: dict) -> int:
     # It is load-bearing beyond itself: `language-bias-gate`'s baseline-staleness
     # arm lives in ITS `--self-test`, so this step is the only thing that runs it
     # in CI. A vacuous pass here silently retires that arm too.
-    if len(targets) < 30:
-        print(f"FAIL — only {len(targets)} self-test(s) to run (floor 30, measured 42). "
-              f"Discovery or certification collapsed; a run with nothing to verify reports "
-              f"success indistinguishably from a healthy one.")
+    #
+    # 2026-08-12: 30 -> 70. The floor was written when 42 gates carried a proof;
+    # the teeth board took that to 90, and nothing re-measured the floor as the
+    # population it guards more than doubled. A floor is only as good as its
+    # distance from the truth — at 30 against 90 this would have passed with
+    # two-thirds of all certifications gone. A stale floor is the quiet half of
+    # the same defect it exists to catch, and it goes stale by SUCCESS.
+    if len(targets) < VERIFY_PROOF_FLOOR:
+        print(f"FAIL — only {len(targets)} self-test(s) to run (floor {VERIFY_PROOF_FLOOR}, "
+              f"measured 90). Discovery or certification collapsed; a run with nothing to "
+              f"verify reports success indistinguishably from a healthy one.")
         return 1
 
     print(f"gate-teeth-gate --verify-proofs: {len(targets)} advertised self-test(s) RAN and "
@@ -789,6 +805,32 @@ def main() -> int:
             print(f"   scripts/{r}   (workflows: {', '.join(invoked[r])})")
         print("\n   Give it an `exit 1` on findings, or move it out of the gate steps and")
         print("   record it in NOT_A_GATE with the reason.")
+        rc = 1
+
+    # ── REACH FLOOR (GT-F3), and the board that lowered `NO_PROOF_BASELINE` to
+    # zero is what made it necessary.
+    #
+    # Every verdict below is a fact about `invoked`. When `invoked` is EMPTY the
+    # loop above runs zero times, `unproven` is empty, and this printed
+    # *"PASS — 0 CI-invoked gate(s), every one able to return non-zero"*: the
+    # PASSES-OVER-NOTHING shape, in the gate that hunts it.
+    #
+    # It was covered until 2026-08-12, and by ACCIDENT. `NO_PROOF_BASELINE` was
+    # 34, so an empty discovery gave `0 != 34` and exited 1 — the baseline was
+    # doing double duty as a reach floor without saying so, and taking it to zero
+    # retired that second job silently. `NV-4`: an adjacent decision, correct on
+    # its own terms, defeating a guard that depended on it. Measured both ways
+    # before this was written: rc=1 at baseline 34, rc=0 at baseline 0.
+    #
+    # A floor, not an equality — it must not need editing when a gate is added,
+    # only when many are removed. `verify_proofs` grew the same floor for the
+    # same reason, one function over, found by an earlier `/review-impl`; that
+    # fix stopped at the function it was looking at.
+    if len(invoked) < CI_GATE_FLOOR:
+        print(f"FAIL — discovery found only {len(invoked)} CI-invoked gate(s) "
+              f"(floor {CI_GATE_FLOOR}, measured 99). Every verdict here is a statement "
+              f"about that set;\n   an empty one reports success indistinguishably from a "
+              f"healthy tree. Parsing or the workflow layout changed.")
         rc = 1
 
     if len(unproven) != NO_PROOF_BASELINE:

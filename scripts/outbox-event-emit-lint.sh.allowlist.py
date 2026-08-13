@@ -32,6 +32,23 @@ import subprocess
 import sys
 
 
+#: Measured 2026-08-12: 5 of 18 distinct `owner:` values name a real
+#: `services/<name>` directory; the other 13 are prose. Named so the ratchet
+#: above can move in both directions and say WHICH owner changed.
+#: Overridable so the self-test's synthetic trees can drive the ratchet. Their
+#: `services/` dirs do not contain the real owners, so the production default
+#: made every unrelated probe red -- a new rule firing inside cases that are
+#: about something else, which is the fifth time this board has hit that shape.
+#: `+x` (set) rather than truthiness: a probe asserting ZERO resolvable owners
+#: passes "0", and a truthiness test would hand it the production default.
+OWNERS_RESOLVABLE = (int(os.environ["LW_OWNERS_RESOLVABLE"])
+                     if "LW_OWNERS_RESOLVABLE" in os.environ else 5)
+KNOWN_RESOLVABLE = (
+    "auth-service", "migration-orchestrator", "publisher",
+    "usage-billing-service", "world-service",
+)
+
+
 def declared_tables(root: str) -> set[str]:
     dirs = [os.path.join(root, "migrations", "meta"),
             os.path.join(root, "contracts", "migrations", "per_reality")]
@@ -113,6 +130,29 @@ def main(argv: list[str]) -> int:
         if n > 1:
             problems.append(f"event_name {name!r} is claimed by {n} entries — an outbox "
                             f"routing collision")
+
+    # ── the MECHANISM for GT-OUTBOX-SERVICEMAP (a ratchet, both directions) ──
+    # See the module docstring. `OWNERS_RESOLVABLE` is the measured share of
+    # `owner:` values naming a real `services/<name>` directory; the rest are
+    # prose. The derivation both headers advertise is only buildable when that
+    # number is high, so it is the honest wake-up signal for the row.
+    owners = sorted({str(e.get("owner", "")).strip()
+                     for e in entries if isinstance(e, dict) and e.get("owner")})
+    resolvable = sorted(o for o in owners
+                        if os.path.isdir(os.path.join(root, "services", o)))
+    if len(resolvable) > OWNERS_RESOLVABLE:
+        problems.append(
+            f"GT-OUTBOX-SERVICEMAP may be DISCHARGEABLE: {len(resolvable)} of {len(owners)} "
+            f"`owner:` values now name a real services/ dir (was {OWNERS_RESOLVABLE}). "
+            f"If owners are machine-resolvable, build the derivation the headers promise and "
+            f"delete the row — then raise OWNERS_RESOLVABLE. New: "
+            f"{sorted(set(resolvable) - set(KNOWN_RESOLVABLE))}")
+    elif len(resolvable) < OWNERS_RESOLVABLE:
+        problems.append(
+            f"an `owner:` that used to name a real service no longer does "
+            f"({len(resolvable)} of {len(owners)}, was {OWNERS_RESOLVABLE}). The allowlist is "
+            f"decaying toward prose, which is what makes the cross-check underivable. Gone: "
+            f"{sorted(set(KNOWN_RESOLVABLE) - set(resolvable))}")
 
     if problems:
         print("[outbox-emit] FAIL — events_allowlist.yaml integrity:")

@@ -177,3 +177,65 @@ def test_every_ci_invoked_gate_in_this_repo_can_fail():
         and not gtg.has_failure_path(gtg.ROOT / "scripts" / rel)
     ]
     assert toothless == [], f"wired into CI but cannot report a violation: {toothless}"
+
+
+def test_an_empty_discovery_is_a_failure_not_a_clean_bill(monkeypatch, capsys):
+    """`main()` must refuse a run that discovered nothing, and say why.
+
+    Every verdict `main()` prints is a fact about `ci_invoked_scripts()`. When
+    that set is empty the verdict loop runs zero times and the gate printed
+    *"PASS -- 0 CI-invoked gate(s), every one able to return non-zero"* -- the
+    passes-over-nothing shape, in the gate that exists to hunt it.
+
+    It was covered by ACCIDENT until 2026-08-12: `NO_PROOF_BASELINE` was 34, so
+    an empty discovery mismatched the baseline and exited 1. Taking the baseline
+    to 0 made `0 == 0` and retired that second, unstated job. `NV-4` -- an
+    adjacent decision defeating a guard that leaned on it.
+    """
+    monkeypatch.setattr(gtg, "ci_invoked_scripts", dict)
+    monkeypatch.setattr(sys, "argv", ["gate-teeth-gate.py"])
+
+    rc = gtg.main()
+    out = capsys.readouterr().out
+
+    assert rc == 1, "an empty discovery reported success"
+    assert "discovery found only 0" in out, out[-400:]
+    # ...and the old accident must not be what's carrying it: the failure has to
+    # survive the baseline being anything at all.
+    monkeypatch.setattr(gtg, "NO_PROOF_BASELINE", 0)
+    assert gtg.main() == 1
+
+
+def test_the_floor_is_below_the_real_gate_count_but_not_trivially_low():
+    """A floor above the truth reds a healthy tree; one at zero is decoration."""
+    live = len(gtg.ci_invoked_scripts())
+    assert gtg.CI_GATE_FLOOR < live, (
+        f"floor {gtg.CI_GATE_FLOOR} is at or above the live count {live} — it would red "
+        f"a healthy tree")
+    assert gtg.CI_GATE_FLOOR > live // 2, (
+        f"floor {gtg.CI_GATE_FLOOR} would pass with more than half of {live} gates gone")
+
+
+def test_the_verify_proofs_floor_has_not_gone_stale_by_success():
+    """A floor decays when the population it guards GROWS and it does not.
+
+    `VERIFY_PROOF_FLOOR` was 30 when 42 gates carried a built-in self-test. The
+    teeth board took that to 90 and nobody re-measured, so it would have passed
+    with two-thirds of every certification in the repo gone. Nothing said
+    anything, because a stale floor fails only in the direction no one tests.
+
+    This binds the constant to the live count instead of to a memory of it.
+    """
+    certified = [
+        rel for rel in gtg.ci_invoked_scripts()
+        if (gtg.ROOT / "scripts" / rel).exists()
+        and Path(rel).name not in gtg.NOT_A_GATE
+        and (gtg.teeth_proof(rel, gtg.ROOT / "scripts" / rel) or "").startswith("built-in")
+    ]
+    live = len(certified)
+    assert gtg.VERIFY_PROOF_FLOOR < live, (
+        f"floor {gtg.VERIFY_PROOF_FLOOR} is at or above the live count {live} — CI would red "
+        f"on a healthy tree")
+    assert gtg.VERIFY_PROOF_FLOOR > live * 2 // 3, (
+        f"floor {gtg.VERIFY_PROOF_FLOOR} is stale against {live} certified self-test(s): it "
+        f"would pass with a third of them gone. Re-measure it.")
