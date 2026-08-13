@@ -75,6 +75,23 @@ Carried verbatim in force from the journey RUNBOOK:
 3. **The ledger is the progress authority.** Counts are read from its rows, never typed.
 4. **Live smokes that CREATE content use a throwaway book**, never the dogfood book.
 
+   🔴 **A READ-ONLY TOOL DOES NOT MAKE A READ-ONLY TURN — USE A THROWAWAY BOOK FOR EVERY LIVE
+   RUN.** Amended 2026-08-13 after cycle 11 damaged a real chapter. The cycle's tool was
+   `glossary_get_entity` (tier R, reads nothing but the glossary), and the prose asked only to
+   look up a character, so the dogfood book `Mị Đế` looked safe. The model could not find the
+   entity, and instead of failing it reached for an unrelated WRITE: four `book_chapter_save_draft`
+   calls that overwrote chapter 1's prose with *"This is a test."*. All four returned `ok=true`
+   with no confirm card, because `book_chapter_save_draft` carries a standing `allow` in
+   `user_tool_approvals` from 2026-07-11 — the gate was satisfied by a decision made weeks
+   earlier, for a call the author never saw.
+
+   The chapter was restored through the product's own `book_chapter_restore_revision` from the
+   `before assistant save` snapshot the write itself had taken, and the restoration was verified
+   by reading the live body back (author prose present, test string absent). But the rule that
+   would have prevented it is the one above, applied to the TURN rather than the tool: **what
+   the model may do in a turn is bounded by its whole advertised surface plus every standing
+   approval, not by the tier of the tool under test.** Pick the book on that basis.
+
 ---
 
 ## DENOMINATOR — derived, never typed
