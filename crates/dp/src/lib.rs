@@ -81,6 +81,14 @@ pub mod write;
 pub mod scope;
 pub mod tier;
 
+/// The event type an SDK write records when its aggregate names none —
+/// `DP-K5`'s plain state delta (`DF1b-i`).
+///
+/// Public because `dp-kernel`'s backends compare against it to tell "the
+/// aggregate said nothing" from "the aggregate named this", and the same
+/// string literal in two crates is the drift this constant removes.
+pub const DEFAULT_SDK_EVENT_TYPE: &str = "dp.write.applied";
+
 pub use aggregate::{requires_channel, tier_row, DpAggregate, TierRow};
 pub use cache::KeyId;
 pub use error::DpError;

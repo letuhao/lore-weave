@@ -94,6 +94,53 @@ pub trait DpAggregate: Send + Sync + 'static {
     /// `DP-K8`). Must be `snake_case` and stable across releases: it is part of
     /// a cache key, so changing it silently orphans every cached entry.
     const TYPE_NAME: &'static str;
+
+    /// The DOMAIN EVENT a write of this aggregate records (`DF1b-i`).
+    ///
+    /// # Why this exists, and why it is not a second vocabulary
+    ///
+    /// `dp-kernel`'s backends stamped ONE event type on every SDK write, with
+    /// the argument that *"minting an event type per aggregate would put a
+    /// second, unregistered vocabulary next to
+    /// `contracts/events/_registry.yaml`."* That argument is right about
+    /// MINTING and wrong as a reason to have no field at all: every production
+    /// write in the game tier is a NAMED domain event — `proposal.rejected`,
+    /// `turn.resolved`, `ruleset.epoch_activated`, `npc.said` — read by
+    /// projectors that dispatch on the name. An SDK that cannot say which event
+    /// it is writing cannot carry any of them, which is why it carried none.
+    ///
+    /// So this names an event from the EXISTING registry. It does not mint one.
+    ///
+    /// # The default is the generic type, and that is deliberate
+    ///
+    /// An aggregate that is a plain state delta — `DP-K5`'s original model —
+    /// says nothing and gets `dp.write.applied`, exactly as before. Only an
+    /// aggregate that IS a domain event overrides it. Defaulted rather than
+    /// required because eleven impls exist, all of them fixtures, and none of
+    /// them has a registered event to name: making it required would have meant
+    /// eleven fixtures inventing eleven event types, which is the second
+    /// vocabulary the original argument was right to fear.
+    const EVENT_TYPE: &'static str = crate::DEFAULT_SDK_EVENT_TYPE;
+
+    /// Whether [`crate::Encode`] produces the event's JSON body (`DF1b-i`).
+    ///
+    /// `false` — the default — means the backend stores the bytes opaquely,
+    /// base64'd into `{"b64": …}`, which is what every SDK write did before.
+    ///
+    /// `true` means `encode` produced a JSON **object** as UTF-8, and the
+    /// backend stores it AS the payload — which is what a domain event needs,
+    /// because its projector reads named fields and its registry entry declares
+    /// a schema over them.
+    ///
+    /// # A flag rather than sniffing the bytes
+    ///
+    /// The backend could try `serde_json::from_slice` and fall back to base64.
+    /// It must not. A payload that is *accidentally* valid JSON would silently
+    /// change shape, and a domain event whose encoder had a bug would silently
+    /// become an opaque blob its projector skips — the same silence `DF1a`
+    /// found, where a channel-scoped write became a NULL-channel event nobody
+    /// read. Declared intent plus a loud refusal; never a guess.
+    const PAYLOAD_IS_JSON: bool = false;
 }
 
 /// The `DP-R2` tier table, for one aggregate, derived from its types.

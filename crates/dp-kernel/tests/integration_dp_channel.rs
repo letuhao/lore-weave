@@ -50,6 +50,46 @@ impl Encode for Chatter {
     }
 }
 
+/// A channel-scoped aggregate that IS a domain event (`DF1b-i`).
+///
+/// `npc.said` is a REGISTERED type (`contracts/events/_registry.yaml`), chosen
+/// rather than invented: the point of `EVENT_TYPE` is to name an event the
+/// registry already knows, not to mint a second vocabulary.
+struct NpcSaid;
+impl DpAggregate for NpcSaid {
+    type Tier = T2;
+    type Scope = ChannelScope;
+    type Id = Uuid;
+    type Delta = serde_json::Value;
+    type Projection = ();
+    const TYPE_NAME: &'static str = "dp_channel_domain_fixture";
+    const EVENT_TYPE: &'static str = "npc.said";
+    const PAYLOAD_IS_JSON: bool = true;
+}
+impl Encode for NpcSaid {
+    fn encode(d: &serde_json::Value) -> Result<Vec<u8>, DpError> {
+        serde_json::to_vec(d).map_err(|e| DpError::BackendIo(Box::new(e)))
+    }
+}
+
+/// Declares JSON and produces something that is not — the refusal case.
+struct LiesAboutJson;
+impl DpAggregate for LiesAboutJson {
+    type Tier = T2;
+    type Scope = ChannelScope;
+    type Id = Uuid;
+    type Delta = ();
+    type Projection = ();
+    const TYPE_NAME: &'static str = "dp_channel_liar_fixture";
+    const EVENT_TYPE: &'static str = "npc.said";
+    const PAYLOAD_IS_JSON: bool = true;
+}
+impl Encode for LiesAboutJson {
+    fn encode(_d: &()) -> Result<Vec<u8>, DpError> {
+        Ok(b"not json at all".to_vec())
+    }
+}
+
 struct Cp;
 impl ControlPlane for Cp {
     fn verify_bind(&self, req: &BindRequest) -> Result<VerifiedBind, DpError> {
@@ -190,6 +230,97 @@ async fn a_channel_write_through_the_sdk_lands_on_the_channel() {
     assert_eq!(indexed, 1, "the hard uniqueness backstop got its row in the same tx");
 }
 
+/// `DF1b-i` — an aggregate NAMES its domain event, and the row carries it.
+///
+/// Kill-mutations: the backend ignoring `req.event_type` (the row would read
+/// `dp.write.applied` and every projector that dispatches on the name would
+/// skip it) · the backend base64ing a declared-JSON payload (the projector
+/// would find none of its fields).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_domain_event_keeps_its_name_and_its_shape() {
+    let Some(url) = dsn() else {
+        eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — dp channel suite skipped");
+        return;
+    };
+    let pool = pool(&url).await;
+    let reality = Uuid::new_v4();
+    seed_channels(&pool, reality, 1, 2).await;
+
+    let tree = PgChannelTree::new(pool.clone(), reality).expect("multi-thread runtime");
+    let ctx = bind(reality).move_to_channel(&tree, 2, 0).expect("move_to_channel");
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(2))
+        .await
+        .expect("lease");
+    let writer = Arc::new(ChannelWriter::new(pool.clone(), reality, lease));
+    let backend = KernelChannelWriteBackend::new(writer).expect("multi-thread runtime");
+
+    let id = Uuid::new_v4();
+    let key = dp::cache_key!(channel: &ctx, T2, NpcSaid, id).expect("channel key");
+    let body = serde_json::json!({ "npc_id": "n-1", "utterance": "well met" });
+    dp::t2_write_channel::<NpcSaid, _>(&backend, &ctx, 0, KeyId::from(id), &key, 0, body.clone())
+        .expect("write through the SDK");
+
+    let (etype, payload): (String, serde_json::Value) = sqlx::query_as(
+        "SELECT event_type, payload FROM events WHERE reality_id = $1 AND aggregate_id = $2",
+    )
+    .bind(reality)
+    .bind(id.to_string())
+    .fetch_one(&*pool)
+    .await
+    .expect("the event row");
+
+    assert_eq!(etype, "npc.said", "THE CLAIM: the AGGREGATE named the event, not the backend");
+    assert_eq!(payload, body, "the JSON body is the payload, not a base64 blob of it");
+    assert!(payload.get("b64").is_none(), "a declared-JSON payload is never wrapped");
+}
+
+/// An aggregate that declares JSON and encodes something else is REFUSED.
+///
+/// The alternative — storing the bytes base64'd — would put an event on the
+/// channel whose projector silently finds none of its fields. That is `DF1a`'s
+/// NULL-channel write one field over, and it is why this is a refusal rather
+/// than a fallback.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_payload_that_lies_about_being_json_is_refused_not_wrapped() {
+    let Some(url) = dsn() else {
+        eprintln!("[skip] LOREWEAVE_TEST_PG_URL not set — dp channel suite skipped");
+        return;
+    };
+    let pool = pool(&url).await;
+    let reality = Uuid::new_v4();
+    seed_channels(&pool, reality, 1, 2).await;
+
+    let tree = PgChannelTree::new(pool.clone(), reality).expect("multi-thread runtime");
+    let ctx = bind(reality).move_to_channel(&tree, 2, 0).expect("move_to_channel");
+    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(2))
+        .await
+        .expect("lease");
+    let writer = Arc::new(ChannelWriter::new(pool.clone(), reality, lease));
+    let backend = KernelChannelWriteBackend::new(writer).expect("multi-thread runtime");
+
+    let id = Uuid::new_v4();
+    let key = dp::cache_key!(channel: &ctx, T2, LiesAboutJson, id).expect("channel key");
+    let err = dp::t2_write_channel::<LiesAboutJson, _>(
+        &backend, &ctx, 0, KeyId::from(id), &key, 0, (),
+    )
+    .expect_err("a non-JSON payload under PAYLOAD_IS_JSON must be refused");
+    let msg = format!("{err}");
+    assert!(
+        msg.contains("PAYLOAD_IS_JSON") && msg.contains("dp_channel_liar_fixture"),
+        "the refusal names the flag AND the aggregate that lied: {msg}"
+    );
+
+    // And nothing was written — a refused write must not half-land.
+    let (n,): (i64,) =
+        sqlx::query_as("SELECT COUNT(*) FROM events WHERE reality_id = $1 AND aggregate_id = $2")
+            .bind(reality)
+            .bind(id.to_string())
+            .fetch_one(&*pool)
+            .await
+            .expect("count");
+    assert_eq!(n, 0, "the refusal happened BEFORE the append, so no row exists");
+}
+
 /// The tree refuses a dissolved channel rather than resolving it.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn the_tree_refuses_a_dissolved_channel() {
@@ -276,6 +407,8 @@ async fn the_channel_backend_refuses_a_request_with_no_channel() {
             aggregate_id: KeyId::from(Uuid::new_v4()),
             tier: dp::TierLevel::T2,
             cache_key: "k",
+            event_type: dp::DEFAULT_SDK_EVENT_TYPE,
+            payload_is_json: false,
             channel: None,
             payload: &[],
             expected_version: 0,
@@ -318,6 +451,8 @@ async fn the_channel_backend_refuses_another_channels_write() {
             aggregate_id: KeyId::from(Uuid::new_v4()),
             tier: dp::TierLevel::T2,
             cache_key: "k",
+            event_type: dp::DEFAULT_SDK_EVENT_TYPE,
+            payload_is_json: false,
             // Channel 8, while the lease is for channel 7.
             channel: Some(ChannelId::unverified(8)),
             payload: &[],

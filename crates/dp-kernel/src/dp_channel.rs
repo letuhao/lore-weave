@@ -111,12 +111,17 @@ impl WriteBackend for KernelChannelWriteBackend {
             });
         };
 
+        // The refusal message names `DP-Ch14` and NOT the unbuilt symbol, and
+        // that is deliberate: a bare symbol name in a STRING LITERAL is code,
+        // not a comment, so `CHANNEL_SPECIFIED_NOT_BUILT`'s existence check
+        // cannot tell it from an implementation. Writing it here fired that
+        // trigger — correctly. Do not put it back.
         let held = self.writer.lease().channel_id;
         if channel != held {
             return Err(DpError::ChannelDissolved {
                 channel: format!(
                     "{} addressed channel {}, but this backend holds the lease for channel {} \
-                     — cross-channel routing (DP-Ch14 route_to_writer) is not built",
+                     — cross-channel routing (DP-Ch14) is not built",
                     req.aggregate_type,
                     channel.get(),
                     held.get()
@@ -128,7 +133,12 @@ impl WriteBackend for KernelChannelWriteBackend {
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let envelope = EventEnvelope {
             event_id: Uuid::new_v4(),
-            event_type: self.event_type.clone(),
+            // `DF1b-i` — see the sibling in `dp_backend`.
+            event_type: if req.event_type == dp::DEFAULT_SDK_EVENT_TYPE {
+                self.event_type.clone()
+            } else {
+                req.event_type.to_string()
+            },
             event_version: 1,
             aggregate_id: req.aggregate_id.as_str().to_string(),
             aggregate_type: req.aggregate_type.to_string(),
@@ -136,7 +146,11 @@ impl WriteBackend for KernelChannelWriteBackend {
             reality_id: req.reality.as_uuid(),
             occurred_at: now.clone(),
             recorded_at: now,
-            payload: serde_json::json!({ "b64": crate::dp_backend::b64(req.payload) }),
+            payload: crate::dp_backend::event_payload(
+                req.payload,
+                req.payload_is_json,
+                req.aggregate_type,
+            )?,
             metadata: Some(serde_json::json!({
                 "dp_tier": req.tier.as_key(),
                 "dp_cache_key": req.cache_key,

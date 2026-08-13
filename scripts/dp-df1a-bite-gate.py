@@ -77,6 +77,7 @@ B = _load_5b()
 
 WRITE = REPO / "crates" / "dp" / "src" / "write.rs"
 CHAN = REPO / "crates" / "dp-kernel" / "src" / "dp_channel.rs"
+BACK = REPO / "crates" / "dp-kernel" / "src" / "dp_backend.rs"
 SUITE = "integration_dp_channel"
 
 
@@ -197,6 +198,34 @@ LEGS = [
         "        if false && dissolved_at.is_some() {",
         "the_tree_refuses_a_dissolved_channel",
         "must refuse",
+    ),
+    (
+        # `DF1b-i`. Without this the row reads `dp.write.applied` and every
+        # projector that dispatches on the event NAME skips it in silence —
+        # which is how `proposal.rejected` would have vanished from two
+        # consumers had DF1b been wired as originally written.
+        "[dp-kernel] the AGGREGATE names the event, not the backend",
+        CHAN,
+        "            event_type: if req.event_type == dp::DEFAULT_SDK_EVENT_TYPE {",
+        "            event_type: if true {",
+        "a_domain_event_keeps_its_name_and_its_shape",
+        "the AGGREGATE named the event",
+    ),
+    (
+        # `DF1b-i`. The fallback this refuses is the tempting one: store the
+        # bytes base64'd and let the projector cope. It cannot cope — it reads
+        # named fields — so the event lands, does nothing, and reports nothing.
+        "[dp-kernel] a payload that LIES about being JSON is refused, not wrapped",
+        BACK,
+        # The `is_object` arm is NOT the load-bearing one for this witness:
+        # `from_slice` refuses these bytes first, so mutating `is_object`
+        # leaves the witness green and the leg would score "not
+        # load-bearing" — true, and useless. What the witness exercises is
+        # the DECLARATION being honoured at all, so that is what is bitten.
+        "    if !is_json {",
+        "    if true {",
+        "a_payload_that_lies_about_being_json_is_refused_not_wrapped",
+        "must be refused",
     ),
     (
         "[kernel] ancestors EXCLUDE the channel itself",

@@ -108,6 +108,16 @@ pub struct WriteRequest<'a> {
     pub cache_key: &'a str,
     /// The encoded delta.
     pub payload: &'a [u8],
+    /// The domain event this write records (`DF1b-i`), from
+    /// [`DpAggregate::EVENT_TYPE`].
+    ///
+    /// Travels as data for the same reason the tier does: the backend
+    /// dispatches on it at runtime, and the caller's side of the boundary is
+    /// the aggregate's own declaration.
+    pub event_type: &'static str,
+    /// Whether [`Self::payload`] is the event's JSON body rather than opaque
+    /// bytes, from [`DpAggregate::PAYLOAD_IS_JSON`].
+    pub payload_is_json: bool,
     /// The channel this write is addressed to, or `None` for a reality-scoped
     /// write.
     ///
@@ -209,6 +219,8 @@ where
         aggregate_id: id,
         tier: <T as Tier>::LEVEL,
         cache_key: key,
+        event_type: A::EVENT_TYPE,
+        payload_is_json: A::PAYLOAD_IS_JSON,
         // A reality-scoped aggregate has no channel to be addressed to, and
         // the bound above is what makes that a fact rather than a hope.
         channel: None,
@@ -265,6 +277,8 @@ where
         aggregate_id: id,
         tier: <T as Tier>::LEVEL,
         cache_key: key,
+        event_type: A::EVENT_TYPE,
+        payload_is_json: A::PAYLOAD_IS_JSON,
         channel: Some(channel),
         payload: &payload,
         expected_version,

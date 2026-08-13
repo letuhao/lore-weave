@@ -95,7 +95,14 @@ impl<S: EventStore> WriteBackend for KernelWriteBackend<S> {
             chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
         let envelope = EventEnvelope {
             event_id: Uuid::new_v4(),
-            event_type: self.event_type.clone(),
+            // `DF1b-i`: the AGGREGATE names its event. `self.event_type` is the
+            // fallback for an aggregate that says nothing, which is `DP-K5`'s
+            // plain state delta.
+            event_type: if req.event_type == dp::DEFAULT_SDK_EVENT_TYPE {
+                self.event_type.clone()
+            } else {
+                req.event_type.to_string()
+            },
             event_version: 1,
             aggregate_id: req.aggregate_id.as_str().to_string(),
             aggregate_type: req.aggregate_type.to_string(),
@@ -109,7 +116,7 @@ impl<S: EventStore> WriteBackend for KernelWriteBackend<S> {
             // rather than a lossy utf-8 cast: an `Encode` impl is free to
             // produce arbitrary bytes, and silently corrupting a non-utf-8
             // payload would be a data bug that surfaces only on read.
-            payload: serde_json::json!({ "b64": b64(req.payload) }),
+            payload: event_payload(req.payload, req.payload_is_json, req.aggregate_type)?,
             metadata: Some(serde_json::json!({
                 "dp_tier": req.tier.as_key(),
                 "dp_cache_key": req.cache_key,
@@ -181,6 +188,61 @@ impl<S: EventStore> ReadBackend for KernelReadBackend<S> {
 
         Ok(found.map(|rec| rec.snapshot_data.to_string().into_bytes()))
     }
+}
+
+/// The payload an SDK write stores, per `DP-K5` + `DF1b-i`.
+///
+/// # Why a REFUSAL and not a fallback
+///
+/// When the aggregate declares `PAYLOAD_IS_JSON`, its `Encode` promised a JSON
+/// object and a projector downstream reads named fields out of it. If the bytes
+/// are not a JSON object, the honest answers are "refuse" or "store it as a
+/// blob". Storing the blob would mean the event lands, its projector skips it
+/// because the fields it needs are absent, and nothing reports a problem —
+/// which is `DF1a`'s NULL-channel write exactly, one field over.
+///
+/// So: refuse, and name what arrived. An event that cannot be stored correctly
+/// must not be stored at all.
+///
+/// A non-object JSON value (a bare array, number or string) is refused for the
+/// same reason `events_payload_is_object` refuses it at the DB: `payload JSONB`
+/// carries a CHECK constraint `jsonb_typeof(payload) = 'object'`, so a bare
+/// array would be rejected by Postgres several layers later, with a message
+/// about a constraint instead of about an encoder.
+pub(crate) fn event_payload(
+    payload: &[u8],
+    is_json: bool,
+    aggregate_type: &str,
+) -> Result<serde_json::Value, DpError> {
+    if !is_json {
+        return Ok(serde_json::json!({ "b64": b64(payload) }));
+    }
+    let v: serde_json::Value = serde_json::from_slice(payload).map_err(|e| {
+        DpError::BackendIo(
+            format!(
+                "{aggregate_type} declares PAYLOAD_IS_JSON but its Encode produced bytes that \
+                 are not JSON: {e}"
+            )
+            .into(),
+        )
+    })?;
+    if !v.is_object() {
+        return Err(DpError::BackendIo(
+            format!(
+                "{aggregate_type} declares PAYLOAD_IS_JSON but its Encode produced a JSON \
+                 {kind}, not an object; `events.payload` is CHECK-constrained to an object",
+                kind = match &v {
+                    serde_json::Value::Array(_) => "array",
+                    serde_json::Value::String(_) => "string",
+                    serde_json::Value::Number(_) => "number",
+                    serde_json::Value::Bool(_) => "bool",
+                    _ => "null",
+                }
+            )
+            .into(),
+        ));
+    }
+    Ok(v)
 }
 
 /// Minimal base64, so the payload survives a JSON round trip byte-for-byte.

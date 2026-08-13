@@ -143,7 +143,8 @@ All of the following, or 45 turns, whichever comes first:
 | batch | subject | state |
 |---|---|---|
 | ~~`DF1a`~~ | **the write surface's missing half** — `t2_write_channel` / `t3_write_channel`, the scope bounds, `KernelChannelWriteBackend`, and the first production `ChannelTree` | ✅ **CLOSED** — evidence in `§3` |
-| `DF1b` | **one real caller.** The spine's REJECT-COMMIT path — whose own comment already calls it *"the doc-15 `t2_write` outcome"* — stops hand-building an `EventEnvelope` and goes through the SDK, on a live stack, with the row pasted from Postgres | ⬜ |
+| `DF1b-i` | **the SDK cannot carry a DOMAIN EVENT, and every production write in the tier is one.** `KernelChannelWriteBackend` stamps one hardcoded `event_type`, a base64 blob payload and `ruleset_digest: None`. Routing the spine through it as written would be a REGRESSION, not a wiring | ⬜ |
+| `DF1b-ii` | **then** the spine's REJECT-COMMIT goes through the SDK, live, with the row pasted from Postgres | ⬜ |
 | `DF2` | **the control plane's three missing tables** — `tier_policy` (`DP-C4`), `schema_version` + `npc_binding` (`DP-C2`). Unblocks 6 of the 8 dead RPCs | ⬜ |
 | `DF3` | **the T0–T2 cache.** `§2.4`'s "direct Redis access" — zero DP crates have it today, so every tier collapses to the durable path and the taxonomy is a comment | ⬜ |
 | `DF4` | **`DP-R2` tier tables per module** — the PO's *"data instance for each module"*, owed by every feature doc and paid by none | ⬜ |
@@ -224,10 +225,53 @@ building one made the gate demand its deletion. **sited 84/84 · proven 65 → 6
 
 ---
 
+### `DF1b`, measured — and the row was wrong in the same way `DF1a`'s was
+
+`DF1a` ended pointing at the spine's REJECT-COMMIT, whose own comment calls it *"the doc-15
+`t2_write` outcome"*. Measuring it before touching it (`§0.4`) found that **routing it through the
+SDK today would break it**, four ways:
+
+| what the spine writes | what `KernelChannelWriteBackend` would write |
+|---|---|
+| `event_type: "proposal.rejected"` — read by **two projectors in two languages** (`commit-service/src/wire.rs:92`, `game-server/src/wire/turnOutcome.ts:95` `TURN_OUTCOME_TYPES`) | `"dp.write.applied"`, hardcoded. **Both projectors stop recognising the event.** |
+| a structured payload — `rejected_at_stage`, `reason` | `{"b64": "…"}`, an opaque blob |
+| metadata the consumers read — `event_category: "T6"`, `turn_number` as a decimal STRING (`CWC-A2`) | `dp_tier` / `dp_cache_key` only |
+| `ruleset_digest: Some(isle.digest)` — **`RLS-A13`'s pin, derived from the rules the island actually ran** | `None` |
+
+**So the deeper measurement, and it is the data-foundation finding of this batch:**
+
+* Production writes in the game tier are **domain events**: `proposal.rejected`, `turn.resolved`,
+  `ruleset.epoch_activated`, `npc.said`, `world.tick` — named, schema'd, projected.
+* **Nothing in the tier persists an aggregate STATE DELTA**, which is what `DP-K5`'s
+  `t2_write(ctx, id, delta)` models. Measured: `set_quantity` / `QuantityOrdinal` never reach a
+  write path in `commit-service`. **The actor hub folds quantities in memory and they die with the
+  island.**
+* Two event-sourcing conventions share one `events` table, and the SDK speaks only the one nobody
+  uses.
+
+**And the spec sides with the tier, not with the SDK.** `03_tier_taxonomy`'s own `DP-T2` examples
+are *"chat messages, most gameplay actions (move intent, NPC dialog line, skill use)"* and `DP-T3`'s
+are *"currency mutations, item trades, canon promotion"* — those ARE the domain events already
+being written. So the SDK is meant to carry them, and its inability to name one is the gap.
+
+**`contracts/events/_registry.yaml` has 16 entries and `proposal.rejected` is NOT one of them** —
+nor is `dp.write.applied`. That is pre-existing and is `DFO-4`.
+
+**The constraint that shapes the fix:** `crates/dp` is a PURE crate — `crate-purity-gate` pins
+`external: {"uuid"}` — so it cannot hold a `serde_json::Value`. The payload stays BYTES at the
+seam and the BACKEND interprets them. Two defaulted associated consts on `DpAggregate`
+(`EVENT_TYPE`, and a flag for whether `Encode` produced JSON) keep all eleven existing impls
+compiling untouched while letting a production aggregate say what it really writes — and a
+non-object payload under that flag must be a loud REFUSAL, never a fallback to base64. A fallback
+is how `DF1a`'s NULL-channel write stayed silent for a month.
+
+---
+
 ## 4 · OPEN ROWS — each must carry a MECHANISM, not prose
 
 | id | what | mechanism / what would settle it |
 |---|---|---|
+| `DFO-4` | **`proposal.rejected` is written by the live spine, read by two projectors, and is NOT in `contracts/events/_registry.yaml`** (16 entries; it is absent, as is `dp.write.applied`). So the event validator has no schema for the one domain event this system actually produces in anger | registering it is cheap and in scope for `DF1b-i`, which needs a registered type to point `EVENT_TYPE` at. Recorded separately because it is PRE-EXISTING — found by `DF1b`'s measurement, not caused by it |
 | `DFO-2` | **`ReadRequest` has no channel either.** `read_projection_channel` checks the session IS in a channel, then builds a `ReadRequest` that cannot say WHICH — so the backend addresses it by cache key alone, and `KernelReadBackend` reads snapshots by `(reality, type, id)`, ignoring the key. A channel-scoped read is therefore servable only by accident | the write side's fix is the template: a `channel: Option<ChannelId>` on `ReadRequest`, taken from ctx, plus a channel read backend. Not done here because `DF1` is the WRITE path and a read with no producer to read from would be the orphan shape again — it becomes real the moment `DF5` needs to read back what `DF1b` writes |
 | `DFO-3` | **`DEFERRED_VARIANTS`'s stated blocker for `WrongChannelWriter` is satisfied, and the row is still right.** It names `NodeId`, which has existed since slice 4. The REAL blocker is that `channel_writer_state` has no writer-node column, so the DB can say your epoch is stale but not who holds the lease — `expected: NodeId` has no value to carry. The oracle checks implemented-XOR-deferred and **cannot check that a reason is still the reason** | the corrected blocker is recorded in `dp_channel::channel_err`'s doc comment, where a reader meets it. A mechanism would be an arm asserting each deferred row's blocker type is ABSENT — cheap for a type name, and it would have caught this |
 | ~~`DFO-1`~~ | ✅ **CLOSED by `DF1a`** — all four write forms now bind `RealityScope`, the two channel forms bind `ChannelScope`, and `tests/ui/write_wrong_scope.rs` + `channel_write_wrong_scope.rs` pin both directions. Original text: **the write side had no `Scope` bound at all.** `read_projection_reality` requires `A: DpAggregate<Scope = RealityScope>` — a wrong-scope read is a **compile error**, and `tests/ui/read_wrong_scope.rs` is that claim executed by rustc. `write_at_tier` bounds `Tier` and **not** `Scope`, and performs no runtime scope check. A channel-scoped aggregate written through `t2_write` is accepted silently | closed by `DF1a` giving the write side both forms with the scope bounds the read side already has, **plus a `tests/ui/write_wrong_scope.rs`** mirroring the read-side trybuild case. Until then the asymmetry is real and undefended |
