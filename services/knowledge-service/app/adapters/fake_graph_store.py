@@ -273,6 +273,49 @@ class FakeGraphStore:
         self._relations.append(rel)
         return rel
 
+    async def events_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None = None,
+        after: int | str | None = None,
+        before: int | str | None = None,
+        axis: EventAxis = "narrative",
+        participants: list[str] | None = None,
+        q: str | None = None,
+        sort_dir: str = "asc",
+        limit: int = 50,
+        offset: int = 0,
+        exclude_project_ids: list[str] | None = None,
+    ) -> tuple[list[Event], int]:
+        """A3 — the browse. Built ON TOP of the window read so the two cannot disagree about
+        which events match; only paging and the extra filters are new here.
+
+        `total` counts everything matching the FILTERS and ignores limit/offset — a total
+        that shrank with the page would make "showing 1-50 of 50" true on every page of a
+        thousand.
+        """
+        rows = await self.events_in_window(
+            user_id=user_id, project_id=project_id, after=after, before=before, axis=axis,
+            limit=10_000,
+        )
+        excluded = set(exclude_project_ids or ())
+        wanted = set(participants or ())
+        needle = (q or "").strip().lower()
+        matched = []
+        for e in rows:
+            if e.project_id in excluded:
+                continue
+            if wanted and not wanted.intersection(e.participants or ()):
+                continue
+            if needle and needle not in (e.title or "").lower() and                     needle not in (e.summary or "").lower():
+                continue
+            matched.append(e)
+        if sort_dir == "desc":
+            matched.reverse()
+        total = len(matched)
+        return matched[offset:offset + limit], total
+
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         for e in self._events:
             if e.id == event_id and e.user_id == user_id:

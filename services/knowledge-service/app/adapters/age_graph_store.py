@@ -185,6 +185,10 @@ def _to_relation(props: dict) -> Relation:
     )
 
 
+#: How many events `events_page` will scan into Python before refusing. A browse that
+#: silently truncated would report a `total` describing the cap, not the corpus.
+_AGE_BROWSE_SCAN_CAP = 5_000
+
 class AgeGraphStore:
     """`GraphStore` over Apache AGE. Construct with an asyncpg pool from `create_age_pool`.
 
@@ -681,6 +685,56 @@ class AgeGraphStore:
     # ANSWERS WRONGLY, and the port's own rule is that an operation which answers wrongly
     # is worse than one that refuses — an empty return here would look like "no such
     # event" to every caller. Tracked as D-AGE-EVENT-WRITE-UNIMPLEMENTED.
+
+    async def events_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None = None,
+        after: int | str | None = None,
+        before: int | str | None = None,
+        axis: EventAxis = "narrative",
+        participants: list[str] | None = None,
+        q: str | None = None,
+        sort_dir: str = "asc",
+        limit: int = 50,
+        offset: int = 0,
+        exclude_project_ids: list[str] | None = None,
+    ) -> tuple[list[Event], int]:
+        """A3 — the browse, built on this adapter's own window read.
+
+        Paged in PYTHON, not in Cypher, and that is a deliberate v1 limit rather than an
+        oversight: AGE has no `count(*)`-with-`SKIP`/`LIMIT` shape that returns the page and
+        the unpaged total in one statement, so the honest choices were two round trips that
+        can disagree under concurrent writes, or one read the caller pays for. The bound
+        below is what makes it safe to say so — past it, `total` would be a LIE about how
+        many matched, so it refuses instead.
+        """
+        rows = await self.events_in_window(
+            user_id=user_id, project_id=project_id, after=after, before=before, axis=axis,
+            limit=_AGE_BROWSE_SCAN_CAP,
+        )
+        if len(rows) >= _AGE_BROWSE_SCAN_CAP:
+            raise NotImplementedError(
+                f"AgeGraphStore.events_page — the filter matched at least "
+                f"{_AGE_BROWSE_SCAN_CAP} events, the in-Python paging cap. Returning a page "
+                "here would report a `total` that is an artifact of the cap rather than the "
+                "count of what matched, and a wrong total is worse than a refusal. See "
+                "D-AGE-BROWSE-PAGES-IN-PYTHON."
+            )
+        excluded = set(exclude_project_ids or ())
+        wanted = set(participants or ())
+        needle = (q or "").strip().lower()
+        matched = [
+            e for e in rows
+            if e.project_id not in excluded
+            and (not wanted or wanted.intersection(e.participants or ()))
+            and (not needle or needle in (e.title or "").lower()
+                 or needle in (e.summary or "").lower())
+        ]
+        if sort_dir == "desc":
+            matched.reverse()
+        return matched[offset:offset + limit], len(matched)
 
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         cy = f"""

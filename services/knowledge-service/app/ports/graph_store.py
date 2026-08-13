@@ -235,6 +235,53 @@ class GraphStore(Protocol):
         """
         ...
 
+    # ── the paginated browse (T17/A3) ────────────────────────────────
+
+    async def events_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None = None,
+        after: int | str | None = None,
+        before: int | str | None = None,
+        axis: EventAxis = "narrative",
+        participants: list[str] | None = None,
+        q: str | None = None,
+        sort_dir: str = "asc",
+        limit: int = 50,
+        offset: int = 0,
+        exclude_project_ids: list[str] | None = None,
+    ) -> tuple[list[Event], int]:
+        """One PAGE of events plus the TOTAL that matched — the browse, not the window.
+
+        ── The disagreement this method settles, kept legible ────────────────────────────
+        The Neo4j adapter's own module docstring argued the other way, and it is quoted here
+        rather than deleted by the side that won:
+
+            "`chronological` and `date` need the filtered one, which also returns a total
+             count this port drops — **a count belongs to a paginated browse, not to
+             'give me the events in this window'**."
+
+        That reasoning is CORRECT and is exactly why `events_in_window` still has no total:
+        a windowed read answers "what happened between here and there", and a count would be
+        an unrelated second question riding along. **The PO decision (2026-08-13,
+        `T17: the port owns everything`) does not overrule the reasoning — it adds the browse
+        the reasoning was pointing at.** The adapter was right that a count belongs to a
+        paginated browse; there simply was not one, so the count was being dropped on the
+        floor and every caller that needed it stayed bound to `neo4j_repos`.
+
+        ── Why a tuple and not a page object ─────────────────────────────────────────────
+        `(rows, total)` mirrors the concrete `list_events_filtered` exactly. A richer wrapper
+        would be a THIRD shape for the same fact — the port's, the repo's, and the HTTP
+        layer's — and this plan has already paid twice for a value that is re-expressed at
+        each boundary and drifts at one of them.
+
+        `total` is the count of everything matching the FILTERS, ignoring `limit`/`offset`.
+        A total that shrank with the page would make "showing 1–50 of 50" true on every page
+        of a thousand, which is the shape of an off-by-a-page bug nobody sees.
+        """
+        ...
+
     # ── event corrections (T17/A2) ───────────────────────────────────
 
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:

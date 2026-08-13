@@ -165,6 +165,41 @@ class Neo4jGraphStore:
             predicate=predicate, object_id=object_id, source_chapter=source_chapter,
             valid_from_ordinal=valid_from_ordinal)
 
+    async def events_page(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None = None,
+        after: int | str | None = None,
+        before: int | str | None = None,
+        axis: EventAxis = "narrative",
+        participants: list[str] | None = None,
+        q: str | None = None,
+        sort_dir: str = "asc",
+        limit: int = 50,
+        offset: int = 0,
+        exclude_project_ids: list[str] | None = None,
+    ) -> tuple[list[Event], int]:
+        """A3 — the browse. The repo's filtered query ALREADY returned a total; this file's
+        docstring above records that it was being dropped, and now it is not.
+
+        The axis decides which pair of bounds `after`/`before` become, mirroring the repo's
+        three-way split rather than aliasing two of them to the cheap one.
+        """
+        kw: dict = {}
+        if axis == "narrative":
+            kw["after_order"], kw["before_order"] = after, before
+        else:
+            kw["after_order"] = kw["before_order"] = None
+            if axis == "chronological":
+                kw["after_chronological"], kw["before_chronological"] = after, before
+            else:  # date
+                kw["event_date_from"], kw["event_date_to"] = after, before
+        return await _event_repo.list_events_filtered(
+            self._session, user_id=user_id, project_id=project_id,
+            participant_candidates=participants, q=q, sort_by=axis, sort_dir=sort_dir,
+            limit=limit, offset=offset, exclude_project_ids=exclude_project_ids, **kw)
+
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         return await _event_repo.get_event(
             self._session, user_id=user_id, event_id=event_id)

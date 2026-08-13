@@ -654,3 +654,55 @@ async def test_age_REFUSES_the_event_writes_rather_than_answering_wrongly(store)
         await store.update_event_fields(
             user_id=u, event_id="x", title=None, summary=None, time_cue=None,
             event_date_iso=None, expected_version=1)
+
+
+# ── the paginated browse (T17 A3) ────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_the_total_counts_EVERYTHING_that_matched_not_just_the_page(store):
+    """The rule the whole `(rows, total)` shape exists for.
+
+    A `total` that shrank to the page size would make "showing 1-50 of 50" true on every
+    page of a thousand — an off-by-a-page bug that looks correct on the first screen and is
+    invisible in a unit test that only ever asks for one page.
+    """
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("needs merge_event to create the rows — AGE refuses it")
+    u, p, _ = _ids()
+    for i in range(5):
+        await store.merge_event(
+            user_id=u, project_id=p, title=f"Event {i}", chapter_id=f"ch-{i}",
+            source_type="chapter", event_order=(i + 1) * 1_000)
+
+    rows, total = await store.events_page(user_id=u, project_id=p, limit=2, offset=0)
+    assert len(rows) == 2, f"limit ignored: {len(rows)} rows"
+    assert total == 5, f"total reported {total}, but 5 events matched the filters"
+
+    page2, total2 = await store.events_page(user_id=u, project_id=p, limit=2, offset=2)
+    assert total2 == 5, "the total changed with the page — it must describe the FILTERS"
+    assert {e.id for e in page2}.isdisjoint({e.id for e in rows}), (
+        "offset did not advance — page 2 repeats page 1"
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_browse_and_the_window_agree_about_which_events_match(store):
+    """The browse must not become a second, drifting definition of "matching". If these two
+    ever disagree, one of them is wrong and no test that uses only one would say so."""
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("needs merge_event to create the rows — AGE refuses it")
+    u, p, _ = _ids()
+    for i in range(4):
+        await store.merge_event(
+            user_id=u, project_id=p, title=f"W{i}", chapter_id=f"ch-{i}",
+            source_type="chapter", event_order=(i + 1) * 1_000)
+
+    windowed = await store.events_in_window(
+        user_id=u, project_id=p, after=2_000, before=3_000)
+    paged, total = await store.events_page(
+        user_id=u, project_id=p, after=2_000, before=3_000, limit=100)
+    assert {e.id for e in paged} == {e.id for e in windowed}, (
+        "the browse and the window disagree about which events are in the range"
+    )
+    assert total == len(windowed)

@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A3` — `events_page(after, before, axis, participants, q, sort, limit, offset) -> (rows, total)`.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0** needed no build. **A1 + A2 DONE:** seven correction operations on the port and its adapters, conformance 40 → **63 passed / 7 skipped**, and the new rules caught the AGE adapter serving soft-invalidated edges. AGE refuses the two event WRITES with `D-AGE-EVENT-WRITE-UNIMPLEMENTED`, asserted by a test so the skips cannot become a false green. A3 is the paginated browse the port's own docstring argued against — **quote that comment beside the decision**. See **▶ EXECUTION PLAN** below.
+**RESUME: `A4` — migrate `public/relations.py`, `public/events.py`, `internal_timeline.py`; the ceiling falls 64 → 61.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0** needed no build. **A1–A3 DONE:** eight operations on the port and its adapters, conformance 40 → **67 passed / 9 skipped**. A1 caught AGE serving soft-invalidated edges; A2 and A3 each registered an honest AGE deferral (`D-AGE-EVENT-WRITE-UNIMPLEMENTED`, `D-AGE-BROWSE-PAGES-IN-PYTHON`) rather than shipping an adapter that answers wrongly. **A4 is the first batch that moves the gate**: three consumers migrate and `port-adoption-gate` falls 64 → 61 in the same commit. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -1957,6 +1957,85 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   ---
+  ### ✅ A3 2026-08-13 — `events_page`, and the comment it overrules is quoted beside the decision
+
+  ```
+  67 passed, 9 skipped  =  25 rules × 3 adapters + guard        (was 63 = 23 × 3 + 1)
+  ```
+
+  ⚠️ **The plan attributed the objection to "the port's own docstring". It is the NEO4J
+  ADAPTER's** (`app/adapters/neo4j_graph_store.py`, module docstring). Corrected here because
+  the quote is the point of the batch, and a quote whose source is wrong is a worse artifact
+  than no quote.
+
+  🎯 **And read closely, the objection was never against `events_page` — it was FOR it.**
+  Verbatim, now carried in the port beside the decision:
+
+  > *"`chronological` and `date` need the filtered one, which also returns a total count this
+  > port drops — **a count belongs to a paginated browse, not to 'give me the events in this
+  > window'**."*
+
+  That reasoning is **correct**, and it is why `events_in_window` still returns no total: a
+  windowed read answers *"what happened between here and there"*, and a count riding along is
+  an unrelated second question. The PO decision does not overrule the reasoning — **it supplies
+  the browse the reasoning was pointing at.** The adapter was right that a count belongs to a
+  paginated browse; there simply was not one, so the count was dropped on the floor and every
+  caller that needed it stayed bound to `neo4j_repos`. The disagreement stays legible, and it
+  turns out not to have been a disagreement.
+
+  **`(rows, total)` rather than a page object** — it mirrors the concrete
+  `list_events_filtered` exactly. A richer wrapper would be a THIRD shape for one fact (port,
+  repo, HTTP), and this plan has already paid twice for a value re-expressed at each boundary
+  that drifts at one of them.
+
+  🔻 **AGE pages in Python, with an honest cap that REFUSES rather than lying.** AGE has no
+  `count(*)`-with-`SKIP`/`LIMIT` shape returning a page and an unpaged total in one statement,
+  so the choices were two round trips that can disagree under concurrent writes, or one
+  bounded read. Past `_AGE_BROWSE_SCAN_CAP = 5_000` it raises: **a `total` describing the cap
+  rather than the corpus is a wrong answer, and A1's rule stands — refusing beats answering
+  wrongly.** Tracked as `D-AGE-BROWSE-PAGES-IN-PYTHON`.
+
+  **BITE ×2:**
+
+  ```
+  1. Fake: total = len(matched)  ->  len(matched[offset:offset+limit])
+     E  AssertionError: total reported 2, but 5 events matched the filters
+     E  assert 2 == 5
+
+  2. AGE: _AGE_BROWSE_SCAN_CAP 5_000 -> 1, against a real AGE graph holding 3 events
+     REFUSED: AgeGraphStore.events_page — the filter matched at least 1 events, the
+              in-Python paging cap…
+  ```
+
+  Both cut by LINE NUMBER after A1/A2 showed exact-match replaces failing silently on CRLF.
+
+  **The second conformance rule is the one that will age well:** `events_page` and
+  `events_in_window` must agree about *which* events match. A browse that becomes a second,
+  drifting definition of "matching" is invisible to any test that only ever calls one of them.
+
+  **QC (a) gates:** `port-adoption-gate` ceiling unchanged at 64 — A1–A3 grow the PORT and
+  migrate no consumer; **A4 is where the ceiling first falls (64 → 61)**. `db-safety-gate`
+  exit 0. No new gate, none owed.
+  **QC (b) the seam:** N/A — port + adapters are in-process; no service code, no HTTP surface.
+  The live proof is the 67-passed run against a real Neo4j and a real AGE container.
+  **QC (c) real data:** the Neo4j arm paged real `:Event` nodes and compared browse against
+  window; the AGE cap refusal was proved against a real AGE graph, not a stub.
+
+  ```
+  4216 passed — knowledge-service unit suite; the signature checklist now names all eight
+                methods A1–A3 added
+  ```
+
+  ### 🔻 DEFERRAL `D-AGE-BROWSE-PAGES-IN-PYTHON`
+
+  | | |
+  |---|---|
+  | **Blocker** | `AgeGraphStore.events_page` filters, sorts and slices in Python over a bounded scan. AGE has no single-statement shape returning both the page and the unpaged `total`, and two statements can disagree under concurrent writes — so the page would be consistent with a total that was never true at the same instant. |
+  | **Evidence** | `67 passed, 9 skipped`; the browse rules pass on Fake and Neo4j and skip for AGE only where `merge_event` is refused. Setting `_AGE_BROWSE_SCAN_CAP = 1` against a real AGE graph holding 3 events produces `NotImplementedError: … the filter matched at least 1 events, the in-Python paging cap` — so the refusal is real, not a comment. |
+  | **Mechanism** | The cap RAISES instead of truncating. A silent truncation would report a `total` that is an artifact of the cap, which is exactly the "number that reads as success" class; here it fails loudly at the boundary, so the deferral announces itself the first time a corpus outgrows it. |
+  | **To unblock** | Either express the count and the page in one AGE statement (a `WITH collect(e) AS all …` shape returning `size(all)` alongside the slice), or accept two statements inside one transaction so the pair is at least consistent with each other. T42 owns the AGE query strategy and is where this is cheap to decide. |
+  | **Retry when** | T42 settles the AGE read strategy, or a real corpus approaches 5 000 events in one browse window — whichever comes first. The cap makes the second case loud rather than silent. |
+
   ### ✅ A2 2026-08-13 — the four event corrections, and AGE REFUSES two of them on purpose
 
   `get_event` · `merge_event` · `update_event_fields` · `archive_event` on `GraphStore`,
