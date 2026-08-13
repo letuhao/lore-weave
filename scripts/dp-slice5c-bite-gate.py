@@ -142,7 +142,12 @@ LEGS = [
     (
         "[surface] UNIMPLEMENTED_METHODS matches what the server actually refuses",
         LIB,
-        '    ("GetNpcNode", "npc_binding (DP-C2) has no migration in this repo"),',
+        # DF2 corrected this blocker string: the spec gives npc_binding NO DDL
+        # anywhere, so it is a design gap rather than an unwritten migration.
+        # The anchor moved with it — a bite whose anchor has rotted scores
+        # MISUSE, which is the harness refusing to certify a leg it could not
+        # actually run.
+        '    ("GetNpcNode", "npc_binding (DP-A11) has no DDL in the spec — a design gap, not a migration"),',
         "",
         "every_unimplemented_method_says_so_and_no_other_does",
     ),

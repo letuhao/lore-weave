@@ -1,12 +1,15 @@
 {
   "sites": {
+    "crates/dp-kernel/src/dp_backend.rs": 1,
     "crates/dp-kernel/tests/integration_channel_writer.rs": 1,
+    "crates/dp-kernel/tests/integration_dp_channel.rs": 1,
     "crates/dp-kernel/tests/integration_writer_lease.rs": 6,
     "services/commit-service/src/bin/ceilings.rs": 2,
     "services/commit-service/src/bin/spine.rs": 1,
     "services/commit-service/src/manager.rs": 1,
     "services/commit-service/tests/declared_verb_live.rs": 1,
     "services/commit-service/tests/epoch_activation_live.rs": 4,
-    "services/commit-service/tests/recovery.rs": 4
+    "services/commit-service/tests/recovery.rs": 4,
+    "services/commit-service/tests/reject_commit_live.rs": 1
   }
 }

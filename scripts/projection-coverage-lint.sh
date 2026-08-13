@@ -53,6 +53,14 @@ handled="$(grep -rhoE '"[a-z][a-z_]*\.[a-z_.]+"' "$repo_root"/crates/projections
 declare -A allow=(
   [reality.created]="by-design: handled by world-service reality_seeder, not a read-model projection"
   [world.tick]="by-design: ephemeral world clock; no read-model projection"
+  # Registered by DFO-4, which found that the one domain event this system
+  # produces in anger had no contract. It IS projected — by the WIRE
+  # projectors, commit-service/src/wire.rs and game-server's
+  # turnOutcome.ts TURN_OUTCOME_TYPES — which turn a committed fact into a
+  # client frame. That is a different mechanism from crates/projections'
+  # read models, and this gate scans the latter. Retires the day a
+  # read-model needs refusal history.
+  [proposal.rejected]="by-design: projected to the CLIENT WIRE (commit-service wire.rs + game-server turnOutcome.ts), not to a read model"
   [xreality.canon.promoted]="by-design: cross-reality trigger consumed by meta-worker canon_writer fanout"
   [canon.change.recorded]="by-design: meta-worker canon_history_writer (append-only history table)"
   [admin.canon.override.requested]="by-design: meta-worker override writers (audit), not projected"

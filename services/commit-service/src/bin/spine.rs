@@ -173,7 +173,7 @@ async fn main() -> anyhow::Result<()> {
 
     // `DF1b-ii` — session enters its channel; node declares its facts.
     let (chan_ctx, dp_backend) = reject_commit::wire(
-        pool.clone(), &session, args.reality, args.channel,
+        pool.clone(), &session, args.channel,
         reality_bind::now_ms().map_err(|e| anyhow::anyhow!("{e}"))?,
         isle.digest.to_hex(), turn_number.clone(), writer.clone(),
     )

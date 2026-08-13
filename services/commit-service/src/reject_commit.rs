@@ -86,14 +86,21 @@ impl Encode for ProposalRejected {
 pub fn wire(
     pool: Arc<sqlx::postgres::PgPool>,
     session: &SessionContext,
-    reality: uuid::Uuid,
     channel: i64,
     now_ms: u64,
     ruleset_digest: String,
     turn_counter: Arc<AtomicU64>,
     writer: Arc<ChannelWriter>,
 ) -> Result<(SessionContext, KernelChannelWriteBackend), DpError> {
-    let tree = PgChannelTree::new(pool, reality)?;
+    // The reality comes from the SESSION, not from a parameter.
+    //
+    // It was a `reality: uuid::Uuid` argument, and `reality-id-adoption-gate`
+    // red on it: `commit-service` went 0 -> 1 adoptable sites. The gate is
+    // right and the finding is not cosmetic — the caller already holds a
+    // VERIFIED `RealityId` in `session`, so a second bare `Uuid` beside it is
+    // a value that can disagree with the one the control plane authorised.
+    // Two sources for one identity, which is `DFO-5`'s shape.
+    let tree = PgChannelTree::new(pool, session.reality_id().as_uuid())?;
     let ctx = session.move_to_channel(&tree, channel, now_ms)?;
     let backend = KernelChannelWriteBackend::new(writer)?
         // `RLS-A13` and `DP-A17`: both are facts about this NODE, so it

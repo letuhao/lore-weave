@@ -275,8 +275,12 @@ LEGS: list[dict] = [
     {
         "label": "[DP-C2] a register row for a table that DOES have a migration (the shrink arm)",
         "path": LIB,
-        "find": '    ("tier_policy",',
-        "replace": '    ("reality_registry", "already built — this row is the bite"),\n    ("tier_policy",',
+        # The anchor was `("tier_policy",` until DF2 built 040_tier_policy and
+        # the oracle DEMANDED that row's deletion — this leg's own subject,
+        # happening for real. Re-pointed at a row that still exists; the
+        # mutation is unchanged and still inserts a table that HAS a migration.
+        "find": '    ("npc_binding",',
+        "replace": '    ("reality_registry", "already built — this row is the bite"),\n    ("npc_binding",',
         "witness": "cp_storage_tables_match_dp_c2_or_declare_why_not",
         "names": ("`reality_registry`", "CP_TABLES_WITHOUT_A_MIGRATION"),
     },

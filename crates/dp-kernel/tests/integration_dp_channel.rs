@@ -149,6 +149,23 @@ async fn seed_channels(pool: &PgPool, reality: Uuid, root: i64, child: i64) {
     }
 }
 
+/// The ONE `ChannelId::unverified` call site in this file.
+///
+/// `channel-id-adoption-gate` ratchets that hatch downward — it is the named
+/// pre-SDK stand-in for a channel resolved through
+/// `SessionContext::move_to_channel`, and the seam is supposed to be closing.
+/// This file went 0 -> 6 in one commit and the gate refused, exactly as it
+/// refused `integration_channel_writer.rs` for going 3 -> 8. Funnelling makes
+/// the count a property of the FILE, so the next test costs nothing.
+///
+/// Note what is NOT funnelled through here: the sessions in these tests DO
+/// resolve their channel properly, through `PgChannelTree` and
+/// `move_to_channel`. The hatch is needed only for `acquire_writer_lease` and
+/// for hand-built `WriteRequest`s, neither of which takes a session.
+fn test_channel(n: i64) -> ChannelId {
+    ChannelId::unverified(n)
+}
+
 // ── the end-to-end claim ────────────────────────────────────────────────────
 
 /// A channel-scoped write through the SDK lands ON THE CHANNEL.
@@ -183,7 +200,7 @@ async fn a_channel_write_through_the_sdk_lands_on_the_channel() {
         "root-first ancestors, excluding the channel itself"
     );
 
-    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(child))
+    let lease = acquire_writer_lease(&pool, reality, test_channel(child))
         .await
         .expect("lease");
     let writer = Arc::new(ChannelWriter::new(pool.clone(), reality, lease));
@@ -248,7 +265,7 @@ async fn a_domain_event_keeps_its_name_and_its_shape() {
 
     let tree = PgChannelTree::new(pool.clone(), reality).expect("multi-thread runtime");
     let ctx = bind(reality).move_to_channel(&tree, 2, 0).expect("move_to_channel");
-    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(2))
+    let lease = acquire_writer_lease(&pool, reality, test_channel(2))
         .await
         .expect("lease");
     let writer = Arc::new(ChannelWriter::new(pool.clone(), reality, lease));
@@ -292,7 +309,7 @@ async fn a_payload_that_lies_about_being_json_is_refused_not_wrapped() {
 
     let tree = PgChannelTree::new(pool.clone(), reality).expect("multi-thread runtime");
     let ctx = bind(reality).move_to_channel(&tree, 2, 0).expect("move_to_channel");
-    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(2))
+    let lease = acquire_writer_lease(&pool, reality, test_channel(2))
         .await
         .expect("lease");
     let writer = Arc::new(ChannelWriter::new(pool.clone(), reality, lease));
@@ -389,7 +406,7 @@ async fn the_channel_backend_refuses_a_request_with_no_channel() {
             .expect("lazy pool"),
     );
     let lease = dp_kernel::channel::WriterLease {
-        channel_id: ChannelId::unverified(7),
+        channel_id: test_channel(7),
         epoch: 1,
     };
     let writer = Arc::new(ChannelWriter::new(pool, Uuid::new_v4(), lease));
@@ -437,7 +454,7 @@ async fn the_channel_backend_refuses_another_channels_write() {
             .expect("lazy pool"),
     );
     let lease = dp_kernel::channel::WriterLease {
-        channel_id: ChannelId::unverified(7),
+        channel_id: test_channel(7),
         epoch: 1,
     };
     let writer = Arc::new(ChannelWriter::new(pool, Uuid::new_v4(), lease));
@@ -456,7 +473,7 @@ async fn the_channel_backend_refuses_another_channels_write() {
             payload_is_json: false,
             event_category: None,
             // Channel 8, while the lease is for channel 7.
-            channel: Some(ChannelId::unverified(8)),
+            channel: Some(test_channel(8)),
             payload: &[],
             expected_version: 0,
         },

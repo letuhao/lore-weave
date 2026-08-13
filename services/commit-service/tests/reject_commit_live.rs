@@ -52,6 +52,14 @@ impl ControlPlane for Cp {
     }
 }
 
+/// The ONE `ChannelId::unverified` call site in this file — see the twin in
+/// `dp-kernel/tests/integration_dp_channel.rs`. The SESSION resolves its
+/// channel properly, through `PgChannelTree`; `acquire_writer_lease` is the
+/// one call that takes a `ChannelId` without a session to resolve it from.
+fn lease_channel(n: i64) -> ChannelId {
+    ChannelId::unverified(n)
+}
+
 fn dsn() -> Option<String> {
     std::env::var("LOREWEAVE_TEST_PG_URL").ok()
 }
@@ -104,7 +112,7 @@ async fn a_refusal_committed_through_the_sdk_carries_everything_its_projectors_r
     )
     .expect("bind");
 
-    let lease = acquire_writer_lease(&pool, reality, ChannelId::unverified(channel))
+    let lease = acquire_writer_lease(&pool, reality, lease_channel(channel))
         .await
         .expect("lease");
     let writer = Arc::new(ChannelWriter::new(pool.clone(), reality, lease));
@@ -119,7 +127,6 @@ async fn a_refusal_committed_through_the_sdk_carries_everything_its_projectors_r
     let (ctx, backend) = reject_commit::wire(
         pool.clone(),
         &session,
-        reality,
         channel,
         0,
         digest.to_string(),
