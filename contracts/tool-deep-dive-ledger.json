@@ -1,0 +1,814 @@
+{
+  "ledger_version": 1,
+  "runbook": "docs/plans/2026-08-13-tool-deep-dive-RUNBOOK.md",
+  "predecessor": "contracts/frontend-journey-ledger.json",
+  "denominator": {
+    "derived_at": "2026-08-13",
+    "source": "ai-gateway federated catalogue (POST /mcp tools/list) + loreweave_chat recorded tool_calls",
+    "federated_tools": 315,
+    "recorded_calls": 8494,
+    "distinct_tools_called": 142,
+    "ordering_rule": "A: >=1 recorded FAILED call, by failure count desc then name. B: called, zero failures, by call count desc then name. C: never called, by provider size desc then name.",
+    "group_sizes": {
+      "A": 18,
+      "B": 105,
+      "C": 192
+    },
+    "called_but_NOT_federated": [
+      "book_update_meta",
+      "chat_search_sessions",
+      "compose_prose",
+      "confirm_action",
+      "echo_test",
+      "find_tools",
+      "glossary_confirm_action",
+      "glossary_list_kinds",
+      "glossary_propose_entity_edit",
+      "load_skill",
+      "plan_forge.plan_propose_spec",
+      "run_subagent",
+      "u_a2bbc662_ask_question",
+      "u_a2bbc662_read_wiki_contents",
+      "u_a2bbc662_read_wiki_structure",
+      "ui_navigate",
+      "ui_open_studio_panel",
+      "workflow_list",
+      "workflow_load"
+    ],
+    "note": "THE COHORT IS THE FEDERATED CATALOGUE -- what the model can actually reach -- not a repo grep of @mcp_server.tool. 19 further tool names appear in the recorded corpus but are NOT federated: chat-service's own core/frontend surface (confirm_action, workflow_list, workflow_load, load_skill, run_subagent, chat_search_sessions, ui_navigate, ui_open_studio_panel, propose_edit's siblings), the DEPRECATED find_tools, echo_test, a stale dotted alias 'plan_forge.plan_propose_spec', a renamed book_update_meta/glossary_list_kinds/compose_prose, and three u_a2bbc662_* rows from a user-connected MCP server. They are a DIFFERENT surface with a different owner and are not in this cohort; recorded here so their absence is a measurement, not an oversight.",
+    "group_A": [
+      {
+        "tool": "glossary_propose_curation",
+        "fails": 29,
+        "calls": 72
+      },
+      {
+        "tool": "book_chapter_save_draft",
+        "fails": 5,
+        "calls": 251
+      },
+      {
+        "tool": "composition_package_tree",
+        "fails": 4,
+        "calls": 12
+      },
+      {
+        "tool": "book_read",
+        "fails": 3,
+        "calls": 196
+      },
+      {
+        "tool": "glossary_entity_set_attributes",
+        "fails": 3,
+        "calls": 12
+      },
+      {
+        "tool": "plan_bootstrap_propose",
+        "fails": 3,
+        "calls": 3
+      },
+      {
+        "tool": "plan_propose_spec",
+        "fails": 3,
+        "calls": 163
+      },
+      {
+        "tool": "book_chapter_create",
+        "fails": 2,
+        "calls": 196
+      },
+      {
+        "tool": "composition_diagnostics",
+        "fails": 2,
+        "calls": 5
+      },
+      {
+        "tool": "glossary_propose_new_attribute",
+        "fails": 2,
+        "calls": 14
+      },
+      {
+        "tool": "glossary_search",
+        "fails": 2,
+        "calls": 217
+      },
+      {
+        "tool": "translation_start_job",
+        "fails": 2,
+        "calls": 6
+      },
+      {
+        "tool": "composition_outline_node_edit",
+        "fails": 1,
+        "calls": 6
+      },
+      {
+        "tool": "glossary_list_ai_suggestions",
+        "fails": 1,
+        "calls": 93
+      },
+      {
+        "tool": "glossary_ontology_upsert",
+        "fails": 1,
+        "calls": 2
+      },
+      {
+        "tool": "glossary_propose_entities",
+        "fails": 1,
+        "calls": 298
+      },
+      {
+        "tool": "kg_build",
+        "fails": 1,
+        "calls": 2
+      },
+      {
+        "tool": "plan_compile",
+        "fails": 1,
+        "calls": 4
+      }
+    ],
+    "group_B": [
+      {
+        "tool": "tool_list",
+        "calls": 1844
+      },
+      {
+        "tool": "book_get",
+        "calls": 567
+      },
+      {
+        "tool": "kg_project_create",
+        "calls": 476
+      },
+      {
+        "tool": "glossary_book_ontology_read",
+        "calls": 395
+      },
+      {
+        "tool": "kg_project_entities_to_nodes",
+        "calls": 296
+      },
+      {
+        "tool": "glossary_list_chapter_links",
+        "calls": 264
+      },
+      {
+        "tool": "glossary_get_entity",
+        "calls": 240
+      },
+      {
+        "tool": "book_list",
+        "calls": 173
+      },
+      {
+        "tool": "glossary_list_system_standards",
+        "calls": 172
+      },
+      {
+        "tool": "book_list_chapters",
+        "calls": 168
+      },
+      {
+        "tool": "glossary_web_search",
+        "calls": 122
+      },
+      {
+        "tool": "glossary_extract_entities_from_doc",
+        "calls": 85
+      },
+      {
+        "tool": "glossary_adopt_standards",
+        "calls": 83
+      },
+      {
+        "tool": "kg_list_templates",
+        "calls": 70
+      },
+      {
+        "tool": "composition_get_work",
+        "calls": 66
+      },
+      {
+        "tool": "book_get_chapter",
+        "calls": 65
+      },
+      {
+        "tool": "tool_load",
+        "calls": 59
+      },
+      {
+        "tool": "book_update_details",
+        "calls": 57
+      },
+      {
+        "tool": "kg_project_list",
+        "calls": 55
+      },
+      {
+        "tool": "glossary_propose_status_change",
+        "calls": 48
+      },
+      {
+        "tool": "composition_arc_suggest",
+        "calls": 47
+      },
+      {
+        "tool": "composition_list_canon_rules",
+        "calls": 47
+      },
+      {
+        "tool": "glossary_book_patch",
+        "calls": 44
+      },
+      {
+        "tool": "kg_schema_read",
+        "calls": 35
+      },
+      {
+        "tool": "composition_list_outline",
+        "calls": 33
+      },
+      {
+        "tool": "glossary_propose_new_kind",
+        "calls": 32
+      },
+      {
+        "tool": "composition_conformance_run",
+        "calls": 31
+      },
+      {
+        "tool": "glossary_propose_merge",
+        "calls": 31
+      },
+      {
+        "tool": "glossary_list_entity_revisions",
+        "calls": 29
+      },
+      {
+        "tool": "composition_get_outline_node",
+        "calls": 25
+      },
+      {
+        "tool": "memory_recall_entity",
+        "calls": 25
+      },
+      {
+        "tool": "translation_coverage",
+        "calls": 25
+      },
+      {
+        "tool": "glossary_book_create",
+        "calls": 23
+      },
+      {
+        "tool": "settings_provider_inventory",
+        "calls": 22
+      },
+      {
+        "tool": "composition_get_mine_job",
+        "calls": 21
+      },
+      {
+        "tool": "book_chapter_delete",
+        "calls": 20
+      },
+      {
+        "tool": "memory_remember",
+        "calls": 20
+      },
+      {
+        "tool": "jobs_get",
+        "calls": 19
+      },
+      {
+        "tool": "kg_propose_edge",
+        "calls": 18
+      },
+      {
+        "tool": "memory_search",
+        "calls": 17
+      },
+      {
+        "tool": "translation_start_extraction",
+        "calls": 16
+      },
+      {
+        "tool": "glossary_propose_batch",
+        "calls": 15
+      },
+      {
+        "tool": "kg_build_graph",
+        "calls": 13
+      },
+      {
+        "tool": "translation_job_status",
+        "calls": 13
+      },
+      {
+        "tool": "world_list",
+        "calls": 13
+      },
+      {
+        "tool": "jobs_list",
+        "calls": 11
+      },
+      {
+        "tool": "composition_authoring_run_start",
+        "calls": 10
+      },
+      {
+        "tool": "kg_add_nodes",
+        "calls": 10
+      },
+      {
+        "tool": "story_search",
+        "calls": 9
+      },
+      {
+        "tool": "world_map_add_marker",
+        "calls": 9
+      },
+      {
+        "tool": "world_map_add_region",
+        "calls": 9
+      },
+      {
+        "tool": "glossary_plan",
+        "calls": 8
+      },
+      {
+        "tool": "world_map_create",
+        "calls": 8
+      },
+      {
+        "tool": "book_steering_list",
+        "calls": 7
+      },
+      {
+        "tool": "glossary_propose_new_entity",
+        "calls": 7
+      },
+      {
+        "tool": "settings_list_models",
+        "calls": 7
+      },
+      {
+        "tool": "book_list_revisions",
+        "calls": 6
+      },
+      {
+        "tool": "composition_authoring_run_create",
+        "calls": 6
+      },
+      {
+        "tool": "glossary_propose_kinds",
+        "calls": 6
+      },
+      {
+        "tool": "kg_propose_fact",
+        "calls": 6
+      },
+      {
+        "tool": "composition_create_work",
+        "calls": 5
+      },
+      {
+        "tool": "glossary_entity_get_genres",
+        "calls": 5
+      },
+      {
+        "tool": "book_chapter_publish",
+        "calls": 4
+      },
+      {
+        "tool": "glossary_deep_research",
+        "calls": 4
+      },
+      {
+        "tool": "glossary_book_delete",
+        "calls": 3
+      },
+      {
+        "tool": "jobs_summary",
+        "calls": 3
+      },
+      {
+        "tool": "plan_run_pass",
+        "calls": 3
+      },
+      {
+        "tool": "propose_edit",
+        "calls": 3
+      },
+      {
+        "tool": "settings_list_providers",
+        "calls": 3
+      },
+      {
+        "tool": "settings_model_delete",
+        "calls": 3
+      },
+      {
+        "tool": "translation_list_versions",
+        "calls": 3
+      },
+      {
+        "tool": "book_create",
+        "calls": 2
+      },
+      {
+        "tool": "book_set_cover",
+        "calls": 2
+      },
+      {
+        "tool": "composition_arc_create",
+        "calls": 2
+      },
+      {
+        "tool": "composition_error_block_edit",
+        "calls": 2
+      },
+      {
+        "tool": "composition_outline_node_update",
+        "calls": 2
+      },
+      {
+        "tool": "glossary_curation_list",
+        "calls": 2
+      },
+      {
+        "tool": "glossary_get_entity_evidence",
+        "calls": 2
+      },
+      {
+        "tool": "glossary_list_merge_candidates",
+        "calls": 2
+      },
+      {
+        "tool": "glossary_propose_aliases",
+        "calls": 2
+      },
+      {
+        "tool": "glossary_propose_reassign_kind",
+        "calls": 2
+      },
+      {
+        "tool": "kg_adopt_template",
+        "calls": 2
+      },
+      {
+        "tool": "web_search",
+        "calls": 2
+      },
+      {
+        "tool": "book_chapter_unpublish",
+        "calls": 1
+      },
+      {
+        "tool": "book_task_provide_input",
+        "calls": 1
+      },
+      {
+        "tool": "composition_conformance_status",
+        "calls": 1
+      },
+      {
+        "tool": "composition_find_references",
+        "calls": 1
+      },
+      {
+        "tool": "composition_motif_book_list",
+        "calls": 1
+      },
+      {
+        "tool": "composition_outline_node_create",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_book_set_active_genres",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_book_set_kind_genres",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_create_chapter_link",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_create_evidence",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_entity_rename",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_list_unknown_entities",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_propose_restore_revision",
+        "calls": 1
+      },
+      {
+        "tool": "glossary_propose_translation",
+        "calls": 1
+      },
+      {
+        "tool": "kg_graph_query",
+        "calls": 1
+      },
+      {
+        "tool": "kg_project_set_embedding_model",
+        "calls": 1
+      },
+      {
+        "tool": "kg_triage_list",
+        "calls": 1
+      },
+      {
+        "tool": "kg_view_read",
+        "calls": 1
+      },
+      {
+        "tool": "lore_timeline",
+        "calls": 1
+      },
+      {
+        "tool": "settings_model_set_default",
+        "calls": 1
+      },
+      {
+        "tool": "translation_retranslate_dirty",
+        "calls": 1
+      },
+      {
+        "tool": "translation_segment_status",
+        "calls": 1
+      }
+    ],
+    "group_C": [
+      "composition_arc_apply",
+      "composition_arc_assign_chapters",
+      "composition_arc_delete",
+      "composition_arc_edit",
+      "composition_arc_extract_template",
+      "composition_arc_get",
+      "composition_arc_import_analyze",
+      "composition_arc_list",
+      "composition_arc_move",
+      "composition_arc_restore",
+      "composition_arc_template_archive",
+      "composition_arc_template_create",
+      "composition_arc_template_drift",
+      "composition_arc_template_edit",
+      "composition_arc_template_get",
+      "composition_arc_template_list",
+      "composition_arc_template_restore",
+      "composition_arc_template_update",
+      "composition_arc_update",
+      "composition_archive_derivative",
+      "composition_authoring_run_accept_unit",
+      "composition_authoring_run_close",
+      "composition_authoring_run_gate",
+      "composition_authoring_run_get",
+      "composition_authoring_run_list",
+      "composition_authoring_run_manage",
+      "composition_authoring_run_pause",
+      "composition_authoring_run_reject_unit",
+      "composition_authoring_run_resume",
+      "composition_authoring_run_revert_all",
+      "composition_authoring_run_review",
+      "composition_canon_rule_create",
+      "composition_canon_rule_delete",
+      "composition_canon_rule_edit",
+      "composition_canon_rule_restore",
+      "composition_canon_rule_update",
+      "composition_create_derivative",
+      "composition_decompile_arcs",
+      "composition_derivative_edit",
+      "composition_divergence_spec_update",
+      "composition_entity_override_add",
+      "composition_entity_override_delete",
+      "composition_entity_override_edit",
+      "composition_entity_override_restore",
+      "composition_entity_override_update",
+      "composition_generate",
+      "composition_get_derivative_context",
+      "composition_get_generation_job",
+      "composition_get_prose",
+      "composition_glossary_build",
+      "composition_library_translate",
+      "composition_list_derivatives",
+      "composition_motif_adopt",
+      "composition_motif_archive",
+      "composition_motif_bind",
+      "composition_motif_bind_edit",
+      "composition_motif_create",
+      "composition_motif_edit",
+      "composition_motif_get",
+      "composition_motif_link_create",
+      "composition_motif_link_delete",
+      "composition_motif_link_edit",
+      "composition_motif_link_list",
+      "composition_motif_mine",
+      "composition_motif_patch",
+      "composition_motif_restore",
+      "composition_motif_search",
+      "composition_motif_suggest_for_chapter",
+      "composition_motif_unbind",
+      "composition_outline_node_delete",
+      "composition_outline_node_move",
+      "composition_outline_node_restore",
+      "composition_publish",
+      "composition_reference_update",
+      "composition_scene_link_create",
+      "composition_scene_link_delete",
+      "composition_scene_link_edit",
+      "composition_scene_link_restore",
+      "composition_structure_template_archive",
+      "composition_structure_template_clone",
+      "composition_structure_template_create",
+      "composition_structure_template_edit",
+      "composition_structure_template_restore",
+      "composition_structure_template_update",
+      "composition_switch_active_work",
+      "composition_task_provide_input",
+      "composition_write_prose",
+      "glossary_book_revert",
+      "glossary_book_sync_apply",
+      "glossary_book_sync_available",
+      "glossary_entity_delete",
+      "glossary_entity_restore",
+      "glossary_entity_set_genres",
+      "glossary_ontology_delete",
+      "glossary_set_genres",
+      "glossary_task_provide_input",
+      "glossary_user_create",
+      "glossary_user_delete",
+      "glossary_user_patch",
+      "glossary_user_restore",
+      "glossary_user_standards_read",
+      "book_audio_generate",
+      "book_chapter_bulk_create",
+      "book_chapter_purge",
+      "book_chapter_reorder",
+      "book_chapter_restore_revision",
+      "book_chapter_set_kg_exclude",
+      "book_chapter_set_part",
+      "book_chapter_update_meta",
+      "book_index_chapter",
+      "book_media_generate",
+      "book_purge",
+      "book_scene_get",
+      "book_scene_list",
+      "book_search",
+      "book_steering_delete",
+      "book_steering_set",
+      "book_structure_edit",
+      "book_structure_part_archive",
+      "book_structure_read",
+      "kg_build_wiki",
+      "kg_create_node",
+      "kg_entity_edge_timeline",
+      "kg_multi_query",
+      "kg_ontology_propose",
+      "kg_run_benchmark",
+      "kg_schema_edit",
+      "kg_sync_apply",
+      "kg_sync_available",
+      "kg_triage_place_edge",
+      "kg_triage_resolve",
+      "kg_triage_schema_write",
+      "kg_view_delete",
+      "kg_view_edit",
+      "kg_view_upsert",
+      "kg_world_query",
+      "world_create",
+      "world_delete",
+      "world_get",
+      "world_map_delete",
+      "world_map_get",
+      "world_map_list",
+      "world_map_remove_marker",
+      "world_map_remove_region",
+      "world_map_update",
+      "world_map_update_marker",
+      "world_map_update_region",
+      "world_move_book",
+      "world_update",
+      "plan_apply_revision",
+      "plan_bootstrap_apply",
+      "plan_find_missing_material",
+      "plan_get_missing_material",
+      "plan_handoff_autofix",
+      "plan_interpret_feedback",
+      "plan_keep_material",
+      "plan_link",
+      "plan_pass_status",
+      "plan_review_checkpoint",
+      "plan_self_check",
+      "plan_validate",
+      "settings_get_defaults",
+      "settings_get_profile",
+      "settings_model_register",
+      "settings_model_set_active",
+      "settings_model_set_favorite",
+      "settings_model_update",
+      "settings_update_profile",
+      "translation_job_control",
+      "translation_patch_block",
+      "translation_save_edited_version",
+      "translation_set_active_version",
+      "translation_update_settings",
+      "registry_get_skill",
+      "registry_get_workflow",
+      "registry_list_skills",
+      "registry_list_workflows",
+      "registry_propose_skill",
+      "registry_propose_workflow",
+      "registry_set_skill_enabled",
+      "registry_update_skill",
+      "registry_update_workflow",
+      "jobs_cancel",
+      "jobs_pause",
+      "lore_ask",
+      "lore_browse_entities",
+      "lore_enrichment_auto_enrich",
+      "lore_entity",
+      "memory_forget",
+      "memory_timeline",
+      "catalog_get_book",
+      "catalog_list_public_books"
+    ]
+  },
+  "preflight": {
+    "state": "green",
+    "measured_at": "2026-08-13 (entry)",
+    "note": "Inherited verbatim from the journey RUNBOOK and re-run at entry. Per-file md5 (CRLF-normalised) of every *.py under services/<svc>/app against /app/app in the running container: chat-service 131/131, composition-service 242/242, knowledge-service 301/301, translation-service 85/85, composition-worker 242/242, translation-worker 85/85, worker-ai 24/24 -- all difflines=0. IT CAUGHT ONE ON THE FIRST RUN: infra-composition-worker-1 was difflines=4 on mcp/server.py because  does not rebuild the worker image that shares its source; rebuilt and force-recreated, then green. Compiled/TS services carry no new commits since their content-verified literals (glossary 02beee08c, book-service a8bed0921, catalog fdb8a8b49, agent-registry 14e8804ce, provider-registry 517acf5b9, ai-gateway/bff/frontend unchanged since 2026-08-02/03)."
+  },
+  "tools": {
+    "plan_bootstrap_propose": {
+      "state": "proven",
+      "provider": "composition",
+      "tier": "A",
+      "cycle": 1,
+      "group": "A (tools with recorded failures)",
+      "note": "PROVEN through the browser at localhost:5174 on book 019ff497-dff3-7f26-9565-7e284f7ca71c, driven by google/gemma-4-26b-a4b-qat via lm_studio, with NO OPERATOR-TYPED TOOL ARGUMENT - the only text supplied was the user's prose ('Set this book drafting itself chapter by chapter from the plan, and pause for me to review before it goes too far.'). LIVE: the rail pinned (autonomous-drafting 0/5, next=plan_bootstrap_propose) and the tool succeeded, returning proposal 019ff8d4-0599-70c1-845d-f29cf72a63cd with SIX chapters. The recovery chain in the proving run was entirely the model's: it first invented run_id='arc_1_compiled_id_placeholder', got the SHAPE refusal, called composition_package_tree (which returns runs.recent[].id), and came back with the real compiled run 019ff49a-f12b-732f-a0cf-73dd0cfcae76. In the run before it, the model instead took the run id straight out of this tool's own not-found refusal - both discovery paths observed working. DATA (owning store, not the tool's response): the plan_bootstrap_proposal row holds book_id/run_id and 6 diff entries whose event_ids span ALL THREE arcs in order - arc_1_event_1, arc_1_event_2, arc_2_event_1, arc_2_event_2, arc_3_event_1, arc_3_event_2 - with ordinals 1..6 sequential, and the six titles match the book's six outline_node rows exactly. FALSIFIER FOR THE READING: this tool's description promises it 'writes NOTHING to the book', so a preview that had written would show as chapters>0 or a stamped outline node; measured after the run, book-service chapters=0 and outline_node stamped(chapter_id)=0 against 6 nodes. SHIP (audited past the happy path): a malformed run_id gives a SHAPE error naming the argument; a well-formed id that is not a run gives a STATE refusal naming the book's actual runs and their status; an uncompiled run keeps its own distinct label and now carries its reason; the Tier-A gate mints, suspends and resumes correctly, and the approved dispatch now repairs its arguments; the no-runs and no-compiled-package branches are covered by controls. IDEMPOTENCY was audited DIRECTLY against the MCP surface rather than live - the model would not re-call the tool on two prose nudges, so this leg is honestly NOT model-driven: a second identical propose returned new_chapters_count=0, because the pending proposal already claims all six titles. No double-offer, therefore no double-create. Three defects were found and fixed inside this cycle (T1-D1, T1-D2, T1-D3), each with its own falsifier proven RED on the original. Suites green: composition-service 3754 passed / 403 skipped, chat-service 2920 passed / 3 skipped, both serial. Deployed by CONTENT: composition-service, composition-worker and chat-service all difflines=0 over every *.py. WHAT THIS DOES NOT CLAIM: the six previewed chapters were left UNAPPLIED. plan_bootstrap_apply is a different tool and the cycle boundary forbids reaching into it; the proposal sits pending for that tool's own cycle."
+    }
+  },
+  "defects": {
+    "T1-D1": {
+      "state": "proven",
+      "found_by": "plan_bootstrap_propose",
+      "lives_in": "services/composition-service/app/mcp/server.py::plan_bootstrap_propose",
+      "title": "The refusal was a half-fix of its own sibling, and it answered with prose a question it could have answered with data",
+      "note": "MECHANISM, THREE PARTS OF ONE MESSAGE. (a) A run_id naming nothing raised uniform_not_accessible() - an OWNERSHIP answer to a WRONG-ARGUMENT condition, on a caller who had already passed the EDIT gate one line above. The sibling plan_bootstrap_apply already made that argument in its own comment ('the lookup is book-scoped ... so this reveals nothing they could not already read') and this step was left behind. (b) _uuid(run_id) sat INSIDE the try, so a malformed id raised ValueError and was caught by the not-yet-compiled arm - a BAD ARGUMENT reported as a STATE problem. The sibling again already did it right, commented 'validate shape before minting'. (c) The uncompiled branch returned error='cannot preview' with the explanation only in `detail`, which the envelope dropped. MEASURED LIVE 2026-08-12: with run_id=019ff497-e068-... (the book's KNOWLEDGE PROJECT id) the model got 'not found or not accessible'; with run_id='arc_1' it got 'cannot preview', the sentence meaning 'not compiled yet' - about a run that WAS compiled and had three package artifacts, so the only hint it received pointed at the one thing that was fine. FIX. Shape before state (hoist _uuid out of the try); the reason folded INTO the error string; and the not-found refusal now NAMES THE BOOK'S OWN PLAN RUNS with their status, falling back to plan_propose_spec only when the book genuinely has none. That last part is NOT a reword - it was forced by live evidence: with the first version of the message (which named plan_propose_spec and nothing else) the model answered \"I'll find your plan: I'll look for the most recent plan we've worked on\" and then STOPPED and asked the author, because this book already holds a compiled run and 'create a run' means re-planning a planned book. The ids were one book-scoped read away. CODE. 8 guards. The message was extracted into `_missing_run_message` specifically so it could be tested for what it SAYS rather than grepped for how it is written. Falsifiers proven RED by injecting each original: the single-branch message reds the already-has-runs guard; the call-site break reds the wiring guard; the in-try _uuid reds the shape guard; the bare label reds the reason-in-error guard. ONE OF MY OWN CONTROLS WENT RED UNDER THE INJECTION, and that was the control being wrong rather than the fix: it asserted my new phrase 'NO plan runs' instead of the invariant (a book with no runs is still sent to the emitter), so it was testing my wording. Rewritten to the invariant, it stays green under the same injection. LIVE A/B on the exact recorded inputs, on the deployed image: run_id='arc_1' BEFORE 'cannot preview' -> AFTER \"run_id must be a UUID - received 'arc_1'...\"; run_id=019ff497-e068-... BEFORE 'not found or not accessible' -> AFTER \"no plan run 019ff497-e068-... on this book ... This book's plan run(s): 019ff49a-f12b-732f-a0cf-73dd0cfcae76 (status=compiled). Pass a `compiled` one as run_id.\" - and the model then DID pass exactly that id."
+    },
+    "T1-D2": {
+      "state": "proven",
+      "found_by": "plan_bootstrap_propose",
+      "lives_in": "services/chat-service/app/services/stream_service.py (resume dispatch + resumed continuation) + app/db/suspended_runs.py + app/db/migrate.py",
+      "title": "The studio's single-book knowledge did not survive a suspend, so the only calls running on unrepaired arguments were the ones a human had approved",
+      "note": "MECHANISM, ONE MECHANISM AT TWO SITES (the RUNBOOK's test says that is one defect). chat-service repairs a weak model's arguments on the streaming path via _inject_context_ids: fill a blank id, substitute a malformed one, and - on a STUDIO turn - override a valid-but-DIFFERENT book_id, because the studio works one book at a time so a different book is a hallucination rather than a cross-book call. (a) `resume_stream_response` handed the RAW saved args straight to mcp_execute_tool: no fill, no substitution, no override. (b) the resumed continuation rebuilt context_ids as {'book_id': ...} with NO `studio` key, so _inject_context_ids read studio=False and the override was dead for every tool called after an approval. MEASURED LIVE 2026-08-12: the model called plan_bootstrap_propose with a correct run_id and book_id=019ff497-e068-... (the knowledge-project id). chat-service logged the repair - \"tool arg book_id='019ff497-e068-...' differs from the studio's book 019ff497-dff3-... - overriding\" - the call suspended on its Tier-A card, the author approved it, and composition-service was then asked for /internal/books/019ff497-e068-.../access. THREE access checks on the wrong id reached the service in that turn against exactly ONE override log line. The repair had fired and was never persisted, and the approved write failed 'not found or not accessible' on a book the author owns and had open. FIX. Persist the flag, for the same reason permission_mode is already persisted ('the resume continues under the mode the turn started with') - the /tool-results request carries no studio signal, so an in-memory fix cannot work. New idempotent column chat_suspended_runs.studio (BOOLEAN NOT NULL DEFAULT FALSE - false for the 112 pre-existing rows is exactly the old behaviour), threaded through SuspendedRun, both loaders and the INSERT; the continuation now passes {'studio': bool(susp.studio)}; and the approved dispatch calls a new `_repair_saved_book_id`. That helper is deliberately NARROWER than _inject_context_ids: tool_defs is not built until after the resume dispatch, so with no schema it only ever ADJUSTS a book_id already present and NEVER adds one - adding an undeclared arg needs the schema, correcting a present one does not. book_id could NOT stand in for the flag: a plain book-surface turn also carries a book, and overriding there would silently redirect the legitimate cross-book call the streaming path explicitly promises to honor. That is now its own control. CODE. 7 guards; 4 targeted injections, each reddening exactly one guard with no bystanders: remove the repair call (call-site guard), drop the studio branch from the helper (the defect guard), restore the studio-less context_ids (continuation guard), drop studio from the save (persistence guard). THE PERSISTENCE GUARD'S FIRST ANCHOR WAS AMBIGUOUS and stayed GREEN on its own injection: it grepped the whole file for `studio=bool((context_ids or {}).get(\"studio\")),`, which is ALSO how both _inject_context_ids call sites pass it - deleting the one at the suspend left two matches. Re-anchored inside the save_suspended_run call. Not registered in scripts/agentruntime_falsifiers.py: that harness enumerates the CP suites only (SUITES is a literal tuple of tests/test_cp*.py, gated by test_THE_SUITE_LIST_IS_EVERY_CP_SUITE_ON_DISK), so this file is outside it by design and direct injection is the proof method, as for D-FJ-9. Full chat-service suite serial: 2920 passed, 3 skipped, 0 failed. Deployed by content (difflines=0) and the migration verified APPLIED in the live DB (information_schema shows chat_suspended_runs.studio boolean, default false, NOT NULL)."
+    },
+    "T1-D3": {
+      "state": "proven",
+      "found_by": "plan_bootstrap_propose",
+      "lives_in": "services/composition-service/app/services/bootstrap_service.py::propose + app/db/repositories/plan_runs.py::list_artifacts",
+      "title": "The preview offered 2 chapters on a 6-chapter plan, and it is the artifact a human approves from",
+      "note": "FOUND BY READING THE DATA, NOT THE METRIC. The tool had just been proven to succeed live: ok=true, a real proposal row, two chapters with real titles drawn from this book's own glossary, status pending, no warning anywhere. The owning store said otherwise - the book holds SIX planned chapters (outline_node kind=chapter = 6, all chapter_id NULL) and ZERO real chapters, and both offered chapters carried event_id arc_3_event_*. MECHANISM. `_autocompile_rules_run` calls `compile(created_by, book_id, run_id, arc_id=arc_id)` ONCE PER PARSED ARC, and every compile ends with save_artifact(..., 'package', ...) scoped to that arc. Run 019ff49a therefore holds THREE package artifacts - arc_1 'The Forged Path', arc_2 'The Salt's Secret', arc_3 'The Great Unmapping', 20ms apart - while propose read `latest_artifact(book_id, run_id, 'package')`. It previewed the LAST arc and dropped arcs 1-2 from the very artifact the human approves. `apply` replays that persisted diff verbatim and never re-derives it (the whole point of the gate), so four planned chapters would never have been created and nothing would have said so. THE CODEBASE HAD ALREADY LEARNED THIS EXACT LESSON one file over, for a sibling kind: 'BY TARGET, not `latest link_report`. Both linkers emit kind `link_report`...'. FIX. A new repo read `list_artifacts` (oldest-first = compile order = the author's arc order) and `compiled_package_across_arcs`, which folds LATEST-PER-ARC rather than concatenating - a re-compile of one arc appends another package for it, and a plain concat would double-offer that arc, which for a title-keyed apply is a double-CREATE. Arc order is first-appearance, so a later re-compile updates an arc in place instead of moving it. A package with no arc_id keys on its own artifact id, so arc-less packages are neither dropped nor collapsed together. The previewed `ordinal` is also renumbered 1..n: the compiler's ordinal is PER ARC, so a fold reads 1,2,1,2,1,2 - three first chapters - and apply ignores ordinal and creates in list order, so the list's own position is the only honest number. CODE. 7 guards, 5 targeted injections each reddening its own rule: latest-only at the call site, latest-only at the fold, no per-arc dedup (reds the re-compile guard alone), a shared key for arc-less packages (reds that control alone), and the per-arc ordinal passed through. LIVE A/B, same prose, same book, same model, only the fix differing - BEFORE: new_chapters_count=2, both arc_3, ordinals 1,2. AFTER: new_chapters_count=6, event_ids arc_1_event_1 ... arc_3_event_2 in arc order, ordinals 1..6, titles matching all six outline_node rows. DATA falsifier re-checked after: book-service chapters=0 and outline stamped=0, so the richer preview still wrote nothing. Full composition-service suite serial: 3754 passed, 403 skipped, 0 failed. Deployed by content (composition-service and composition-worker both difflines=0 over 242 files). NOT FIXED HERE, AND DELIBERATELY: `plan_forge_service.validate()` carries the SAME latest_artifact(..., 'package') read. It belongs to plan_validate, a different tool, so under the HARD CYCLE BOUNDARY it is recorded as OBS-T1 for that tool's own cycle rather than batched in."
+    }
+  },
+  "deferred_questions": {},
+  "carried_observations": [
+    {
+      "id": "OBS-T1",
+      "note": "services/composition-service/app/services/plan_forge_service.py:885 (`validate`) reads `latest_artifact(book_id, run_id, 'package')` - the same single-artifact read that made plan_bootstrap_propose preview one arc of three (T1-D3). validate() feeds `run_rules(spec, package)`, so on a multi-arc run it plausibly validates the last arc's package against the whole spec. NOT investigated and NOT fixed: it is plan_validate's tool, and the cycle boundary says one tool at a time. For that tool's cycle."
+    },
+    {
+      "id": "OBS-T2",
+      "note": "The studio's manuscript panel reads '6 chuong' (6 chapters) and lists six treeitems for book 019ff497, where book-service holds ZERO chapters and composition holds 6 outline_node (planned, chapter_id NULL). The panel renders PLANNED nodes with the label and count of WRITTEN chapters, so an author cannot tell a plan from a manuscript. Measured 2026-08-13 alongside chapters=0."
+    },
+    {
+      "id": "OBS-T3",
+      "note": "The new-chat modal ([data-testid=new-chat-dialog]) does not trap input: with the dialog open, text typed into the chat composer underneath was accepted AND SENT to the existing session while the dialog stayed open and unsubmitted. Measured 2026-08-13 - it is why a run intended for a fresh session landed in a stale one carrying the model's earlier stuck conclusion. The dialog also intercepts pointer events for the Tier-A approval buttons behind it, so an approval cannot be clicked until it is dismissed."
+    },
+    {
+      "id": "OBS-T4",
+      "note": "plan_bootstrap_propose.run_id is NOT declared in contracts/agent-runtime-tool-contracts.json, so D-FJ-11's invented-supplier-id check (which drops a `plan`-declared *_id holding a non-UUID before dispatch) never fires for it. Measured 2026-08-13: the model sent run_id='arc_1_compiled_id_placeholder', which passed the gateway, minted a Tier-A approval card, spent the author's approval, and only then hit the tool's own shape check. plan_compile.run_id IS declared; this sibling is not. Declaring it would refuse the placeholder before the gate. Recorded rather than done: the contract registry is a shared surface and the change belongs with a cycle that can re-verify every tool it declares."
+    }
+  ],
+  "progress": {
+    "_note": "Counted from this ledger's own rows, never typed.",
+    "tools_declared": 315,
+    "tools_concluded": 1,
+    "tools_proven": 1,
+    "tools_blocked": 0,
+    "defects_proven": 3,
+    "defects_open": 0
+  }
+}
