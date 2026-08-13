@@ -2309,7 +2309,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   | **Evidence** | `port-adoption-gate --list` (64 binders) crossed against the operations the Neo4j adapter wraps; `public/relations.py`, `public/events.py`, `internal_timeline.py` inspected directly. `ontology/triage_apply.py` looked migratable by NAME (`create_relation`) and is not: it passes `pending_validation`, `schema_version`, `cardinality` and relies on a `None` return the port cannot produce. |
   | **To unblock** | Answer: **does `GraphStore` own paginated browse queries and correction writes, or only domain reads plus the upserts?** The port's own docstring leans one way — *"a count belongs to a paginated browse, not to 'give me the events in this window'"* — but that is a comment, not a decision, and a second adapter must implement whatever is added. |
   | **Mechanism** | `port-adoption-gate`'s ceiling (64) cannot fall without this answer, so the number itself is the tracker: a stalled ceiling IS the unanswered question, visible on every run. |
-  | **Retry when** | The scope question is answered. It belongs with T43's engine decision, since the second adapter pays for every method added. |
+  | **Retry when** | ~~The scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13: the port owns EVERYTHING** — paginated browse queries AND correction writes both move behind `GraphStore`. The engine swap is total; every future adapter pays for each method, and that price is accepted deliberately. **This deferral is now WORK, not a question.** |
 - [x] **T18** — Define `GraphStore` + its fake — **GREEN**
   Domain operations, not Cypher: `resolve_or_merge_entity` · `find_entities_by_name` ·
   `neighborhood(entity, depth, filters)` · `relations_for(entity, as_of)` · `status_at_order` ·
@@ -5653,7 +5653,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Evidence** | 2026-08-13 drafting run, three chapters: `critic: null` on every job; canon coverage `['name_grounding']` of three checks; `canon_cast: no_rules` (the resolved-cast corpus was empty — every member `{'source':'none','status':'unknown'}`), `plan_liveness: no_position`. The two-arm assertion, by contrast, DID produce a real judgement (2 vs 3) because it calls the critique endpoint directly with rules. Same book, same session, two different coverages. |
   | **To unblock** | One of: (a) the drafting flow invokes the D5 critic so a chapter carries a `canon_consistency`; (b) QC-5's criterion is restated against what the flow DOES produce — the guard's per-check statuses and coverage — which is a different and arguably better test, since a per-check report cannot round up to a pass; or (c) the acceptance test is declared to be the direct-critique assertion only, and the flow capture drops the `canon_consistency` wording. **(b) or (c) is a plan edit, not code.** |
   | **Mechanism** | The measurement file records both coverages side by side, so the disagreement is visible rather than inferable. Any future run that reports a flow-level `canon_consistency` contradicts this row and closes it. |
-  | **Retry when** | The PO picks (a), (b) or (c). Until then QC-5's flow half is **unevaluable as written**, and that is a statement about the criterion, not about the refactor. |
+  | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
@@ -5704,7 +5704,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Evidence** | Census 2026-08-13 in the T38 body above — every pinned site read and its consumed fields named. |
   | **To unblock** | Answer: **does the KAL grow a detail-carrying catalog read (kind, aliases, short_description), or does the authored catalog stay a direct read and INV-KAL's scope stop where it is?** T47 already records the consequence — *"INV-KAL scope now covers writes + the authored catalog"* — as though this were settled. It is not. |
   | **Mechanism** | `authored-catalog-reader-gate`'s pinned set is the checklist and can only shrink; it cannot shrink at all until this is answered, so a frozen list is the visible signal. |
-  | **Retry when** | The KAL scope question is answered. **T39 and T40 chain behind T38**, so this one question gates three tasks. |
+  | **Retry when** | ~~The KAL scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13: the KAL GROWS a detail-carrying catalog read** (kind, aliases, short_description), and all ten readers move behind it. T47's recorded consequence — *"INV-KAL scope now covers writes + the authored catalog"* — is therefore correct as written and needs no edit. **This deferral is now WORK, not a question.** |
 - [~] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
   31 files across nine feature folders consume these contracts — `glossary`, `trash`,
   `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
@@ -6442,7 +6442,14 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   it invalidates elsewhere in this document, which is the same class as
   `debt-batches-list-is-stale` — verify before believing a status row, including this one.
 
-- [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
+- [x] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
+  ✅ **SIGNED OFF BY THE PO 2026-08-13** on the evidence below: shadow comparison **9 of 9
+  operations agreeing, zero divergences** (`cutover_permitted: True`), and the rebuild drill
+  **timed on a real book** — ~8 ms/entity, largest book (3187 rows) in ~26 s, report
+  reconciling exactly against the graph (3171 = 3171).
+  ⚠️ **Stated limit, and it does not block the sign-off:** the rebuild restores **identity**,
+  not extraction-derived relations. `D-T41-RELATIONS-NOT-REBUILDABLE` stays open under T41 as
+  its own question.
   ---
   ### 🎯 REBUILD DRILL RUN 2026-08-13 — on a REAL book, timed
 
