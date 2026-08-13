@@ -6012,6 +6012,33 @@ async def plan_link(
 # tools are the agent surface: PREVIEW (propose, writes nothing) then a CONFIRM-gated CREATE (apply).
 
 
+def _missing_run_message(run_id: Any, rows: list[Any]) -> str:
+    """The refusal for a run_id that names nothing on this book — ANSWERING ITS OWN QUESTION.
+
+    Split out of the tool so it can be tested for what it SAYS rather than grepped for how it is
+    written: a source-grep guard goes red on a harmless rewrite and stays green on a message that
+    consulted nothing, which is the wrong way round.
+
+    `rows` is the book's own plan runs (book-scoped; the caller has already passed the EDIT gate).
+    """
+    if rows:
+        found = "; ".join(f"{r.id} (status={r.status})" for r in rows)
+        remedy = (
+            f" This book's plan run(s): {found}. Pass a `compiled` one as run_id."
+        )
+    else:
+        remedy = (
+            " This book has NO plan runs yet — call plan_propose_spec to create one and pass the "
+            "run id it returns."
+        )
+    return (
+        f"no plan run {run_id} on this book — that id does not name a plan run here (a run is "
+        "book-scoped, so one from another book, or an id belonging to something else entirely, "
+        "will not resolve)." + remedy
+        + " A run must be compiled with plan_compile before this can preview it."
+    )
+
+
 @mcp_server.tool(
     name="plan_bootstrap_propose",
     description=(
@@ -6039,13 +6066,66 @@ async def plan_bootstrap_propose(
     await _gate(tc, bid, GrantLevel.EDIT)
     svc = await get_bootstrap_service()
     bearer = mint_service_bearer(tc.user_id, settings.jwt_secret)
+    # 🔴 SHAPE BEFORE STATE, and the sibling already does this: `plan_bootstrap_apply` validates
+    # `_uuid(proposal_id, "proposal_id")` OUTSIDE its try with the comment "validate shape before
+    # minting". Here `_uuid` sat INSIDE the try, so a malformed id raised ValueError and was caught
+    # by the not-yet-compiled arm below — reporting a BAD ARGUMENT as a STATE problem.
+    #
+    # MEASURED LIVE 2026-08-12: the model called this with run_id="arc_1" (an arc id, not a run id)
+    # and was told "cannot preview", the sentence that means "run has no compiled package yet —
+    # call compile() first". The run in question WAS compiled and had three package artifacts, so
+    # the one hint it got pointed at the one thing that was not wrong.
+    rid = _uuid(run_id, "run_id")
     try:
-        rec = await svc.propose(tc.user_id, bid, _uuid(run_id, "run_id"), bearer)
+        rec = await svc.propose(tc.user_id, bid, rid, bearer)
     except LookupError:
-        raise uniform_not_accessible()
+        # 🔴 THE SIBLING ONE STEP LATER IN THIS RAIL ALREADY MADE THIS ARGUMENT, and this step was
+        # left on the uniform error. `plan_bootstrap_apply` says it in its own comment: the lookup
+        # is book-scoped (`get_for_book`) and the caller has ALREADY passed the EDIT gate above, so
+        # naming a missing run "reveals nothing they could not already read". It is not an ownership
+        # oracle; it is a wrong-argument condition.
+        #
+        # MEASURED LIVE 2026-08-12 (journey `autonomous-drafting`, book 019ff497): the model called
+        # this with the correct book_id and a run_id of 019ff497-e068-77db-89f7-9d8c298fe8cd — the
+        # book's KNOWLEDGE PROJECT id, a well-formed UUID of the wrong entity. It got "not found or
+        # not accessible", which names neither which id was wrong nor where a real one comes from,
+        # and the journey stopped there. Note D-FJ-11 deliberately does NOT catch this upstream: a
+        # syntactically valid id is accepted because "whether it is the RIGHT row is the tool's
+        # question, not ours" — this is the tool answering that question.
+        #
+        # 🔴 AND THE REFUSAL ANSWERS ITS OWN QUESTION. Measured live 2026-08-12 with the message
+        # below in its first form (which named `plan_propose_spec` and nothing else): the model
+        # replied "I'll find your plan: I'll look for the most recent plan we've worked on" and
+        # then stopped and asked the author. Its instinct was RIGHT and the sentence sent it the
+        # wrong way — this book already holds a COMPILED run, so "create a run" means re-planning
+        # a planned book, and the model correctly declined to do that on its own.
+        #
+        # The ids are one book-scoped read away, on a caller who has already passed the EDIT gate
+        # one line above — the same argument the sibling `plan_bootstrap_apply` makes for naming a
+        # missing proposal. So NAME THEM. This is the D-FJ-3/D-FJ-5 shape one more time: the
+        # information was available at the moment of the refusal and thrown away, leaving the
+        # caller to guess at what the tool could simply have said.
+        try:
+            from app.db.repositories.plan_runs import PlanRunsRepo
+
+            rows, _ = await PlanRunsRepo(get_pool()).list_for_book(bid, limit=5)
+        except Exception:  # noqa: BLE001 — the listing is an ENRICHMENT; never mask the real error
+            logger.warning("bootstrap_propose: could not list this book's plan runs", exc_info=True)
+            rows = []
+        raise ToolError(_missing_run_message(run_id, rows))
     except ValueError as exc:
         # e.g. "run has no compiled package yet — call compile() first"
-        return {"success": False, "error": "cannot preview", "detail": str(exc)[:300]}
+        #
+        # 🔴 THE REASON GOES IN THE ERROR, not only beside it. Measured live 2026-08-12: the caller
+        # received `error: "cannot preview"` with `result: null` and the `detail` nowhere in sight —
+        # the envelope carried the label and dropped the explanation, which is the same
+        # discard-the-signal shape as a failure emitted with no message. Putting it in the string
+        # makes it unlosable by any envelope between here and the model.
+        return {
+            "success": False,
+            "error": f"cannot preview — {str(exc)[:300]}",
+            "detail": str(exc)[:300],
+        }
     diff = rec.diff or {}
     chapters = diff.get("new_chapters", [])
     return {
