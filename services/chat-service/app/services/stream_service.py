@@ -1994,6 +1994,74 @@ def _missing_required_args(args_obj: dict, tool_def: dict | None) -> bool:
     return bool(_missing_required_names(args_obj, tool_def))
 
 
+def _flat_declared_types(spec: dict) -> list | None:
+    """The concrete JSON types a property may hold, flattening ONE union level.
+
+    Shared by the two container/type repairs below so they cannot drift apart. Returns None when
+    the schema is richer than a flat type set (`items`, `$ref`, `allOf`, nested unions) — the
+    caller must then DECLINE rather than guess, which is the safety property both repairs rest on.
+    """
+    branches = spec.get("anyOf") or spec.get("oneOf")
+    if branches is not None:
+        if not isinstance(branches, list) or not branches:
+            return None
+        if not all(isinstance(b, dict) for b in branches):
+            return None
+        if any("items" in b or "$ref" in b or "anyOf" in b or "oneOf" in b for b in branches):
+            return None
+        return [t for b in branches for t in (
+            b.get("type") if isinstance(b.get("type"), list) else [b.get("type")])]
+    if any(k in spec for k in ("items", "allOf", "$ref")):
+        return None
+    declared = spec.get("type")
+    return declared if isinstance(declared, list) else [declared]
+
+
+def _stringify_int_args_declared_string(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `chapter: 1` → `chapter: "1"` for a param the schema declares STRING-only.
+
+    🔴 MEASURED LIVE. book_chapter_save_draft declares `chapter` as a string whose OWN description
+    says to pass "its NUMBER (e.g. '1', 'chapter 3')" — so the model reads "number", sends the JSON
+    number 1, and the gateway rejects the call before the tool ever sees it:
+    *validating /properties/chapter: type: 1 has type "integer", want "string"*. Recorded on
+    2026-08-04 and again on 2026-08-12, i.e. it recurs; the 2026-08-12 instance came one step after
+    the same turn had finally supplied the prose, so the write was blocked on the container of a
+    value that was already correct. Same family as D-FJ-7 (the value is right, its TYPE is wrong)
+    and repaired with the same discipline.
+
+    DELIBERATELY NARROW, because a wrong coercion corrupts a write rather than refusing it:
+
+    * only when EVERY non-null declared type is `string` — a param that also accepts `integer` is
+      not confused, it is being given a legal value;
+    * `bool` is declined even though Python calls it an int: `True` -> "True" is a guess about
+      intent, not a container slip;
+    * `float` is declined: 1.0 -> "1.0" is lossy and ambiguous against a selector like "1";
+    * a schema richer than a flat type set is declined outright (see `_flat_declared_types`).
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    coerced: list[str] = []
+    for name, value in list(args_obj.items()):
+        if isinstance(value, bool) or not isinstance(value, int):
+            continue
+        spec = props.get(name)
+        if type(spec) is not dict:  # shape differs from the sibling ON PURPOSE: identical bodies
+            continue                # made a registered falsifier's anchor match twice
+        types = _flat_declared_types(spec)
+        if types is None:
+            continue
+        concrete = [t for t in types if t != "null"]
+        if not concrete or any(t != "string" for t in concrete):
+            continue
+        args_obj[name] = str(value)
+        coerced.append(name)
+    return coerced
+
+
 def _unwrap_single_element_scalar_args(args_obj: dict, tool_def: dict | None) -> list[str]:
     """Repair `["vi"]` → `"vi"` for a param the schema declares SCALAR. Returns the names repaired.
 
@@ -5057,6 +5125,14 @@ async def _stream_with_tools(
                     logger.info(
                         "unwrapped single-element list arg(s) %s for %s (session=%s) — the schema "
                         "declares them scalar", _unwrapped, c["name"], session_id,
+                    )
+                # Sibling repair: a JSON NUMBER where the schema declares string-only. Same class,
+                # same discipline — see _stringify_int_args_declared_string.
+                _stringified = _stringify_int_args_declared_string(args_obj, _tool_def_for_args)
+                if _stringified:
+                    logger.info(
+                        "stringified integer arg(s) %s for %s (session=%s) — the schema declares "
+                        "them string-only", _stringified, c["name"], session_id,
                     )
                 # D-FJ-11 — an id the contract says the RUNTIME owes, filled in with a fabricated
                 # value. Treated exactly like the missing case, because it IS the missing case with
