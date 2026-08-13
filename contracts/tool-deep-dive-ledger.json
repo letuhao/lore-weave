@@ -971,6 +971,14 @@
       "cycle": 20,
       "group": "A#1 among unconcluded (0 live, 51 total, 70 calls)",
       "note": "PROVEN with NO defect. The 51 failures decompose into 36 repeat-guard (all 2026-07-14), 10 scope-value errors and 5 older pydantic validation errors — none of them the tool misbehaving today. THE SCOPE ARG IS PROPERLY DECLARED, which is the contrast with cycle 12's T12-D1: it is an `anyOf` of a string ENUM, an ARRAY of that enum, and null, with the description spelling out 'Pass ONE value as a plain string (a one-element list is tolerated and unwrapped). Omit for both.' Every recorded bad value is refused with the actionable form — the legal set, plus what was sent and its TYPE: \"Input should be 'system' or 'user' (you sent 'all')\", \"(you sent a str)\", \"(you sent a list)\". AND THE TWO-ELEMENT LIST HAS ITS OWN MESSAGE. ['system','user'] — 3 recorded calls — is refused with \"`scope` must be a single value ('system' or 'user'), not a list — omit it entirely to get both\", which names the exact fix rather than restating the type. LIVE (session 019ffaea). From 'What knowledge-graph schema templates can I base a project on? List the built-in ones', the model called kg_list_templates({scope:'system'}) — the scope value derived from 'the built-in ones' — and answered accurately with the templates and their real descriptions. DATA (owning store loreweave_knowledge.kg_graph_schemas): scope='system' returns exactly the 7 non-deprecated system codes the store holds — drama, fantasy, general, historical, mystery, romance, xianxia-harem — with no extras and none missing. scope='user' returns 0, correct for an account that owns no user templates. Omitted returns the same 7 (system + own user). 🔴 AND THE TENANCY CONTROL HOLDS: called as a STRANGER it still returns the 7 system templates and NO user templates, which is exactly what the repo's clause `(scope='system') OR (scope='user' AND scope_id=$user)` promises. A stranger seeing another user's template would have refuted it. 🔴 MY OWN FIRST READING SAID 'zero templates' AND WAS WRONG — the fourth false alarm this session caught by a control. This tool returns its payload ONLY as content[0].text (a JSON string) and emits NO structuredContent, so a probe reading structuredContent sees nothing. Recorded as OBS-T29 because every knowledge-service tool shares that shape."
+    },
+    "composition_get_work": {
+      "state": "proven",
+      "provider": "composition",
+      "tier": "R (scope book, ambient_book + ambient_project)",
+      "cycle": 21,
+      "group": "A#1 among unconcluded (0 live, 47 total, 66 calls)",
+      "note": "PROVEN with NO defect. The 47 failures decompose into 25 calls that sent `{}` — no ids at all — refused with 'pass project_id or book_id'; 20 repeat-guard on a single day; and 2 'not found or not accessible'. Every one is a correct refusal. LIVE (session 019ffaef). From 'what's its composition authoring workspace — the Work's status and active template?', the model called composition_get_work({book_id: …}) with an id it had resolved itself, then followed up with composition_get_work({project_id: '019ff8f6-2a59-7dad-bfe5-f1b2b445e75c'}) — a value it could ONLY have learned from the first response. DATA (owning store loreweave_composition.composition_work): that book's Work carries exactly project_id 019ff8f6-2a59-7dad-bfe5-f1b2b445e75c, status 'active', active_template_id NULL. The model's second call used that project_id verbatim, so the response carried the right value; a different one would have refuted the reading. AND IT CROSSES SERVICES CORRECTLY: that project_id is the SAME knowledge-project id cycle 9 measured being auto-bootstrapped for this book, which is what the description claims ('project_id (= the knowledge project id, the Work PK)'). SHIP - both lookup paths and the ambient contract swept. by book_id and by project_id return the SAME Work, field for field. `{}` with no ambient book is refused fail-closed with the actionable 'pass project_id or book_id' — exactly the 25-call recorded mode, and correct. `{}` WITH X-Book-Id resolves and returns the Work, so this tool's optional ids are properly paired with real envelope resolution (the pairing cycle 10's T10-D1 found missing elsewhere), and its _meta declares BOTH ambient_book and ambient_project. A stranger gets 'not found or not accessible' — the same answer as a genuinely absent Work, so existence cannot be enumerated. A book that never had a Work gets one derived rather than an error, consistent with the auto-bootstrap recorded in OBS-T17."
     }
   },
   "defects": {
@@ -1267,9 +1275,9 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 20,
+    "tools_concluded": 21,
     "tools_in_cycle": 0,
-    "tools_proven": 18,
+    "tools_proven": 19,
     "tools_blocked": 2,
     "defects_proven": 19,
     "defects_open": 0,
