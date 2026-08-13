@@ -70,6 +70,7 @@ class DualWriteVectorStore:
         secondary: VectorStore,
         *,
         shadow_read_rate: float = 0.0,
+        primary_read_scopes: frozenset[str] = frozenset({"passage", "entity"}),
         raise_on_secondary_failure: bool = False,
         rng: random.Random | None = None,
     ) -> None:
@@ -78,6 +79,18 @@ class DualWriteVectorStore:
         self._primary = primary
         self._secondary = secondary
         self._shadow_read_rate = shadow_read_rate
+        # T25 — WHICH SCOPES THE PRIMARY ANSWERS. Default: both, i.e. unchanged.
+        #
+        # It exists because the cutover is not one decision. `PgVectorStore` deliberately
+        # OMITS `anchor_score` from an entity hit (D-T25B-PG-ANCHOR-SCORE): the score is
+        # bucket-relative and recomputed on its own schedule, so a copy on the vector row
+        # would be confidently stale — worse than absent. Entity reads RANK by it. So
+        # passages are ready to cut over and entities are not, and a single primary would
+        # have forced one of those two facts to be ignored.
+        #
+        # The tripwire test that caught this is `test_the_provider_keeps_neo4j_as_primary`,
+        # which fired on the argument swap before it shipped.
+        self._primary_read_scopes = frozenset(primary_read_scopes)
         self._raise_on_secondary_failure = raise_on_secondary_failure
         # Injectable so a test can pin the sampling decision. Without this the shadow-read
         # tests would either be flaky or have to run at rate 1.0, and rate 1.0 is the one
@@ -85,6 +98,15 @@ class DualWriteVectorStore:
         self._rng = rng or random.Random()
 
     # ── reads ────────────────────────────────────────────────────────────────
+
+    def _server_and_shadow(self, scope: str):
+        """(who answers, who is compared) for this scope. The one that does not serve is
+        always the shadow, so the overlap metric keeps measuring new-against-old in whichever
+        direction the deployment is currently pointing."""
+        if scope in self._primary_read_scopes:
+            return self._primary, self._secondary
+        return self._secondary, self._primary
+
 
     async def search(
         self,
@@ -97,7 +119,8 @@ class DualWriteVectorStore:
         filter: VectorFilter | None = None,
         include_vectors: bool = False,
     ) -> list[VectorHit]:
-        hits = await self._primary.search(
+        server, shadow = self._server_and_shadow(scope)
+        hits = await server.search(
             scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k, filter=filter,
             include_vectors=include_vectors,
         )
@@ -105,20 +128,21 @@ class DualWriteVectorStore:
             if self._shadow_read_rate > 0.0:
                 vector_shadow_read_total.labels(outcome="skipped_sampling").inc()
             return hits
-        await self._compare(
         # `include_vectors` is deliberately NOT forwarded to the shadow: the comparison is
-        # over `record_id` sets and nothing else, so asking the secondary for k×dim floats
-        # would pay the whole payload to discard it. Omitted on purpose, said here so it
-        # does not read as the parameter having been missed.
-            hits, scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k, filter=filter,
+        # over `record_id` sets and nothing else, so asking it for k×dim floats would pay
+        # the whole payload to discard it. Omitted on purpose, said here so it does not read
+        # as the parameter having been missed.
+        await self._compare(
+            shadow, hits, scope=scope, user_id=user_id, embedding=embedding, dim=dim, k=k,
+            filter=filter,
         )
         return hits
 
-    async def _compare(self, hits: list[VectorHit], **kw) -> None:
+    async def _compare(self, shadow_store: VectorStore, hits: list[VectorHit], **kw) -> None:
         """Never raises and never changes the answer. A shadow read that broke the request
         it was measuring would be a monitoring tool causing the outage it reports."""
         try:
-            shadow = await self._secondary.search(**kw)
+            shadow = await shadow_store.search(**kw)
         except Exception as exc:  # noqa: BLE001 — see the docstring; this is the point
             # NOT counted as agreement. A comparison that did not happen is unmeasured, and
             # folding it into the overlap histogram would make a broken secondary look like

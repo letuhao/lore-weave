@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` — flip the vector provider and drop the Neo4j vector indexes (SPEC §3.1).** ✅ `A8` DONE (conformance **72 → 82**) · ✅ `T24b` DONE, both halves: the port grew what the readers needed (`include_vectors`, the two published drawer fields, backend key parity) and all three readers are on it — **vector read call sites on the repo: 3 → 0**, proved live in a rebuilt container against a real Neo4j.
+**RESUME: `T32` — the reveal axis, now that `facts_for` exists to serve it (SPEC §1.1).** ✅ `A8` · ✅ `T24b` (both halves) · ✅ `T25 ②` the cutover switch, proved live: the same three hits, same top, same score, from **two different engines** — and the T25b tripwire fired on the argument swap, which is why the cutover is PER SCOPE (SPEC §3.3). **T25 ③** (dropping the Neo4j indexes) is not code: it needs the soak and QC-3's rebuild measurement above 65 536 vectors.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -3408,7 +3408,13 @@ vectors and validity intervals live in different stores.
 
 - [~] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.1. Unfinished, not undecided.
-  **Backup path DONE and drilled. The cutover is BLOCKED, and not by anything T25 can fix.**
+  **① backup path ✅ · ② cutover switch ✅ (2026-08-13) · ③ dropping the Neo4j indexes — owed.**
+
+  ⚠️ **The paragraph below saying the cutover is ⛔ blocked is HISTORY and is kept for its
+  measurement, not its verdict.** It was right when written — nothing held a `VectorStore`,
+  so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
+  switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
+  needs is not code: the soak, and QC-3's rebuild measurement above 65 536 vectors.
 
   **① The backup path ✅** — [`scripts/vector-backup-drill.sh`](../../scripts/vector-backup-drill.sh),
   evidence in [`docs/measurements/2026-08-10-vector-restore-drill.md`](../measurements/2026-08-10-vector-restore-drill.md).
@@ -7640,6 +7646,109 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   **T24b is COMPLETE.** T25 is now what it always claimed to be: flip the provider, drop the
   Neo4j indexes.
+
+
+  ### ✅ T25 ② 2026-08-13 — the cutover switch, and **the tripwire fired**
+
+  ```
+  knowledge-service unit   4225 -> 4226
+  ```
+
+  T25's row said the cutover was **⛔ blocked** because *"nothing holds a `VectorStore`, so
+  there is nothing to cut over"*. T24b closed that. What remained was the switch itself, and
+  building it found the thing the row did not know.
+
+  🔴 **`test_the_provider_keeps_neo4j_as_primary` REDDED ON THE ARGUMENT SWAP — the tripwire
+  T25b wrote for exactly this day, firing before the change shipped:**
+
+  ```
+  E  AssertionError: the dual-write argument order changed. Reads follow the PRIMARY, so
+     swapping these moves the entity read path onto a store with no anchor_score — close
+     D-T25B-PG-ANCHOR-SCORE first (the score is bucket-relative; any copy drifts by
+     construction).
+  ```
+
+  It is right, and it is not a veto. `PgVectorStore` deliberately OMITS `anchor_score` from an
+  entity hit — the score is bucket-relative and recomputed on its own schedule, so a copy on
+  the vector row would be confidently stale, and the adapter leaves it out rather than setting
+  it to `None` so a consumer that ranks by it raises instead of silently multiplying by
+  nothing. **Entity reads rank by it. Passages do not.**
+
+  **So the cutover is PER SCOPE — DECIDED, SPEC §3.3.** Passages move to Postgres; entity
+  reads stay on Neo4j until `anchor_score` has an answer. A single primary would have forced
+  one of those two facts to be ignored, and the one that would have been ignored is silent:
+  two-layer retrieval collapsing to raw cosine reorders every result and raises nothing.
+
+  🔧 **TIER FIRST (rule 4): a deploy ceiling.** `knowledge_vector_read_primary` is one
+  migration state for one deployment. Per-book would make two books' results incomparable and
+  `vector_shadow_read_overlap` meaningless — it would average over whichever backend each
+  request happened to pick. A run param would let one request cut over and the next one back.
+
+  **`DualWriteVectorStore` turned out to be symmetric already**, so the cutover is a swapped
+  pair plus `primary_read_scopes`, not a second class. Post-cutover the shadow runs in
+  REVERSE — Neo4j compared against pgvector — which is the safety net you want in the days
+  after a flip: the old store keeps answering alongside, and the overlap metric keeps
+  measuring new-against-old in whichever direction the deployment currently points.
+
+  ⚠️ **My own change needed a guard I had not written.** The T25a degradation path
+  (`secondary unreachable → serve primary-only`) silently reverts a COMPLETED cutover: with
+  the switch on, that line serves reads from the store the deployment no longer treats as
+  authoritative, and an operator reading normal-looking results has no other signal. Now
+  logged as `T25: CUTOVER NOT IN EFFECT`. It stops being survivable at **T25 ③** — once the
+  Neo4j vector indexes are dropped it serves an EMPTY search rather than a stale one, which is
+  exactly why dropping them is a separate act with its own evidence and not part of the flip.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. dual-write: `if scope in self._primary_read_scopes` -> `if True`
+     E  post-cutover, an ENTITY search must still be answered by Neo4j — pg hits carry no
+        anchor_score, so two-layer ranking would silently collapse to raw cosine
+     E  assert [] == ['entity']
+  2. provider: drop the no-DSN refusal
+     E  Failed: DID NOT RAISE <class 'ValueError'>
+  ```
+
+  The tripwire itself was **rewritten from source-grep to BEHAVIOUR**. It pinned the literal
+  `DualWriteVectorStore(primary, secondary`, which a correct per-scope cutover cannot satisfy
+  and an incorrect one could fake with a rename. Which store answers an entity search is the
+  thing that matters, so that is what it now asks.
+
+  **QC (a) gates:** all 99 green; `db-safety-gate` exit 0; `port-adoption-gate` PASS at 58/17;
+  plan-verify PASS. `4226 passed`.
+
+  **QC (b) THE LIVE SMOKE — both engines, both directions, in a rebuilt container.** A real
+  `loreweave/postgres-knowledge:18` on the iso network, dual-write feeding both, then the same
+  query run either side of the switch:
+
+  ```
+  DSN set: True
+  [PRE-CUTOVER  neo4j] store=DualWriteVectorStore first=Neo4jVectorStore scopes=['entity', 'passage']
+  [PRE-CUTOVER  neo4j] passage hits=3 top='the frost blade sang' score=1.000
+  [POST-CUTOVER pg   ] store=DualWriteVectorStore first=PgVectorStore   scopes=['passage']
+  [POST-CUTOVER pg   ] passage hits=3 top='the frost blade sang' score=1.000
+  ROUTING passage -> PgVectorStore   (shadow Neo4jVectorStore)
+  ROUTING entity  -> Neo4jVectorStore (shadow PgVectorStore)
+  REFUSAL: ValueError(knowledge_vector_read_primary='postgres' requires KNOWLEDGE_VECTOR_DB_URL)
+  ```
+
+  **Same three hits, same top passage, same score, from two different engines** — the cutover
+  is answer-preserving on real data, which is the only form of that claim worth making. The
+  routing lines are asked of the COMPOSED object rather than read off a log, so a switch that
+  logged the cutover without performing it would still show `Neo4jVectorStore`.
+
+  **QC (c) real data:** three real passages written through dual-write into a real Neo4j AND a
+  real pgvector, read back from each; cleaned up after (`remaining 0`).
+
+  ```
+  4226 passed — knowledge-service unit suite
+  ```
+
+  **T25 ① backup path ✅ · ② cutover switch ✅ · ③ dropping the Neo4j indexes — the one part
+  still owed**, and it is not code: it needs the soak (`vector_dual_write_total` non-zero for
+  the right reason on a real deployment) and QC-3's rebuild measurement above
+  `diskann.min_vectors_for_parallel_build = 65536`, without which there is no defensible RTO.
+  Both are measurements on a running system, and QC-3 is where the plan runs them.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

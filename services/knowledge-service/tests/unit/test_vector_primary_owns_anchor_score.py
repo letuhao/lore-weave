@@ -71,37 +71,61 @@ async def test_entity_reads_go_to_the_store_that_owns_anchor_score():
 
 @pytest.mark.asyncio
 async def test_the_provider_keeps_neo4j_as_primary():
-    """The trigger. `get_vector_store` composes dual-write with Neo4j primary; the day
-    somebody swaps the arguments to begin the read cutover, this reds and points at the one
-    thing that has to be solved first.
+    """The tripwire, and **it fired.** It was written at T25b to red the day somebody swapped
+    the dual-write arguments to begin the cutover, and on 2026-08-13 that is exactly what it
+    did — before the change shipped.
 
-    Asserted on the CONSTRUCTED store rather than by reading the source, so a refactor that
-    keeps the shape but changes the wiring is still caught.
+    So the invariant it guards is now the DESIGN rather than a veto: the cutover is
+    per-scope. Passages move to Postgres; **entity reads stay on Neo4j**, because
+    `PgVectorStore` omits `anchor_score` (D-T25B-PG-ANCHOR-SCORE) and entity reads rank by
+    it.
+
+    Rewritten to assert BEHAVIOUR rather than the source text it used to grep. The old form
+    pinned the literal `DualWriteVectorStore(primary, secondary`, which a correct per-scope
+    cutover cannot satisfy and an incorrect one could fake with a rename. Which store answers
+    an entity search is the thing that matters, so that is what is asked.
     """
-    import inspect
-    import re
+    from app.adapters.dual_write_vector_store import DualWriteVectorStore
 
+    neo4j = _RecordingStore("neo4j")
+    pg = _RecordingStore("pg")
+    # Composed exactly as `get_vector_store` composes it AFTER the cutover: pg first,
+    # passages only.
+    store = DualWriteVectorStore(pg, neo4j, primary_read_scopes=frozenset({"passage"}))
+
+    await store.search(scope="entity", user_id="u", embedding=[0.1], dim=1, k=5)
+    assert neo4j.searched == ["entity"], (
+        "post-cutover, an ENTITY search must still be answered by Neo4j — pg hits carry no "
+        "anchor_score, so two-layer ranking would silently collapse to raw cosine")
+    assert pg.searched == [], "an entity search reached the pgvector store"
+
+    await store.search(scope="passage", user_id="u", embedding=[0.1], dim=1, k=5)
+    assert pg.searched == ["passage"], (
+        "post-cutover, a PASSAGE search must be answered by Postgres — otherwise the switch "
+        "is set, the logs say cut over, and nothing changed")
+
+
+@pytest.mark.asyncio
+async def test_the_cutover_switch_REFUSES_a_configuration_it_cannot_honour(monkeypatch):
+    """`read_primary='postgres'` with no DSN would serve Neo4j and look identical to a
+    correctly pre-cutover deployment. The operator would read "cutover complete" off a
+    system that never cut over, which is the failure mode this whole plan keeps finding.
+
+    A typo is the same class: anything that is not one of the two known values must not
+    quietly mean "neo4j".
+    """
     from app.adapters import vector_store_provider as provider
 
-    body = inspect.getsource(provider.get_vector_store)
-    # Whitespace-insensitive: the construction spans several lines, and a formatter
-    # reflowing it must not red this test for the wrong reason.
-    flat = re.sub(r"\s+", " ", body)
+    monkeypatch.setattr(provider.settings, "knowledge_vector_db_url", "", raising=False)
+    monkeypatch.setattr(provider.settings, "knowledge_vector_read_primary", "postgres",
+                        raising=False)
+    with pytest.raises(ValueError, match="requires KNOWLEDGE_VECTOR_DB_URL"):
+        await provider.get_vector_store(mock.MagicMock())
 
-    assert "primary = Neo4jVectorStore(session)" in flat, (
-        "the primary store is no longer Neo4j. Entity reads rank by anchor_score, which only "
-        "the graph owns — see D-T25B-PG-ANCHOR-SCORE in the plan."
-    )
-    composed = (
-        "DualWriteVectorStore( primary, secondary" in flat
-        or "DualWriteVectorStore(primary, secondary" in flat
-    )
-    assert composed, (
-        "the dual-write argument order changed. Reads follow the PRIMARY, so swapping these "
-        "moves the entity read path onto a store with no anchor_score — close "
-        "D-T25B-PG-ANCHOR-SCORE first (the score is bucket-relative; any copy drifts by "
-        "construction)."
-    )
+    monkeypatch.setattr(provider.settings, "knowledge_vector_read_primary", "postgress",
+                        raising=False)
+    with pytest.raises(ValueError, match="must be 'neo4j' or 'postgres'"):
+        await provider.get_vector_store(mock.MagicMock())
 
 
 @pytest.mark.asyncio

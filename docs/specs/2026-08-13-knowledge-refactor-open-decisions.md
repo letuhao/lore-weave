@@ -238,6 +238,38 @@ QC-3, not deferred.
 
 ---
 
+### 3.3 The vector cutover is PER SCOPE — **DECIDED (T25, 2026-08-13)**
+
+Found by building it: `test_the_provider_keeps_neo4j_as_primary`, a tripwire T25b wrote for
+this exact day, redded on the argument swap **before the change shipped**.
+
+`PgVectorStore` deliberately omits `anchor_score` from an entity hit
+(`D-T25B-PG-ANCHOR-SCORE`) — it is bucket-relative and recomputed on its own schedule, so a
+copy on the vector row would be confidently stale, and the adapter leaves the key OUT rather
+than setting it to `None` so a consumer that ranks by it raises instead of multiplying every
+score by nothing. **Entity reads rank by it; passage reads do not.**
+
+So `knowledge_vector_read_primary="postgres"` moves **passages only**. Entity reads stay on
+Neo4j until `anchor_score` has an answer. A single primary would have forced one of those two
+facts to be ignored, and the one that would have been ignored is silent: two-layer retrieval
+collapsing to raw cosine reorders every result and raises nothing.
+
+**TIER (rule 4): a deploy ceiling.** One migration state for one deployment. Per-book would
+make two books' results incomparable and `vector_shadow_read_overlap` meaningless — it would
+average over whichever backend each request happened to pick. A run param would let one
+request cut over and the next one back.
+
+**Post-cutover the shadow runs in reverse** (Neo4j compared against pgvector), so the old
+store keeps answering alongside the new one and the overlap metric keeps measuring
+new-against-old in whichever direction the deployment currently points.
+
+**What is still owed is not code.** Dropping the Neo4j vector indexes (T25 ③) needs the soak
+and QC-3's rebuild measurement above `diskann.min_vectors_for_parallel_build = 65536`, without
+which there is no defensible RTO. Both are measurements on a running system, and QC-3 is where
+the plan runs them.
+
+---
+
 ## 4 · Identity, facts and the model
 
 ### 4.1 Opaque identity proceeds behind the port — **DECIDED**

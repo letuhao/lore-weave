@@ -361,5 +361,24 @@ class Settings(BaseSettings):
     # never saw.
     knowledge_vector_shadow_read_rate: float = 0.0
 
+    # T25 — THE CUTOVER SWITCH. Which backend ANSWERS a vector read.
+    #
+    # TIER: deploy ceiling (rule 4), and deliberately not the other two. A per-book setting
+    # would make two books' search results incomparable and the shadow-overlap metric
+    # meaningless — it averages over whichever backend each request happened to pick. A run
+    # param would let one request cut over and the next one back. This is one migration
+    # state for one deployment, so it is one env var.
+    #
+    # "neo4j" (default) is the pre-cutover world and is byte-identical to it. "postgres"
+    # makes pgvector the primary and Neo4j the SHADOW — the reverse comparison, which is
+    # exactly the safety net you want in the days after a cutover: the old store keeps
+    # answering alongside, and `vector_shadow_read_overlap` says whether the new one agrees.
+    #
+    # WRITES STILL GO TO BOTH either way. Dropping the Neo4j indexes is a separate, later
+    # act with its own evidence (T25 ③); flipping reads and deleting the fallback in one
+    # step would leave no way back that does not involve a re-embed.
+    knowledge_vector_read_primary: str = "neo4j"
+
+
 
 settings = Settings()

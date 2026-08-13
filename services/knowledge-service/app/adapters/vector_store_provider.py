@@ -98,6 +98,21 @@ async def get_vector_store(session: CypherSession) -> VectorStore:
 
     primary = Neo4jVectorStore(session)
     dsn = getattr(settings, "knowledge_vector_db_url", "")
+    read_primary = getattr(settings, "knowledge_vector_read_primary", "neo4j")
+    if read_primary not in ("neo4j", "postgres"):
+        # A typo here is a silent revert to Neo4j — the operator believes the cutover
+        # happened and the metrics agree with them, because nothing changed.
+        raise ValueError(
+            f"knowledge_vector_read_primary must be 'neo4j' or 'postgres', got "
+            f"{read_primary!r}"
+        )
+    if read_primary == "postgres" and not dsn:
+        # Asked for the pgvector primary with no pgvector. Refusing is the point: serving
+        # Neo4j quietly would make a MISCONFIGURED deployment indistinguishable from a
+        # correctly pre-cutover one, and the operator would read "cutover complete".
+        raise ValueError(
+            "knowledge_vector_read_primary='postgres' requires KNOWLEDGE_VECTOR_DB_URL"
+        )
     if not dsn:
         return primary
 
@@ -152,11 +167,49 @@ async def get_vector_store(session: CypherSession) -> VectorStore:
             "T25a: vector secondary UNREACHABLE — serving primary-only this call, and the "
             "rows written now will be MISSING at cutover. err=%s", exc,
         )
+        if read_primary == "postgres":
+            # ⚠️ POST-CUTOVER this is not a degraded WRITE, it is the PRIMARY being down,
+            # and the fallback is serving reads from the store the deployment has stopped
+            # treating as authoritative. That is still the right call while Neo4j's indexes
+            # exist — a stale answer beats no search — but it must not be quiet: an operator
+            # reading normal-looking results has no other signal that the cutover is not in
+            # effect right now.
+            #
+            # It stops being survivable at T25 ③. Once the Neo4j vector indexes are dropped,
+            # this line serves an EMPTY search rather than a stale one, which is exactly why
+            # dropping them is a separate act with its own evidence and not part of the flip.
+            logger.error(
+                "T25: CUTOVER NOT IN EFFECT — reads are falling back to Neo4j because the "
+                "pgvector primary is unreachable. Results are being served by the store "
+                "this deployment no longer treats as authoritative."
+            )
         return primary
 
-    secondary = PgVectorStore(pool, entity_exists=entity_exists)
+    pg = PgVectorStore(pool, entity_exists=entity_exists)
+    # T25 — the cutover. `DualWriteVectorStore` is symmetric in construction: it writes both
+    # and reads the FIRST. So cutting over is swapping the pair, not a second class. Post-
+    # cutover the shadow runs in reverse (Neo4j compared against pgvector), which keeps the
+    # old store answering alongside the new one and keeps `vector_shadow_read_overlap`
+    # meaningful in the direction that matters now.
+    cutover = read_primary == "postgres"
+    first, second = (pg, primary) if cutover else (primary, pg)
+    # ⚠️ PASSAGES ONLY, and this is the whole reason the switch is not a single primary.
+    # `PgVectorStore` OMITS `anchor_score` from an entity hit by design
+    # (D-T25B-PG-ANCHOR-SCORE) — the score is bucket-relative and recomputed on its own
+    # schedule, so a copy on the vector row would be confidently stale. Entity reads RANK by
+    # it. Cutting entities over would silently reorder every two-layer retrieval.
+    #
+    # Caught by `test_the_provider_keeps_neo4j_as_primary`, a tripwire written at T25b for
+    # exactly this day. It fired on the argument swap before this shipped.
+    scopes = frozenset({"passage"}) if cutover else frozenset({"passage", "entity"})
+    if cutover:
+        logger.info(
+            "T25: vector PASSAGE reads served by POSTGRES; Neo4j is the shadow. "
+            "ENTITY reads stay on Neo4j (anchor_score)."
+        )
     return DualWriteVectorStore(
-        primary,
-        secondary,
+        first,
+        second,
         shadow_read_rate=settings.knowledge_vector_shadow_read_rate,
+        primary_read_scopes=scopes,
     )
