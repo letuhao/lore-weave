@@ -135,7 +135,7 @@ All of the following, or 45 turns, whichever comes first:
 - [x] `DF5` closed — five hops, every id pasted (see `§3`). Stated limit: the TS client and the spine BINARY (`DFO-7`) are not driven; every hop shown is production code against a real database
 - [~] `cargo test --workspace -j 4` — **2519 passed / 1 failed**, run in the two halves `DFO-6` showed are required (a single DSN cannot serve the whole workspace: `rebuilder_live` applies `0002`, which DROPs `events`). **`CARGO_RC=0`, 2333 passed / 0 failed across 170 suites** for everything but `world-service`; **`WORLD_RC=101`, 186 passed / 1 failed** for `world-service` against its OWN dedicated pgvector database, as CI provisions it.
       **The 1 is `rebuilder_round_trip_live_smoke` and it is NOT this work** — see `DFO-8`. Left `[~]` rather than `[x]`: a red exit code is not a green box, and the run-state's own goal refuses a claim without output
-- [x] detached `gate-wiring-gate --run-all` — **`SWEEP_RC=0`**, 89 GREEN / 0 RED / 1 SKIP
+- [x] detached `gate-wiring-gate --run-all` — **`SWEEP_RC=0`**, **90 GREEN / 0 RED / 8 SKIP** (every skip needs a live stack). Re-run at close; the run before it was `SWEEP_RC=1` on ONE gate — `channel-id-adoption`, on the file `DF5` added. The call was already funnelled per `DFD-9`; the missing thing was the RECORDED baseline, which is the ratchet's whole point: an unrecorded count on a new file is indistinguishable from a file that grew. **Second time in one session that `DFD-9`'s lesson caught me and I did not.**
 
 > **Claiming a check passed without pasting its output does NOT satisfy this condition.** The
 > `/goal` evaluator reads the transcript and cannot run commands; it enforces persistence, not
