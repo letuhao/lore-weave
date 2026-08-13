@@ -1,5 +1,29 @@
 # LORE BIBLE (`G-S3`) — RUN-STATE
 
+> 🅿 **PARKED 2026-08-13, the day it was opened, by the PO — and it never should have opened.**
+>
+> *"the main purpose is build data plane, foundation and wire actor hub, control feature and
+> build player feature to consume it, a full dataflow, but seem like we cross the line, there are
+> no combat, progression feature yet because they are not complete design yet"*
+>
+> `G-S3` is the **BOOK_TO_GAME authoring track** — the content pipeline upstream of the manifest,
+> not the runtime spine. Opening it was a boundary violation: `MILESTONE.md` names `G-S3`/`G-S4`
+> as the critical path, but that is the critical path of the *content* chain. Worse, the schema
+> this run started was being written against **`progression_kinds` and combat tuning** — features
+> the PO has not finished designing. A contract written against a feature that does not exist is
+> the orphan shape `scripts/orphan-model-gate.py` exists to refuse.
+>
+> **`LB0` is real and is why this file is parked rather than deleted:** `lore-enrichment-service`
+> (252 Python files) **already ships the corpus sweep** `LB2` was going to rebuild — jobs,
+> proposals, a glossary client, a writeback path and an approve/reject queue. `MILESTONE.md`'s
+> *"17 docs, zero code"* is true of the lore-bible ARTIFACT and misleading about the WORK. Carry
+> that finding forward when this track legitimately reopens.
+>
+> **What would wake it up:** the PO reopening the BOOK_TO_GAME track, *after* the data foundation
+> closes and *after* combat and progression have complete designs to write a schema against.
+>
+> Active work: [`2026-08-13-data-foundation-dataflow-RUN-STATE.md`](2026-08-13-data-foundation-dataflow-RUN-STATE.md)
+
 **Opened 2026-08-13** · branch `feat/game-logic` · opened at HEAD `8479a7606`
 
 **Reconciles:** Two-layer glossary↔knowledge · Data & Logic Scope Separation · Reading/writing
