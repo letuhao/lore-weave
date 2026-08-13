@@ -5,9 +5,13 @@ was NOT done when this spec was written (2026-08-06).** Measured after the fact:
 **zero** times in this document, while `06_data_plane/` holds 25 LOCKED files governing this
 tier. `DP-A1` (*"DP primitives + Rulebook are the only sanctioned path to kernel state"*) and
 `DP-A10` (*"DP owns primitives, not domain queries"*) say in April what `CMD-6` and the port
-discipline here say in August. **`DP-R2` is OWED and unpaid: no `DP-T0..T3` tier table exists
-for any aggregate this spec introduces** (the verb table, the refusal fact, the cue channel).
-Recorded rather than quietly fixed — the debt is the finding.
+discipline here say in August. ~~**`DP-R2` is OWED and unpaid**~~ — **PAID 2026-08-14 by `DF4`**, for the one aggregate
+this spec has since produced in code. The table is §0 below, and
+`scripts/dp-r2-tier-table-gate.py` is what stops it going missing again: it DISCOVERS every
+production `impl DpAggregate` and requires a row for each, so a new aggregate arrives red
+rather than unnoticed. The verb table and the cue channel are still prose with no aggregate —
+the gate will demand their rows on the day they get one, which is the difference between a
+debt that is paid and one that is merely dated.
 
 **Status:** design contract — **SEALED by the PO 2026-08-06** · **Date:** 2026-08-06
 **Companions:** [structure](2026-08-02-command-interaction-structure.md) ·
@@ -24,6 +28,23 @@ reached)* · [RUN-STATE](../plans/2026-08-06-game-tier-build-RUN-STATE.md)
 
 ---
 
+
+## 0 · `DP-R2` — tier declaration per aggregate
+
+`DP-R2`: *"Every feature design doc MUST contain a tier table listing every aggregate the feature
+touches and the tier used for each access pattern (read vs write may differ). Missing table,
+ambiguous entries, or 'to be decided' blocks design review."*
+
+| Aggregate type | Read tier | Write tier | Rationale |
+|---|---|---|---|
+| `combat_session` | — (not read) | **T2** (Durable-async) | The admission refusal (`proposal.rejected`, `CS-A4`). **T2 because `DP-T2`'s own examples are *"most gameplay actions … non-canon state changes"***, and a refusal is exactly that: it must not be lost (a client renders it), and it is not canon. **Not T3**: T3 is *"currency mutations, item trades, canon promotion"* and blocks the ack on invalidation fan-out — a refusal has nothing to invalidate. **Not T1**: `DP-T1` tolerates ≤30 s crash loss, and a refusal the player never sees is a turn that silently did nothing. **No read tier because there is no reader** — the event is projected to the client wire (`turnOutcome.ts`), never read back as an aggregate. That absence is a fact about today, and `DP-R2` wants it stated rather than left blank. |
+
+**What this table does NOT cover, stated because `DP-R2` calls an ambiguous entry a blocker:** the
+verb table and the cue channel this spec also introduces have **no `DpAggregate` in code**, so they
+have no access pattern to declare yet. They are not omitted — they have no subject. The gate below
+discovers aggregates from source, so each gets its row on the day it gets an impl.
+
+---
 ## 1. The architecture
 
 > **Verbs are declared by FEATURES. The command substrate is the HUB that resolves them —

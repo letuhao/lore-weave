@@ -80,6 +80,22 @@ def _write(path: Path, text: str, like: bytes | None = None) -> None:
 # that has drifted is reported as a failure, not silently skipped, or the table
 # rots into a list of no-ops that all pass.
 MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
+    # `DF4`. DP-R2's stated enforcement is a REVIEW CHECKLIST, and when this
+    # gate was written exactly one document in the tree carried a tier table --
+    # the one that defines the template. These mutations are the four ways the
+    # replacement could go quietly vacuous.
+    "dp-r2-tier-table-gate": [
+        ("the missing-row finding is never raised",
+         "        if name not in rows", "        if False"),
+        ("the #[cfg(test)] exclusion swallows EVERYTHING, production included",
+         "                if any(a <= m.start() <= b for a, b in spans):",
+         "                if True:"),
+        ("the DP-R2 table header check is dropped, so any table counts",
+         '        if "Read tier" not in body or "Write tier" not in body:',
+         "        if False:"),
+        ("the empty-walk MISUSE guard is removed, so a broken walk PASSES",
+         "    if not aggregates:", "    if False:"),
+    ],
     "actor-hub-figures-gate": [
         ("a stale figure is never reported",
          "                elif int(claimed) != want:", "                elif False:"),

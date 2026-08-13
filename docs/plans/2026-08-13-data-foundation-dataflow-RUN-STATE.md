@@ -131,8 +131,7 @@ All of the following, or 45 turns, whichever comes first:
       gap**, which is the honest status and not the one this box assumed
 - [x] `DF3` closed — a Redis-backed cache the SDK reads through for T0–T2, **measured 643.62µs mean over 200 gets against DP-T2's <10ms budget**. Original wording: with a **measured**
       read latency pasted against the `03_tier_taxonomy` budget
-- [ ] `DF4` closed — every module touching kernel state carries a `DP-R2` tier table, and something
-      **machine-checks** that it does
+- [x] `DF4` closed — the one production aggregate carries a `DP-R2` tier table, and `scripts/dp-r2-tier-table-gate.py` **machine-checks** it by DISCOVERY, so a new aggregate arrives red rather than unnoticed. **Note the box's own wording:** *"every module touching kernel state"* implied many; measured, there is exactly **one** production `DpAggregate` in the tree. The gate covers all of them because it finds them, not because the number is small
 - [ ] `DF5` closed — the end-to-end dataflow: one player-facing action → actor hub → DP write →
       projection → wire, **with the ids and payload pasted at each hop**
 - [~] `cargo test --workspace -j 4` — **`CARGO_RC=101`, 2505 passed / 1 failed.** The 1 is environmental and attributed (`DFO-6`), NOT this work; a single DSN cannot serve the whole workspace because `rebuilder_live` applies `0002`, which DROPs `events`
@@ -153,7 +152,7 @@ All of the following, or 45 turns, whichever comes first:
 | ~~`DF1b-ii`~~ | **one real caller** — the spine's REJECT-COMMIT goes through `dp::t2_write_channel` | ✅ **CLOSED** — production row in `§3` |
 | ~~`DF2`~~ | **the control plane's missing tables** — `tier_policy` + `tier_capability` built, `GetTierPolicy` served, `UNIMPLEMENTED_METHODS` 8 → 7 | ✅ **CLOSED** — see `§3` |
 | ~~`DF3`~~ | **the T0–T2 cache** — `CacheBackend` seam + `DP-X3` read-through in `dp`, `RedisCache` in `dp-kernel`. Measured **643.62µs** against a **<10ms** budget | ✅ **CLOSED** — see `§3` |
-| `DF4` | **`DP-R2` tier tables per module** — the PO's *"data instance for each module"*, owed by every feature doc and paid by none | ⬜ |
+| ~~`DF4`~~ | **`DP-R2` tier tables** — the debt paid for the one production aggregate, and `dp-r2-tier-table-gate` DISCOVERS the rest so a new one arrives red | ✅ **CLOSED** — `§3` |
 | `DF5` | **the full dataflow** — actor hub + a control feature + a player feature consuming it, end to end | ⬜ |
 
 **`DF1` split in two on its first measurement, and the split IS the finding.** The row assumed a caller could be wired to the existing surface. It cannot: **`WriteRequest` has seven fields and none of them is a channel**, while `SessionContext` carries `current_channel_id` and the READ side takes the channel from exactly there (`read_projection_channel`). So the SDK's write surface is **structurally incapable of producing a channel-ordered event** — and every write `commit-service` actually performs is channel-scoped, riding `ChannelWriter` for its `channel_event_id`, its epoch fence and its `channel_event_index` row.
@@ -478,6 +477,44 @@ unreachable-cache degrade and a refused zero TTL · `crate-purity` and `dp-aggre
 pub/sub does not exist, and the durable channel stream `dp:events:*` still has **zero producers** —
 `spec_oracle_channels.rs`'s asserted trigger is what will say when it arrives. Calling this batch
 "Redis support" would have covered all three; it built one.
+
+### `DF4` — `DP-R2` gets a mechanism, and the rule turns out to have had no subjects
+
+**Measured first:** exactly **ONE** document in the entire tree contained a `DP-R2` tier table —
+`11_access_pattern_rules.md`, **the file that defines the template**. Zero feature docs complied.
+`DP-R2`'s stated enforcement is *"review — governance checklist requires the tier table before
+sign-off"*, and a checklist nobody runs is a rule with no subjects.
+
+**`2026-08-06-command-hub.md` said so about itself**, in its own header: *"`DP-R2` is OWED and
+unpaid: no `DP-T0..T3` tier table exists for any aggregate this spec introduces … Recorded rather
+than quietly fixed — the debt is the finding."* `DF4` pays it, for the one aggregate that spec has
+since produced in code.
+
+**The table** declares `combat_session` (what `ProposalRejected` writes) as **write T2, no read
+tier** — T2 because `DP-T2`'s own examples are *"most gameplay actions … non-canon state changes"*;
+not T3 (which blocks the ack on invalidation fan-out, and a refusal has nothing to invalidate); not
+T1 (whose ≤30 s crash-loss tolerance would mean a refusal the player never sees). **No read tier
+because there is no reader** — the event goes to the client wire, never back through the SDK. `DP-R2`
+calls an ambiguous entry a blocker, so the absence is stated rather than left blank.
+
+**`scripts/dp-r2-tier-table-gate.py` is the mechanism, and it DISCOVERS rather than enumerates.**
+An enumerated list is `NV-3`'s *default-uncovered* shape: it says nothing about the aggregate added
+tomorrow. The gate walks the source for `impl DpAggregate`, reads each `TYPE_NAME`, excludes
+`#[cfg(test)]` fixtures by brace-matched span, and demands a row for the rest. **8 self-test cases**
+including the one that matters most — that the fixture exclusion does **not** swallow a production
+impl in the same file, because an over-broad exclusion is exactly how this gate would go quietly
+vacuous.
+
+**And its own bite rows found a vacuity in it.** `gate-bite-harness` ran four mutations and **one
+SURVIVED**: the empty-walk `MISUSE` guard lived in `main()`, which the self-test never calls, so a
+broken walk would have passed on nothing and no case would have noticed. The decision is now
+`verdict()`, reachable by both, with two new arms — an empty tree is MISUSE, and a clean tree is
+not, so the first cannot pass by always returning 2. **4/4 red** after the fix.
+
+**Green:** gate `rc=0` (1 production aggregate, `combat_session`) · `--self-test` 8/8 ·
+`gate-bite-harness --gate dp-r2-tier-table-gate` **4/4 red** · `gate-wiring-gate` **105 gates**, all
+wired · `gate-self-tests` 99 green. Six-step bite on the table itself: deleting the row reds the
+gate naming the aggregate and its file, restore byte-exact, green.
 
 ---
 
