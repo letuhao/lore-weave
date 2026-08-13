@@ -331,6 +331,39 @@ gate falls only if the derivation is retired outright, which nothing now depends
 T36 defines. Building it earlier would ship a command surface whose payload is still moving;
 that is sequencing, and the sequence is now stated rather than pending.
 
+### 4.2b Roles get TWO producers: planforge and the studio — **DECIDED (PO, 2026-08-14)**
+
+The question T37a could not measure its way to — *which composition surface authors a role* —
+answered: **both plan-time and explicit author action.** One transport
+(`KalClient.append_role_fact`), two callers.
+
+**Why both, and not the compose-time option.** Emitting at compose time was the simplest
+lifecycle (a role fact exists only if prose exists, so nothing ever needs retracting), and it
+fails the acceptance case: the guard could not see a role until after the chapter it appears
+in was written, so it would never guard that chapter's own first draft. The whole point of
+`D-CANON-CHECK-BLIND-TO-ROLE` is catching a misattribution *as it is drafted*.
+
+* **Planforge, at plan time** — when the pipeline designs an arc and decides who betrays
+  whom, it appends the role at `valid_from_ordinal = planned chapter × EVENT_ORDER_CHAPTER_STRIDE`.
+  Roles then exist *before* the prose, which is what lets the canon check guard draft #1.
+* **The studio, on an explicit author declaration** — Q2's *"plan-authored, not extracted"*
+  read literally. The author is the authority on a role the plan only implies.
+
+**The consequence the plan-time half owes: a plan revision must CLOSE the roles it no longer
+implies.** A fact appended at plan time and never retracted outlives the plan that justified
+it, and an as-of read would then hand the guard a role the book abandoned — the same "stale
+but confidently served" failure as the 175 already-closed `:RELATES_TO` edges T36 found being
+served as currently true. `POST /v1/kal/books/{id}/facts/close` is the mechanism and already
+exists (ordinal-aware valid-time close, §12.3.2); wiring it to plan revision is part of the
+planforge caller, not a later task.
+
+**The studio half splits by layer.** Its backend surface is buildable now; the UI is T51's,
+which §6.5 already sequences after T38 (complete) and T32. So T37b is the planforge caller
+plus the studio's backend endpoint; the studio UI rides with T51.
+
+**The acceptance test for both is one number.** T36 measured `relation 0` in `entity_facts`.
+T37 is done when a real run turns that into a non-zero count and the canon check reads it.
+
 ### 4.3 Causal coverage is measured in QC-6, not before — **DECIDED**
 *Replaces `D-T33-CAUSAL-COVERAGE-UNMEASURED`, `D-QC6-IDENTITY-LIVE-PROOF`.* Both are live
 proofs on real data, and QC-6 is where the plan runs them.
