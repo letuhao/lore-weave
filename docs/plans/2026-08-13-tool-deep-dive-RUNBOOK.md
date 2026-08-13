@@ -179,8 +179,19 @@ an empty string with no error.
 1. **DERIVE** the next tool from the ordering above (live query, not from memory).
 2. **READ** its schema, its contract row (if any), its owning handler, and every refusal it can raise.
    *(Memory: read the tool schema before the first call.)*
-3. **LIVE** — open the pinned frontend, in a book that satisfies its precondition, and reach it with
-   plain user prose. Record: was it reached at all, with what arguments, derived from where.
+3. **LIVE** — open the pinned frontend, ON THE SURFACE WHERE THE TOOL'S DOMAIN IS HOT, in a book
+   that satisfies its precondition, and reach it with plain user prose.
+
+   🔴 **THE SURFACE IS PART OF THE PRECONDITION, AND GETTING IT WRONG COSTS A WHOLE CYCLE.**
+   `stream_service.py` states the rule: *universal (no editor/book) → ∅ hot (pure discovery);
+   book-scoped (book_context) → glossary tools hot; editor (editor_context) → glossary +
+   composition + book tools hot.* Cycles 22–24 were run on the universal `/chat` surface, where
+   NO domain tool is seeded at all, and each was recorded `BLOCKED` on a `domain_not_selected`
+   that was my testing error rather than a product limit — three conclusions that had to be
+   withdrawn and re-run. Before the live run, decide which surface seeds the tool's domain and
+   go there; if the tool is still withheld, read `chat_messages.withheld_tools` for the STAGE
+   (`domain_not_selected` vs `hot_seed` vs `token_budget`) before concluding anything, because
+   those are different findings. Record: was it reached at all, with what arguments, derived from where.
 4. **DATA** — read the owning store for what it wrote or returned. The rows, not the count. State the
    falsifier for that reading (what would have to be true for the reading to be wrong).
 5. **AUDIT** — past the happy path: the empty case, the absent case, the wrong-type case, the gate,
