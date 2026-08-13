@@ -947,6 +947,14 @@
       "cycle": 17,
       "group": "A#1 (5 live, 21 total, 232 calls)",
       "note": "PROVEN with NO defect. ITS 5 'LIVE' FAILURES ARE THIS LOOP'S OWN DEBRIS, and the ledger says so rather than letting the number stand: all 9 of today's failures come from cycle 11's and cycle 16's sessions, and 8 are the repeat-guard firing while the model looped book_list — precisely BECAUSE it could not reach book_read (cycle 16's blocker). The 9th is a book_id the model spliced out of a book id and a chapter id. So this tool's live signal was manufactured by the defect recorded one cycle earlier. LIVE (session 019ffad3). From 'What's the table of contents for my book …? Just the chapter list', the model called book_list({kind:'books'}) to find the book — a model-derived call — and then used book_structure_read for the outline itself, which is the right tool for a TOC. DATA (owning store loreweave_book.books), and THE FIRST READING LOOKED LIKE A DEFECT. The store holds 87 active books owned by this account; the tool reported total=82. The gap is exactly the handler's own predicate: `is_bible=false AND kind<>'diary' AND lifecycle_state='active'` — 87 active minus 4 bibles minus 1 diary = 82, matching the tool exactly. My falsifier had the wrong predicate, not the tool. That is the third time this session a control has refuted my own alarm (cycle 12's empty catalogue, cycle 15's provider_kind, this). SHIP - all four kinds and every bound swept against known state: kind omitted defaults to books (82, is_complete false, correctly paged); kind=chapters returns exactly the 2 chapters the store holds; kind=revisions returns 5, matching that chapter's draft_revision_count; kind=scenes returns 0 for a book with none. The multi-id refusals name exactly what to pass — 'kind=chapters needs book_id — pass the book whose chapters to list' and 'kind=revisions needs book_id + chapter_id' — which is the actionable form this loop has repeatedly found missing elsewhere. An out-of-enum kind is refused by the validator naming the legal set (this tool declares its enum properly, unlike catalog's sort in cycle 12). limit over max clamps; offset past the end returns 0 items with total still 82 and is_complete true; a stranger gets 'book not accessible'."
+    },
+    "glossary_book_ontology_read": {
+      "state": "proven",
+      "provider": "glossary",
+      "tier": "R (scope book, ambient_book)",
+      "cycle": 18,
+      "group": "A#1 among unconcluded (0 live, 75 total, 424 calls)",
+      "note": "PROVEN with NO defect. The most-called tool in group A (424 calls) and its 75 failures decompose into three explained groups: 28 'mcp tool returned unparseable content' ALL from a single minute (2026-07-09 06:52) on ONE book, 23 the repeat-guard, 9 the blank-argument guard, 7 'book not accessible' and 4 the validator naming a missing book_id. THE UNPARSEABLE BURST IS NOT REPRODUCIBLE AND ITS BOOK NO LONGER EXISTS. Payloads here are genuinely large — up to 97,957 bytes in the recorded corpus — which made a transport truncation the first suspect. Tested directly: the largest ontology on a book this account still owns returns 22,820 bytes and parses cleanly, reporting kinds=15 against a store that holds exactly 15. The book behind the 28 failures is absent from book-service entirely (orphaned glossary rows, the same class as cycle 12's orphaned sharing policies), and asking for it now correctly answers 'book not accessible'. LIVE (session 019ffadc). The first attempt routed to the KNOWLEDGE GRAPH — asked for 'lore categories… kinds and genres' the model called kg_project_list + kg_schema_read, the same domain-hot-set effect cycle 3's OBS-T8 recorded. Told plainly it was the GLOSSARY ontology, it ran tool_list(glossary) -> tool_load(glossary_book_ontology_read) -> the tool itself with a model-derived book_id. DATA (owning store loreweave_glossary.book_kinds): the live call returned kinds ['character','location','unknown'] — EXACTLY the store's three codes for that book — plus 1 genre. FALSIFIER: any extra or missing code would refute it; there are none. SHIP - refusals and the ambient contract swept. A missing book_id gives 'book_id is required (a UUID)', the fail-closed message; a non-UUID gives the same; a stranger gets 'book not accessible'. AND THE AMBIENT HALF ACTUALLY WORKS: with book_id omitted but X-Book-Id set, the call succeeds and returns the same three kinds — so this tool's OPTIONAL book_id is correctly paired with real envelope resolution, which is exactly the pairing cycle 10's T10-D1 found MISSING on three of its siblings. It is one of the six that had it right. A book with no ontology returns its single kind rather than erroring."
     }
   },
   "defects": {
@@ -1239,9 +1247,9 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 17,
+    "tools_concluded": 18,
     "tools_in_cycle": 0,
-    "tools_proven": 15,
+    "tools_proven": 16,
     "tools_blocked": 2,
     "defects_proven": 19,
     "defects_open": 0,
