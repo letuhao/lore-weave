@@ -594,6 +594,9 @@ pub trait ChannelEvent: serde::de::DeserializeOwned + Send + 'static {
 /// enum a consumer matches on does not change when the tail lands; adding a
 /// variant later would break every `match`.
 #[derive(Debug, Clone, PartialEq)]
+/// `DP-Ch20` — backpressure and disconnect/reconnect. The variants below are
+/// how a durable subscriber is told it fell behind or was resumed, which is
+/// the whole observable surface of that rule.
 pub enum DurableStreamItem<S> {
     Event {
         channel_event_id: i64,

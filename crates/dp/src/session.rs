@@ -82,6 +82,9 @@ pub const REFRESH_LEAD_MS: Millis = 60_000;
 /// Opaque on purpose. Feature code can ask whether it is live; it cannot read
 /// the secret, construct one, or extend one.
 #[derive(Clone)]
+/// `DP-Ch23` — capability gating. The turn-boundary rule says a channel
+/// operation proceeds only against a live capability the control plane
+/// granted; this opaque token IS that capability, and `is_live` is the gate.
 pub struct CapabilityToken {
     /// The bearer secret. NEVER rendered — see the `Debug` impl below.
     secret: String,
@@ -300,6 +303,9 @@ pub trait ChannelTree {
 /// rather than mutating this one, which is why
 /// [`SessionContext::move_to_channel`] takes `&self` and returns `Self`.
 #[derive(Clone, Debug)]
+/// `DP-Ch6` — the SessionContext extension. The channel primitives take
+/// their reality and capability from this context rather than from
+/// arguments, which is what stops a caller naming someone else's reality.
 pub struct SessionContext {
     reality_id: RealityId,
     session_id: SessionId,

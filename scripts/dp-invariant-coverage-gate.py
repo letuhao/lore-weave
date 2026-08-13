@@ -93,6 +93,14 @@ PHANTOM_OK: dict[str, str] = {
 #: would end it, and `check_unsited` carries the SHRINK ARM: the row dies the
 #: moment the id gains a real site, so it cannot outlive its reason.
 UNSITED_OK: dict[str, str] = {
+    "DP-Ch3": "the control plane's channel-tree CACHE. `bind_session` shipped; `channel_tree` occurs 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch8": "channel CRUD primitives — `channel_create`/`channel_delete` occur 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch10": "tree-change invalidation via the Redis stream `dp:channel_changes:{reality}`; `channel_changes` occurs 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch14": "cross-node write routing — `route_to_writer` occurs 0 times outside the oracle that counts it at zero. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch19": "multi-channel batch subscribe — `subscribe_many` occurs 0 times; the single-channel form is what shipped. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch25": "the `BubbleUpAggregator` trait and register/unregister — 0 occurrences. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch27": "a deterministic RNG seeded from (channel_id, channel_event_id) for `BubbleUpAggregator::on_event`; it cannot exist before DP-Ch25. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch29": "cascading + recursive bubble-up, a property of the DP-Ch25 aggregator. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-R7": "no direct LLM-output-to-kernel-write. Measured in "
              "crates/dp/tests/spec_oracle_rules.rs: neither `Validated<T>` nor any "
              "`LlmResponse`/`llm_output` handling exists in Rust, so the rule is "
@@ -131,7 +139,7 @@ BASELINE: dict[str, tuple[int, int]] = {
     "DP-A": (0, 6),
     "DP-R": (0, 0),
     "DP-T": (0, 0),
-    "DP-Ch": (25, 35),
+    "DP-Ch": (12, 25),
 }
 
 
@@ -450,14 +458,21 @@ def self_test() -> int:
     ok("...and the two real rows are quiet when their reason still holds", p == [], str(p))
 
     # ── UNSITED_OK, both shrink arms ─────────────────────────────────────────
-    p = check_unsited({"DP-R7": "11.md"}, {})
-    ok("a held UNSITED_OK row is quiet", p == [], str(p))
-    p = check_unsited({"DP-R7": "11.md"}, {"DP-R7": {"crates/x/src/a.rs"}})
+    # Built FROM the table, not from a snapshot of it: the first version pinned
+    # a one-row fixture and went red the moment the table grew to nine, for a
+    # reason that had nothing to do with the rule.
+    all_declared = {i: "x.md" for i in UNSITED_OK}
+    p = check_unsited(all_declared, {})
+    ok("every held UNSITED_OK row is quiet", p == [], str(p)[:200])
+
+    victim = sorted(UNSITED_OK)[0]
+    p = check_unsited(all_declared, {victim: {"crates/x/src/a.rs"}})
     ok("an UNSITED_OK row whose id GAINED a site fails (shrink arm 1)",
-       any("reason expired" in x for x in p), str(p))
-    p = check_unsited({}, {})
+       any("reason expired" in x and victim in x for x in p), str(p)[:200])
+
+    p = check_unsited({i: "x.md" for i in UNSITED_OK if i != victim}, {})
     ok("an UNSITED_OK row for an undeclared id fails (shrink arm 2)",
-       any("no longer DECLARED" in x for x in p), str(p))
+       any("no longer DECLARED" in x and victim in x for x in p), str(p)[:200])
 
     # ── sited vs proven ──────────────────────────────────────────────────────
     with tempfile.TemporaryDirectory() as d:

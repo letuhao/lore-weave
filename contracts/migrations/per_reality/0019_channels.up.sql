@@ -141,6 +141,10 @@ CREATE TABLE IF NOT EXISTS channels (
 
     -- `DP-Ch2` verbatim: depth is bounded and the tree has no orphans.
     CONSTRAINT channels_depth_bounded CHECK (depth >= 0 AND depth <= 16),
+    -- `DP-Ch7` — ancestor lookup walks this tree by `parent`/`depth`, and
+    -- `level_name` is what a resolved ancestor chain is reported AS. The
+    -- columns below are the whole subject of that rule.
+    --
     -- `DP-A18` verbatim: every channel has exactly one lifecycle state at any
     -- time, drawn from the CLOSED SET {Active, Dormant, Dissolved}. This CHECK
     -- is where that closed set is actually enforced — in SQL, lower-cased,

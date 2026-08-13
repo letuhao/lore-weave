@@ -1,3 +1,5 @@
+-- `DP-Ch15` — causal references for bubble-up. `causal_refs` below is the
+-- column that carries them, and this migration is where the rule is real.
 -- 0014 — DP-Ch11/Ch13 channel ordering + writer fence (S3a, 2026-07-27).
 --
 -- ⚠ SPEC CORRECTION (plan D1 / REC-80 candidate): DP-Ch11 asks for

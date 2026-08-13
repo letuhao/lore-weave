@@ -883,3 +883,163 @@ fn dp_ch17_live_tail_is_still_unbuilt_and_the_doc_still_calls_postgres_canonical
          there (DS-CH21-STEP8)."
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// `DP-Ch3`, `DP-Ch8`, `DP-Ch10`, `DP-Ch14`, `DP-Ch19`, `DP-Ch25`, `DP-Ch27`,
+// `DP-Ch29` — SPECIFIED, NOT BUILT.
+//
+// Eight channel invariants whose named primitive does not exist in this repo. An
+// invariant with no subject cannot be violated and cannot be guarded; recording
+// that is the honest classification, and recording it as PROSE is what this
+// project has been burned by. So each row names the SYMBOL, and the test asserts
+// it is still absent — the row reds the day the primitive arrives, which is
+// precisely the day the rule becomes violable and needs a real guard.
+//
+// `route_to_writer` earns a note: it occurs exactly once in the tree, inside
+// `spec_oracle_rules.rs`, which counts it at zero. A subject check that merely
+// grepped would read that mention as the primitive existing, and retire the row
+// for the opposite of its reason. Excluding test paths is what prevents that.
+const CHANNEL_SPECIFIED_NOT_BUILT: &[(&str, &str, &str)] = &[
+    (
+        "DP-Ch3",
+        "channel_tree",
+        "the control plane's cached snapshot of a reality's channel tree, for fast bind_session and ancestor resolution. bind_session shipped; the cache did not.",
+    ),
+    (
+        "DP-Ch10",
+        "channel_changes",
+        "channel-tree-change invalidation via the Redis stream dp:channel_changes:{reality_id}. The stream name occurs nowhere in the tree.",
+    ),
+    (
+        "DP-Ch27",
+        "channel_event_rng",
+        "a deterministic RNG seeded from (channel_id, channel_event_id), handed to BubbleUpAggregator::on_event. It cannot exist before DP-Ch25 does; game-rules' DetRng is a different RNG for a different purpose.",
+    ),
+    (
+        "DP-Ch8",
+        "channel_create",
+        "channel CRUD primitives. 12_channel_primitives.md gives their signatures; the SDK exports none. Retires when a channel_create/channel_delete door appears.",
+    ),
+    (
+        "DP-Ch14",
+        "route_to_writer",
+        "cross-node write routing. The rule routes a write to the owning node's writer; there is no router. Retires when the symbol appears outside a test.",
+    ),
+    (
+        "DP-Ch19",
+        "subscribe_many",
+        "multi-channel batch subscribe, a convenience over DP-Ch17's single-channel form. The single form shipped; this did not.",
+    ),
+    (
+        "DP-Ch25",
+        "BubbleUpAggregator",
+        "the aggregator trait plus register/unregister. 16_bubble_up_aggregator.md specifies the whole surface and no Rust names it.",
+    ),
+    (
+        "DP-Ch29",
+        "BubbleUpAggregator",
+        "cascading + recursive bubble-up, a PROPERTY of the DP-Ch25 aggregator. It cannot exist before its subject; both rows retire together.",
+    ),
+];
+
+/// Collect `.rs` files under `dir`, skipping build output.
+fn snb_rs_files(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+    let Ok(entries) = fs::read_dir(dir) else { return };
+    for e in entries.flatten() {
+        let p = e.path();
+        if p.is_dir() {
+            let n = p.file_name().unwrap_or_default().to_string_lossy().to_string();
+            if n != "target" && n != "node_modules" {
+                snb_rs_files(&p, out);
+            }
+        } else if p.extension().map(|x| x == "rs").unwrap_or(false) {
+            out.push(p);
+        }
+    }
+}
+
+/// Every `CHANNEL_SPECIFIED_NOT_BUILT` subject must still be absent.
+///
+/// **An asserted trigger, not a note.** A row whose symbol has arrived is a rule
+/// that became violable while its register still said it could not be — exactly
+/// the state this repo has shipped as prose and then cited as an open blocker
+/// after it was no longer true.
+#[test]
+fn channel_primitives_specified_but_not_built_are_still_absent() {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut files: Vec<PathBuf> = Vec::new();
+    for dir in ["crates", "services"] {
+        snb_rs_files(&root.join(dir), &mut files);
+    }
+
+    // REACH FLOOR on the walk itself: zero files read means every row "passes"
+    // for a reason that has nothing to do with the rules.
+    assert!(
+        files.len() >= 200,
+        "the subject walk reached only {} .rs file(s); a walk that reads nothing \
+         reports every specified-not-built row as still absent",
+        files.len()
+    );
+
+    let mut arrived: Vec<String> = Vec::new();
+    for (id, symbol, why) in CHANNEL_SPECIFIED_NOT_BUILT {
+        let mut hits: Vec<String> = Vec::new();
+        for f in &files {
+            let p = f.to_string_lossy().replace('\\', "/");
+            if p.contains("/tests/") || p.contains("/target/") {
+                continue;
+            }
+            let Ok(text) = fs::read_to_string(f) else { continue };
+            let found = text
+                .split(|c: char| !c.is_alphanumeric() && c != '_')
+                .any(|w| w == *symbol);
+            if found {
+                hits.push(p);
+            }
+        }
+        if !hits.is_empty() {
+            arrived.push(format!(
+                "{id}: `{symbol}` has ARRIVED ({}). The invariant is now violable and this row is \
+                 stale — give {id} a real guard and delete the row. Reason was: {why}",
+                hits[..hits.len().min(2)].join(", ")
+            ));
+        }
+    }
+
+    assert!(
+        arrived.is_empty(),
+        "specified-not-built rows whose subject now exists:\n  {}",
+        arrived.join("\n  ")
+    );
+
+    // The floor was a COUNT, and a count cannot see a NEUTERED row. Renaming a
+    // symbol to something that matches nothing leaves the length at five and
+    // kills that row's trigger in silence — measured by the bite that found it.
+    // The ids are asserted as a SET, and each row's shape is checked, so a
+    // deletion, a rename and a blanked symbol all red.
+    let ids: std::collections::BTreeSet<&str> =
+        CHANNEL_SPECIFIED_NOT_BUILT.iter().map(|(i, _, _)| *i).collect();
+    let want: std::collections::BTreeSet<&str> =
+        ["DP-Ch3", "DP-Ch8", "DP-Ch10", "DP-Ch14", "DP-Ch19", "DP-Ch25", "DP-Ch27",
+         "DP-Ch29"].into_iter().collect();
+    assert_eq!(
+        ids, want,
+        "the specified-not-built register no longer covers exactly the five channel invariants \
+         it was written for (eight, after reading killed three the candidate generator called \
+         BUILT). A row leaves ONLY when its subject arrives, and that path asserts above — so \
+         any other change here is one nobody justified"
+    );
+
+    for (id, symbol, why) in CHANNEL_SPECIFIED_NOT_BUILT {
+        assert!(
+            symbol.len() >= 3 && symbol.chars().all(|c| c.is_alphanumeric() || c == '_'),
+            "{id}: `{symbol}` is not a searchable identifier, so its trigger can never fire"
+        );
+        assert!(
+            why.len() >= 40,
+            "{id}: the reason is {} chars. A row without a reason is the prose this register \
+             replaces",
+            why.len()
+        );
+    }
+}
