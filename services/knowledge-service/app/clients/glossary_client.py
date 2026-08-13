@@ -686,7 +686,17 @@ class GlossaryClient:
         """
         if not entity_ids:
             return []
-        url = f"{self._base_url}/internal/books/{book_id}/entities/by-ids"
+        # T38 B8 — through the KAL's `cast/by-ids` (INV-KAL). It grew `include_attributes` for
+        # THIS caller: the passage producer needs the authored values, and a passage built from
+        # identity alone is the empty-lore bug it exists to fix.
+        #
+        # ⚠️ `is_pinned` / `tier` / `rank_score` stay at their model defaults, and nothing is
+        # lost: the glossary by-ids handler never populated them either — they are ranking
+        # fields of select-for-context, and on this path they were always Go zero values. The
+        # one caller that needs a tier assigns its own (`selectors/glossary.py` sets
+        # `r.tier = "semantic"` after the fetch).
+        url = (f"{settings.knowledge_gateway_url.rstrip('/')}"
+               f"/v1/kal/books/{book_id}/cast/by-ids")
         body: dict = {"entity_ids": entity_ids}
         if language:
             body["language"] = language
@@ -700,8 +710,16 @@ class GlossaryClient:
                 logger.warning("glossary entities/by-ids %d", resp.status_code)
                 return []
             data = resp.json()
+            # The KAL speaks the CastEntry vocabulary (`kind`, `aliases`); this model speaks
+            # the glossary row's (`kind_code`, `cached_aliases`). Mapped here rather than
+            # widening either side — the same field under two names on one boundary is how a
+            # consumer ends up reading one and getting the other's default.
             return [
-                GlossaryEntityForContext.model_validate(it)
+                GlossaryEntityForContext.model_validate({
+                    **it,
+                    "kind_code": it.get("kind_code") or it.get("kind") or "",
+                    "cached_aliases": it.get("cached_aliases") or it.get("aliases") or [],
+                })
                 for it in data.get("items", [])
             ]
         except (httpx.HTTPError, ValueError) as exc:

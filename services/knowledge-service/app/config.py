@@ -27,6 +27,12 @@ class Settings(BaseSettings):
 
     # K4b — glossary-service HTTP client for Mode 2 fallback selector.
     glossary_service_url: str = "http://glossary-service:8088"
+
+    # T38 B8 — the KAL base URL. Entity knowledge is read through the KAL (INV-KAL), not
+    # glossary /internal. NON-EMPTY default deliberately: an unset var here would raise
+    # mid-request on a URL built from it, and translation-service's ""-default taught the
+    # other failure mode — a client that treats unset as "feature off" and returns nothing.
+    knowledge_gateway_url: str = "http://knowledge-gateway:3000"
     # 0.5s was survivable only while a glossary read failure degraded SILENTLY to
     # "this book has no entities". It does not any more: the extraction anchor pre-load
     # now fails CLOSED (AnchorPreloadUnavailable -> retryable 503) precisely because

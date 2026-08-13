@@ -211,7 +211,7 @@ export class KalReadController {
   @Post('cast/by-ids')
   async castByIds(
     @Param('bookId') bookId: string,
-    @Body() body: { entity_ids?: string[]; language?: string },
+    @Body() body: { entity_ids?: string[]; language?: string; include_attributes?: boolean },
     @Req() req: InboundReq,
   ) {
     const ids = Array.isArray(body?.entity_ids) ? body.entity_ids : [];
@@ -220,6 +220,11 @@ export class KalReadController {
     if (ids.length === 0) return { items: [] };
     const payload: Record<string, unknown> = { entity_ids: ids };
     if (body?.language) payload.language = body.language;
+    // T38 B8 — the authored attribute VALUES, off by default. The glossary passage producer
+    // needs them (a passage built from identity alone is the empty-lore bug it exists to fix);
+    // everyone else does not, and this sits on a hot path, so the flag is opt-in exactly as it
+    // is upstream rather than always-on here.
+    if (body?.include_attributes) payload.include_attributes = true;
     const data = (await glossary.post(
       `/internal/books/${bookId}/entities/by-ids`,
       payload,
@@ -241,6 +246,10 @@ export class KalReadController {
             ? e.cached_aliases
             : [],
         short_description: e.short_description ?? null,
+        // Present only when asked for, and `[]` rather than absent when asked and empty —
+        // a consumer distinguishing "no attributes" from "did not ask" reads the flag it
+        // sent, not the shape it got back.
+        ...(body?.include_attributes ? { attributes: e.attributes ?? [] } : {}),
       })),
     };
   }

@@ -301,6 +301,7 @@ paths:
               properties:
                 entity_ids: { type: array, items: { type: string, format: uuid } }
                 language: { type: string, description: "Optional; augments aliases with that language's set" }
+                include_attributes: { type: boolean, description: "Optional; also return authored attribute VALUES. Off by default — this sits on a hot path and only the passage producer needs them." }
       responses:
         '200':
           description: The requested entities, in the same shape `cast` returns
@@ -829,6 +830,14 @@ components:
         kind: { type: string, nullable: true }
         aliases: { type: array, items: { type: string }, description: "Surface forms; [] when none, never absent" }
         short_description: { type: string, nullable: true }
+        attributes:
+          type: array
+          description: "Authored attribute values. PRESENT ONLY when include_attributes was sent — absent and empty are different answers, and a caller that forgot the flag must not read [] as 'this entity has none'."
+          items:
+            type: object
+            properties:
+              code: { type: string }
+              value: { type: string }
     StateEntity:
       type: object
       required: [entity_id, facts]

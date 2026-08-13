@@ -1186,6 +1186,8 @@ services:
       dockerfile: services/knowledge-service/Dockerfile
       labels: *build-labels
     environment:
+      # T38 B8 — entity knowledge is read through the KAL (INV-KAL).
+      KNOWLEDGE_GATEWAY_URL: http://knowledge-gateway:3000
       PORT: "8092"
       KNOWLEDGE_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_knowledge
       GLOSSARY_DB_URL: postgresql://loreweave:loreweave_dev@postgres:5432/loreweave_glossary

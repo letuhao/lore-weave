@@ -164,4 +164,32 @@ describe('KalReadController.cast', () => {
     expect(out.items).toEqual([]);
     expect(fetchMock).not.toHaveBeenCalled();
   });
+
+  it('forwards include_attributes and carries the values back', async () => {
+    fetchMock.mockResolvedValue(ok({ items: [{
+      entity_id: 'e1', cached_name: 'Kai', kind_code: 'character',
+      attributes: [{ code: 'rank', value: 'inner disciple' }],
+    }] }));
+    const ctrl = new KalReadController();
+
+    const out = (await ctrl.castByIds('b1', { entity_ids: ['e1'], include_attributes: true },
+      { headers: {}, kalUserId: 'u' } as never)) as { items: Array<Record<string, unknown>> };
+
+    const [, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(JSON.parse(String(init.body))).toEqual({ entity_ids: ['e1'], include_attributes: true });
+    expect(out.items[0].attributes).toEqual([{ code: 'rank', value: 'inner disciple' }]);
+  });
+
+  it('omits attributes entirely when they were not asked for', async () => {
+    // The counterweight: always returning `attributes: []` would let a caller that FORGOT the
+    // flag read "this entity has no attributes" instead of "I did not ask".
+    fetchMock.mockResolvedValue(ok({ items: [{ entity_id: 'e1', cached_name: 'Kai',
+      attributes: [{ code: 'rank', value: 'inner disciple' }] }] }));
+    const ctrl = new KalReadController();
+
+    const out = (await ctrl.castByIds('b1', { entity_ids: ['e1'] },
+      { headers: {}, kalUserId: 'u' } as never)) as { items: Array<Record<string, unknown>> };
+
+    expect('attributes' in out.items[0]).toBe(false);
+  });
 });

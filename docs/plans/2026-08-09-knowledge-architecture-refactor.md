@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B8` — grow `CastEntry.attributes`, migrate knowledge-service, close T38.**
-**C parked** on QC-5's measurement rule (`D-QC5-PIPELINE-NOT-REPRODUCIBLE`). **A7 DONE and A is now parked too:** `merge_fact` is on the port (Fake + Neo4j; AGE refuses with `D-AGE-FACT-WRITE-UNIMPLEMENTED`), but the bites killed three of my own rules and found the real blocker — **`D-PORT-CANNOT-OBSERVE-FACT-STATE`: the port can write a fact and cannot read one**, so neither the ordinal chain nor duplication is verifiable through it. `maintenance` turned out to be NINE things (`D-MAINTENANCE-IS-NINE-JANITORS`), a scope question not effort. Execution continues in **B**. See **▶ EXECUTION PLAN** below.
+**RESUME: `B9` — T51 / T39 / T40, the three tasks that chained behind T38.**
+**C parked** (`D-QC5-PIPELINE-NOT-REPRODUCIBLE`, PO decision owed). **A parked** (`D-PORT-CANNOT-OBSERVE-FACT-STATE` + `D-MAINTENANCE-IS-NINE-JANITORS`). **B1–B8 DONE — T38's migration target is COMPLETE:** the KAL grew `cast`, `cast/by-ids` and `include_attributes`, six consumers migrated, and **`authored-catalog-reader-gate` fell 10 → 3 call sites**, the remaining three being two eval scripts and the `assistant.controller` DELETE the baseline already excludes. B9 checks whether T51 (needs **T32**), T39 and T40 are now unblocked. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6714,6 +6714,84 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ---
+  ### ✅ B8 2026-08-13 — `CastEntry` grows `attributes`; **T38's last real consumer is migrated**
+
+  ```
+  authored-catalog-reader-gate   4 files / 4 call sites  ->  3 files / 3 call sites
+  ```
+
+  PO decision: grow `CastEntry.attributes`. Done — `cast/by-ids` takes `include_attributes`,
+  the contract declares both, and `knowledge-service/app/clients/glossary_client.py` reads
+  through the KAL.
+
+  **Rule 8 made the migration safe.** The model this consumer validates into carries
+  `is_pinned` / `tier` / `rank_score`, which `CastEntry` has no place for — so I measured
+  before deciding whether that mattered. **The glossary by-ids handler never populated them
+  either**: they are select-for-context ranking fields, Go zero values on this path. Nothing is
+  lost, and the one caller that needs a tier assigns its own
+  (`selectors/glossary.py` sets `r.tier = "semantic"` after the fetch).
+
+  **`attributes` is ABSENT, not empty, when not requested.** Always returning `[]` would let a
+  caller that forgot the flag read *"this entity has no attributes"* instead of *"I did not
+  ask"* — the same absent-vs-empty confusion `truncated` was made explicit for in B2.
+
+  🔴 **THE MIGRATION PASSED 4216 TESTS WHILE THE SETTING IT NEEDS DID NOT EXIST.**
+  `settings.knowledge_gateway_url` was not in knowledge-service's config at all; the migrated
+  call would have raised `AttributeError` on the first real request. **Every one of those 4216
+  greens was earned by never executing the line that builds the URL.** A suite that cannot
+  reach a line cannot defend it — so the new test file's FIRST assertion is about the setting,
+  not the request:
+
+  ```
+  E  AssertionError: the KAL base URL is empty
+  ```
+
+  Its default is non-empty deliberately. translation-service's `""` default taught the other
+  failure mode: a client that reads unset as *"feature off, return nothing"* turns a missing
+  env var into a silently disabled read rather than a loud one.
+
+  ⚠️ **And the compose edit landed in the WRONG SERVICE first** — `knowledge-gateway` instead of
+  `knowledge-service`, because I matched the first `GLOSSARY_SERVICE_URL` after the block
+  heading and a later service owned it. Caught by reading the value back
+  (`knowledge-service KAL: None`) rather than trusting the edit. Rule 2, on my own change.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. knowledge_gateway_url default -> ""
+     E  AssertionError: the KAL base URL is empty
+  2. drop the `kind` -> `kind_code` mapping
+     E  AssertionError: the KAL's `kind` was not mapped to `kind_code`
+     E  assert '' == 'character'
+  ```
+
+  Bite 2 is the `kind_code`/`kind` mismatch that B6's live smoke caught in worker-ai — here
+  caught before it shipped, because the lesson became a test.
+
+  **QC (a) gates:** `authored-catalog-reader-gate` **PASS at 3/3**, baseline shrunk in this
+  commit, `--selftest` passes. `gen-isolated-compose --check` OK (47 ports / 42 services).
+  **QC (b) the seam:** `knowledge-gateway` and `knowledge-service` rebuilt; env + code
+  `grep`-verified in-container. Driven live against the acceptance book:
+
+  ```
+  rows: 1 | kind_code: 'character'
+  aliases: 1 | short_desc present: True
+  attributes WITHOUT flag: 0 | WITH flag: 14
+  ```
+
+  `0` vs `14` on the same entity is the opt-in proving itself — and the mapped `kind_code` is
+  bite 2's assertion holding against a real payload rather than a mock.
+  **QC (c) real data:** one real entity of the acceptance book, 14 real authored attributes.
+
+  ```
+  4218 passed — knowledge-service · Tests: 34 passed — knowledge-gateway
+  ```
+
+  **Three call sites remain, and NONE of them is T38's:** two eval scripts on `canon-content`
+  (*"not a runtime path, migrate last"* in the baseline) and the `assistant.controller` DELETE
+  the baseline already labels *"a WRITE … NOT T38's to migrate"*. **T38's migration target is
+  complete: 10 call sites → 3, and the 3 are the ones it was never for.**
+
   ### ✅ B7 2026-08-13 — two by-ids consumers migrated; **the gate is down to four**
 
   ```

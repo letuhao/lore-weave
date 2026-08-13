@@ -139,9 +139,6 @@ BASELINE = {
         "canon-content read from an eval script — not a runtime path, migrate last",
     os.path.join("composition-service", "scripts", "eval_narrative_thread.py"):
         "canon-content read from an eval script — not a runtime path, migrate last",
-    os.path.join("knowledge-service", "app", "clients", "glossary_client.py"):
-        "by-ids read (identity for the semantic selector) — knowledge-service owns the KG, "
-        "NOT the glossary, so against the authored catalog it is a consumer like any other",
 }
 
 
