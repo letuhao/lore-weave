@@ -56,6 +56,7 @@ from app.db.suspended_runs import (
     save_suspended_run,
 )
 from app.db.tool_approvals import approve_tool, get_tool_decision, set_tool_decision
+from app.services.request_mood import request_mood, standing_grant_applies
 from app.db.conversation_search import (
     CONVERSATION_SEARCH_NAME,
     CONVERSATION_SEARCH_TOOL,
@@ -8516,8 +8517,33 @@ async def _emit_chat_turn(
     # how to degrade on a read error (mutation fails OPEN, spend fails CLOSED).
     # Track C WS-3 — returns the standing DECISION ('allow' | 'deny' | None), so ONE
     # read answers both "may it run?" and "has the user forbidden it?".
+    # R5 — the mood of THIS request is a consent input. Computed once, from the user's own
+    # words, by a literal matcher (see request_mood); `unknown` is the default and behaves
+    # exactly as before.
+    _turn_mood = request_mood(user_message_content)
+
     async def _decision_check(tool_name: str, kind: str = "mutation") -> str | None:
-        return await get_tool_decision(pool, user_id, tool_name, kind)
+        """The standing decision, moderated by what this turn actually asked for.
+
+        🔴 MEASURED 5/5, 2026-08-13: asked "Show me the outline I've planned for this book",
+        the turn called composition_outline_node_edit (Tier A) and CREATED three chapters.
+        The store went from 7 outline nodes to 10. No card was shown, because a standing
+        "always allow" from 2026-07-30 — granted two weeks earlier while the author was
+        genuinely building — still applied.
+
+        A consent granted while asking a tool to WRITE is not consent for a turn that asked
+        to LOOK. On an unambiguous inspect turn the standing mutation grant is set aside and
+        the Tier-A gate does its job: the call is not blocked, it is ASKED. A deny is never
+        set aside — a standing refusal must hold in every mood.
+        """
+        _decision = await get_tool_decision(pool, user_id, tool_name, kind)
+        if _decision == "allow" and not standing_grant_applies(_turn_mood, kind=kind):
+            logger.info(
+                "standing %s grant for %s set aside — this turn asked to LOOK, not to change "
+                "(the Tier-A gate will raise a card)", kind, tool_name,
+            )
+            return None
+        return _decision
 
     # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
     # []). pre_turn inject_text hooks are folded into the system prompt now (steering
