@@ -144,7 +144,7 @@ All of the following, or 45 turns, whichever comes first:
 |---|---|---|
 | ~~`DF1a`~~ | **the write surface's missing half** — `t2_write_channel` / `t3_write_channel`, the scope bounds, `KernelChannelWriteBackend`, and the first production `ChannelTree` | ✅ **CLOSED** — evidence in `§3` |
 | ~~`DF1b-i`~~ | **the SDK can name its domain event** — `EVENT_TYPE` + `PAYLOAD_IS_JSON`, both defaulted, backends honour them, non-JSON under the flag REFUSED not wrapped | ✅ **CLOSED** `f4cf8efa3` — row: `event_type npc.said`, `payload {"npc_id":"n-1","utterance":"well met"}` |
-| `DF1b-ii` | **then** the spine's REJECT-COMMIT goes through the SDK, live, with the row pasted from Postgres | ⬜ |
+| ~~`DF1b-ii`~~ | **one real caller** — the spine's REJECT-COMMIT goes through `dp::t2_write_channel` | ✅ **CLOSED** — production row in `§3` |
 | `DF2` | **the control plane's three missing tables** — `tier_policy` (`DP-C4`), `schema_version` + `npc_binding` (`DP-C2`). Unblocks 6 of the 8 dead RPCs | ⬜ |
 | `DF3` | **the T0–T2 cache.** `§2.4`'s "direct Redis access" — zero DP crates have it today, so every tier collapses to the durable path and the taxonomy is a comment | ⬜ |
 | `DF4` | **`DP-R2` tier tables per module** — the PO's *"data instance for each module"*, owed by every feature doc and paid by none | ⬜ |
@@ -342,12 +342,55 @@ which is exactly how the wrongness stayed invisible.
 **Green at close:** `dp` + `dp-kernel` **444 passed / 0 failed across 17 suites** against live
 Postgres.
 
+### `DF1b-ii` — the SDK has a production caller, and the row proves nothing was lost
+
+`reject_commit::commit_rejection` → `dp::t2_write_channel` → `KernelChannelWriteBackend` →
+`ChannelWriter`. **The row, out of Postgres, written by production code:**
+
+```
+event_type        | proposal.rejected     <-- NOT dp.write.applied; both projectors dispatch on it
+aggregate_type    | combat_session
+aggregate_id      | enc-1
+payload           | {"reason": "verb `definitely_not_a_verb` is not in the reality's
+                     vocabulary", "rejected_at_stage": "vocabulary"}   <-- a body, not a blob
+metadata          | {"dp_tier": "t2", "dp_scope": "channel", "turn_number": "7",
+                     "event_category": "T6", "dp_cache_key": "dp:b805adf7-…:c:1:t2:…:enc-1"}
+ruleset_digest    | d1ce5eed…beef        <-- RLS-A13's pin survived the seam
+channel_id        | 1
+channel_event_id  | 1
+writer_epoch      | 1
+```
+
+`turn_number` is `"7"` — a decimal STRING (`CWC-A2`) and **unadvanced** (`EVT-V4`), asserted against
+a non-zero counter on purpose: at 0 the claim would pass whether or not the counter was read at all.
+
+**The three envelope facts went to three owners, and measuring corrected my own design.** The first
+version of this row said the CHANNEL owned `turn_number`, because
+`channel_writer_state.last_turn_number` is DB-authoritative. Measuring the spine before building it
+showed that wrong: **the spine never calls `advance_turn`**, so that column stays 0 on its channel
+and `recovery` reads the turn back out of EVENT METADATA. Moving the stamp to the DB would have
+replaced a correct value with a zero. Final split: `event_category` → the aggregate (it is a
+property of what the event IS) · `ruleset_digest` and the turn counter → the **writer node**.
+
+Each is now stamped once by whoever owns the fact, instead of by every call site that might forget —
+which is strictly better than what it replaced, and is why this is a correction rather than a move.
+
+**Green:** `dp` + `dp-kernel` + `commit-service` **569 passed / 0 failed across 44 suites** ·
+`file-ceiling-gate` OK (`bin/spine.rs` held at exactly its allowlisted 375 by extracting
+`reject_commit`, the same reason `epoch_commit` is its own module).
+
+**⚠ WHAT WAS NOT PROVEN, stated rather than glossed:** the spine BINARY was not driven end to end.
+It hangs — see `DFO-7`, and it hangs at `HEAD` too, so it is not this change's doing. The live
+witness calls the production functions against a real database; the one double is the
+`ControlPlane` that mints the session.
+
 ---
 
 ## 4 · OPEN ROWS — each must carry a MECHANISM, not prose
 
 | id | what | mechanism / what would settle it |
 |---|---|---|
+| `DFO-7` | **`bin/spine.rs --drain-once` does not drain once — it BLOCKS.** With a message waiting on the stream it reaches *"epoch signals: lw.meta.events …"* and then hangs past a 120s timeout. **Measured at `HEAD` with this whole change stashed: `HEAD_RC=124`, identical** — and an instrumented run showed this change's own code completing (`WIRE: channel resolved`) before the hang, so the block is downstream in the loop, most likely the epoch-signal drain. Two orphaned `spine.exe` processes survived the killed runs and locked the binary, which is the second-order cost | bisect the loop: `drain_and_reconcile` vs `bus.fetch`. It is worth fixing because it is why every live smoke drives COMPONENTS rather than the binary — the one path a real deployment actually runs is the one nothing exercises |
 | `DFO-6` | **`cargo test --workspace` cannot run against ONE database.** `CARGO_RC=101`: **2505 passed / 1 failed**, the one being `rebuilder_round_trip_live_smoke`. Not my diff — no file I touched is in its path, and it references neither the event registry nor `canon_projection`. Two distinct causes, both environmental: (a) `dp_kernel_test` on `infra-postgres-1` has a `vector` CATALOG ROW with no library, so `CREATE EXTENSION IF NOT EXISTS` says *"already exists, skipping"* and every use fails later; (b) the test applies `0002`, which **DROPs `events`** — wiping `content_sha256`, the channel columns, `ruleset_digest` and the turn columns, which is why the channel suite then failed 6 ways. CI gives it its OWN DB for exactly this reason | a dev-side runner that provisions one DB per live suite, mirroring `foundation-ci.yml`'s five. Until then `--workspace` with a single DSN is a trap that reports code failures for a schema someone else dropped |
 | ~~`DFO-5`~~ | ✅ **CLOSED — it was a real bug.** Original: **`turn_number` has two sources.** `turnOutcome.ts:125` calls it *"authoritative from the COMMIT — never recomputed here"*; `bin/spine.rs` stamps it from a local counter, while the DB returns its own on `ChannelAppended.turn_number`. Two sources for one number, and the consumer believes one of them | read both at the same append and compare. A test asserting `metadata.turn_number == ChannelAppended.turn_number` on a live commit would settle it AND keep it settled. Blocks `DF1b-ii`'s move of the stamp to the backend: if they already diverge, moving the source changes behaviour and would look like the SDK's fault |
 | ~~`DFO-4`~~ | ✅ **CLOSED** `0ae3297c4`. Original: **`proposal.rejected` is written by the live spine, read by two projectors, and is NOT in `contracts/events/_registry.yaml`** (16 entries; it is absent, as is `dp.write.applied`). So the event validator has no schema for the one domain event this system actually produces in anger | registering it is cheap and in scope for `DF1b-i`, which needs a registered type to point `EVENT_TYPE` at. Recorded separately because it is PRE-EXISTING — found by `DF1b`'s measurement, not caused by it |

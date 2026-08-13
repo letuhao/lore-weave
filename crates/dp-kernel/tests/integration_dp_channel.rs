@@ -409,6 +409,7 @@ async fn the_channel_backend_refuses_a_request_with_no_channel() {
             cache_key: "k",
             event_type: dp::DEFAULT_SDK_EVENT_TYPE,
             payload_is_json: false,
+            event_category: None,
             channel: None,
             payload: &[],
             expected_version: 0,
@@ -453,6 +454,7 @@ async fn the_channel_backend_refuses_another_channels_write() {
             cache_key: "k",
             event_type: dp::DEFAULT_SDK_EVENT_TYPE,
             payload_is_json: false,
+            event_category: None,
             // Channel 8, while the lease is for channel 7.
             channel: Some(ChannelId::unverified(8)),
             payload: &[],

@@ -32,6 +32,9 @@ pub mod manager;
 /// `ruleset-loader` so the game-logic tier keeps its three dependencies.
 pub mod pg_binding;
 pub mod producer;
+/// `DF1b-ii` — the admission refusal, committed through the data-plane SDK.
+/// The FIRST production caller of a `dp` tier primitive.
+pub mod reject_commit;
 pub mod reality_bind;
 pub mod spine_args;
 pub mod recovery;

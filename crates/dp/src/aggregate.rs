@@ -141,6 +141,22 @@ pub trait DpAggregate: Send + Sync + 'static {
     /// found, where a channel-scoped write became a NULL-channel event nobody
     /// read. Declared intent plus a loud refusal; never a guess.
     const PAYLOAD_IS_JSON: bool = false;
+
+    /// The event-taxonomy category stamped in envelope metadata (`DF1b-ii`).
+    ///
+    /// `"T6"` for an admission refusal, `"T8"` for a ruleset epoch switch —
+    /// values `epoch_activation_live.rs` asserts on the row. It belongs beside
+    /// [`Self::EVENT_TYPE`] because it is a property of WHAT THE EVENT IS, not
+    /// of the caller or the node.
+    ///
+    /// # It is stamped by the WRITER and never read off the wire
+    ///
+    /// `PID-D5` removed `event_category` from the proposal wire format: it was
+    /// read straight off an untrusted payload and used to select a privilege
+    /// subset, so a proposal could choose its own tier. Declaring it here keeps
+    /// the value where the producer decides it — which is the whole point of
+    /// that fix — rather than reintroducing a field a caller can set per write.
+    const EVENT_CATEGORY: Option<&'static str> = None;
 }
 
 /// The `DP-R2` tier table, for one aggregate, derived from its types.

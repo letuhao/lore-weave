@@ -30,6 +30,9 @@ use commit_service::wire::discard_reason_wire;
 use commit_service::{epoch_commit, epoch_signal};
 use commit_service::combat::Side;
 use commit_service::{Actor, CombatDomain, CombatState, Vocabulary, COMBAT_V1_JSON};
+use std::sync::atomic::{AtomicU64, Ordering};
+
+use commit_service::{reality_bind, reject_commit};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
 use dp_kernel::envelope::EventEnvelope;
 use sim_core::{EntityId, Island, IslandId, Lane, Outcome, SeenWindow, StepStatus};
@@ -54,7 +57,7 @@ async fn main() -> anyhow::Result<()> {
     // ── durability side: lease + fenced writer (dp-kernel SDK) ──
     let pool = Arc::new(PgPoolOptions::new().max_connections(4).connect(&args.pg_url).await?);
     let lease = acquire_writer_lease(&pool, args.reality, ChannelId::unverified(args.channel)).await?;
-    let writer = ChannelWriter::new(pool.clone(), args.reality, lease);
+    let writer = Arc::new(ChannelWriter::new(pool.clone(), args.reality, lease));
     println!("lease acquired: channel {} epoch {}", args.channel, lease.epoch);
 
     // ── resolution side: the island (encounter demo state) ──
@@ -166,7 +169,15 @@ async fn main() -> anyhow::Result<()> {
     // NEVER does (EVT-V4). SEEDED FROM RECOVERY like `aggregate_version` — it
     // read `= 0` while `WriterRecovery::turn_number` was queried, printed and
     // dropped, so restarts rewound it (DFO-5; recovered_values_are_consumed).
-    let mut turn_number: u64 = recovered.turn_number;
+    let turn_number = Arc::new(AtomicU64::new(recovered.turn_number));
+
+    // `DF1b-ii` — session enters its channel; node declares its facts.
+    let (chan_ctx, dp_backend) = reject_commit::wire(
+        pool.clone(), &session, args.reality, args.channel,
+        reality_bind::now_ms().map_err(|e| anyhow::anyhow!("{e}"))?,
+        isle.digest.to_hex(), turn_number.clone(), writer.clone(),
+    )
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     loop {
         // DP-K10 step 4. The `?` is the mechanism: a REVOKED session comes
@@ -189,7 +200,7 @@ async fn main() -> anyhow::Result<()> {
         // `session` so the `plane` that refreshes it stays alive (`BDR-54`).
         epoch_commit::drain_and_reconcile(
             &mut signals, &boot, session.reality_id(), args.channel, &mut isle, &writer,
-            &mut aggregate_version, turn_number,
+            &mut aggregate_version, turn_number.load(Ordering::SeqCst),
         )
         .await?;
 
@@ -227,42 +238,30 @@ async fn main() -> anyhow::Result<()> {
                 AdmissionOutcome::Rejected { stage, ref reason } => {
                     rejected += 1;
                     // S3b / CS-A4: a validator rejection is COMMITTED, not
-                    // just logged — the doc-15 "t2_write" outcome. It rides
-                    // the channel's audit order but does NOT advance
-                    // turn_number (EVT-V4).
-                    aggregate_version += 1;
-                    let env = EventEnvelope {
-                        event_id: Uuid::new_v4(),
-                        event_type: "proposal.rejected".into(),
-                        event_version: 1,
-                        aggregate_id: format!("enc-{}", args.channel),
-                        aggregate_type: "combat_session".into(),
+                    // just logged — and since `DF1b-ii` it is committed THROUGH
+                    // THE SDK, which is what its own "t2_write" comment always
+                    // claimed. `event_type`, the JSON body, `event_category` and
+                    // the RLS-A13 digest all now come from the aggregate's
+                    // declaration and the writer node, not from this call site
+                    // remembering to stamp four things.
+                    //
+                    // It does NOT advance turn_number (EVT-V4); the backend
+                    // stamps the counter's current value.
+                    let pos = reject_commit::commit_rejection(
+                        &dp_backend,
+                        &chan_ctx,
+                        reality_bind::now_ms().map_err(|e| anyhow::anyhow!("{e}"))?,
+                        args.channel,
                         aggregate_version,
-                        reality_id: args.reality,
-                        occurred_at: now_rfc3339(),
-                        recorded_at: now_rfc3339(),
-                        payload: serde_json::json!({
-                            "rejected_at_stage": stage,
-                            "reason": reason,
-                        }),
-                        metadata: Some(serde_json::json!({
-                            "event_category": "T6",
-                            // CWC-A2 — u64 leaves as a decimal STRING (the
-                            // browser consuming this via the publisher loses
-                            // precision on a JSON number past 2^53).
-                            "turn_number": turn_number.to_string(), // NOT advanced
-                        })),
-                        // RLS-A13 — the pin, taken from the island that produced
-                        // this, not from a config value that could describe a
-                        // different ruleset. `isle.digest` is DERIVED from the
-                        // rules the island actually runs (Domain::rules_digest),
-                        // so the value written here cannot describe anything else.
-                        ruleset_digest: Some(isle.digest.to_hex()),
-                    };
-                    let appended = writer.append(&env, &serde_json::json!([])).await?;
+                        stage,
+                        reason,
+                    )
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+                    aggregate_version += 1;
                     println!(
-                        "REJECT-COMMIT [{stage}] {} → channel_event_id {} (turn stays {turn_number}) — {reason}",
-                        msg.id, appended.channel_event_id
+                        "REJECT-COMMIT [{stage}] {} → channel_event_id {pos} (turn stays {}) — {reason}",
+                        msg.id,
+                        turn_number.load(Ordering::SeqCst)
                     );
                     to_ack.push(msg.id.clone());
                 }
@@ -301,7 +300,7 @@ async fn main() -> anyhow::Result<()> {
                     aggregate_version += 1;
                     // DP-A17: only an APPLIED resolution consumes the turn.
                     if matches!(outcome, Outcome::Applied { .. }) {
-                        turn_number += 1;
+                        turn_number.fetch_add(1, Ordering::SeqCst);
                     }
                     let env = EventEnvelope {
                         event_id: Uuid::new_v4(),
@@ -340,7 +339,7 @@ async fn main() -> anyhow::Result<()> {
                             "input_id": input_id.0.to_string(),
                             "admission_notrun_stages": notrun,
                             // CWC-A2 — decimal string, never a number.
-                            "turn_number": turn_number.to_string(),
+                            "turn_number": turn_number.load(Ordering::SeqCst).to_string(),
                         })),
                         // RLS-A13 — see the reject path above. Same island, same
                         // derived pin: every event this writer commits carries the
@@ -368,7 +367,8 @@ async fn main() -> anyhow::Result<()> {
     println!("admitted  : {admitted}");
     println!("rejected  : {rejected} (schema/dedup/vocabulary — acked, recorded)");
     println!("committed : {committed} channel-ordered events under epoch {}", writer.lease().epoch);
-    println!("turn      : {turn_number} (rejections advanced NOTHING — EVT-V4)");
+    println!("turn      : {} (rejections advanced NOTHING — EVT-V4)",
+             turn_number.load(Ordering::SeqCst));
     println!("pel depth : {}", bus.pel_len().await?);
     println!("island    : applied={} metrics-accounted={}", isle.metrics().applied, isle.metrics().accounted());
     Ok(())

@@ -118,6 +118,9 @@ pub struct WriteRequest<'a> {
     /// Whether [`Self::payload`] is the event's JSON body rather than opaque
     /// bytes, from [`DpAggregate::PAYLOAD_IS_JSON`].
     pub payload_is_json: bool,
+    /// The event-taxonomy category, from [`DpAggregate::EVENT_CATEGORY`]
+    /// (`DF1b-ii`). `None` for an aggregate that declares none.
+    pub event_category: Option<&'static str>,
     /// The channel this write is addressed to, or `None` for a reality-scoped
     /// write.
     ///
@@ -221,6 +224,7 @@ where
         cache_key: key,
         event_type: A::EVENT_TYPE,
         payload_is_json: A::PAYLOAD_IS_JSON,
+        event_category: A::EVENT_CATEGORY,
         // A reality-scoped aggregate has no channel to be addressed to, and
         // the bound above is what makes that a fact rather than a hope.
         channel: None,
@@ -279,6 +283,7 @@ where
         cache_key: key,
         event_type: A::EVENT_TYPE,
         payload_is_json: A::PAYLOAD_IS_JSON,
+        event_category: A::EVENT_CATEGORY,
         channel: Some(channel),
         payload: &payload,
         expected_version,

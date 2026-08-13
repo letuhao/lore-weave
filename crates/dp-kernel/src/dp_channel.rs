@@ -71,6 +71,31 @@ pub struct KernelChannelWriteBackend {
     writer: Arc<ChannelWriter>,
     handle: Handle,
     event_type: String,
+    /// `RLS-A13`'s pin — the digest of the rules this writer node is running.
+    ///
+    /// Held by the BACKEND because it is a fact about the node, not about any
+    /// one write. Today every call site stamps it by hand, so a forgotten one
+    /// produces a committed fact that cannot say which rules made it, and
+    /// nothing reports the omission. One place to set it is one place to
+    /// forget it.
+    ruleset_digest: Option<String>,
+    /// `DP-A17`'s per-channel turn counter, shared with whoever advances it.
+    ///
+    /// # Why the WRITER holds this and the database does not
+    ///
+    /// `DF1b-ii`'s first design said the channel owned it, because
+    /// `channel_writer_state.last_turn_number` is DB-authoritative and
+    /// `ChannelAppended` returns it. Measuring the spine before building that
+    /// showed it wrong: **the spine never calls `advance_turn`**, so that
+    /// column stays 0 on its channel, and `recovery` reads the turn back out
+    /// of EVENT METADATA. The writer's counter, persisted in metadata, is the
+    /// source of truth — so moving the stamp to the DB would have replaced a
+    /// correct value with a zero.
+    ///
+    /// An `AtomicU64` rather than a value: the caller advances it (only an
+    /// APPLIED resolution does, per `EVT-V4`) and the backend reads it at
+    /// append time, so the two cannot drift apart the way a copied number can.
+    turn_counter: Option<Arc<std::sync::atomic::AtomicU64>>,
 }
 
 impl KernelChannelWriteBackend {
@@ -89,7 +114,26 @@ impl KernelChannelWriteBackend {
             writer,
             handle: multi_thread_handle("KernelChannelWriteBackend")?,
             event_type: Self::SDK_EVENT_TYPE.to_string(),
+            ruleset_digest: None,
+            turn_counter: None,
         })
+    }
+
+    /// Declare the ruleset this writer node is running (`RLS-A13`).
+    ///
+    /// Every event this backend appends carries it. A node that does not
+    /// declare one writes `ruleset_digest: NULL`, which is the honest record of
+    /// "this writer could not say" — not a default worth inventing.
+    pub fn with_ruleset_digest(mut self, digest: impl Into<String>) -> Self {
+        self.ruleset_digest = Some(digest.into());
+        self
+    }
+
+    /// Share the channel's `DP-A17` turn counter (see the field's note on why
+    /// the writer holds it and the database does not).
+    pub fn with_turn_counter(mut self, counter: Arc<std::sync::atomic::AtomicU64>) -> Self {
+        self.turn_counter = Some(counter);
+        self
     }
 }
 
@@ -151,15 +195,31 @@ impl WriteBackend for KernelChannelWriteBackend {
                 req.payload_is_json,
                 req.aggregate_type,
             )?,
-            metadata: Some(serde_json::json!({
-                "dp_tier": req.tier.as_key(),
-                "dp_cache_key": req.cache_key,
-                // The scope, recorded where a reader of the row can see it
-                // without joining. The COLUMN is authoritative; this is the
-                // label that makes a log line legible.
-                "dp_scope": "channel",
-            })),
-            ruleset_digest: None,
+            metadata: Some({
+                let mut m = serde_json::json!({
+                    "dp_tier": req.tier.as_key(),
+                    "dp_cache_key": req.cache_key,
+                    // The scope, recorded where a reader of the row can see it
+                    // without joining. The COLUMN is authoritative; this is the
+                    // label that makes a log line legible.
+                    "dp_scope": "channel",
+                });
+                let obj = m.as_object_mut().expect("built as an object one line above");
+                if let Some(cat) = req.event_category {
+                    obj.insert("event_category".into(), cat.into());
+                }
+                if let Some(c) = &self.turn_counter {
+                    // `CWC-A2` — a DECIMAL STRING, not a JSON number: the
+                    // browser consuming this through the publisher loses
+                    // precision past 2^53, and this is a BIGINT server-side.
+                    let n = c.load(std::sync::atomic::Ordering::SeqCst);
+                    obj.insert("turn_number".into(), n.to_string().into());
+                }
+                m
+            }),
+            // `RLS-A13` — the writer node's own declaration, stamped once here
+            // instead of at every call site that might forget.
+            ruleset_digest: self.ruleset_digest.clone(),
         };
 
         // `causal_refs` is `DP-Ch15` and belongs to the CALLER's intent, which
