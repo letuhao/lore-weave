@@ -135,3 +135,48 @@ async def test_writeback_key_is_sent_only_when_given():
 
     assert "writeback_key" not in bodies[0]
     assert bodies[1]["writeback_key"] == "wb-1"
+
+
+@pytest.mark.asyncio
+async def test_source_episode_id_is_OMITTED_when_absent_never_invented():
+    """🔴 **The rule the live smoke earned, and it cost a 500 to learn.**
+
+    `entity_facts.source_episode_id` carries a FOREIGN KEY to `episodes`. The first cut of
+    this producer took the field as REQUIRED — the contract declares it so — and the studio
+    endpoint passed whatever it was handed. Driving the real path end to end returned:
+
+        insert or update on table "entity_facts" violates foreign key constraint
+        "entity_facts_source_episode_id_fkey"
+        Key (source_episode_id)=(e8dfe19d-…) is not present in table "episodes"
+
+    surfacing as a 502 at the KAL and a 500 at the author. **A plan-authored role has no
+    episode** (Q2: *"plan-authored, not extracted"*), so inventing an id to satisfy a required
+    field writes a provenance claim that is both false and unsatisfiable.
+
+    NULL is the shape the core already expects: `appendFact`'s ON CONFLICT reads
+    `coalesce(source_episode_id, '000…')`, which is only meaningful if NULL is normal — and a
+    direct insert with NULL creates the `relation` row cleanly.
+
+    Omitted, not `null`: the same absent-vs-empty distinction `CastEntry.attributes` and
+    `writeback_key` are explicit about. A key the schema does not declare is a key the
+    validator on the other side may reject.
+    """
+    bodies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(__import__("json").loads(request.content))
+        return httpx.Response(200, json={})
+
+    c = _client(handler)
+    await c.append_role_fact(
+        BOOK, subject_entity_id=SUBJECT, predicate="betrayed", object_value="Lâm Uyên",
+        valid_from_ordinal=12_000_000)
+    await c.append_role_fact(
+        BOOK, subject_entity_id=SUBJECT, predicate="betrayed", object_value="Lâm Uyên",
+        valid_from_ordinal=12_000_000, source_episode_id=EPISODE)
+
+    assert "source_episode_id" not in bodies[0], (
+        "an author-declared role sent a source_episode_id it does not have — the column is "
+        "an FK to `episodes`, so an invented id is a 500, not a provenance gap")
+    assert bodies[1]["source_episode_id"] == str(EPISODE), (
+        "an extracted role must still be able to cite its episode")

@@ -203,7 +203,7 @@ class KalClient:
         predicate: str,
         object_value: str,
         valid_from_ordinal: int,
-        source_episode_id: UUID | str,
+        source_episode_id: UUID | str | None = None,
         user_id: UUID | str | None = None,
         writeback_key: str | None = None,
     ) -> dict[str, Any]:
@@ -242,8 +242,18 @@ class KalClient:
             "attr_or_predicate": predicate,
             "value": object_value,
             "valid_from_ordinal": valid_from_ordinal,
-            "source_episode_id": str(source_episode_id),
         }
+        # ⚠️ OMITTED when absent, never sent as null or as a fresh UUID. `entity_facts
+        # .source_episode_id` carries a FOREIGN KEY to `episodes`, so an invented id is a
+        # 500 — which is exactly how the T37 live smoke failed: the producer minted one
+        # because the contract declares the field `required`, and nothing below HTTP could
+        # tell an author-declared role from an extracted one.
+        #
+        # A plan-authored role HAS no episode (Q2: "plan-authored, not extracted"). NULL is
+        # the shape the core already expects — its ON CONFLICT reads
+        # `coalesce(source_episode_id, '000…')`, which only makes sense if NULL is normal.
+        if source_episode_id is not None:
+            body["source_episode_id"] = str(source_episode_id)
         if writeback_key is not None:
             body["writeback_key"] = writeback_key
         resp = await self._http.post(url, json=body, headers=self._headers(user_id))

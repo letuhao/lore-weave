@@ -384,7 +384,10 @@ class RoleDeclaration(BaseModel):
     predicate: str
     object: str
     from_chapter_sort_order: int
-    source_episode_id: UUID
+    #: Optional. An author declaring a role is not citing a chapter — and the column
+    #: carries an FK to `episodes`, so a minted id is a 500 rather than a provenance
+    #: gap. Absent is the honest value.
+    source_episode_id: UUID | None = None
 
     @field_validator("predicate", "object")
     @classmethod

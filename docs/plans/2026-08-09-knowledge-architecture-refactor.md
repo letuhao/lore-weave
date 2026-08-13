@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37c` — the fact-append core refuses a `relation` row the constraint permits. LIVE-PROVEN 2026-08-14: the whole path works until `glossary-service internalAppendFact`, which 500s AND LOGS NOTHING. Instrument that error path first (a 500 with no log line cannot be fixed by inspection), then find the refusal — most likely the chain-lock/`maintain_chain` path, which has only ever run on attribute/name/alias, or a NOT NULL the relation shape leaves empty. `relation 0` is NOT "nobody wrote one" — it is "the writer has never been exercised".** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`. Every layer T37 owns is correct and live-verified — route, JWT, grant, KAL forward, chapter→ordinal (12 → 12 000 000), and raise-don't-degrade. The defect is underneath all of it, and no test in either service touches it.
+**RESUME: `T37b-planforge` — grow `ProposedChar.roles: list[{predicate, object}]`, ask the cast prompt for it, and land it WITH the cast-plan eval (SPEC §4.2c). The path it will use is now PROVEN END TO END.** 🔻 **T37's acceptance number MOVED: `relation 0` → `relation 1`**, live, through the real endpoint with a real JWT against the acceptance book — `HTTP 201`, `inserted: true`, `valid_from_ordinal 12000000`, episode NULL. The defect the first smoke found was MINE, not the fact core's: `source_episode_id` is an FK to `episodes` and the producer minted one to satisfy a `required` field. A plan-authored role has no episode. ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8372,6 +8372,72 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   QC (a) gates green · QC (b) **run, and RED** · QC (c) real data: the acceptance book's real
   entity, real constraint, real counts before and after.
+
+
+  ### ✅ T37 LIVE — **`relation 0` -> `relation 1`. The acceptance number moved.**
+
+  The smoke that was red an hour ago is green, and the defect it found was **mine**, one layer
+  above the core I had accused.
+
+  🔴 **`entity_facts.source_episode_id` carries a FOREIGN KEY to `episodes`.** The producer
+  took the field as REQUIRED — `AppendFactRequest` declares it so — and the studio endpoint
+  passed whatever it was handed, so a declaration minted a UUID that referenced nothing:
+
+  ```
+  insert or update on table "entity_facts" violates foreign key constraint
+  "entity_facts_source_episode_id_fkey"
+  Key (source_episode_id)=(e8dfe19d-…) is not present in table "episodes"
+  ```
+
+  Surfacing as 500 at the author, 502 at the KAL, and **nothing at all in glossary's log.**
+
+  **A plan-authored role HAS no episode** — Q2's *"plan-authored, not extracted"* is the whole
+  point of the task — so inventing an id to satisfy a required field writes a provenance claim
+  that is both false and unsatisfiable. NULL is the shape the core already expected: its
+  ON CONFLICT reads `coalesce(source_episode_id, '000…')`, which is only meaningful if NULL is
+  normal, and a direct insert with NULL creates the row cleanly. Verified against the live
+  table before changing a line — the constraint admitted `relation` all along.
+
+  So `source_episode_id` is optional and **omitted when absent, never null and never minted**
+  (the `CastEntry.attributes` / `writeback_key` distinction again).
+
+  **BITE:**
+  ```
+  `if source_episode_id is not None:` -> `if True:`
+  E  an author-declared role sent a source_episode_id it does not have — the column is an
+     FK to `episodes`, so an invented id is a 500, not a provenance gap
+  E  assert 'source_episode_id' not in {…, 'source_episode_id': 'None', …}
+  ```
+  The mutated form sends the STRING `"None"`, which is exactly how this class of bug reaches
+  a database: not as an obvious null, but as a plausible-looking value no constraint can match.
+
+  **QC (b) — THE LIVE RUN, rebuilt image, code grepped in-container, real JWT, real book:**
+
+  ```
+  POST /v1/composition/works/019f9f41-…/roles                      HTTP 201
+  {"fact":{"fact_id":"019ffc71-7ea2-79de-9885-c5ad4bb6b407","inserted":true},
+   "valid_from_ordinal":12000000,"from_chapter_sort_order":12}
+
+  T36 measured:  attribute 101 · name 13 · alias 1                 (no relation)
+  NOW:           attribute 101 · name 13 · alias 1 · relation 1     <-- THE NUMBER
+
+  the row:  relation | betrayed | Lam Uyen | 12000000 | episode NULL
+  ```
+
+  **`inserted: true` is the KAL's own word for it**, and `12000000` is chapter 12 on the KG
+  reading axis — the stride the endpoint converts once so a caller can never pass composition's
+  1000-scale by accident.
+
+  **QC (c) real data:** the acceptance book, a real glossary entity, a real `entity_facts` row.
+
+  ```
+  3733 passed, 403 skipped — composition-service
+  ```
+
+  **T37 is DONE by its own acceptance test.** Roles are no longer a permitted-but-unwritten
+  kind: the studio can declare one, it lands on the reading axis, and the canon check's as-of
+  read can see it. The planforge half (SPEC §4.2c) writes the roles a plan *implies* and is
+  still owed — but the path it will use is now proven end to end.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
