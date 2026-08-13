@@ -141,6 +141,15 @@ the whole subject; for anything that reads relations — a canon check, a timeli
 graph that will answer confidently and wrongly. Know which one your test needs, and if it
 needs edges, use `--neo4j` and tell the other branch first.
 
+> 🔴 **This warning did not save its own author.** On 2026-08-13 I counted `:EntityStatus`
+> nodes here, read **zero**, and wrote in the plan that the canon liveness axis "cannot fire on
+> ANY book in this corpus". The real graph holds **35** of them; this stack had none because
+> **I built its graph from the glossary myself** and status nodes are extraction-derived.
+>
+> **Run CODE here. Measure DATA against the real stack.** A count taken in this stack is a
+> count of what you cloned into it, which is a fact about your seeding and not about the
+> product. The failure is silent: an empty result looks exactly like a finding.
+
 ## Memory
 
 Measured 2026-08-12: the shared stack was 54 containers with **9.8 GB free of 95.7 GB**.

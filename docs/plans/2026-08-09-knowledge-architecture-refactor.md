@@ -4494,10 +4494,31 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   name_truth_source : prompt_proxy      <- graded against its own input
   ```
 
-  **So the drafting run verified NOTHING against canon.** Empty cast corpus · no position ·
-  names compared to the prompt that produced them. Three checks, zero comparisons to the
-  authored SSOT. That is the honest reading of "0 violations", and it was **unreadable before
-  this change** — which is why the fix is a surfaced field rather than a note.
+  **So the drafting run made no comparison against canon at all** — but the three checks fail
+  for three DIFFERENT reasons, and only one of them is a weakness in the checking:
+
+  | check | why it did not compare | is that wrong? |
+  |---|---|---|
+  | `canon_cast` | empty corpus — no liveness fact exists for any cast member | **No.** The REAL graph holds **0 `:EntityStatus` nodes for this book** (35 exist across other books). Nobody in this cast has died or left, so there is nothing to check against, and NO_RULES is the designed honest answer (the rule that stops a book where nobody dies from rendering permanent amber). |
+  | `plan_liveness` | no reading position | Known data gap — `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`. |
+  | `name_grounding` | ran, but against `prompt_proxy` | **Yes — this is the real one.** The draft was graded against its own input. |
+
+  ⚠️ **I stated this too strongly first.** "Three checks, zero comparisons" is literally true
+  and its framing implied three defects. Two of the three are behaving correctly given the
+  data; the finding is the third. Corrected after measuring the status nodes rather than
+  leaving the stronger reading to stand.
+
+  🔴 **I MEASURED THE WRONG GRAPH FIRST, and my own documentation warned about it.** I ran the
+  status count against the ISOLATED stack and read `0 :EntityStatus nodes anywhere`, then wrote
+  that the liveness axis "cannot fire on ANY book in this corpus". That graph is
+  **entity-complete and edge-empty BY CONSTRUCTION** — I rebuilt it from the glossary myself
+  with `mirror-repair`, and `docs/dev/ISOLATED_STACK.md` says in as many words: *"a graph seeded
+  that way is entity-complete and edge-empty… know which one your test needs before trusting
+  it."* Measured against the real graph: **35 `:EntityStatus` nodes and 342 `:Fact` nodes**
+  exist; only THIS book has none. The axis is alive, this cast simply has no liveness facts.
+
+  ⚠️ The isolated stack is the right place to run code and the wrong place to measure DATA that
+  was never cloned into it. Both halves of that sentence cost a wrong claim today.
 
   **The assertion and the FLOW disagree about coverage.** The two-arm experiment fed rules to
   the critique endpoint and got a real judgement (2 vs 3, correct reasons). The drafting flow's

@@ -81,9 +81,25 @@ name_check_method : capitalised_latin
 name_truth_source : prompt_proxy        <- the draft graded against its own input
 ```
 
-**So the drafting run verified NOTHING against canon.** `canon_cast` had an empty corpus,
-`plan_liveness` had no position, and `name_grounding` compared the draft to the prompt that
-produced it. Three checks, zero comparisons to the authored SSOT.
+**So the drafting run made no comparison against canon at all** — though the three checks fail
+for three different reasons and only one is a weakness in the checking:
+
+* `canon_cast` — empty corpus, and **correctly so**: the real graph holds **0 `:EntityStatus`
+  nodes for this book** (35 exist across other books, so the axis is alive). No character in
+  this cast has a liveness fact, so there is nothing to check against, and NO_RULES is the
+  designed honest answer.
+
+  🔴 *I measured the isolated stack first and read "0 anywhere", then wrote that the liveness
+  axis could not fire on any book. That graph is entity-complete and edge-empty because I
+  rebuilt it from the glossary myself — which `ISOLATED_STACK.md` explicitly warns about. The
+  isolated stack is the right place to run CODE and the wrong place to measure DATA that was
+  never cloned into it.*
+* `plan_liveness` — no reading position (`D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`).
+* `name_grounding` — ran, against `prompt_proxy`. **This is the real finding.**
+
+⚠️ I first wrote "verified NOTHING against canon / three checks, zero comparisons", which is
+literally true and implies three defects. Two are behaving correctly given the data. Corrected
+after measuring the status nodes.
 
 `capitalised_latin` on a Vietnamese chapter is CORRECT, incidentally — Vietnamese is a
 Latin-script language, and the Unicode tokeniser fix from `dd77f1a90` is what makes the
