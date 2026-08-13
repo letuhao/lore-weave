@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37b`, and MEASURE-FIRST re-scoped it (SPEC §4.2c). The plan-time producer has no structured role to send: `ProposedChar.relationships` is FREE TEXT (*"huynh trưởng of Lâm Uyển"*) <!-- doc-language-gate: ok -- the code comment verbatim; paraphrasing hides that the field holds prose -->, not a `(subject, predicate, object)` triple, and nothing else in the engine carries one. So T37b's planforge half is a PROMPT-AND-EVAL batch — grow `ProposedChar.roles: list[{predicate, object}]`, ask the cast prompt for it, and land it WITH the cast-plan eval because a prompt change that shifts `is_new` or cast sizing is a regression the graph write is not worth. The studio's backend declare endpoint is independent of that and can go first.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T38` · ✅ `T42a`. Acceptance for T37 stays one number: T36 measured `relation 0`.
+**RESUME: `T37b-planforge` — grow `ProposedChar.roles: list[{predicate, object}]`, ask the cast prompt for it, and land it WITH the cast-plan eval (SPEC §4.2c: a prompt change that shifts `is_new` or cast sizing is a regression the graph write is not worth). Then the live smoke both halves owe: a real declaration turning T36's `relation 0` into `relation 1`, which is T37's whole acceptance test.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`. ⚠️ **The studio endpoint takes a CHAPTER, never an ordinal** — composition's stride is 1 000 and the KG's is 1 000 000, and a role on the wrong one is invisible to every as-of read while returning 201.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8254,6 +8254,67 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   ```
   3727 passed, 403 skipped — composition-service
+  ```
+
+
+  ### ✅ T37b-studio 2026-08-14 — the author declares a role; **the stride was the trap**
+
+  ```
+  composition-service   3727 -> 3732 passed
+  ```
+
+  SPEC §4.2b gave roles two producers; §4.2c measured that the planforge half needs a prompt
+  change first and said the studio's backend endpoint *"is independent of that and can go
+  first"*. It did.
+
+  `POST /v1/composition/works/{project_id}/roles` — EDIT-gated, because a role is a canon
+  claim the guard enforces against every later draft, not a VIEW-level act.
+
+  🔴 **MEASURED BEFORE WRITING THE CALL, and it changed the signature.** composition-service
+  defines its own stride:
+
+  ```
+  composition   STORY_ORDER_CHAPTER_STRIDE     = 1 000      (outline ordering)
+  the KG        EVENT_ORDER_CHAPTER_STRIDE     = 1 000 000  (the reading axis)
+  ```
+
+  **Three orders of magnitude apart, for the same word.** A role written on the wrong one is
+  not an error — the fact is created, the endpoint returns 201, and every as-of read at the
+  real position misses it. The canon check then reports a character with no ties, which reads
+  as *"this book has no roles"* rather than *"that write used the wrong scale"*.
+
+  So **the endpoint takes a CHAPTER, never an ordinal**, and converts once against a named
+  constant. A signature that accepted `valid_from_ordinal` would sooner or later be handed one
+  on composition's scale by a caller that had it to hand — and nothing downstream could tell.
+  The response **echoes the ordinal it landed on**, because a 201 that says nothing cannot
+  distinguish a correct write from a 1000× early one.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. KG_EVENT_ORDER_CHAPTER_STRIDE 1_000_000 -> 1_000
+     E  the role was written at ordinal 12000. Chapter 12 on the KG reading axis is
+        12_000_000; 12000 would be composition's outline scale, and a role written there
+        is invisible to every as-of read at the real position
+     E  assert 12000 == 12000000
+  2. drop the `from_chapter_sort_order >= 1` guard
+     E  Failed: DID NOT RAISE <class 'ValueError'>
+  ```
+
+  Bite 1's message is the finding, not the assertion: both numbers are plausible integers and
+  only one is on the axis the read uses. Guard 2 matters because a role at ordinal 0 is in
+  force for the ENTIRE book — the most expensive default available — and `from_chapter=0` is
+  almost always an unresolved position rather than a prologue claim.
+
+  **QC (a) gates:** all 99 green; plan-verify PASS. No new gate, none owed.
+  **QC (b) the seam:** ⬜ **OWED with T37b's other half.** The route is proved against a fake
+  KAL client; the live smoke is the one number T36 named — a real declaration turning
+  `relation 0` into `relation 1` — and it wants both producers wired so the smoke covers the
+  path an author actually takes, not just the one endpoint.
+  **QC (c) real data:** N/A — no data produced yet, which is exactly what the line above owes.
+
+  ```
+  3732 passed, 403 skipped — composition-service
   ```
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
