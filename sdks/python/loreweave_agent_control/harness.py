@@ -67,6 +67,47 @@ class DriveVerdict:
     # PARKS (escalate + move on) instead of holding. `park_reason` carries the escalation note.
     parked: bool = False
     park_reason: str | None = None
+    #: Why the rail did NOT claim this turn. A declining guard that says nothing is
+    #: indistinguishable from a rail with nothing to do — the ambiguity that made this class
+    #: of defect a transcript-read instead of a grep.
+    declined_reason: str | None = None
+
+
+@dataclass(frozen=True)
+class TurnRequest:
+    """What THIS turn was asked for — the input the drive decision could not previously see.
+
+    🔴 THE HOLE THIS CLOSES (2026-08-13). `decide_rail_drive` took the rail state, the book
+    probe, the nudge counters and the enforcement strength — and nothing at all about the
+    user's request. Not down-weighted: structurally absent. The only route the user's words
+    had into the decision was `user_abandoned_rail`, a literal regex of ~8 abandon phrases
+    applied as a consumer-side guard.
+
+    So the arbitration model the system actually implemented was: THE RAIL OWNS EVERY TURN ON
+    A BOOK WITH AN OUTSTANDING STEP, and the user may revoke that ownership only by uttering
+    one of those phrases. Ownership was opt-OUT.
+
+    Measured cost, session 019ff929: the author typed "Load the tool composition_list_outline
+    by name, then use it to show me the outline of this book." The turn pinned no rail, so a
+    STALE `build-a-book` rail from an earlier journey claimed it and drove `plan_propose_spec`
+    four times — every call refused. `tool_load` was advertised in all six passes and was
+    never called once. The request was discarded after a single fumble.
+
+    Every field is DETERMINISTIC — a literal match or a set intersection, never an inference.
+    A field the consumer cannot compute honestly stays empty, and an empty TurnRequest
+    reproduces the previous behaviour exactly (rule 5 below), which is what keeps the rail
+    doing the job it was built for: an assent ("ok", "yes", "go on") pins nothing, names
+    nothing, and is still driven.
+    """
+
+    #: Rails the user's own words describe (intent_pinned_workflows) — NOT the mode binding.
+    pinned_rails: frozenset[str] = frozenset()
+    #: Catalog tool names appearing literally in the message. The user is steering the action
+    #: space themselves, which is the one signal that outranks a journey.
+    named_tools: frozenset[str] = frozenset()
+    #: The existing GOV-13 literal release. Also enforced by a consumer guard upstream; kept
+    #: here so the whole precedence table can be read in one place.
+    abandons_rail: bool = False
 
 
 async def decide_rail_drive(
@@ -82,6 +123,8 @@ async def decide_rail_drive(
     nudge_counts: Counter,
     enforcement_strength: str,
     required_nudge_cap: int,
+    request: TurnRequest | None = None,
+    stuck_tools: frozenset[str] = frozenset(),
     mode: str = "interactive",
 ) -> DriveVerdict:
     """Decide whether to drive the next rail step this turn, and how hard — one verdict.
@@ -98,6 +141,34 @@ async def decide_rail_drive(
     (a Counter) and `nudged_out` (a set) are the consumer's cross-turn state — the harness reads
     and updates them in place, mirroring the pre-extraction behavior exactly.
     """
+    req = request or TurnRequest()
+    # ── TURN OWNERSHIP, in precedence order. The rail CLAIMS a turn; it does not own one. ──
+    #
+    #   1. the user released it            → no drive   (GOV-13, also a consumer guard)
+    #   2. the user named a tool           → no drive   (they are steering the action space)
+    #   3. the user's words pinned rails   → only those may claim it
+    #   4. the pinned rail has nothing left→ no drive   (falls out of 3 + next_actionable_step)
+    #   5. otherwise                       → drive exactly as before
+    #
+    # Rule 5 is load-bearing, not a fallback: the rail exists because a mid-tier model will
+    # not self-start (S03 0/3, S04 1/3, S09 improvises), and an assent carries no pin and no
+    # tool name. Making ownership opt-IN must not weaken the case that justified the driver,
+    # so an empty TurnRequest is byte-identical to the pre-contract behaviour.
+    if req.abandons_rail:
+        return DriveVerdict(should_drive=False, declined_reason="user released the rail")
+    if req.named_tools:
+        # A message naming a catalog tool is a DISCOVERY turn. 281 of 315 tools are reachable
+        # only by the model choosing tool_list/tool_load, and a rail directive replaces that
+        # choice with its own step — the recovery path deleting the discovery path. When the
+        # user has named the tool themselves there is nothing left to recover.
+        return DriveVerdict(
+            should_drive=False,
+            declined_reason="the request names " + ", ".join(sorted(req.named_tools)),
+        )
+    if req.pinned_rails:
+        _kept = [(slug, steps) for slug, steps in rail_specs if slug in req.pinned_rails]
+        if _kept:
+            rail_specs = _kept
     try:
         fresh = await probe_fn(str(book_id), str(user_id))
         merged = Counter(turn_start_counts or {}) + turn_succeeded
@@ -112,7 +183,8 @@ async def decide_rail_drive(
                 drive = (slug, step)
                 break
         if drive is None:
-            return DriveVerdict(should_drive=False)
+            return DriveVerdict(
+                should_drive=False, declined_reason="no actionable step")
 
         slug, step = drive
         raw_step = next(
@@ -120,6 +192,22 @@ async def decide_rail_drive(
              for s in _steps if str(s.get("id")) == step.step_id),
             {},
         )
+        if step.tool and step.tool in stuck_tools:
+            # A step whose tool keeps failing THE SAME WAY is not a model that needs steering;
+            # it is a wall. Re-driving it burns the turn and buries whatever the user asked.
+            #
+            # chat-service already has the right rule — the repeated-failure breaker keys on
+            # (tool → error → count) and stops at 2 identical failures. It could not help here
+            # because BOTH that map and these nudge counters are rebuilt per turn, so a step
+            # failing twice a turn resets forever. Measured: plan_propose_spec, 4 identical
+            # "not found or not accessible" across 2 turns, breaker never fired. The consumer
+            # now supplies the cross-turn verdict and the rail honours it.
+            nudged_out.add(step.step_id)
+            return DriveVerdict(
+                should_drive=True, slug=slug, step=step,
+                directive_text=honest_giveup_directive(step), giving_up=True,
+                declined_reason="step tool " + str(step.tool) + " keeps failing identically",
+            )
         nudge_counts[step.step_id] += 1
         enforced, cap = enforcement_for(raw_step, enforcement_strength, required_nudge_cap)
         giving_up = nudge_counts[step.step_id] >= cap

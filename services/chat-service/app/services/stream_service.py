@@ -1018,6 +1018,36 @@ def _narrated_uncalled_writes(
     )
 
 
+#: A catalog name must be at least this long, and contain an underscore, before a literal
+#: substring match counts as "the user named this tool". Every LoreWeave tool name is
+#: snake_case (`composition_list_outline`, `kg_add_nodes`), so this cannot fire on ordinary
+#: prose — and a false positive here would silence the rail for a turn, so it is worth the
+#: two conditions rather than a bare `in`.
+_NAMED_TOOL_MIN_LEN = 6
+
+
+def _tools_named_in_request(text: str | None, catalog_index: dict) -> frozenset[str]:
+    """The catalog tools the user named LITERALLY in their message.
+
+    The deterministic counterpart to `user_abandoned_rail`: a literal match, no inference. It
+    is the signal that a turn is a DISCOVERY turn — 281 of this deploy's 315 tools do not fit
+    the hot seed and are reached only by the model choosing tool_list/tool_load, and a rail
+    directive replaces that choice with its own step.
+
+    MEASURED 2026-08-13, session 019ff929: "Load the tool composition_list_outline by name,
+    then use it to show me the outline of this book." — tool_load advertised in all six
+    passes, called zero times, while a stale `build-a-book` rail drove plan_propose_spec four
+    times. When the user has named the tool themselves there is nothing left to recover.
+    """
+    if not text or not catalog_index:
+        return frozenset()
+    low = text.lower()
+    return frozenset(
+        name for name in catalog_index
+        if len(name) >= _NAMED_TOOL_MIN_LEN and "_" in name and name.lower() in low
+    )
+
+
 def _rail_write_step_stalled(
     rail_progress: list | None, *, catalog_index: dict, attempted: set[str],
     intent_slugs: frozenset[str] = frozenset(),
@@ -1813,6 +1843,22 @@ def _coerce_json_string_structs(args_obj: dict, tool_def: dict | None) -> dict:
     return args_obj
 
 
+def _crosswired_ids(
+    key: str, *, book_id: str | None, chapter_id: str | None, project_id: str | None,
+) -> frozenset[str]:
+    """D-FJ-20 — the OTHER context-ids of this turn, any of which in `key` is a cross-wiring.
+
+    Returns the turn's own ids EXCEPT the one that belongs in `key`, so an exact match means
+    the model swapped two ids the server is already holding. Deliberately not a similarity
+    check: only an id the server itself supplied can be identified this way, which is what
+    makes the substitution safe without knowing the surface.
+    """
+    known = {"book_id": book_id, "chapter_id": chapter_id, "project_id": project_id}
+    return frozenset(
+        str(v) for k, v in known.items() if v and k != key and str(v) != str(known.get(key) or "")
+    )
+
+
 def _inject_context_ids(
     args_obj: dict,
     tool_def: dict | None,
@@ -1896,6 +1942,32 @@ def _inject_context_ids(
             logger.warning(
                 "tool arg %s=%r is not a UUID — the model mistranscribed it; substituting the "
                 "turn's known id", key, supplied[:64],
+            )
+            args_obj[key] = val_s
+        elif isinstance(supplied, str) and supplied in _crosswired_ids(
+            key, book_id=book_id, chapter_id=chapter_id, project_id=project_id,
+        ):
+            # D-FJ-20 — the model put ANOTHER of this turn's own context-ids in this slot.
+            # Not a cross-book call and not a hallucination: a demonstrable cross-wiring of
+            # two ids the server is holding for this very turn, so it needs no policy
+            # judgement and no surface gate.
+            #
+            # MEASURED LIVE 2026-08-13 (session 019ff929, EDITOR surface, book 019ff8f5-ae59):
+            # the rail drove plan_propose_spec four times, every call carrying
+            # book_id="019ff8f5-ee89-75ef-a894-ff9462332bc0" — the CHAPTER open in the editor,
+            # confirmed as a row in that book's chapters table. Every call was refused "not
+            # found or not accessible", the rail re-drove to its cap, and the author's actual
+            # question was answered three times over with the same stale apology.
+            #
+            # The studio branch below already fixes this exact shape (it names
+            # plan_propose_spec) but is STUDIO-SCOPED, because off a studio turn a
+            # valid-but-different book_id may be a real cross-book call. That reasoning does
+            # not reach here: a value that IS the turn's chapter_id cannot be a book id, on
+            # any surface. Kept deliberately narrow — only an exact match against another id
+            # the server already knows, never a guess.
+            logger.warning(
+                "tool arg %s=%r is another of this turn's context-ids (cross-wired) — "
+                "substituting the turn's %s", key, supplied[:64], key,
             )
             args_obj[key] = val_s
         elif (
@@ -2620,6 +2692,11 @@ async def _stream_with_tools(
     # D-FJ-17 — the rails THIS turn's user message pinned (intent_pinned_workflows), as
     # distinct from the ones the standing mode binding pins. Empty ⇒ no preference.
     rail_intent_slugs: frozenset[str] = frozenset(),
+    # D-FJ-21 — tools this session keeps failing at identically (cross-turn). The rail must
+    # not keep driving a step that needs one. See db/tool_call_history.stuck_tools_from_calls.
+    rail_stuck_tools: frozenset[str] = frozenset(),
+    # D-FJ-22 — catalog tools the user named literally this turn. See _tools_named_in_request.
+    rail_named_tools: frozenset[str] = frozenset(),
     # True on a RESUME that suspended mid-rail: the rail is definitionally in flight, so the
     # driver may fire even though this turn's only action was the (frontend) confirm — which
     # executes off the backend chokepoint and so is not in turn_succeeded.
@@ -3590,22 +3667,9 @@ async def _stream_with_tools(
                 # nothing at all. See _rail_is_in_flight; the drive it unlocks is confined to
                 # the intent-pinned rail below so it cannot become D-FJ-17 one layer down.
                 _asked_and_called_nothing = bool(rail_intent_slugs) and not turn_attempted
-                # D-FJ-17 (step-runner arm) — when THIS turn's words pinned a rail, the
-                # step-runner drives THAT rail and no other, for the whole turn. Confining
-                # only the zero-call entry was not enough: measured live 2026-08-13, once
-                # the pinned `canon-check` step succeeded the confinement lifted (a step tool
-                # had now hit), the full spec list came back, and redrives 2-4 went to
-                # `vision-to-book → kg_add_nodes` — a rail the standing mode binding pinned,
-                # not the author. They asked one question and the reply ended with two
-                # paragraphs about knowledge-graph nodes they never mentioned.
-                #
-                # The binding's rail is not lost, only deferred: the next turn that does not
-                # pin one drives it as before.
-                _drive_specs = rail_specs
-                if rail_intent_slugs:
-                    _drive_specs = [
-                        spec for spec in (rail_specs or ()) if spec[0] in rail_intent_slugs
-                    ] or rail_specs
+                # D-FJ-17 now lives INSIDE decide_rail_drive as precedence rule 3 — the
+                # decision can finally state it instead of this loop lying about which rails
+                # exist. See loreweave_agent_control.harness.TurnRequest.
                 _rail_guards = {
                     "driver_on": bool(settings.rail_driver_enabled),
                     "have_specs": bool(rail_specs),
@@ -3633,20 +3697,30 @@ async def _stream_with_tools(
                     # (RW-11). This loop OWNS the mechanics: inject the directive as a role=user
                     # message, bump the counters, drop the stateful chain head, continue.
                     from app.services.book_state_probe import probe_book_state
-                    from loreweave_agent_control import decide_rail_drive
+                    from loreweave_agent_control import TurnRequest, decide_rail_drive
                     _verdict = await decide_rail_drive(
                         probe_fn=probe_book_state,
-                        rail_specs=_drive_specs, book_id=rail_book_id, user_id=user_id,
+                        rail_specs=rail_specs, book_id=rail_book_id, user_id=user_id,
                         turn_start_counts=rail_turn_start_counts, turn_succeeded=turn_succeeded,
                         async_tools=rail_async_tools, nudged_out=rail_twice_nudged,
                         nudge_counts=rail_nudge_counts,
                         enforcement_strength=settings.rail_enforcement,
                         required_nudge_cap=settings.rail_required_nudge_cap,
+                        # TURN OWNERSHIP — the input this decision could not previously see.
+                        request=TurnRequest(
+                            pinned_rails=rail_intent_slugs,
+                            named_tools=rail_named_tools,
+                            abandons_rail=bool(rail_user_abandoned),
+                        ),
+                        stuck_tools=rail_stuck_tools,
                     )
                     if not _verdict.should_drive:
+                        # Name the LOSING claimant. A rail that declines silently is
+                        # indistinguishable from a rail with nothing to do, and that ambiguity
+                        # is why this whole class of defect was a transcript-read.
                         logger.info(
-                            "rail step-runner: guards held but no actionable step "
-                            "(every step done, gated on a confirm, or already nudged out)",
+                            "rail step-runner: did not claim the turn — %s",
+                            _verdict.declined_reason or "no actionable step",
                         )
                 elif _rail_guards["driver_on"] and _rail_guards["have_specs"]:
                     # A step-runner that silently does not fire is indistinguishable from a rail
@@ -7328,6 +7402,24 @@ async def stream_response(
         except Exception:  # noqa: BLE001 — intent pinning is never load-bearing
             logger.warning("intent-workflow pin failed — falling back to binding pins only", exc_info=True)
             _intent_slugs = []
+    # D-FJ-21 — the tools this session keeps failing at IDENTICALLY, read from the recorded
+    # call history. Cross-turn on purpose: the in-turn repeated-failure breaker and the rail's
+    # own nudge counters are BOTH rebuilt every turn, so a step failing twice a turn reset
+    # forever (plan_propose_spec, 4 identical refusals across 2 turns, neither breaker fired).
+    _rail_stuck_tools: frozenset[str] = frozenset()
+    try:
+        from app.db.tool_call_history import stuck_tools as _stuck_tools_reader
+        _rail_stuck_tools = frozenset(await _stuck_tools_reader(pool, str(session_id)))
+        if _rail_stuck_tools:
+            logger.info("stuck tools this session (identical failures): %s",
+                        sorted(_rail_stuck_tools))
+    except Exception:  # noqa: BLE001 — best-effort; "nothing is stuck" is the old behaviour
+        logger.warning("stuck-tool read failed", exc_info=True)
+    # D-FJ-22 — catalog tools the user named literally. See _tools_named_in_request.
+    _named_tools = _tools_named_in_request(user_message_content, _catalog_index(_turn_catalog))
+    if _named_tools:
+        logger.info("the request names %s — the rail will not claim this turn",
+                    sorted(_named_tools))
     _want_slugs = _binding_slugs + [s for s in _intent_slugs if s not in _binding_slugs]
     if turn_workflows and _want_slugs:
         from app.services.workflow_runner import pinned_rail_block
@@ -7849,6 +7941,8 @@ async def stream_response(
         # _rail_specs); the advertise chokepoint drops finished steps' tools per the gate mode.
         rail_progress=_rail_progress_objs or None,
         rail_intent_slugs=frozenset(_intent_slugs),
+        rail_stuck_tools=_rail_stuck_tools,
+        rail_named_tools=_named_tools,
     ):
         yield line
 
@@ -8232,6 +8326,9 @@ async def _emit_chat_turn(
     # D-FJ-17 — the rails THIS turn's user message pinned, forwarded so the stalled-write
     # nudge cannot drag the turn onto an unrelated rail's outstanding step.
     rail_intent_slugs: frozenset[str] = frozenset(),
+    #: D-FJ-21 / D-FJ-22 — the other two turn-ownership inputs (see _stream_with_tools).
+    rail_stuck_tools: frozenset[str] = frozenset(),
+    rail_named_tools: frozenset[str] = frozenset(),
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
 
@@ -8617,6 +8714,8 @@ async def _emit_chat_turn(
                 rail_user_abandoned=user_abandoned_rail(user_message_content),
                 rail_progress=rail_progress,
                 rail_intent_slugs=rail_intent_slugs,
+                rail_stuck_tools=rail_stuck_tools,
+                rail_named_tools=rail_named_tools,
             )
         else:
             chunk_stream = _stream_via_gateway(

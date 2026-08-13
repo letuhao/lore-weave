@@ -161,18 +161,37 @@ class TestATurnThatCalledNothingCanStillBeRescued:
             resumed_mid_rail=False, step_tools_succeeded=[],
             step_tools_attempted=["kg_build"]) is True
 
-    def test_the_new_clause_is_wired_AND_the_drive_is_confined_to_the_pinned_rail(self):
-        """Opening the gate without confining the drive would reproduce D-FJ-17 one layer down —
-        the turn would be re-steered onto `vision-to-book`'s outstanding kg_add_nodes instead of
-        the rail the author actually asked about."""
+    def test_the_new_clause_is_wired_into_the_guard(self):
+        """A guard-level fix that is never threaded to the call site stays green and dead."""
         import pathlib
         src = (pathlib.Path(__file__).resolve().parents[1]
                / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
         assert "asked_for_it_and_called_nothing=_asked_and_called_nothing," in src
         assert "_asked_and_called_nothing = bool(rail_intent_slugs) and not turn_attempted" in src
-        assert "spec for spec in (rail_specs or ()) if spec[0] in rail_intent_slugs" in src
-        # the confined list, not the raw one, is what the decision actually receives
-        assert "rail_specs=_drive_specs, book_id=rail_book_id, user_id=user_id," in src
+
+    def test_the_confinement_that_keeps_this_from_becoming_D_FJ_17_moved_to_the_CONTRACT(self):
+        """🔴 THE GUARANTEE MOVED — it did not go away, and this test moved with it.
+
+        Opening the gate without confining the drive would re-create D-FJ-17 one layer down:
+        the turn would be re-steered onto `vision-to-book`'s outstanding kg_add_nodes instead
+        of the rail the author asked about. That confinement used to be a list comprehension
+        at this call site. It is now precedence rule 3 of the turn-ownership contract inside
+        `decide_rail_drive`, where the decision can state it instead of this loop lying about
+        which rails exist.
+
+        The BEHAVIOUR is pinned in the SDK by
+        loreweave_agent_control/tests/test_turn_ownership.py::
+        TestRule3OnlyThePinnedRailMayClaimTheTurn. What this test still owns is the half the
+        SDK cannot see: that chat-service actually HANDS the pin to the contract. A perfect
+        rule that is never given its input is the same dead mechanism as an unwired guard.
+        """
+        import pathlib
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "request=TurnRequest(" in src
+        assert "pinned_rails=rail_intent_slugs," in src
+        # and the old call-site filter is gone, so there is exactly ONE home for the rule
+        assert "_drive_specs" not in src
 
 
 class TestTheStepRunnerDrivesOnlyTheRailTheUserAskedFor:
@@ -191,15 +210,33 @@ class TestTheStepRunnerDrivesOnlyTheRailTheUserAskedFor:
     the whole turn.
     """
 
-    def test_the_confinement_is_keyed_on_the_pin_alone_not_on_the_zero_call_entry(self):
+    def test_every_turn_ownership_input_reaches_the_contract(self):
+        """🔴 THE GUARANTEE MOVED, AND GREW. Confining only the ENTRY was not enough: once the
+        pinned step succeeded, `_step_tools_hit` became non-empty, the old call-site
+        confinement lifted, and redrives 2-4 escaped to the stale rail anyway. Rather than
+        widen the call-site filter again, the whole question became a contract — so the thing
+        to pin here is that chat-service supplies ALL of its inputs.
+
+        The precedence table itself is pinned in the SDK (test_turn_ownership.py). Each of
+        these three is a signal this service alone can compute, and any one of them silently
+        missing would restore a different half of the defect.
+        """
         import pathlib
         src = (pathlib.Path(__file__).resolve().parents[1]
                / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
-        assert "                if rail_intent_slugs:" in src
-        assert "spec for spec in (rail_specs or ()) if spec[0] in rail_intent_slugs" in src
-        # THE FALSIFIER for this arm: the confinement must NOT be re-gated on the zero-call
-        # entry condition, which is what let redrives 2-4 escape to the stale rail.
-        assert "if _asked_and_called_nothing and not (" not in src
+        assert "pinned_rails=rail_intent_slugs," in src        # rule 3 — D-FJ-17
+        assert "named_tools=rail_named_tools," in src          # rule 2 — the discovery turn
+        assert "abandons_rail=bool(rail_user_abandoned)," in src  # rule 1 — GOV-13
+        assert "stuck_tools=rail_stuck_tools," in src          # the wall — D-FJ-21
+
+    def test_the_losing_claimant_is_named_in_the_log(self):
+        """A rail that declines silently is indistinguishable from a rail with nothing to do.
+        That ambiguity is the reason this entire class of defect was a transcript-read rather
+        than a grep, and it cost this loop two live sessions."""
+        import pathlib
+        src = (pathlib.Path(__file__).resolve().parents[1]
+               / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
+        assert "rail step-runner: did not claim the turn" in src
 
 
 class TestTwoPassesAreNotWeldedIntoOneSentence:
