@@ -171,6 +171,18 @@ where
         self.meta.get_reality_routing(reality)
     }
 
+    /// `DP-C4`'s tier policy registry — the whole snapshot, or one entry.
+    ///
+    /// Exposed alongside `reality_routing` and for the same reason: it is a
+    /// question about registry STATE, and routing it through a bind would mint
+    /// a capability as a side effect of asking what tier an aggregate is.
+    pub fn tier_policy(
+        &self,
+        aggregate_type: Option<&str>,
+    ) -> Result<Vec<crate::routing::TierPolicyRow>, crate::errors::MetaError> {
+        self.meta.get_tier_policy(aggregate_type)
+    }
+
     /// Where a session is pinned (`GetSessionNode`, `DP-C1`), or `None`.
     ///
     /// Answers for a REVOKED or EXPIRED session too, and that is deliberate:
@@ -417,6 +429,15 @@ mod tests {
 
     struct Meta(Answer);
     impl MetaRead for Meta {
+        fn get_tier_policy(
+            &self,
+            _aggregate_type: Option<&str>,
+        ) -> Result<Vec<crate::routing::TierPolicyRow>, MetaError> {
+            // This double's subject is the BIND path; tier policy is read by a
+            // different plane method and has its own live coverage.
+            Ok(Vec::new())
+        }
+
         fn get_reality_routing(&self, id: Uuid) -> Result<Option<RealityRouting>, MetaError> {
             match &self.0 {
                 // `Backend` is meta-rs's transport-fault variant — the shape a

@@ -69,8 +69,12 @@ pub mod server;
 /// to this one. Both directions red: an implemented method still on this list,
 /// and an unimplemented method missing from it.
 pub const UNIMPLEMENTED_METHODS: &[(&str, &str)] = &[
-    ("GetTierPolicy", "tier_policy (DP-C4) has no migration in this repo"),
-    ("StreamTierPolicyUpdates", "tier_policy (DP-C4) has no migration in this repo"),
+    // `GetTierPolicy` was here and is now SERVED — `040_tier_policy` (DF2)
+    // gave DP-C4 its table, so the row's blocker is gone and the row with it.
+    (
+        "StreamTierPolicyUpdates",
+        "nothing produces the monotonic snapshot_version a resuming subscriber          needs; the TABLE exists (040_tier_policy) but DP-C5's version sequence          does not",
+    ),
     (
         "StreamRealityTransitions",
         "nothing publishes reality transitions to subscribe to",
@@ -80,16 +84,26 @@ pub const UNIMPLEMENTED_METHODS: &[(&str, &str)] = &[
     // exist, so the rule has no subject: this row IS DP-A11's status, and
     // `tests/surface.rs` asserting it is what makes the absence noisy the day
     // the migration lands.
-    ("GetNpcNode", "npc_binding (DP-C2) has no migration in this repo"),
+    // CORRECTED by DF2: the spec REFERENCES `npc_binding` twice and gives no
+    // DDL for it anywhere, unlike DP-C4's two tables. The blocker is a design
+    // gap, not an unwritten migration, and writing a schema would invent the
+    // contract rather than transcribe it.
+    ("GetNpcNode", "npc_binding (DP-A11) has no DDL in the spec — a design gap, not a migration"),
     (
         "ReportNodeHandoff",
         "a handoff has nowhere to be recorded — no npc_binding, no handoff log",
     ),
-    ("GetSchemaVersion", "schema_version (DP-C2) has no migration in this repo"),
-    ("AnnounceMigrationStart", "schema_version (DP-C2) has no migration in this repo"),
+    // CORRECTED by DF2. `schema_version` is not a missing TABLE — DP-C4 makes
+    // it a COLUMN of `tier_policy`, which now exists. What these three actually
+    // wait on is the expand/migrate/contract STATE MACHINE: DP-C5's "both
+    // active" flag, the rebuild-progress poll, and the contract-phase flip have
+    // no column and no code. The old string sent a reader looking for a
+    // migration that was never the blocker — DFO-3's shape, found again.
+    ("GetSchemaVersion", "DP-C5's migration state machine (the `both active` flag) is not built"),
+    ("AnnounceMigrationStart", "DP-C5's migration state machine is not built"),
     (
         "AnnounceMigrationComplete",
-        "schema_version (DP-C2) has no migration in this repo",
+        "DP-C5's migration state machine is not built",
     ),
 ];
 
@@ -156,7 +170,15 @@ pub const DEFERRED_RPCS: &[(&str, &str)] = &[
 /// the arm that matters — when a row's table **gains a migration** and the row
 /// outlives it.
 pub const CP_TABLES_WITHOUT_A_MIGRATION: &[(&str, &str)] = &[
-    ("tier_policy", "DP-C4's aggregate registry; its rows come from a deploy manifest calling an admin API that does not exist"),
+    // `tier_policy` was here. `040_tier_policy` (DF2) built it, and the
+    // oracle demanded this row's deletion the moment it did — which is the
+    // register shrinking rather than rotting, on its first opportunity.
+    //
+    // Its old reason is still TRUE and is no longer this register's business:
+    // the rows come from a deploy manifest calling an admin API that does not
+    // exist, so the table is empty in every deployment today. That is a
+    // MISSING PRODUCER, not a missing table, and conflating the two is what
+    // let the control plane report "no migration in this repo" for a column.
     ("npc_binding", "no NPC is bound to a node by anything in this repo"),
     ("schema_version", "DP-C5's migration coordination is unbuilt; per-reality schema_migrations is a different table with a different owner"),
     ("capability_signing_keys", "explicitly NOT BUILT — superseded by the 5B amendment on DP-C8, which ships an opaque bearer validated by lookup"),

@@ -514,6 +514,57 @@ impl PgConnectionReader {
 }
 
 impl crate::routing::Connection for PgConnectionReader {
+    /// `DP-C4` — read the tier policy registry (`040_tier_policy`).
+    ///
+    /// Columns named explicitly rather than `SELECT *`, for the reason
+    /// `fetch_reality_routing` below gives: the row this maps into has four
+    /// fields and the table has seven, so a `*` would bind by position and
+    /// silently reshuffle the moment a migration adds a column in the middle.
+    ///
+    /// `schema_version` is `INT` in the DDL — `i32` here, then widened. It is
+    /// CHECK-constrained `>= 1`, so the cast cannot lose a legitimate value;
+    /// a negative would mean the constraint was dropped, and `try_into` turns
+    /// that into an error rather than a wrapped-around `u32`.
+    ///
+    /// ORDER BY is not decoration: `TierPolicySnapshot` is a snapshot, and two
+    /// calls returning the same rows in different orders would make any
+    /// digest, diff or cache key over it unstable.
+    fn fetch_tier_policy(
+        &self,
+        aggregate_type: Option<&str>,
+    ) -> Result<Vec<crate::routing::TierPolicyRow>, MetaError> {
+        const ALL: &str = "SELECT aggregate_type, declared_tier, schema_version, feature_owner \
+                           FROM tier_policy ORDER BY aggregate_type";
+        const ONE: &str = "SELECT aggregate_type, declared_tier, schema_version, feature_owner \
+                           FROM tier_policy WHERE aggregate_type = $1";
+
+        let rows: Vec<(String, String, i32, String)> = tokio::task::block_in_place(|| {
+            self.handle.block_on(async {
+                match aggregate_type {
+                    None => sqlx::query_as(ALL).fetch_all(&self.pool).await,
+                    Some(t) => sqlx::query_as(ONE).bind(t).fetch_all(&self.pool).await,
+                }
+            })
+        })
+        .map_err(|e| MetaError::Backend(Box::new(e)))?;
+
+        rows.into_iter()
+            .map(|(aggregate_type, declared_tier, schema_version, feature_owner)| {
+                Ok(crate::routing::TierPolicyRow {
+                    aggregate_type,
+                    declared_tier,
+                    schema_version: u32::try_from(schema_version).map_err(|_| {
+                        MetaError::ConfigInvalid(format!(
+                            "tier_policy.schema_version is {schema_version}, which is negative — \
+                             the CHECK constraint that forbids it has been dropped"
+                        ))
+                    })?,
+                    feature_owner,
+                })
+            })
+            .collect()
+    }
+
     fn fetch_reality_routing(
         &self,
         reality_id: uuid::Uuid,

@@ -24,7 +24,7 @@ use dp_control_plane::server::ControlPlaneService;
 use dp_control_plane::{pb, UNIMPLEMENTED_METHODS};
 use meta_rs::control_plane::{Clock, MetaControlPlane, SecretSource};
 use meta_rs::errors::MetaError;
-use meta_rs::routing::{MetaRead, RealityRouting, RealityStatus};
+use meta_rs::routing::{MetaRead, RealityRouting, RealityStatus, TierPolicyRow};
 use meta_rs::session_store::{
     CapabilityDigest, CapabilityStore, IssuedCapability, SessionRecord,
 };
@@ -36,6 +36,33 @@ const REALITY: u128 = 0xA11CE;
 
 struct Meta;
 impl MetaRead for Meta {
+    /// `DP-C4` (`DF2`). Two rows, deliberately: `GetTierPolicy` filters by
+    /// aggregate_type, and a single-row double cannot tell a working filter
+    /// from one that ignores its argument and returns everything.
+    fn get_tier_policy(
+        &self,
+        aggregate_type: Option<&str>,
+    ) -> Result<Vec<TierPolicyRow>, MetaError> {
+        let all = vec![
+            TierPolicyRow {
+                aggregate_type: "combat_session".into(),
+                declared_tier: "T2".into(),
+                schema_version: 1,
+                feature_owner: "commit-service".into(),
+            },
+            TierPolicyRow {
+                aggregate_type: "player_wallet".into(),
+                declared_tier: "T3".into(),
+                schema_version: 4,
+                feature_owner: "economy-service".into(),
+            },
+        ];
+        Ok(match aggregate_type {
+            None => all,
+            Some(want) => all.into_iter().filter(|r| r.aggregate_type == want).collect(),
+        })
+    }
+
     fn get_reality_routing(&self, id: Uuid) -> Result<Option<RealityRouting>, MetaError> {
         if id != Uuid::from_u128(REALITY) {
             return Ok(None);
@@ -275,7 +302,65 @@ async fn every_unimplemented_method_says_so_and_no_other_does() {
         unimplemented.difference(&declared).collect::<Vec<_>>(),
         declared.difference(&unimplemented).collect::<Vec<_>>(),
     );
-    assert_eq!(declared.len(), 8, "the count is governed too, not just the set");
+    // 8 until `DF2`. `040_tier_policy` gave `DP-C4` its table and
+    // `GetTierPolicy` now answers, so the register shrank by exactly one — and
+    // this number is what made that visible rather than quiet. It must only
+    // ever go DOWN: a rise means an implemented RPC regressed to UNIMPLEMENTED.
+    assert_eq!(declared.len(), 7, "the count is governed too, not just the set");
+}
+
+/// `DF2` — `GetTierPolicy` ANSWERS, and answers the question it was asked.
+///
+/// The register test above proves it stopped returning `UNIMPLEMENTED`. That is
+/// not the same as working: a handler returning an empty snapshot would also
+/// leave the register — and per `DP-C4`'s registration flow an empty snapshot
+/// is a deploy-breaking lie, because a service whose aggregate is absent fails
+/// at `DpClient::connect`.
+///
+/// So this asserts the CONTENT, and asserts the filter with two rows: a handler
+/// that ignored `aggregate_type` and returned everything would pass a one-row
+/// double.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn get_tier_policy_serves_the_registry_and_honours_its_filter() {
+    let endpoint = serve().await;
+    let mut c = DpControlPlaneClient::connect(endpoint).await.expect("connect");
+
+    let all = c
+        .get_tier_policy(pb::GetTierPolicyRequest { aggregate_type: String::new() })
+        .await
+        .expect("the whole snapshot")
+        .into_inner();
+    assert_eq!(all.entries.len(), 2, "an empty aggregate_type means EVERY entry");
+
+    let one = c
+        .get_tier_policy(pb::GetTierPolicyRequest {
+            aggregate_type: "player_wallet".into(),
+        })
+        .await
+        .expect("one entry")
+        .into_inner();
+    assert_eq!(one.entries.len(), 1, "the filter is applied, not ignored");
+    let e = &one.entries[0];
+    assert_eq!(e.aggregate_type, "player_wallet");
+    assert_eq!(e.declared_tier, "T3", "the TIER survived the seam");
+    assert_eq!(e.schema_version, 4, "and DP-C5's counter with it");
+    assert_eq!(e.feature_owner, "economy-service");
+
+    // An aggregate nobody registered is an EMPTY snapshot, not an error: that
+    // is what `DpClient::connect` interprets as "you may not touch this".
+    let none = c
+        .get_tier_policy(pb::GetTierPolicyRequest { aggregate_type: "no_such".into() })
+        .await
+        .expect("an unregistered type is not an error")
+        .into_inner();
+    assert!(none.entries.is_empty());
+
+    assert_eq!(
+        all.snapshot_version, 0,
+        "0 means THIS DEPLOYMENT HAS NO VERSION SEQUENCE — DP-C5's is unbuilt. \
+         Asserted so it cannot drift into a fabricated number that a resuming \
+         subscriber would treat as a resume token and skip rows from"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

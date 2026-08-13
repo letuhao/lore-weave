@@ -164,11 +164,45 @@ where
 
     // ── Group B: tier policy — no `tier_policy` table exists ────────────────
 
+    /// `DP-C4` — served since `DF2` landed `040_tier_policy`.
+    ///
+    /// An empty `aggregate_type` means the whole snapshot, per the proto's own
+    /// comment. Empty-string-as-absent rather than an `optional`: the contract
+    /// is what it is, and reinterpreting it here would put the two sides one
+    /// convention apart.
+    ///
+    /// # `snapshot_version` is 0, and that is honest rather than lazy
+    ///
+    /// `DP-C5` gives the field meaning through `StreamTierPolicyUpdates`,
+    /// which needs a monotonic version to resume from — and nothing yet
+    /// produces one. Inventing a value here (a row count, a timestamp) would
+    /// give a resuming client a token that looks usable and skips rows. 0 for
+    /// "this deployment has no version sequence", asserted by the surface test
+    /// so it cannot drift into a fabricated number unnoticed.
     async fn get_tier_policy(
         &self,
-        _request: Request<pb::GetTierPolicyRequest>,
+        request: Request<pb::GetTierPolicyRequest>,
     ) -> Result<Response<pb::TierPolicySnapshot>, Status> {
-        Err(not_built("GetTierPolicy"))
+        let want = request.into_inner().aggregate_type;
+        let filter = if want.is_empty() { None } else { Some(want.as_str()) };
+
+        let rows = self
+            .plane
+            .tier_policy(filter)
+            .map_err(|e| Status::unavailable(e.to_string()))?;
+
+        Ok(Response::new(pb::TierPolicySnapshot {
+            entries: rows
+                .into_iter()
+                .map(|r| pb::TierPolicyEntry {
+                    aggregate_type: r.aggregate_type,
+                    declared_tier: r.declared_tier,
+                    schema_version: r.schema_version,
+                    feature_owner: r.feature_owner,
+                })
+                .collect(),
+            snapshot_version: 0,
+        }))
     }
 
     type StreamTierPolicyUpdatesStream = BoxStream<pb::TierPolicyDelta>;
