@@ -1778,6 +1778,49 @@ def _inject_context_ids(
     return args_obj
 
 
+def _repair_saved_book_id(
+    args_obj: object, *, book_id: str | None, studio: bool
+) -> object:
+    """The `_inject_context_ids` repairs that survive a SUSPEND — applied to the args a
+    Tier-A card was approved on, just before the approved dispatch.
+
+    Deliberately narrower than `_inject_context_ids`: the tool's SCHEMA is not available at
+    the resume dispatch (`tool_defs` is built further down, after this call), so this only ever
+    ADJUSTS a `book_id` the saved args already carry and NEVER adds one. That is the whole
+    difference that matters — adding an undeclared arg needs the schema, correcting a present
+    one does not.
+
+    Two rules, both lifted verbatim from `_inject_context_ids`:
+      * a MALFORMED book_id is a mistranscription, never a deliberate cross-book call;
+      * on a STUDIO turn a valid-but-DIFFERENT book_id is a hallucination (the studio works one
+        book at a time). Off a studio turn it is honored, exactly as on the streaming path.
+
+    For an `ambient_book` tool the streaming path DROPS a mismatched book_id so the envelope's
+    ambient book wins; setting it to the studio's book here is the same outcome by a different
+    route, since the envelope carries that same book.
+    """
+    if not isinstance(args_obj, dict) or not book_id:
+        return args_obj
+    supplied = args_obj.get("book_id")
+    if not supplied or not isinstance(supplied, str):
+        return args_obj
+    val_s = str(book_id)
+    if not _is_uuid(supplied):
+        logger.warning(
+            "approved tool arg book_id=%r is not a UUID — substituting the suspend's book %s",
+            supplied[:64], val_s,
+        )
+        args_obj["book_id"] = val_s
+    elif studio and supplied != val_s:
+        logger.warning(
+            "approved tool arg book_id=%r differs from the studio's book %s — overriding "
+            "(the repair fired before the suspend and was never persisted)",
+            supplied[:64], val_s,
+        )
+        args_obj["book_id"] = val_s
+    return args_obj
+
+
 def _is_uuid(v: str) -> bool:
     try:
         UUID(str(v))
@@ -8298,6 +8341,10 @@ async def _emit_chat_turn(
                 pinned_step_tools=pinned_step_tools,
                 # P-1 — carry the rail's book so the resume can keep driving past the confirm.
                 book_id=(context_ids or {}).get("book_id"),
+                # TOOL DEEP-DIVE (2026-08-13) — and carry whether this was a STUDIO turn. The
+                # book alone is not the same fact: a plain book-surface turn also has a book,
+                # and the single-book override must not fire there.
+                studio=bool((context_ids or {}).get("studio")),
             )
             # DBT-CHAT-PERSIST — persist the reply produced UP TO the suspend as a
             # visible message NOW (prose so far + the completed tools + the pending
@@ -9287,6 +9334,21 @@ async def resume_stream_response(
             # user-approved Tier-A WRITE as `breaker`, i.e. as our own refusal prose — inverting the
             # one distinction the field exists to make, and doing it on the highest-consequence
             # calls in the product (the ones that change data after a human said yes).
+            # 🔴 TOOL DEEP-DIVE (2026-08-13) — THE APPROVED CALL BYPASSED EVERY ARGUMENT
+            # REPAIR. This is the second real dispatch in the service, and it handed the model's
+            # RAW saved args straight to the executor: no context-id fill, no malformed-UUID
+            # substitution, no studio single-book override. So the highest-consequence calls in
+            # the product — the ones a human just said yes to — were the ONLY ones running
+            # unrepaired.
+            #
+            # MEASURED LIVE 2026-08-12, book 019ff497: the model called plan_bootstrap_propose
+            # with a correct run_id and book_id=019ff497-e068-… (the book's KNOWLEDGE PROJECT
+            # id). The streaming pass logged the override — "differs from the studio's book …
+            # overriding" — the call suspended on its Tier-A card, the author approved it, and
+            # composition-service was then asked for /internal/books/019ff497-e068-…/access.
+            # The repair happened, was never persisted, and the approved write failed as "not
+            # found or not accessible" on a book the author owns and had open.
+            _repair_saved_book_id(_tool_args, book_id=susp.book_id, studio=bool(susp.studio))
             _resume_t0 = _time.monotonic()
             envelope = await knowledge_client.mcp_execute_tool(
                 user_id=user_id, session_id=session_id,
@@ -9542,7 +9604,17 @@ async def resume_stream_response(
         is_resume=True,  # P3 review H1 — resume runs stateless over the full saved context
         # P-1 step-runner — keep driving the rail on the resumed turn. context_ids carries the
         # rail's book (also lets arg-injection fill book_id on the resumed writes).
-        context_ids={"book_id": susp.book_id} if susp.book_id else None,
+        #
+        # 🔴 …AND THE `studio` FLAG, WHICH THIS DICT USED TO DROP. `_inject_context_ids` reads
+        # `context_ids["studio"]` to decide whether a valid-but-DIFFERENT book_id is a
+        # hallucination to override or a legitimate cross-book call to honor. Rebuilt with
+        # book_id alone, it defaulted to False, so the single-book override was dead on every
+        # resumed turn — measured 2026-08-12: after an approval the model called
+        # composition_package_tree and plan_propose_spec with the book's knowledge-project id
+        # and no override fired, while the same wrong id HAD been overridden one pass earlier.
+        context_ids=(
+            {"book_id": susp.book_id, "studio": bool(susp.studio)} if susp.book_id else None
+        ),
         rail_specs=_r_rail_specs or None,
         rail_grant_ok=_r_rail_grant,
         rail_turn_start_counts=_r_rail_counts,

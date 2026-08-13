@@ -50,6 +50,11 @@ class SuspendedRun:
     # turn suspends, and the resumed turn (which had no book_id) could not continue — measured
     # as S06 stalling at 2/5 (categories + cast land, connections/plan/chapters never do).
     book_id: str | None = None
+    # TOOL DEEP-DIVE (2026-08-13) — was this a STUDIO turn? Carried for the same reason
+    # `permission_mode` is: the resume continues under the mode the turn started with. The
+    # studio single-book override in `_inject_context_ids` is studio-scoped, and a resume that
+    # rebuilt context_ids without this flag silently disabled it on every resumed turn.
+    studio: bool = False
 
 
 async def save_suspended_run(
@@ -70,6 +75,7 @@ async def save_suspended_run(
     permission_mode: str = "write",
     pinned_step_tools: list[str] | None = None,
     book_id: str | None = None,
+    studio: bool = False,
 ) -> None:
     await pool.execute(
         """
@@ -77,15 +83,15 @@ async def save_suspended_run(
           (run_id, session_id, owner_user_id, message_id, working,
            pending_tool_call, input_tokens, output_tokens, model_source,
            model_ref, parent_message_id, user_message_content, permission_mode,
-           pinned_step_tools, book_id)
-        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15)
+           pinned_step_tools, book_id, studio)
+        VALUES ($1,$2,$3,$4,$5::jsonb,$6::jsonb,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16)
         """,
         run_id, session_id, owner_user_id, message_id,
         json.dumps(working), json.dumps(pending_tool_call),
         input_tokens, output_tokens, model_source, model_ref,
         parent_message_id, user_message_content, permission_mode,
         json.dumps(list(pinned_step_tools or [])),
-        book_id,
+        book_id, bool(studio),
     )
 
 
@@ -111,7 +117,7 @@ async def load_suspended_run(
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
                model_ref, parent_message_id, user_message_content,
-               permission_mode, pinned_step_tools, book_id
+               permission_mode, pinned_step_tools, book_id, studio
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2 AND expires_at > now()
         """,
@@ -135,6 +141,7 @@ async def load_suspended_run(
         permission_mode=str(row["permission_mode"] or "write"),
         pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
         book_id=str(row["book_id"]) if row["book_id"] else None,
+        studio=bool(row["studio"]),
     )
 
 
@@ -153,7 +160,7 @@ async def load_suspended_run_any(
         SELECT run_id, session_id, owner_user_id, message_id, working,
                pending_tool_call, input_tokens, output_tokens, model_source,
                model_ref, parent_message_id, user_message_content,
-               permission_mode, pinned_step_tools, book_id
+               permission_mode, pinned_step_tools, book_id, studio
         FROM chat_suspended_runs
         WHERE run_id = $1 AND owner_user_id = $2
         """,
@@ -177,6 +184,7 @@ async def load_suspended_run_any(
         permission_mode=str(row["permission_mode"] or "write"),
         pinned_step_tools=_str_list(_parse_json(row["pinned_step_tools"])),
         book_id=str(row["book_id"]) if row["book_id"] else None,
+        studio=bool(row["studio"]),
     )
 
 

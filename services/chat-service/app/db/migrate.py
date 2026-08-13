@@ -444,6 +444,21 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- TOOL DEEP-DIVE (plan_bootstrap_propose, 2026-08-13) — carry the STUDIO flag across the
+-- suspend, for the same reason `permission_mode` is already carried: "the resume continues
+-- under the mode the turn started with". The studio single-book override in
+-- `_inject_context_ids` is STUDIO-SCOPED by design (off a studio turn a valid-but-different
+-- book_id is a legitimate cross-book call and must be honored), and the resume rebuilt
+-- `context_ids` with book_id only — so `studio` silently defaulted to False and the override
+-- was DEAD on every resumed turn. book_id alone cannot stand in for it: a plain book-surface
+-- turn also carries book_id, and overriding there would break the cross-book call the comment
+-- promises to honor. FALSE for pre-existing rows is exactly right: it is the old behaviour.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='studio') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN studio BOOLEAN NOT NULL DEFAULT FALSE;
+  END IF;
+END $$;
+
 -- ══════════════════════════════════════════════════════════════════════
 -- RAID Wave C2 (DR-C2) — per-tool approval allowlist ("Always allow").
 -- In Write mode a Tier-A server tool NOT on the user's allowlist suspends
