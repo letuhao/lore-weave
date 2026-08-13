@@ -788,7 +788,8 @@ func (s *Server) toolChapterSaveDraft(ctx context.Context, _ *mcp.CallToolReques
 	if err != nil {
 		return nil, saveDraftOut{}, err
 	}
-	if _, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit); err != nil {
+	owner, err := s.mcpRequireGrant(ctx, bookID, userID, GrantEdit)
+	if err != nil {
 		return nil, saveDraftOut{}, mcpOwnershipError(err)
 	}
 	tx, terr := s.pool.Begin(ctx)
@@ -835,7 +836,16 @@ WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err
 	// first assistant save. The draft alone is sufficient: the chapter_blocks trigger projects
 	// chapter_drafts.body → chapter_blocks.text_content, which is what prose-state and the rail's
 	// book-state probe actually read.
-	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+2,updated_at=now() WHERE id=$1`, chID)
+	// 🔴 byte_size TOO, and it is not cosmetic: `recalcQuota` bills a user by
+	// SUM(chapters.byte_size), so a column this write leaves stale is prose the account never pays
+	// for. The sibling `book_chapter_create` in this same file already gets it right — it inserts
+	// `byte_size=int64(len(body))` and calls `s.recalcQuota` after commit — and the diary handler
+	// updates byte_size on every edit. Only the tool that REPLACES a chapter's prose skipped both.
+	//
+	// MEASURED 2026-08-13: 139 of the 299 chapters that hold prose carry byte_size=0. A chapter
+	// created empty and then written through this tool stays at 0 forever, and one created with a
+	// paragraph keeps that first paragraph's size no matter how much prose replaces it.
+	_, _ = tx.Exec(ctx, `UPDATE chapters SET draft_updated_at=now(),draft_revision_count=draft_revision_count+2,byte_size=$2,updated_at=now() WHERE id=$1`, chID, int64(len(in.Body)))
 	if err := insertOutboxEvent(ctx, tx, "chapter.saved", chID, map[string]any{"book_id": bookID}); err != nil {
 		return nil, saveDraftOut{}, errors.New("failed to save draft")
 	}
@@ -845,6 +855,11 @@ WHERE chapter_id=$1 RETURNING draft_version`, chID, jsonBody).Scan(&newVer); err
 	res := undoResult("book_chapter_restore_revision", map[string]any{
 		"book_id": bookID.String(), "chapter_id": chID.String(), "revision_id": snapshotID.String(),
 	})
+	// Re-bill AFTER the commit, exactly as book_chapter_create does. Best-effort by the same
+	// precedent: a quota refresh that fails must not fail the author's save, and the next
+	// getStorageUsage recomputes from scratch anyway.
+	_ = s.ensureQuotaRow(ctx, owner)
+	_ = s.recalcQuota(ctx, owner)
 	return res, saveDraftOut{
 		ChapterID:        chID.String(),
 		ChapterTitle:     chTitle,
