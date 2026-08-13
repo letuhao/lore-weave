@@ -671,6 +671,77 @@ class AgeGraphStore:
             out[eid] = str(latest) if latest is not None else "active"
         return out
 
+    # ── event corrections (T17/A2) ───────────────────────────────────
+    #
+    # ⚠️ `merge_event` and `update_event_fields` are NOT implemented here and RAISE. AGE
+    # has no `apoc`-free equivalent of the ON MATCH branch this merge needs (min-wins
+    # `event_order`, union-merged participants, upgrade-not-overwrite summary), and
+    # `update_event_fields` needs the same-statement `before` snapshot that the OCC
+    # correction event is written from. Guessing either would produce an adapter that
+    # ANSWERS WRONGLY, and the port's own rule is that an operation which answers wrongly
+    # is worse than one that refuses — an empty return here would look like "no such
+    # event" to every caller. Tracked as D-AGE-EVENT-WRITE-UNIMPLEMENTED.
+
+    async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
+        cy = f"""
+        MATCH (e:Event {{id: {_lit(event_id)}, user_id: {_lit(user_id)}}})
+        RETURN e
+        """
+        rows = await self._run(cy)
+        return _to_event(_props(rows[0]["v"])) if rows else None
+
+    async def archive_event(self, *, user_id: str, event_id: str) -> Event | None:
+        # Idempotent: coalesce keeps the FIRST archive instant, so re-archiving succeeds
+        # without rewriting when the event was archived.
+        stamp = datetime.now(timezone.utc).isoformat()
+        cy = f"""
+        MATCH (e:Event {{id: {_lit(event_id)}, user_id: {_lit(user_id)}}})
+        SET e.archived_at = coalesce(e.archived_at, {_lit(stamp)})
+        RETURN e
+        """
+        rows = await self._run(cy)
+        return _to_event(_props(rows[0]["v"])) if rows else None
+
+    async def merge_event(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        title: str,
+        summary: str | None = None,
+        chapter_id: str | None = None,
+        event_order: int | None = None,
+        chronological_order: int | None = None,
+        event_date_iso: str | None = None,
+        time_cue: str | None = None,
+        participants: list[str] | None = None,
+        source_type: str = "book_content",
+        confidence: float = 0.0,
+    ) -> Event:
+        raise NotImplementedError(
+            "AgeGraphStore.merge_event — see D-AGE-EVENT-WRITE-UNIMPLEMENTED. The ON MATCH "
+            "branch (min-wins event_order for CM4 spoiler-safety, union-merged participants, "
+            "upgrade-not-overwrite summary) has no APOC-free AGE equivalent yet. Refusing "
+            "rather than half-merging: a wrong event_order is silent in both directions."
+        )
+
+    async def update_event_fields(
+        self,
+        *,
+        user_id: str,
+        event_id: str,
+        title: str | None,
+        summary: str | None,
+        time_cue: str | None,
+        event_date_iso: str | None,
+        expected_version: int,
+    ) -> tuple[Event | None, dict | None]:
+        raise NotImplementedError(
+            "AgeGraphStore.update_event_fields — see D-AGE-EVENT-WRITE-UNIMPLEMENTED. Needs "
+            "the same-statement pre-edit `before` snapshot the OCC correction event is "
+            "written from; without it a caller would silently lose the audit half."
+        )
+
     async def events_in_window(
         self,
         *,

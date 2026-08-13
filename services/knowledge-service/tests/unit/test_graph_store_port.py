@@ -254,6 +254,10 @@ def test_implementations_match_the_port_signatures(impl):
                  # a method added to the port and forgotten here is unchecked in every
                  # adapter and nothing says so.
                  "get_relation", "invalidate_relation", "recreate_relation",
+                 # A2 — the event corrections. AGE REFUSES two of these (NotImplementedError,
+                 # D-AGE-EVENT-WRITE-UNIMPLEMENTED) but must still match the SHAPE, or a
+                 # future implementation would be free to invent a different one.
+                 "get_event", "merge_event", "update_event_fields", "archive_event",
                  "status_at_order", "events_in_window"):
         port_sig = inspect.signature(getattr(GraphStore, name))
         impl_sig = inspect.signature(getattr(impl, name))

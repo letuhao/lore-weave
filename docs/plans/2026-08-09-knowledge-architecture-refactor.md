@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A2` — `get_event` / `archive_event` / `merge_event` / `update_event_fields` on the port + 3 adapters.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (`D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`, PO decision owed on the `active_rules` source). **A0 needed no build** (T42a shipped 2026-08-12). **A1 is DONE:** three relation corrections on the port + 3 adapters, conformance 40 → **52 passed**, and the new rules caught the AGE adapter serving soft-invalidated edges — a divergence T43's shadow called "9 of 9 agreeing" because nothing ever asked it. `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` stays OPEN: `invalidate_relation` closes the WALL-CLOCK interval, the deferral is about the STORY axis, and the fix is `maintain_chain` on the port's write — an A2/A3 decision. See **▶ EXECUTION PLAN** below.
+**RESUME: `A3` — `events_page(after, before, axis, participants, q, sort, limit, offset) -> (rows, total)`.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0** needed no build. **A1 + A2 DONE:** seven correction operations on the port and its adapters, conformance 40 → **63 passed / 7 skipped**, and the new rules caught the AGE adapter serving soft-invalidated edges. AGE refuses the two event WRITES with `D-AGE-EVENT-WRITE-UNIMPLEMENTED`, asserted by a test so the skips cannot become a false green. A3 is the paginated browse the port's own docstring argued against — **quote that comment beside the decision**. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -1957,6 +1957,79 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   ---
+  ### ✅ A2 2026-08-13 — the four event corrections, and AGE REFUSES two of them on purpose
+
+  `get_event` · `merge_event` · `update_event_fields` · `archive_event` on `GraphStore`,
+  implemented in Fake / Neo4j, **refused with a named deferral in AGE**, plus six behavioural
+  rules:
+
+  ```
+  63 passed, 7 skipped  =  23 rules × 3 adapters + guard, minus AGE's refused writes
+                           (was 52 = 17 × 3 + 1)
+  ```
+
+  **The merge semantics are CONTRACT, not implementation detail**, and the port says why for
+  each: `source_types` accumulates, `confidence` is a max, `participants` union-merge,
+  `summary` upgrades from NULL and never overwrites, and `event_order` keeps the **MINIMUM**
+  across mentions — CM4 spoiler-safety. An event re-mentioned in chapter 40 must not migrate
+  forward and vanish for a reader at chapter 12.
+
+  🔻 **AGE refuses `merge_event` and `update_event_fields`** (`NotImplementedError`, naming
+  `D-AGE-EVENT-WRITE-UNIMPLEMENTED`). The ON MATCH branch has no APOC-free AGE equivalent yet,
+  and `update_event_fields` needs the same-statement pre-edit `before` snapshot the OCC
+  correction event is written from. **A1's rule applies: an operation that answers wrongly is
+  worse than one that refuses** — an empty return would read as *"no such event"* to every
+  caller. `test_age_REFUSES_the_event_writes_rather_than_answering_wrongly` asserts the
+  refusal, so the five skips can never quietly become "AGE passed".
+
+  🔴 **BOTH BITES FOUND SOMETHING, AND THE FIRST FOUR ATTEMPTS WERE INVALID.**
+
+  ```
+  1. Fake merge_event: min-wins -> latest-wins
+     first cut of the TEST: mention 40k then 12k   -> 1 passed   <- VACUOUS
+        both policies end at 12k; the test could not discriminate.
+     corrected: mention 12k FIRST, then 40k
+     E  AssertionError: event_order went FORWARD to 40000 — a later mention hid the event
+                        from readers who have already passed it
+
+  2. AGE merge_event: `return None` before the raise
+     E  Failed: DID NOT RAISE <class 'NotImplementedError'>
+  ```
+
+  ⚠️ **Two mutations silently failed to apply** before that — exact-match replaces defeated by
+  CRLF, so the "bite" ran against unmutated code and printed a green that meant nothing. Same
+  failure as A1, twice more; **every bite in this batch was ultimately cut by LINE NUMBER and
+  the mutated line pasted back before running.** A bite whose mutation did not land is
+  indistinguishable from a bite that passed.
+
+  ⚠️ **And a third test bug: the fake returns LIVE objects.** `test_a_stale_expected_version…`
+  asserted `before["title"] == ev.title` after the update — the fake mutates in place, so
+  `ev.title` was already the new title, while Neo4j returns a fresh projection and passed. An
+  assertion that holds on one adapter and fails on the other **for a reason unrelated to the
+  rule** is the parameterised suite's characteristic hazard; the fix is to snapshot before the
+  call, and it is commented as such.
+
+  **QC (a) gates:** `port-adoption-gate` ceiling unchanged at 64 — A2 grows the PORT, migrates
+  no consumer; the ceiling falls in A4. `db-safety-gate` exit 0. No new gate, none owed.
+  **QC (b) the seam:** N/A — port + adapters are in-process, no service code, no HTTP surface.
+  The live proof is the 63-passed run against a real Neo4j and a real AGE container.
+  **QC (c) real data:** the Neo4j arm wrote and re-read real `:Event` nodes, including the OCC
+  version clash; the AGE arm proved its refusal against a real AGE graph rather than a stub.
+
+  ```
+  4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
+  ```
+
+  ### 🔻 DEFERRAL `D-AGE-EVENT-WRITE-UNIMPLEMENTED`
+
+  | | |
+  |---|---|
+  | **Blocker** | `AgeGraphStore.merge_event` and `.update_event_fields` raise `NotImplementedError`. The merge needs an ON MATCH branch with min-wins `event_order`, union-merged participants and upgrade-not-overwrite `summary`; AGE has no APOC-free equivalent of that CASE, and `update_event_fields` needs the same-statement pre-edit `before` snapshot the OCC correction event is written from. |
+  | **Evidence** | `63 passed, 7 skipped` on the conformance suite: five event-write rules skip for `age`, and `test_age_REFUSES_the_event_writes_rather_than_answering_wrongly` passes against a real AGE graph. Biting the refusal (`return None` ahead of the raise) reds it — `Failed: DID NOT RAISE <class 'NotImplementedError'>` — so the refusal is real and not a docstring. |
+  | **Mechanism** | The refusal is ASSERTED by a test, not described in a comment. `_EVENT_WRITE_REFUSERS` would otherwise be a way to make the gap invisible — a suite reporting green for three adapters while one silently did nothing. If someone implements these, that test fails and forces this row to be revisited. |
+  | **To unblock** | Implement the ON MATCH branch in openCypher against AGE (the min/coalesce arithmetic is expressible; it is the list union that needs care without APOC), and return the `before` map from the same statement so the OCC audit half survives. Then delete the two entries from `_EVENT_WRITE_REFUSERS` and watch five skips become five assertions. |
+  | **Retry when** | T42 designs the AGE adapter's WRITE path — this is the second half of the same question, and doing it here would have meant guessing a write contract T42 has not settled. |
+
   ### ✅ A1 2026-08-13 — the three relation corrections, on the port and all three adapters
 
   `get_relation` · `invalidate_relation` · `recreate_relation`, added to `GraphStore` and

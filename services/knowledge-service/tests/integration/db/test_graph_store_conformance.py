@@ -524,3 +524,133 @@ async def test_an_authored_relation_carries_its_story_position(store):
 
     assert len(await store.relations_for(user_id=u, entity_id=a.id, as_of=12)) == 1
     assert await store.relations_for(user_id=u, entity_id=a.id, as_of=11) == []
+
+
+# ── event corrections (T17 A2) ───────────────────────────────────────────────
+
+#: AGE refuses the two event WRITES (D-AGE-EVENT-WRITE-UNIMPLEMENTED). The refusal is
+#: itself asserted below, so "AGE is skipped here" can never quietly become "AGE passed".
+_EVENT_WRITE_REFUSERS = {"age"}
+
+
+def _which(store) -> str:
+    """Which adapter this parameterisation is, by CLASS — not by a marker attribute the
+    fixture would have to remember to set."""
+    return {"AgeGraphStore": "age", "Neo4jGraphStore": "neo4j",
+            "FakeGraphStore": "fake"}[type(store).__name__]
+
+
+async def _an_event(store, u, p, title="The Betrayal", **kw):
+    return await store.merge_event(
+        user_id=u, project_id=p, title=title, chapter_id="ch-1",
+        source_type="chapter", **kw)
+
+
+@pytest.mark.asyncio
+async def test_merge_event_is_idempotent_and_keeps_the_EARLIEST_reading_position(store):
+    """CM4 spoiler-safety, as a rule. `event_order` keeps the MINIMUM across mentions: an
+    event re-mentioned in chapter 40 must not migrate forward and become invisible to a
+    reader at chapter 12. An adapter taking the latest leaks nothing and hides everything —
+    silent in both directions, which is why it is pinned rather than described."""
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_event_writes")
+    # ⚠️ The ORDER of these two mentions is the whole test. Mentioning 40k first and 12k
+    # second cannot discriminate: min-wins and latest-wins both end at 12k. The first cut did
+    # exactly that and stayed GREEN under the latest-wins mutation — found by the bite, not by
+    # reading. The early mention must come FIRST, so only min-wins keeps it.
+    u, p, _ = _ids()
+    a = await _an_event(store, u, p, event_order=12_000)
+    b = await _an_event(store, u, p, event_order=40_000)
+    assert a.id == b.id, "merge_event minted a second node for the same (user, chapter, title)"
+    assert b.event_order == 12_000, (
+        f"event_order went FORWARD to {b.event_order} — a later mention hid the event from "
+        "readers who have already passed it"
+    )
+
+
+@pytest.mark.asyncio
+async def test_a_thinner_re_mention_does_not_erase_a_richer_summary(store):
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_event_writes")
+    u, p, _ = _ids()
+    await _an_event(store, u, p, summary="Kai betrays Mira at the gate.")
+    again = await _an_event(store, u, p, summary=None)
+    assert again.summary == "Kai betrays Mira at the gate.", (
+        "a re-mention with no summary overwrote the one already stored"
+    )
+
+
+@pytest.mark.asyncio
+async def test_get_event_is_a_MISS_for_another_user(store):
+    """Read side of the tenancy rule — available on every adapter, including the one that
+    refuses the writes."""
+    u, p, other = _ids()
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("needs merge_event to create the row — AGE refuses it")
+    ev = await _an_event(store, u, p)
+    assert (await store.get_event(user_id=u, event_id=ev.id)) is not None
+    assert (await store.get_event(user_id=other, event_id=ev.id)) is None
+
+
+@pytest.mark.asyncio
+async def test_a_stale_expected_version_RAISES_rather_than_silently_losing_the_edit(store):
+    """The OCC rule. A lost update that reports success is indistinguishable from a saved
+    one to the caller who just overwrote somebody else's edit — so this must raise, and
+    an adapter that returned `(None, None)` on a version clash would be reporting a MISS
+    for a row that exists."""
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_event_writes")
+    from app.db.repositories import VersionMismatchError
+
+    u, p, _ = _ids()
+    ev = await _an_event(store, u, p)
+    # Snapshot the title NOW. The in-memory fake returns the LIVE object and mutates it in
+    # place, so `ev.title` becomes the new title after the update; the Neo4j adapter returns
+    # a fresh projection and does not. Comparing against `ev.title` afterwards passes on one
+    # adapter and fails on the other for a reason that has nothing to do with the rule.
+    original_title, original_version = ev.title, ev.version
+    updated, before = await store.update_event_fields(
+        user_id=u, event_id=ev.id, title="Corrected title", summary=None,
+        time_cue=None, event_date_iso=None, expected_version=original_version)
+    assert updated is not None and updated.title == "Corrected title"
+    assert before is not None and before["title"] == original_title, (
+        "the pre-edit snapshot is missing — the correction event has nothing to record"
+    )
+
+    with pytest.raises(VersionMismatchError):
+        await store.update_event_fields(
+            user_id=u, event_id=ev.id, title="Racing edit", summary=None,
+            time_cue=None, event_date_iso=None, expected_version=original_version)
+
+
+@pytest.mark.asyncio
+async def test_archive_event_is_idempotent(store):
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("needs merge_event to create the row — AGE refuses it")
+    u, p, _ = _ids()
+    ev = await _an_event(store, u, p)
+    first = await store.archive_event(user_id=u, event_id=ev.id)
+    assert first is not None and first.archived_at is not None
+    assert await store.archive_event(user_id=u, event_id=ev.id) is not None, (
+        "re-archiving failed — the correction is not retryable after a timeout"
+    )
+
+
+@pytest.mark.asyncio
+async def test_age_REFUSES_the_event_writes_rather_than_answering_wrongly(store):
+    """The skips above are only honest while the refusal is REAL.
+
+    Without this, `_EVENT_WRITE_REFUSERS` would be a way to make AGE's gap invisible — the
+    suite would report green for three adapters while one silently did nothing. The port's
+    rule is that an operation which answers wrongly is worse than one that refuses, and an
+    empty return here would read as "no such event" to every caller.
+    """
+    if _which(store) not in _EVENT_WRITE_REFUSERS:
+        pytest.skip("only the refusing adapters are pinned here")
+    u, p, _ = _ids()
+    with pytest.raises(NotImplementedError, match="D-AGE-EVENT-WRITE-UNIMPLEMENTED"):
+        await store.merge_event(user_id=u, project_id=p, title="X", chapter_id="ch-1")
+    with pytest.raises(NotImplementedError, match="D-AGE-EVENT-WRITE-UNIMPLEMENTED"):
+        await store.update_event_fields(
+            user_id=u, event_id="x", title=None, summary=None, time_cue=None,
+            event_date_iso=None, expected_version=1)

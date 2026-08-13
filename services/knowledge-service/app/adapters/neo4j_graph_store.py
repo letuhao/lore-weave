@@ -35,6 +35,7 @@ from app.db.neo4j_repos.entities import (
 )
 from app.db.neo4j_repos.entity_status import status_at_order
 from app.db.neo4j_repos.events import Event, list_events_filtered, list_events_in_order
+from app.db.neo4j_repos import events as _event_repo
 from app.db.neo4j_repos import relations as _rel_repo
 from app.db.neo4j_repos.relations import Relation, create_relation, find_relations_for_entity
 from app.ports.graph_store import EventAxis, RelationDirection
@@ -163,6 +164,53 @@ class Neo4jGraphStore:
             self._session, user_id=user_id, subject_id=subject_id,
             predicate=predicate, object_id=object_id, source_chapter=source_chapter,
             valid_from_ordinal=valid_from_ordinal)
+
+    async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
+        return await _event_repo.get_event(
+            self._session, user_id=user_id, event_id=event_id)
+
+    async def merge_event(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        title: str,
+        summary: str | None = None,
+        chapter_id: str | None = None,
+        event_order: int | None = None,
+        chronological_order: int | None = None,
+        event_date_iso: str | None = None,
+        time_cue: str | None = None,
+        participants: list[str] | None = None,
+        source_type: str = "book_content",
+        confidence: float = 0.0,
+    ) -> Event:
+        return await _event_repo.merge_event(
+            self._session, user_id=user_id, project_id=project_id, title=title,
+            summary=summary, chapter_id=chapter_id, event_order=event_order,
+            chronological_order=chronological_order, event_date_iso=event_date_iso,
+            time_cue=time_cue, participants=participants, source_type=source_type,
+            confidence=confidence)
+
+    async def update_event_fields(
+        self,
+        *,
+        user_id: str,
+        event_id: str,
+        title: str | None,
+        summary: str | None,
+        time_cue: str | None,
+        event_date_iso: str | None,
+        expected_version: int,
+    ) -> tuple[Event | None, dict | None]:
+        return await _event_repo.update_event_fields(
+            self._session, user_id=user_id, event_id=event_id, title=title,
+            summary=summary, time_cue=time_cue, event_date_iso=event_date_iso,
+            expected_version=expected_version)
+
+    async def archive_event(self, *, user_id: str, event_id: str) -> Event | None:
+        return await _event_repo.archive_event(
+            self._session, user_id=user_id, event_id=event_id)
 
     async def relations_for(
         self,

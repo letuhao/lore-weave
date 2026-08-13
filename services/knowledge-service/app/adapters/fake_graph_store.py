@@ -273,6 +273,121 @@ class FakeGraphStore:
         self._relations.append(rel)
         return rel
 
+    async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
+        for e in self._events:
+            if e.id == event_id and e.user_id == user_id:
+                return e
+        return None
+
+    async def merge_event(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        title: str,
+        summary: str | None = None,
+        chapter_id: str | None = None,
+        event_order: int | None = None,
+        chronological_order: int | None = None,
+        event_date_iso: str | None = None,
+        time_cue: str | None = None,
+        participants: list[str] | None = None,
+        source_type: str = "book_content",
+        confidence: float = 0.0,
+    ) -> Event:
+        """Idempotent on (user, project, chapter, title). The MERGE semantics are copied
+        from the real Cypher rather than guessed — a fake that overwrote instead of
+        upgrading would make every re-mention test agree with a graph that does not
+        exist (the lesson QC-2's parity diff taught on `resolve_or_merge_entity`)."""
+        canonical = canonicalize_entity_name(title)
+        key = (user_id, project_id, chapter_id, canonical)
+        for e in self._events:
+            if (e.user_id, e.project_id, e.chapter_id, e.canonical_title) == key:
+                if source_type and source_type not in e.source_types:
+                    e.source_types.append(source_type)
+                e.confidence = max(e.confidence, confidence)
+                for pname in participants or ():
+                    if pname not in e.participants:
+                        e.participants.append(pname)
+                # summary upgrades from NULL, never overwrites: a later thinner mention
+                # must not erase a richer one.
+                if e.summary is None and summary is not None:
+                    e.summary = summary
+                if e.time_cue is None and time_cue is not None:
+                    e.time_cue = time_cue
+                if e.event_date_iso is None and event_date_iso is not None:
+                    e.event_date_iso = event_date_iso
+                # CM4 spoiler-safety: the MINIMUM reading position wins. Taking the latest
+                # would migrate an event forward and hide it from a reader who has already
+                # passed it — silent in both directions, which is why it is pinned here.
+                if event_order is not None:
+                    e.event_order = (event_order if e.event_order is None
+                                     else min(e.event_order, event_order))
+                if e.chronological_order is None and chronological_order is not None:
+                    e.chronological_order = chronological_order
+                e.mention_count += 1
+                e.updated_at = _now()
+                return e
+        event = Event(
+            id=f"evt|{user_id}|{project_id}|{chapter_id}|{canonical}",
+            user_id=user_id, project_id=project_id, title=title,
+            canonical_title=canonical, summary=summary, chapter_id=chapter_id,
+            event_order=event_order, chronological_order=chronological_order,
+            event_date_iso=event_date_iso, time_cue=time_cue,
+            participants=list(participants or []), confidence=confidence,
+            source_types=[source_type] if source_type else [], mention_count=1,
+            version=1, created_at=_now(), updated_at=_now(),
+        )
+        self._events.append(event)
+        return event
+
+    async def update_event_fields(
+        self,
+        *,
+        user_id: str,
+        event_id: str,
+        title: str | None,
+        summary: str | None,
+        time_cue: str | None,
+        event_date_iso: str | None,
+        expected_version: int,
+    ) -> tuple[Event | None, dict | None]:
+        event = await self.get_event(user_id=user_id, event_id=event_id)
+        if event is None:
+            return None, None
+        if event.version != expected_version:
+            # RAISES rather than no-ops. A lost update that reports success is
+            # indistinguishable from a saved one to the caller who just overwrote
+            # somebody else's edit.
+            from app.db.repositories import VersionMismatchError
+
+            raise VersionMismatchError(event)
+        before = {
+            "title": event.title, "summary": event.summary,
+            "time_cue": event.time_cue, "event_date_iso": event.event_date_iso,
+            "participants": list(event.participants),
+        }
+        if title is not None:
+            event.title = title
+            event.canonical_title = canonicalize_entity_name(title)
+        if summary is not None:
+            event.summary = summary
+        if time_cue is not None:
+            event.time_cue = time_cue
+        if event_date_iso is not None:
+            event.event_date_iso = event_date_iso
+        event.version += 1
+        event.updated_at = _now()
+        return event, before
+
+    async def archive_event(self, *, user_id: str, event_id: str) -> Event | None:
+        event = await self.get_event(user_id=user_id, event_id=event_id)
+        if event is None:
+            return None
+        # Idempotent: re-archiving succeeds so the correction is retryable.
+        event.archived_at = event.archived_at or _now()
+        return event
+
     async def relations_for(
         self,
         *,

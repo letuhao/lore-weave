@@ -235,6 +235,77 @@ class GraphStore(Protocol):
         """
         ...
 
+    # ── event corrections (T17/A2) ───────────────────────────────────
+
+    async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
+        """One event by id, or `None` for a miss — same no-existence-oracle rule as
+        `get_relation`: another user's event is absent, not forbidden."""
+        ...
+
+    async def merge_event(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        title: str,
+        summary: str | None = None,
+        chapter_id: str | None = None,
+        event_order: int | None = None,
+        chronological_order: int | None = None,
+        event_date_iso: str | None = None,
+        time_cue: str | None = None,
+        participants: list[str] | None = None,
+        source_type: str = "book_content",
+        confidence: float = 0.0,
+    ) -> Event:
+        """Idempotent upsert keyed on (user, project, chapter, title).
+
+        The merge semantics are CONTRACT, not implementation detail, because each one hides
+        a different silent failure:
+
+        * `source_types` accumulates, `confidence` is a max, `participants` union-merge —
+          a re-mention must never narrow what is already known.
+        * `summary` upgrades from NULL and **never overwrites** — a later, thinner mention
+          must not erase a richer one.
+        * `event_order` keeps the **MINIMUM** across mentions. That is spoiler-safety (CM4):
+          the earliest reading position at which the event is known wins, so an event
+          re-mentioned in chapter 40 does not migrate forward and become invisible to a
+          reader at chapter 12. An adapter that took the latest would leak nothing and hide
+          everything — the failure is silent in both directions.
+        """
+        ...
+
+    async def update_event_fields(
+        self,
+        *,
+        user_id: str,
+        event_id: str,
+        title: str | None,
+        summary: str | None,
+        time_cue: str | None,
+        event_date_iso: str | None,
+        expected_version: int,
+    ) -> tuple[Event | None, dict | None]:
+        """User-edit the display fields under OPTIMISTIC CONCURRENCY.
+
+        Returns `(event, before)`; `before` is the pre-edit snapshot the correction event is
+        written from. `(None, None)` is a miss. A stale `expected_version` raises
+        `VersionMismatchError` — it must RAISE and not silently no-op, because a lost update
+        that reports success is indistinguishable from a saved one to the caller who just
+        overwrote someone else's edit.
+
+        A `None` field means "leave unchanged", which is why every field is explicit rather
+        than defaulted: an omitted argument and an intentional clear would otherwise be the
+        same call.
+        """
+        ...
+
+    async def archive_event(self, *, user_id: str, event_id: str) -> Event | None:
+        """Soft-archive (the user-facing "delete" = hide). Idempotent — re-archiving an
+        already-archived event succeeds, so the correction can be retried after a timeout.
+        `None` is a miss."""
+        ...
+
     # ── status ───────────────────────────────────────────────────────
 
     async def add_evidence(
