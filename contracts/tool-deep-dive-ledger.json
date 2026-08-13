@@ -995,6 +995,14 @@
       "cycle": 23,
       "group": "A#1 among unconcluded (3 live, 22 total, 28 calls)",
       "note": "BLOCKED on SURFACING — the THIRD consecutive cycle stopped by the same layer, and the tool itself is verified correct under direct exercise. Its 3 'live' failures are this loop's own debris from cycle 22 (the book TITLE in project_id, OBS-T25's family). THE HISTORICAL FAILURES ARE EXPLAINED AND THE DOMINANT ONE IS ALREADY FIXED. 12 are the repeat-guard over calls that SUCCEEDED (6 successes on the same node), 6 are 'not found or not accessible' for node 019fb1c3-… asked through project 019faf5a-2a25-…, and the rest are argument-type errors. That 2a25 id is NOT the node's project — but it is the composition Work's OWN PRIMARY KEY (`composition_work.id`), whose project_id IS the node's owner. The tool now accepts either identifier and resolves both to the same Work, so the exact call that failed 6 times returns the node today. 🔴 AND THAT NEARLY BECAME A FALSE 'CROSS-PROJECT LEAK' REPORT. Seeing a node returned under a project_id that owns no such node looks exactly like a broken scope check. Four controls killed it: a RANDOM nonexistent project is REFUSED; a REAL but unrelated project (the throwaway book's Work, which provably does not contain the node) is REFUSED; the same 2a25 id asked by a STRANGER is REFUSED; and the store confirms 2a25 is that Work's own id. Authorization and scoping both hold — the lookup is tolerant of two identifiers for one Work, not blind to tenancy. Sixth control this session to refute my own alarm. DATA (owning store loreweave_composition.outline_node): the node returns id, kind 'chapter' and title 'Chương 1: Nhân Từ Hay Phản Bội?' — matching the store row exactly. SHIP: a title in project_id gets the fully actionable \"project_id must be a UUID — received 'ZZ Throwaway save_draft probe'\"; a stranger and an unrelated project both get 'not found or not accessible', the same answer, so existence cannot be enumerated. LIVE NOT MET. Told explicitly to call composition_get_work then composition_get_outline_node with a literal node id, the model looped chat_search_sessions four times and reached neither. The turn records composition_get_outline_node WITHHELD at stage=domain_not_selected ('domain not in this turn's hot set (knowledge)'), and although 9 OTHER composition tools were advertised in that turn, this one never was — so it could not be called. Same family as DQ-T6."
+    },
+    "composition_get_derivative_context": {
+      "state": "blocked",
+      "provider": "composition",
+      "tier": "R (scope book)",
+      "cycle": 24,
+      "group": "A#1 among unconcluded (6 live, 6 total, 6 calls)",
+      "note": "BLOCKED on SURFACING — the FOURTH consecutive cycle stopped by the same layer, and the third on composition-service. The tool is verified correct under direct exercise. ITS ENTIRE RECORDED HISTORY IS THIS LOOP'S OWN DEBRIS: all 6 calls are from cycles 22 and 23 today, every one sending a book TITLE in project_id ('ZZ Throwaway save_draft probe', 'Mị Đế') — OBS-T25's family — and every one correctly refused. Before today the tool had never been called at all, so there is no organic signal to read. DATA (owning store loreweave_composition), against a pinned falsifier. The throwaway book's Work has source_work_id NULL and ZERO divergence_spec rows, i.e. it is canonical; the tool returns exactly {is_derivative: false} — the single key its description promises for a canonical Work ('Returns is_derivative=false for the canonical Work'). FALSIFIER: is_derivative true, or a spec payload, would refute it. SHIP - refusals swept, including the tenancy one that matters here. A title in project_id gets the actionable \"project_id must be a UUID — received 'Mị Đế'\"; a nonexistent project, a STRANGER, and a REAL derivative Work owned by someone else ALL get the identical 'not found or not accessible', so a caller cannot use this tool to learn that a derivative exists or who owns it. 56 derivative Works exist in the store and none is reachable this way. LIVE NOT MET, same mechanism as cycles 16, 22 and 23. Asked whether the book is a what-if derivative or the canonical original — an explicitly READ question — the model called book_chapter_save_draft (a WRITE) twice with commit_message 'Checking chapter 1 for …' and no body, then looped book_list. That is the FOURTH write-for-read substitution recorded today (OBS-T16, OBS-T22, OBS-T28, this). Both writes were refused for the missing `body` and chapter 1 is untouched at word_count 121. The turn records composition_get_derivative_context WITHHELD at stage=domain_not_selected, 'domain not in this turn's hot set (knowledge)' — so it was never advertised and could not be called. DQ-T6's family; recorded and the cycle closed rather than forced."
     }
   },
   "defects": {
@@ -1291,10 +1299,10 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 23,
+    "tools_concluded": 24,
     "tools_in_cycle": 0,
     "tools_proven": 19,
-    "tools_blocked": 4,
+    "tools_blocked": 5,
     "defects_proven": 19,
     "defects_open": 0,
     "deferred_questions": 6
