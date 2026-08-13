@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: ⏸ ALL THREE WORKSTREAMS PARKED — four decisions owed.**
-**C** `D-QC5-PIPELINE-NOT-REPRODUCIBLE` (the acceptance measurement rule). **A** `D-PORT-CANNOT-OBSERVE-FACT-STATE` + `D-MAINTENANCE-IS-NINE-JANITORS`. **B** `D-T39-NO-COVERAGE-DIGEST-SOURCE` — T51 additionally needs **T32** (Phase 5, untouched) and T40 needs T39. **E** needs A's shadow; **F–I** are downstream. Session totals: `authored-catalog-reader-gate` **10 → 3 call sites** (T38's target COMPLETE), `port-adoption-gate` **64 → 59 / 14 → 17**, conformance **40 → 72**, and the critic went from 5/5-on-empty-canon to attributing violations to real rule ids. See **▶ EXECUTION PLAN** below.
+**RESUME: `A8` — `facts_for` on the port + 3 adapters (SPEC §1.1), then T24b (SPEC §3.1).**
+🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 72**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -1960,6 +1960,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   stop counting as adapters.
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.3. Unfinished, not undecided.
   ---
   ### ✅ A6 2026-08-13 — class (a): three constant families out of the engine layer
 
@@ -3406,6 +3407,7 @@ vectors and validity intervals live in different stores.
   (depends on T23)
 
 - [~] **T25** — Cut over; drop the Neo4j vector indexes; **build the vector backup path**
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.1. Unfinished, not undecided.
   **Backup path DONE and drilled. The cutover is BLOCKED, and not by anything T25 can fix.**
 
   **① The backup path ✅** — [`scripts/vector-backup-drill.sh`](../../scripts/vector-backup-drill.sh),
@@ -3477,6 +3479,7 @@ vectors and validity intervals live in different stores.
   loop (and per entity in the embedder); both are now resolved once per batch.
 
 - [~] **QC-3** — Vector cutover: recall on real data, then **STOP for POST-REVIEW**
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §3.2. Unfinished, not undecided.
   `/review-impl` (data migration — deeper than `/aif-review`). Then **live**: re-run
   `flat_knn_rawsearch.py` against the real corpus on both backends and publish **recall@10 and
   latency ratios**, not absolutes.
@@ -4183,6 +4186,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   where the next person to touch this will be standing.
 
 - [~] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.1. Unfinished, not undecided.
   parameter; migrate the spoiler window onto *"read at reveal position P"* (decision Q8).
   Also: `invalidated_reason='episode_superseded'` for chapter revisions (decision Q6).
   ⚠️ **State `glossary_entities.alive`'s disposition explicitly**
@@ -4520,6 +4524,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   **Evidence:** 2 new tests + the **full Go api suite green (63.6 s, live Postgres)**.
 
 - [~] **T33** — World order as a **partial order over event entities** (**D0.1/D8**)
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.3. Unfinished, not undecided.
   Widen `app/extraction/causal_edges.py` from `causes/enables` to `causes | precedes`; copy the
   `motif_link` cycle guard to the event DAG.
   **`unknown` must be a first-class answer** — a wrong order is worse than an absent one for a canon
@@ -4708,6 +4713,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 <!-- Commit checkpoint: T30–T34 — migration + event contract -->
 
 - [~] **T35** — Opaque identity; KG holds **mentions**; retire `e.id = hash(name, kind)`
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.1. Unfinished, not undecided.
   `app/extraction/glossary_sync.py` — `ON MATCH SET` never updates `e.id`, so the 2026-08-02 kind
   backfill left **77 nodes** whose derived id disagrees with their own properties. 48 Cypher sites
   key on `Entity.id`.
@@ -4880,6 +4886,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   remainder inside noise, which is precisely the mistake T17's "still owed" paragraph made.
 
 - [~] **T36** — Roles as relation facts with story intervals (**M2**)
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.1. Unfinished, not undecided.
   Closes `D-CANON-CHECK-BLIND-TO-ROLE`, the refactor's stated acceptance case.
   (depends on T35)
   ---
@@ -5084,6 +5091,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~(a) lands.~~ **CLOSED 2026-08-11, same session.** (a) was the missing `valid_from_ordinal` on the authoring path — fixed above, and the roles are authored and live-verified. (b) — the event-phrase-as-entity edge (`"Sự phản bội tại khởi đầu" -[betrayed]->`) <!-- doc-language-gate: ok -- a stored node name from the cited corpus; translating it would break the identity this evidence turns on --> is still in the graph and still positionless, so it stays invisible to the as-of read rather than being wrong in it; it belongs to the extractor's over-extraction class, not here. QC-5 can now run with the role check on — see the ⚠️ note under `D-QC5-FULL-FLOW-CAPTURE` for how it is turned on **since `96b5ebf2d`**; it is no longer an env flag. |
 
 - [~] **T37** — composition-service becomes a KAL **command producer**
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.2. Unfinished, not undecided.
   Roles are plan-authored, not extracted — this is the scope widening M2 implies.
   (depends on T36)
   ---
@@ -5098,6 +5106,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | T36 closes. |
 
 - [~] **QC-6** — Identity live proof
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.3. Unfinished, not undecided.
   `/review-impl`. On a **live** stack: rename an entity, then re-kind it, then re-run extraction on a
   chapter that mentions it. Assert **no stale node**, **no minted duplicate**, and that the 77
   known-stale nodes from the 2026-08-02 backfill are reconciled.
@@ -5145,6 +5154,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | T35 lands — and **re-run the count FIRST**, because *"must be 0"* is the acceptance criterion and **2819** is where it starts. |
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
   ### 🎯 C5 2026-08-13 — the attribution channel is WIRED, it caught a misattribution, and **QC-5 still does not go `[x]`**
 
@@ -6713,6 +6723,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The measurement file records both coverages side by side, so the disagreement is visible rather than inferable. Any future run that reports a flow-level `canon_consistency` contradicts this row and closes it. |
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §5.2. Unfinished, not undecided.
   ---
   ### ✅ B8 2026-08-13 — `CastEntry` grows `attributes`; **T38's last real consumer is migrated**
 
@@ -7258,6 +7269,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | `authored-catalog-reader-gate`'s pinned set is the checklist and can only shrink; it cannot shrink at all until this is answered, so a frozen list is the visible signal. |
   | **Retry when** | ~~The KAL scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13: the KAL GROWS a detail-carrying catalog read** (kind, aliases, short_description), and all ten readers move behind it. T47's recorded consequence — *"INV-KAL scope now covers writes + the authored catalog"* — is therefore correct as written and needs no edit. **This deferral is now WORK, not a question.** |
 - [~] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.5. Unfinished, not undecided.
   31 files across nine feature folders consume these contracts — `glossary`, `trash`,
   `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
   Concretely: `frontend/src/features/glossary/api.ts` · `features/trash/useTrashItems.ts` ·
@@ -7270,6 +7282,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T38, T32)
 
 - [~] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.5. Unfinished, not undecided.
   ---
   ### ✅ B9 2026-08-13 — T39's first half: the anchor cache is invalidated by EVENT, not by a guess
 
@@ -7345,6 +7358,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   cleared"*). Keyed on a coverage digest they become correct by construction.
   (depends on T38)
 - [~] **T40** — Partition `entity_facts` by `book_id`
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.6. Unfinished, not undecided.
   The growth table; every query is already book-scoped, so the key is clean.
   (depends on T39)
 
@@ -7358,6 +7372,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 > harness to be judged against and no engine to run on.
 
 - [~] **T42a** — **Adapter-parameterised behavioural conformance suite** *(NEW — do this FIRST)*
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §1.4. Unfinished, not undecided.
   ---
   ### 🔴 A0 2026-08-13 — **the batch was already done, and I nearly destroyed it proving that**
 
@@ -7501,6 +7516,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The test `test_as_of_respects_the_interval_start` names this deferral in its docstring and covers the lower bound only, so the gap is stated where a reader meets it rather than in a note elsewhere. |
   | **Retry when** | T42 designs the AGE adapter — that is when a second implementation of the upper bound first exists, and when the port either grows a close operation or the write path is declared out of port scope deliberately. |
 - [~] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
   The image **already exists** — `infra/postgres-knowledge/Dockerfile` (PG18 + pgvector +
   pgvectorscale), pinned by `infra/docker-compose.knowledge-pg.yml:29`. Sealed **T5** already
   accepted *"publish a prebuilt Postgres image; own the extension matrix"* and priced owning it.
@@ -7568,6 +7584,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   — an unpinned base for a shipped binary is a supply-chain hole that only a chosen engine makes
   worth paying for.
 - [~] **T42c** — **AGE graph bootstrap / DDL** *(NEW)*
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
   AGE needs per-database setup Neo4j does not: `LOAD 'age'`,
   `SET search_path = ag_catalog, "$user", public`, `SELECT create_graph(<name>)`.
   ⚠️ **AGE rejects single-character graph names** (`graph name is invalid`) — measured, and it
@@ -7637,6 +7654,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   session state governs.
   **QC (c) real data** — 19 graphs created in `ag_catalog.ag_graph` across this cycle's runs.
 - [~] **T42** — Second `GraphStore` adapter — **AGE FIRST**, then Kuzu / Postgres-relational
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
   ⚠️ **Candidate set restored 2026-08-11**: **AGE · Kuzu · Postgres-relational**. The prior text
   read *"Postgres-relational recommended; Kuzu the alternative — AGE is eliminated"*, which now
   contradicts amended sealed rows **T1** and **T2**; an implementer following it would build the
@@ -7819,6 +7837,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **(c) real data** — **419 integration**, up from 410 (+6 differential, +3 conformance across
   the three adapters).
 - [~] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
   `scripts/graph-port-gate.py` walks `ast.Constant` strings and enforces that **Cypher** does not
   appear outside adapter dirs. It **never inspects imports**. So it proves Cypher is *centralised*,
   not that the code is *engine-swappable*: a module can call `neo4j_repos` functions, carry no
@@ -7916,6 +7935,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The **floor** in `port-adoption-gate`: the moment a module adopts `GraphStore`, the gate reds demanding the floor be raised, so adoption is recorded rather than drifting. |
   | **Retry when** | T17's migration reaches the graph read/write sites. **This is now the critical path to T43**, not background cleanup. |
 - [~] **T41** — ~~⛔ RE-SCOPE AFTER the engine decision, do not build first~~ ✅ **BUILT 2026-08-12**
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.4. Unfinished, not undecided.
   It did not exist — the only sweepers were `reconcile_evidence_count` and `stats_updater` — and
   three claims depended on it (graph HA unnecessary, P3 rollback, DR).
   ~~(depends on T43's outcome)~~
@@ -7979,6 +7999,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The module docstring and this row both name the boundary; the drill's assertions are entity-scoped, so nobody can read edge-recovery into a passing run. |
   | **Retry when** | Either re-extraction is accepted as the relation-recovery path (it costs LLM spend — a PO call), or relations gain a Postgres original. **Neither is in this plan's scope.** |
 - [~] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §5.1. Unfinished, not undecided.
   No cutover while any port operation has **zero shadow observations** — merge/split/restore/coref/
   triage are rare and would diverge silently, and the graph feeds canon checks.
   ⚠️ **Rests on T42a**: a shadow comparison between two unproven adapters measures agreement, not
@@ -8260,14 +8281,17 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 ### Phase 8 · TruthStore consolidation *(T7 — last, needs identity first)*
 
 - [~] **T44** — Rewrite `D-SUBSTRATE-HOME` and SCOPE-3's two-layer row
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   They are inputs to a refactor, not blockers — but rewrite them **deliberately**, in the standards,
   not by drift.
   (depends on T43)
 - [~] **T45** — Valid-time as a **scope-dependent axis** (`story_ordinal` | `wall_clock`)
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   The one piece that must be *designed*, not ported: book truth is story-ordinal, memory truth is
   wall-clock.
   (depends on T44)
 - [~] **T46** — Port the mature bitemporal machinery Go → Python and merge the stores
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   `maintain_chain` (pin-aware supersession), the content-addressed natural key, half-open interval
   invariants, `anchor+delta` fold with `folds_since_reground`. **Move it working — do not rewrite
   from the weaker side.**
@@ -8278,6 +8302,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 ### Phase 9 · Closing controls *(the plan's own Settings demand these)*
 
 - [~] **T47** — Documentation checkpoint (**`Docs: yes` in Settings makes this mandatory**)
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
   `/aif-docs`. The refactor changes the KAL contract, the command surface, the storage model and two
   standards — none of which is discoverable from code.
   **Specifically:** `docs/standards/README.md` (INV-KAL scope now covers writes + the authored
@@ -8286,11 +8311,13 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T46)
 
 - [~] **T48** — `/aif-verify` against this plan
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
 
 - [~] **T49** — Update `SESSION_HANDOFF.md` and archive the plan
+  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
   The ▶ NEXT SESSION block, the Deferred Items table, and the standards that moved. Then
   `/aif-archive`.
   **Do not** restate numbers a register or command already prints — that is how a second source of

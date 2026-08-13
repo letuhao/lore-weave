@@ -41,9 +41,21 @@ GATES = [
     "gateway-domain-logic-gate.py",
 ]
 
-# The five parts a deferral must carry. Matched case-insensitively on the row label, so the
-# table形式 is not load-bearing — the CONTENT is.
+# The five parts a deferral must carry, for the ones still on the page. Matched
+# case-insensitively on the row label, so the table shape is not load-bearing — the CONTENT is.
+#
+# ⚠️ DEFERRALS ARE NO LONGER A LEGAL STATE (2026-08-13). This project has no "blocked" and no
+# "deferred": a deferral is a decision described instead of taken, and thirty of them had
+# accumulated while reading as "tracked". The register is retired into
+# `docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`. These parts are still enforced
+# on any deferral text that survives, so a half-converted row cannot slip through — but the
+# rule that matters now is SPEC_RE below.
 REQUIRED_PARTS = ("blocker", "evidence", "unblock", "mechanism", "retry")
+
+#: The spec every unfinished task must cite. A task may be unfinished; it may not be UNDECIDED.
+#: "I have not typed it yet" is a schedule; "nobody has decided" is the thing this forbids.
+SPEC_DOC = "docs/specs/2026-08-13-knowledge-refactor-open-decisions.md"
+SPEC_RE = re.compile(r"2026-08-13-knowledge-refactor-open-decisions|📐 SPEC|DECIDED", re.I)
 
 TASK_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9-]+)\*\*", re.M)
 
@@ -87,6 +99,22 @@ def main() -> int:
             failures.append(f"deferral {name} is missing: {', '.join(missing)}")
     print(f"[plan-verify] {len(blocks)} structured deferral block(s) checked")
 
+    # 2b — every UNFINISHED task cites a decision. No "blocked", no "deferred": a `[~]` row
+    # must point at the spec section that settles it, or say DECIDED in its own body. A task
+    # can be unfinished; it cannot be undecided, and describing a problem is not a way to keep
+    # it open.
+    undecided = [
+        tid for state, tid, body in tasks
+        if state == "~" and not SPEC_RE.search(body)
+    ]
+    if undecided:
+        failures.append(
+            "tasks are unfinished AND undecided (cite " + SPEC_DOC + ", or mark the body "
+            "DECIDED): " + ", ".join(undecided)
+        )
+    print(f"[plan-verify] {len(tasks) - len(done) - len(untouched) - len(undecided)} "
+          f"unfinished task(s) cite a decision; {len(undecided)} do not")
+
     # 3 — no QC task claims done while what it certifies is deferred.
     for state, tid, body in tasks:
         if state == "x" and tid.upper().startswith("QC"):
@@ -112,10 +140,11 @@ def main() -> int:
         for f in failures:
             print(f"  - {f}")
         return 1
-    print("[plan-verify] PASS — every task is done-with-evidence or tracked with a full "
-          "deferral, no QC task certifies open work, and every gate is green.")
-    print("  NOTE: 'processed' is not 'finished'. Tracked deferrals are open work with owners;")
-    print("  see the Phase 6 & 7 block and D-QC5-ACCEPTANCE-BLOCKED-ON-T36 for what remains.")
+    print("[plan-verify] PASS — every task is done-with-evidence or DECIDED with a spec "
+          "citation, no QC task certifies open work, and every gate is green.")
+    print("  NOTE: 'decided' is not 'done'. An unfinished task has a settled design and "
+          "unwritten code;")
+    print(f"  read {SPEC_DOC} for what was decided, and the RESUME line for what to type next.")
     return 0
 
 
