@@ -337,6 +337,30 @@ def refusal_message(decisions: list[VocabularyDecision]) -> str:
             parts.append(
                 f"{adopt} {'is a STANDARD kind' if len(d.adoptable) == 1 else 'are STANDARD kinds'} "
                 f"this book has not adopted yet{call}.")
+            # T13-D1 — THE ADOPT TOOL IS INTENT-GATED, so on a turn that is not world-setup this
+            # message named the one remedy the SAME RUNTIME had just withheld.
+            #
+            # MEASURED LIVE 2026-08-13 (session 019ffa85), in a single turn: the refusal said
+            # "adopt in ONE call: glossary_adopt_standards(kinds=['character'])", and that turn's
+            # withheld_tools recorded glossary_adopt_standards, glossary_propose_kinds AND
+            # glossary_propose_batch all withheld at stage=intent_gate ("world-setup tool withheld
+            # unless the turn has world-setup intent"). The model read the ontology, listed the
+            # system standards, could not adopt them, and retried the identical failing call.
+            #
+            # This is the exact shape filter_intent_gated_setup_tools' own docstring describes and
+            # exempts RAILS for — "guidance and capability move as ONE signal" — except a refusal
+            # emitted at runtime is guidance too, and nothing exempted it.
+            #
+            # `create_tool` (glossary_ontology_upsert) is NOT intent-gated and creates a kind
+            # directly, so naming it alongside gives the model a remedy it can always reach. The
+            # adopt tool stays FIRST because it is the better answer when available: it brings the
+            # standard's attribute definitions with it, where a bare create does not. Whether the
+            # gate should instead unlock a tool its own refusal names is DQ-T3, not decided here.
+            if d.create_tool:
+                parts.append(
+                    f"If {d.adopt_tool or 'that tool'} is not among your available tools this turn, "
+                    f"create {'it' if len(d.adoptable) == 1 else 'them'} directly with "
+                    f"{d.create_tool} instead — same result, one call.")
         if d.custom:
             create = f" with {d.create_tool}" if d.create_tool else ""
             parts.append(

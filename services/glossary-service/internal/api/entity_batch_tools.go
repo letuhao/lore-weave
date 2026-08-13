@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"strings"
 
@@ -317,7 +318,25 @@ func (s *Server) proposeOneEntity(ctx context.Context, bookID uuid.UUID, kindMap
 	}
 	entityID, status, skipped, err := s.proposeNewEntity(ctx, bookID, kindID, name, it.Attributes, scopeLabel)
 	if err != nil {
-		res.Status, res.Error = "error", "propose failed"
+		// T13-D2 — THE CAUSE USED TO BE DISCARDED HERE, and nothing was logged either, so a
+		// failed item was undiagnosable from BOTH ends. `proposeNewEntity` wraps every failure
+		// with the operation that produced it ("begin tx: …", "book lock: …", "entity lookup:
+		// …", "tombstone check: …") and all of it was replaced by the constant "propose
+		// failed". Measured live 2026-08-13 (session 019ffa96): a single-item propose returned
+		// results[0] = {"status":"error","error":"propose failed"} and `docker logs
+		// glossary-service` had NOTHING for the request — no way to tell a transient DB error
+		// from a permanent one, and nothing an author or a model could act on.
+		//
+		// The branch immediately above already surfaces its cause via err.Error(); this one is
+		// the outlier. The wrapped error can carry storage detail, so it goes to the LOG (where
+		// an operator needs it) while the caller gets a message that at least says what KIND of
+		// failure it is — a server-side one, so retrying the identical item will not help. That
+		// distinction is the actionable part: the previous text left "fix your argument" and
+		// "the database is down" indistinguishable.
+		slog.Error("propose_entities: item failed",
+			"book_id", bookID.String(), "name", name, "kind", kind, "error", err)
+		res.Status, res.Error = "error", "could not be saved (server-side failure, not a problem "+
+			"with this item) — it has been logged; retrying the same item is unlikely to help"
 		return res
 	}
 	res.EntityID = entityID.String()
