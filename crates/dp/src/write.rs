@@ -47,7 +47,8 @@
 use crate::aggregate::DpAggregate;
 use crate::cache::KeyId;
 use crate::error::DpError;
-use crate::ids::RealityId;
+use crate::ids::{ChannelId, RealityId};
+use crate::scope::{ChannelScope, RealityScope};
 use crate::session::{Millis, SessionContext};
 use crate::tier::{Tier, TierLevel, T0, T1, T2, T3};
 
@@ -107,6 +108,32 @@ pub struct WriteRequest<'a> {
     pub cache_key: &'a str,
     /// The encoded delta.
     pub payload: &'a [u8],
+    /// The channel this write is addressed to, or `None` for a reality-scoped
+    /// write.
+    ///
+    /// # This field is `DF1a`, and its absence is why the SDK had no callers
+    ///
+    /// `WriteRequest` had seven fields and none of them was a channel, while
+    /// [`SessionContext`] has carried `current_channel_id` since slice 4 and
+    /// the READ side takes the channel from exactly there
+    /// ([`crate::read::read_projection_channel`]). So the write surface was
+    /// structurally incapable of producing a channel-ordered event — and a
+    /// channel-ordered event is what `DP-Ch11`/`DP-Ch13` make every live
+    /// consumer read.
+    ///
+    /// A backend given `None` writes a reality-scoped event; per
+    /// `0014_channel_ordering.up.sql`, *"reality-scoped events keep channel
+    /// columns NULL"*. That is a legitimate shape — and it was the ONLY shape
+    /// this seam could ask for, which made the wrong answer the silent one.
+    ///
+    /// It is `Option<ChannelId>` rather than two request types because the
+    /// backend genuinely dispatches on it at runtime, which is the same
+    /// argument [`WriteBackend`] already makes for carrying the tier as data.
+    /// The COMPILE-time half is the caller's side: `t2_write` binds
+    /// `Scope = RealityScope` and `t2_write_channel` binds
+    /// `Scope = ChannelScope`, so which variant arrives here is decided by the
+    /// aggregate's own declaration, not by a caller remembering.
+    pub channel: Option<ChannelId>,
     /// The aggregate version the caller believes it is writing on top of.
     ///
     /// **`DP-K5` does not have this field, and the kernel requires it.** Its
@@ -169,7 +196,7 @@ fn write_at_tier<A, T, B>(
 ) -> Result<WriteAck, DpError>
 where
     T: Tier,
-    A: DpAggregate<Tier = T> + Encode,
+    A: DpAggregate<Tier = T, Scope = RealityScope> + Encode,
     B: WriteBackend,
 {
     // The session is checked BEFORE the backend is touched. A write rejected
@@ -182,6 +209,63 @@ where
         aggregate_id: id,
         tier: <T as Tier>::LEVEL,
         cache_key: key,
+        // A reality-scoped aggregate has no channel to be addressed to, and
+        // the bound above is what makes that a fact rather than a hope.
+        channel: None,
+        payload: &payload,
+        expected_version,
+    })
+}
+
+/// The channel-scoped sibling of [`write_at_tier`].
+///
+/// # Why the channel is not a parameter
+///
+/// `13_channel_ordering_and_writer.md DP-Ch14` sketches
+/// `t2_write_channel(ctx, channel: &ChannelId, id, delta)`. This crate takes
+/// the channel from the CONTEXT instead, for the reason
+/// [`crate::read::read_projection_channel`] already gives: a channel argument
+/// would let a caller write to a channel its session was never moved into, and
+/// `SessionContext::move_to_channel` is the only producer of a verified
+/// [`ChannelId`]. The read side made that choice first; two halves of one
+/// surface disagreeing about where an address comes from would be worse than
+/// either convention.
+fn write_at_tier_channel<A, T, B>(
+    backend: &B,
+    ctx: &SessionContext,
+    now_ms: Millis,
+    id: KeyId,
+    key: &str,
+    expected_version: u64,
+    delta: A::Delta,
+) -> Result<WriteAck, DpError>
+where
+    T: Tier,
+    A: DpAggregate<Tier = T, Scope = ChannelScope> + Encode,
+    B: WriteBackend,
+{
+    guard(ctx, now_ms)?;
+
+    // Checked BEFORE the backend is touched, and before the delta is even
+    // encoded — the same ordering, and the same words, as the read side.
+    let Some(channel) = ctx.current_channel_id() else {
+        return Err(DpError::SessionNotFound {
+            session_id: format!(
+                "{} is not in a channel, so it cannot write the channel-scoped {}",
+                ctx.session_id(),
+                A::TYPE_NAME
+            ),
+        });
+    };
+
+    let payload = A::encode(&delta)?;
+    backend.apply(&WriteRequest {
+        reality: ctx.reality_id(),
+        aggregate_type: A::TYPE_NAME,
+        aggregate_id: id,
+        tier: <T as Tier>::LEVEL,
+        cache_key: key,
+        channel: Some(channel),
         payload: &payload,
         expected_version,
     })
@@ -201,7 +285,7 @@ pub fn t0_write<A, B>(
     delta: A::Delta,
 ) -> Result<WriteAck, DpError>
 where
-    A: DpAggregate<Tier = T0> + Encode,
+    A: DpAggregate<Tier = T0, Scope = RealityScope> + Encode,
     B: WriteBackend,
 {
     write_at_tier::<A, T0, B>(backend, ctx, now_ms, id, key, expected_version, delta)
@@ -220,7 +304,7 @@ pub fn t1_write<A, B>(
     delta: A::Delta,
 ) -> Result<WriteAck, DpError>
 where
-    A: DpAggregate<Tier = T1> + Encode,
+    A: DpAggregate<Tier = T1, Scope = RealityScope> + Encode,
     B: WriteBackend,
 {
     write_at_tier::<A, T1, B>(backend, ctx, now_ms, id, key, expected_version, delta)
@@ -239,7 +323,7 @@ pub fn t2_write<A, B>(
     delta: A::Delta,
 ) -> Result<WriteAck, DpError>
 where
-    A: DpAggregate<Tier = T2> + Encode,
+    A: DpAggregate<Tier = T2, Scope = RealityScope> + Encode,
     B: WriteBackend,
 {
     write_at_tier::<A, T2, B>(backend, ctx, now_ms, id, key, expected_version, delta)
@@ -258,10 +342,62 @@ pub fn t3_write<A, B>(
     delta: A::Delta,
 ) -> Result<WriteAck, DpError>
 where
-    A: DpAggregate<Tier = T3> + Encode,
+    A: DpAggregate<Tier = T3, Scope = RealityScope> + Encode,
     B: WriteBackend,
 {
     write_at_tier::<A, T3, B>(backend, ctx, now_ms, id, key, expected_version, delta)
+}
+
+/// `DP-Ch14` — T2 durable-async write to a CHANNEL.
+///
+/// The scope bound is the address discipline, and it is the write side finally
+/// matching the read side: a reality-scoped aggregate cannot be written here,
+/// because this signature would have nowhere to put the channel it does not
+/// have. `tests/ui/write_wrong_scope.rs` is that claim executed by rustc.
+///
+/// # What this does NOT do, stated rather than implied
+///
+/// `DP-Ch14` also specifies **cross-node routing**: a writer-lease cache, and a
+/// `RouteChannelWrite` gRPC hop when the calling node does not hold the lease.
+/// Neither is built — `route_to_writer` has zero occurrences in the tree and is
+/// a row in `CHANNEL_SPECIFIED_NOT_BUILT`. This is the LOCAL path only: the
+/// backend it is handed either holds the lease for this channel or refuses.
+/// A second node to route to does not exist yet, and a router with one node is
+/// a mock wearing a distributed system's costume.
+pub fn t2_write_channel<A, B>(
+    backend: &B,
+    ctx: &SessionContext,
+    now_ms: Millis,
+    id: KeyId,
+    key: &str,
+    expected_version: u64,
+    delta: A::Delta,
+) -> Result<WriteAck, DpError>
+where
+    A: DpAggregate<Tier = T2, Scope = ChannelScope> + Encode,
+    B: WriteBackend,
+{
+    write_at_tier_channel::<A, T2, B>(backend, ctx, now_ms, id, key, expected_version, delta)
+}
+
+/// `DP-Ch14` — T3 durable-sync write to a CHANNEL.
+///
+/// Same shape and same limits as [`t2_write_channel`]; the tier bound is
+/// `DP-R5`.
+pub fn t3_write_channel<A, B>(
+    backend: &B,
+    ctx: &SessionContext,
+    now_ms: Millis,
+    id: KeyId,
+    key: &str,
+    expected_version: u64,
+    delta: A::Delta,
+) -> Result<WriteAck, DpError>
+where
+    A: DpAggregate<Tier = T3, Scope = ChannelScope> + Encode,
+    B: WriteBackend,
+{
+    write_at_tier_channel::<A, T3, B>(backend, ctx, now_ms, id, key, expected_version, delta)
 }
 
 #[cfg(test)]

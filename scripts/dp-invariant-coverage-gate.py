@@ -108,7 +108,6 @@ UNSITED_OK: dict[str, str] = {
     "DP-Ch3": "the control plane's channel-tree CACHE. `bind_session` shipped; `channel_tree` occurs 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch8": "channel CRUD primitives — `channel_create`/`channel_delete` occur 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch10": "tree-change invalidation via the Redis stream `dp:channel_changes:{reality}`; `channel_changes` occurs 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
-    "DP-Ch14": "cross-node write routing — `route_to_writer` occurs 0 times outside the oracle that counts it at zero. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch19": "multi-channel batch subscribe — `subscribe_many` occurs 0 times; the single-channel form is what shipped. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch25": "the `BubbleUpAggregator` trait and register/unregister — 0 occurrences. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch27": "a deterministic RNG seeded from (channel_id, channel_event_id) for `BubbleUpAggregator::on_event`; it cannot exist before DP-Ch25. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
@@ -151,7 +150,7 @@ BASELINE: dict[str, tuple[int, int]] = {
     "DP-A": (0, 6),
     "DP-R": (0, 0),
     "DP-T": (0, 0),
-    "DP-Ch": (0, 13),
+    "DP-Ch": (0, 12),
 }
 
 

@@ -26,5 +26,5 @@ note: required by a bound in `t2_write`
    | pub fn t2_write<A, B>(
    |        -------- required by a bound in this function
 ...
-   |     A: DpAggregate<Tier = T2> + Encode,
+   |     A: DpAggregate<Tier = T2, Scope = RealityScope> + Encode,
    |                    ^^^^^^^^^ required by this bound in `t2_write`

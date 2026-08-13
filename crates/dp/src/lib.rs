@@ -92,6 +92,9 @@ pub use session::{
 pub use read::{
     read_projection_channel, read_projection_reality, read_tier, Decode, ReadBackend, ReadRequest,
 };
-pub use write::{t0_write, t1_write, t2_write, t3_write, Encode, WriteAck, WriteBackend, WriteRequest};
+pub use write::{
+    t0_write, t1_write, t2_write, t2_write_channel, t3_write, t3_write_channel, Encode,
+    WriteAck, WriteBackend, WriteRequest,
+};
 pub use scope::{ChannelScope, RealityScope, Scope, ScopeKind};
 pub use tier::{Coherency, Tier, TierLevel, T0, T1, T2, T3};

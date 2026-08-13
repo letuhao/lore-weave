@@ -76,4 +76,13 @@ fn tier_and_scope_violations_do_not_compile() {
     // check — which makes it easy to assume the runtime check is what does the
     // work and let the type bound drift to something weaker.
     t.compile_fail("tests/ui/channel_read_wrong_scope.rs");
+
+    // (i) DP-A14 on the WRITE side (DF1a). The same claim as (h), in the place
+    // it was never made: `write_at_tier` bounded `Tier` and not `Scope`, and
+    // did no runtime scope check, so a channel-scoped aggregate written through
+    // `t2_write` did not fail -- it produced an event addressed to no channel,
+    // which `0014_channel_ordering.up.sql` defines as reality-scoped and which
+    // no channel subscriber reads. Both directions, for the reason (h) gives.
+    t.compile_fail("tests/ui/write_wrong_scope.rs");
+    t.compile_fail("tests/ui/channel_write_wrong_scope.rs");
 }

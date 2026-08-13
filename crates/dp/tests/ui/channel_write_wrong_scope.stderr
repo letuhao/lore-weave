@@ -1,0 +1,31 @@
+warning: unreachable statement
+  --> tests/ui/channel_write_wrong_scope.rs:51:5
+   |
+49 |       let ctx: &dp::SessionContext = todo!();
+   |                                      ------- any code following this expression is unreachable
+50 |       // A reality-scoped aggregate through the channel-scoped door. Must not compile.
+51 | /     let _ =
+52 | |         dp::t2_write_channel::<Ledger, _>(&NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64);
+   | |___________________________________________________________________________________________________^ unreachable statement
+   |
+   = note: `#[warn(unreachable_code)]` on by default
+
+error[E0271]: type mismatch resolving `<Ledger as DpAggregate>::Scope == ChannelScope`
+  --> tests/ui/channel_write_wrong_scope.rs:52:32
+   |
+52 |         dp::t2_write_channel::<Ledger, _>(&NoBackend, ctx, 0, dp::KeyId::from(1u64), "k", 0, 1i64);
+   |                                ^^^^^^ type mismatch resolving `<Ledger as DpAggregate>::Scope == ChannelScope`
+   |
+note: expected this to be `ChannelScope`
+  --> tests/ui/channel_write_wrong_scope.rs:27:18
+   |
+27 |     type Scope = RealityScope;
+   |                  ^^^^^^^^^^^^
+note: required by a bound in `t2_write_channel`
+  --> src/write.rs
+   |
+   | pub fn t2_write_channel<A, B>(
+   |        ---------------- required by a bound in this function
+...
+   |     A: DpAggregate<Tier = T2, Scope = ChannelScope> + Encode,
+   |                               ^^^^^^^^^^^^^^^^^^^^ required by this bound in `t2_write_channel`
