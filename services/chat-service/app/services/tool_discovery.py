@@ -1014,6 +1014,41 @@ def _stamp_incomplete(payload: dict, unavailable: set[str] | None) -> dict:
     return payload
 
 
+def _excluded_in_scope(catalog: list[dict], category: str | None, exclude: set[str]) -> list[str]:
+    """The names `exclude` removed that the caller's scope would otherwise have listed.
+
+    Scoped by the SAME `_domain_of` rule `visible_tools` uses, so this can never name a tool
+    the request was not asking about. A tool absent from the catalog entirely is not "held
+    back" — it is simply not there — so this reads the catalog rather than `exclude` itself.
+    """
+    if not exclude:
+        return []
+    held = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name not in exclude:
+            continue
+        if category is not None and _domain_of(name) != category:
+            continue
+        held.append(name)
+    return sorted(set(held))
+
+
+def _stamp_always_available(
+    payload: dict, catalog: list[dict], category: str | None, exclude: set[str],
+) -> dict:
+    """Name what the always-on exclusion withheld, so no listing silently under-reports.
+
+    The exclusion itself is right — re-listing a tool the model already holds is noise. What
+    was wrong was doing it invisibly: `tool_list` describes itself as "complete and
+    deterministic", and a caller cannot tell a withheld tool from an absent one.
+    """
+    held = _excluded_in_scope(catalog, category, exclude)
+    if held:
+        payload["always_available"] = held
+    return payload
+
+
 def tool_list_result(
     catalog: list[dict],
     category: str | None = None,
@@ -1031,11 +1066,34 @@ def tool_list_result(
         categories: dict[str, list] = {}
         for t in tools:
             categories.setdefault(_domain_of(t["name"]), []).append(t)
-        return _stamp_incomplete({"categories": categories, "count": len(tools)}, unavailable_providers)
+        payload_all: dict = {"categories": categories, "count": len(tools)}
+        _stamp_always_available(payload_all, catalog, None, exclude)
+        return _stamp_incomplete(payload_all, unavailable_providers)
     tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
     payload: dict = {"category": category, "count": len(tools), "tools": tools}
+    held = _excluded_in_scope(catalog, category, exclude)
     if not tools:
-        payload["reason"] = "no tools currently available in this category"
+        # T7-D2 — `reason` is the field a caller uses to tell "no such tools" from "bad guess",
+        # so it must never assert the first when the EXCLUSION is what emptied the category.
+        #
+        # MEASURED LIVE 2026-08-13 (session 019ff9da). `research` holds exactly one tool,
+        # `web_search`, which is in ALWAYS_ON_CORE_NAMES and therefore excluded from listings as
+        # redundant — it is already advertised on every turn. So tool_list("research") returned
+        # count 0 and "no tools currently available in this category", while the group directory
+        # injected into that same system prompt says `research: External web research — search
+        # the open web for background facts (web_search). PAID.` and instructs the model to call
+        # tool_list to see a domain's tools. Asked to list them, the model answered "there are
+        # actually **no tools** currently listed under a specific research category."
+        #
+        # Same class as the `incomplete` stamp one function up, and for the same reason: a
+        # listing that omits without saying so reads as a complete, healthy answer.
+        payload["reason"] = (
+            "no tools currently available in this category"
+            if not held else
+            "every tool in this category is ALREADY advertised and callable right now, so it is "
+            "not repeated here: " + ", ".join(held) + ". This category is not empty."
+        )
+    _stamp_always_available(payload, catalog, category, exclude)
     return _stamp_incomplete(payload, unavailable_providers)
 
 
