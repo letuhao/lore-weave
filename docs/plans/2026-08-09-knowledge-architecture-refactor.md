@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `C4` — apply QC-5's inverted criterion, then ⏸ STOP for POST-REVIEW.**
-See **▶ EXECUTION PLAN** below: **all 27 open tasks**, nine workstreams, order `C → A → B → E → F → G → H → I`. **C1–C3 are DONE.** The critic is grounded (`as_of`, 13 cast), judged by a DISTINCT model (`critic_status: configured`), and the violations channel is measured: **7 findings across 3 chapters, all 7 dropped** because `active_rules=[]`. C4 must weigh that against QC-5's assertion — and against the fact that the same chapter scored `severe` in one run and `warn` in the next.
+**RESUME: ⏸ HELD at QC-5's POST-REVIEW checkpoint — a PO decision is owed.**
+C1–C4 are done. QC-5 stays `[~]` with `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`: the score channel is grounded and working, the ATTRIBUTION channel is empty (`active_rules=[]` ⇒ 7 of 7 findings dropped). **The decision owed:** where `active_rules` comes from for the headless seam. Once decided, the next batch is `A0 = T42a` — the adapter-parameterised conformance suite, before T17 grows the port. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -4630,6 +4630,60 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   ---
+  ### ⏸ C4 2026-08-13 — QC-5 evaluated against a real flow number. **It does NOT go `[x]`.**
+
+  QC-5's assertion, verbatim:
+
+  > *the trap must be attributed to the cast-designated antagonist, **or** the canon check must
+  > FAIL — `canon_consistency` scoring 5/5 on a misattributed betrayal is the defect, and a pass
+  > here with 5/5 means the refactor has not landed.*
+
+  **What the grounded flow now produces** (run `019ff9de-…`, distinct critic, `as_of` bible,
+  13 cast members):
+
+  ```
+  ch 11  canon_consistency 2   ch 12  2   ch 13  4      — no 5/5 anywhere
+  ```
+
+  ✅ **The defect signature named by QC-5 is GONE.** On 2026-08-13 this flow scored **5/5 from
+  an empty canon**; it now scores 2/2/4 from a bible read at the chapter's story position. The
+  half of the assertion that says *"a pass with 5/5 means the refactor has not landed"* is
+  satisfied — there is no such pass.
+
+  🔴 **But the other half cannot be evaluated, and saying otherwise would be the fourth wrong
+  claim in this arc.** The assertion's first clause is about **attribution** — *"the trap must be
+  attributed to the cast-designated antagonist"* — and the attribution channel is structurally
+  empty: `active_rules=[]` ⇒ `rules=0` ⇒ every verdict unmappable ⇒ **7 of 7 findings dropped**
+  across the three chapters. The flow can now say *"something is wrong here"*; it still cannot
+  say **what**, or **about whom**. A low score is not an attribution, and QC-5 asked for one.
+
+  🔴 **And one run is not a measurement.** Same three chapters, same two models, twenty minutes
+  apart: ch12 read `canon_consistency=1 / SEVERE` in `019ff9d6` and `2 / warn` in `019ff9de`.
+  The number moved across the severity threshold **on unchanged inputs**. An acceptance test
+  whose verdict flips between runs is not yet an acceptance test.
+
+  ⚠️ **Still not driven through the studio UI.** QC-5 says *"end-to-end through the real
+  frontend"*. C3 drove `POST /authoring-runs` with the same user's auth. That gap was recorded
+  on 2026-08-13 and is **restated, not closed** — three batches of real progress do not retire a
+  requirement nobody met.
+
+  **So QC-5 stays `[~]` and takes a deferral naming exactly what failed.** The three things that
+  did land — a grounded critic, a distinct judge, a visible drop count — are recorded above as
+  C1–C3, with their bites and their live runs. What is missing is one specific channel.
+
+  ### 🔻 DEFERRAL `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`
+
+  | | |
+  |---|---|
+  | **Blocker** | QC-5's assertion is about ATTRIBUTION (*"the trap must be attributed to the cast-designated antagonist"*), and the critic's rule channel is unwired: the seam passes `active_rules=[]`, so `map_rule_tokens` can attribute nothing and drops every verdict. The score channel works and is now grounded; the naming channel is empty by construction. |
+  | **Evidence** | Run `019ff9de-4afd-…`, chapters 11–13 with a distinct critic and an `as_of` bible of 13 cast members: `canon_consistency` 2 / 2 / 4, `violations: []`, and **`violations_raw_count` 1 / 3 / 3 with `violations_dropped` 1 / 3 / 3** — 7 findings produced, 7 discarded, `rules=0` in every `judge_prose` log line. Plus the reproducibility gap: ch12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs. |
+  | **Mechanism** | `violations_dropped` / `violations_raw_count` now ride every critique (`engine/critic.py`), so this deferral cannot go quiet: any consumer sees `violations: []` **next to** the count of what was thrown away. Before C3 the only detector was a WARNING line, and an empty violations list was indistinguishable from a clean passage. The deferral has a self-reporting number rather than a promise. |
+  | **To unblock** | Decide where `active_rules` comes from for the headless seam — the canon-rule corpus the critique endpoint uses, or rules derived from the bible's cast facts — and feed it through `canon_bible.py` beside `present_facts`. Then re-run C3's three chapters **N ≥ 3 times** and report the score distribution, not a single number. |
+  | **Retry when** | The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs. Then QC-5's first clause becomes testable and this row can close or fail for a reason that names itself. |
+
+  ⏸ **POST-REVIEW CHECKPOINT — evidence presented, execution HELD.** QC-5 is one of the three
+  ⏸ rows in this plan; the run policy says present and wait rather than improvise past it.
+
   ### ✅ C3 2026-08-13 — three chapters, a DISTINCT critic, and seven findings that were being thrown away
 
   Run `019ff9de-4afd-…`, acceptance book chapters 11–13, drafter `019ebb72-…`
