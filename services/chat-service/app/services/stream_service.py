@@ -2017,6 +2017,57 @@ def _flat_declared_types(spec: dict) -> list | None:
     return declared if isinstance(declared, list) else [declared]
 
 
+_FIELD_PREFIXED_ID = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):([0-9a-fA-F-]{36})$")
+
+
+def _strip_field_name_prefix_from_ids(args_obj: dict, tool_def: dict | None) -> list[str]:
+    """Repair `"user_model_id:019e7f71-…"` -> `"019e7f71-…"` for a string-only param.
+
+    🔴 MEASURED LIVE 2026-08-13 (cycle 5, kg_build's blocker). kg_project_set_embedding_model was
+    called with embedding_model="user_model_id:019e7f71-0271-722f-9c9c-3f049c0b26f4" and refused
+    "invalid model_ref". CONTROL: the same id WITHOUT the prefix is accepted.
+
+    THE ROOT IS NOT A HALLUCINATION, which is why this is repairable rather than a message problem.
+    `settings_list_models` — the tool the refusal itself points the caller to — returns each model as
+    an object whose id sits under the KEY `user_model_id`:
+    `{..., "user_model_id": "019ebb72-…", "provider_model_name": …}`. The model read the field name
+    and emitted KEY:VALUE. The id it needed was present and correct; it serialised the pair.
+
+    Fifth in the argument-form family, same decline-when-uncertain discipline. The condition is
+    deliberately tight, because a colon is ordinary punctuation in prose:
+
+    * the value must be EXACTLY `<bare_identifier>:<uuid>` — a title, a URL, "chapter 3: the flood"
+      and any prefix that is not an identifier all fail the pattern;
+    * the remainder must parse as a UUID, so nothing is stripped off a value whose tail is free text;
+    * the param must declare string-only (a param that also accepts an object is not this mistake).
+    """
+    if not isinstance(args_obj, dict) or not tool_def:
+        return []
+    params = (tool_def.get("function") or {}).get("parameters") or {}
+    props = params.get("properties") if isinstance(params, dict) else None
+    if not isinstance(props, dict):
+        return []
+    deprefixed: list[str] = []
+    for name, value in list(args_obj.items()):
+        if not isinstance(value, str):
+            continue
+        m = _FIELD_PREFIXED_ID.match(value.strip())
+        if not m or not _is_uuid(m.group(2)):
+            continue
+        spec = props.get(name)
+        if type(spec) is not dict:
+            continue
+        kinds = _flat_declared_types(spec)
+        if kinds is None:
+            continue
+        real = [t for t in kinds if t != "null"]
+        if not real or any(t != "string" for t in real):
+            continue
+        args_obj[name] = m.group(2)
+        deprefixed.append(name)
+    return deprefixed
+
+
 def _unwrap_object_items_for_string_array(args_obj: dict, tool_def: dict | None) -> list[str]:
     """Repair `entity_ids: [{"entity_id": "<uuid>", "status": "active"}]` -> `["<uuid>"]`.
 
@@ -5199,6 +5250,12 @@ async def _stream_with_tools(
                     )
                 # Sibling repair: a JSON NUMBER where the schema declares string-only. Same class,
                 # same discipline — see _stringify_int_args_declared_string.
+                _deprefixed = _strip_field_name_prefix_from_ids(args_obj, _tool_def_for_args)
+                if _deprefixed:
+                    logger.info(
+                        "stripped a field-name prefix from id arg(s) %s for %s (session=%s)",
+                        _deprefixed, c["name"], session_id,
+                    )
                 _objs = _unwrap_object_items_for_string_array(args_obj, _tool_def_for_args)
                 if _objs:
                     logger.info(
