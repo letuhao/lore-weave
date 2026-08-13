@@ -2705,7 +2705,7 @@ async def _stream_with_tools(
         # WHOLE category at once, so a re-list is a loop; track per-category list counts + the
         # per-turn total so a repeat switches to auto-load+steer and a persistent spammer gets
         # tool_list de-advertised (suppress_tool_list is read at the advertise chokepoint below).
-        listed_categories: dict[str, int] = {}
+        listed_categories: dict[tuple[str, bool], int] = {}
         # CP-0.2 — drops made by the TOKEN BUDGETER, accumulated here and flushed into the next
         # `advertised` chunk. This is the narrowing the column was built for and the one it first
         # shipped without: the other stages (oneshot, rail gate, failure breaker, permission mode)
@@ -3788,7 +3788,27 @@ async def _stream_with_tools(
                     # here backfired (the weak model retried harder, 28→311); this makes forward
                     # progress instead. Past the per-turn total, tool_list is also de-advertised
                     # (suppress_tool_list) — tool_load stays, so a specific tool is still reachable.
-                    if listed_categories.get(_norm_cat, 0) >= TOOL_LIST_CATEGORY_CAP:
+                    # T7-D5 — the repeat key must include `include_deprecated`, because the
+                    # two values return genuinely DIFFERENT lists. Keyed on the category alone,
+                    # `tool_list(book)` followed by `tool_list(book, include_deprecated=true)`
+                    # was classified as a loop and answered with a steer asserting "its complete
+                    # tool list is above, unchanged" — false, and the request went unanswered.
+                    #
+                    # MEASURED LIVE 2026-08-13 (session 019ff9fe), asked to compare the two:
+                    # the first call returned 16 current tools, the second was refused as a
+                    # repeat, and the model built its answer from the steer's auto-loaded set
+                    # instead. It produced a table with THE TWO COLUMNS INVERTED — the
+                    # deprecated tools under "Current Active", the current ones under "Including
+                    # Deprecated" — plus an invented explanation for the discrepancy.
+                    #
+                    # Harmless before T7-D1, when both values returned the same list and
+                    # "unchanged" was true. Once the default started hiding deprecated tools the
+                    # two requests diverged and the claim became a lie.
+                    #
+                    # This does not weaken F18: the flag is a boolean, so a category affords at
+                    # most two distinct keys, and TOOL_LIST_TOTAL_CAP still bounds the turn.
+                    _list_key = (_norm_cat, include_deprecated)
+                    if listed_categories.get(_list_key, 0) >= TOOL_LIST_CATEGORY_CAP:
                         from app.services.tool_surface import (
                             HOT_SEED_TOKEN_BUDGET,
                             budget_names_by_tokens_ex,
@@ -3799,6 +3819,34 @@ async def _stream_with_tools(
                             unavailable_providers=provider_availability(
                                 knowledge_client.get_catalog_meta(user_id)),
                         )
+                        # T7-D4 — the breaker must auto-load the SAME set the listing showed.
+                        #
+                        # `tool_load_result` labels legacy tools rather than dropping them,
+                        # which is right for `tool_load` (you ask for a name, you get it, with
+                        # its replacement attached). Here nobody asked: this is the runtime
+                        # picking tools on the model's behalf and then instructing it to "Call
+                        # one of them now". Recorded firing, 2026-08-13:
+                        #
+                        #   "Its tools are now LOADED and callable: book_chapter_save_draft,
+                        #    book_get, book_list_chapters, book_list_revisions, book_scene_get,
+                        #    book_steering_list, book_update_details"
+                        #
+                        # Four of those seven are deprecated. Before T7-D1 both halves showed
+                        # legacy and merely agreed; now the listing hides it and the breaker
+                        # would steer straight onto it — the runtime recommending the surface
+                        # its own listing had just withheld.
+                        #
+                        # An explicit `include_deprecated=true` is honoured: the caller asked
+                        # for the legacy surface, so the breaker keeps loading it.
+                        #
+                        # `loaded` is a list of NAMES; only the payload carries the
+                        # `deprecated` label, so the legacy set is read from there.
+                        if not include_deprecated:
+                            _legacy_loaded = {
+                                _t["name"] for _t in _load_payload.get("tools", [])
+                                if _t.get("deprecated")
+                            }
+                            loaded = [_n for _n in loaded if _n not in _legacy_loaded]
                         names_to_activate, _dropped_by_budget = budget_names_by_tokens_ex(
                             discovery_catalog or [], loaded,
                             token_budget=scale_by_window(HOT_SEED_TOKEN_BUDGET, context_length),
@@ -3870,7 +3918,7 @@ async def _stream_with_tools(
 
                     # First list of this category (within cap) — the complete, deterministic
                     # enumeration. Deprecated tools LABELED not dropped. No activation, no write.
-                    listed_categories[_norm_cat] = listed_categories.get(_norm_cat, 0) + 1
+                    listed_categories[_list_key] = listed_categories.get(_list_key, 0) + 1
                     payload = tool_list_result(
                         discovery_catalog or [],
                         category,
