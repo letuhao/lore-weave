@@ -31,6 +31,7 @@
 //! [`DEFERRED_READ_FORMS`], which `tests/spec_oracle.rs` reads.
 
 use crate::aggregate::DpAggregate;
+use crate::cache::CacheBackend;
 use crate::cache::KeyId;
 use crate::error::DpError;
 use crate::ids::{ChannelId, RealityId};
@@ -224,6 +225,78 @@ where
     }
 }
 
+/// `DP-X3` — READ-THROUGH: cache, then projection, then populate.
+///
+/// The four steps the spec numbers: compute the key (the caller's, via
+/// `dp::cache_key!`), `GET`, on miss read the projection, populate with the
+/// `DP-X7` TTL.
+///
+/// # The TIER decides whether a cache is consulted at all
+///
+/// `T0::CACHE_TTL` is `None` — `DP-X7` says T0 is *"not cached, in-proc only"*.
+/// That is not a runtime branch on a config value: `CACHE_TTL` is an associated
+/// const on the tier, so the decision belongs to the aggregate's own
+/// declaration and a T0 aggregate cannot be cached by mistake.
+///
+/// # A cache fault is not a read failure, and this is the one place that swallows one
+///
+/// `DP-X10`: a broken cache costs latency, not correctness — the projection is
+/// authoritative and the read continues. The error is deliberately DROPPED.
+/// What makes that honest rather than silent is that the same fault surfaces
+/// LOUDLY on the T3 write path, where it changes the answer rather than the
+/// speed.
+///
+/// # It caches the BYTES, not the projection
+///
+/// [`Encode`](crate::Encode) encodes a `Delta` — what a WRITE carries — and a
+/// `Projection` is what a read returns; they are different associated types on
+/// purpose. Inventing an `encode_projection` to bridge them would add a second
+/// serialisation of one aggregate, and two encoders are two things that can
+/// disagree about a byte. Caching what the backend produced means the cached
+/// form IS the stored form, and [`Decode`] is the only reader of either.
+pub fn read_through_reality<A, B, K>(
+    cache: &K,
+    backend: &B,
+    ctx: &SessionContext,
+    now_ms: Millis,
+    id: KeyId,
+    key: &str,
+) -> Result<A::Projection, DpError>
+where
+    A: DpAggregate<Scope = RealityScope> + Decode,
+    B: ReadBackend,
+    K: CacheBackend,
+{
+    ctx.check_live(now_ms)?;
+
+    let Some(ttl) = <A::Tier as Tier>::CACHE_TTL else {
+        // T0. Not cached, by DP-X7 — so this is the plain read, and the cache
+        // argument is unused rather than consulted-and-missed.
+        return read_projection_reality::<A, B>(backend, ctx, now_ms, id, key);
+    };
+
+    // A FAULT is neither a hit nor a miss; DP-X10 says degrade either way.
+    if let Ok(Some(bytes)) = cache.get(key) {
+        return A::decode(&bytes);
+    }
+
+    let req = ReadRequest {
+        reality: ctx.reality_id(),
+        aggregate_type: A::TYPE_NAME,
+        aggregate_id: id,
+        cache_key: key,
+        channel: None,
+    };
+    let bytes = backend.fetch(&req)?.ok_or(DpError::AggregateNotFound {
+        aggregate: A::TYPE_NAME,
+        id: req.aggregate_id.as_str().to_string(),
+    })?;
+    // Best-effort, same DP-X10 reason: a cache that cannot be written is a slow
+    // cache, not a wrong one.
+    let _ = cache.set(key, &bytes, ttl);
+    A::decode(&bytes)
+}
+
 /// The tier a read is served under, for telemetry and for `DP-X1`'s coherency
 /// promise.
 ///
@@ -238,7 +311,7 @@ pub fn read_tier<A: DpAggregate>() -> crate::tier::TierLevel {
 mod tests {
     use super::*;
     use crate::session::{BindRequest, ControlPlane, VerifiedBind};
-    use crate::tier::{TierLevel, T2};
+    use crate::tier::{TierLevel, T0, T2};
 
     struct Prof;
     impl DpAggregate for Prof {
@@ -429,5 +502,147 @@ mod tests {
     #[test]
     fn the_read_tier_is_the_aggregates_declared_tier() {
         assert_eq!(read_tier::<Prof>(), TierLevel::T2);
+    }
+    // ── DF3: the DP-X3 read-through ─────────────────────────────────────────
+
+    use core::cell::RefCell;
+
+    /// Records what it was asked, so a test can assert the SEQUENCE, not just
+    /// the answer. `DP-X3` is an ordering claim — cache, then projection, then
+    /// populate — and an assertion on the returned value alone cannot tell a
+    /// read-through from a read.
+    #[derive(Default)]
+    struct SpyCache {
+        stored: RefCell<Vec<(String, Vec<u8>)>>,
+        hit: Option<Vec<u8>>,
+        faulty: bool,
+        gets: RefCell<usize>,
+    }
+
+    impl crate::cache::CacheBackend for SpyCache {
+        fn get(&self, _key: &str) -> Result<Option<Vec<u8>>, DpError> {
+            *self.gets.borrow_mut() += 1;
+            if self.faulty {
+                return Err(DpError::CircuitOpen { service: "redis".into() });
+            }
+            Ok(self.hit.clone())
+        }
+        fn set(&self, key: &str, value: &[u8], _ttl: core::time::Duration) -> Result<(), DpError> {
+            if self.faulty {
+                return Err(DpError::CircuitOpen { service: "redis".into() });
+            }
+            self.stored.borrow_mut().push((key.to_string(), value.to_vec()));
+            Ok(())
+        }
+        fn del(&self, _key: &str) -> Result<(), DpError> {
+            Ok(())
+        }
+    }
+
+    /// A backend that counts its reads, so "the cache was actually used" is a
+    /// measurement rather than an inference.
+    struct CountingStore(RefCell<usize>, Vec<u8>);
+    impl ReadBackend for CountingStore {
+        fn fetch(&self, _req: &ReadRequest<'_>) -> Result<Option<Vec<u8>>, DpError> {
+            *self.0.borrow_mut() += 1;
+            Ok(Some(self.1.clone()))
+        }
+    }
+
+    /// `DP-X3` — a MISS reads the projection and POPULATES the cache.
+    #[test]
+    fn a_miss_reads_the_projection_and_populates_the_cache() {
+        let ctx = ctx();
+        let key = crate::cache_key!(&ctx, T2, Prof, 7u64);
+        let store = CountingStore(RefCell::new(0), 42u32.to_le_bytes().to_vec());
+        let cache = SpyCache::default();
+
+        let got = read_through_reality::<Prof, _, _>(
+            &cache, &store, &ctx, 0, KeyId::from(7u64), &key,
+        )
+        .expect("read");
+
+        assert_eq!(got, 42, "the projection came back");
+        assert_eq!(*store.0.borrow(), 1, "the store WAS read — this was a miss");
+        let stored = cache.stored.borrow();
+        assert_eq!(stored.len(), 1, "and the cache was populated (DP-X3 step 4)");
+        assert_eq!(stored[0].0, key, "under the DP-K7 key the caller computed");
+        assert_eq!(stored[0].1, 42u32.to_le_bytes(), "with the STORED BYTES, not a re-encoding");
+    }
+
+    /// A HIT does not touch the store at all — the point of the cache.
+    #[test]
+    fn a_hit_does_not_read_the_projection() {
+        let ctx = ctx();
+        let key = crate::cache_key!(&ctx, T2, Prof, 7u64);
+        let store = CountingStore(RefCell::new(0), 1u32.to_le_bytes().to_vec());
+        let cache = SpyCache { hit: Some(9u32.to_le_bytes().to_vec()), ..Default::default() };
+
+        let got = read_through_reality::<Prof, _, _>(
+            &cache, &store, &ctx, 0, KeyId::from(7u64), &key,
+        )
+        .expect("read");
+
+        assert_eq!(got, 9, "the CACHED value, not the store's 1");
+        assert_eq!(*store.0.borrow(), 0, "the store was never touched");
+    }
+
+    /// `DP-X10` — a FAULTY cache degrades to the projection. It does not fail.
+    ///
+    /// This is the one place in the crate that swallows an error, so it gets an
+    /// explicit witness: a read against a cache that returns `CircuitOpen` must
+    /// still return the value.
+    #[test]
+    fn a_faulty_cache_degrades_to_the_projection_rather_than_failing() {
+        let ctx = ctx();
+        let key = crate::cache_key!(&ctx, T2, Prof, 7u64);
+        let store = CountingStore(RefCell::new(0), 5u32.to_le_bytes().to_vec());
+        let cache = SpyCache { faulty: true, ..Default::default() };
+
+        let got = read_through_reality::<Prof, _, _>(
+            &cache, &store, &ctx, 0, KeyId::from(7u64), &key,
+        )
+        .expect("DP-X10: a broken cache costs latency, not correctness");
+
+        assert_eq!(got, 5, "served from the projection");
+        assert_eq!(*store.0.borrow(), 1, "which was read despite the cache fault");
+        assert!(cache.stored.borrow().is_empty(), "and populating it also failed, harmlessly");
+    }
+
+    /// `DP-X7` — T0 is NOT CACHED, and the tier decides that, not a config.
+    ///
+    /// `T0::CACHE_TTL` is `None`, so the cache must not even be consulted. A
+    /// `get` here would be a wasted round trip on the one tier defined as
+    /// in-process only.
+    #[test]
+    fn a_t0_aggregate_never_consults_the_cache() {
+        struct Ephemeral;
+        impl DpAggregate for Ephemeral {
+            type Tier = crate::tier::T0;
+            type Scope = RealityScope;
+            type Id = u64;
+            type Delta = ();
+            type Projection = u32;
+            const TYPE_NAME: &'static str = "t0_read_through_fixture";
+        }
+        impl Decode for Ephemeral {
+            fn decode(b: &[u8]) -> Result<u32, DpError> {
+                Ok(u32::from_le_bytes(b.try_into().unwrap()))
+            }
+        }
+
+        let ctx = ctx();
+        let key = crate::cache_key!(&ctx, T0, Ephemeral, 1u64);
+        let store = CountingStore(RefCell::new(0), 3u32.to_le_bytes().to_vec());
+        let cache = SpyCache::default();
+
+        let got = read_through_reality::<Ephemeral, _, _>(
+            &cache, &store, &ctx, 0, KeyId::from(1u64), &key,
+        )
+        .expect("read");
+
+        assert_eq!(got, 3);
+        assert_eq!(*cache.gets.borrow(), 0, "DP-X7: T0 is not cached, so it is not CONSULTED");
+        assert!(cache.stored.borrow().is_empty(), "nor populated");
     }
 }

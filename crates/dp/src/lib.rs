@@ -90,7 +90,7 @@ pub mod tier;
 pub const DEFAULT_SDK_EVENT_TYPE: &str = "dp.write.applied";
 
 pub use aggregate::{requires_channel, tier_row, DpAggregate, TierRow};
-pub use cache::KeyId;
+pub use cache::{CacheBackend, KeyId};
 pub use error::DpError;
 pub use ids::{ChannelId, NodeId, RealityId, ServiceIdentity, SessionId};
 pub use session::{
@@ -98,7 +98,7 @@ pub use session::{
     SessionContext, VerifiedBind, REFRESH_LEAD_MS,
 };
 pub use read::{
-    read_projection_channel, read_projection_reality, read_tier, Decode, ReadBackend, ReadRequest,
+    read_projection_channel, read_projection_reality, read_tier, Decode, ReadBackend, ReadRequest, read_through_reality,
 };
 pub use write::{
     t0_write, t1_write, t2_write, t2_write_channel, t3_write, t3_write_channel, Encode,

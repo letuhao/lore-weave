@@ -58,7 +58,10 @@
 //! first draft put `{channel}` after `{typ}`, which reads just as sensibly and
 //! is wrong, and nothing but the doc could have said so.
 
+use core::time::Duration;
+
 use crate::aggregate::DpAggregate;
+use crate::error::DpError;
 use crate::scope::{RealityScope, Scope};
 use crate::session::SessionContext;
 use crate::tier::Tier;
@@ -123,6 +126,45 @@ impl From<i64> for KeyId {
     fn from(n: i64) -> Self {
         Self(n.to_string())
     }
+}
+
+/// The CACHE seam (`DP-X3`) — the third, alongside [`crate::ReadBackend`] and
+/// [`crate::WriteBackend`].
+///
+/// # Why `dp` holds a trait and not a Redis client
+///
+/// `01_scope_and_boundary.md §2.4` lists *"Direct Redis access for T0–T2 reads
+/// and cache"* among the SDK's jobs, and this crate declares no I/O. So the SDK
+/// owns the read-through ALGORITHM (`DP-X3`) and the backend owns the socket.
+/// `crate-purity-gate` pins this crate's externals to `{uuid}`, which is what
+/// makes the split structural rather than a convention.
+///
+/// Measured before it was written: **`redis` appeared in exactly one Cargo.toml
+/// in the Rust tree — `commit-service`, for its proposal bus — and in zero DP
+/// crates.** Every tier therefore collapsed to the durable path, which made
+/// `DP-T0..T3` a taxonomy with one implementation.
+///
+/// # A FAILURE is not a MISS, and `DP-X10` is why that distinction is load-bearing
+///
+/// On cache failure a READ degrades silently to the projection, a **T2 write
+/// continues** (the outbox is authoritative), and a **T3 write returns
+/// `DpError::CircuitOpen { service: "redis" }`** because it cannot fan out its
+/// invalidation. Collapsing an error into `Ok(None)` would make that third case
+/// unrepresentable: the write would ack having invalidated nothing, which is
+/// exactly the guarantee `DP-X1` says T3 exists to provide.
+pub trait CacheBackend {
+    /// `Ok(Some)` hit · `Ok(None)` clean miss · `Err` the cache is FAULTY.
+    fn get(&self, key: &str) -> Result<Option<Vec<u8>>, DpError>;
+
+    /// Populate after a miss (`DP-X3` step 4).
+    ///
+    /// `ttl` comes from [`crate::Tier::CACHE_TTL`], parsed out of `DP-X7`'s
+    /// table by `tests/spec_oracle.rs` — so the number cannot drift from the
+    /// locked document without a test going red.
+    fn set(&self, key: &str, value: &[u8], ttl: Duration) -> Result<(), DpError>;
+
+    /// Drop one entry (`DP-X2` invalidation).
+    fn del(&self, key: &str) -> Result<(), DpError>;
 }
 
 /// Build a reality-scoped cache key. **Call it through [`crate::cache_key!`].**
