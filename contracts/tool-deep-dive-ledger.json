@@ -1035,6 +1035,14 @@
       "cycle": 28,
       "group": "A#1 among unconcluded (0 live, 43 total, 252 calls)",
       "note": "PROVEN, one defect (T28-D1) fixed. The most-called tool concluded so far (252 calls). Its 43 failures are ALL correct refusals: 33 missing `query` or missing `book_id`+`query` on a single day, plus repeat-guards and this loop's own blank-argument calls. LIVE (session 019ff929, editor surface). Asked 'search this book's glossary for a character called Thorne Ravensgard. Is he in the glossary?', the model called glossary_search with book_id OMITTED — the ambient path — and answered 'No, Thorne Ravensgard is not in the glossary. The search returned no matches for that name.' Before the fix that same call returned four unrelated entities with nothing to say they were not matches. DATA (owning store loreweave_glossary.glossary_entities), against a book whose four entities were created earlier in this session: searching 'Elara' returns exactly that entity at tier='exact'; 'map' returns exactly that one; limit=1 returns one. FALSIFIER: a different entity, or more than the store holds, would refute it. SHIP - the ambient contract and refusals swept: a missing query is refused by the validator naming the property; book_id omitted with NO ambient book fails closed with 'book_id is required (a UUID)'; book_id omitted WITH X-Book-Id resolves and returns the same result, so the optional declaration is properly paired; a stranger gets 'book not accessible'; limit clamps. THE DEFECT WAS THE NO-MATCH CASE (T28-D1): a query matching nothing returned the recent fallback in the same array, same shape, with no signal — measured here on 'zzzznotathing' and in cycle 10 on a real character name that returned unrelated EVENTS as top results."
+    },
+    "book_update_details": {
+      "state": "proven",
+      "provider": "book",
+      "tier": "W (scope book)",
+      "cycle": 29,
+      "group": "A#1 among unconcluded (0 live, 36 total, 60 calls)",
+      "note": "PROVEN with NO defect — the first WRITE tool concluded in this loop, and its Tier-W gate is proven end to end. All 36 failures are correct refusals: 16 calls passed ONLY book_id and got 'no fields to update'; 9 'book not accessible'; 8 'book_id must be a UUID'; 3 the repeated-failure guard. LIVE (book-scoped studio surface of the throwaway book 019ffa27 — a THROWAWAY by rule, since this tool writes). From 'Set this book's description to: A throwaway probe book used by the tool deep-dive loop', the model called book_update_details with the book_id it resolved and the description taken from the prose, and the Tier-W confirm card was APPROVED IN THE BROWSER. DATA (owning store loreweave_book.books), with the pre-state pinned BEFORE the run: description went from EMPTY to exactly 'A throwaway probe book used by the tool deep-dive loop.', updated_at stamped 13:15:15, and the TITLE unchanged. FALSIFIER: an unchanged description would mean the confirm did nothing; a changed title would mean the tool wrote fields nobody asked for. Neither happened. 🔴 THE GATE IS PROVEN BY THE ORDER OF TWO MEASUREMENTS, not by its presence. Called directly with a real description, the tool minted a confirm_token and the store was STILL EMPTY afterwards — a card is not a write. Only after the card was confirmed in the browser did the value appear. That is the contrast with OBS-T22, where book_chapter_save_draft's STANDING approval let an unrequested write land with no card at all. SHIP: 'no fields to update' for a call carrying only book_id (exactly the 16-call recorded mode, and the right answer — a write tool asked to write nothing must refuse rather than touch the row); 'book_id must be a UUID' for a non-UUID; 'book not accessible' for a stranger, the same answer a nonexistent book gets. NOTED: title, description, original_language, summary and genre_tags all carry NO jsonschema description — only the tool-level prose explains them. The tool-level description is unusually explicit ('This is the ONLY home for a book's description, blurb or summary'), which is probably why it has 15 synonyms and why the model reached it correctly on the first try."
     }
   },
   "defects": {
@@ -1338,9 +1346,9 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 28,
+    "tools_concluded": 29,
     "tools_in_cycle": 0,
-    "tools_proven": 28,
+    "tools_proven": 29,
     "tools_blocked": 0,
     "defects_proven": 20,
     "defects_open": 0,
