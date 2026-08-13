@@ -191,6 +191,55 @@ export class KalReadController {
     };
   }
 
+  // cast-by-ids — the SAME projection as `cast`, keyed by an id list (T38 B5).
+  //
+  // B1 argued that `entities/by-ids` "stays because it answers a different question — these
+  // specific entities, not a page of this book". That is still true, and it is exactly why
+  // this exists: the question is legitimate and the KAL had no way to ask it, so FIVE of the
+  // eight remaining pinned call sites were reaching past the boundary to glossary's
+  // `/internal/.../entities/by-ids` because there was nowhere else to go. A boundary with a
+  // hole in it is not a boundary; consumers route around it and the gate records them forever.
+  //
+  // POST, not GET, and not a query param on `cast`: an id list is unbounded in principle, and
+  // a caller pinning 200 entities would build a URL long enough to be truncated by something
+  // in the middle — silently, and as a shorter answer rather than an error.
+  @Post('cast/by-ids')
+  async castByIds(
+    @Param('bookId') bookId: string,
+    @Body() body: { entity_ids?: string[]; language?: string },
+    @Req() req: InboundReq,
+  ) {
+    const ids = Array.isArray(body?.entity_ids) ? body.entity_ids : [];
+    // An empty request is not an error and must not become "the whole book": that inversion
+    // would turn a no-op pin into a full-cast read on every empty call.
+    if (ids.length === 0) return { items: [] };
+    const payload: Record<string, unknown> = { entity_ids: ids };
+    if (body?.language) payload.language = body.language;
+    const data = (await glossary.post(
+      `/internal/books/${bookId}/entities/by-ids`,
+      payload,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    const raw = (data?.items as Array<Record<string, unknown>>) ?? [];
+    // Same projection as `cast` — one shape for one concept. A second, subtly different entity
+    // shape on the same boundary is how a consumer ends up reading `name` from one route and
+    // `cached_name` from the other and finding they disagree.
+    return {
+      items: raw.map((e) => ({
+        entity_id: e.entity_id,
+        name: e.cached_name ?? e.name ?? null,
+        cached_name: e.cached_name ?? e.name ?? null,
+        kind: e.kind_code ?? e.kind ?? null,
+        aliases: Array.isArray(e.aliases)
+          ? e.aliases
+          : Array.isArray(e.cached_aliases)
+            ? e.cached_aliases
+            : [],
+        short_description: e.short_description ?? null,
+      })),
+    };
+  }
+
   // state — the book-wide as-of read (AC1/AC2). One value per (entity, attribute) at story
   // position N, across the whole cast.
   //

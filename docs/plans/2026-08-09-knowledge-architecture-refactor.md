@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B5` — `worker-ai/clients.py` (LIST + by-ids in one file), then T51/T39/T40 unchain.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B4 DONE:** the KAL grew `cast` (declared in the frozen `kal.v1.yaml`) and two consumers migrated — **`authored-catalog-reader-gate` 10 → 8 call sites**. B4's live smoke caught a bug the unit tests agreed with: the gateway read `cached_aliases` (the by-ids shape) while the LIST endpoint returns `aliases`, so every alias list came back EMPTY — **36 forms → 44** after the fix. `KNOWLEDGE_GATEWAY_URL` was set for no service in compose and is now set for translation-service **and its worker**. See **▶ EXECUTION PLAN** below.
+**RESUME: `B6` — migrate `worker-ai/clients.py` (both reads now have a KAL destination).**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B5 DONE:** the KAL grew `cast` **and** `cast/by-ids`, both declared in the frozen `kal.v1.yaml`; two consumers migrated — **`authored-catalog-reader-gate` 10 → 8 call sites**. B5 built a destination rather than migrating one caller through a gap: **five** of the eight remaining sites are `by-ids` reads that had nowhere to go. The gate is unchanged at 7/8 by design — B5 shipped no migration. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6545,6 +6545,74 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ---
+  ### ✅ B5 2026-08-13 — the KAL grows `cast/by-ids`, because **five** pinned sites needed it, not one
+
+  ```
+  authored-catalog-reader-gate   7 files / 8 call sites   (UNCHANGED — and correctly so, see below)
+  ```
+
+  🔴 **B5 was scoped as "migrate `worker-ai/clients.py`". Measuring it first changed the batch.**
+  That file holds a LIST read **and** a by-ids read, so its pin cannot come off until both move
+  — and **the KAL had no by-ids surface at all**. Nor is that one file's problem: of the eight
+  remaining pinned call sites, **five are `entities/by-ids`** (composition, knowledge,
+  translation, and worker-ai). They were all reaching past the boundary for the same reason —
+  there was nowhere else to go.
+
+  **A boundary with a hole in it is not a boundary.** Consumers route around it, and the gate
+  records them forever as if they were the problem. So B5 built the missing rung instead of
+  migrating one caller through a gap that would have re-opened for the next four.
+
+  `POST /v1/kal/books/{book_id}/cast/by-ids` — same `CastEntry` projection as `cast`, declared
+  in the frozen `kal.v1.yaml` in this commit.
+
+  **Two decisions worth stating, because each has a silent failure on the other side:**
+
+  * **POST, not a query param on `cast`.** An id list is unbounded in principle; a caller
+    pinning 200 entities builds a URL long enough to be truncated by something in the middle —
+    **silently, and as a SHORTER answer rather than an error**.
+  * **An empty `entity_ids` is a no-op, never "the whole book".** That inversion turns a no-op
+    pin into a full-cast read on every empty call: expensive, and invisible, because the answer
+    looks richer rather than wrong.
+
+  * **One shape for one concept.** `by-ids` returns exactly `cast`'s projection. A second,
+    subtly different entity shape on the same boundary is how a consumer ends up reading `name`
+    from one route and `cached_name` from the other and finding they disagree.
+
+  ⚠️ **The gate did NOT move, and claiming otherwise would be the error this batch exists to
+  avoid.** B5 built a destination; it migrated no consumer. `worker-ai/clients.py` can now move
+  both of its reads — that is B6's, and the pin comes off then. **`authored-catalog-reader-gate`
+  reads 7/8 before and after**, which is the honest number.
+
+  **BITE:**
+
+  ```
+  the empty-id-list guard removed
+     × an EMPTY id list is a no-op, never "the whole book"
+       (the mock fetch was called — an empty pin would have hit glossary for the full cast)
+  ```
+
+  **QC (a) gates:** `gateway-domain-logic-gate` PASS — the route shapes a projection and
+  forwards a body; it decides nothing. `authored-catalog-reader-gate` PASS at 7/8, unchanged
+  and correctly so.
+  **QC (b) the seam:** `knowledge-gateway` rebuilt, then driven live against the acceptance
+  book through gateway → glossary:
+
+  ```
+  requested: 3 | returned: 3
+  same keys as cast: True          <- the one-shape rule, checked rather than asserted
+  empty list -> {'items': []}      <- and no downstream call was made
+  ```
+
+  **QC (c) real data:** the three entities above are real rows of the acceptance book.
+
+  ```
+  Test Suites: 6 passed · Tests: 32 passed — knowledge-gateway
+  ```
+
+  **What B6 inherits:** five by-ids consumers now have a destination. `worker-ai/clients.py`
+  needs a `knowledge_gateway_url` in its config **and** in compose for both its service and its
+  worker — B4 established that pattern and the reason it matters.
+
   ### ✅ B4 2026-08-13 — second consumer migrated, and **the live smoke caught a bug the unit tests could not**
 
   ```

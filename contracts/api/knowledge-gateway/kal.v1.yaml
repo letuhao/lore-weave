@@ -273,6 +273,46 @@ paths:
                   truncated: { type: boolean, description: "True while more pages remain; NEVER inferred by the caller" }
         '401': { $ref: '#/components/responses/Unauthorized' }
 
+  /v1/kal/books/{book_id}/cast/by-ids:
+    parameters:
+      - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      tags: [reads]
+      summary: cast/by-ids — the cast projection, keyed by an id list (T38)
+      description: |
+        The same `CastEntry` projection as `cast`, for "these specific entities" rather than "a page of
+        this book". Both questions are legitimate — the KAL simply had no way to ask the second, so FIVE
+        pinned call sites reached past the boundary to glossary's `/internal/.../entities/by-ids` because
+        there was nowhere else to go. A boundary with a hole in it is not a boundary.
+
+        POST rather than a query param: an id list is unbounded in principle, and a caller pinning 200
+        entities would build a URL long enough to be truncated somewhere in the middle — silently, and as
+        a SHORTER answer rather than an error.
+
+        An empty `entity_ids` returns `{items: []}` and makes no downstream call. It must never be read
+        as "the whole book": that inversion turns a no-op pin into a full-cast read on every empty call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entity_ids]
+              properties:
+                entity_ids: { type: array, items: { type: string, format: uuid } }
+                language: { type: string, description: "Optional; augments aliases with that language's set" }
+      responses:
+        '200':
+          description: The requested entities, in the same shape `cast` returns
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items: { type: array, items: { $ref: '#/components/schemas/CastEntry' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
   /v1/kal/books/{book_id}/state:
     parameters:
       - { name: book_id, in: path, required: true, schema: { type: string, format: uuid } }

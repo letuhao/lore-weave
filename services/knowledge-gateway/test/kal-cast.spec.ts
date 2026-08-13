@@ -125,4 +125,43 @@ describe('KalReadController.cast', () => {
 
     expect(out.truncated).toBe(false);
   });
+
+  // ── cast/by-ids (T38 B5) ──────────────────────────────────────────────────
+
+  it('by-ids returns the SAME projection as cast, so one concept has one shape', async () => {
+    fetchMock.mockResolvedValue(ok({ items: [{
+      entity_id: 'e1', cached_name: 'Kai', kind_code: 'character',
+      cached_aliases: ['the heir'], short_description: 'the betrayed heir',
+    }] }));
+    const ctrl = new KalReadController();
+
+    const out = (await ctrl.castByIds('b1', { entity_ids: ['e1'] }, { headers: {}, kalUserId: 'u' } as never)) as {
+      items: Array<Record<string, unknown>>;
+    };
+
+    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain('/internal/books/b1/entities/by-ids');
+    expect(JSON.parse(String(init.body))).toEqual({ entity_ids: ['e1'] });
+    expect(out.items[0]).toEqual({
+      entity_id: 'e1',
+      name: 'Kai',
+      cached_name: 'Kai',
+      kind: 'character',
+      aliases: ['the heir'],
+      short_description: 'the betrayed heir',
+    });
+  });
+
+  it('an EMPTY id list is a no-op, never "the whole book"', async () => {
+    // The inversion this guards against turns a no-op pin into a full-cast read on every
+    // empty call — expensive, and invisible because the answer looks richer, not wrong.
+    const ctrl = new KalReadController();
+
+    const out = (await ctrl.castByIds('b1', { entity_ids: [] }, { headers: {}, kalUserId: 'u' } as never)) as {
+      items: unknown[];
+    };
+
+    expect(out.items).toEqual([]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
