@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A7` — the remaining class (a) constants, then hand T17 back for re-ordering.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0–A6 DONE.** Gate: ceiling **64 → 59**, floor **14 → 17**; conformance **40 → 67 passed / 9 skipped**. `D-T17-SWEEP-IS-NOT-MECHANICAL` is measured and holding: class (a) yielded ONE freed module because most constant-importers also call vector operations **T25 deletes**. **A second PO question is now owed** — whether T17's remainder should be re-ordered behind **T25** (vector) and **T35** (identity), which is where 56 of the 59 remaining bindings actually live. See **▶ EXECUTION PLAN** below.
+**RESUME: `B3` — migrate the first pinned consumers onto `cast`; the reader gate shrinks per consumer.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 DONE** (gate ceiling **64 → 59**, floor **14 → 17**; conformance **40 → 67**); **A7+ is HELD** on a scoping decision — `D-T17-SWEEP-IS-NOT-MECHANICAL` measured that 56 of the 59 remaining bindings live in **T25** (vector) and **T35** (identity) work, so A's remainder should likely be re-ordered behind them. Workstream **B is unblocked by both** and is where execution continues: **B1+B2 DONE** — the KAL grew `GET /v1/kal/books/{book_id}/cast`, the detail read T38's census showed was missing (0 of 10 consumers could use `roster`), with an EXPLICIT `truncated` flag. B3 moves the first consumers and owes the live smoke B2 could not have. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6544,6 +6544,73 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The measurement file records both coverages side by side, so the disagreement is visible rather than inferable. Any future run that reports a flow-level `canon_consistency` contradicts this row and closes it. |
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
+  ---
+  ### ✅ B1+B2 2026-08-13 — the KAL grows `cast`, the detail read T38's census said was missing
+
+  B1 was a design batch, and design alone is a prose-only cycle — so the contract and the
+  surface ship together. `GET /v1/kal/books/{book_id}/cast`, five specs, both invariants bitten.
+
+  **The contract, and every field justified by a pinned consumer** (T38's census, not a guess):
+
+  ```
+  entity_id          every consumer
+  name               roster's meaning, kept identical so a caller can move between the two reads
+  cached_name        worker-ai/clients.py:1179 asks for it BY THAT NAME
+  kind               lore-enrichment/clients/glossary.py:173, worker-ai/clients.py:1126
+  aliases            translation/workers/mention_backfill.py:93 (surface forms),
+                     worker-ai/clients.py:1126
+  short_description  lore-enrichment/clients/glossary.py:173
+  next_cursor        roster's keyset, unchanged
+  truncated          NEW — see below
+  ```
+
+  **Why it sits BESIDE `roster` and `entities/by-ids` rather than replacing either** — the
+  overlap resolved on purpose, which is B1's stated acceptance:
+
+  * **`roster` stays projection-restricted.** It is the enumeration every indexing pass drains
+    end-to-end; putting aliases and descriptions on that path would make the widening a cost
+    paid by readers that never asked for it.
+  * **`entities/by-ids` stays too.** It is a POST keyed by an id LIST — *"these specific
+    entities"* — which is a different question from *"a page of this book"*. Four of the ten
+    pinned consumers use it precisely because they already hold ids.
+  * **`cast` is the page-shaped detail read**: `roster`'s cursor, the projection those consumers
+    actually read, one book.
+
+  🎯 **`truncated` is returned EXPLICITLY, and that is the design decision worth defending.** A
+  caller that infers completeness from `items.length < limit` is guessing, and the guess is
+  wrong exactly when the upstream capped it. That silent truncation is not hypothetical here —
+  it is recorded in `_cast_roster`'s own docstring: the prior path *"read only the first page
+  and ignored `next_cursor`, silently truncating the cast at ~100 — so a deep book's planner
+  saw an incomplete roster."* An honest cap is a field, not a convention.
+
+  **BITE ×2:**
+
+  ```
+  1. truncated: data?.next_cursor != null   ->   truncated: false
+     × reports truncation EXPLICITLY, so no caller has to infer it from a short page
+       Expected: true   Received: false
+
+  2. aliases: Array.isArray(...) ? ... : []  ->  aliases: e.cached_aliases
+     × defaults the projection safely when the upstream omits a field
+  ```
+
+  The fifth spec is the counterweight to bite 1: without *"is not truncated when the upstream
+  drained to the end"*, a hard-coded `truncated: true` would satisfy the truncation test and
+  every consumer would drain forever.
+
+  **QC (a) gates:** `gateway-domain-logic-gate` PASS — `cast` shapes a projection and forwards
+  the cursor; it decides nothing. `authored-catalog-reader-gate` PASS, **still 9 files / 10 call
+  sites**: correctly unchanged, because B2 builds the destination and B3–B4 move the consumers.
+  The baseline shrinks per consumer, not per endpoint.
+  **QC (b) the seam:** gateway → glossary-service, and the 30-test gateway suite drives the
+  controller with a mocked `fetch` at that seam. **A live smoke is owed at B3**, when the first
+  real consumer calls it — a new endpoint with no caller cannot be smoke-tested through one.
+  **QC (c) real data:** N/A — no data produced; the read is a projection of glossary rows.
+
+  ```
+  Test Suites: 6 passed · Tests: 30 passed — knowledge-gateway
+  ```
+
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
 

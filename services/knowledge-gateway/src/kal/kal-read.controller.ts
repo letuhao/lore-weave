@@ -130,6 +130,57 @@ export class KalReadController {
     return { items, next_cursor: data?.next_cursor ?? null };
   }
 
+  // cast — the DETAIL read (T38 B1/B2). `roster` answers "who is in this book" with
+  // id+name+kind; every one of T38's ten pinned consumers needs more than that, which is why
+  // 0 of 10 could migrate onto `roster` and four of them went straight to the glossary's
+  // `entities/by-ids` instead. This is the missing rung.
+  //
+  // ── WHY IT SITS BESIDE `roster` AND `by-ids` RATHER THAN REPLACING EITHER ────────────────
+  // `roster` is DELIBERATELY projection-restricted and drains a whole book; widening it would
+  // put aliases and descriptions on the enumeration path every indexing pass walks. And
+  // `entities/by-ids` is a POST keyed by an id LIST — a different question ("these specific
+  // entities"), not a page of a book. `cast` is the page-shaped detail read: same keyset
+  // cursor as `roster`, richer projection, one book.
+  //
+  // ── THE HONEST CAP ──────────────────────────────────────────────────────────────────────
+  // `truncated` is returned EXPLICITLY rather than left to be inferred from a short page. A
+  // caller that stops when `items.length < limit` is guessing, and the guess is wrong exactly
+  // when the upstream capped it — the silent-truncation shape that once cut a deep book's cast
+  // at ~100 and reported a complete-looking count.
+  @Get('cast')
+  async cast(
+    @Param('bookId') bookId: string,
+    @Query('cursor') cursor: string | undefined,
+    @Query('limit') limit: string | undefined,
+    @Req() req: InboundReq,
+  ) {
+    const qs = new URLSearchParams();
+    if (cursor) qs.set('cursor', cursor);
+    if (limit) qs.set('limit', limit);
+    const data = (await glossary.get(
+      `/internal/books/${bookId}/entities?${qs.toString()}`,
+      ctxFromReq(req),
+    )) as Record<string, unknown>;
+    const raw = (data?.items as Array<Record<string, unknown>>) ?? [];
+    const items = raw.map((e) => ({
+      entity_id: e.entity_id,
+      // `name` keeps `roster`'s meaning so a consumer can move between the two reads without
+      // relearning the field; `cached_name` is carried as well because two of the pinned
+      // consumers ask for it BY THAT NAME and silently dropping it would look like a null.
+      name: e.name ?? e.cached_name ?? null,
+      cached_name: e.cached_name ?? e.name ?? null,
+      kind: e.kind_code ?? e.kind ?? null,
+      aliases: Array.isArray(e.cached_aliases) ? e.cached_aliases : [],
+      short_description: e.short_description ?? null,
+    }));
+    return {
+      items,
+      next_cursor: data?.next_cursor ?? null,
+      // Explicit, never inferred. See the cap note above.
+      truncated: data?.next_cursor != null,
+    };
+  }
+
   // state — the book-wide as-of read (AC1/AC2). One value per (entity, attribute) at story
   // position N, across the whole cast.
   //
