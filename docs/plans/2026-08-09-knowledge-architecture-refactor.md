@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T32` — the reveal axis, now that `facts_for` exists to serve it (SPEC §1.1).** ✅ `A8` · ✅ `T24b` (both halves) · ✅ `T25 ②` the cutover switch, proved live: the same three hits, same top, same score, from **two different engines** — and the T25b tripwire fired on the argument swap, which is why the cutover is PER SCOPE (SPEC §3.3). **T25 ③** (dropping the Neo4j indexes) is not code: it needs the soak and QC-3's rebuild measurement above 65 536 vectors.
+**RESUME: `T35` — opaque identity (SPEC §4.1), which §6.1 sequences FIRST in Phase 5 (`T35 → T36 → T37 → T32/T33 → QC-6`). Its remaining work is the five callers pinned by `derived-entity-id-gate`, and its own gate warns that half-migrating a live graph is worse than not starting — so take it with a fresh context.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9`. port-adoption-gate **64 → 57** this session; conformance **40 → 82**. ⚠️ A9 measured that ALL of class (a) moves the ceiling by **zero** — both shared constants already live in `app/domain/`, and a module falls off only when its LAST repo import goes. Fourteen modules are ONE import from clean; that list is the batch queue, not the constants.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -7749,6 +7749,90 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   the right reason on a real deployment) and QC-3's rebuild measurement above
   `diskann.min_vectors_for_parallel_build = 65536`, without which there is no defensible RTO.
   Both are measurements on a running system, and QC-3 is where the plan runs them.
+
+
+  ### ✅ A9 2026-08-13 — the entity vector read migrates; **class (a) measured to move ZERO**
+
+  ```
+  port-adoption-gate   ceiling 58 -> 57   floor 17 (unchanged)   unit 4226 -> 4228
+  ```
+
+  🔧 **Rule 8 killed the batch I was going to run.** A6's note says the remainder splits by
+  class and that class (a) — *"constants out of the engine layer, cheap, the A4/A5 shape,
+  ~12 modules"* — is the safe next step. Measured by AST before writing anything:
+
+  ```
+  SUPPORTED_PASSAGE_DIMS      9 importers   already defined in app/domain/passage_contract.py
+  EVENT_ORDER_CHAPTER_STRIDE  2 importers   already defined in app/domain/graph_models.py
+
+  modules that BECOME CLEAN by repointing both: 0
+  modules that keep other repo imports:        11
+  ```
+
+  **Both constants already live in `app/domain/`** — the repo layer merely re-exports them,
+  and every one of the eleven importers keeps other repo names. So the whole of class (a),
+  done perfectly, moves the gate by **zero**. A6 said as much (*"frees nothing on its own"*)
+  and it is worth having the number: **a module falls off only when its LAST repo import
+  goes**, so the unit of migration is a module, never a name.
+
+  Re-measured that way, the board looks different — fourteen modules are **one import** from
+  clean. `context/selectors/glossary.py` is one of them, and the one import it needs is
+  `find_entities_by_vector`, which the port has had since T14.
+
+  ✅ **So A9 took that instead.** The semantic-glossary selector reaches entity vectors through
+  `VectorStore` and the module is off the concrete layer entirely — the first ENTITY-scope
+  port read from a real consumer.
+
+  🔴 **AND THE TWO-LAYER RANKING WAS UNTESTED.** Deleting the anchor multiplication outright
+  left all seven existing rules GREEN, because every fixture built its hit with the default
+  `anchor_score` and asserted on a `weighted_score` the fixture itself invented
+  (`weighted_score=score`) — **a number no backend produces.** The port returns `raw_score`
+  and the anchor separately (deliberately: a backend that had to reproduce a scoring formula
+  to be swappable would not be swappable), so the caller now multiplies, and the rule makes
+  the two orderings disagree:
+
+  ```
+  A  raw .9  anchor .2  ->  weighted .18
+  B  raw .5  anchor 1.0 ->  weighted .50      raw ranks A first; weighted ranks B first
+  ```
+
+  ⚠️ **The lookup is a BRACKET, not `.get`, and that is load-bearing.** `PgVectorStore` omits
+  `anchor_score` from an entity hit by design (`D-T25B-PG-ANCHOR-SCORE`) so a consumer that
+  ranks by it RAISES instead of silently multiplying every score by nothing and returning
+  cosine order. A default here would defeat the only safeguard between this ranking and a
+  silent collapse. The block sits outside the selector's `try`, so the `KeyError`
+  **propagates** — louder than this selector's usual non-fatal degradation, and deliberately
+  so: an empty glossary block is visible, a block ranked by raw cosine looks correct. Entity
+  reads stay on Neo4j until that decision closes (SPEC §3.3), so the key is present on the
+  path this runs.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. drop the anchor multiplication (`return h.score`)
+     E  ranked by RAW cosine, not by raw × anchor — two-layer retrieval collapsed to one layer
+     E  assert ['gA', 'gB'] == ['gB', 'gA']
+  2. `.get("anchor_score") or 1.0` instead of the bracket
+     E  Failed: DID NOT RAISE <class 'KeyError'>
+  ```
+
+  Bite 1 is the mutation that was VACUOUS an hour earlier; bite 2 pins the refusal the pg
+  adapter's omission exists to cause.
+
+  **The three patched call sites moved INTO the adapter**, so the tests now drive the real
+  `VectorSearchHit` → `VectorHit` mapping instead of bypassing it — and that is what exposed
+  the fabricated `weighted_score`.
+
+  **QC (a) gates:** all 99 green; `port-adoption-gate` **58 → 57**, moved in this commit, with
+  `--selftest` passing; `db-safety-gate` exit 0; plan-verify PASS.
+  **QC (b) the seam:** N/A — one in-process consumer moved onto a port it already had; no wire
+  surface, no new service call. The provider it now uses was proved live in T24b-b and T25 in
+  a rebuilt container, including the entity-scope routing (`ROUTING entity -> Neo4jVectorStore`).
+  **QC (c) real data:** N/A — no data produced.
+
+  ```
+  4228 passed — knowledge-service unit suite
+  ```
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

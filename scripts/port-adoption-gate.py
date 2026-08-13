@@ -76,7 +76,13 @@ EXEMPT_DIRS = (
 # other two migrated readers still import the module for non-vector names
 # (`SUPPORTED_PASSAGE_DIMS`, `KNOWN_SOURCE_TYPES`, the CJK lexical leg), which is why
 # three call sites became zero and the ceiling fell by only one.
-MAX_CONCRETE_IMPORTERS = 58
+# **57** (2026-08-13, A9) — `context/selectors/glossary.py` reaches ENTITY vectors through
+# `VectorStore` now. Measured first (rule 8): repointing the two shared CONSTANTS
+# (`SUPPORTED_PASSAGE_DIMS`, `EVENT_ORDER_CHAPTER_STRIDE`) out of the repo layer would have
+# moved this number by ZERO — all eleven importers keep other repo names — which is what
+# the A6 note predicted and why class (a) is not a batch on its own. A module falls off
+# only when its LAST repo import goes.
+MAX_CONCRETE_IMPORTERS = 57
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
