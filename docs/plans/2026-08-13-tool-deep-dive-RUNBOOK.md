@@ -113,9 +113,29 @@ day. The ordering was pointing at a tool whose failures could no longer happen, 
 on pointing there forever. Total failures stays as the tiebreak, so a tool with only historical
 failures still sits in A rather than vanishing into B.
 
+A tool already `proven` or `blocked` in the ledger LEAVES the cohort. Without that the loop
+re-derives the tool it just finished, forever — and that is not hypothetical:
+`glossary_propose_curation`'s live defect was fixed in **chat-service** (an argument repair) while
+this ordering's cutoff keys on its **owning** service, glossary-service, whose last commit did not
+move. The ledger is the progress authority; the ordering only decides what comes next *among the
+unconcluded*.
+
 Rationale, so it is not re-litigated: group A is the demonstrably-not-shippable set, group B is what
 real traffic depends on, group C is the untested tail. A tool's position is a measurement, not a
 preference.
+
+**Reproducing the derivation** — it must not live only in one session's scratchpad:
+
+```
+scripts/toolloop/derive-tool-owners.py   # tool -> provider -> repo service, from each provider's
+                                         # OWN tools/list (never the tool-name prefix)
+scripts/toolloop/derive-tool-order.py    # the A/B/C ordering, excluding concluded tools
+```
+
+Both read their inputs from `$TOOLLOOP_WORKDIR` (`tools.json`, `owners.json`, `calls_ts.tsv`,
+`svc_last_commit.tsv`, `ports.txt`, `providers.txt`, `itok.txt`). Dump those from Bash, not from
+Python: `subprocess(shell=True)` on Windows is cmd.exe, which mangles `sh -c 'echo $VAR'` and yields
+an empty string with no error.
 
 ---
 
