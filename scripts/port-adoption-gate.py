@@ -70,7 +70,7 @@ EXEMPT_DIRS = (
 # `Relation` and `Event` from the implementation it exists to abstract. Two model-only
 # importers followed. This is the ceiling becoming ABLE to fall — before it, no amount of
 # call-site migration could reach zero.
-MAX_CONCRETE_IMPORTERS = 61
+MAX_CONCRETE_IMPORTERS = 60
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.

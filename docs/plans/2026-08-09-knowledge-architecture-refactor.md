@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A5` — sweep the next ~8 of the 61 remaining `neo4j_repos` binders.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0–A4 DONE:** eight operations on the port + 3 adapters (conformance 40 → **67 passed / 9 skipped**), three consumers migrated, and **`port-adoption-gate` moved for the first time: ceiling 64 → 61, floor 14 → 17**, both in the same commit. A5–A11 sweep the remaining 61 binders ~8 at a time, pasting both numbers before and after. See **▶ EXECUTION PLAN** below.
+**RESUME: `A6` — class (a) only: lift the remaining engine-layer CONSTANTS into the domain.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint (PO decision owed on the `active_rules` source). **A0–A5 DONE.** Gate: ceiling **64 → 60**, floor **14 → 17**. 🔴 **A5 measured the sweep and re-scoped it** — `D-T17-SWEEP-IS-NOT-MECHANICAL`: 51 of the 60 remaining binders need port operations that do not exist, 5 belong to the vector layer **T25 deletes**, and the one module the port already covers is a known FALSE match. A6 takes the cheap honest class only (`SUPPORTED_PASSAGE_DIMS` ×12 and friends); the real port growth waits on **T35**. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -679,9 +679,13 @@ each one again. That price was accepted deliberately.
 - **A4** — Migrate `public/relations.py`, `public/events.py`, `internal_timeline.py`.
   **Done when:** ceiling falls **64 → 61**; tests that patched `neo4j_repos` are repointed at the
   port — *a migration whose tests stay green never moved the binding*.
-- **A5–A11** — Sweep the remaining **61** binders in batches of ~8, ratcheting ceiling and floor
-  every batch. **Done when:** each batch pastes the two numbers before and after.
-  *(The first cut said "A5–A6, ~57 modules": two batches of eight do not cover fifty-seven.)*
+- **A5–A11** — 🔴 **RE-SCOPED 2026-08-13 by measurement; see `D-T17-SWEEP-IS-NOT-MECHANICAL`.**
+  The "~8 files per batch" arithmetic counted FILES when the cost is in OPERATIONS. Of the 60
+  remaining binders, **51 need port operations that do not exist**, 5 belong to the vector
+  layer **T25 deletes**, 4 are one-shot migration scripts, and the one module the port already
+  covers is a known FALSE match. A6+ takes **class (a) only** — constants out of the engine
+  layer, the A4/A5 shape, ~12 modules — and the real port growth waits on **T35**.
+  **Done when:** each batch pastes both gate numbers before and after.
 - **A12** — Re-run T43's shadow with the new operations. **Done when:** the coverage report names
   every new method and `cutover_permitted` is re-derived. **A12 can UNDO QC-7's evidence** — a new
   operation starts at zero observations, so the floor legitimately re-blocks until the shadow sees
@@ -1957,6 +1961,79 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 - [~] **T17** — Migrate the 67 modules to the two shipped ports — **IN PROGRESS: concrete binders
   ---
+  ### 🔴 A5 2026-08-13 — **"sweep the remaining 61 in batches of ~8" cannot happen. Measured.**
+
+  ```
+  port-adoption-gate   ceiling 61 -> 60     floor 17 (unchanged)
+  ```
+
+  A5 migrated exactly **one** module — `spoiler_window.py`, which computes a spoiler ceiling,
+  touches no Cypher at all, and was counted as a `neo4j_repos` binder **because of a constant**.
+  Same fix as A4's: `EVENT_ORDER_CHAPTER_STRIDE` comes from `app.domain.graph_models` now.
+
+  🔴 **Then I measured the other 60 instead of grinding through them, and the plan's A5–A11 is
+  wrong.** Every binder was classified by WHY it is still bound:
+
+  ```
+   51  needs NEW port operations
+    5  VECTOR layer — Phase 3 (T25) DELETES these reads; they are not port candidates
+    4  one-shot migration script
+    1  models/constants only          <- migrated in this batch
+  ```
+
+  And of those 51, **exactly one** uses only operations the port already has —
+  `ontology/triage_apply.py`, calling `create_relation`. **It is a false match**, and this plan
+  already caught it once: it passes `pending_validation`, `schema_version` and `cardinality`,
+  and relies on a `None` return `upsert_relation` cannot produce. Migrating it by name would
+  have shipped a silent behaviour change.
+
+  **So the arithmetic in the EXECUTION PLAN — "61 ÷ 8 ≈ 7 batches" — was counting FILES when
+  the cost is in OPERATIONS.** A4 moved three consumers only because A1–A3 had already grown
+  the eight operations those three demanded. The remaining 51 need their own operations first,
+  and the top of the demand list is not a long tail:
+
+  ```
+   12  SUPPORTED_PASSAGE_DIMS      <- a constant, not an operation (the A4/A5 fix again)
+    7  find_passages_by_vector     <- VECTOR, Phase 3 removes it
+    6  maintenance
+    5  merge_fact
+    4  merge_entity                <- port HAS this (resolve_or_merge_entity)
+    3  merge_entities / MergeEntitiesError / add_evidence / create_relation / list_events_filtered
+  ```
+
+  ⚠️ **This is a scoping correction, not a blocker.** Three of those rows are cheap and honest
+  in the A4/A5 shape (constants out of the engine layer), one whole column belongs to Phase 3,
+  and the genuine port growth is `merge_fact` + `maintenance` + the fact/pattern writers — which
+  is **T35's territory** (opaque identity), not a mechanical sweep.
+
+  **BITE — the migration is what the gate measures:**
+
+  ```
+  revert `from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE`
+     -> [port-adoption-gate] 61 module(s) bind `neo4j_repos` directly (ceiling 60)
+     -> [port-adoption-gate] FAIL — direct binding GREW to 61.
+  restored -> PASS at 60
+  ```
+
+  **QC (a) gates:** `port-adoption-gate` PASS at the new ceiling, moved in this commit (rule 5);
+  `--selftest` passes. `db-safety-gate` exit 0.
+  **QC (b) the seam:** N/A — one import moved inside one service; no wire contract, no seam.
+  **QC (c) real data:** N/A — a binding migration produces no data.
+
+  ```
+  4216 passed — knowledge-service unit suite
+  ```
+
+  ### 🔻 DEFERRAL `D-T17-SWEEP-IS-NOT-MECHANICAL`
+
+  | | |
+  |---|---|
+  | **Blocker** | The EXECUTION PLAN's A5–A11 assumed 61 binders could be swept ~8 per batch. Measured 2026-08-13: **51 of 60 need port operations that do not exist**, 5 belong to the vector layer Phase 3 deletes, 4 are one-shot migration scripts, and the single module whose operations the port already covers (`triage_apply.py`) is a known FALSE match that would ship a silent behaviour change. File count is not the cost; operation count is. |
+  | **Evidence** | `port-adoption-gate --list` + an AST classification of every binder's imported names against the port's 18-method surface. Top demands: `SUPPORTED_PASSAGE_DIMS` ×12 (a constant), `find_passages_by_vector` ×7 (vector, Phase 3), `maintenance` ×6, `merge_fact` ×5. A4 moved three consumers only because A1–A3 had grown the eight operations those three demanded. |
+  | **Mechanism** | `port-adoption-gate` is a shrink-only ratchet with the ceiling now at 60. It cannot silently stall: any batch that claims progress must move the number in the same commit, and any regression fails the build. The gate reports the true remaining count on every CI run, so this deferral cannot go quiet. |
+  | **To unblock** | Split the remainder by CLASS rather than by count: (a) constants out of the engine layer — cheap, the A4/A5 shape, ~12 modules; (b) vector-layer readers — do NOT port, they are deleted by **T25**; (c) one-shot migration scripts — decide whether they are port callers at all, since they run once against a known engine; (d) the real port growth (`merge_fact`, `maintenance`, the fact/pattern writers) which is **T35's** identity work. Then re-batch. |
+  | **Retry when** | Phase 3 (T25) lands, removing (b) from the count, and T35 settles identity, which is when (d)'s operations get their shape. Until then A6+ should take class (a) only, and say so. |
+
   ### ✅ A4 2026-08-13 — three consumers migrated; **the gate moves for the first time**
 
   ```

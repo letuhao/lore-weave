@@ -21,7 +21,12 @@ from __future__ import annotations
 from uuid import UUID
 
 from app.clients.book_client import BookClient
-from app.db.neo4j_repos.events import EVENT_ORDER_CHAPTER_STRIDE
+# T17 A5 — the reading-axis stride is a fact about the BOOK, so it comes from the domain
+# and not from a graph engine. This module computes a spoiler ceiling and touches no
+# Cypher at all; importing it from `neo4j_repos` made it count as bound to the concrete
+# layer, which was both untrue and indistinguishable — to `port-adoption-gate` — from a
+# module that really does need Neo4j.
+from app.domain.graph_models import EVENT_ORDER_CHAPTER_STRIDE
 
 # The restrictive window used when the chapter order can't be resolved: nothing
 # has from_order <= -1 (orders are >= 0), so status → all 'active', no events/facts.
