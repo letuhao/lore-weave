@@ -1051,6 +1051,14 @@ async def handle_glossary_entity_updated(
     project_id = project_row["project_id"]
     user_id = project_row["user_id"]
 
+    # T39 — the entity set just changed, so the anchor automaton describing it is stale
+    # NOW, not in up to 300 seconds. Invalidated BEFORE the sync, not after: the sync can
+    # fail, and a cache still holding the pre-edit dictionary after a failed write is the
+    # worse of the two states. Invalidating a cache that did not need it costs one reload.
+    from app.context.anchors import invalidate_anchor_cache
+
+    invalidate_anchor_cache(str(user_id), str(project_id))
+
     # Neo4j must be configured to sync. In Track 1 mode there is no graph
     # to write — skip without error (canonical data is safe in Postgres).
     from app.config import settings
@@ -1446,6 +1454,14 @@ async def handle_glossary_entity_deleted(event: EventData, *, pool: asyncpg.Pool
     if resolved is None:
         return
     project_id, user_id, glossary_entity_id = resolved
+
+    # T39 — same rule as the update handler: a DELETE changes the entity set, so the
+    # anchor dictionary is stale immediately. Without this the deleted name stays
+    # anchorable for up to the TTL, which is the worse direction of the two: an anchor
+    # onto an entity the author just removed.
+    from app.context.anchors import invalidate_anchor_cache
+
+    invalidate_anchor_cache(str(user_id), str(project_id))
 
     from app.adapters.graph_store_provider import get_graph_store
     from app.db.neo4j import neo4j_session

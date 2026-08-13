@@ -53,6 +53,7 @@ __all__ = [
     "get_anchor_index",
     "get_project_protagonist",
     "clear_anchor_cache",
+    "invalidate_anchor_cache",
 ]
 
 
@@ -124,6 +125,28 @@ def clear_anchor_cache() -> None:
     """Test seam — drop the caches so a fresh dictionary/protagonist is loaded."""
     _CACHE.clear()
     _PROTAGONIST_CACHE.clear()
+
+
+def invalidate_anchor_cache(user_id: str, project_id: str) -> None:
+    """T39 — drop ONE project's automaton because its entity set actually changed.
+
+    The TTL above is a guess about staleness; this is knowledge. The service already
+    receives `glossary.entity_updated` / `.deleted` and syncs the node — until now it
+    did that and left the anchor dictionary describing the world as it was up to 300
+    seconds ago, so a freshly renamed entity stayed unanchorable for five minutes
+    **while the code that knew about the rename ran**.
+
+    Per-project, not `clear_anchor_cache()`: dropping every project's automaton on one
+    book's edit turns a targeted invalidation into a stampede on a busy host, which is
+    the cure being worse than the 300 seconds.
+
+    The TTL stays as the backstop. Events can be missed — a consumer restart, a dropped
+    delivery — and a cache with no expiry would then be wrong until the process dies.
+    Belt AND braces: the event makes it usually-instant, the TTL makes it eventually-right.
+    """
+    key = (str(user_id), str(project_id))
+    _CACHE.pop(key, None)
+    _PROTAGONIST_CACHE.pop(key, None)
 
 
 async def get_anchor_index(

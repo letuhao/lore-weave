@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B9` — T51 / T39 / T40, the three tasks that chained behind T38.**
-**C parked** (`D-QC5-PIPELINE-NOT-REPRODUCIBLE`, PO decision owed). **A parked** (`D-PORT-CANNOT-OBSERVE-FACT-STATE` + `D-MAINTENANCE-IS-NINE-JANITORS`). **B1–B8 DONE — T38's migration target is COMPLETE:** the KAL grew `cast`, `cast/by-ids` and `include_attributes`, six consumers migrated, and **`authored-catalog-reader-gate` fell 10 → 3 call sites**, the remaining three being two eval scripts and the `assistant.controller` DELETE the baseline already excludes. B9 checks whether T51 (needs **T32**), T39 and T40 are now unblocked. See **▶ EXECUTION PLAN** below.
+**RESUME: ⏸ ALL THREE WORKSTREAMS PARKED — four decisions owed.**
+**C** `D-QC5-PIPELINE-NOT-REPRODUCIBLE` (the acceptance measurement rule). **A** `D-PORT-CANNOT-OBSERVE-FACT-STATE` + `D-MAINTENANCE-IS-NINE-JANITORS`. **B** `D-T39-NO-COVERAGE-DIGEST-SOURCE` — T51 additionally needs **T32** (Phase 5, untouched) and T40 needs T39. **E** needs A's shadow; **F–I** are downstream. Session totals: `authored-catalog-reader-gate` **10 → 3 call sites** (T38's target COMPLETE), `port-adoption-gate` **64 → 59 / 14 → 17**, conformance **40 → 72**, and the critic went from 5/5-on-empty-canon to attributing violations to real rule ids. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -7270,6 +7270,77 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   (depends on T38, T32)
 
 - [~] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
+  ---
+  ### ✅ B9 2026-08-13 — T39's first half: the anchor cache is invalidated by EVENT, not by a guess
+
+  **Measured first (rule 8), and the batch split in three:**
+
+  ```
+  T39   the two caches      -> the TTL one is DONE here; the LRU one needs a decision
+  T51   frontend surfaces   -> BLOCKED: depends on T38 (done) AND T32 (untouched, Phase 5)
+  T40   partition entity_facts -> BLOCKED: depends on T39
+  ```
+
+  🔴 **The service already knew.** `handle_glossary_entity_updated` and
+  `handle_glossary_entity_deleted` resolve `(user_id, project_id)`, sync the node — and then
+  left `context/anchors.py`'s automaton describing the world as it was **up to 300 seconds
+  ago, while the code that knew about the change was running**. `clear_anchor_cache()` existed
+  and was referenced by nothing outside its own module.
+
+  For a DELETE that is the worse direction of the two: the removed name stays **anchorable**
+  for the rest of the window.
+
+  `invalidate_anchor_cache(user_id, project_id)` now runs on both events. Three decisions in
+  it, each with a failure on the other side:
+
+  * **Per-project, not a global clear.** Dropping every project's automaton on one book's edit
+    turns a targeted invalidation into a stampede on a busy host — the cure worse than the 300
+    seconds it replaces.
+  * **Before the sync, not after.** The sync can fail, and a cache still holding the pre-edit
+    dictionary after a failed write is the worse of the two states. Invalidating a cache that
+    did not need it costs one reload.
+  * **The TTL STAYS as the backstop.** Events can be missed — a consumer restart, a dropped
+    delivery — and a cache with no expiry would then be wrong until the process dies. The event
+    makes it usually-instant; the TTL makes it eventually-right.
+
+  ⚠️ **T39 is NOT closed.** Its second cache — `jobs/glossary_anchor_cache.py`, whose own
+  docstring says *"per-process, never cleared"* — is untouched, and the plan's stated design
+  (*"keyed on a coverage digest"*) has **no digest source**: measured, nothing in the codebase
+  computes one, and `project_graph_stats` is a full node scan, far too expensive for a
+  per-lookup key. That is a design decision, not effort — recorded as
+  `D-T39-NO-COVERAGE-DIGEST-SOURCE`.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. key = (user_id, project_id)   — drop the str() coercion
+     E  AssertionError: assert ('0c6f6872-…', '90a7f763-…') not in {…}
+        (the handler holds UUIDs, the cache is keyed by str: the pop misses SILENTLY and the
+         invalidation does nothing — a green handler and a stale cache)
+  2. _CACHE.clear()                — global instead of per-project
+     E  KeyError: ('u1', 'p2')     (another project's automaton was dropped)
+  ```
+
+  **QC (a) gates:** all 99 green; plan-verify PASS. No new gate, none owed.
+  **QC (b) the seam:** N/A — the invalidation is in-process state with no wire surface, and
+  the event path itself is unchanged: both handlers already consumed these events and already
+  resolved `(user_id, project_id)`. Nothing crosses a seam that was not crossing it before.
+  **QC (c) real data:** N/A — no data produced.
+
+  ```
+  4221 passed — knowledge-service unit suite
+  ```
+
+  ### 🔻 DEFERRAL `D-T39-NO-COVERAGE-DIGEST-SOURCE`
+
+  | | |
+  |---|---|
+  | **Blocker** | T39 says the two caches become "correct by construction" when keyed on a coverage digest. **No such digest exists.** Nothing in the codebase computes one, and the nearest candidate — `maintenance.project_graph_stats` — is a full node-count scan, orders of magnitude too expensive to run per cache lookup. The TTL cache is fixed here by a cheaper mechanism (events); the per-process LRU in `jobs/glossary_anchor_cache.py` is not, and its own docstring says it is "never cleared". |
+  | **Evidence** | `grep` for `coverage_digest` / `anchor_digest` / `def .*digest` across `app/` returns nothing. `project_graph_stats` is `RETURN count(e) …` per label. `clear_anchor_cache` had no caller outside its own module before this batch. |
+  | **Mechanism** | The TTL that remains on the automaton cache is the visible bound: staleness is capped at 300s and cannot become unbounded while this deferral is open. The LRU has no such bound, which is exactly what makes it the part still owed. |
+  | **To unblock** | Choose the digest source: (a) a per-project version counter bumped on entity write — cheapest to read, needs a write-path change; (b) `MAX(updated_at)` over the project's entities — no write-path change, one indexed read per lookup; (c) extend this batch's event-driven invalidation to the LRU as well and drop the digest idea entirely, which is what the TTL cache just demonstrated works. (c) is the smallest and is already proven in-repo. |
+  | **Retry when** | The PO picks a source, or accepts (c) — the mechanism this batch shipped — as the answer for both caches. |
+
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
   (depends on T38)
