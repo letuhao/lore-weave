@@ -78,6 +78,7 @@ from app.services.frontend_tools import (
     is_frontend_tool,
     validate_frontend_tool_args,
 )
+from app.services.tool_surface import answerable_tools
 from app.services.tool_discovery import (
     ALWAYS_ON_CORE_NAMES,
     FIND_TOOLS_DEFAULT_LIMIT,
@@ -1500,6 +1501,9 @@ def _advertise_discovery_tools(
     suppress_tool_list: bool = False,
     suppress_names: set[str] | frozenset[str] = frozenset(),
     book_bound: bool = False,
+    # R1 (surface answerability) — THIS turn's request, so the chokepoint can guarantee that a
+    # tool whose own declared vocabulary answers it is on the wire. Empty ⇒ inert.
+    request_text: str = "",
 ) -> list[dict]:
     """MCP-fanout C-FT — the tools advertised on a universal /chat pass:
     ``{always-on core} ∪ {full schemas of active_tool_names}``, with the
@@ -1594,6 +1598,43 @@ def _advertise_discovery_tools(
     # inert by the C-TOOL convention); discovery still works, but a discovered
     # non-R tool is NOT advertised (DR-C2). Plan mode additionally advertises
     # the `plan_*` PlanForge tools regardless of tier (RAID B2).
+    # ── R1 · ANSWERABILITY, the last word on the surface ──────────────────────────────────
+    # Five mechanisms narrow this set before we get here — domain selection, the hot-seed
+    # budget, the write allowlist, rail step pre-activation, and the suppressors. Each is
+    # locally correct. NONE of them is accountable for whether what comes out can answer the
+    # question that went in, and twice that has put a defect in an author's book:
+    #
+    #   v1 2026-07-21 — book_update_details starved by its 5-field schema, so "every model
+    #     mis-routed 'update the description' to book_chapter_create/save_draft".
+    #   v2 2026-08-13 — composition_list_outline withheld at domain_not_selected in every pass
+    #     while the Tier-A outline WRITE stayed advertised. Measured 5/5: the model used the
+    #     write it could see and created three chapters in the store.
+    #
+    # Both tools had already DECLARED they answer those requests. So the guarantee is: if the
+    # user's words match a tool's own vocabulary, it is on the wire — whatever the budget, the
+    # domain selection or the rail decided. Bounded by what was actually said (1-3 tools on
+    # real prompts, 0 on chitchat) rather than by an allowlist that spends the prefix forever.
+    _answerable = answerable_tools(request_text, list(catalog_index.values()))
+    # Distinct local names on purpose: `test_cp0_instrument` anchors its catalog-miss guard on
+    # the FIRST `td = catalog_index.get(name)` and windows the source after it. Reusing those
+    # names here moved that anchor and made an established narrowing-instrumentation test read
+    # the wrong block. New code must not shadow an existing guard's anchor.
+    for _ans_name in sorted(_answerable):
+        if _ans_name in suppress_names:
+            # A suppressor is a LOOP breaker (repeated failure / repeated read / oneshot). It
+            # fires on tools the model is already hammering, so forcing one back would restart
+            # the loop this stage exists to stop. Answerability outranks a BUDGET, never a
+            # breaker.
+            continue
+        _ans_td = catalog_index.get(_ans_name)
+        if _ans_td is None:
+            continue
+        if restricted and tool_tier(_ans_td) not in ("R", None) and not (
+            permission_mode == "plan" and _is_plan_tool(_ans_name)
+        ):
+            # ask/plan mode still governs WHAT may run; answerability governs what is VISIBLE.
+            continue
+        _add(_ans_td)
     for name in active_tool_names:
         # oneshot-deadvertise (2026-07-25): a COMPLETED one-shot create is dropped from the
         # wire so a weak model cannot loop on it (schema-gating — "absent from the schema, the
@@ -2696,6 +2737,9 @@ async def _stream_with_tools(
     # D-FJ-21 — tools this session keeps failing at identically (cross-turn). The rail must
     # not keep driving a step that needs one. See db/tool_call_history.stuck_tools_from_calls.
     rail_stuck_tools: frozenset[str] = frozenset(),
+    # R1 — this turn's request, so the advertise chokepoint can guarantee that a tool whose
+    # own declared vocabulary answers it reaches the wire. Empty ⇒ inert.
+    request_text: str = "",
     # D-FJ-22 — catalog tools the user named literally this turn. See _tools_named_in_request.
     rail_named_tools: frozenset[str] = frozenset(),
     # True on a RESUME that suspended mid-rail: the rail is definitionally in flight, so the
@@ -3094,6 +3138,7 @@ async def _stream_with_tools(
                         suppress_tool_list=suppress_tool_list,
                         suppress_names=_suppress,
                         book_bound=bool((context_ids or {}).get("book_id")),
+                        request_text=request_text,
                     )
                 else:
                     advertised = (
@@ -7835,6 +7880,7 @@ async def stream_response(
                 tool_defs = _advertise_discovery_tools(
                     _catalog_index(catalog), discovery_seed_names, discovery_extra_frontend,
                     book_bound=bool(_ctx_book_id),
+                    request_text=user_message_content,
                 )
             else:
                 # No discovery: a legacy non-agui tool-calling client (full catalog —
@@ -7943,6 +7989,7 @@ async def stream_response(
         rail_progress=_rail_progress_objs or None,
         rail_intent_slugs=frozenset(_intent_slugs),
         rail_stuck_tools=_rail_stuck_tools,
+        request_text=user_message_content,
         rail_named_tools=_named_tools,
     ):
         yield line
@@ -8329,6 +8376,9 @@ async def _emit_chat_turn(
     rail_intent_slugs: frozenset[str] = frozenset(),
     #: D-FJ-21 / D-FJ-22 — the other two turn-ownership inputs (see _stream_with_tools).
     rail_stuck_tools: frozenset[str] = frozenset(),
+    # R1 — this turn's request, so the advertise chokepoint can guarantee that a tool whose
+    # own declared vocabulary answers it reaches the wire. Empty ⇒ inert.
+    request_text: str = "",
     rail_named_tools: frozenset[str] = frozenset(),
 ) -> AsyncGenerator[str, None]:
     """Shared Stream→persist→finish body for a chat turn (fresh OR C6 resume).
@@ -8741,6 +8791,7 @@ async def _emit_chat_turn(
                 rail_progress=rail_progress,
                 rail_intent_slugs=rail_intent_slugs,
                 rail_stuck_tools=rail_stuck_tools,
+                request_text=request_text,
                 rail_named_tools=rail_named_tools,
             )
         else:
@@ -10101,6 +10152,10 @@ async def resume_stream_response(
             tool_defs = _advertise_discovery_tools(
                 _catalog_index(catalog), resume_seed_names, resume_extra_frontend,
                 book_bound=bool(susp.book_id),
+                # A resume is still answering the ORIGINAL request — the suspended run
+                # carries it. Dropping it here would make the post-approval pass the one
+                # surface in the system that cannot answer the question it was suspended on.
+                request_text=susp.user_message_content,
             )
         elif stream_format == "agui":
             # No catalog (gateway down) → no discovery, but still re-advertise the

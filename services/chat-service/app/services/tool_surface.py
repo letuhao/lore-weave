@@ -233,6 +233,77 @@ def budget_names_by_tokens(
     return _budget_names_impl(catalog, names, token_budget=token_budget)
 
 
+#: Words that carry no discriminating power and differ freely between a user's phrasing and a
+#: tool's declared vocabulary. Stripped from BOTH sides before matching — measured: the v1
+#: incident phrase "update the description of my book" failed a raw substring test against the
+#: declared synonym "update description" purely on an article, and that near-miss is the whole
+#: difference between catching the defect and shipping it.
+_ANSWER_STOPWORDS = re.compile(
+    r"\b(?:the|a|an|my|your|our|this|that|of|for|in|to|please)\b"
+)
+
+#: Hard ceiling on how many tools one request may force hot. The forced set is bounded by what
+#: the user actually said (measured: 1-3 tools on real prompts, 0 on chitchat), but a ceiling
+#: keeps a pathological message from spending the whole prefix.
+ANSWERABLE_MAX = 8
+
+
+def _answer_norm(text: str) -> str:
+    return re.sub(r"\s+", " ", _ANSWER_STOPWORDS.sub(" ", text.lower())).strip()
+
+
+def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
+    """The tools whose OWN declared vocabulary says they answer THIS request.
+
+    🔴 THE INVARIANT THIS SERVES: a surface must be able to answer the request it is given.
+    Twice now the opposite has reached an author's book, and both times the tool had already
+    DECLARED that it was the right one:
+
+      v1 (2026-07-21) — `book_update_details` declares "update description"/"change the
+        description". It was starved out of the hot seed by its 5-field schema, so "every
+        model mis-routed 'update the description' to book_chapter_create/save_draft — the
+        tool it could actually see" (tool_surface.py's own words).
+      v2 (2026-08-13) — `composition_list_outline` declares synonyms ["outline", "chapters",
+        "beats", "story structure", …]. Asked "Show me the outline … what chapters and
+        scenes", it was withheld at domain_not_selected in every pass while the Tier-A
+        outline WRITE stayed on the wire. Measured 5/5: the model used the write it could
+        see and created three chapters in the store.
+
+    Five mechanisms shape the surface (domain selection, the seed budget, the write allowlist,
+    rail pre-activation, the suppressors). Each is locally correct and none is accountable for
+    whether the RESULT can answer the question. This is that accountability, and it reads the
+    tool's DECLARATION — never its name, which is the classifier `CP-4.d` deleted on purpose.
+
+    Precise by construction rather than by tuning: multi-word synonyms discriminate on their
+    own. Measured against the live 315-tool catalogue — "Add a chapter called X" forces the two
+    CREATE tools (correct: they asked to create), the v2 read-question forces three reads and
+    no writes (`outline_node_edit`'s synonyms are all phrases like "create chapter"), and
+    chitchat forces nothing.
+    """
+    if not request_text or not catalog:
+        return set()
+    lp = _answer_norm(request_text)
+    if not lp:
+        return set()
+    hits: list[tuple[int, str]] = []
+    for td in catalog:
+        name = tool_name(td)
+        if not name:
+            continue
+        fn = td.get("function") or {}
+        for syn in ((fn.get("_meta") or {}).get("synonyms") or []):
+            if not isinstance(syn, str):
+                continue
+            ns = _answer_norm(syn)
+            if ns and ns in lp:
+                # longest match wins the ceiling — a 3-word synonym is far stronger evidence
+                # than a 1-word one, so a truncated set keeps the most specific answers.
+                hits.append((len(ns), name))
+                break
+    hits.sort(key=lambda h: (-h[0], h[1]))
+    return {n for _, n in hits[:ANSWERABLE_MAX]}
+
+
 def _budget_names_impl(
     catalog: list[dict],
     names: set[str] | list[str],
