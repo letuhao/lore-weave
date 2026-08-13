@@ -127,10 +127,28 @@ preference.
 **Reproducing the derivation** — it must not live only in one session's scratchpad:
 
 ```
+scripts/toolloop/dump-calls.sql          # the recorded-call dump AND its failure predicate
 scripts/toolloop/derive-tool-owners.py   # tool -> provider -> repo service, from each provider's
                                          # OWN tools/list (never the tool-name prefix)
 scripts/toolloop/derive-tool-order.py    # the A/B/C ordering, excluding concluded tools
 ```
+
+🔴 **A FAILED CALL IS `error IS NOT NULL`, NEVER `ok = false`, AND THE PREDICATE LIVES IN
+`dump-calls.sql` RATHER THAN IN A SESSION'S HEAD.** Two things set `ok=false` while the tool works
+exactly as designed, and both mis-ranked the queue on 2026-08-13. A **gated proposal** — a Tier-A/W
+call that mints a confirm card — records `ok=false, error=null, task.status='input_required'`;
+counting those read `glossary_propose_curation` as 72 failures in 72 calls where this ledger's own
+recorded figure is 29 in 72. **`error IS NOT NULL` reproduces 29 exactly, and that agreement is the
+control for the predicate** — if it stops holding, the predicate has drifted. An **operator
+decision** (`denied by user`, 23 corpus-wide) is the author pressing Deny; the tool never ran, so it
+cannot have failed, and leaving it in put `kg_add_nodes` at the head of group A on the strength of
+one denial — ranking a tool for investigation because its safety gate worked.
+
+Ownership must also be stamped for the gateway-local trio. `derive-tool-order.py` treats an unknown
+owner as *"cannot prove historical, so treat every failure as LIVE"* — fail-safe for a genuine
+unknown, simply wrong for a tool we can name. Unstamped, that put `tool_list` at the head of group A
+with 1180 *live* failures, every one of them dated 2026-07-20 and every one of them chat-service's
+turn-level duplicate-call guard rather than the tool failing at all.
 
 Both read their inputs from `$TOOLLOOP_WORKDIR` (`tools.json`, `owners.json`, `calls_ts.tsv`,
 `svc_last_commit.tsv`, `ports.txt`, `providers.txt`, `itok.txt`). Dump those from Bash, not from
