@@ -5119,7 +5119,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   3616 passed — composition-service unit suite
   ```
 
-  ### 🔻 DEFERRAL `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — **superseded by** `D-QC5-PIPELINE-NOT-REPRODUCIBLE`
+  ### ~~DEFERRAL~~ `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — **CLOSED 2026-08-13, superseded by** `D-QC5-PIPELINE-NOT-REPRODUCIBLE`
 
   The attribution channel is wired and demonstrated. What replaced it is a sharper problem.
 
