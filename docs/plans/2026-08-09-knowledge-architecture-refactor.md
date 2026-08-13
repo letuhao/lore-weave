@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: ⏸ HELD at QC-5's POST-REVIEW checkpoint — a PO decision is owed.**
-C1–C4 are done. QC-5 stays `[~]` with `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED`: the score channel is grounded and working, the ATTRIBUTION channel is empty (`active_rules=[]` ⇒ 7 of 7 findings dropped). **The decision owed:** where `active_rules` comes from for the headless seam. Once decided, the next batch is `A0 = T42a` — the adapter-parameterised conformance suite, before T17 grows the port. See **▶ EXECUTION PLAN** below.
+**RESUME: `A1` — `get_relation` / `invalidate_relation` / `recreate_relation` on the port + 3 adapters.**
+C1–C4 done; **QC-5 is HELD at its ⏸ POST-REVIEW checkpoint** with `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a PO decision is owed on where `active_rules` comes from for the headless seam. That blocks QC-5 only, so execution continues. **`A0 = T42a` needed no build — it shipped 2026-08-12** (40 passed: 13 rules × 3 adapters + guard); the EXECUTION PLAN's claim that AGE had no behavioural test was STALE, and is retracted in T42a's row. A1 inherits `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` and may close it: `invalidate_relation` is the missing close-an-interval operation. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -659,13 +659,13 @@ run done before C2 would produce a `canon_consistency` that looks like a verdict
 Every new method costs **port + Fake + Neo4j + AGE + conformance**, and T43's shadow pays for
 each one again. That price was accepted deliberately.
 
-- **A0 = T42a** — the **adapter-parameterised behavioural conformance suite**, before the port
-  grows by one method. **Done when:** the behavioural tests run against all three adapters from
-  one parameterised fixture, and the suite reds when an adapter is given a wrong answer — not
-  merely a wrong signature. **Without this, every "conformance green" below is vacuous:** the
-  behavioural suite instantiates `FakeGraphStore()` and nothing else, and the checklist tuple in
-  `test_implementations_match_the_port_signatures` is hand-maintained, so an omitted method is
-  silently unchecked. The test says so itself.
+- **A0 = T42a** — ✅ **needed no build; it shipped 2026-08-12.** 40 passed today: 13 rules ×
+  3 adapters + a non-vacuity guard. **This entry's original claim — *"the behavioural suite
+  instantiates `FakeGraphStore()` and nothing else"* — was STALE**, true of
+  `tests/unit/test_graph_store_port.py` and false of
+  `tests/integration/db/test_graph_store_conformance.py`, which I did not open. Retracted in
+  T42a's row, where the near-miss is recorded in full. A1 inherits its one open deferral,
+  `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL`, and may close it.
 - **A1** — `get_relation` / `invalidate_relation` / `recreate_relation` on the port + 3 adapters.
   **Done when:** A0's suite is green on all three; the AGE adapter either implements or raises
   `NotImplementedError` naming a deferral (never returns empty — an operation that answers
@@ -6197,6 +6197,76 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 > harness to be judged against and no engine to run on.
 
 - [~] **T42a** — **Adapter-parameterised behavioural conformance suite** *(NEW — do this FIRST)*
+  ---
+  ### 🔴 A0 2026-08-13 — **the batch was already done, and I nearly destroyed it proving that**
+
+  The EXECUTION PLAN made `A0 = T42a` the first batch of workstream A, on the finding that
+  *"`AgeGraphStore` appears in no behavioural test anywhere"*. **That finding was stale.** T42a
+  shipped on 2026-08-12: `test_graph_store_conformance.py` already parameterises **13 rules over
+  `("fake", "neo4j", "age")`** and already honours `CONFORMANCE_REQUIRE_REAL`. Measured today:
+
+  ```
+  40 passed  =  13 rules × 3 adapters + 1 non-vacuity guard, zero skips
+  ```
+
+  It is `[~]` rather than `[x]` for a reason that is written in its own row — the open deferral
+  `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` — not because it was unbuilt. **I read the plan's
+  index instead of the file, and the row said `[~]`, and I believed the checkbox over the
+  code.** That is `debt-batches-list-is-stale-verify-first` in its purest form, committed by
+  the person who wrote the standing rule about it.
+
+  🔴 **Worse: I wrote a NEW conformance file over the existing one.** `Write` reported
+  *"updated"*, not *"created"*, and I did not register the word. The replacement had **10 rules
+  to the original's 13** — it lost `restore_undoes_an_archive`, `an edge to an ARCHIVED peer is
+  excluded`, `another user's relations are not returned`, and both evidence-idempotency rules.
+  Caught by `git diff --cached --stat` showing **380 deletions** in a file I thought I had
+  created, and restored with `git checkout HEAD --`. Nothing was lost, because it was staged and
+  not yet committed.
+
+  **The lesson is narrower than "read before writing" and worth stating exactly:** a plan row's
+  checkbox describes the row's DEFERRAL state, not whether the artifact exists. `[~]` on a task
+  whose body opens with *"### ✅ DONE 2026-08-12"* means *done, one thing still open* — and the
+  only way to know which is to open the body, or the file.
+
+  ### ✅ What A0 did produce — a hole in the repo's own safety guard, found by driving through it
+
+  `_guard_throwaway_neo4j` refuses the shared dev graph so a CREATE/DETACH-DELETE suite cannot
+  point at one. It matched **`f":{port}" in uri` as a SUBSTRING**, and `":7688"` is **not** a
+  substring of `"localhost:27688"` — so **the isolated stack's republication of the very same
+  graph sailed through a check written to refuse it.** My first run wrote 87 nodes into it
+  before I noticed. (Removed: `MATCH (n) WHERE n.user_id STARTS WITH 't42a-u-' DETACH DELETE n`
+  → `deleted 87`.)
+
+  The guard now parses the **port component** and knows all four: `7687/7688` and the isolated
+  stack's `27687/27688`. **A port map added months after a guard silently widened what the guard
+  was blind to** — a class, not an incident: any `+20000` republication of a protected resource
+  is invisible to a substring check, and `infra/gen-isolated-compose.py` republishes 47 of them.
+
+  **BITE:**
+
+  ```
+  guard ON,  no opt-in   ->  RuntimeError: REFUSING: 'bolt://localhost:27688' looks like the shared DEV graph
+  if False and _neo4j_port(uri) in _DEV_NEO4J_PORTS:
+                         ->  1 passed        <- the dev graph silently accepted: the bug, reproduced
+  restored               ->  REFUSING again
+  ```
+
+  **QC (a) gates:** `db-safety-gate` exit 0 · `test-dsn-coverage-gate` OK.
+  **QC (b) the seam:** N/A — no service code, no seam; this is a test-harness guard.
+  **QC (c) real data:** the 40-passed run above exercised a real Neo4j and a real AGE container
+  (`loreweave/postgres-knowledge:18`, extensions `age`/`vector`/`pg_trgm` present), on a
+  throwaway DB carrying the required name marker.
+
+  ```
+  4216 passed — knowledge-service unit suite
+  ```
+
+  ➡️ **A1 inherits T42a's open deferral, and may close it.**
+  `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` says the port can OPEN a story interval
+  (`upsert_relation(valid_from_ordinal=…)`) and cannot CLOSE one, so the upper half of the
+  half-open rule is unconformable through the port. **A1's `invalidate_relation` is exactly that
+  missing operation.** A1 must therefore either close the deferral or say why it does not.
+
   ⚠️ **The port has no behavioural conformance today.** `tests/unit/test_graph_store_port.py` holds
   **14 `FakeGraphStore()` instantiations and 0 of `Neo4jGraphStore`**; the single test naming
   `Neo4jGraphStore` (`test_implementations_match_the_port_signatures`, ~`:238`) compares

@@ -146,7 +146,25 @@ async def vector_pool():
 # Neo4j Community has no multi-database, so "throwaway" cannot be a database NAME here the
 # way it is for Postgres. The equivalent is a DEDICATED INSTANCE: an explicit opt-in, plus a
 # refusal of the ports the dev stack publishes.
-_DEV_NEO4J_PORTS = ("7687", "7688")
+# 7687/7688 are the base stack's; 27687/27688 are the SAME graphs republished by the
+# isolated stack (`infra/docker-compose.isolated.yml`, base + 20000). T42a found the gap the
+# hard way: the guard matched `f":{port}" in uri` as a SUBSTRING, and ":7688" is not a
+# substring of "localhost:27688" — so the isolated dev graph sailed straight through a check
+# written to refuse it, and a conformance run wrote into it. A port map added months after
+# the guard silently widened what the guard was blind to.
+_DEV_NEO4J_PORTS = ("7687", "7688", "27687", "27688")
+
+
+def _neo4j_port(uri: str) -> str | None:
+    """The PORT component, not a substring of the URI. See `_DEV_NEO4J_PORTS`."""
+    from urllib.parse import urlsplit
+
+    try:
+        # `bolt://host:7688` parses; a bare `host:7688` does not, so give it a scheme.
+        parsed = urlsplit(uri if "://" in uri else f"bolt://{uri}")
+        return str(parsed.port) if parsed.port else None
+    except ValueError:
+        return None
 
 
 def _guard_throwaway_neo4j(uri: str) -> None:
@@ -154,11 +172,12 @@ def _guard_throwaway_neo4j(uri: str) -> None:
         # Escape hatch for CI, where the graph IS disposable and its port is whatever the
         # service container published. Explicit, so nobody reaches it by accident.
         return
-    if any(f":{port}" in uri for port in _DEV_NEO4J_PORTS):
+    if _neo4j_port(uri) in _DEV_NEO4J_PORTS:
         raise RuntimeError(
             f"REFUSING: TEST_NEO4J_URI {uri!r} looks like the shared DEV graph "
-            f"(ports {'/'.join(_DEV_NEO4J_PORTS)}). These tests CREATE and DETACH DELETE "
-            "nodes — point them at a disposable Neo4j instance of their own, or set "
+            f"(ports {'/'.join(_DEV_NEO4J_PORTS)} — the base stack's and the isolated "
+            "stack's republication of them). These tests CREATE and DETACH DELETE nodes — "
+            "point them at a disposable Neo4j instance of their own, or set "
             "TEST_NEO4J_ALLOW_SHARED=1 if the target really is disposable."
         )
 
