@@ -47,11 +47,21 @@ import re
 import sys
 from pathlib import Path
 
-SELF = Path(__file__).name
+#: Identifies THIS GATE in any file, under any name.
+#:
+#: Excluding by filename covers the original and not a copy — and a copy under a
+#: new name is precisely what `gate-bite-harness` runs. The copy then walks the
+#: ORIGINAL, reads the ids in `PHANTOM_OK`/`UNSITED_OK`, and measures a different
+#: tree than the shipped baseline describes. Content-matching makes every copy
+#: skip every copy, so they all measure the same thing.
+SENTINEL = "dp-coverage-gate:self-marker:do-not-copy-into-another-file"
 ROOT = Path(__file__).resolve().parents[1]
 DP_DOCS = ROOT / "docs" / "03_planning" / "LLM_MMO_RPG" / "06_data_plane"
 
-ID_RE = re.compile(r"DP-(?:A|R|T|Ch)\d+")
+#: A trailing digit, letter or HYPHEN means this is not the id — it is the
+#: start of a longer one, or the left end of a RANGE (`DP-A1-A19`,
+#: `DP-Ch1-Ch37`). A range names a family; it does not defend an invariant.
+ID_RE = re.compile(r"DP-(?:A|R|T|Ch)\d+(?![\dA-Za-z-])")
 #: A DECLARATION is a heading. A mention in a paragraph is a reference, and a
 #: mention in a numbering instruction is not even that -- see PHANTOM_OK.
 HEADING_RE = re.compile(r"^#+\s+\**`?(DP-(?:A|R|T|Ch)\d+)", re.M)
@@ -73,6 +83,22 @@ PHANTOM_OK: dict[str, str] = {
              "subscribe-completion rule was REJECTED under the G4a decision",
     "DP-R10": "not a rule. The second placeholder in the same numbering instruction; "
               "never proposed, never declared",
+}
+
+#: Invariants that are CORRECTLY unsited, with the reason. An enforcement site
+#: cannot be cited when there is no enforcement -- and for a rule whose subject
+#: does not exist yet, that is the honest state, not a gap.
+#:
+#: This is NOT a way to make the number look better. Each row must name what
+#: would end it, and `check_unsited` carries the SHRINK ARM: the row dies the
+#: moment the id gains a real site, so it cannot outlive its reason.
+UNSITED_OK: dict[str, str] = {
+    "DP-R7": "no direct LLM-output-to-kernel-write. Measured in "
+             "crates/dp/tests/spec_oracle_rules.rs: neither `Validated<T>` nor any "
+             "`LlmResponse`/`llm_output` handling exists in Rust, so the rule is "
+             "unenforced AND unviolatable -- there is nothing to cite it at. It already "
+             "carries the stronger mechanism: R7_SUBJECT_MARKERS is an asserted trigger "
+             "that reds the moment a crate takes LLM output. Ends when that fires",
 }
 
 #: Where a citation may live. Deliberately a set of ROOTS plus a suffix filter
@@ -97,10 +123,15 @@ MIN_FILES = 800
 #: that only reds downward is a wall -- this is a worklist, so it must shrink and
 #: must be seen to shrink.
 BASELINE: dict[str, tuple[int, int]] = {
-    "DP-A": (7, 11),
-    "DP-R": (1, 0),
+    # Why these numbers moved is recorded in
+    # `docs/plans/2026-08-13-data-plane-coverage-RUN-STATE.md`, deliberately NOT
+    # here: naming an id in this file makes a COPY of this gate count it as a
+    # citation, which is what the hygiene case below refuses. The code keeps the
+    # number; the run-state keeps the reason.
+    "DP-A": (3, 9),
+    "DP-R": (0, 0),
     "DP-T": (0, 0),
-    "DP-Ch": (25, 36),
+    "DP-Ch": (25, 35),
 }
 
 
@@ -161,17 +192,20 @@ def walk() -> tuple[dict[str, set[str]], dict[str, set[str]], int]:
             sp = p.as_posix()
             if "/node_modules/" in sp or "/target/" in sp or "/.bite-" in sp:
                 continue
-            # **EXCLUDE THIS FILE.** Its self-test writes fixture ids into
-            # synthetic trees, and `scripts/` is in the walk -- so it read its own
-            # source and reported three real DP-A ids as `sited|proven`, sourced to
-            # itself. Three real invariants certified by a fixture, in the gate
-            # built to catch exactly that. `gate-self-tests.discover()` carries
-            # the same exclusion, for the same reason, and says so too.
-            if p.name == SELF:
-                continue
             try:
                 text = p.read_text(encoding="utf-8", errors="replace")
             except OSError:
+                continue
+            # **EXCLUDE THIS GATE, IN ANY COPY.** Its self-test writes fixture ids
+            # into synthetic trees and its exemption tables name real ones, and
+            # `scripts/` is in the walk -- so it read its own source and reported
+            # three real DP-A ids as `sited|proven`, sourced to itself.
+            #
+            # Matched on CONTENT, not filename: the filename form excluded the
+            # original and not a copy, and a copy under a new name is what the
+            # mutation harness runs. Every copy skips every copy now, so they all
+            # measure the same tree.
+            if SENTINEL in text:
                 continue
             n += 1
             ids = set(ID_RE.findall(text))
@@ -194,6 +228,22 @@ def family_of(i: str) -> str:
 
 
 # ── the rules ─────────────────────────────────────────────────────────────────
+
+def check_unsited(decl: dict[str, str], sited: dict[str, set[str]]) -> list[str]:
+    """The shrink arm on UNSITED_OK, both ways."""
+    problems = []
+    for i, why in sorted(UNSITED_OK.items()):
+        if i not in decl:
+            problems.append(
+                f"UNSITED_OK[{i}] exempts an id no longer DECLARED. It exempts nothing. "
+                f"Delete the row. (reason was: {why[:60]}…)")
+        elif i in sited:
+            problems.append(
+                f"UNSITED_OK[{i}] says it cannot have an enforcement site, and it now has "
+                f"one: {sorted(sited[i])[:2]}. The reason expired — delete the row and let "
+                f"the ratchet count it.")
+    return problems
+
 
 def check_phantoms(decl: dict[str, str], seen: set[str]) -> list[str]:
     """An id mentioned but never declared, and the SHRINK ARM on the exemptions."""
@@ -228,7 +278,7 @@ def evaluate() -> dict:
         ids = sorted(i for i in decl if family_of(i) == fam)
         per[fam] = {
             "declared": ids,
-            "uncited": [i for i in ids if i not in sited],
+            "uncited": [i for i in ids if i not in sited and i not in UNSITED_OK],
             "unproven": [i for i in ids if i not in proven],
         }
     return {"decl": decl, "seen": seen, "sited": sited, "proven": proven,
@@ -254,7 +304,7 @@ def run() -> int:
               f"byte-identical to full coverage.", file=sys.stderr)
         return 2
 
-    problems = check_phantoms(decl, st["seen"])
+    problems = check_phantoms(decl, st["seen"]) + check_unsited(decl, st["sited"])
 
     for fam in FAMILIES:
         base_unc, base_unp = BASELINE[fam]
@@ -287,7 +337,8 @@ def run() -> int:
           f"famil(ies), {n_files} file(s) walked.")
     print(f"  sited:  {len(decl) - tot_unc}/{len(decl)}   "
           f"proven: {len(decl) - tot_unp}/{len(decl)}   "
-          f"({len(PHANTOM_OK)} non-rule mention(s) exempted)")
+          f"({len(PHANTOM_OK)} non-rule mention(s) and {len(UNSITED_OK)} "
+          f"correctly-unsited invariant(s) exempted)")
     return 0
 
 
@@ -329,16 +380,27 @@ def self_test() -> int:
     # than the shipped baseline describes and three ratchet arms survived on the
     # difference. The 9000 range is reserved for examples and cannot be declared.
     own = set(ID_RE.findall(Path(__file__).read_text(encoding="utf-8", errors="replace")))
+    exempt_keys = set(PHANTOM_OK) | set(UNSITED_OK)
     real_here = sorted(i for i in own
                        if not re.fullmatch(r"DP-(?:A|R|T|Ch)9\d{3}", i)
-                       and i not in PHANTOM_OK)
+                       and i not in exempt_keys)
     if real_here:
         failures += 1
         print(f"  FAIL this file names real invariant id(s) {real_here} — a copy of it "
               f"(which is what the mutation harness runs) counts them as citations. "
               f"Use the reserved 9000 range for examples.")
     else:
-        print("  ok   this file names no real invariant, so a copy of it certifies nothing")
+        print("  ok   this file names no real invariant outside its exemption tables")
+
+    # ...and the SENTINEL is what makes that safe for a COPY, which is what the
+    # mutation harness runs. Without it a copy walks the original and reads the
+    # exemption keys as citations.
+    if SENTINEL not in Path(__file__).read_text(encoding="utf-8", errors="replace"):
+        failures += 1
+        print("  FAIL the self-marker is gone — a copy of this gate would walk the "
+              "original and count its exemption tables as citations")
+    else:
+        print("  ok   the self-marker is present, so every copy skips every copy")
 
     def ok(name: str, cond: bool, detail: str = "") -> None:
         nonlocal failures
@@ -366,6 +428,12 @@ def self_test() -> int:
         ok("a `## DP-A9001` heading declares", "DP-A9001" in dec)
         ok("a `### `DP-Ch9007`` heading declares (backticked, deeper level)", "DP-Ch9007" in dec)
         ok("a prose mention does NOT declare", "DP-A9099" not in dec)
+        # A range names a family. Its LEFT end is rejected by the trailing
+        # hyphen, and its right end (`A9019`) carries no `DP-` prefix at all — so
+        # a range yields nothing, and a standalone id beside it still matches.
+        rng = set(ID_RE.findall("family DP-A9001-A9019, and DP-Ch9007 on its own"))
+        ok("a RANGE yields no id, and a standalone one beside it still does",
+           rng == {"DP-Ch9007"}, f"got {sorted(rng)}")
         ok("...but IS seen, so the phantom rule can judge it", "DP-A9099" in seen)
 
     # ── the phantom rule, and both shrink arms ───────────────────────────────
@@ -380,6 +448,16 @@ def self_test() -> int:
        any("exempts nothing" in x for x in p), str(p))
     p = check_phantoms({"DP-A9001": "01.md"}, {"DP-A9001", "DP-R9", "DP-R10"})
     ok("...and the two real rows are quiet when their reason still holds", p == [], str(p))
+
+    # ── UNSITED_OK, both shrink arms ─────────────────────────────────────────
+    p = check_unsited({"DP-R7": "11.md"}, {})
+    ok("a held UNSITED_OK row is quiet", p == [], str(p))
+    p = check_unsited({"DP-R7": "11.md"}, {"DP-R7": {"crates/x/src/a.rs"}})
+    ok("an UNSITED_OK row whose id GAINED a site fails (shrink arm 1)",
+       any("reason expired" in x for x in p), str(p))
+    p = check_unsited({}, {})
+    ok("an UNSITED_OK row for an undeclared id fails (shrink arm 2)",
+       any("no longer DECLARED" in x for x in p), str(p))
 
     # ── sited vs proven ──────────────────────────────────────────────────────
     with tempfile.TemporaryDirectory() as d:

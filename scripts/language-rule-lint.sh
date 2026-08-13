@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 # L1.K.10 language-rule-lint.sh — I3 (amended; LOCKED 2026-05-29)
 #
+# `DP-A3` — "Rust is the game-layer language": every new game-layer service is
+# written in Rust and the DP SDK is Rust-only, with no Go or Python binding
+# produced. That is I3's amendment restated for the data plane, and THIS is the
+# lint that enforces it — `world-service: rust` and `commit-service: rust` in
+# the config below are DP-A3's game-layer half.
+#
 # Reads contracts/language-rule.yaml → expected language per services/<name>/.
 # Detects actual language by toolchain marker:
 #   Cargo.toml → rust ; go.mod → go ; pyproject.toml → python ; package.json → typescript

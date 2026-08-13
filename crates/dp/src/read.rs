@@ -44,6 +44,11 @@ pub const DEFERRED_READ_FORMS: &[(&str, &str)] = &[
     // "DP-Ch9 move_session_to_channel produces ChannelId" — is now discharged,
     // and the function is below. The register keeps two rows, so unlike its
     // three sibling registers this one survives and its oracle test with it.
+    // `DP-A19` is the ACCESS-PATTERN statement of this rule — a T2/T3 write
+    // within a session returns an opaque `CausalityToken`, and handing that
+    // token to another service is what preserves intra-session causality. The
+    // TYPE is tracked as `DP-Ch38`; both ids name the same guarantee from two
+    // directions, and only one of them was greppable to this line.
     ("wait_for", "DP-Ch38 CausalityToken, also deferred by DpError"),
     ("query_scoped_reality", "DP-K4 typed Predicate, unbuilt"),
 ];

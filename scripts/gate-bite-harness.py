@@ -1749,6 +1749,28 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the unproven ratchet stops reding downward (progress goes unrecorded)",
          "        elif unp < base_unp:",
          "        elif False:"),
+        # An exemption for a CORRECTLY-unsited invariant must die when its
+        # reason does. Both directions, because a row can outlive its reason by
+        # the id gaining a site OR by the id ceasing to be declared.
+        ("the UNSITED_OK gained-a-site shrink arm disabled",
+         "        elif i in sited:",
+         "        elif False:"),
+        ("the UNSITED_OK undeclared shrink arm disabled",
+         "        if i not in decl:\n            problems.append(\n"
+         "                f\"UNSITED_OK[{i}] exempts an id no longer DECLARED.",
+         "        if False:\n            problems.append(\n"
+         "                f\"UNSITED_OK[{i}] exempts an id no longer DECLARED."),
+        # Self-exclusion by CONTENT. By filename it covered the original and not
+        # a copy -- and a copy under a new name is what THIS harness runs, so a
+        # copy walked the original, read its exemption tables as citations, and
+        # measured a different tree than the shipped baseline describes.
+        ("self-exclusion reverts to matching a filename",
+         "            if SENTINEL in text:",
+         "            if p.name == SENTINEL:"),
+        # A range names a family; its left end is not a citation.
+        ("the id pattern counts the left end of a range again",
+         'ID_RE = re.compile(r"DP-(?:A|R|T|Ch)\\d+(?![\\dA-Za-z-])")',
+         'ID_RE = re.compile(r"DP-(?:A|R|T|Ch)\\d+")'),
     ],
     "citation-gate": [
         ("the pragma stops exempting", "        if _pragma_covers(lines, i):", "        if False:"),

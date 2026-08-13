@@ -9,6 +9,11 @@
 //! `14_durable_subscribe`, `15_turn_boundary`, `18_causality_and_routing`.
 //! **Three of them have no producer**, measured before a line was written:
 //! `DurableEventStream` 0 files, `advance_turn` 0, `TurnBoundary` 0,
+//! `DP-A19` (intra-session causality via an opaque token) is proven HERE: the
+//! register assertions below are what keep `wait_for`/`CausalityToken` from
+//! quietly leaving `crates/dp/src/read.rs`. The type is tracked as `DP-Ch38`;
+//! `DP-A19` is the same guarantee stated as an access-pattern rule.
+//!
 //! `wait_for_token` 0, `route_to_writer` 0; `CausalityToken` appears twice and
 //! both are DEFERRED-register rows that already record it as unbuilt. Writing
 //! oracles for those would be the orphan shape `§0.6c` forbids — ceremony that

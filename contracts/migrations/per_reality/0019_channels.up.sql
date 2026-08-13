@@ -141,6 +141,12 @@ CREATE TABLE IF NOT EXISTS channels (
 
     -- `DP-Ch2` verbatim: depth is bounded and the tree has no orphans.
     CONSTRAINT channels_depth_bounded CHECK (depth >= 0 AND depth <= 16),
+    -- `DP-A18` verbatim: every channel has exactly one lifecycle state at any
+    -- time, drawn from the CLOSED SET {Active, Dormant, Dissolved}. This CHECK
+    -- is where that closed set is actually enforced — in SQL, lower-cased,
+    -- which is why a case-sensitive grep for `Dormant` finds nothing in Rust
+    -- and the rule looks unimplemented. `dp-channels-live-smoke` proves it by
+    -- asking it to reject `'zombie'`.
     CONSTRAINT channels_lifecycle_known
         CHECK (lifecycle IN ('active', 'dormant', 'dissolved')),
     CONSTRAINT channels_no_orphan CHECK (

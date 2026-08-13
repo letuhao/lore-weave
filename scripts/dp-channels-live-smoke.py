@@ -231,6 +231,8 @@ def main() -> int:
             ("a child at depth 0", row(REALITY_A, 10, 1, 0), "channels_no_orphan"),
             ("depth past the DP-Ch2 bound of 16", row(REALITY_A, 11, 1, 17), "channels_depth_bounded"),
             ("a negative depth", row(REALITY_A, 12, 1, -1), "channels_depth_bounded"),
+            # `DP-A18` — the closed set {Active, Dormant, Dissolved}. This is the
+            # case that proves the CHECK is not decorative.
             ("an unknown lifecycle", row(REALITY_A, 13, 1, 1, "zombie"), "channels_lifecycle_known"),
             ("a parent that does not exist", row(REALITY_A, 15, 999, 1), "channels_parent_fk"),
             ("a parent in ANOTHER reality", row(REALITY_B, 15, 2, 1), "channels_parent_fk"),

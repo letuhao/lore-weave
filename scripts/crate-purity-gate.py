@@ -155,6 +155,25 @@ PURE_CRATES: dict[str, dict[str, set[str]]] = {
     #
     # Found by a PO question — *"is there anywhere a module that may not touch
     # the DB reaches down to it, and how is that guarded?"* — not by any check.
+    # `DP-A2` — the CP/DP split. Policy lives in a thin control-plane SERVICE;
+    # hot-path reads and writes happen in a data plane embedded as a LIBRARY,
+    # and "the control plane is never on the hot path of a player action".
+    #
+    # That is a purity claim about this crate, and it was guarded by nothing
+    # until 2026-08-13 — `crates/dp` was simply never listed here, so a `tokio`
+    # or a dependency on `dp-control-plane` would have put the control plane on
+    # the hot path with the whole suite green. The crate's own Cargo.toml argues
+    # the point and cites `S2.3`; an argument in a comment is not a check.
+    #
+    # `dp-control-plane` is DELIBERATELY ABSENT from the workspace set: the SDK
+    # reaching the control plane is the exact thing DP-A2 forbids, so its
+    # absence here is what refuses it.
+    "dp": {
+        # R1 — workspace-internal, TRANSITIVE. Empty on purpose.
+        "workspace": set(),
+        # R2 — external. `uuid` opens nothing, reads nothing, spawns nothing.
+        "external": {"uuid"},
+    },
     "sim-core": {
         # ZERO, and the emptiness is the assertion. `Cargo.toml` carries the
         # same claim in prose (*"determinism is the product, and every
@@ -368,6 +387,31 @@ def _fake_meta(extra_ws: list[str], extra_ext: list[str]) -> dict:
 def self_test() -> int:
     policy = {"game-rules": {"workspace": {"ruleset-core", "sim-core"}, "external": {"serde", "blake3"}}}
     fails = []
+
+    # ── DP-A2, the CP/DP split ────────────────────────────────────────────────
+    # "Hot-path reads and writes happen in a data plane embedded as a LIBRARY …
+    # the control plane is never on the hot path of a player action."
+    #
+    # The mutation harness proves this gate REFUSES an I/O dependency on
+    # `crates/dp`. This proves the row that makes it do so still exists —
+    # deleting `"dp"` from PURE_CRATES silently retires DP-A2's only guard, and
+    # every other case here would stay green, because they all drive `policy`
+    # above rather than the shipped table.
+    #
+    # The SECOND half of DP-A2 — the SDK must not reach the control plane — is
+    # enforced by CARGO, not by this gate: `dp-control-plane` depends on `dp`,
+    # so the reverse edge is a cycle and metadata refuses it. Recorded here
+    # because "enforced by construction" is a claim, and this is where a reader
+    # finds out which half is which.
+    dp = PURE_CRATES.get("dp")
+    if dp is None:
+        fails.append("DP-A2: `dp` is not in PURE_CRATES — the data plane's purity, "
+                     "which is an INVARIANT, is guarded by nothing")
+    elif dp["external"] != {"uuid"} or dp["workspace"] != set():
+        fails.append(
+            f"DP-A2: `dp`'s allowed set widened to workspace={sorted(dp['workspace'])} "
+            f"external={sorted(dp['external'])}. It is the SDK on the hot path; every "
+            f"addition needs its own argument, in the row.")
 
     # R1 must bite on a TRANSITIVE workspace dep — the case a direct-deps check
     # would wave through. This is the whole reason the walk is transitive.
