@@ -62,6 +62,7 @@ from loreweave_extraction.canonical import canonicalize_entity_name
 
 from app.db.neo4j_repos.entities import Entity, EntityDetail
 from app.db.neo4j_repos.events import Event
+from app.domain.graph_models import Fact
 from app.db.neo4j_repos.relations import Relation
 from app.ports.graph_store import EventAxis, RelationDirection
 
@@ -735,6 +736,36 @@ class AgeGraphStore:
         if sort_dir == "desc":
             matched.reverse()
         return matched[offset:offset + limit], len(matched)
+
+    async def merge_fact(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        type: str,
+        content: str,
+        confidence: float = 0.0,
+        pending_validation: bool = False,
+        source_type: str = "book_content",
+        source_chapter: str | None = None,
+        provenance: str = "human_authored",
+        subject_id: str | None = None,
+        from_order: int | None = None,
+        valid_from_ordinal: int | None = None,
+        event_date_iso: str | None = None,
+        predicate: str | None = None,
+        object: str | None = None,
+        maintain_chain: bool = False,
+    ) -> Fact:
+        raise NotImplementedError(
+            "AgeGraphStore.merge_fact — see D-AGE-FACT-WRITE-UNIMPLEMENTED. The plain upsert is "
+            "expressible; `maintain_chain` is the problem: re-deriving the valid_to_ordinal "
+            "chain for a (subject, type) family needs an ordered window over sibling facts in "
+            "ONE statement, which AGE has no APOC-free shape for. Refusing rather than "
+            "half-writing: an accepted flag that closed no interval leaves every fact open "
+            "forever, and an as-of read then answers with the latest value at every position — "
+            "a book with no history, reported as a working timeline."
+        )
 
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         cy = f"""

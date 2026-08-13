@@ -35,9 +35,11 @@ from app.db.neo4j_repos.entities import (
 )
 from app.db.neo4j_repos.entity_status import status_at_order
 from app.db.neo4j_repos.events import Event, list_events_filtered, list_events_in_order
+from app.db.neo4j_repos import facts as _facts_repo
 from app.db.neo4j_repos import events as _event_repo
 from app.db.neo4j_repos import relations as _rel_repo
 from app.db.neo4j_repos.relations import Relation, create_relation, find_relations_for_entity
+from app.domain.graph_models import Fact
 from app.ports.graph_store import EventAxis, RelationDirection
 
 logger = logging.getLogger(__name__)
@@ -199,6 +201,35 @@ class Neo4jGraphStore:
             self._session, user_id=user_id, project_id=project_id,
             participant_candidates=participants, q=q, sort_by=axis, sort_dir=sort_dir,
             limit=limit, offset=offset, exclude_project_ids=exclude_project_ids, **kw)
+
+    async def merge_fact(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        type: str,
+        content: str,
+        confidence: float = 0.0,
+        pending_validation: bool = False,
+        source_type: str = "book_content",
+        source_chapter: str | None = None,
+        provenance: str = "human_authored",
+        subject_id: str | None = None,
+        from_order: int | None = None,
+        valid_from_ordinal: int | None = None,
+        event_date_iso: str | None = None,
+        predicate: str | None = None,
+        object: str | None = None,
+        maintain_chain: bool = False,
+    ) -> Fact:
+        return await _facts_repo.merge_fact(
+            self._session, user_id=user_id, project_id=project_id, type=type,
+            content=content, confidence=confidence,
+            pending_validation=pending_validation, source_type=source_type,
+            source_chapter=source_chapter, provenance=provenance, subject_id=subject_id,
+            from_order=from_order, valid_from_ordinal=valid_from_ordinal,
+            event_date_iso=event_date_iso, predicate=predicate, object=object,
+            maintain_chain=maintain_chain)
 
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         return await _event_repo.get_event(

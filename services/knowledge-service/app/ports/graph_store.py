@@ -50,6 +50,7 @@ from app.domain.graph_models import (
     EntityDetail,
     EvidenceWriteResult,
     Event,
+    Fact,
     Relation,
 )
 
@@ -351,6 +352,55 @@ class GraphStore(Protocol):
         """Soft-archive (the user-facing "delete" = hide). Idempotent — re-archiving an
         already-archived event succeeds, so the correction can be retried after a timeout.
         `None` is a miss."""
+        ...
+
+    # ── facts (T17/A7) ───────────────────────────────────────────────
+
+    async def merge_fact(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        type: str,
+        content: str,
+        confidence: float = 0.0,
+        pending_validation: bool = False,
+        source_type: str = "book_content",
+        source_chapter: str | None = None,
+        provenance: str = "human_authored",
+        subject_id: str | None = None,
+        from_order: int | None = None,
+        valid_from_ordinal: int | None = None,
+        event_date_iso: str | None = None,
+        predicate: str | None = None,
+        object: str | None = None,
+        maintain_chain: bool = False,
+    ) -> Fact:
+        """Idempotent fact upsert, content-keyed.
+
+        ⚠️ **`maintain_chain` is the operation this method exists for, and the one an adapter
+        is most likely to get quietly wrong.** With it set (the extraction path), the store
+        re-derives the `valid_to_ordinal` CHAIN for this fact's `(subject, type)` after the
+        merge: the prior containing fact closes at this ordinal, and this one closes at the
+        next strictly-greater ordinal — correct under out-of-order and backfill arrival, which
+        is the whole difficulty. Left `False` (chat tools, the L2 loader) the merge is a plain
+        upsert and no interval moves.
+
+        An adapter that accepted the flag and did nothing would produce a graph where every
+        fact is open forever: every as-of read then answers with the LATEST value at every
+        position, which looks like a working timeline and is a book with no history. That
+        failure is silent in exactly the way `D-T42A-PORT-CANNOT-CLOSE-AN-INTERVAL` describes
+        for relations — this is the same axis, on the other node type.
+
+        `valid_from_ordinal` defaults to `from_order` when omitted, so a positioned fact opens
+        a story interval automatically. `type` must be one of `FACT_TYPES`
+        (`app.domain.fact_types`) — the write path validates against that tuple, not against a
+        wider vocabulary a caller might hold.
+
+        NO `valid_from` datetime parameter: this port speaks the STORY axis. The wall-clock
+        axis is a different question (T45), and offering both here is how a caller ends up
+        passing the one it did not mean.
+        """
         ...
 
     # ── status ───────────────────────────────────────────────────────

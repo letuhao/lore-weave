@@ -706,3 +706,77 @@ async def test_the_browse_and_the_window_agree_about_which_events_match(store):
         "the browse and the window disagree about which events are in the range"
     )
     assert total == len(windowed)
+
+
+# ── facts, and the ordinal chain (T17 A7) ────────────────────────────────────
+
+#: AGE refuses the fact WRITE (D-AGE-FACT-WRITE-UNIMPLEMENTED); the refusal is asserted below.
+_FACT_WRITE_REFUSERS = {"age"}
+
+
+@pytest.mark.asyncio
+async def test_merge_fact_returns_a_CONTENT_KEYED_id(store):
+    """⚠️ **This rule CANNOT detect a merge_fact that appends**, and that is worth stating
+    rather than leaving as an unexamined green.
+
+    A fact's id is derived from its content in both implementations, so a store that minted a
+    second node would return the SAME id and this assertion would still pass. The bite proved
+    it: forcing the fake to always create reds nothing. Detecting duplication needs a COUNT,
+    and the port has no fact read — see `D-PORT-CANNOT-OBSERVE-FACT-STATE`.
+
+    What it does cover: the id is stable and content-derived, which is what every caller that
+    stores a fact id depends on.
+    """
+    if _which(store) in _FACT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_fact_write")
+    u, p, _ = _ids()
+    a = await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="wields the frost blade", subject_id="e1",
+                               from_order=10_000)
+    b = await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="wields the frost blade", subject_id="e1",
+                               from_order=10_000)
+    assert a.id == b.id
+    c = await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                               content="wields a DIFFERENT blade", subject_id="e1",
+                               from_order=10_000)
+    assert c.id != a.id, "two different contents collapsed into one id"
+
+
+@pytest.mark.asyncio
+async def test_merge_fact_ACCEPTS_maintain_chain_without_raising(store):
+    """What this suite can honestly assert about the chain today — and it is not much.
+
+    🔻 `D-PORT-CANNOT-OBSERVE-FACT-STATE`. The chain is the operation's whole point, and
+    **no port caller can see it**: `Fact` carries no `subject_id` (the real store attaches the
+    subject with an ABOUT edge), the chain is re-derived AFTER the merge so the returned object
+    predates it, and the port has no fact READ to re-fetch with. Three earlier versions of this
+    rule asserted `first.valid_to_ordinal == 40_000` and failed on BOTH real adapters for that
+    reason — the assertion was about a stale object, not about the store.
+
+    So this rule covers only what is observable: the flag is accepted and the write completes.
+    That is deliberately weak, and it is stated here rather than dressed up: a fourth version
+    asserting `valid_to_ordinal is None` on the same stale object would have PASSED on every
+    adapter while proving nothing at all.
+    """
+    if _which(store) in _FACT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_fact_write")
+    u, p, _ = _ids()
+    first = await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                                   content="an outer disciple", subject_id="e1",
+                                   from_order=10_000, maintain_chain=True)
+    second = await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                                    content="an inner disciple", subject_id="e1",
+                                    from_order=40_000, maintain_chain=True)
+    assert first.id != second.id, "two different fact contents collapsed into one node"
+    assert second.valid_from_ordinal == 40_000
+
+
+@pytest.mark.asyncio
+async def test_age_REFUSES_the_fact_write_rather_than_answering_wrongly(store):
+    if _which(store) not in _FACT_WRITE_REFUSERS:
+        pytest.skip("only the refusing adapters are pinned here")
+    u, p, _ = _ids()
+    with pytest.raises(NotImplementedError, match="D-AGE-FACT-WRITE-UNIMPLEMENTED"):
+        await store.merge_fact(user_id=u, project_id=p, type="attribute", content="x",
+                               subject_id="e1", from_order=1, maintain_chain=True)

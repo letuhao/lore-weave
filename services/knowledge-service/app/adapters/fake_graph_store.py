@@ -28,6 +28,7 @@ from loreweave_extraction.canonical import canonicalize_entity_name, entity_cano
 from app.db.neo4j_repos.entities import Entity, EntityDetail
 from app.db.neo4j_repos.events import Event
 from app.db.neo4j_repos.relations import Relation
+from app.domain.graph_models import Fact
 from app.ports.graph_store import EventAxis, RelationDirection
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,10 @@ class FakeGraphStore:
         self._evidence: dict[tuple, dict] = {}
         self._evidence_counts: dict[str, int] = {}
         self._relations: list[Relation] = []
+        self._facts: list[Fact] = []
+        # `Fact` carries no subject_id — the real store attaches the subject with an
+        # ABOUT edge — so the chain family key lives beside the list, not on the model.
+        self._fact_subject: dict[str, str | None] = {}
         self._events: list[Event] = []
         # (user, project, entity_id) -> [(from_order, status)], newest-wins at a position.
         self._statuses: dict[tuple[str, str | None, str], list[tuple[int, str, int]]] = {}
@@ -315,6 +320,83 @@ class FakeGraphStore:
             matched.reverse()
         total = len(matched)
         return matched[offset:offset + limit], total
+
+    async def merge_fact(
+        self,
+        *,
+        user_id: str,
+        project_id: str | None,
+        type: str,
+        content: str,
+        confidence: float = 0.0,
+        pending_validation: bool = False,
+        source_type: str = "book_content",
+        source_chapter: str | None = None,
+        provenance: str = "human_authored",
+        subject_id: str | None = None,
+        from_order: int | None = None,
+        valid_from_ordinal: int | None = None,
+        event_date_iso: str | None = None,
+        predicate: str | None = None,
+        object: str | None = None,
+        maintain_chain: bool = False,
+    ) -> Fact:
+        """Content-keyed upsert, and — when asked — the ordinal CHAIN.
+
+        The chain is reproduced here rather than stubbed because it is the operation's whole
+        point: a fake that accepted `maintain_chain` and left every interval open would make
+        every as-of test agree with a graph that has no history, which is the failure the port
+        docstring describes. Rule: within one `(user, project, subject, type)` family, the
+        fact at each ordinal closes at the NEXT STRICTLY GREATER ordinal, and the newest opens.
+        Re-derived from scratch on every call so out-of-order and backfill arrival land the
+        same way the real store's `temporal.maintain_chain` puts them.
+        """
+        if valid_from_ordinal is None:
+            valid_from_ordinal = from_order
+        # Matched on the model's own fields, not a stashed attribute: `Fact` is a pydantic
+        # model and will not carry one.
+        fact = next(
+            (f for f in self._facts
+             if (f.user_id, f.project_id, f.type, f.content,
+                 self._fact_subject.get(f.id)) == (user_id, project_id, type, content,
+                                                   subject_id)),
+            None,
+        )
+        if fact is None:
+            fact = Fact(
+                id=f"fact|{user_id}|{project_id}|{type}|{content}|{subject_id}",
+                user_id=user_id, project_id=project_id, type=type, content=content,
+                # The real store canonicalises for the content key; the fake mirrors it so
+                # the model is the same shape both sides return.
+                canonical_content=content.strip().lower(),
+                confidence=confidence, pending_validation=pending_validation,
+                source_types=[source_type] if source_type else [],
+                from_order=from_order,
+                valid_from_ordinal=valid_from_ordinal, event_date_iso=event_date_iso,
+                predicate=predicate, object=object,
+                created_at=_now(), updated_at=_now(),
+            )
+            self._facts.append(fact)
+            self._fact_subject[fact.id] = subject_id
+        else:
+            fact.confidence = max(fact.confidence, confidence)
+            if source_type and source_type not in fact.source_types:
+                fact.source_types.append(source_type)
+            if valid_from_ordinal is not None:
+                fact.valid_from_ordinal = valid_from_ordinal
+            fact.updated_at = _now()
+
+        if maintain_chain and subject_id is not None:
+            family = [f for f in self._facts
+                      if (f.user_id, f.project_id, f.type,
+                          self._fact_subject.get(f.id)) == (user_id, project_id, type,
+                                                            subject_id)
+                      and f.valid_from_ordinal is not None]
+            family.sort(key=lambda f: f.valid_from_ordinal)
+            for i, f in enumerate(family):
+                nxt = family[i + 1].valid_from_ordinal if i + 1 < len(family) else None
+                f.valid_to_ordinal = nxt
+        return fact
 
     async def get_event(self, *, user_id: str, event_id: str) -> Event | None:
         for e in self._events:

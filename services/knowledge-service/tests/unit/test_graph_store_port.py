@@ -260,6 +260,9 @@ def test_implementations_match_the_port_signatures(impl):
                  "get_event", "merge_event", "update_event_fields", "archive_event",
                  # A3 — the paginated browse.
                  "events_page",
+                 # A7 — the fact write. AGE REFUSES it (D-AGE-FACT-WRITE-UNIMPLEMENTED)
+                 # but must still match the SHAPE.
+                 "merge_fact",
                  "status_at_order", "events_in_window"):
         port_sig = inspect.signature(getattr(GraphStore, name))
         impl_sig = inspect.signature(getattr(impl, name))

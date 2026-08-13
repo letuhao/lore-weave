@@ -390,3 +390,70 @@ class EvidenceWriteResult(BaseModel):
 # that touch no Cypher at all — count as bound to the concrete layer, which is both untrue
 # and, for `port-adoption-gate`, indistinguishable from a real binding.
 EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
+
+# ── :Fact (T17 A7) ───────────────────────────────────────────────────────────
+#
+# Moved out of `db/neo4j_repos/facts.py` for the reason the port already records: a port
+# that imports its own implementation is not a boundary. `merge_fact` is the port's
+# newest operation and it RETURNS this, so the model had to precede it here.
+
+class Fact(BaseModel):
+    """Pydantic projection of a `:Fact` node."""
+
+    id: str
+    user_id: str
+    project_id: str | None = None
+    type: str
+    content: str
+    canonical_content: str
+    confidence: float = 0.0
+    pending_validation: bool = False
+    valid_from: datetime | None = None
+    valid_until: datetime | None = None
+    source_types: list[str] = Field(default_factory=list)
+    source_chapter: str | None = None
+    # T2.1 — reading-axis order (chapter_sort_order × EVENT_ORDER_CHAPTER_STRIDE),
+    # stamped at extraction so the codex can spoiler-window a fact to the chapter it
+    # was established in. NULL on legacy facts + chat-tool facts (no chapter) → those
+    # are excluded under any finite window (NULL <= X is null/false in Cypher).
+    from_order: int | None = None
+    # F3 — story (valid) time axis (chapter ordinals), UNIFIED with from_order.
+    # Half-open interval [valid_from_ordinal, valid_to_ordinal); open = NULL =
+    # +∞. valid_from_ordinal defaults to from_order at write time (the same
+    # reading-axis ordinal the fact was established at); valid_to_ordinal is set
+    # ONLY by temporal.maintain_chain (the single chain-maintenance writer) when
+    # a later fact on the same (subject, type) chain supersedes it. The wall-
+    # clock valid_from/valid_until above stay the TRANSACTION-time axis. NULL on
+    # legacy / positionless facts (chat-tool facts with no chapter).
+    # See app.db.neo4j_repos.temporal + spec §12.3.
+    valid_from_ordinal: int | None = None
+    valid_to_ordinal: int | None = None
+    # Indexable null-sink ceiling for open intervals (= INT64_MAX when open);
+    # maintained in lockstep with valid_to_ordinal by maintain_chain.
+    valid_to_ordinal_eff: int | None = None
+    # dec-3 (D-KG-INSTORY-EVENTDATE) — detected in-story (narrative) time as a
+    # truncated ISO string: "YYYY" / "YYYY-MM" / "YYYY-MM-DD". This is an
+    # ADDITIONAL, optional valid-time REFINEMENT alongside the chapter-ordinal
+    # axis (valid_from_ordinal) — NOT a replacement. The chapter ordinal stays the
+    # PRIMARY / spoiler-safe story-time axis (it is always present for a positioned
+    # fact and drives the interval chain); event_date_iso is a SECONDARY,
+    # descriptive sort/filter key that the extractor supplies only when the prose
+    # carries an explicit in-story date. NULL is the dominant case (most facts have
+    # no calendar date) and NEVER breaks the ordinal axis. Mirrors :Event's
+    # event_date_iso (C18): same truncated-ISO shape, sort-stable lexicographically,
+    # precision-preferring on re-mention. String (not date) so partial-precision
+    # ("summer 1880" → "1880-06") keeps the "day unknown" signal.
+    event_date_iso: str | None = None
+    # WS-2.6b (supersede-a-fact, spec 07 §Q5) — the structured CLAIM the fact makes, denormalized onto
+    # the node so recall can detect a supersession ("Mon: Friday → Wed: Tuesday") by grouping same-
+    # (subject, predicate) facts whose `object` changed over time. Both NULL for a coarse fact (no s/p/o)
+    # and for every extraction fact (only the diary WS-2.2 path fills them) — additive, no behavior change.
+    predicate: str | None = None
+    object: str | None = None
+    evidence_count: int = 0
+    archived_at: datetime | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    # WS-2.6b — the fact's subject CANONICAL name, populated by `recall_facts` from the :ABOUT edge (NOT
+    # a node prop — the :Entity stays the SSOT). Transient; used to group supersessions in the read.
+    subject_canonical: str | None = None

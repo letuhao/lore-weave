@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `A7` — `merge_fact` + `maintenance` on the port (PO chose to build ahead of T35).**
-**Three PO decisions taken 2026-08-13 (second round):** `active_rules` ← the canon-rule corpus · T17 ← **push the real port growth now**, ahead of T35 · `CastEntry` ← **grow `attributes`**. **C5 is DONE:** the attribution channel is wired and caught a misattribution the breaker paused a run for (2 violations, real rule ids). **QC-5 still `[~]`** — `D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` is superseded by **`D-QC5-PIPELINE-NOT-REPRODUCIBLE`**: three runs of the same chapter gave `severe / warn / ok`, one of them the 5/5 QC-5 calls the defect. ⚠️ **A7 carries a stated risk** — building `merge_fact`/`maintenance` before T35 settles identity is the shape that produced the `triage_apply` false match; the PO chose it knowingly. See **▶ EXECUTION PLAN** below.
+**RESUME: `B8` — grow `CastEntry.attributes`, migrate knowledge-service, close T38.**
+**C parked** on QC-5's measurement rule (`D-QC5-PIPELINE-NOT-REPRODUCIBLE`). **A7 DONE and A is now parked too:** `merge_fact` is on the port (Fake + Neo4j; AGE refuses with `D-AGE-FACT-WRITE-UNIMPLEMENTED`), but the bites killed three of my own rules and found the real blocker — **`D-PORT-CANNOT-OBSERVE-FACT-STATE`: the port can write a fact and cannot read one**, so neither the ordinal chain nor duplication is verifiable through it. `maintenance` turned out to be NINE things (`D-MAINTENANCE-IS-NINE-JANITORS`), a scope question not effort. Execution continues in **B**. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -2019,6 +2019,95 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   them import a constant *and* a vector operation. The remaining class-(a) work is worth doing
   for honesty — a constant in the engine package is a lie about coupling — but it will not
   empty the ceiling.
+
+  ### 🔴 A7 2026-08-13 — `merge_fact` ships; **the port cannot observe what it did**
+
+  ```
+  conformance   67 -> 72 passed / 13 skipped        port-adoption-gate  59 / 17 (unchanged)
+  ```
+
+  PO decision: build `merge_fact` + `maintenance` ahead of T35, risk accepted. **Rule 8
+  (measure first) changed the batch twice before a line was written, and the bites changed it
+  twice more.**
+
+  🔧 **`maintenance` is not one operation — it is NINE**, measured by AST: seven functions
+  (`project_graph_stats`, `delete_orphan_extraction_sources`, `invalidate_stale_quarantined_facts`,
+  `reconcile_evidence_count_for_label`, `count_nodes_by_label`, `clear_embedding_model_tag`,
+  `delete_project_nodes_by_label`) and **two constants** (`COUNTABLE_LABELS`,
+  `PROJECT_GRAPH_LABELS`), each used once or twice. Putting them on `GraphStore` would be
+  growing the port **by inventory**, which its own docstring forbids — and most are janitorial:
+  a swappable port that requires every adapter to implement graph housekeeping is a different
+  and much larger decision than "the port owns the domain reads". **Not built. Recorded as
+  `D-MAINTENANCE-IS-NINE-JANITORS`.** The two constants are class-(a) work (A4/A5/A6 shape).
+
+  ✅ **`merge_fact` DID have demand** — four callers — and is now on the port, implemented in
+  Fake and Neo4j, **refused by AGE** (`D-AGE-FACT-WRITE-UNIMPLEMENTED`): the plain upsert is
+  expressible, but `maintain_chain` needs an ordered window over sibling facts in one
+  statement, which AGE has no APOC-free shape for. An accepted flag that closed no interval
+  leaves every fact open forever, and every as-of read then answers with the LATEST value at
+  every position — a book with no history, reported as a working timeline.
+
+  `Fact` moved to `app/domain/graph_models.py` and is re-exported, for the reason the port
+  already records: **a port that imports its own implementation is not a boundary.**
+
+  🔴 **AND THEN THE BITES KILLED THREE OF MY OWN RULES.**
+
+  1. **Three chain rules asserted on a STALE object.** `first.valid_to_ordinal == 40_000`
+     failed on **both** real adapters — not because the chain was wrong, but because the chain
+     is re-derived AFTER the merge and the returned `Fact` predates it. `Fact` also carries no
+     `subject_id` (the real store attaches the subject with an ABOUT edge), so the family
+     cannot even be identified from a returned object.
+  2. **A fourth version would have passed and proved nothing.** Asserting
+     `valid_to_ordinal is None` on that same stale object is green on every adapter, always.
+  3. **The idempotency rule cannot fail either.** Forcing the fake to always create a new fact
+     reds NOTHING: a fact's id is content-derived, so a store that appends returns the same id.
+     Detecting duplication needs a COUNT, and there is no fact read on the port.
+
+  **So the port can write a fact and cannot see one.** That is the real finding of A7, and it
+  is not about T35 — it is a hole in the port's own read surface, recorded as
+  `D-PORT-CANNOT-OBSERVE-FACT-STATE`. The rule that survives says exactly what it covers and
+  what it cannot, rather than banking an unexamined green.
+
+  **BITE ×2:**
+
+  ```
+  1. AGE: `return None` ahead of the raise
+     E  Failed: DID NOT RAISE <class 'NotImplementedError'>
+  2. Fake: force merge_fact to always create
+     -> 2 passed        <- VACUOUS, and the reason is now written into the rule
+  ```
+
+  **QC (a) gates:** `port-adoption-gate` PASS, **unchanged at 59/17** — A7 grows the PORT and
+  migrates no consumer, exactly as A1–A3 did; the ceiling falls when consumers move.
+  `db-safety-gate` exit 0.
+  **QC (b) the seam:** N/A — port + adapters are in-process, no service code, no HTTP surface.
+  The live proof is 72 conformance tests against a real Neo4j and a real AGE container.
+  **QC (c) real data:** the Neo4j arm wrote and re-read real `:Fact` nodes; the AGE refusal was
+  proved against a real AGE graph.
+
+  ```
+  4216 passed — knowledge-service unit suite
+  ```
+
+  ### 🔻 DEFERRAL `D-PORT-CANNOT-OBSERVE-FACT-STATE`
+
+  | | |
+  |---|---|
+  | **Blocker** | `GraphStore` can WRITE a fact and cannot READ one. So neither of `merge_fact`'s two contracts is verifiable through the port: the ordinal CHAIN is re-derived after the merge and the returned `Fact` predates it (and carries no `subject_id` to identify its family), and DUPLICATION is invisible because the id is content-derived — an appending store returns the same id a merging one does. |
+  | **Evidence** | Three chain rules asserting `first.valid_to_ordinal == 40_000` failed on BOTH real adapters for this reason before being withdrawn. Biting the fake to always create reds nothing: `2 passed`. The surviving rule documents both gaps in its own docstring rather than banking the green. |
+  | **Mechanism** | The rule `test_merge_fact_returns_a_CONTENT_KEYED_id` states in its first line that it cannot detect an appending store, so no reader can mistake its green for coverage; and `test_merge_fact_ACCEPTS_maintain_chain_without_raising` names this deferral. The weakness is legible where a reader meets it. |
+  | **To unblock** | Give the port a fact read — the minimum is `facts_for(subject_id, type, as_of=None) -> list[Fact]`, which makes the chain, the duplication and the as-of window all observable in one operation. It is the same shape `relations_for` already has, and it is what `fact_for_check.py` is doing behind the port today. |
+  | **Retry when** | Any batch that adds a fact READ — T32 (the reveal axis) and T35 (identity) both need one, so this closes as a side effect rather than as its own task. |
+
+  ### 🔻 DEFERRAL `D-MAINTENANCE-IS-NINE-JANITORS`
+
+  | | |
+  |---|---|
+  | **Blocker** | A7 was scoped to put `maintenance` on the port. It is not an operation: AST measurement found seven functions and two constants across eight consumers, most of them janitorial (delete orphans, reconcile counters, clear an embedding tag, count nodes by label). Requiring every adapter to implement graph housekeeping is a much larger decision than "the port owns the domain reads", and the port's own docstring says it grows by demand, not inventory. |
+  | **Evidence** | `maintenance.project_graph_stats` ×2; `delete_orphan_extraction_sources`, `invalidate_stale_quarantined_facts`, `reconcile_evidence_count_for_label`, `count_nodes_by_label`, `clear_embedding_model_tag`, `delete_project_nodes_by_label` ×1 each; plus constants `COUNTABLE_LABELS` and `PROJECT_GRAPH_LABELS` ×1 each. Eight modules import the package. |
+  | **Mechanism** | `port-adoption-gate` still counts all eight as bound, so the debt stays on the board at its true size and cannot be mistaken for done. |
+  | **To unblock** | Decide the CLASS: (a) the two constants move to the domain — cheap, A4/A6 shape, and frees nothing on its own; (b) `project_graph_stats` / `count_nodes_by_label` are arguably domain reads and could join the port; (c) the destructive janitors are engine housekeeping and probably belong to an admin surface that is deliberately NOT swappable. Three answers, not one. |
+  | **Retry when** | The PO decides whether a swappable graph port owns janitorial work at all. It is a scope question, not effort. |
 
   ### 🔴 A5 2026-08-13 — **"sweep the remaining 61 in batches of ~8" cannot happen. Measured.**
 
