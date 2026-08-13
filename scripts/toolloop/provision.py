@@ -33,6 +33,7 @@ from __future__ import annotations
 import argparse
 import json
 import pathlib
+import subprocess
 import sys
 import time
 import uuid
@@ -40,7 +41,10 @@ import uuid
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT))
 
+import httpx  # noqa: E402
+
 from scripts.eval.tool_liveness.mcp_direct import MCPDirect  # noqa: E402
+from scripts.eval.tool_liveness.auth import Auth as _TLEAuth  # noqa: E402
 from scripts.eval.tool_liveness import oracle  # noqa: E402
 
 #: Every book this module creates carries this prefix, and teardown deletes nothing without it.
@@ -54,6 +58,20 @@ TITLE_PREFIX = "LOOP-THROWAWAY-"
 from scripts.eval.tool_liveness import config as _tle_config  # noqa: E402
 
 OWNER_ID = _tle_config.USER_ID
+
+_AUTH_SINGLETON = None
+
+
+def _tle_auth():
+    """One cached bearer for the whole process — the token is good for 2h and re-logging in per
+    fixture would make provisioning the slowest part of a batch."""
+    global _AUTH_SINGLETON
+    if _AUTH_SINGLETON is None:
+        _AUTH_SINGLETON = _TLEAuth()
+    return _AUTH_SINGLETON
+
+CONTAINER = _tle_config.PG_CONTAINER
+PG_USER = _tle_config.PG_USER
 
 BOOK_DB = "loreweave_book"
 COMP_DB = "loreweave_composition"
@@ -149,8 +167,23 @@ class Throwaway:
         return None
 
     def _seed_step(self, step: dict) -> None:
-        """One deterministic MCP call. `{book_id}` / `{chapter_id}` / `{project_id}` in any
-        string value are substituted with this fixture's real ids."""
+        """One deterministic setup call. `{book_id}` / `{chapter_id}` / `{project_id}` in any
+        string value are substituted with this fixture's real ids.
+
+        Two step kinds. `{"tool": ...}` is an MCP call. `{"rest": {...}}` is a direct service
+        call, needed where the MCP tool cannot seed deterministically — `glossary_adopt_standards`
+        mints a confirm_token and writes nothing at call time, so a fixture that used it would
+        report "no entities were created — unknown kind: character" and look like a glossary bug.
+        """
+        if "rest" in step:
+            spec = self._substitute(step["rest"])
+            base = _tle_config.DOMAIN_BASE[spec["domain"]]
+            r = httpx.request(spec.get("method", "POST"), f"{base}{spec['path']}",
+                              headers=_tle_auth().bearer_header(),
+                              json=spec.get("json") or {}, timeout=60)
+            r.raise_for_status()
+            self.seeded.append({"rest": spec, "status": r.status_code})
+            return
         tool = step["tool"]
         args = self._substitute(step.get("args") or {})
         r = self.mcp.call(tool, args)
@@ -168,6 +201,20 @@ class Throwaway:
         return obj
 
     # ── teardown ─────────────────────────────────────────────────────────────────────────
+    def is_gone(self) -> bool:
+        """Did teardown actually work? Asked of the DATABASE, not of the return value.
+
+        A teardown that reports success and leaves the row is worse than one that fails loudly:
+        the book stays on the account, `book_list` keeps offering it to the model, and the next
+        batch inherits an extra write target that its store diff cannot see. 16 fixtures survived
+        one batch exactly this way.
+        """
+        if not self.book_id:
+            return True
+        q = self.book_id.replace("'", "''")
+        rows = oracle.db_query(BOOK_DB, f"SELECT 1 FROM books WHERE id='{q}'")
+        return not rows
+
     def teardown(self) -> dict:
         """Delete ONLY this fixture, and only after re-reading the row to confirm it is ours.
 
@@ -221,26 +268,32 @@ def _delete_scoped(db: str, column: str, value: str) -> None:
     Table-driven rather than a hand-written list, for the same reason `store_snapshot` is: a
     hand list goes stale the moment someone adds a table, and the failure mode is silent
     leftover rows that the NEXT run reads as pre-existing state.
+
+    🔴 ONE ROUND TRIP PER DATABASE, NOT ONE PER TABLE. The first version issued a separate
+    `docker exec psql` per table per pass — around 140 process spawns per database, so a single
+    teardown took minutes. That is not merely slow: teardown runs in a `finally` while the next
+    scenario is already provisioning, and a minutes-long teardown under concurrency is how 16
+    fixtures survived one batch. The leak then handed the model a foreign book to write into on
+    the following run. Batching the statements makes teardown fast enough to finish inside the
+    window it actually has.
+
+    FK order is unknowable up front, so the whole batch runs TWICE inside the same call and
+    every statement is independent (`ON_ERROR_ROLLBACK=on`): a child blocked on the first pass is
+    gone by the second, and one failing DELETE cannot abort the rest.
     """
-    tables = oracle.db_query(
+    tables = [(t[0] if t else "") or "" for t in oracle.db_query(
         db, "SELECT table_name FROM information_schema.columns WHERE table_schema='public' "
-            f"AND column_name='{column}' ORDER BY table_name")
-    for t in tables:
-        name = (t[0] if t else "") or ""
-        if not name:
-            continue
-        try:
-            oracle.db_query(db, f'DELETE FROM public."{name}" WHERE {column}=\'{value}\'')
-        except Exception:  # noqa: BLE001 — FK order is not knowable up front; a second pass clears it
-            pass
-    # second pass: rows blocked by a FK on the first sweep
-    for t in tables:
-        name = (t[0] if t else "") or ""
-        if name:
-            try:
-                oracle.db_query(db, f'DELETE FROM public."{name}" WHERE {column}=\'{value}\'')
-            except Exception:  # noqa: BLE001
-                pass
+            f"AND column_name='{column}' ORDER BY table_name")]
+    tables = [t for t in tables if t]
+    if not tables:
+        return
+    stmts = [f'DELETE FROM public."{t}" WHERE {column}=\'{value}\';' for t in tables]
+    sql = "\\set ON_ERROR_ROLLBACK on\n" + "\n".join(stmts + stmts)
+    subprocess.run(
+        ["docker", "exec", "-i", CONTAINER, "psql", "-U", PG_USER, "-d", db, "-q", "-At"],
+        input=sql, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=180,
+    )
 
 
 def sweep_orphans(older_than_minutes: int = 0) -> list[str]:

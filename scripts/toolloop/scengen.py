@@ -71,6 +71,36 @@ FRAMES = {
     ("W", "noun"): "I want to work on the {s} — go ahead.",
 }
 
+#: 🔴 A WRITE PROMPT BUILT FROM A SYNONYM ALONE NAMES NO TARGET, AND THE MODEL IS RIGHT TO REFUSE
+#: IT. Measured 2026-08-14, batch 1: "Please plan a novel.", "Please change an existing entity's
+#: attribute." and "Please write a chapter." each produced ZERO tool calls on 3 of 3 runs — and
+#: reading the replies, the model asked which entity, which chapter, and what the story is. That
+#: is correct behaviour, so scoring it as "did not reach the tool" would have manufactured three
+#: defects out of my own underspecified prompts.
+#:
+#: A synonym is a ROUTING hint, not a request. A real request also carries a target, and the only
+#: legitimate source for one is the fixture the turn is actually looking at — so these clauses
+#: name the seeded substrate in prose, the way a user would. Still no tool name and no argument
+#: name: "set Aldric Vane's rank to Knight of the Ember" is a sentence, not a JSON body.
+SPECIFICS: dict[str, str] = {
+    "glossary_entity_set_attributes":
+        " Set Aldric Vane's rank to Knight of the Ember.",
+    "glossary_propose_new_attribute":
+        " Add a 'rank' detail to Aldric Vane and set it to Knight of the Ember.",
+    "book_chapter_create":
+        " Add a new one after what I have, called The Drowned Road, about Mira leading Aldric "
+        "through the marsh.",
+    "plan_propose_spec":
+        " The idea: a courier named Aldric carries a book that rewrites whoever reads it, and the "
+        "Pale Regent wants it back. Grimdark fantasy, one continent, about thirty chapters.",
+    "composition_outline_node_edit":
+        " Rename The Ember Codex chapter to The Ember Codex Opens.",
+    "glossary_ontology_upsert":
+        " Add a category called Factions for the groups in this world.",
+    "plan_compile":
+        " Use the plan I already have for this book.",
+}
+
 #: Substrate recipes keyed on the tool's declared `scope`. Deliberately small: the fixture already
 #: provisions a book, a chapter and a composition project, so a recipe only adds what a scope
 #: needs ON TOP of that. A read scenario over an EMPTY store cannot distinguish a truthful "you
@@ -85,6 +115,15 @@ RECIPES: dict[str, list[dict]] = {
                   "text": "The Pale Regent is never named aloud by a living character."}},
     ],
     "book": [
+        # Adopt the ontology through the REST edge first: an entity cannot be proposed into a
+        # kind the book has not adopted, and the whole batch failed provisioning with "unknown
+        # kind: character" until this step existed. glossary_adopt_standards (the MCP tool) is
+        # deliberately NOT used — it mints a confirm_token and writes nothing at call time, so a
+        # fixture built on it fails the same way while looking like a glossary defect.
+        {"rest": {"domain": "glossary", "method": "POST",
+                  "path": "/v1/glossary/books/{book_id}/adopt",
+                  "json": {"genres": ["universal"],
+                           "kinds": ["character", "location", "item"]}}},
         {"tool": "glossary_propose_entities",
          "args": {"book_id": "{book_id}",
                   "items": [{"kind": "character", "name": "Aldric Vane"},
@@ -131,6 +170,18 @@ def _prompt_for(name: str, cat: dict) -> tuple[str | None, str | None]:
     return None, None
 
 
+def _prompt_with_target(name: str, cat: dict) -> tuple[str | None, str | None, bool]:
+    """(prompt, synonym, grounded) — the synonym-derived ask plus, for a write, the target."""
+    prompt, syn = _prompt_for(name, cat)
+    if prompt is None:
+        return None, None, False
+    tier = (cat.get(name, {}).get("meta") or {}).get("tier", "R")
+    extra = SPECIFICS.get(name, "")
+    if tier != "R" and extra:
+        return prompt + extra, syn, True
+    return prompt, syn, tier == "R"
+
+
 def build(names: list[str], cat: dict | None = None) -> dict:
     cat = cat if cat is not None else catalog.load()
     scenarios, missing = [], []
@@ -142,7 +193,7 @@ def build(names: list[str], cat: dict | None = None) -> dict:
         meta = entry.get("meta") or {}
         tier = meta.get("tier", "R")
         scope = meta.get("scope", "book")
-        prompt, syn = _prompt_for(name, cat)
+        prompt, syn, grounded = _prompt_with_target(name, cat)
         sc = {
             "id": name.replace("_", "-"),
             "tool_under_test": name,
@@ -153,6 +204,8 @@ def build(names: list[str], cat: dict | None = None) -> dict:
             "model_ref": MODEL_REF,
             "prompt": prompt,
             "prompt_source": f"_meta.synonyms[{syn!r}]" if syn else None,
+            # A write whose prompt names no target measures my phrasing, not the product.
+            "needs_target": (tier != "R" and name not in SPECIFICS),
             # A Tier-A/W tool SUSPENDS on an approval card, and the user clicking Approve is
             # part of the path under test — so a write scenario approves ONCE. A read scenario
             # leaves it null: approving on a turn that only asked to look would make the harness

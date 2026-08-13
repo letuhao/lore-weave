@@ -48,6 +48,7 @@ import httpx
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from store_snapshot import diff as store_diff, snapshot  # noqa: E402
 from provision import Throwaway  # noqa: E402
+from approvals import ApprovalState  # noqa: E402
 
 BASE = "http://localhost:5174"
 ENV_FILE = pathlib.Path(__file__).resolve().parents[2] / "docs" / "dev" / "LOCAL_TEST_ENV.md"
@@ -164,6 +165,15 @@ async def _drain(client, auth, method, url, body, out, timeout):
                 # impossible reading that a single sample made look real.
                 out["surfaces"].append(ev.get("value") or {})
                 out["surface"] = ev.get("value")
+            elif t == "TOOL_CALL_RESULT":
+                # 🔴 WITHOUT THE RESULT, A FAILED WRITE AND A SUCCESSFUL ONE ARE THE SAME EVENT.
+                # book_chapter_create was called with a book id that does not exist, the approval
+                # was granted, and the harness recorded "called + approved, no error" — because it
+                # was only reading START/ARGS/END. The tool's own answer is the only thing that
+                # separates "it refused" from "it wrote nothing and said ok".
+                out["results"].append({"id": ev.get("toolCallId"),
+                                       "content": str(ev.get("content"))[:4000]})
+                out["tool_calls"].append(ev)
             elif t in ("TOOL_CALL_START", "TOOL_CALL_END", "TOOL_CALL_ARGS"):
                 out["tool_calls"].append(ev)
                 # TOOL_CALL_ARGS arrives as JSON deltas keyed by call id; the approval card
@@ -172,30 +182,53 @@ async def _drain(client, auth, method, url, body, out, timeout):
                     cid = ev.get("toolCallId")
                     if cid:
                         out["_args"][cid] = out["_args"].get(cid, "") + (ev.get("delta") or "")
+            elif t == "RUN_FINISHED":
+                # 🔴 THE RESUME ID LIVES HERE, NOT ON RUN_STARTED. `RUN_FINISHED.result
+                # .pendingToolCall` carries {runId, toolCallId, toolName} and it is the ONLY
+                # id the resume accepts — chat-service stores the suspension under a run id of
+                # its own, which is NOT the one RUN_STARTED announced. Posting the RUN_STARTED
+                # id made load_suspended_run miss, and every approval came back "This
+                # suggestion has expired. Please ask again." on 9 of 9 runs, with the store
+                # unchanged. A flawless, reproducible, entirely self-inflicted failure that
+                # read exactly like a broken approve button. runChatStream.ts reads this field
+                # and nothing else; so does this.
+                res = (ev.get("result") or {})
+                out["status"] = res.get("status")
+                p = res.get("pendingToolCall")
+                if isinstance(p, dict):
+                    out["pending"] = p
             elif t == "RUN_ERROR":
                 out["error"] = str(ev)[:300]
     return True
 
 
 def pending_approval(out) -> dict | None:
-    """The Tier-A `tool_approval` card this turn is suspended on, if any.
+    """The suspension this turn ended on, if any — read from the server's own statement of it.
 
     🔴 A SUSPENDED RUN IS NOT A QUIET RUN, AND READING IT AS ONE INVERTS THE WHOLE WRITE BAR.
     When a Tier-A tool is not on the user's allowlist the run SUSPENDS: the stream ends normally,
     the store is untouched, and nothing errored. A harness that does not look for the card reads
     that as "the model declined to write" — so every write tool in the catalogue would report a
-    clean, empty, entirely fictional result. The card is a TOOL_CALL_START whose accumulated args
-    carry `kind == "tool_approval"` (chat-service stream_service, RAID C2).
+    clean, empty, entirely fictional result, and 153 of 315 tools are Tier A.
     """
-    for cid, raw in (out.get("_args") or {}).items():
+    p = out.get("pending")
+    if not isinstance(p, dict) or not p.get("runId"):
+        return None
+    card = {"run_id": p["runId"], "tool_call_id": p.get("toolCallId"),
+            "tool": p.get("toolName"), "kind": "frontend_tool"}
+    # The card's own args say whether this is the Tier-A approval prompt or an ordinary
+    # frontend-tool proposal; the two resume through the same endpoint with different outcomes.
+    raw = (out.get("_args") or {}).get(p.get("toolCallId") or "")
+    if raw:
         try:
             a = json.loads(raw)
+            if isinstance(a, dict):
+                card["kind"] = a.get("kind") or card["kind"]
+                card["tier"] = a.get("tier")
+                card["proposed_tool"] = a.get("tool")
         except ValueError:
-            continue
-        if isinstance(a, dict) and a.get("kind") == "tool_approval":
-            return {"tool_call_id": cid, "tool": a.get("tool"), "tier": a.get("tier"),
-                    "args": a.get("args"), "approval_kinds": a.get("approval_kinds")}
-    return None
+            pass
+    return card
 
 
 async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_id=None,
@@ -222,7 +255,8 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
         body["book_context"] = {"book_id": book_id}
 
     out = {"text": "", "tool_calls": [], "surface": None, "surfaces": [], "run_id": None,
-           "events": Counter(), "error": None, "_args": {}, "approvals": []}
+           "events": Counter(), "error": None, "_args": {}, "approvals": [],
+           "pending": None, "status": None, "results": []}
     url = f"{BASE}/v1/chat/sessions/{session_id}/messages"
     for attempt in (1, 2):
         try:
@@ -238,15 +272,18 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
     # unbounded approver is indistinguishable from a harness that wants the write to happen.
     for _ in range(max_approvals if approve else 0):
         card = pending_approval(out)
-        if not card or not out.get("run_id"):
+        if not card:
             break
-        out["approvals"].append({"tool": card["tool"], "outcome": approve})
+        out["approvals"].append({"tool": card.get("proposed_tool") or card["tool"],
+                                 "outcome": approve, "kind": card["kind"]})
+        resume_run_id = card["run_id"]
         out["_args"] = {}
+        out["pending"] = None
         try:
             ok = await _drain(
                 client, auth, "POST",
                 f"{BASE}/v1/chat/sessions/{session_id}/tool-results",
-                {"run_id": out["run_id"], "tool_call_id": card["tool_call_id"],
+                {"run_id": resume_run_id, "tool_call_id": card["tool_call_id"],
                  "outcome": approve},
                 out, timeout)
             if not ok:
@@ -279,8 +316,13 @@ async def run_scenario(client, auth, sc, idx, fx):
         **({"book_id": fx.book_id} if fx.book_id else {}),
     })
     sid = sess.get("session_id") or sess.get("id")
+    # editor_context says "the user is looking at THIS chapter", and that is not a neutral
+    # detail: with it set, "write a chapter" plausibly means "write THIS chapter's prose", which
+    # is exactly what the model did (save_draft, 3/3). A scenario about creating a chapter has to
+    # be able to run from the chat panel, where no chapter is open.
     res = await send_turn(client, auth, sid, sc["prompt"],
-                          book_id=fx.book_id, chapter_id=fx.chapter_id,
+                          book_id=fx.book_id,
+                          chapter_id=fx.chapter_id if sc.get("editor_context", True) else None,
                           permission_mode=sc.get("permission_mode", "write"),
                           approve=sc.get("approve"))
     res["session_id"] = sid
@@ -291,10 +333,19 @@ async def run_scenario(client, auth, sc, idx, fx):
     return res
 
 
-async def main_async(scenarios, repeats, concurrency):
+async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
     auth = Auth(*read_credential())
     sem = asyncio.Semaphore(concurrency)
     results = []
+
+    # 🔴 SWEEP BEFORE, NOT ONLY AFTER. 16 fixtures leaked from one batch when teardown failed,
+    # and on the next run the model found one through `book_list` and proposed writes into it. A
+    # leaked fixture is not litter — it is an extra, plausible, wrongly-scoped write target
+    # sitting on the account, and it makes the NEXT batch's evidence unattributable.
+    from provision import sweep_orphans
+    swept = await asyncio.to_thread(sweep_orphans)
+    if swept:
+        print(f"swept {len(swept)} leaked fixture(s) from a previous run before starting")
 
     async with httpx.AsyncClient(timeout=180.0) as client:
         await auth.login(client)
@@ -332,10 +383,13 @@ async def main_async(scenarios, repeats, concurrency):
                         "surface": None, "surfaces": [], "store_diff": {},
                         "error": f"PROVISION {type(e).__name__}: {e}"}
             finally:
-                if fx is not None:
+                if fx is not None and not KEEP_FIXTURES:
                     try:
                         await asyncio.to_thread(fx.teardown)
+                        if not await asyncio.to_thread(fx.is_gone):
+                            LEAKED.append(fx.book_id)
                     except Exception as e:  # noqa: BLE001
+                        LEAKED.append(fx.book_id)
                         print(f"\n  ! teardown failed for {fx.book_id}: {e}")
 
         async def scenario_block(sc):
@@ -358,6 +412,12 @@ async def main_async(scenarios, repeats, concurrency):
         for grp in blocks:
             results.extend(grp)
     print()
+    if LEAKED:
+        print(f"!! {len(LEAKED)} FIXTURE(S) SURVIVED TEARDOWN: {chr(44).join(LEAKED[:5])}")
+        print("   Clean up: python scripts/toolloop/provision.py --sweep")
+        print("   A leaked fixture becomes a book the model can find via book_list and "
+              "write into on the NEXT batch — which is how a cross-book write got into "
+              "this evidence.")
     return results
 
 
@@ -423,6 +483,16 @@ def report(results, scenarios, repeats):
           "from '0/5 surfaced'.")
 
 
+APPROVAL_MODE = "none"
+#: Investigation only. A kept fixture is a book left on the account, so the sweep in
+#: provision.py --sweep is the way back.
+KEEP_FIXTURES = False
+#: Fixtures that survived their own teardown. Reported at the END of the run — a warning
+#: printed mid-stream is a warning I scrolled past, and I did: 16 leaked books went
+#: unnoticed for an hour, and one became a write target in the next batch.
+LEAKED: list = []
+
+
 def emit_batch(results, scenarios, batch_id: str) -> dict:
     """Write the gate's evidence file FROM THE RUN, never by hand.
 
@@ -478,7 +548,8 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
             "wrote_count": sum(1 for r in runs if r["store_diff"]),
             "suspended_count": sum(1 for r in runs if r["left_suspended"]),
         })
-    return {"batch": batch_id, "generated_by": "fe_runner", "tools": tools}
+    return {"batch": batch_id, "generated_by": "fe_runner",
+            "approval_mode": APPROVAL_MODE, "tools": tools}
 
 
 def main():
@@ -489,9 +560,16 @@ def main():
     ap.add_argument("--out", default="")
     ap.add_argument("--batch-out", default="", help="gate-ready evidence file")
     ap.add_argument("--batch-id", default="batch")
+    ap.add_argument("--keep-fixtures", action="store_true",
+                    help="do not tear down (investigation); clean up with provision.py --sweep")
+    ap.add_argument("--approvals", default="none", choices=("none", "standing", "as-is"),
+                    help="standing tool approvals for this batch; 'none' clears and restores")
     a = ap.parse_args()
     scenarios = json.loads(pathlib.Path(a.scenarios).read_text(encoding="utf-8"))["scenarios"]
-    results = asyncio.run(main_async(scenarios, a.repeats, a.concurrency))
+    globals()["APPROVAL_MODE"] = a.approvals
+    globals()["KEEP_FIXTURES"] = a.keep_fixtures
+    with ApprovalState(a.approvals):
+        results = asyncio.run(main_async(scenarios, a.repeats, a.concurrency, a.approvals))
     if a.out:
         pathlib.Path(a.out).write_text(json.dumps(results, indent=2, ensure_ascii=False),
                                        encoding="utf-8")
