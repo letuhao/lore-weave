@@ -65,6 +65,23 @@ class RebuildStats:
     entities_written: int = 0
     failed: int = 0
     elapsed_s: float = 0.0
+    # Rows that resolved onto a node an EARLIER row in the same run had already created.
+    #
+    # ⚠️ WITHOUT THIS THE REPORT OVERSTATES THE GRAPH. `entities_written` counts successful
+    # CALLS, and `resolve_or_merge_entity` is keyed on the CANONICAL name, so two glossary
+    # rows can legitimately be one node. Measured on a real book during the QC-7 drill:
+    # 3187 rows written, `failed=0`, and 3171 nodes in the graph. The 16 were punctuation
+    # variants and honorific forms the canonicaliser folds together on purpose.
+    #
+    # The graph was right; the REPORT was wrong, and during a disaster the report is all an
+    # operator has. "3187 written, 0 failed" against 3171 nodes reads as silent data loss to
+    # anyone who counts afterwards.
+    merged_onto_existing: int = 0
+
+    @property
+    def distinct_nodes(self) -> int:
+        """Nodes this run actually left in the graph — the number to reconcile against."""
+        return self.entities_written - self.merged_onto_existing
 
     @property
     def rate(self) -> float:
@@ -91,6 +108,7 @@ async def rebuild_entities_from_glossary(
     its entity id and the run continues.
     """
     stats = RebuildStats()
+    seen_ids: set[str] = set()
     started = time.perf_counter()
 
     for i, ent in enumerate(entities, 1):
@@ -104,7 +122,7 @@ async def rebuild_entities_from_glossary(
             logger.warning("rebuild: skipping entity %s — missing name/kind", ent.get("id"))
             continue
         try:
-            await store.resolve_or_merge_entity(
+            written = await store.resolve_or_merge_entity(
                 user_id=user_id,
                 project_id=project_id,
                 name=name,
@@ -118,6 +136,14 @@ async def rebuild_entities_from_glossary(
                 provenance="human_authored",
             )
             stats.entities_written += 1
+            # A canonical id we have already written in THIS run means two glossary rows
+            # folded into one node. Counted here rather than inferred afterwards, because
+            # the only other way to learn it is to count the graph and subtract — which is
+            # exactly the reconciliation an operator should not have to invent mid-disaster.
+            if written is not None:
+                if written.id in seen_ids:
+                    stats.merged_onto_existing += 1
+                seen_ids.add(written.id)
         except Exception as exc:  # noqa: BLE001 — see the docstring: count, do not abort
             stats.failed += 1
             logger.warning("rebuild: entity %s failed: %s", ent.get("id"), exc)

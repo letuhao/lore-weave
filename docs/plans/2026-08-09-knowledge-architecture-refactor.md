@@ -6298,6 +6298,57 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `debt-batches-list-is-stale` — verify before believing a status row, including this one.
 
 - [~] **QC-7** — Rebuild drill + shadow evidence, then **STOP for POST-REVIEW**
+  ---
+  ### 🎯 REBUILD DRILL RUN 2026-08-13 — on a REAL book, timed
+
+  The plan's DR claims rested on a path nobody had run against real data. Read a book's
+  authored entities out of Postgres and re-projected them into an EMPTY graph through the
+  port, exactly as a recovery would. Reads the isolated clone, writes a throwaway Neo4j —
+  no shared stack touched.
+
+  ```
+  book              rows    written   failed   merged   NODES   verified   elapsed    rate
+  acceptance (43)     46         43        3        0      43         43     2.40s   17.9/s
+  largest           3187       3187        0       16    3171       3171    25.88s  123.1/s
+  ```
+
+  **Rebuilding the largest book in the corpus costs ~26 seconds.** The per-entity cost FALLS
+  with size (55.8 ms → 8.1 ms) — the small book is paying fixed connection and session
+  overhead, so the honest DR figure is the large one: **~8 ms/entity, ~123 entities/s**.
+  A 10 000-entity corpus projects to ~80 s. Affordable; T41's cost question is answered.
+
+  ✅ **Cross-check, two independent mechanisms agreeing.** The acceptance book's 3 failures
+  are exactly the 3 nameless rows the glossary→KG mirror detector independently reports as
+  `not_mirrorable`. Same rows, same reason, two code paths that share no logic.
+
+  🔻 **THE DRILL FOUND A REPORTING DEFECT — and it is the kind that only shows up in a
+  disaster.** The first run reported `3187 written, failed=0` while the graph held **3171**:
+
+  ```
+  written 3187 · failed 0        <- the report
+  nodes   3171                   <- the graph
+  ```
+
+  Nothing was lost. `resolve_or_merge_entity` is keyed on the CANONICAL name, and 16 rows
+  were punctuation variants and honorific forms the canonicaliser folds together on purpose
+  — verified by recomputing canonical ids over the book: **3187 rows → 3171 distinct ids, 16
+  collapsed across 15 groups.** The graph was right; the REPORT was wrong.
+
+  **During a disaster the report is all an operator has.** "3187 written, 0 failed" against
+  3171 nodes reads as silent data loss to anyone who counts afterwards, and the only other
+  way to learn the truth is to count the graph and subtract — the reconciliation nobody
+  should have to invent mid-recovery. `RebuildStats` now carries `merged_onto_existing` and
+  `distinct_nodes`, and the re-run reconciles exactly: **claim 3171 = graph 3171.**
+
+  **Bites** — 3, all red: stop counting folds · claim `entities_written` as the node count ·
+  count a nameless row as a merge instead of a failure. (The first was red for the WRONG
+  reason at first — deleting the line left an empty `if` body, a collection error rather
+  than a failed assertion — so it was re-bitten as a condition that never fires.)
+
+  ⚠️ **Still outstanding for QC-7:** this measures IDENTITY recovery only.
+  `D-T41-RELATIONS-NOT-REBUILDABLE` is untouched — extraction-derived relations have no
+  Postgres original, so a rebuild restores the cast and not the web. The shadow half now has
+  its evidence (9 of 9, above); the ⏸ sign-off is still owed.
   `/review-impl`. **Actually run** rebuild-from-Postgres on a real book and time it — the path is
   being built in T41 and has never existed, so its cost is unknown and three claims depend on it.
   Publish the shadow-comparison ratios doc-21 style, and the **shadow-coverage report**: every port
