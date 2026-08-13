@@ -57,6 +57,24 @@ import re
 import subprocess
 import sys
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
+def _git_timed_out(args=()) -> None:
+    """A git that never returns is CANNOT-RUN, not "no files changed".
+
+    Returning an empty list here would make the gate scan nothing and print
+    PASS, which is the exact shape this repo keeps finding. Exit 2 says so.
+    """
+    detail = " ".join(str(a) for a in args)
+    print(f"CANNOT RUN — `git {detail}`".rstrip() +
+          f" did not return within {GIT_TIMEOUT_S}s; refusing to report a verdict "
+          f"on a file list that was never read.", file=sys.stderr)
+    raise SystemExit(2)
+
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # The turn-loop files that assemble model-facing tool-result messages. Every
@@ -92,10 +110,14 @@ ASSEMBLY_RE = re.compile(r"""["']content["']\s*:|(\bcontent\s*=)""")
 
 
 def _staged_files(repo_root: str) -> set[str]:
-    out = subprocess.run(
-        ["git", "diff", "--cached", "--name-only"],
-        cwd=repo_root, capture_output=True, text=True,
-    ).stdout
+    try:
+        out = subprocess.run(
+            ["git", "diff", "--cached", "--name-only"],
+            cwd=repo_root, capture_output=True, text=True,
+            timeout=GIT_TIMEOUT_S,
+        ).stdout
+    except subprocess.TimeoutExpired:
+        _git_timed_out()
     return {line.strip().replace("\\", "/") for line in out.splitlines() if line.strip()}
 
 

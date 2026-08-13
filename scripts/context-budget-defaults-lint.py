@@ -36,6 +36,11 @@ import os
 import subprocess
 import sys
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # A default page a caller's context can comfortably hold. jobs_list uses 10; 25 is the
@@ -275,10 +280,19 @@ def scan_file(path: str, allow: dict[str, str] | None = None,
 def iter_files(staged: bool, services_root: str | None = None) -> list[str]:
     services_root = services_root or os.path.join(REPO_ROOT, "services")
     if staged:
-        out = subprocess.run(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-            cwd=REPO_ROOT, capture_output=True, text=True,
-        ).stdout.split()
+        try:
+            out = subprocess.run(
+                ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+                cwd=REPO_ROOT, capture_output=True, text=True,
+                timeout=GIT_TIMEOUT_S,
+            ).stdout.split()
+        except subprocess.TimeoutExpired:
+            # NOT an empty list: that would make this gate scan nothing and
+            # print PASS over a commit it never read.
+            print(f"CANNOT RUN — `git diff --cached` did not return within "
+                  f"{GIT_TIMEOUT_S}s; refusing to report a verdict on a file list "
+                  f"that was never read.", file=sys.stderr)
+            raise SystemExit(2)
         return [os.path.join(REPO_ROOT, f) for f in out if "/mcp/" in f.replace("\\", "/") and f.endswith(".py")]
     files = []
     for root, _dirs, names in os.walk(services_root):

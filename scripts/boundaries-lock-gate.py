@@ -58,6 +58,24 @@ import subprocess
 import sys
 from collections import defaultdict
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
+def _git_timed_out(args=()) -> None:
+    """A git that never returns is CANNOT-RUN, not "no files changed".
+
+    Returning an empty list here would make the gate scan nothing and print
+    PASS, which is the exact shape this repo keeps finding. Exit 2 says so.
+    """
+    detail = " ".join(str(a) for a in args)
+    print(f"CANNOT RUN — `git {detail}`".rstrip() +
+          f" did not return within {GIT_TIMEOUT_S}s; refusing to report a verdict "
+          f"on a file list that was never read.", file=sys.stderr)
+    raise SystemExit(2)
+
+
 LOCK_BASENAME = "_LOCK.md"
 BOUNDARY_SEGMENT = "/_boundaries/"
 RELEASE_MARKER = "_Last released:_"
@@ -65,11 +83,15 @@ RELEASE_MARKER = "_Last released:_"
 
 def git(*args: str) -> str:
     """Run a git command and return stdout, tolerating undecodable bytes."""
-    out = subprocess.run(
-        ["git", *args],
-        capture_output=True,
-        check=False,
-    )
+    try:
+        out = subprocess.run(
+            ["git", *args],
+            capture_output=True,
+            check=False,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        _git_timed_out(args)
     return out.stdout.decode("utf-8", errors="replace")
 
 

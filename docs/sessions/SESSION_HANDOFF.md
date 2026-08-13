@@ -4,7 +4,7 @@
 
 **HEAD:** `5b11e4a0d` · **ACTIVE run-state: [`docs/plans/2026-08-14-authorable-surface-RUN-STATE.md`](../plans/2026-08-14-authorable-surface-RUN-STATE.md)** — it adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — `G-S3` (give the lore bible a shape), or `GT-BITES-NOT-REPRODUCIBLE`.**
+> **▶ DO NEXT — `G-S3` (give the lore bible a shape).** The gate-teeth track is DONE.
 >
 > **`GATE-TEETH` IS CLOSED.** `NO_PROOF_BASELINE` walked **28 → 0** across `GT5`–`GT8`;
 > `gate-teeth-gate` reports *99 CI-invoked gates, 99 with a red-ability proof, 0 held at
@@ -32,7 +32,15 @@
 > nothing ran (`gate-self-tests` was `.py`-only — discovery 65 → 99); and the two prose-only
 > deferrals gained real mechanisms.
 >
-> **▶ THE ONE THING LEFT, and it is the honest limit of all of the above:**
+> **▶ THAT LAST THING IS NOW DONE (2026-08-13).** `gate-bite-harness` carries **46 gates
+> and 457 mutations, all red**, run by `.github/workflows/gates.yml` on every push. The
+> 322 scratchpad arms were AST-extracted and anchor-validated into the table, and the
+> port itself found nine more defects — see `GTD-51`. `gate-teeth-gate`'s "99 carry a
+> red-ability proof" is no longer a structural claim standing on a transcript.
+>
+> <details><summary>what it replaced</summary>
+>
+> **`GT-BITES-NOT-REPRODUCIBLE`** — was:
 > **`GT-BITES-NOT-REPRODUCIBLE`** — `gate-bite-harness`'s `MUTATIONS` table covers **7**
 > gates, none of the 28. The ~180 bite arms that justify every certification on this board
 > ran from an uncommitted scratchpad file and exist only in a transcript. `gate-teeth-gate`
@@ -41,6 +49,8 @@
 > into the harness is what turns this board's claim into a standing check. Substantial but
 > mechanical, and the harness has found a survivor in every round it has ever run —
 > including three of my own rows, an hour old, during this very audit.
+>
+> </details>
 >
 > **⚠ READ THIS BEFORE PICKING UP THE GATEWAY'S WORLD ROUTE.** I recommended it, and it was
 > **wrong**: it is stage `S8` of a pipeline the PO parked the day it was designed, for build-order

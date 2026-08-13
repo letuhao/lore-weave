@@ -636,9 +636,15 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          '                print(f"  SLOW   {label:52} -> no verdict in {CHILD_TIMEOUT_S}s")\n'
          "                green += 0"),
         ("the leftover check stops excluding this file's copy",
-         "    leftover = [q for q in SCRIPTS.glob(\".bite-*.py\") "
-         "if q.name != Path(__file__).name]",
-         "    leftover = list(SCRIPTS.glob(\".bite-*.py\"))"),
+         "and q.name != Path(__file__).name]",
+         "]"),
+        # ...and the check must stay WIDER than the thing that strands the
+        # mutants. It globbed `.bite-*.py` flat while shell gates now put a
+        # copy in `scripts/perf/` and `scripts/raid/`, so a stranded shell
+        # mutant would have read as a clean disk.
+        ("the leftover check narrows back to flat .py",
+         'for q in root.rglob(".bite-*")\n            if q.suffix in (".py", ".sh")',
+         'for q in root.glob(".bite-*")\n            if q.suffix in (".py",)'),
         # M4 -- `--self-test` drives `run_rust` three times and the pre-commit
         # hook runs `--self-test`, so an uninjectable writer meant 30 in-place
         # writes to the shipped crate sources on every commit.
@@ -665,8 +671,13 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the gate no-verdict guard removed",
          "    if out.returncode != 0 and not bit:", "    if False:"),
         ("a reached case counts as a failing one again",
-         '    bit = sum(1 for l in lines if l.lstrip().startswith("FAIL"))',
-         '    bit = sum(1 for l in lines if l.lstrip().startswith(("ok ", "FAIL")))'),
+         "    bit = sum(1 for l in lines if _reports_failing_case(l))",
+         "    bit = sum(1 for l in lines if _reports_case(l))"),
+        # ...and the older idiom must stay recognised. Dropping it scored 49
+        # real bites as survivors the day twelve gates joined the table.
+        ("the older SELFTEST FAIL idiom stops counting as a bite",
+         'return t.startswith("FAIL") or "SELFTEST FAIL" in t',
+         'return t.startswith("FAIL")'),
 
 
         ("the RUST named-test guard removed",
@@ -716,8 +727,8 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
         ("the unbounded-child sweep stops looking for a handler",
          "        elif not handles:", "        elif False:"),
         ("the unbounded-child sweep covers no gate",
-         "    guarded = sorted(set(MUTATIONS) | {\"gate-self-tests\"})",
-         "    guarded = []"),
+         "    py_guarded = [g for g in guarded if _gate_src(g).suffix == \".py\"]",
+         "    py_guarded = []"),
         ("the child environment is not forwarded",
          "            env=child_env))", "            env=None))"),
         ("the dirty-tree refusal removed",
@@ -727,6 +738,957 @@ MUTATIONS: dict[str, list[tuple[str, str, str]]] = {
          "file=sys.stderr)\n            return 2",
          "        if False:\n            print(f\"gate-bite-harness: {refusal}\", "
          "file=sys.stderr)\n            return 2"),
+    ],
+    "timeout-discipline-lint": [
+        ('the Go http.Get alternative dropped from the pattern',
+         'http\\.(Get|Post|Head|PostForm)\\(',
+         'http\\.(Post|Head|PostForm)\\('),
+        ('the _test.go exclusion removed from the http leg',
+         '\'(\\b|^)http\\.(Get|Post|Head|PostForm)\\(\' \\\n    --include=\'*.go\' "$services" "$contracts" 2>/dev/null \\\n    | grep -vE \'_test\\.go:\' || true)',
+         '\'(\\b|^)http\\.(Get|Post|Head|PostForm)\\(\' \\\n    --include=\'*.go\' "$services" "$contracts" 2>/dev/null \\\n    || true)'),
+        ('the bare-SQL db.Exec pattern matches nothing',
+         '\'\\b(db|tx)\\.(Query|Exec)\\(("|`)\'',
+         "'ZZNEVERMATCHZZ'"),
+        ('the Rust reqwest::get pattern matches nothing',
+         "'reqwest::(get|Client::new\\(\\)\\.get)'",
+         "'ZZNEVERMATCHZZ'"),
+        ('the awk multiline capture never continues to the next line',
+         'if (depth==0) evalbuf(); else capturing=1',
+         'if (depth==0) evalbuf(); else capturing=0'),
+        ('the baseline SHRINK ARM disabled (a dead row exempts forever)',
+         '    if ! grep -qxF -- "$row" "$cur_fps"; then',
+         '    if false; then'),
+        ("the ratchet's DOWNWARD arm disabled (it can only rise)",
+         '  elif [[ "$n_new" -lt "$py_expected" ]]; then',
+         '  elif false; then'),
+        ('the three reach floors disabled (a walk over nothing passes)',
+         '  if [[ "$n_go" -eq 0 || "$n_rs" -eq 0 || "$n_py" -eq 0 ]]; then',
+         '  if false; then'),
+    ],
+    "admin-command-registry-lint": [
+        ('the marker parser broken',
+         "sed -nE 's|.*//\\s*ADMIN-(SQL\\|RPC):\\s*([A-Za-z0-9_]+).*|\\2|p'",
+         "sed -nE 's|.*//\\s*ADMIN-(SQLNOPE\\|RPC):\\s*([A-Za-z0-9_]+).*|\\2|p'"),
+        ('the receiver narrowing dropped (any receiver reads as admin)',
+         "sed -nE 's|.*func\\s+\\(\\w+\\s+\\*AdminHandler\\)\\s+([A-Za-z0-9_]+).*|\\1|p'",
+         "sed -nE 's|.*func\\s+\\(\\w+\\s+\\*\\w+\\)\\s+([A-Za-z0-9_]+).*|\\1|p'"),
+        ('the exported->lower-camel fold removed',
+         '    if [[ "$h" == "$ref" || "$h" == "$lc" ]]; then return 0; fi',
+         '    if [[ "$h" == "$ref" ]]; then return 0; fi'),
+        ('membership always true (an unregistered handler walks)',
+         '  for h in "$@"; do',
+         '  return 0; for h in "$@"; do'),
+        ('the exempt pragma widened to match any comment',
+         'printf \'%s\' "$1" | grep -qE \'//\\s*admin-registry-lint:exempt\'',
+         'printf \'%s\' "$1" | grep -qE \'//\''),
+    ],
+    "alert-rule-validator": [
+        ('the registry-membership rule disabled',
+         '    if alertname not in registry and alertname not in PRE_SLI_GRANDFATHER:',
+         '    if False:'),
+        ('the sli_ref requirement disabled',
+         '    if "sli_ref" not in labels and alertname not in PRE_SLI_GRANDFATHER:',
+         '    if False:'),
+        ('the grandfather shrink arm disabled',
+         'for name in sorted(PRE_SLI_GRANDFATHER - live_names):',
+         'for name in sorted(set()):'),
+        ('the reach floor disabled (zero alerts walked = success)',
+         'if checked < 1 and not problems:',
+         'if False:'),
+    ],
+    "blocking-in-async-lint": [
+        ('an `async def` is walked as a SYNC scope',
+         '    def visit_AsyncFunctionDef(self, node):  # noqa: N802\n        self._visit_fn(node, True)',
+         '    def visit_AsyncFunctionDef(self, node):  # noqa: N802\n        self._visit_fn(node, False)'),
+        ('a lambda body counts as async (the offload target reds)',
+         '        # a lambda body is a fresh (sync) scope — offloaded work runs here\n        self._visit_fn(node, False)',
+         '        # a lambda body is a fresh (sync) scope — offloaded work runs here\n        self._visit_fn(node, True)'),
+        ('the PREFIX table stops matching (requests/psycopg2)',
+         '        if dotted.startswith(pref):',
+         '        if False:'),
+        ('the EXACT blocking-call table stops matching sleep and urlopen',
+         '    if dotted in BLOCKING_EXACT:',
+         '    if False:'),
+        ('the test/script exclusion removed',
+         '            if is_excluded(rel):',
+         '            if False:'),
+        ('the BASELINE shrink arm disabled',
+         '    dead = sorted(fp for fp in baseline if fp not in live)',
+         '    dead = []'),
+        ('the unparseable ratchet disabled (unread == clean)',
+         '    if unparseable > unparseable_max:',
+         '    if False:'),
+        ('the reach floor disabled (0 files scanned passes)',
+         '    if scanned == 0:',
+         '    if False:'),
+    ],
+    "boundaries-lock-gate": [
+        ('the release-evidence requirement drops',
+         '        if not any(RELEASE_MARKER in ln for ln in added_lines_fn(lock_path)):',
+         '        if False:'),
+        ('a held lock stops warning',
+         '        if owner is not None and owner.lower() not in ("none", "—", "-", ""):',
+         '        if False:'),
+        ('the released-owner set narrows (None reads as held)',
+         '        if owner is not None and owner.lower() not in ("none", "—", "-", ""):',
+         '        if owner is not None and owner.lower() not in ("-", ""):'),
+        ('the lock file stops being recognised as the lock',
+         '        if path.rsplit("/", 1)[-1] == LOCK_BASENAME:',
+         '        if False:'),
+        ('a bare claim (lock alone) starts failing',
+         '            edits[folder].append(path)',
+         '            edits[folder].append(path)\n        edits[folder]'),
+        ('the boundary-folder filter matches everything',
+         '        if BOUNDARY_SEGMENT not in "/" + path:',
+         '        if False:'),
+        ('folders stop being judged independently',
+         '        folder = path.rsplit("/", 1)[0]',
+         '        folder = "_all_"'),
+    ],
+    "capacity-budget-lint": [
+        ('the name ANCHOR dropped -> membership becomes a prefix test',
+         'grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*\\"?$1\\"?[[:space:]]*\\$" "$2"',
+         'grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*\\"?$1\\"?" "$2"'),
+        ('membership always true -> an unlisted service looks covered',
+         '  grep -qE "^[[:space:]]*-[[:space:]]*name:',
+         '  return 0; grep -qE "^[[:space:]]*-[[:space:]]*name:'),
+    ],
+    "context-budget-defaults-lint": [
+        ('the detail="summary" rule stops firing',
+         '        if det != "summary":',
+         '        if False:'),
+        ('the limit ceiling stops firing',
+         '        if isinstance(lim, int) and lim > limit_ceil:',
+         '        if False:'),
+        ('an UNBOUNDED limit=None stops being the worst case',
+         '        if isinstance(lim_node, ast.Constant) and lim_node.value is None:',
+         '        if False:'),
+        ('an unresolvable named limit passes silently again',
+         '            lim = _resolve_int(lim_node.id, module_ints, path, _const_cache)\n            if lim is None:',
+         '            lim = _resolve_int(lim_node.id, module_ints, path, _const_cache)\n            if False:'),
+        ('the request-MODEL leg removed (the K38 blind spot returns)',
+         '        if "detail" in fields and "limit" in fields:',
+         '        if False:'),
+        ('Field(default=...) stops being unwrapped',
+         '        if isinstance(node, ast.Call) and getattr(node.func, "id", "") == "Field":',
+         '        if False:'),
+        ('the single-item exemption widens (detail-only tools red)',
+         '        if "detail" not in params or "limit" not in params:',
+         '        if "detail" not in params:'),
+        ('the ALLOW reason-expired arm disabled',
+         '            if not found:\n                unnecessary.append(',
+         '            if False:\n                unnecessary.append('),
+        ('the ALLOW subject-gone arm disabled',
+         '        for key in sorted(set(allow) - seen):',
+         '        for key in []:'),
+        ('the SUBJECT floor disabled (a renamed convention passes)',
+         '        if not subjects:',
+         '        if False:'),
+    ],
+    "context-budget-l3-lint": [
+        ('the missing-entry shrink arm disabled (a renamed path is skipped)',
+         '        if missing:',
+         '        if False:'),
+        ('the reach floor disabled (an EMPTY scan list passes)',
+         '    if not staged_only and read == 0:',
+         '    if False:'),
+        ('the NV-3 discovery arm disabled (a new assembly path hides)',
+         '                        if FUNNEL_CALL in fh.read():',
+         '                        if False:'),
+        ("the funnel's own module stops being exempt",
+         '                if rel in listed or rel == FUNNEL_HOME:',
+         '                if rel in listed:'),
+        ('the test-file exclusion removed from the discovery arm',
+         '                if not fn.endswith(".py") or fn.startswith(("test_", "conftest")):',
+         '                if not fn.endswith(".py"):'),
+        ('the inline "content": json.dumps detector matches nothing',
+         '    re.compile(r"""["\']content["\']\\s*:\\s*json\\.dumps\\(""", re.DOTALL),',
+         '    re.compile(r"""ZZNEVERMATCHZZ""", re.DOTALL),'),
+        ('the split-variable detector matches nothing',
+         '    re.compile(r"""\\bcontent\\s*=\\s*json\\.dumps\\("""),',
+         '    re.compile(r"""ZZNEVERMATCH2ZZ"""),'),
+        ('the split-variable detector widened past `content` (content_parts reds)',
+         '    re.compile(r"""\\bcontent\\s*=\\s*json\\.dumps\\("""),',
+         '    re.compile(r"""\\bcontent[a-z_]*\\s*=\\s*json\\.dumps\\("""),'),
+    ],
+    "context-inspector-checklist-gate": [
+        ('an item with no proof-ref stops being UNPROVEN',
+         '        failures.append(f"L{it.line_no}: UNPROVEN',
+         '        _ = (f"L{it.line_no}: UNPROVEN'),
+        ('a referenced test file no longer has to exist',
+         '    if not fp.exists():',
+         '    if False:'),
+        ('the test-DECLARATION requirement dropped (a comment counts again)',
+         '    if not on_decl:',
+         '    if False:'),
+        ('a malformed <path>::<needle> ref stops failing',
+         '    if not item.path or not item.needle:',
+         '    if False:'),
+        ('the escape hatch stops needing a substantive reason',
+         '            if len(reason) < MIN_REASON_CHARS or _PLACEHOLDER_REASON.match(reason):',
+         '            if False:'),
+        ('the placeholder-reason guard alone dropped',
+         'or _PLACEHOLDER_REASON.match(reason):',
+         'or False:'),
+        ('the ⊘manual ratchet can only rise',
+         '    elif n_manual < manual_expected:',
+         '    elif False:'),
+        ('an EXTRA ⊘manual item stops tripping the ratchet',
+         '    if n_manual > manual_expected:',
+         '    if False:'),
+        ('the zero-items reach floor disabled (a renamed header passes)',
+         '    if not items:',
+         '    if False:'),
+        ('a MISSING spec stops being misuse',
+         '    if not spec.exists():',
+         '    if False:'),
+    ],
+    "dashboard-validator": [
+        ('the kebab-case uid rule disabled',
+         "elif not re.match(r'^[a-z0-9][a-z0-9_-]*$', uid):",
+         'elif False:'),
+        ('the LOCKED datasource set accepts anything',
+         '            if ds_uid and ds_uid not in allowed_uids:\n                problems.append(f"panel #{i+1} datasource.uid',
+         '            if False:\n                problems.append(f"panel #{i+1} datasource.uid'),
+        ('the template exemption widens back to the whole file',
+         '        tmpl_others="$(printf \'%s\\n\' "$tmpl_out" | grep \'^  - \' | grep -v \'not kebab-case\' || true)"',
+         '        tmpl_others=""'),
+        ('the exemption-path shrink arm disabled',
+         '    if [ ! -f "$_rel" ]; then',
+         '    if false; then'),
+    ],
+    "dep-pinning-lint": [
+        ('the version-constraint rule accepts anything',
+         '  [[ "$1" =~ [=\\<\\>~!] ]]',
+         '  [[ "$1" =~ .* ]]'),
+        ('the line filter judges comments and pip flags',
+         '  [[ -n "$dep" && "$dep" != \\#* && "$dep" != -* ]]',
+         '  [[ -n "$dep" ]]'),
+        ('the module-file require-BLOCK form no longer detected',
+         'awk \'/^require[[:space:]]+\\($/,/^\\)$/\' "$mod" 2>/dev/null | grep -qE \'^\\s+[a-z]+\\.[a-z]\' && return 0',
+         'false && return 0'),
+        ('a require-less module gets flagged (cry-wolf)',
+         '  return 1\n}\n\n# Does this FILE carry a FROM with no digest pin?',
+         '  return 0\n}\n\n# Does this FILE carry a FROM with no digest pin?'),
+        ('a DIGEST-pinned FROM is reported as tag-pinned',
+         "grep -qE '^FROM[[:space:]]+[^@]*$'",
+         "grep -qE '^FROM[[:space:]]+.*$'"),
+    ],
+    "dependency-registry-lint": [
+        ('ONE Go shape removed (http.Client{)',
+         "grep -E '\\b(http\\.Client\\{|http\\.NewRequest\\b|sql\\.Open\\b|redis\\.NewClient\\b)'",
+         "grep -E '\\b(http\\.ClientNOPE\\{|http\\.NewRequest\\b|sql\\.Open\\b|redis\\.NewClient\\b)'"),
+        ('ONE Rust shape removed (sqlx::PgPool::connect)',
+         "grep -E '\\b(reqwest::Client::new\\b|sqlx::PgPool::connect\\b)'",
+         "grep -E '\\b(reqwest::Client::new\\b|sqlx::PgPoolNOPE::connect\\b)'"),
+        ('the Go EXEMPTION widened to swallow ordinary service code',
+         'printf \'%s\' "$1" | grep -qE \'_test\\.go:|contracts/(resilience|dependencies)/\'',
+         'printf \'%s\' "$1" | grep -qE \'.\''),
+        ('the walk points at a directory that does not exist',
+         '{ find "$root/services" -name \'*.go\' 2>/dev/null || true; }',
+         '{ find "$root/services_NOPE" -name \'*.go\' 2>/dev/null || true; }'),
+        # The floor itself, now that injecting an empty root gives it a case.
+        # Until 2026-08-13 the only way to exercise it was to point the real
+        # scan at a missing directory by hand.
+        ('the reach floor removed (a walk over nothing reports clean)',
+         '  if [[ "$go_files" -lt 1 || "$rs_files" -lt 1 ]]; then',
+         '  if false; then'),
+    ],
+    "deploy-class-check": [
+        ('the mirror ORDER comparison disabled',
+         '    if [[ "$go_order" != "$sh_order" || -z "$go_order" ]]; then',
+         '    if false; then'),
+        ('the mirror OPERAND-COUNT comparison disabled',
+         '    if [[ "$go_major" != "$sh_major" ]]; then',
+         '    if false; then'),
+        ('two empty extractions compare equal again (GTD-9)',
+         '    if [[ "$go_major" -eq 0 || "$sh_major" -eq 0 || "$go_minor" -eq 0 || "$sh_minor" -eq 0 ]]; then',
+         '    if false; then'),
+        ('the empty changed-file floor disabled (nothing reads as patch)',
+         '    if [[ "$n_files" -eq 0 ]]; then',
+         '    if false; then'),
+        ('a declared/detected mismatch stops blocking',
+         '        if [[ "$DECLARED" != "$class" ]]; then',
+         '        if false; then'),
+        ('emergency no longer needs a justification id',
+         '    if [[ "$emergency_label" -eq 1 && ( -n "$incident_id" || -n "$security_id" ) ]]; then',
+         '    if [[ "$emergency_label" -eq 1 ]]; then'),
+        ('contracts/api/ loses its MINOR carve-out',
+         '    printf \'%s\\n\' "$changed" | grep -E \'^contracts/\' | grep -qvE \'^contracts/api/\' && has_contract_nonapi=1',
+         '    printf \'%s\\n\' "$changed" | grep -qE \'^contracts/\' && has_contract_nonapi=1'),
+        ('the migration detector stops requiring .sql',
+         '    printf \'%s\\n\' "$changed" | grep -qE \'^migrations/.*\\.sql$\' && has_migration=1',
+         '    printf \'%s\\n\' "$changed" | grep -qE \'^migrations/\' && has_migration=1'),
+        ('backslash path normalisation removed',
+         '    changed="$(printf \'%s\\n\' "$changed" | tr \'\\\\\' \'/\' | tr -d \'\\r\' | sed \'/^$/d\')"',
+         '    changed="$(printf \'%s\\n\' "$changed" | tr -d \'\\r\' | sed \'/^$/d\')"'),
+        ('the multi-service MAJOR rule stops firing',
+         '    elif [[ "$service_count" -gt 1 ||',
+         '    elif [[ "$service_count" -gt 99 ||'),
+    ],
+    "deploy-freeze-check": [
+        ('break-glass widens back past emergency class',
+         '            if [[ "$DEPLOY_CLASS" == "emergency" ]]; then\n                echo "[deploy-freeze-check] \'$ft\' freeze overridden',
+         '            if true; then\n                echo "[deploy-freeze-check] \'$ft\' freeze overridden'),
+        ('an unparseable burn rate reads as healthy again',
+         '        if [[ ! "$burn" =~ ^-?[0-9]+(\\.[0-9]+)?$ ]]; then',
+         '        if false; then'),
+        ('the fail-open stops announcing itself',
+         '        if [[ "$burn_source" == "none" ]]; then',
+         '        if false; then'),
+        ('the deploy-class closed set opens',
+         '        if [[ "$ok" -eq 0 ]]; then',
+         '        if false; then'),
+        ('the slo_burn threshold comparison flips to strictly-greater',
+         "'BEGIN { print (b >= t) ? 1 : 0 }'",
+         "'BEGIN { print (b > t) ? 1 : 0 }'"),
+        ('the slo_burn detector stops raising a freeze',
+         '        if [[ "$over" -eq 1 ]]; then',
+         '        if false; then'),
+        ('the emergency slo_burn exemption widens to every freeze type',
+         '        if [[ "$ft" == "slo_burn" && "$DEPLOY_CLASS" == "emergency" ]]; then',
+         '        if [[ "$DEPLOY_CLASS" == "emergency" ]]; then'),
+        ('an active freeze stops blocking at all',
+         '    if [[ -n "$blocked_by" ]]; then',
+         '    if false; then'),
+        ('the label match widens to a substring',
+         '    has_label() { [[ ",${PR_LABELS}," == *",$1,"* ]]; }',
+         '    has_label() { [[ ",${PR_LABELS}," == *"$1"* ]]; }'),
+        ('the fixture burn source is ignored',
+         '    elif [[ -n "${LW_FREEZE_FIXTURE:-}" && -f "${LW_FREEZE_FIXTURE}" ]] && command -v python3 >/dev/null 2>&1; then',
+         '    elif false; then'),
+    ],
+    "design-draft-token-lint": [
+        ('RULE 1 stops banning alias properties',
+         '                if prop.lower() not in ALLOWED_PROPS:',
+         '                if False:'),
+        ('the alias family narrows (--critical slips through)',
+         'ALIAS_PROP_RE = re.compile(r"--(?:danger|error|warn|destructive|critical|fail)[\\w-]*", re.I)',
+         'ALIAS_PROP_RE = re.compile(r"--(?:danger|error|warn|destructive|fail)[\\w-]*", re.I)'),
+        ('the sanctioned property set narrows (canon reds)',
+         'ALLOWED_PROPS = {"--destructive", "--destructive-muted", "--warning", "--warning-muted"}',
+         'ALLOWED_PROPS = {"--destructive", "--warning"}'),
+        ('the hue gate stops recognising a drift red',
+         '    is_red_hue = deg >= 340 or deg <= 20',
+         '    is_red_hue = False'),
+        ('the hue gate widens past red (amber reds)',
+         '    is_red_hue = deg >= 340 or deg <= 20',
+         '    is_red_hue = deg >= 340 or deg <= 60'),
+        ('the lightness ceiling drops (pale pink reds)',
+         '    return is_red_hue and sat >= 0.40 and 0.10 <= light <= 0.75',
+         '    return is_red_hue and sat >= 0.40 and 0.10 <= light <= 0.95'),
+        ('the rgba() form stops being read',
+         '            for r, g, b in RGBA_RE.findall(line):',
+         '            for r, g, b in []:'),
+        ('the 3-digit hex stops expanding',
+         '    if len(h) == 4:  # #abc -> #aabbcc',
+         '    if False:  # #abc -> #aabbcc'),
+        ("the shrink arm's EXPIRED death disabled",
+         '        if h not in reds_seen:',
+         '        if False:'),
+        ('the SUBJECT floor disabled (no red at all passes)',
+         '    if not reds_seen:',
+         '    if False:'),
+    ],
+    "game-wire-lint": [
+        ('the $ref resolver always succeeds',
+         '                if not resolve_ref(node["$ref"], docs, _fn, root):',
+         '                if False:'),
+        ('CWC-A2 stops requiring string ids',
+         '                    if not (ok_ref or ok_str or ok_obj):',
+         '                    if False:'),
+        ('the id-shape detector narrows (turn_number slips)',
+         'BIGINT_NAMES = {"turn_number", "channel_event_id", "from_tokens"}',
+         'BIGINT_NAMES = {"channel_event_id", "from_tokens"}'),
+        ('the object carve-out widens back past from_tokens',
+         '                    ok_obj = name == "from_tokens" and spec.get("type") == "object"',
+         '                    ok_obj = spec.get("type") == "object"'),
+        ('closed objects stop being required',
+         '                if node.get("additionalProperties") is not False:',
+         '                if False:'),
+        ('an enum stops needing an explicit type',
+         '                if node.get("type") not in ("string", "integer"):',
+         '                if False:'),
+        ('the top-level $schema/$id requirement drops',
+         '            if required not in docs[fn]:',
+         '            if False:'),
+        ('the STRING_ID_REFS shrink arm disabled',
+         '    for r in sorted(set(string_id_refs) - id_refs_used):',
+         '    for r in []:'),
+        ('the SUBJECT floors disabled',
+         '        if subjects[key] == 0:',
+         '        if False:'),
+    ],
+    "i18n-completeness-gate": [
+        ('the missing/empty-key rule stops firing',
+         '            missing = [k for k in en_keys if not (isinstance(lf.get(k), str) and lf[k])]',
+         '            missing = []'),
+        ('an EMPTY string stops counting as missing',
+         'if not (isinstance(lf.get(k), str) and lf[k])]',
+         'if not isinstance(lf.get(k), str)]'),
+        ('a missing namespace file stops failing',
+         '            if not lp.exists():',
+         '            if False:'),
+        ('a non-empty _FAILED.json stops failing',
+         '                if n:\n                    problems.append(f"{loc}/_FAILED.json',
+         '                if False:\n                    problems.append(f"{loc}/_FAILED.json'),
+        ('an unreadable _FAILED.json is swallowed again',
+         '                problems.append(f"{loc}/_FAILED.json — unreadable ({type(e).__name__}); "\n                                f"a failure log that cannot be read is not an empty one")',
+         '                pass'),
+        ('a missing `en/` source is a silent skip again',
+         '    if not en_dir.is_dir():',
+         '    if en_dir.is_dir() and False:'),
+        ('the NV-3 discovery arm disabled (a new tree hides again)',
+         '            if pfx not in enumerated:',
+         '            if False:'),
+        ('discovery stops requiring an `en/` (a bare locales dir reds)',
+         '        if not (path / SRC).is_dir():',
+         '        if False:'),
+        ('the reach floor disabled (parity across nothing)',
+         '        if n_loc == 0 or n_ns == 0:',
+         '        if False:'),
+        ('non-string en values become required of every locale',
+         '            en_keys = {k for k, v in _load(en_dir / ns).items() if isinstance(v, str)}',
+         '            en_keys = set(_load(en_dir / ns))'),
+    ],
+    "ingress-admission-gate": [
+        ('the second-minter rule stops firing',
+         '                if p in admit_allowed:\n                    admit_used.add(p)\n                else:',
+         '                if True:\n                    admit_used.add(p)\n                else:'),
+        ('the mint detector matches nothing',
+         'RE_ADMIT = re.compile(r"\\bAdmitted::admit\\s*\\(")',
+         'RE_ADMIT = re.compile(r"ZZNEVERMATCHZZ")'),
+        ('the comment skip is removed (documentation reds)',
+         '            if line.lstrip().startswith("//"):',
+         '            if False:'),
+        ('unchecked in a service source stops failing',
+         '                if not is_test_or_bench(p):',
+         '                if False:'),
+        ('the test/bench carve-out narrows (tests/ reds)',
+         '        "/tests/" in p\n        or p.endswith("_test.rs")',
+         '        False\n        or p.endswith("_test.rs")'),
+        ('benches lose the carve-out',
+         '        or "/benches/" in p',
+         '        or False'),
+        ('the dev-dependencies split disappears (a dev dep reds)',
+         '        head = re.split(r"^\\[dev-dependencies\\]", text, maxsplit=1, flags=re.M)[0]',
+         '        head = text'),
+        ('test-util as a normal dep stops failing',
+         '            if p in testutil_allowed:\n                testutil_used.add(p)\n            else:',
+         '            if True:\n                testutil_used.add(p)\n            else:'),
+        ('the ADMIT_ALLOWED shrink arm disabled',
+         '    for row in sorted(set(admit_allowed) - admit_used):',
+         '    for row in []:'),
+        ('the TESTUTIL shrink arm disabled',
+         '    for row in sorted(set(testutil_allowed) - testutil_used):',
+         '    for row in []:'),
+        ('the three SUBJECT floors disabled (a renamed type passes)',
+         '        if subjects[key] == 0:',
+         '        if False:'),
+    ],
+    "knowledge-access-gate": [
+        ('the EAV table detector matches nothing',
+         'EAV_READ = re.compile(r"\\bentity_attribute_values\\b")',
+         'EAV_READ = re.compile(r"ZZNEVERMATCHZZ")'),
+        ('the Neo4j import form drops out of the detector',
+         '    r"""(?:from\\s+neo4j\\s+import|import\\s+neo4j\\b|require\\([\'"]neo4j[\'"]\\)"""',
+         '    r"""(?:ZZNEVERMATCHZZ|require\\([\'"]neo4j[\'"]\\)"""'),
+        ('GraphDatabase.driver drops out of the detector',
+         '    r"""|neo4j\\.GraphDatabase|GraphDatabase\\.driver|\\.session\\(\\s*database)"""',
+         '    r"""|neo4j\\.GraphDatabase|ZZNEVERMATCH2ZZ|\\.session\\(\\s*database)"""'),
+        ('the owner carve-out widens to every service',
+         '    in_eav_owner = rel.startswith(EAV_OWNER)',
+         '    in_eav_owner = True'),
+        ('the test-file exclusion removed',
+         '                if is_test_file(rel):\n                    continue',
+         '                if False:\n                    continue'),
+        ('the allowlist stops suppressing',
+         '                if matched_prefix is not None:',
+         '                if False:'),
+        ('the allowlist shrink arm disabled',
+         '            if pref not in allow_used:',
+         '            if False:'),
+        ('the SUBJECT floor disabled (a renamed substrate passes)',
+         '            if subjects[name] == 0:',
+         '            if False:'),
+    ],
+    "knowledge-http-surface-gate": [
+        ('the facts/snapshot/timeline/attr-values group drops out',
+         '    rf"{_BOOK}/entities/[^\\s\\"\'`]*/(?:facts|canonical-snapshot|timeline|attr-values)\\b"',
+         '    rf"ZZNEVERMATCHZZ"'),
+        ('entities/search drops out of the covered set',
+         '    rf"|{_BOOK}/entities/search\\b"',
+         '    rf"|ZZNEVERMATCH2ZZ"'),
+        ('kg/neighborhood drops out of the covered set',
+         '    rf"|{_BOOK}/kg/neighborhood\\b"',
+         '    rf"|ZZNEVERMATCH3ZZ"'),
+        ('retrieve drops out of the covered set',
+         '    rf"|{_BOOK}/retrieve\\b"',
+         '    rf"|ZZNEVERMATCH4ZZ"'),
+        ('the owner/KAL exemption widens to every service',
+         '    exempt_owner = rel.startswith(EXEMPT_SERVICE_PREFIXES)',
+         '    exempt_owner = True'),
+        ('the owner/KAL exemption disappears (the federator reds)',
+         '                if is_test_file(rel) or exempt_owner:',
+         '                if False:'),
+        ('the allowlist stops suppressing',
+         '                if matched_prefix is not None:',
+         '                if False:'),
+        ('the allowlist shrink arm disabled',
+         '            if pref not in allow_used:',
+         '            if False:'),
+        ('the SUBJECT floor disabled (a restructured route set passes)',
+         '        if subjects == 0:',
+         '        if False:'),
+        ('the authored entities LIST endpoint becomes covered',
+         '    rf"{_BOOK}/entities/[^\\s\\"\'`]*/(?:facts|canonical-snapshot|timeline|attr-values)\\b"',
+         '    rf"{_BOOK}/entities\\b"'),
+    ],
+    "language-rule-lint": [
+        ('the OUTER Cargo.toml marker removed from detect_lang',
+         '  if [[ -f "$dir/Cargo.toml" ]]; then echo "rust"; return; fi\n  if [[ -f "$dir/go.mod" ]]; then echo "go"; return; fi',
+         '  if [[ -f "$dir/go.mod" ]]; then echo "go"; return; fi'),
+        ('parse_config no longer ends its block at a top-level key',
+         'if [[ "$line" =~ ^[A-Za-z] ]]; then in_services=0; continue; fi',
+         'if [[ "$line" =~ ^[A-Za-z]NOPE ]]; then in_services=0; continue; fi'),
+        ('the declared-vs-detected comparison disabled',
+         '    if [[ "$actual" != "$exp" ]]; then',
+         '    if false; then'),
+        ('PRR-21 completeness disabled (an unlisted service walks free)',
+         '    if [[ -z "${expected[$svc]+set}" ]]; then',
+         '    if false; then'),
+        ('the reach floor disabled',
+         '  if [[ $compared -lt 1 ]]; then',
+         '  if false; then'),
+    ],
+    "logging-discipline-lint": [
+        ('the cfg(test) position test disabled (test-only println reds)',
+         '      if [[ "$first_macro" -gt "$first_cfg" ]]; then',
+         '      if false; then'),
+        ('the cfg(test) position test INVERTED',
+         '      if [[ "$first_macro" -gt "$first_cfg" ]]; then\n',
+         '      if [[ "$first_macro" -lt "$first_cfg" ]]; then\n'),
+        ('the Go fmt.Print/log.Print detector matches nothing',
+         '    if grep -nE \'(^|[^a-zA-Z_])(fmt\\.Println|fmt\\.Printf|fmt\\.Print|log\\.Println|log\\.Printf|log\\.Print)\\(\' "$root/$f" >/dev/null 2>&1; then',
+         '    if grep -nE \'ZZNEVERMATCHZZ\' "$root/$f" >/dev/null 2>&1; then'),
+        ('the Python bare-print detector matches nothing',
+         '    if grep -nE \'^[[:space:]]*print\\(\' "$root/$f" >/dev/null 2>&1; then',
+         '    if grep -nE \'ZZNEVERMATCH2ZZ\' "$root/$f" >/dev/null 2>&1; then'),
+        ('the Rust println! detector matches nothing',
+         '    grep -qE \'(println!|eprintln!)\' "$root/$f" 2>/dev/null || continue',
+         '    grep -qE \'ZZNEVERMATCH3ZZ\' "$root/$f" 2>/dev/null || continue'),
+        ('the basicConfig detector matches nothing',
+         '    bc_line=$(grep -nE \'logging\\.basicConfig\\(\' "$root/$f" 2>/dev/null | head -1 | cut -d: -f1 || true)',
+         '    bc_line=$(grep -nE \'ZZNEVERMATCH4ZZ\' "$root/$f" 2>/dev/null | head -1 | cut -d: -f1 || true)'),
+        ('the backend console.* detector matches nothing',
+         '    if grep -nE \'console\\.(log|error|warn|info|debug)\\(\' "$root/$f" >/dev/null 2>&1; then',
+         '    if grep -nE \'ZZNEVERMATCH5ZZ\' "$root/$f" >/dev/null 2>&1; then'),
+        ('the CLI __main__ exemption removed (a hand-run tool reds)',
+         '    if [[ -n "$main_line" && "$bc_line" -gt "$main_line" ]]; then',
+         '    if false; then'),
+        ("the soft ratchet's DOWNWARD arm disabled (it can only rise)",
+         '  if [[ "$violations" -lt "$soft_expected" ]]; then',
+         '  if false; then'),
+        ('the four reach floors disabled (an empty list passes)',
+         '  if [[ "$n_go" -eq 0 || "$n_py" -eq 0 || "$n_rs" -eq 0 || "$n_ts" -eq 0 ]]; then',
+         '  if false; then'),
+        ('the exemption-path shrink arms disabled',
+         '    if [[ ! -f "$root/$p" ]]; then',
+         '    if false; then'),
+        ('HARD violations stop blocking',
+         '  if [[ "$hard_violations" -gt 0 ]]; then',
+         '  if false; then'),
+    ],
+    "observability-inventory-lint": [
+        ('declared-matching becomes a prefix test',
+         '  grep -qx -- "$1" <<<"$2"',
+         '  grep -q -- "$1" <<<"$2"'),
+        ('the reach floor disabled (code emitting nothing passes)',
+         'if [[ "$n_emitted" -lt 1 || "$n_declared" -lt 1 ]]; then',
+         'if false; then'),
+        ('the undeclared-metric rule disabled',
+         '  if ! is_declared "$sym" "$declared"; then',
+         '  if false; then'),
+    ],
+    "outbox-event-emit-lint": [
+        ('the XADD detector matches nothing',
+         "XADD_RE='(\\b[a-zA-Z_]+\\.XAdd\\(|\\bredis\\.xadd\\(|\\bclient\\.xadd\\(|\\br\\.xadd\\()'",
+         "XADD_RE='ZZNEVERMATCHZZ'"),
+        ('the sanctioned-path shrink arm disabled',
+         '        if ! printf \'%s\\n\' "$raw" | grep -qF "$p"; then',
+         '        if false; then'),
+        ('the exclusion filter stops applying (publisher itself reds)',
+         '        hits="$(printf \'%s\\n\' "$hits" | grep -vF "$p" || true)"',
+         '        :'),
+        ('the test-file exclusion removed',
+         "        | grep -vE '_test\\.go|_test\\.rs|_test\\.py|test_.*\\.py' \\",
+         "        | grep -vE 'ZZNEVERMATCH2ZZ' \\"),
+        ('the comment filter removed',
+         '        | grep -vE \':[[:space:]]*(//|#|"""|\\*|///)\' || true)',
+         '        || true)'),
+        ('the foreign-tree prune removed',
+         '        "${_gx[@]}" "${roots[@]}" 2>/dev/null \\',
+         '        "${roots[@]}" 2>/dev/null \\'),
+        ('the reach floor disabled',
+         '    if [[ "$n_src" -eq 0 ]]; then',
+         '    if false; then'),
+    ],
+    "pagination-cap-lint": [
+        ('the FastAPI limit=Query detector matches nothing',
+         'FASTAPI_LIMIT = re.compile(r"\\blimit\\s*:\\s*[^=\\n]*=\\s*Query\\s*\\(")',
+         'FASTAPI_LIMIT = re.compile(r"ZZNEVERMATCHZZ")'),
+        ('the le= bound check inverted (a capped route reds)',
+         '        if LE_BOUND.search(call):\n            continue',
+         '        if not LE_BOUND.search(call):\n            continue'),
+        ('the multiline Query capture stops at the first line',
+         '        call = _balance_from(text, m.end() - 1)',
+         "        call = text[m.end() - 1:text.find('\\n', m.end())]"),
+        ('the Go parameterized-LIMIT detector matches nothing',
+         'GO_PARAM_LIMIT = re.compile(r"LIMIT\\s+(?:\\$\\d+|\\$`|%d|%s)", re.IGNORECASE)',
+         'GO_PARAM_LIMIT = re.compile(r"ZZNEVERMATCHZZ", re.IGNORECASE)'),
+        ('the clamp-helper pass signal removed (clamped code reds)',
+         '    if any(sig in full for sig in GO_CLAMP_SIGNALS):\n        return out',
+         '    if False:\n        return out'),
+        ('the handler-layer scope widened past internal/api/',
+         '    if "/internal/api/" not in rel:\n        return out',
+         '    if False:\n        return out'),
+        ('the BASELINE shrink arm disabled',
+         '    for row in sorted(set(baseline) - live):',
+         '    for row in []:'),
+        ('the per-leg reach floors disabled',
+         '    if reach["go_api_files"] == 0:',
+         '    if False:'),
+        ('the FastAPI subject floor disabled (a leg with no subject passes)',
+         '    if reach["fastapi_limit_decls"] == 0:',
+         '    if False:'),
+        ('the test-file exclusion removed',
+         '        or base.endswith("_test.go")\n    )',
+         '        or False\n    )'),
+    ],
+    "phantom-route-scan": [
+        ('the apiJson call detector matches nothing',
+         '_CALL = re.compile(r"apiJson\\s*(?:<[^(]*?>)?\\s*\\(\\s*", re.S)',
+         '_CALL = re.compile(r"ZZNEVERMATCHZZ", re.S)'),
+        ('the method-verb reader stops reading',
+         '    verbs = re.findall(r"[\'\\"](GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)[\'\\"]", expr)',
+         '    verbs = []'),
+        ('const resolution stops resolving',
+         '_CONST = re.compile(r"^\\s*const\\s+([A-Za-z_][A-Za-z0-9_]*)\\s*=\\s*[\'\\"]([^\'\\"]*)[\'\\"]\\s*;", re.M)',
+         '_CONST = re.compile(r"ZZNEVERMATCH3ZZ", re.M)'),
+        ('comment stripping disabled (a commented call counts)',
+         'def _strip_comments(src: str) -> str:',
+         'def _strip_comments(src: str) -> str:\n    return src\n\n\ndef _unused_strip(src: str) -> str:'),
+        ('the unparsed ratchet stops rising',
+         '    if len(unparsed) > unparsed_ceil:',
+         '    if False:'),
+        ('the unparsed ratchet stops falling',
+         '    elif len(unparsed) < unparsed_ceil:',
+         '    elif False:'),
+        ('the route floor disabled (an emptied corpus passes)',
+         '    if len(routes) < route_floor:',
+         '    if False:'),
+        ('the _KNOWN_DYNAMIC shrink arm disabled',
+         '        if f not in seen_files:',
+         '        if False:'),
+    ],
+    "prompt-assembly-discipline-lint": [
+        ('the SQL comment strip reverts to the grep -n pipe',
+         '  bad=$(sed -E \'s/--.*$//\' "$audit_sql" \\',
+         '  bad=$(grep -nvE \'^[[:space:]]*--\' "$audit_sql" \\'),
+        ('a MISSING prompt_audit migration passes again',
+         '  if [[ ! -f "$audit_sql" ]]; then',
+         '  if false; then'),
+        ('the TypeScript ESM import alternative dropped',
+         "'|from[[:space:]]*.(openai|anthropic|litellm|@anthropic-ai/[a-z-]+).[[:space:];]'\\\n",
+         "'|ZZNEVERMATCHZZ'\\\n"),
+        ('the Rust `use` alternative dropped',
+         "'|^[[:space:]]*use[[:space:]]+(openai|anthropic|litellm)'\\\n",
+         "'|ZZNEVERMATCHZZ2'\\\n"),
+        ('the foreign-tree prune removed from the grep',
+         '    "${_gx[@]}" "${roots[@]}" 2>/dev/null \\',
+         '    "${roots[@]}" 2>/dev/null \\'),
+        ('the sanctioned-home shrink arm disabled',
+         '    if [[ ! -d "$root/$p" ]]; then',
+         '    if false; then'),
+        ('the reach floor disabled (0 files scanned passes)',
+         '  if [[ "$n_src" -eq 0 ]]; then',
+         '  if false; then'),
+        ('the sanctioned-home exemption stops applying',
+         '    hits=$(printf \'%s\\n\' "$all_hits" | grep -vE "($exempt_re)/" || true)',
+         '    hits="$all_hits"'),
+        ('the comment filter removed (a comment reds)',
+         "    | grep -vE ':[[:space:]]*(//|#|\\*|///)' || true)",
+         '    || true)'),
+        ('the _test. exclusion removed',
+         "    | grep -vE '_test\\.' \\\n",
+         ''),
+    ],
+    "raid/prod-isolation-lint": [
+        ('the hostname pattern narrows back to the four literals',
+         "PROD_HOST_RE='(^|[^a-z0-9-])prod[a-z0-9-]*\\.loreweave[a-z.]*'",
+         "PROD_HOST_RE='prod\\.loreweave\\.app|prod-postgres\\.loreweave|prod-redis\\.loreweave|prod-minio\\.loreweave'"),
+        ('the added-line filter accepts context and removed lines',
+         '        [[ "$line" == +* && "$line" != "++"* ]] || continue',
+         '        true'),
+        ('the self-exemption widens to every file',
+         '            [[ -n "$e" && "$cur_file" == "$e" ]] && skip=1',
+         '            [[ -n "$e" ]] && skip=1'),
+        ('the self-exemption disappears (the detector reds on itself)',
+         '        [[ "$skip" -eq 1 ]] && continue',
+         '        true'),
+        ('the existing-prod path arm matches nothing',
+         "PROD_PATH_RE='^infra/existing-prod/|^infra/loreweave-novel-platform/'",
+         "PROD_PATH_RE='^ZZNEVERMATCHZZ/'"),
+        ('an unresolvable range is swallowed again',
+         '        if ! git -C "$REPO_ROOT" rev-parse --verify --quiet "$range" >/dev/null 2>&1 \\\n           && ! git -C "$REPO_ROOT" diff --name-only "$range" >/dev/null 2>&1; then',
+         '        if false; then'),
+        ('the exemption shrink arm disabled',
+         '        if [[ ! -f "$REPO_ROOT/$e" ]]; then',
+         '        if false; then'),
+        ('a violation stops being written to the audit log',
+         '        echo "{\\"ts\\":\\"$now\\",\\"event\\":\\"prod_isolation_violation\\",\\"detail\\":\\"$esc\\"}" >> "$audit_log"',
+         '        true'),
+        ('the word boundary drops, so a notprod hostname reds',
+         "PROD_HOST_RE='(^|[^a-z0-9-])prod",
+         "PROD_HOST_RE='(^|[^Z])prod"),
+    ],
+    "raw-sql-lint": [
+        ('the quoted-brace detector matches nothing',
+         '("quoted-brace", re.compile(r"\'[^\'\\n]*\\{[^}\\n]+\\}[^\'\\n]*\'"), PY_ONLY),',
+         '("quoted-brace", re.compile(r"ZZNEVERMATCHZZ"), PY_ONLY),'),
+        ('the Python-only gate dropped (a Go array literal reds)',
+         '\\}[^\'\\n]*\'"), PY_ONLY),',
+         '\\}[^\'\\n]*\'"), None),'),
+        ("the format-verb lookahead dropped (LIKE '%foo%' reds)",
+         '%[sdvqf](?![a-zA-Z])',
+         '%[sdvqf]'),
+        ('the quoted-concat detector matches nothing',
+         '("quoted-concat", re.compile(r"""(?:"\'"\\s*\\+|\\+\\s*"\'")"""), None),',
+         '("quoted-concat", re.compile(r"""ZZNEVERMATCHZZ"""), None),'),
+        ("the 'is this really SQL' keyword gate removed",
+         '    if not SQL_KEYWORD.search(line):\n        return []',
+         '    if False:\n        return []'),
+        ('the BASELINE shrink arm disabled',
+         '        for row in sorted(set(baseline) - used_baseline):',
+         '        for row in []:'),
+        ('the ALLOWLIST_PREFIXES shrink arm disabled',
+         '            if not any(rel.startswith(pref) for _f, rel in files):',
+         '            if False:'),
+        ('the scope arm disabled (a dir scanning nothing passes)',
+         '            if n == 0:',
+         '            if False:'),
+        ('the reach floor disabled (0 files scanned passes)',
+         '    if not staged and not files:',
+         '    if False:'),
+        ('the test-file exclusion removed',
+         '    return (bool(prefixes) and rel.startswith(prefixes)) or is_test_file(rel)',
+         '    return (bool(prefixes) and rel.startswith(prefixes)) or False'),
+    ],
+    "read-audit-query-type-drift-lint": [
+        ('the empty-side floor removed (empty == empty is agreement)',
+         '  if [[ "$ny" -lt 1 || "$nc" -lt 1 ]]; then',
+         '  if false; then'),
+        ('the YAML id parser broken (the in-sync probe catches it)',
+         '  grep -E \'^[[:space:]]*-[[:space:]]*id:\' "$1" \\',
+         '  grep -E \'^[[:space:]]*-[[:space:]]*idNOPE:\' "$1" \\'),
+        ('the comparison always agrees',
+         '  if [[ "$y" == "$c" ]]; then',
+         '  if true; then'),
+    ],
+    "role-grant-validator": [
+        ('the permission closed-set rule stops firing',
+         '        if [[ "$ok" -eq 0 ]]; then',
+         '        if false; then'),
+        ('the permission extraction widens back past depth 8',
+         '    perms=$(grep -oE \'^ {8}- [A-Za-z_]+$\' "$matrix" \\',
+         '    perms=$(grep -oE \'^[[:space:]]+-[[:space:]]*[A-Za-z_]+[[:space:]]*$\' "$matrix" \\'),
+        ('audit tables stop being append-only',
+         '        if [[ -n "$hits" ]]; then\n            echo "[role-grant] FAIL — audit table $audit must be append-only',
+         '        if false; then\n            echo "[role-grant] FAIL — audit table $audit must be append-only'),
+        ('the deploy_audit UPDATE exception widens to every audit table',
+         '        allow_update=0\n        for u in "${UPDATE_OK_AUDIT[@]}"; do\n            [[ "$audit" == "$u" ]] && allow_update=1\n        done',
+         '        allow_update=1'),
+        ("the shrink arm's not-an-audit-table death disabled",
+         '        if ! printf \'%s\\n\' "$audit_tables" | grep -qx "$u"; then',
+         '        if false; then'),
+        ("the shrink arm's grants-no-UPDATE death disabled",
+         '            END { exit found ? 0 : 1 }\' "$matrix"; then',
+         '            END { exit 0 }\' "$matrix"; then'),
+        ('the unknown-table check stops firing',
+         '        if ! printf \'%s\\n\' "$declared_tables" | grep -qx "$t"; then',
+         '        if false; then'),
+        ('the three reach floors disabled',
+         '    if [[ "$n_audit" -eq 0 || "$n_declared" -eq 0 || "$n_ref" -eq 0 ]]; then',
+         '    if false; then'),
+        ('the permission-token floor disabled',
+         '    if [[ "$n_perms" -eq 0 ]]; then',
+         '    if false; then'),
+    ],
+    "runbook-drift-check": [
+        ('the drift rule itself disabled',
+         '        if svc not in known_services:',
+         '        if False:'),
+        ('shrink arm 1 (a logical row that is now a real dir)',
+         '    if name in real_services:',
+         '    if False:'),
+        ('shrink arm 2 (a logical row no runbook cites)',
+         '    elif name not in declared:',
+         '    elif False:'),
+        ('the reach floor disabled',
+         'if checked < min_checked:',
+         'if False:'),
+    ],
+    "runbook-verification-lint": [
+        ('the frontmatter requirement disappears',
+         '        if fm is None:',
+         '        if False:'),
+        ('required frontmatter fields stop being required',
+         '            if fld not in fm:',
+         '            if False:'),
+        ('the verification_method closed set opens',
+         '        if method not in ALLOWED_METHODS:',
+         '        if False:'),
+        ('a stub stops having to be dated 1970-01-01',
+         '            if fm.get("last_verified") != "1970-01-01":',
+         '            if False:'),
+        ('README/TEMPLATE/INDEX start counting as runbooks',
+         '        if path.name in SKIP_RUNBOOKS:',
+         '        if False:'),
+        ('the applies_to_alerts reverse lookup stops linking',
+         '        if current_alert and not runbook_set and current_alert in runbook_alert_index:\n            runbook_set = True',
+         '        if False:\n            runbook_set = True'),
+        ('the runbook: annotation stops linking',
+         '            if current_alert and re.search(r"runbook(_url)?:\\s*\\S", line):',
+         '            if False:'),
+        ('the unlinked-alert ratchet can only rise',
+         '    elif n_unlinked < unlinked_ceil:',
+         '    elif False:'),
+        ('an EXTRA unlinked alert stops tripping the ratchet',
+         '    if n_unlinked > unlinked_ceil:',
+         '    if False:'),
+        ('the STUB ratchet stops rising',
+         '    if stub_count > stub_ceil:',
+         '    if False:'),
+        ('the STUB ratchet stops falling',
+         '    elif stub_count < stub_ceil:',
+         '    elif False:'),
+        ('the V1 launch-gate minimum drops',
+         '    if runbook_count < runbook_min:',
+         '    if False:'),
+        ('zero alert rules stops being misuse',
+         '    if alerts_seen == 0:',
+         '    if False:'),
+        ('a missing runbooks dir stops being misuse',
+         '    if not runbooks_dir.is_dir():',
+         '    if False:'),
+    ],
+    "sdk-duplication-gate": [
+        ('the Go JWT verifier detector matches nothing',
+         'JWT_VERIFY = re.compile(r"\\bjwt\\.ParseWithClaims\\b")',
+         'JWT_VERIFY = re.compile(r"ZZNEVERMATCHZZ")'),
+        ('the alg-pin detector widens to token MINTING',
+         'JWT_ALG_PIN = re.compile(r"!=\\s*jwt\\.SigningMethodHS256\\b")',
+         'JWT_ALG_PIN = re.compile(r"jwt\\.SigningMethodHS256\\b")'),
+        ('the python HS256 verifier detector loses its algorithm pin',
+         '    r\'^\\s*[\\w.]+\\s*=\\s*(?:pyjwt|jwt)\\.decode\\(.*algorithms\\s*=\\s*\\[["\\\']HS256\'',
+         "    r'^\\s*[\\w.]+\\s*=\\s*(?:pyjwt|jwt)\\.decode\\('"),
+        ('the python verifier detector loses its statement anchor',
+         "    r'^\\s*[\\w.]+\\s*=\\s*(?:pyjwt|jwt)\\.decode\\(",
+         "    r'(?:pyjwt|jwt)\\.decode\\("),
+        ('the model-name copy detector matches nothing',
+         'PY_MODEL_NAME_COPY = re.compile(r"/internal/models/\\{model_source\\}")',
+         'PY_MODEL_NAME_COPY = re.compile(r"ZZNEVERMATCH2ZZ")'),
+        ('the retryable-set detector widens past three codes',
+         '    r"status_code\\s+in\\s+[(\\[{]\\s*(?:429|502|503)\\s*(?:,\\s*(?:429|502|503)\\s*){2}[)\\]}]"',
+         '    r"status_code\\s+in\\s+[(\\[{]"'),
+        ('the TerminalEvent detector matches the sanctioned ALIAS',
+         'TERMINAL_EVENT = re.compile(r"\\btype\\s+(?:TerminalEvent|terminalEvent)\\s+struct\\b")',
+         'TERMINAL_EVENT = re.compile(r"\\btype\\s+(?:TerminalEvent|terminalEvent)\\b")'),
+        ('the logging trio stops being detected',
+         'LOGGING_REDACT = re.compile(r"^\\s*class\\s+RedactFilter\\b")',
+         'LOGGING_REDACT = re.compile(r"ZZNEVERMATCH3ZZ")'),
+        ('the test-file exclusion removed',
+         '            if not is_allowlisted(rel, prefixes):',
+         '            if True:'),
+        ('the BASELINE shrink arm disabled',
+         '        for row in sorted(set(baseline) - live):',
+         '        for row in []:'),
+        ('the all-detectors-quiet floor disabled',
+         '        if not any(subjects.values()):',
+         '        if False:'),
+    ],
+    "service-acl-matrix-lint": [
+        ('ONE alternative of the meta-write detector removed (MetaWrite)',
+         "grep -qE '(contracts/meta|MetaWrite\\(|AttemptStateTransition\\()'",
+         "grep -qE '(contracts/meta|MetaWriteNOPE\\(|AttemptStateTransition\\()'"),
+        ('the THIRD alternative removed (AttemptStateTransition)',
+         "grep -qE '(contracts/meta|MetaWrite\\(|AttemptStateTransition\\()'",
+         "grep -qE '(contracts/meta|MetaWrite\\(|AttemptStateTransitionNOPE\\()'"),
+        ('the name anchor dropped -> prefix match',
+         'grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*$1[[:space:]]*\\$" "$2"',
+         'grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*$1" "$2"'),
+    ],
+    "slo-latency-lint": [
+        ('the positive-number rule accepts anything',
+         '        if not isinstance(p95, (int, float)) or isinstance(p95, bool) or p95 <= 0:',
+         '        if False:'),
+        ('the bool guard removed (True is an int in Python)',
+         'or isinstance(p95, bool) or p95 <= 0:',
+         'or p95 <= 0:'),
+        ('the empty-endpoints floor removed',
+         '    if not isinstance(endpoints, list) or not endpoints:',
+         '    if not isinstance(endpoints, list):'),
+        ('the LATENCY_HEAVY shrink arm disabled',
+         '        if not (repo_root / "services" / svc).is_dir():\n            violations.append(\n                f"LATENCY_HEAVY names {svc!r}',
+         '        if False:\n            violations.append(\n                f"LATENCY_HEAVY names {svc!r}'),
+    ],
+    "template-fixture-validator": [
+        ('the active version reverts to a hardcoded v1',
+         '        v="$(active_version "$registry" "$intent")"',
+         '        v="1"'),
+        ('the intent-set mirror comparison disabled',
+         '    if [[ "$go_set" != "$reg_set" ]]; then',
+         '    if false; then'),
+        ('two empty intent sets compare equal again (GTD-9)',
+         '    if [[ -z "$go_set" || -z "$reg_set" ]]; then',
+         '    if false; then'),
+        ('the tmpl/meta presence check stops firing',
+         '            if [[ ! -f "${intent_dir}/${required}" ]]; then',
+         '            if false; then'),
+        ('the fixtures-dir requirement drops',
+         '        if [[ ! -d "${intent_dir}/v${v}.fixtures" ]]; then',
+         '        if false; then'),
+        ('meta.yaml no longer has to declare its intent',
+         '            if ! grep -q "^intent: ${intent}\\$" "${intent_dir}/v${v}.meta.yaml"; then',
+         '            if false; then'),
+        ('meta.yaml no longer has to declare its version',
+         '            if ! grep -q "^version: ${v}\\$" "${intent_dir}/v${v}.meta.yaml"; then',
+         '            if false; then'),
+    ],
+    "tracing-completeness-lint": [
+        ('ONE Go handler shape removed (chi.NewRouter)',
+         "GO_HANDLER_RE='(func.*ServeHTTP|func.*Handle[A-Z]|chi\\.NewRouter|http\\.Handle)'",
+         "GO_HANDLER_RE='(func.*ServeHTTP|func.*Handle[A-Z]|chiNOPE\\.NewRouter|http\\.Handle)'"),
+        ('ONE Rust handler shape removed (tower::)',
+         "RS_HANDLER_RE='(axum::|tower::|pub async fn handle)'",
+         "RS_HANDLER_RE='(axum::|towerNOPE::|pub async fn handle)'"),
+        ('the Go traced-import rule matches anything',
+         "GO_TRACED_RE='(loreweave/foundation/contracts/tracing|otel/.*trace)'",
+         "GO_TRACED_RE='(.)'"),
+        ('a NEW untraced handler (ratchet lowered by one)',
+         'TRACING_VIOLATION_BASELINE=49',
+         'TRACING_VIOLATION_BASELINE=48'),
+        ('progress must also red, or the ratchet never falls',
+         'TRACING_VIOLATION_BASELINE=49',
+         'TRACING_VIOLATION_BASELINE=50'),
+    ],
+    "transitions-validation-lint": [
+        ('an EMPTY contract satisfies every heuristic',
+         '  if [[ "$lines" -lt 2 ]]; then',
+         '  if false; then'),
+        ('the resources: anchor loses its top-level anchoring',
+         '  printf \'%s\' "$1" | grep -qE \'^resources:\'',
+         '  printf \'%s\' "$1" | grep -qE \'resources:\''),
     ],
     "citation-gate": [
         ("the pragma stops exempting", "        if _pragma_covers(lines, i):", "        if False:"),
@@ -1560,7 +2522,7 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
     -- and the whole suite stayed green: the sole survivor of a 101-row sweep.
     """
     root = root or SCRIPTS
-    src = root / f"{gate}.py"
+    src = _gate_src(gate, root)
     raw = _raw(src)
     text = _read(src)
     at = _find_one(text, find)
@@ -1568,7 +2530,10 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
         return False, (f"anchor occurs {text.count(find)}x outside the tables "
                        "— the table has drifted")
     # Beside the original so `REPO = Path(__file__).parent.parent` still resolves.
-    copy = root / f".bite-{gate}.py"
+    # `with_name`, not `root / f".bite-{gate}…"`: a key carrying a subdirectory
+    # would otherwise produce `scripts/.bite-perf/bench-gate.sh`, a path in a
+    # directory that does not exist. The copy must sit BESIDE the original.
+    copy = src.with_name(f".bite-{src.name}")
     try:
         _write(copy, text[:at] + repl + text[at + len(find):], like=raw)
         # **The mutation must actually be a mutation.** Nothing checked that the
@@ -1581,7 +2546,7 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
         child_env = dict(_child_env(no_cargo) or os.environ)
         child_env["GATE_BITE_MUTATING"] = label_hint
         runner = run or (lambda p: subprocess.run(
-            [sys.executable, str(p), "--self-test"], cwd=REPO,
+            _gate_cmd(p), cwd=REPO,
             capture_output=True, text=True, timeout=CHILD_TIMEOUT_S,
             env=child_env))
         try:
@@ -1614,8 +2579,8 @@ def _mutate_and_run(gate: str, find: str, repl: str, run=None,
     # over-claims. It is deliberately not a list of exception names, which would
     # be the enumeration this file keeps being caught by.
     lines = (out.stdout or "").splitlines()
-    ran = sum(1 for l in lines if l.lstrip().startswith(("ok ", "FAIL")))
-    bit = sum(1 for l in lines if l.lstrip().startswith("FAIL"))
+    ran = sum(1 for l in lines if _reports_case(l))
+    bit = sum(1 for l in lines if _reports_failing_case(l))
     if out.returncode != 0 and not bit:
         first = next((l.strip() for l in reversed((out.stderr or "").splitlines())
                       if l.strip()), "no output at all")
@@ -1644,9 +2609,9 @@ def baseline_is_green(gate: str, run=None, no_cargo: bool = False) -> str | None
 
     Running the baseline is that detector, and it costs one child per gate.
     """
-    src = SCRIPTS / f"{gate}.py"
+    src = _gate_src(gate)
     runner = run or (lambda p: subprocess.run(
-        [sys.executable, str(p), "--self-test"], cwd=REPO, capture_output=True,
+        _gate_cmd(p), cwd=REPO, capture_output=True,
         text=True, timeout=CHILD_TIMEOUT_S, env=_child_env(no_cargo)))
     try:
         out = runner(src)
@@ -1659,6 +2624,89 @@ def baseline_is_green(gate: str, run=None, no_cargo: bool = False) -> str | None
                 + (f": {first}" if first else "")
                 + " — every mutation below would be red for that reason")
     return None
+
+
+def _stranded_mutants(root: Path | None = None) -> list[Path]:
+    """Mutated copies a crashed run left on disk.
+
+    BOTH suffixes, and RECURSIVE: a shell gate's copy lands beside it, which may
+    be `scripts/perf/` or `scripts/raid/`. A flat `.py` glob would report a clean
+    disk while a mutated `perf/.bite-bench-gate.sh` sat there shadowing the real
+    gate — the check that says "no stranded mutant" is exactly the one that must
+    not be narrower than the thing that strands them.
+
+    `root` is injectable because the production tree is CLEAN, so the rule had no
+    case: narrowing the glob changed nothing observable and the mutation
+    survived. A rule whose subject only exists during a crash has to be handed
+    one.
+    """
+    root = root or SCRIPTS
+    return [q for q in root.rglob(".bite-*")
+            if q.suffix in (".py", ".sh") and q.name != Path(__file__).name]
+
+
+#: The two shapes a self-test in this repo uses to report ONE case.
+#:
+#: `  FAIL <case>` is the dominant idiom (every gate the 2026-08 teeth board
+#: touched). `[gate-name] SELFTEST FAIL - <case>` is the older one, still used by
+#: twelve gates. Recognising only the first made 49 real bites read as survivors
+#: the day those twelve joined the table.
+#:
+#: Deliberately two literal shapes and not a general search for the word: a
+#: mutant that reds while printing NEITHER is still counted a survivor, so this
+#: keeps under-claiming. Widening it to "FAIL appears anywhere" would count a
+#: traceback mentioning a variable called `FAILURES` as a bite.
+def _reports_failing_case(line: str) -> bool:
+    t = line.lstrip()
+    return t.startswith("FAIL") or "SELFTEST FAIL" in t
+
+
+def _reports_case(line: str) -> bool:
+    t = line.lstrip()
+    return (t.startswith(("ok ", "FAIL"))
+            or "SELFTEST FAIL" in t or "SELFTEST PASS" in t)
+
+
+def _gate_src(gate: str, root: Path | None = None) -> Path:
+    """The file a MUTATIONS key names — `<gate>.py` or `<gate>.sh`.
+
+    The key MAY carry a subdirectory (`perf/bench-gate`), which the previous
+    flat `SCRIPTS / f"{gate}.py"` could not express — and that, plus the hard
+    `.py`, is why 17 of the gates this repo proved in August could not be
+    mutated by this harness at all.
+
+    Raises rather than returning a missing path: a table key naming no file is a
+    drifted table, and the whole point of this file is that a mutation with no
+    subject reports green.
+    """
+    root = root or SCRIPTS
+    for suffix in (".py", ".sh"):
+        p = root / f"{gate}{suffix}"
+        if p.exists():
+            return p
+    raise FileNotFoundError(
+        f"MUTATIONS names {gate!r}, and neither {gate}.py nor {gate}.sh exists under {root}")
+
+
+def _gate_cmd(p: Path) -> list[str]:
+    """How to run `p`'s self-test.
+
+    Shell gates take a REPO-RELATIVE path: handing bash an absolute Windows path
+    eats the backslashes and the child exits 127, which this harness would score
+    as a red mutation — a false PASS, since a mutation is supposed to red.
+
+    The flag spelling is read off the source rather than assumed; both are in use
+    in this tree and a wrong flag makes the gate run its NORMAL mode, where a
+    mutated rule may legitimately stay green.
+    """
+    try:
+        src = p.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        src = ""
+    flag = "--self-test" if "--self-test" in src else "--selftest"
+    if p.suffix == ".sh":
+        return ["bash", p.relative_to(REPO).as_posix(), flag]
+    return [sys.executable, str(p), flag]
 
 
 def run_gate(gate: str, run=None, only: str | None = None, no_cargo: bool = False) -> int:
@@ -1696,7 +2744,7 @@ def self_test() -> int:
     # Every table entry's anchor must still occur exactly once. A drifted anchor
     # silently mutates nothing, and a table of no-ops passes every time.
     for gate, rows in MUTATIONS.items():
-        text = _read(SCRIPTS / f"{gate}.py")
+        text = _read(_gate_src(gate))
         for label, find, _ in rows:
             if label and label == os.environ.get("GATE_BITE_MUTATING"):
                 # **The row being mutated right now.** When this file mutates
@@ -1815,12 +2863,58 @@ def self_test() -> int:
     # the self-mutation table were RED for a reason that had nothing to do with
     # the rule under test. A control the table itself could not distinguish from
     # success.
-    leftover = [q for q in SCRIPTS.glob(".bite-*.py") if q.name != Path(__file__).name]
+    # BOTH suffixes, and RECURSIVE: a shell gate's copy lands beside it, which
+    # may be `scripts/perf/` or `scripts/raid/`. A flat `.py` glob would have
+    # reported a clean disk while a mutated `perf/.bite-bench-gate.sh` sat there
+    # shadowing the real gate — the check saying "no stranded mutant" is exactly
+    # the one that must not be narrower than the thing that strands them.
+    leftover = _stranded_mutants()
     if leftover:
         failures += 1
         print(f"  FAIL a crashed run left {[p.name for p in leftover]} on disk")
     else:
         print("  ok  a crashed run leaves no mutated copy behind")
+
+    # ...and the check must SEE a shell mutant, in a SUBDIRECTORY. The tree above
+    # is clean, so without this the rule has no subject and narrowing the glob
+    # back to a flat `.py` survives — measured, it did.
+    import tempfile as _tf  # local: self_test() rebinds `tempfile` further down
+    with _tf.TemporaryDirectory() as _d:
+        _t = Path(_d)
+        (_t / "perf").mkdir()
+        (_t / "perf" / ".bite-bench-gate.sh").write_text("x", encoding="utf-8")
+        (_t / ".bite-some-gate.py").write_text("x", encoding="utf-8")
+        (_t / "not-a-mutant.sh").write_text("x", encoding="utf-8")
+        (_t / ".bite-notes.txt").write_text("x", encoding="utf-8")
+        found = {q.name for q in _stranded_mutants(_t)}
+        want = {".bite-bench-gate.sh", ".bite-some-gate.py"}
+        if found != want:
+            failures += 1
+            print(f"  FAIL the stranded-mutant check found {found or '{}'}, want {want}")
+        else:
+            print("  ok  a stranded SHELL mutant in a subdirectory is found, "
+                  "and a non-mutant is not")
+
+    # ── both self-test output idioms count as a reported case ────────────────
+    for line, is_case, is_fail, why in (
+        ("  FAIL the rule stopped biting", True, True, "the dominant idiom"),
+        ("  ok   the rule bites", True, False, "its passing twin"),
+        ("[alert-rule-validator] SELFTEST FAIL - an unregistered alert passed",
+         True, True, "the older idiom, used by twelve gates"),
+        ("[alert-rule-validator] SELFTEST PASS - every rule bites",
+         True, False, "its passing twin"),
+        ("Traceback (most recent call last):", False, False,
+         "a crash is not a reported case"),
+        ("  the word FAILURES appears in this prose", False, False,
+         "and neither is prose that merely contains the word"),
+    ):
+        got = (_reports_case(line), _reports_failing_case(line))
+        if got != (is_case, is_fail):
+            failures += 1
+            print(f"  FAIL case/fail detection on {why}: {line[:44]!r} -> {got}, "
+                  f"want {(is_case, is_fail)}")
+        else:
+            print(f"  ok   {why} is read correctly")
 
     # The anchor guard must FIRE on an anchor that does not exist -- otherwise
     # the drift check above is the only thing standing, and it lives here too.
@@ -2369,7 +3463,7 @@ def self_test() -> int:
     # adjacent to what it mutates, and each round's remedy was to write a better
     # row. Reading the row instead: measured over all 132 shipped rows before it
     # was wired, ONE finding, and it was the defect.
-    all_rows = [(r[0], f"scripts/{g}.py", r[1], r[2])
+    all_rows = [(r[0], _gate_src(g).relative_to(REPO).as_posix(), r[1], r[2])
                 for g, v in MUTATIONS.items() for r in v]
     all_rows += [(r[0], r[1], r[2], r[3]) for r in RUST_MUTATIONS]
     # **A CANARY row, so the check can never be vacuous.** The shipped rows are
@@ -2496,7 +3590,8 @@ def self_test() -> int:
     # with labels that do not name their own. That IS `D-476`, and round 18's
     # remedy — renaming the label — moved both rows out of the token rule's
     # scope, so the rule built for the defect no longer examines it.
-    sibs = [(r[0], f"scripts/{g}.py", r[1]) for g, v in MUTATIONS.items() for r in v]
+    sibs = [(r[0], _gate_src(g).relative_to(REPO).as_posix(), r[1])
+            for g, v in MUTATIONS.items() for r in v]
     sibs += [(r[0], r[1], r[2]) for r in RUST_MUTATIONS]
     # **Two CANARY rows, so this call can never be vacuous.** `swappable = []`
     # survived otherwise: a clean report about a set the rule never examined --
@@ -2541,18 +3636,36 @@ def self_test() -> int:
     # harness has a table for plus the driver that runs them all. It found four
     # when it was written, one of them in this file.
     guarded = sorted(set(MUTATIONS) | {"gate-self-tests"})
-    hangs = [f"{g}.py: {w}" for g in guarded
-             for w in unbounded_children(_read(SCRIPTS / f"{g}.py"))]
+    # PYTHON ONLY, and said out loud. `unbounded_children` parses an AST; handed
+    # a shell gate it returns `<unparseable>`, which is the checker failing to
+    # read the file rather than a fact about the file. Shell gates joined this
+    # survey when the teeth board's 39 tables were ported in, and reporting 17
+    # false findings would have buried the real ones.
+    py_guarded = [g for g in guarded if _gate_src(g).suffix == ".py"]
+    skipped_sh = [g for g in guarded if _gate_src(g).suffix != ".py"]
+    hangs = [f"{_gate_src(g).name}: {w}" for g in py_guarded
+             for w in unbounded_children(_read(_gate_src(g)))]
+    if skipped_sh:
+        print(f"  note {len(skipped_sh)} shell gate(s) are OUT of the unbounded-child survey "
+              f"(it parses a python AST): {', '.join(sorted(skipped_sh)[:4])}"
+              f"{'…' if len(skipped_sh) > 4 else ''}")
     if hangs:
         failures += 1
         for w in hangs:
             print(f"  FAIL a child nothing can interrupt — {w}")
-    elif len(guarded) < 4 or "gate-bite-harness" not in guarded:
-        # **The subject set needs a FLOOR.** Emptying it left the sweep silent
-        # and printing "none of the 0 gates" -- a clean report about nothing,
-        # which is NV-3 in the rule written to close an NV-3 finding.
+    elif len(py_guarded) < 4 or "gate-bite-harness" not in py_guarded:
+        # **The subject set needs a FLOOR — on the set that DOES THE WORK.**
+        # Emptying it left the sweep silent and printing "none of the 0 gates":
+        # a clean report about nothing, which is NV-3 in the rule written to
+        # close an NV-3 finding.
+        #
+        # It read `guarded` until 2026-08-13, when scoping the survey to python
+        # split that name in two. The survey then walked `py_guarded` while the
+        # floor kept checking `guarded`, so emptying the working set passed —
+        # the guard and the work had come apart, which is the same adjacent
+        # -decision shape the scoping change was itself written to repair.
         failures += 1
-        print(f"  FAIL the unbounded-child sweep covers only {guarded}")
+        print(f"  FAIL the unbounded-child sweep covers only {py_guarded}")
     else:
         print(f"  ok  none of the {len(guarded)} gates spawn an uninterruptible child")
 

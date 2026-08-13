@@ -32,6 +32,21 @@ import subprocess
 import sys
 from pathlib import Path
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+#: A test suite is not a git command. 60s would kill a legitimate
+#: four-minute pytest run every time; this budget is for the SUITE.
+SUITE_TIMEOUT_S = 900
+
+def _suite_timed_out(tool: str, rel) -> None:
+    """A suite that never returns is CANNOT-RUN, not a passing suite."""
+    print(f"CANNOT RUN — {tool} did not finish within {SUITE_TIMEOUT_S}s for "
+          f"{' '.join(map(str, rel))}; refusing to report a verdict on a suite "
+          f"whose result was never read.", file=sys.stderr)
+    raise SystemExit(2)
+
+
 REPO = Path(__file__).resolve().parents[1]
 SPEC = REPO / "docs" / "specs" / "2026-07-03-context-budget-law.md"
 
@@ -144,12 +159,16 @@ def run_suites(items: list[Item]) -> list[str]:
         rel = sorted(str((REPO / p).relative_to(chat_svc)) for p in py_files)
         env_pp = str(REPO / "sdks" / "python")
         print(f"  [run] pytest: {' '.join(rel)}")
-        proc = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", *rel],
-            cwd=chat_svc,
-            env={**_env(), "PYTHONPATH": env_pp},
-            capture_output=True, text=True,
-        )
+        try:
+            proc = subprocess.run(
+                [sys.executable, "-m", "pytest", "-q", *rel],
+                cwd=chat_svc,
+                env={**_env(), "PYTHONPATH": env_pp},
+                capture_output=True, text=True,
+                timeout=SUITE_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            _suite_timed_out("pytest", rel)
         if proc.returncode != 0:
             errors.append("pytest suite RED:\n" + proc.stdout[-2000:] + proc.stderr[-1000:])
 
@@ -157,10 +176,15 @@ def run_suites(items: list[Item]) -> list[str]:
         frontend = REPO / "frontend"
         rel = sorted(str((REPO / p).relative_to(frontend)) for p in ts_files)
         print(f"  [run] vitest: {len(rel)} files")
-        proc = subprocess.run(
-            ["npx", "vitest", "run", *rel],
-            cwd=frontend, env=_env(), capture_output=True, text=True, shell=(sys.platform == "win32"),
-        )
+        try:
+            proc = subprocess.run(
+                ["npx", "vitest", "run", *rel],
+                cwd=frontend, env=_env(), capture_output=True, text=True,
+                shell=(sys.platform == "win32"),
+                timeout=SUITE_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            _suite_timed_out("vitest", rel)
         if proc.returncode != 0:
             errors.append("vitest suite RED:\n" + proc.stdout[-2000:] + proc.stderr[-1000:])
 

@@ -22,6 +22,11 @@ import subprocess
 import sys
 from pathlib import Path
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
 REPO = Path(__file__).resolve().parents[1]
 
 # EVERY locale tree in the repo, not just the novel app's.
@@ -64,7 +69,17 @@ def _load(path: Path) -> dict:
 def staged_files() -> set[str]:
     try:
         out = subprocess.run(["git", "diff", "--cached", "--name-only"],
-                             cwd=REPO, capture_output=True, text=True, check=True).stdout
+                             cwd=REPO, capture_output=True, text=True, check=True,
+                             timeout=GIT_TIMEOUT_S).stdout
+    except subprocess.TimeoutExpired:
+        # **A TIMEOUT IS NOT AN EMPTY STAGE.** The broad catch below is right for
+        # "not a git repo" -- there genuinely is nothing staged. A git that hung
+        # for GIT_TIMEOUT_S is a different fact, and sharing the empty-set answer
+        # made this gate report PASS over a commit it never read.
+        print(f"CANNOT RUN — `git diff --cached` did not return within "
+              f"{GIT_TIMEOUT_S}s; refusing to report a verdict on a file list "
+              f"that was never read.", file=sys.stderr)
+        raise SystemExit(2)
     except Exception:
         return set()
     return {ln.strip().replace("\\", "/") for ln in out.splitlines() if ln.strip()}

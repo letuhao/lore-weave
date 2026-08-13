@@ -60,6 +60,11 @@ import re
 import subprocess
 import sys
 
+#: A child with no timeout hangs the pre-commit hook forever, with no
+#: output and nothing to kill but the terminal. Surfaced by the bite
+#: harness's unbounded-child survey when this gate joined its table.
+GIT_TIMEOUT_S = 60
+
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #: Scope. Every entry must contribute at least one scanned file — see the
@@ -239,8 +244,9 @@ def iter_staged(repo_root: str = REPO_ROOT, search_dirs=SEARCH_DIRS):
         res = subprocess.run(
             ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
             cwd=repo_root, capture_output=True, text=True, check=True,
+            timeout=GIT_TIMEOUT_S,
         )
-    except (subprocess.CalledProcessError, FileNotFoundError):
+    except (subprocess.CalledProcessError, FileNotFoundError, subprocess.TimeoutExpired):
         return
     for rel in res.stdout.splitlines():
         rel = rel.strip().replace(os.sep, "/")

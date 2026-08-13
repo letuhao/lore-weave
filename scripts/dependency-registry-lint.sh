@@ -58,6 +58,12 @@ rs_exempt() {
 }
 
 run_lint() {
+  # The root is INJECTABLE. It was a global, so the reach floor below could only
+  # ever be exercised by pointing the real scan at a missing directory by hand --
+  # which is how it was proven, and why nothing re-proved it afterwards. The
+  # mutation that removes the floor survived every case until this parameter
+  # existed.
+  local root="${1:-$repo_root}"
   local go_files rs_files go_hits rs_hits total=0
 
   # REACH FLOOR. This gate hunts for a shape; finding none is the GOAL state, so
@@ -70,8 +76,8 @@ run_lint() {
   # below can say anything. Measured by the bite: pointing the walk at a
   # directory that does not exist produced a silent rc=1, so the floor was
   # unreachable in precisely the case it exists for.
-  go_files=$( { find "$repo_root/services" -name '*.go' 2>/dev/null || true; } | wc -l)
-  rs_files=$( { find "$repo_root/services" "$repo_root/crates" -name '*.rs' 2>/dev/null || true; } | wc -l)
+  go_files=$( { find "$root/services" -name '*.go' 2>/dev/null || true; } | wc -l)
+  rs_files=$( { find "$root/services" "$root/crates" -name '*.rs' 2>/dev/null || true; } | wc -l)
   if [[ "$go_files" -lt 1 || "$rs_files" -lt 1 ]]; then
     echo "[dependency-registry] FAIL — the scan reached $go_files .go and $rs_files .rs file(s);"
     echo "                      a walk that reaches nothing looks exactly like a clean tree"
@@ -79,7 +85,7 @@ run_lint() {
   fi
 
   go_hits=$(grep -rnE '\b(http\.Client\{|http\.NewRequest\b|sql\.Open\b|redis\.NewClient\b)' \
-    --include='*.go' "$repo_root/services" 2>/dev/null \
+    --include='*.go' "$root/services" 2>/dev/null \
     | grep -vE '_test\.go:' \
     | grep -vE 'contracts/(resilience|dependencies)/' \
     || true)
@@ -90,7 +96,7 @@ run_lint() {
   fi
 
   rs_hits=$(grep -rnE '\b(reqwest::Client::new\b|sqlx::PgPool::connect\b)' \
-    --include='*.rs' "$repo_root/services" "$repo_root/crates" 2>/dev/null \
+    --include='*.rs' "$root/services" "$root/crates" 2>/dev/null \
     | grep -vE 'mod tests' \
     | grep -vE '/tests/' \
     | grep -vE '_test\.rs:' \
@@ -156,6 +162,34 @@ selftest() {
   fi
   if rs_exempt 'services/world-service/src/state.rs:33: reqwest::Client::new()'; then
     echo "[dependency-registry] SELFTEST FAIL — ordinary Rust service code is being EXEMPTED (vacuous)"; exit 2
+  fi
+
+  # ── THE REACH FLOOR, driven ─────────────────────────────────────────────
+  # A walk that reaches nothing is byte-identical to a clean tree, so the floor
+  # is the only thing standing between this gate and a permanent pass. It had no
+  # case: the root was a global, and mutating it away left every case green.
+  local d rc
+  d="$(mktemp -d)"
+  # `set +e` around it: under `set -euo pipefail` the failing subshell aborts the
+  # script AT THAT LINE and `rc=$?` never runs -- the self-test then exits 2 with
+  # no output at all. That is the same shell-option trap the reach floor's own
+  # comment describes, hit again while writing the case FOR that floor.
+  set +e
+  ( run_lint "$d" ) >/dev/null 2>&1
+  rc=$?
+  set -e
+  rm -rf "$d"
+  if [[ "$rc" != "2" ]]; then
+    echo "[dependency-registry] SELFTEST FAIL — a scan over an EMPTY tree returned $rc, not 2;"
+    echo "  a walk that reaches nothing must be misuse, not a clean bill"; exit 2
+  fi
+  # ...and it must NOT cry wolf on the real tree, or the floor is just a break.
+  set +e
+  ( run_lint ) >/dev/null 2>&1
+  rc=$?
+  set -e
+  if [[ "$rc" == "2" ]]; then
+    echo "[dependency-registry] SELFTEST FAIL — the reach floor fires on the REAL tree (cry-wolf)"; exit 2
   fi
 
   echo "[dependency-registry] SELFTEST PASS — all 4 Go and 2 Rust shapes detected, factory-routed"

@@ -65,6 +65,18 @@ _untraced() {  # $1 handler-re, $2 pathspec, $3 traced-re, $4 path-exclude-re
     <(git grep -lE "$3" -- "$2" 2>/dev/null | sort -u)
 }
 
+# The live violation count, split out so the self-test can compare the shipped
+# ratchet against REALITY rather than against a literal of its own. Without this
+# the constant is a number nothing measures: both `=48` and `=50` left every
+# case green, because the arithmetic cases use a local baseline.
+count_violations() {
+  local go_bad rs_bad
+  go_bad="$(_untraced "$GO_HANDLER_RE" 'services/**/*.go' "$GO_TRACED_RE" '_test\.go$')"
+  rs_bad="$(_untraced "$RS_HANDLER_RE" 'services/**/*.rs' "$RS_TRACED_RE" '/tests/')"
+  echo $(( $(printf '%s\n' "$go_bad" | grep -c . || true) \
+         + $(printf '%s\n' "$rs_bad" | grep -c . || true) ))
+}
+
 run_lint() {
   local mode="${1:-warn}"
   local n_go n_rs go_bad rs_bad violations f
@@ -84,6 +96,7 @@ run_lint() {
 
   go_bad="$(_untraced "$GO_HANDLER_RE" 'services/**/*.go' "$GO_TRACED_RE" '_test\.go$')"
   rs_bad="$(_untraced "$RS_HANDLER_RE" 'services/**/*.rs' "$RS_TRACED_RE" '/tests/')"
+  # (the same pair `count_violations` reads — see it below)
 
   for f in $go_bad; do
     echo "[tracing-completeness-lint] WARN: $f declares HTTP handler but does not import contracts/tracing"
@@ -157,6 +170,20 @@ selftest() {
   [[ 4 -lt $b ]] || { echo "[tracing-completeness-lint] SELFTEST FAIL — PROGRESS below the ratchet does not compare lesser"; exit 2; }
   if [[ $TRACING_VIOLATION_BASELINE -lt 1 ]]; then
     echo "[tracing-completeness-lint] SELFTEST FAIL — the ratchet is 0 or negative; every count is 'at or below'"; exit 2
+  fi
+
+  # ...AND THE NUMBER ITSELF, against the tree it describes. A ratchet whose
+  # value no case reads is a number nothing measures: it can be edited in either
+  # direction with the whole suite green, which is exactly what two mutations
+  # proved. Comparing it to the live count makes both directions red — a raised
+  # baseline hides a real regression, a lowered one cries wolf on the next run.
+  local live
+  live="$(count_violations)"
+  if [[ "$live" != "$TRACING_VIOLATION_BASELINE" ]]; then
+    echo "[tracing-completeness-lint] SELFTEST FAIL — the ratchet says $TRACING_VIOLATION_BASELINE"
+    echo "  and the tree has $live untraced handler(s). Fix the handlers, or move the ratchet"
+    echo "  to $live in the same commit that explains why."
+    exit 2
   fi
 
   echo "[tracing-completeness-lint] SELFTEST PASS — all 4 Go and 3 Rust handler shapes detected,"
