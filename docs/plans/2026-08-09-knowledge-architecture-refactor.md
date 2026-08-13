@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37b-planforge` — grow `ProposedChar.roles: list[{predicate, object}]`, ask the cast prompt for it, and land it WITH the cast-plan eval (SPEC §4.2c: a prompt change that shifts `is_new` or cast sizing is a regression the graph write is not worth). Then the live smoke both halves owe: a real declaration turning T36's `relation 0` into `relation 1`, which is T37's whole acceptance test.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`. ⚠️ **The studio endpoint takes a CHAPTER, never an ordinal** — composition's stride is 1 000 and the KG's is 1 000 000, and a role on the wrong one is invisible to every as-of read while returning 201.
+**RESUME: `T37c` — the fact-append core refuses a `relation` row the constraint permits. LIVE-PROVEN 2026-08-14: the whole path works until `glossary-service internalAppendFact`, which 500s AND LOGS NOTHING. Instrument that error path first (a 500 with no log line cannot be fixed by inspection), then find the refusal — most likely the chain-lock/`maintain_chain` path, which has only ever run on attribute/name/alias, or a NOT NULL the relation shape leaves empty. `relation 0` is NOT "nobody wrote one" — it is "the writer has never been exercised".** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`. Every layer T37 owns is correct and live-verified — route, JWT, grant, KAL forward, chapter→ordinal (12 → 12 000 000), and raise-don't-degrade. The defect is underneath all of it, and no test in either service touches it.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8316,6 +8316,62 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   ```
   3732 passed, 403 skipped — composition-service
   ```
+
+
+  ### 🔴 T37 LIVE SMOKE 2026-08-14 — the write path is BROKEN below everything T37 built
+
+  **The smoke both halves owed, run. It failed, and the failure is the finding.**
+
+  Composition rebuilt and grepped in the running container first
+  (`KG_EVENT_ORDER_CHAPTER_STRIDE = 1_000_000` ×1, `append_role_fact` ×1), then the real
+  endpoint driven with a real JWT against the acceptance book:
+
+  ```
+  POST /v1/composition/works/019f9f41-…/roles     -> HTTP 500
+    route resolved · JWT accepted · EDIT grant passed
+    -> KalClient.append_role_fact
+    -> POST http://knowledge-gateway:3000/v1/kal/books/019f9f2d-…/facts   -> 502
+    -> POST http://glossary-service:8088/internal/books/…/facts/append    -> 500
+  ```
+
+  ✅ **Three things this proves, and they are what T37a/T37b-studio claimed:**
+  the route reaches the KAL through the real gateway; the chapter→ordinal conversion happened
+  (`12 → 12 000 000`); and **the write RAISED rather than degrading.** `raise_for_status()` is
+  the line bite 2 of T37a pinned, and here it is doing the job it was written for — a 500 the
+  author sees, not a 201 over a role that does not exist.
+
+  🔴 **What it disproves is the acceptance number.** T36 measured `relation 0`; after a real
+  attempt it is **still 0**, and not partially written:
+
+  ```
+  before   attribute 101 · name 13 · alias 1          (no relation row)
+  after    attribute 101 · name 13 · alias 1          (unchanged)
+  relation facts across the WHOLE glossary DB: 0
+  ```
+
+  **`entity_facts_kind_chk` admits `'relation'`** — verified directly against the live
+  constraint (`ARRAY['attribute','relation','event','name','alias','status']`) — so the
+  refusal is not the schema. `internalAppendFact` parses the body, gates tenancy
+  (`entityInBook`, which would 4xx not 500), then opens a tx, takes the per-`(entity,attr)`
+  chain lock and calls `appendFact`. The 500 is `GLOSS_INTERNAL` from inside that sequence and
+  **glossary-service logged nothing for it**, which is its own defect: a 500 with no log line
+  is a failure nobody can diagnose from the outside.
+
+  ⚠️ **This is why the mock-transport tests were marked as owing a smoke rather than counted
+  as coverage.** `T37a` passes four rules against a `MockTransport` and `T37b-studio` five
+  against a fake client; both are green and both are true; and the path they describe does not
+  work end to end. Every layer T37 owns is correct — the defect is in the fact-append core
+  underneath it, which no test in either service touches.
+
+  **NEXT, and it is a knowledge/glossary batch rather than a composition one:** instrument
+  `internalAppendFact`'s error path (a 500 that logs nothing cannot be fixed by inspection),
+  then find why `appendFact` refuses a `relation` row the constraint permits. The likeliest
+  candidates are the chain-lock/`maintain_chain` path, which has only ever run on
+  `attribute`/`name`/`alias`, and a NOT NULL the relation shape leaves empty — **`relation 0`
+  is not "nobody wrote one", it is "the writer has never been exercised".**
+
+  QC (a) gates green · QC (b) **run, and RED** · QC (c) real data: the acceptance book's real
+  entity, real constraint, real counts before and after.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
