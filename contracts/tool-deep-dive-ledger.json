@@ -1027,6 +1027,14 @@
       "cycle": 27,
       "group": "A#1 among unconcluded (1 live, 22 total, 22 calls)",
       "note": "PROVEN with NO defect, despite a 100% failure rate (22 of 22). Twenty-one of those are the SAME job_id 019f7e7f-8805-… polled repeatedly on 2026-07-20, and that job does not exist in loreweave_composition.generation_job in any state — the invented/stale id class of cycles 19 and 22, unrepairable and correctly refused. The 22nd is this loop's own missing-argument call from today. LIVE (session 019ff929, editor surface, via the lazy-tail path): the model ran tool_load({name:'composition_get_mine_job'}) then the tool with the job_id, ok=true. It took two asks — the first turn answered from conversation context without calling anything, which is worth noting for a POLL tool: a model that answers a status question from memory rather than polling will report a stale status confidently. DATA (owning store generation_job): status 'completed', operation 'draft_chapter', cost_usd 0.0000 — matching the store row exactly. FALSIFIER: any other status or operation would refute it. SHIP: the recorded nonexistent job and a STRANGER asking for a real one BOTH get 'not found or not accessible', so job ownership cannot be enumerated; a missing job_id is refused by the validator with 'Field required. You sent no arguments at all'; a non-UUID gets \"job_id must be a UUID — received 'all'\". NOTED, NOT FILED: the description scopes this tool to MOTIF jobs ('the mining / arc-import / conformance / translate job a confirmed Tier-W motif action returns'), but it happily returns a draft_chapter generation job. Behaviour is BROADER than the promise, in the safe direction — ownership is still enforced — the same shape as cycle 9's OBS-T18, and there is no measured failure attributable to it."
+    },
+    "glossary_search": {
+      "state": "proven",
+      "provider": "glossary",
+      "tier": "R (scope book, ambient_book)",
+      "cycle": 28,
+      "group": "A#1 among unconcluded (0 live, 43 total, 252 calls)",
+      "note": "PROVEN, one defect (T28-D1) fixed. The most-called tool concluded so far (252 calls). Its 43 failures are ALL correct refusals: 33 missing `query` or missing `book_id`+`query` on a single day, plus repeat-guards and this loop's own blank-argument calls. LIVE (session 019ff929, editor surface). Asked 'search this book's glossary for a character called Thorne Ravensgard. Is he in the glossary?', the model called glossary_search with book_id OMITTED — the ambient path — and answered 'No, Thorne Ravensgard is not in the glossary. The search returned no matches for that name.' Before the fix that same call returned four unrelated entities with nothing to say they were not matches. DATA (owning store loreweave_glossary.glossary_entities), against a book whose four entities were created earlier in this session: searching 'Elara' returns exactly that entity at tier='exact'; 'map' returns exactly that one; limit=1 returns one. FALSIFIER: a different entity, or more than the store holds, would refute it. SHIP - the ambient contract and refusals swept: a missing query is refused by the validator naming the property; book_id omitted with NO ambient book fails closed with 'book_id is required (a UUID)'; book_id omitted WITH X-Book-Id resolves and returns the same result, so the optional declaration is properly paired; a stranger gets 'book not accessible'; limit clamps. THE DEFECT WAS THE NO-MATCH CASE (T28-D1): a query matching nothing returned the recent fallback in the same array, same shape, with no signal — measured here on 'zzzznotathing' and in cycle 10 on a real character name that returned unrelated EVENTS as top results."
     }
   },
   "defects": {
@@ -1162,6 +1170,13 @@
       "lives_in": "services/chat-service/app/services/stream_service.py::_repair_aliased_required_id + _unwrap_wrapped_args",
       "title": "The model had the right id and put it under the wrong key",
       "note": "MEASURED 2026-08-09/10: book_read refused 89 calls for a missing book_id, and only 33 were genuinely empty. The other 56 CARRIED THE CORRECT UUID — {'id': …} x19, {'ids': [�]} x13, {'book_ids': […]} x8, {'params': {'book_id': …}} x14 — all the same book, an id the model had just read out of book_list. The runtime answered \"is missing ['book_id'], and this is NOT yours to invent\", which is true of the FIELD and false of the SITUATION. The four shapes were confirmed unrepaired by running the DEPLOYED helpers on the exact recorded payloads before any change. TWO REPAIRS, both in the existing family. `params` joins `args`/`arguments` as an envelope key, under the same guard (a tool that really declares `params` is untouched). And a mirror of _coerce_listed_scalar_ids: that one fixes a wrong VALUE under the right key, this one the right value under a near-miss KEY. DECLINES ANYTHING IT CANNOT REASON ABOUT, because a wrong graft corrupts a call instead of refusing it: exactly ONE required *_id may be missing (two candidates is a guess); the donor must be `id`, `ids` or the target's plural; the donor must NOT itself be declared; and the value must be a string or a ONE-element list, since a longer list is a real collection. FALSIFIED, four injections: unwiring it from the dispatch reds ONLY the call-site guard — the unwired-fix shape this loop has been bitten by more than once; dropping `params` reds the envelope guards; removing the undeclared-donor check reds the control that a genuine `ids` param survives; allowing a multi-element list reds the collection control. Full chat-service suite 3046 passed, 3 skipped. Deployed and verified by content."
+    },
+    "T28-D1": {
+      "state": "proven",
+      "found_by": "glossary_search",
+      "lives_in": "services/glossary-service/internal/api/mcp_server.go::toolSearch / searchIsRecentFallback",
+      "title": "A search that matched nothing returned entities and said so nowhere",
+      "note": "glossary_search falls back to the book's most recently touched entities when the query matches nothing — useful orientation, but it arrived in the SAME `entities` array, with the SAME shape, as real matches. The payload had exactly one top-level key, `entities`, so a caller could not tell 4 MATCHES from 0 matches plus 4 recents. The only hint was per-entity tier='recent' / rank_score 0.1, which a model is under no obligation to read. MEASURED 2026-08-13: 'zzzznotathing' against a 4-entity book returned all four. Cycle 10 measured the live version — searching for the character 'Lam Uyen' returned unrelated EVENTS ('Cuộc đối thoại với Tô Thanh Dao') at rank_score 0.1 as the TOP results. Same class as T7-D2 (a listing emptied by a filter that claimed no such tools existed), and the same rule the ai-gateway's own find_tools states for itself: 'keeps pure-noise near-misses out so a true no such tool reads as empty (anti-false-suggestion), not a bogus match'. FIX: a `note` on the response, set ONLY when a query was given AND every returned entity is the tier-3 recent fallback. `omitempty` keeps a real match's payload byte-identical, so no consumer starts branching on a field that is always there. An EMPTY result set is deliberately NOT a fallback — zero rows already read as 'nothing found'. FALSIFIED, three injections: stopping the note reds ONLY the call-site guard, which is the unwired-fix shape this loop keeps meeting; treating any set as a fallback reds the control that a genuine hit is never mislabelled; dropping omitempty reds its own guard. Suite: exactly the 5 pre-existing failures of OBS-T19. Deployed and verified BY CONTENT. RE-PROVEN LIVE: the model asked whether a character was in the glossary, got the note, and answered correctly that there were no matches."
     }
   },
   "deferred_questions": {
@@ -1323,11 +1338,11 @@
   "progress": {
     "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
     "tools_declared": 315,
-    "tools_concluded": 27,
+    "tools_concluded": 28,
     "tools_in_cycle": 0,
-    "tools_proven": 27,
+    "tools_proven": 28,
     "tools_blocked": 0,
-    "defects_proven": 19,
+    "defects_proven": 20,
     "defects_open": 0,
     "deferred_questions": 6
   }
