@@ -218,6 +218,7 @@ async def run_canon_reflect(
     name_fields = dict(
         unanchored_names=audit.unanchored, name_near_misses=audit.near_misses,
         name_check_method=audit.method,
+        name_truth_source=audit.truth_source,
     )
 
     def _name_check(a) -> CheckStatus:
@@ -362,6 +363,7 @@ async def run_canon_reflect(
     result.unanchored_names = final_audit.unanchored
     result.name_near_misses = final_audit.near_misses
     result.name_check_method = final_audit.method
+    result.name_truth_source = final_audit.truth_source
     # S1 — per-check first; `coverage` is its CHECKED subset. `canon_cast` is DEGRADED (not
     # merely absent from coverage) when the knowledge snapshot could not be read: the guard is
     # fine, its input was not, and those are different things to whoever reads the report.

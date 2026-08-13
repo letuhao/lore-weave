@@ -712,6 +712,15 @@ class ReflectResult(BaseModel):
     #: capitalised_latin | caseless_script | empty — a check that cannot see must say so
     #: rather than report a clean result (the `realised_words` discipline).
     name_check_method: str = ""
+    #: glossary | prompt_proxy | none — WHAT the draft names were compared against.
+    #:
+    #: `name_grounding.py` calls this "the field that matters most", and it was COMPUTED and
+    #: then DROPPED before the envelope, so no caller could read it. With `prompt_proxy` the
+    #: comparison is against the drafter own packed prompt — a self-consistency observation
+    #: that reads exactly like a verification against canon. Found 2026-08-13 interpreting
+    #: QC-5 drafting run, where `name_grounding` was the ONLY check with coverage and there
+    #: was no way to tell which of the two it had done.
+    name_truth_source: str = ""
     text: str                                    # final draft (possibly revised)
     # Remaining violations the author should see: confirmed-HARD (confirmed=True)
     # AND ADVISORY (confirmed=None — symbolic-only, the judge was down/not-distinct
@@ -824,6 +833,8 @@ def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
         "unanchored_names": reflect.unanchored_names,
         "name_near_misses": reflect.name_near_misses,
         "name_check_method": reflect.name_check_method,
+        # A proxy that does not announce itself reads exactly like a verification.
+        "name_truth_source": reflect.name_truth_source,
         # LEGACY scalar, kept verbatim: it is persisted and matched by SQL.
         "status": reflect.status,
     }
@@ -869,6 +880,7 @@ def unguarded_envelope(reason: str) -> dict[str, Any]:
         "unanchored_names": [],
         "name_near_misses": [],
         "name_check_method": None,
+        "name_truth_source": None,
         "status": None,
     }
 

@@ -63,9 +63,31 @@ ch   canon_cast   plan_liveness   name_grounding   coverage            unresolve
   position-windowed read cannot run. That is `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED`, still open.
 * `role_check: null` — not asked for on this path.
 
-So **zero violations across three chapters says almost nothing.** The only check with real
-coverage is name-grounding, and `name_check_method: capitalised_latin` on a Vietnamese chapter
-is its own question.
+So **zero violations across three chapters says almost nothing.** And the one check with
+coverage turned out to be weaker than it reads — see below.
+
+### The check that DID run compared the draft to the drafter's own prompt
+
+`name_grounding.py`'s docstring calls `truth_source` *"the field that matters most"*: with
+`prompt_proxy` the draft's names are compared against **the packed prompt the drafter was
+given**, which is a self-consistency observation, not a check against canon. The field was
+**computed and then dropped before the envelope**, so no caller could read it — the run above
+reports `name_grounding: checked` with no way to tell which of the two it had done.
+
+Surfaced it (`name_truth_source` on `ReflectResult` and both envelopes) and re-ran chapter 11:
+
+```
+name_check_method : capitalised_latin
+name_truth_source : prompt_proxy        <- the draft graded against its own input
+```
+
+**So the drafting run verified NOTHING against canon.** `canon_cast` had an empty corpus,
+`plan_liveness` had no position, and `name_grounding` compared the draft to the prompt that
+produced it. Three checks, zero comparisons to the authored SSOT.
+
+`capitalised_latin` on a Vietnamese chapter is CORRECT, incidentally — Vietnamese is a
+Latin-script language, and the Unicode tokeniser fix from `dd77f1a90` is what makes the
+diacritics work. `caseless_script` is the branch for Chinese/Japanese.
 
 ⚠️ **`critic` on the job is `null`.** The 4-dimension `judge_prose` scores QC-5 calls "the
 critic's per-chapter scores" come from the **D5 continuity critic**, a separate pass this

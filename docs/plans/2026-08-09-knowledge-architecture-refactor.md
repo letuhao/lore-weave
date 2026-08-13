@@ -2300,6 +2300,16 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
 
 <!-- Commit checkpoint: T14–T17 -->
 
+
+  ### 🔻 DEFERRAL `D-T17-PORT-SCOPE-UNDECIDED` — 60 modules wait on one question
+
+  | | |
+  |---|---|
+  | **Blocker** | T17 reads as bulk migration and is not. Measured by AST 2026-08-13: of the modules still binding `neo4j_repos`, **zero** are migratable with today's port and **zero** are model-only (both of those were taken). Every remaining one needs an operation `GraphStore` does not have — get/invalidate/recreate a relation, get/archive/merge an event, and a paginated timeline browse carrying totals, participants and free text. |
+  | **Evidence** | `port-adoption-gate --list` (64 binders) crossed against the operations the Neo4j adapter wraps; `public/relations.py`, `public/events.py`, `internal_timeline.py` inspected directly. `ontology/triage_apply.py` looked migratable by NAME (`create_relation`) and is not: it passes `pending_validation`, `schema_version`, `cardinality` and relies on a `None` return the port cannot produce. |
+  | **To unblock** | Answer: **does `GraphStore` own paginated browse queries and correction writes, or only domain reads plus the upserts?** The port's own docstring leans one way — *"a count belongs to a paginated browse, not to 'give me the events in this window'"* — but that is a comment, not a decision, and a second adapter must implement whatever is added. |
+  | **Mechanism** | `port-adoption-gate`'s ceiling (64) cannot fall without this answer, so the number itself is the tracker: a stalled ceiling IS the unanswered question, visible on every run. |
+  | **Retry when** | The scope question is answered. It belongs with T43's engine decision, since the second adapter pays for every method added. |
 - [x] **T18** — Define `GraphStore` + its fake — **GREEN**
   Domain operations, not Cypher: `resolve_or_merge_entity` · `find_entities_by_name` ·
   `neighborhood(entity, depth, filters)` · `relations_for(entity, as_of)` · `status_at_order` ·
@@ -4472,10 +4482,27 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
     critic**, a pass this endpoint does not run. Recorded before under
     `D-QC5-FULL-FLOW-CAPTURE`; now confirmed end-to-end rather than by reading code.
 
+  🔴 **AND THE ONE CHECK THAT RAN COMPARED THE DRAFT TO ITS OWN PROMPT.**
+  `name_grounding.py` calls `truth_source` *"the field that matters most"*: with `prompt_proxy`
+  the names are checked against **the packed prompt the drafter was given** — a self-consistency
+  observation, not a check against canon. **The field was computed and then DROPPED before the
+  envelope**, so no caller could read it. Surfaced it (`name_truth_source`, on `ReflectResult`
+  and both envelopes) and re-ran chapter 11:
+
+  ```
+  name_check_method : capitalised_latin
+  name_truth_source : prompt_proxy      <- graded against its own input
+  ```
+
+  **So the drafting run verified NOTHING against canon.** Empty cast corpus · no position ·
+  names compared to the prompt that produced them. Three checks, zero comparisons to the
+  authored SSOT. That is the honest reading of "0 violations", and it was **unreadable before
+  this change** — which is why the fix is a surfaced field rather than a note.
+
   **The assertion and the FLOW disagree about coverage.** The two-arm experiment fed rules to
   the critique endpoint and got a real judgement (2 vs 3, correct reasons). The drafting flow's
-  own canon check, same book, evaluated one check of three. **QC-5 is written in terms of
-  `canon_consistency`, and the flow does not produce it.**
+  own canon check, same book, evaluated one check of three — and that one against a proxy.
+  **QC-5 is written in terms of `canon_consistency`, and the flow does not produce it.**
 
   **Glossary delta: 0** — and structurally so. Extraction runs on the published/parsed path,
   not on a draft write; three accepted drafts change no glossary rows.
@@ -5596,6 +5623,16 @@ What remains is implementation, precisely located and specified in
 `D-T36-GUARD-NEVER-ASKS-ABOUT-ROLES`: **the guard consults only `entities` + `status`, so a
 misattribution question has no code path to reach.** No decision is owed by anyone.
 
+
+  ### 🔻 DEFERRAL `D-QC5-FLOW-PRODUCES-NO-CANON-CONSISTENCY` — the criterion has no producer on this path
+
+  | | |
+  |---|---|
+  | **Blocker** | QC-5's pass/fail rule is written in terms of **`canon_consistency`** — *"a pass here with 5/5 means the refactor has NOT landed"*. The authoring FLOW does not produce that number. The chapter drafting path runs the canon **guard** (three per-check statuses) and returns `critic: null`; the 4-dimension `judge_prose` score comes from the D5 continuity critic, a separate pass nothing in the drafting flow invokes. So the acceptance test cannot be evaluated end-to-end **as written**, no matter how many chapters are drafted. |
+  | **Evidence** | 2026-08-13 drafting run, three chapters: `critic: null` on every job; canon coverage `['name_grounding']` of three checks; `canon_cast: no_rules` (the resolved-cast corpus was empty — every member `{'source':'none','status':'unknown'}`), `plan_liveness: no_position`. The two-arm assertion, by contrast, DID produce a real judgement (2 vs 3) because it calls the critique endpoint directly with rules. Same book, same session, two different coverages. |
+  | **To unblock** | One of: (a) the drafting flow invokes the D5 critic so a chapter carries a `canon_consistency`; (b) QC-5's criterion is restated against what the flow DOES produce — the guard's per-check statuses and coverage — which is a different and arguably better test, since a per-check report cannot round up to a pass; or (c) the acceptance test is declared to be the direct-critique assertion only, and the flow capture drops the `canon_consistency` wording. **(b) or (c) is a plan edit, not code.** |
+  | **Mechanism** | The measurement file records both coverages side by side, so the disagreement is visible rather than inferable. Any future run that reports a flow-level `canon_consistency` contradicts this row and closes it. |
+  | **Retry when** | The PO picks (a), (b) or (c). Until then QC-5's flow half is **unevaluable as written**, and that is a statement about the criterion, not about the refactor. |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
@@ -5637,6 +5674,16 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   T17 (60 modules gated on port scope), T43's stale coverage rows, now T38. Worth naming as a
   pattern: **a task whose blocker is a DECISION reads, in a checkbox list, exactly like a task
   whose blocker is EFFORT** — and gets scheduled as though someone could grind it down.
+
+  ### 🔻 DEFERRAL `D-T38-KAL-SCOPE-UNDECIDED` — the migration target fits none of its consumers
+
+  | | |
+  |---|---|
+  | **Blocker** | T38 moves the authored-catalog readers onto `KalClient.roster`. `roster` returns `entity_id` + `name`. **0 of the 10 pinned sites can use it**: four are `entities/by-ids` (the endpoint that exists to return the detail roster strips), three list-readers need `kind`+`short_description` / `aliases` / `kind_code`+`aliases`, two are eval scripts on `canon-content`, and one is a DELETE. |
+  | **Evidence** | Census 2026-08-13 in the T38 body above — every pinned site read and its consumed fields named. |
+  | **To unblock** | Answer: **does the KAL grow a detail-carrying catalog read (kind, aliases, short_description), or does the authored catalog stay a direct read and INV-KAL's scope stop where it is?** T47 already records the consequence — *"INV-KAL scope now covers writes + the authored catalog"* — as though this were settled. It is not. |
+  | **Mechanism** | `authored-catalog-reader-gate`'s pinned set is the checklist and can only shrink; it cannot shrink at all until this is answered, so a frozen list is the visible signal. |
+  | **Retry when** | The KAL scope question is answered. **T39 and T40 chain behind T38**, so this one question gates three tasks. |
 - [~] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
   31 files across nine feature folders consume these contracts — `glossary`, `trash`,
   `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
