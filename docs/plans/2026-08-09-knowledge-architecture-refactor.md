@@ -35,8 +35,16 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: ⏸ QC-5 — POST-REVIEW. STOPPED AND WAITING. All four artefacts now exist; the
-acceptance assertion is still unproven, and the reason is newly measured.**
+**RESUME: `C1` — wire the D5 continuity critic into the drafting flow.**
+See **▶ EXECUTION PLAN** below: three decided workstreams, sixteen batches, order `C → A → B`.
+Nothing here is blocked on a decision any more.
+
+> ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
+> `T17: the port owns EVERYTHING` · `T38: the KAL grows a detail read` ·
+> `QC-5: wire the D5 critic into the flow` · `QC-7: signed off`.
+> Every remaining `[~]` is WORK now. Three tasks that read as backlog were measured this
+> session and each turned out to be ONE question — which is why the plan sat at 38/66 for a
+> day while real work shipped.
 
 ⚠️ **The RESUME pointer was wrong and is corrected here.** It read *"T17"* — a Phase 6 task —
 while **QC-5, this refactor's own stated acceptance test, was still `[~]`**. The GOAL has two
@@ -562,6 +570,87 @@ mechanism say the judge model is the limit, so it costs a stronger model or it s
 | **DRIFT-5** | `[~]` now means two different things — *"blocked on someone else"* and *"just a lot of work"* — so 37/37 checkboxes are ticked and the plan can no longer answer *"what may I start right now?"*. Group A/B/C is the answer, but it lives 3 600 lines away from the checkboxes. | **fixed** — Group B is named in the RESUME line above. |
 
 ---
+
+
+## ▶ EXECUTION PLAN — the three decided workstreams *(written 2026-08-13, after the PO decisions)*
+
+**Order: `C → A → B`.** C is the smallest and closes this refactor's own acceptance test. A is
+the largest and unsticks a gate that has not moved in a day. B chains three tasks behind it.
+
+⚠️ **Batch ids are NOT new plan tasks** — they are the inside of `QC-5`, `T17` and `T38`, which
+stay the checkboxes. A batch is one cycle: BUILD → BITE → QC → EVIDENCE → ADVANCE, and a batch
+with no bite output or no pasted evidence fails closed.
+
+### Workstream C — QC-5: wire the D5 critic into the flow *(4 batches)*
+
+The flow runs the canon GUARD and returns `critic: null`; the 4-dimension `judge_prose` score
+comes from the D5 continuity critic, a pass nothing in the drafting path invokes.
+
+- **C1** — Locate the D5 critic's entry point and its input contract (passage, rules, cast,
+  model refs). **Done when:** its signature and its caller in the critique path are quoted in
+  the plan, and the difference from `canon_envelope` is stated in one paragraph.
+- **C2** — Invoke it from the chapter-generate path behind a setting, defaulting **off**.
+  Carry `canon_consistency` + the per-dimension scores in `result.critic`. **Done when:** a
+  chapter job returns a non-null `critic`; the setting is `knowledge_`-style prefixed (the
+  `MIRROR_AUTO_REPAIR` lesson); the envelope's key set stays parity-tested.
+  **Bite:** force the critic to error → the chapter must still draft, with `critic` reporting
+  the failure rather than silently null.
+- **C3** — Re-run chapters 11-13 with it on. **Done when:** three per-chapter
+  `canon_consistency` scores are pasted, alongside their guard coverage.
+- **C4** — Evaluate QC-5's criterion end to end. **Done when:** the inverted rule is applied to
+  a real flow number — *a misattributed betrayal must not score 5/5*. QC-5 goes `[x]` or gains
+  a deferral naming exactly what failed.
+
+### Workstream A — T17: the port owns everything *(7 batches)*
+
+Every new method costs **port + Fake + Neo4j + AGE + conformance**, and T43's shadow pays for
+each one again. That price was accepted deliberately.
+
+- **A1** — `get_relation` / `invalidate_relation` / `recreate_relation` on the port + 3
+  adapters. **Done when:** conformance green on all three; the AGE adapter either implements
+  or raises `NotImplementedError` naming a deferral (never returns empty — an operation that
+  answers wrongly is worse than one that refuses).
+- **A2** — `get_event` / `archive_event` / `merge_event` / `update_event_fields`, same shape.
+- **A3** — the paginated browse: `events_page(after, before, axis, participants, q, sort,
+  limit, offset) -> (rows, total)`. **The richest and the one the port's own docstring argued
+  against** — *"a count belongs to a paginated browse, not to 'give me the events in this
+  window'"*. That comment is now overruled by decision; **quote it in the method's docstring
+  next to the decision** so the disagreement stays legible.
+- **A4** — Migrate `public/relations.py`, `public/events.py`, `internal_timeline.py`.
+  **Done when:** ceiling falls by 3; tests that patched `neo4j_repos` are repointed at the
+  port — *a migration whose tests stay green never moved the binding*.
+- **A5–A6** — Sweep the remaining ~57 modules in batches of ~8, ratcheting ceiling and floor
+  every batch. **Done when:** each batch pastes the two numbers before and after.
+- **A7** — Re-run T43's shadow with the new operations. **Done when:** the coverage report
+  names every new method and `cutover_permitted` is re-derived. **A7 can UNDO QC-7's evidence**
+  — a new operation starts at zero observations, so the floor legitimately re-blocks until the
+  shadow sees it. That is the floor working, not a regression.
+
+### Workstream B — T38: the KAL grows a detail read *(5 batches)*
+
+- **B1** — Design the detail read: which fields (`kind`, `aliases`, `short_description`,
+  `cached_name`), bounded page, cursor, and whether it supersedes `entities/by-ids` or sits
+  beside it. **Done when:** the contract is written and the overlap with the existing endpoint
+  is resolved on purpose rather than by accident.
+- **B2** — Implement in the KAL + a client method with an honest-cap drain (`(rows, truncated)`,
+  never a silent truncation).
+- **B3–B4** — Migrate the ten pinned readers in two batches, **shrinking
+  `authored-catalog-reader-gate`'s pinned set per consumer**. The erase site
+  (`assistant.controller.ts`) is NOT T38's — it is a write, already labelled in the baseline.
+- **B5** — T39 (invalidate the two caches by digest) and T40 (partition `entity_facts`) unchain.
+
+### The standing rules for every batch
+
+1. **Bite or it did not happen.** Revert the fix, watch the test red *for the right reason*,
+   restore, paste. A bite that reds on a syntax error is red for the wrong reason and must be
+   re-cut — this bit twice this session.
+2. **Measure on the real stack, run code on the isolated one.** A count taken in `lw-iso` is a
+   count of what was cloned into it. This cost a wrong published claim on 2026-08-13.
+3. **A number that reads as success is guilty until checked** — `0`, `no_rules`, `checked`,
+   `persisted:false` all meant "did not run" at least once this session.
+4. **Rebuild BOTH the service and its worker.** `iso.sh build composition-service` does not
+   rebuild `composition-worker`, and drafting runs in the worker.
+5. **A gate's number moves in the same commit as the code that moved it.**
 
 ## Superseded run-state strata — evidence and commands, **not** "what next"
 
