@@ -71,6 +71,18 @@ events:
     owner: dp
 
   # ────────────────────────────────────────────────────────────────────
+  # proposal.* — admission outcomes (CS-A4)
+  # ────────────────────────────────────────────────────────────────────
+  - name: proposal.rejected
+    aggregate: combat_session
+    versions: [1]
+    active_version: 1
+    go_struct: ProposalRejectedV1
+    description: A submitted proposal was refused by admission; the refusal is COMMITTED to the channel rather than merely logged (CS-A4), and does NOT advance the turn (EVT-V4). Written by the live spine and read by two projectors since S3b; registered by DFO-4, which found it absent.
+    shipped_cycle: 8
+    owner: commit-service
+
+  # ────────────────────────────────────────────────────────────────────
   # npc.* — NPC behavior + utterances
   # ────────────────────────────────────────────────────────────────────
   - name: npc.said
