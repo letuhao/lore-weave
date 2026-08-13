@@ -374,6 +374,36 @@ type searchToolIn struct {
 }
 type searchToolOut struct {
 	Entities []glossaryEntityForContext `json:"entities"`
+	// T28-D1 — set ONLY when the query matched nothing and the entities above are the recent
+	// fallback. Absent on a real match, so a caller that ignores it is never misled by its
+	// presence; a caller that reads it can tell 4 results from 0 results.
+	Note string `json:"note,omitempty"`
+}
+
+// searchIsRecentFallback reports whether EVERY returned entity is the tier-3 "recent" fallback,
+// i.e. nothing actually matched the query.
+//
+// 🔴 THE PAYLOAD USED TO CARRY NO SIGNAL AT ALL. A search whose query matched nothing returns the
+// book's most recently touched entities at tier "recent" / rank_score 0.1 — which is a useful
+// orientation answer, but it arrived in the same `entities` array, with the same shape, as real
+// matches. MEASURED 2026-08-13: searching a throwaway book for 'zzzznotathing' returned all four
+// of its entities, and cycle 10 measured the live version of the same thing — searching for the
+// character 'Lam Uyen' returned unrelated EVENTS ("Cuộc đối thoại với Tô Thanh Dao") at
+// rank_score 0.1 as the top results.
+//
+// This is the anti-false-suggestion rule the ai-gateway's own find_tools states for the same
+// reason — "keeps pure-noise near-misses out so a true 'no such tool' reads as empty" — and the
+// same class as T7-D2, where a listing emptied by a filter claimed no such tools existed.
+func searchIsRecentFallback(entities []glossaryEntityForContext) bool {
+	if len(entities) == 0 {
+		return false
+	}
+	for _, e := range entities {
+		if e.Tier != tierRecent {
+			return false
+		}
+	}
+	return true
 }
 
 type getEntityToolIn struct {
@@ -458,7 +488,14 @@ func (s *Server) toolSearch(ctx context.Context, _ *mcp.CallToolRequest, in sear
 	if err != nil {
 		return nil, searchToolOut{}, errors.New("glossary search failed")
 	}
-	return nil, searchToolOut{Entities: resp.Entities}, nil
+	out := searchToolOut{Entities: resp.Entities}
+	if strings.TrimSpace(in.Query) != "" && searchIsRecentFallback(resp.Entities) {
+		out.Note = "NO ENTITY MATCHED this query. The entities listed are the book's most recently " +
+			"touched ones, returned for orientation only — every one is tier=\"recent\" with " +
+			"rank_score 0.1. Do NOT treat them as results for this search: if you needed a match, " +
+			"the glossary does not have one under this wording."
+	}
+	return nil, out, nil
 }
 
 func (s *Server) toolGetEntity(ctx context.Context, _ *mcp.CallToolRequest, in getEntityToolIn) (*mcp.CallToolResult, getEntityToolOut, error) {
