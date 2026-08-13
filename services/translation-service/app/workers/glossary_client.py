@@ -343,11 +343,22 @@ async def fetch_live_entity_ids(book_id: str, entity_ids: list[str]) -> set[str]
     """
     if not book_id or not entity_ids:
         return set()
+    # T38 B7 — through the KAL's `cast/by-ids` (INV-KAL). If the KAL is not configured this
+    # keeps every session entity rather than pruning: the function's own contract is that it
+    # "fails toward the OLD behaviour, the conservative direction", and pruning on a read we
+    # could not make would DELETE prompt context on the strength of an answer nobody gave.
+    base = settings.knowledge_gateway_url
+    if not base:
+        log.warning(
+            "liveness probe: KNOWLEDGE_GATEWAY_URL unset — keeping %d session entities "
+            "unpruned rather than pruning on a read that did not happen", len(entity_ids),
+        )
+        return set(entity_ids)
     try:
-        async with build_internal_client(settings.glossary_service_internal_url, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
+        async with build_internal_client(base, internal_token=settings.internal_service_token, timeout_s=_GLOSSARY_FETCH_TIMEOUT) as client:
             resp = await client.post(
-                f"{settings.glossary_service_internal_url}"
-                f"/internal/books/{book_id}/entities/by-ids",
+                f"{base.rstrip('/')}"
+                f"/v1/kal/books/{book_id}/cast/by-ids",
                 json={"entity_ids": list(entity_ids)},
             )
             if resp.status_code != 200:

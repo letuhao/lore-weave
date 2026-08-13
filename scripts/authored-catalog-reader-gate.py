@@ -135,8 +135,6 @@ BASELINE = {
     os.path.join("api-gateway-bff", "src", "assistant", "assistant.controller.ts"):
         "bulk DELETE on the LIST url — a WRITE the path alone cannot tell from a read; pinned "
         "so it stays visible, but NOT T38's to migrate (see the READS-not-writes scope note)",
-    os.path.join("composition-service", "app", "clients", "glossary_client.py"):
-        "by-ids read; this module's header already records its LIST read as moved to KalClient.roster",
     os.path.join("composition-service", "scripts", "eval_a_grounded.py"):
         "canon-content read from an eval script — not a runtime path, migrate last",
     os.path.join("composition-service", "scripts", "eval_narrative_thread.py"):
@@ -144,8 +142,6 @@ BASELINE = {
     os.path.join("knowledge-service", "app", "clients", "glossary_client.py"):
         "by-ids read (identity for the semantic selector) — knowledge-service owns the KG, "
         "NOT the glossary, so against the authored catalog it is a consumer like any other",
-    os.path.join("translation-service", "app", "workers", "glossary_client.py"):
-        "by-ids read",
 }
 
 

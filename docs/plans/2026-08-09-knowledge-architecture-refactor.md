@@ -35,8 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `B7` — the four `entities/by-ids` consumers, which now have `cast/by-ids` to move onto.**
-C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B6 DONE:** the KAL grew `cast` **and** `cast/by-ids` (both in the frozen `kal.v1.yaml`), three consumers migrated, and **`authored-catalog-reader-gate` fell 10 → 6 call sites**. **T38's original target — the authored-catalog LIST readers — is COMPLETE**; the six remaining are four `by-ids` reads, one eval script, and the `assistant.controller` DELETE the baseline already excludes. Three live field/status mismatches were caught by smokes and none by unit tests (`cached_aliases`/`aliases`, `kind_code`/`kind`, `201`/`200`). See **▶ EXECUTION PLAN** below.
+**RESUME: `B8` — decide whether `CastEntry` grows `attributes`, then migrate the last consumer.**
+C1–C4 done, **QC-5 HELD** at its ⏸ checkpoint. **A0–A6 done**, **A7+ HELD** (`D-T17-SWEEP-IS-NOT-MECHANICAL`). **B1–B7 DONE:** the KAL grew `cast` and `cast/by-ids`, five consumers migrated, and **`authored-catalog-reader-gate` fell 10 → 4 call sites**. Of the four left, **one** is real T38 work (`knowledge-service`, which needs `include_attributes` — a projection decision), two are eval scripts, and one is the `assistant.controller` DELETE the baseline already excludes. See **▶ EXECUTION PLAN** below.
 Nothing here is blocked on a decision any more.
 
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
@@ -6545,6 +6545,69 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ---
+  ### ✅ B7 2026-08-13 — two by-ids consumers migrated; **the gate is down to four**
+
+  ```
+  authored-catalog-reader-gate   6 files / 6 call sites  ->  4 files / 4 call sites
+  ```
+
+  `composition-service/app/clients/glossary_client.py` and
+  `translation-service/app/workers/glossary_client.py` now read through `cast/by-ids`. Both
+  were pinned as *"by-ids read"* since the census, with nowhere to go until B5 built the route.
+
+  **Each kept its own failure posture, because they are not the same kind of read:**
+
+  * **Composition** resolves plan-authored entity ids to names, and `language` rides through
+    unchanged — it augments the alias set, which is the reason the call exists (prose uses the
+    names the author actually writes).
+  * **Translation's is a LIVENESS PROBE**, and its contract already said it *"fails toward the
+    OLD behaviour, the conservative direction"*. So an unconfigured KAL keeps every session
+    entity **unpruned** rather than raising: pruning on a read that did not happen would delete
+    prompt context on the strength of an answer nobody gave. That is the opposite of B4's
+    refusal in `mention_backfill`, and deliberately so — there, an empty answer became a zero
+    COUNT; here, it would become a DELETION.
+
+  **BITE — through the gate, which is what guards this migration:**
+
+  ```
+  composition's by-ids reverted to glossary /internal
+     [authored-catalog-reader-gate] FAIL — NEW direct reader(s) of the authored catalog:
+       composition-service\app\clients\glossary_client.py:123  /internal/books/{book_id}/entities/by-ids
+  restored -> PASS at 4/4
+  ```
+
+  **QC (a) gates:** `authored-catalog-reader-gate` PASS at 4/4, baseline shrunk in this commit,
+  `--selftest` passes. All 99 gates green.
+  **QC (b) the seam:** `composition-service`, `composition-worker`, `translation-service` and
+  `translation-worker` all rebuilt — **both services and both workers**, the rule B4 paid for.
+  Driven live against the acceptance book:
+
+  ```
+  composition   requested: 1 | returned: 1
+                keys: ['aliases','cached_name','entity_id','kind','name','short_description']
+
+  translation   probed: 2 | live: 1 | unknown id pruned: True
+  ```
+
+  The pruned id is the load-bearing half: it proves the probe made a REAL read rather than
+  echoing its input, which a pass-through would also have satisfied at `live: 2`.
+  **QC (c) real data:** real rows of the acceptance book, plus one deliberately absent id.
+
+  ```
+  3614 passed — composition-service · 1170 passed — translation-service
+  ```
+
+  🔻 **`knowledge-service`'s by-ids reader is NOT migrated, and the reason is a missing
+  parameter, not effort.** It calls with `include_attributes=True` — the authored attribute
+  VALUES that let it build a per-entity `:Passage` for the composition lore lens. `cast/by-ids`
+  has no such flag, and adding one is a projection decision (`CastEntry` would grow an
+  `attributes` array, which is the *"one shape for one concept"* rule cutting the other way).
+  **B8's**, stated here rather than migrated on a guess.
+
+  **Four call sites remain:** `knowledge-service` (needs `include_attributes`), two eval scripts
+  on `canon-content`, and the `assistant.controller` DELETE the baseline already labels **not
+  T38's to migrate**. So the true remaining T38 work is **one** consumer and **one** decision.
+
   ### ✅ B6 2026-08-13 — `worker-ai` migrated, both reads at once; **the smoke caught two more of my bugs**
 
   ```
