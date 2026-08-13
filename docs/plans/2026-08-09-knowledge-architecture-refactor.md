@@ -5560,6 +5560,44 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 - [~] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
   ⚠️ The zero-allowlist precedent is **proven in miniature, not at scale** — it covered only the
   bi-temporal reads; this is the remaining **186 routes**.
+
+  🔴 **CENSUS 2026-08-13 — the migration target does not fit a single consumer.** T38 says move
+  these readers onto the KAL (`KalClient.roster`). `roster` returns **`entity_id` + `name`**.
+  Every pinned site needs more than that:
+
+  | call site | endpoint | needs beyond id+name |
+  |---|---|---|
+  | `api-gateway-bff/…/assistant.controller.ts:801` | `entities` | **it is a DELETE, not a read** |
+  | `composition/clients/glossary_client.py:119` | `entities/by-ids` | full detail + language |
+  | `composition/scripts/eval_a_grounded.py:184` | `canon-content` | eval script, other endpoint |
+  | `composition/scripts/eval_narrative_thread.py:122` | `canon-content` | eval script, other endpoint |
+  | `knowledge/clients/glossary_client.py:689` | `entities/by-ids` | detail + attributes + language |
+  | `lore-enrichment/clients/glossary.py:173` | `entities` | `kind` + `short_description` |
+  | `translation/workers/glossary_client.py:350` | `entities/by-ids` | full detail |
+  | `translation/workers/mention_backfill.py:93` | `entities` | `aliases` (surface forms) |
+  | `worker-ai/clients.py:1126` | `entities` | `kind_code` + `aliases` |
+  | `worker-ai/clients.py:1179` | `entities/by-ids` | `cached_name` + detail |
+
+  **0 of 10 can migrate to `roster` as it stands.** Four are `entities/by-ids`, an endpoint that
+  exists precisely to return the detail `roster` strips. Two are eval scripts on a different
+  endpoint. One is an **erase** on the list URL.
+
+  ✅ *And the gate already knew about that last one* — its baseline entry reads *"a WRITE the
+  path alone cannot tell from a read; pinned so it stays visible, but NOT T38's to migrate"*.
+  I first wrote this up as a false positive in the pinned set; it is the opposite, a case the
+  gate author had already reasoned about and labelled. Checked before publishing, which is the
+  only reason the wrong version is not sitting in this plan.
+
+  **So T38 is a DESIGN QUESTION, not 186 routes of typing:** does the KAL grow a
+  detail-carrying read (kind, aliases, short_description) so the authored catalog can move
+  behind it, or does the authored catalog stay a direct read and INV-KAL's scope stop where it
+  is? T47 already records the *consequence* — *"INV-KAL scope now covers writes + the authored
+  catalog"* — as though the answer were settled. It is not, and nothing measured it until now.
+
+  ⚠️ **Third time this session that "remaining work" turned out to be a pending decision** —
+  T17 (60 modules gated on port scope), T43's stale coverage rows, now T38. Worth naming as a
+  pattern: **a task whose blocker is a DECISION reads, in a checkbox list, exactly like a task
+  whose blocker is EFFORT** — and gets scheduled as though someone could grind it down.
 - [~] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
   31 files across nine feature folders consume these contracts — `glossary`, `trash`,
   `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
