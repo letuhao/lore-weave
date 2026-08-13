@@ -403,8 +403,22 @@ NO_PRODUCER: dict[str, tuple[str, ...]] = {
 #: the thing is unbuilt. Named here so the shrink arm does not read a register
 #: entry as a producer, which is the same distinction `deferral-gate` draws.
 REGISTER_ONLY: dict[str, tuple[str, ...]] = {
-    "BubbleUpAggregator": ("crates/dp-control-plane/src/lib.rs",),
+    "BubbleUpAggregator": (
+        "crates/dp-control-plane/src/lib.rs",
+        # `CHANNEL_SPECIFIED_NOT_BUILT` names this symbol to ASSERT IT IS
+        # ABSENT — the row reds the day it arrives. That table is string
+        # literals, which this gate does not mask (it strips comment lines
+        # only), so without this entry the register reads as the design
+        # entering implementation and 16_bubble_up_aggregator.md is demanded
+        # back into the denominator. The miss this file records twice.
+        "crates/dp/tests/spec_oracle_channels.rs",
+    ),
     "CausalityToken": ("crates/dp/src/error.rs", "crates/dp/src/read.rs"),
+    # Same register, same reason — 18_causality_and_routing.md.
+    "route_to_writer": ("crates/dp/tests/spec_oracle_channels.rs",),
+    # Same register, same reason — 19_privacy_redaction_policies.md.
+    "RedactionPolicy": ("crates/dp/tests/spec_oracle_channels.rs",),
+    "RedactionFilter": ("crates/dp/tests/spec_oracle_channels.rs",),
 }
 
 #: Where a producer would live.

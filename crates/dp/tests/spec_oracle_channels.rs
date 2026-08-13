@@ -885,10 +885,11 @@ fn dp_ch17_live_tail_is_still_unbuilt_and_the_doc_still_calls_postgres_canonical
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// `DP-Ch3`, `DP-Ch8`, `DP-Ch10`, `DP-Ch14`, `DP-Ch19`, `DP-Ch25`, `DP-Ch27`,
-// `DP-Ch29` — SPECIFIED, NOT BUILT.
+// TWENTY channel invariants — SPECIFIED, NOT BUILT.
+// Ch3 Ch8 Ch10 Ch14 Ch19 Ch25 Ch27 Ch29 Ch30 Ch36 Ch39 Ch40 Ch43 Ch44 Ch45
+// Ch46 Ch47 Ch48 Ch49 Ch50.
 //
-// Eight channel invariants whose named primitive does not exist in this repo. An
+// Twenty channel invariants whose named primitive does not exist in this repo. An
 // invariant with no subject cannot be violated and cannot be guarded; recording
 // that is the honest classification, and recording it as PROSE is what this
 // project has been burned by. So each row names the SYMBOL, and the test asserts
@@ -900,6 +901,66 @@ fn dp_ch17_live_tail_is_still_unbuilt_and_the_doc_still_calls_postgres_canonical
 // grepped would read that mention as the primitive existing, and retire the row
 // for the opposite of its reason. Excluding test paths is what prevents that.
 const CHANNEL_SPECIFIED_NOT_BUILT: &[(&str, &str, &str)] = &[
+    (
+        "DP-Ch30",
+        "RedactionFilter",
+        "privacy + redaction patterns for bubble-up. The visibility flag it reads is set at channel creation via DP-Ch8, which is itself unbuilt.",
+    ),
+    (
+        "DP-Ch36",
+        "channel_pause",
+        "pause + lifecycle composition. Every occurrence of the symbol in this tree is a comment recording that DP-Ch35's pause is unbuilt; there is no code.",
+    ),
+    (
+        "DP-Ch39",
+        "wait_for_token",
+        "wait_for_token semantics + projection-apply checkpoint. The symbol occurs 0 times; DEFERRED_READ_FORMS records the related wait_for as not built.",
+    ),
+    (
+        "DP-Ch40",
+        "causality_timeout",
+        "extending the read primitives with a wait_for parameter. read.rs states the reason it is absent: taking the parameter and ignoring it would be worse than omitting it.",
+    ),
+    (
+        "DP-Ch43",
+        "RedactionPolicy",
+        "the RedactionPolicy enum and its templates. 0 occurrences; the generator matched the bare word Transparent in an ai-gateway README.",
+    ),
+    (
+        "DP-Ch44",
+        "RedactionPolicy",
+        "application semantics for redaction in the runtime loop. It cannot exist before the policy type in DP-Ch43 does.",
+    ),
+    (
+        "DP-Ch45",
+        "RedactionPolicy",
+        "redaction audit, observability and the cascading visibility rule. Same subject as DP-Ch43; all three retire together.",
+    ),
+    (
+        "DP-Ch46",
+        "histogram_buckets",
+        "histogram bucket layouts for DP telemetry. No bucket layout is declared anywhere in the tree.",
+    ),
+    (
+        "DP-Ch47",
+        "metric_labels",
+        "telemetry cardinality control — which labels a DP metric may carry. There is no DP metrics module to carry them.",
+    ),
+    (
+        "DP-Ch48",
+        "signing_key_rotation",
+        "capability signing key rotation policy. CapabilityToken exists; nothing rotates the key that signs it.",
+    ),
+    (
+        "DP-Ch49",
+        "fan_out_batch",
+        "subscription fan-out batching. 0 occurrences; DP-Ch17's single-subscriber delivery is what shipped.",
+    ),
+    (
+        "DP-Ch50",
+        "channel_retention",
+        "per-channel-level retention (cell 30d, tavern 1y, town+ 1y). The events tables have a general retention worker; nothing reads a per-level policy.",
+    ),
     (
         "DP-Ch3",
         "channel_tree",
@@ -918,7 +979,7 @@ const CHANNEL_SPECIFIED_NOT_BUILT: &[(&str, &str, &str)] = &[
     (
         "DP-Ch8",
         "channel_create",
-        "channel CRUD primitives. 12_channel_primitives.md gives their signatures; the SDK exports none. Retires when a channel_create/channel_delete door appears.",
+        "channel CRUD primitives. The document gives their signatures; the SDK exports none. Retires when a channel_create/channel_delete door appears.",
     ),
     (
         "DP-Ch14",
@@ -933,7 +994,7 @@ const CHANNEL_SPECIFIED_NOT_BUILT: &[(&str, &str, &str)] = &[
     (
         "DP-Ch25",
         "BubbleUpAggregator",
-        "the aggregator trait plus register/unregister. 16_bubble_up_aggregator.md specifies the whole surface and no Rust names it.",
+        "the aggregator trait plus register/unregister. Its document specifies the whole surface and no Rust names it.",
     ),
     (
         "DP-Ch29",
@@ -990,7 +1051,24 @@ fn channel_primitives_specified_but_not_built_are_still_absent() {
                 continue;
             }
             let Ok(text) = fs::read_to_string(f) else { continue };
-            let found = text
+            // CODE ONLY. `channel_pause` appears in a doc comment reading
+            // "blocking is channel_pause's job (DP-Ch35), unbuilt" — a sentence
+            // recording that the thing does NOT exist. Counting it as existence
+            // would retire the row by quoting its own reason back at it.
+            //
+            // Note this is the OPPOSITE of the coverage gate's rule, on purpose:
+            // there the question is "can I grep this id to its guard", and a
+            // comment beside the guard is the answer. Here the question is "does
+            // this primitive exist", and only code answers that.
+            let code: String = text
+                .lines()
+                .map(|l| match l.find("//") {
+                    Some(i) => &l[..i],
+                    None => l,
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let found = code
                 .split(|c: char| !c.is_alphanumeric() && c != '_')
                 .any(|w| w == *symbol);
             if found {
@@ -1021,13 +1099,15 @@ fn channel_primitives_specified_but_not_built_are_still_absent() {
         CHANNEL_SPECIFIED_NOT_BUILT.iter().map(|(i, _, _)| *i).collect();
     let want: std::collections::BTreeSet<&str> =
         ["DP-Ch3", "DP-Ch8", "DP-Ch10", "DP-Ch14", "DP-Ch19", "DP-Ch25", "DP-Ch27",
-         "DP-Ch29"].into_iter().collect();
+         "DP-Ch29", "DP-Ch30", "DP-Ch36", "DP-Ch39", "DP-Ch40", "DP-Ch43", "DP-Ch44",
+         "DP-Ch45", "DP-Ch46", "DP-Ch47", "DP-Ch48", "DP-Ch49", "DP-Ch50"]
+            .into_iter().collect();
     assert_eq!(
         ids, want,
-        "the specified-not-built register no longer covers exactly the five channel invariants \
-         it was written for (eight, after reading killed three the candidate generator called \
-         BUILT). A row leaves ONLY when its subject arrives, and that path asserts above — so \
-         any other change here is one nobody justified"
+        "the specified-not-built register no longer covers exactly the twenty channel \
+         invariants it was written for. Reading each subject killed every BUILT a candidate \
+         generator offered across docs 16-20. A row leaves ONLY when its subject ARRIVES, and \
+         that path asserts above — so any other change here is one nobody justified"
     );
 
     for (id, symbol, why) in CHANNEL_SPECIFIED_NOT_BUILT {

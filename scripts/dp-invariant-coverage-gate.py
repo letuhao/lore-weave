@@ -93,6 +93,18 @@ PHANTOM_OK: dict[str, str] = {
 #: would end it, and `check_unsited` carries the SHRINK ARM: the row dies the
 #: moment the id gains a real site, so it cannot outlive its reason.
 UNSITED_OK: dict[str, str] = {
+    "DP-Ch30": "privacy/redaction patterns for bubble-up; `RedactionFilter` 0, and the visibility flag it reads is set via DP-Ch8, itself unbuilt. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch36": "pause + lifecycle composition. Every occurrence of `channel_pause` in the tree is a COMMENT recording that the Ch35 pause rule is unbuilt; there is no code. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch39": "`wait_for_token` semantics + projection-apply checkpoint; 0 occurrences, and DEFERRED_READ_FORMS records the related `wait_for` as not built. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch40": "extending the read primitives with a `wait_for` parameter. read.rs states the reason for its absence: taking it and ignoring it would be worse. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch43": "the `RedactionPolicy` enum + templates; 0 occurrences. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch44": "redaction application semantics in the runtime loop; cannot exist before DP-Ch43's type. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch45": "redaction audit + cascading visibility; same subject as DP-Ch43. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch46": "histogram bucket layouts for DP telemetry; none declared anywhere. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch47": "telemetry cardinality control; there is no DP metrics module to carry labels. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch48": "capability signing-key rotation. `CapabilityToken` exists; nothing rotates the key that signs it. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch49": "subscription fan-out batching; Ch17's single-subscriber delivery shipped instead. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
+    "DP-Ch50": "per-channel-level retention (cell 30d / tavern 1y / town+ 1y). The events tables have a general retention worker; nothing reads a per-level policy. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch3": "the control plane's channel-tree CACHE. `bind_session` shipped; `channel_tree` occurs 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch8": "channel CRUD primitives — `channel_create`/`channel_delete` occur 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
     "DP-Ch10": "tree-change invalidation via the Redis stream `dp:channel_changes:{reality}`; `channel_changes` occurs 0 times. spec_oracle_channels.rs's CHANNEL_SPECIFIED_NOT_BUILT asserts it is still absent, and reds the day it arrives",
@@ -139,7 +151,7 @@ BASELINE: dict[str, tuple[int, int]] = {
     "DP-A": (0, 6),
     "DP-R": (0, 0),
     "DP-T": (0, 0),
-    "DP-Ch": (12, 25),
+    "DP-Ch": (0, 13),
 }
 
 

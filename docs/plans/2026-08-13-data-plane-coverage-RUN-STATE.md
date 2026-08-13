@@ -179,11 +179,18 @@ settle it, and move on. **Commit and push after each batch; report at most once 
 
 All of the following, or 60 turns, whichever comes first:
 
-- [ ] `DP-COV0`, `DP-A`, `DP-R`, `DP-Ch1`, `DP-Ch2` all closed, **with their bites pasted**
-- [ ] `dp-invariant-coverage-gate` green at the new measured number, ratchet lowered with reasons
-- [ ] `--list` shows no uncited invariant except rows tracked in `§4` **that carry a mechanism**
-- [ ] `cargo test --workspace -j 4` — **real exit code pasted**
-- [ ] a detached `python scripts/gate-wiring-gate.py --run-all` — **real exit code pasted**
+- [x] `DP-COV0`, `DP-A`, `DP-R`, `DP-Ch1`, `DP-Ch2` all closed, with their bites pasted
+- [x] `dp-invariant-coverage-gate` green: **sited 84/84, proven 65/84**, ratchets at
+      `DP-A (0,6) · DP-R (0,0) · DP-T (0,0) · DP-Ch (0,13)`, each lowering recorded
+- [x] `--list` shows **no uncited invariant**; 21 are `UNSITED_OK` with a reason and two shrink
+      arms each, and 2 are `PHANTOM_OK` non-rules
+- [x] `cargo test --workspace -j 4` — **`CARGO_RC=0`**, 184 suites
+- [x] detached `gate-wiring-gate --run-all` — **`SWEEP_RC=0`, 88 GREEN / 0 RED**
+
+**Closed 2026-08-13.** Also green at close, all real exit codes:
+`dp-invariant-coverage-gate --self-test` 0 · `gate-bite-harness --gate dp-invariant-coverage-gate`
+0 (17 mutations, all red) · `dp-oracle-coverage-gate` 0 · `dp-oracle-bite-gate` 0 (19/19 bitten) ·
+`crate-purity-gate` 0 · `gate-teeth-gate` 0 (100/100).
 
 > **Claiming a check passed without pasting its output does NOT satisfy this condition.** The `/goal`
 > evaluator reads the transcript and cannot run commands; it enforces persistence, not honesty. The
@@ -198,11 +205,18 @@ All of the following, or 60 turns, whichever comes first:
 | `DP-COV0` | the coverage gate itself, bitten | — | ✅ **CLOSED.** `scripts/dp-invariant-coverage-gate.py`: 84 declared parsed from headings, 4397 files walked, two tiers (`sited`/`proven`), phantom rule + 2 shrink arms, 2 reach floors, per-family ratchet in both directions. **20 self-test cases, 13 mutations, all red.** Wired via the `--run-all` runner; `gate-teeth-gate` now 100/100 |
 | ~~`DP-A`~~ | access-pattern invariants | all 7 | ✅ **CLOSED, uncited 7 → 0.** `A2` **(a)+(c)→built** — the SDK↔control-plane edge is a cargo CYCLE, unbypassable; the I/O half had no guard at all until `crates/dp` joined `PURE_CRATES`. `A8` **(a)** rides the same row: a crate that cannot do I/O cannot reimplement event sourcing. `A11` **(c), already mechanised** — `npc_binding` has no migration, and `UNIMPLEMENTED_METHODS` + `tests/surface.rs` red the day it lands. `A3`/`A18` **(b)**; `A19` **(c), already mechanised — see `DPD-12`, it was first filed (b) in error**; `A4` **(b) for role 1 only** — its other two roles have no subject in a pure crate, recorded rather than claimed. Repo-wide sited 51 → 59, proven 37 → 43 |
 | ~~`DP-R`~~ | rule invariants | ~~`R9` `R10`~~ | ✅ **CLOSED BEFORE IT STARTED — the batch was a mirage.** Both ids are non-declarations (`DPD-1`), and one names a rule the tier REJECTED. `DP-R` measures 8 declared / 1 uncited, and that one — `DP-R7` — is the INVERSE case: **proven but not sited**. It has a test (`crates/dp/tests/spec_oracle_rules.rs`) and no citation at its enforcement site, so you can find its proof and not its guard. Folded into `DP-A`'s batch |
-| `DP-Ch1` | channel primitives, first half | `Ch3` `Ch6` `Ch7` `Ch8` `Ch10` `Ch14` `Ch15` `Ch19` `Ch20` `Ch23` `Ch25` `Ch27` `Ch29` (13) | ⬜ |
-| `DP-Ch2` | channel primitives, second half | `Ch30` `Ch36` `Ch39` `Ch40` `Ch43` `Ch44` `Ch45` `Ch46` `Ch47` `Ch48` `Ch49` `Ch50` (12) | ⬜ |
+| ~~`DP-Ch1`~~ | channel primitives, first half | 13 | ✅ **CLOSED.** 5 **(b)** cited (`Ch6` SessionContext · `Ch7` level_name · `Ch15` causal_refs · `Ch20` DurableStreamItem · `Ch23` CapabilityToken); 8 **(c)** into `CHANNEL_SPECIFIED_NOT_BUILT`. A candidate generator called 19 of 25 BUILT; reading killed three of them outright |
+| ~~`DP-Ch2`~~ | channel primitives, second half | 12 | ✅ **CLOSED — ALL TWELVE ARE (c).** Docs 16–20 specify a layer that does not exist: `RedactionPolicy` 0, `channel_pause` 0 in code, `wait_for_token` 0, `histogram_buckets` 0, `signing_key_rotation` 0, `fan_out_batch` 0, no DP metrics module, no per-level retention. Register now **20 rows** |
 
-`DP-Ch` is 25 of the 34 and is split for that reason. If the family turns out to be mostly (a) in
-SQL, it closes fast; if not, it is the bulk of this run.
+**Outcome: `DP-Ch` is 53 declared, 33 genuinely enforced, and 20 SPECIFIED-NOT-BUILT** — the whole back half of the family (docs 16–20). That is the headline finding of this run, and it was invisible because nothing had ever asked the question mechanically.
+
+| family | declared | sited | enforced | specified-not-built |
+|---|---|---|---|---|
+| `DP-T` | 4 | 4 | 4 | 0 |
+| `DP-R` | 8 | 8 | 7 | 1 |
+| `DP-A` | 19 | 19 | 17 | 2 |
+| `DP-Ch` | 53 | 53 | 33 | **20** |
+| **total** | **84** | **84** | **61** | **23** |
 
 ---
 
@@ -239,6 +253,8 @@ the arm that came back green, the anchor that drifted, the classification taken 
 
 | id | what happened |
 |---|---|
+| `DPD-14` | **A comment counts for one question and not the other, and the register had to learn the difference.** `Ch36`'s subject `channel_pause` APPEARS in `crates/dp-kernel/src/channel.rs` — inside a doc comment reading *"blocking is `channel_pause`'s job (DP-Ch35), **unbuilt**"*. Counting that as existence would have retired the row by quoting its own reason back at it. So the existence check strips line comments, which is the **opposite** of the coverage gate's rule one directory over — there the question is *can I grep this id to its guard* and a comment beside the guard IS the answer. Two questions, two treatments, both written down so the next reader does not 'fix' one into the other. |
+| `DPD-13` | **The register's first floor was a COUNT, and a count cannot see a NEUTERED row.** The bite renamed `Ch19`'s symbol to something matching nothing: the row survived, the length stayed 5, the test stayed green, and that row's trigger was dead. A register that can be silently disarmed while its size holds is this run's own subject, one level in. Replaced with set-equality on the ids plus a per-row shape check, so a deletion, a rename and a blanked symbol all red. Found by biting, never by reading. |
 | `DPD-12` | **I filed `DP-A19` as (b) *enforced but uncited*. It is (c) — its subject does not exist.** The citation went onto a row of `crates/dp/src/read.rs`'s `DEFERRED_READ_FORMS`, whose own docstring reads *"`DP-K4` forms **not built here**, with what each waits on"*, and `wait_for` is exported from `lib.rs` **0 times**. I read a register of UNBUILT doors as a register of guards, because the row named the right symbol next to the right prose. **The placement was right and the verdict was wrong** — which is the worse of the two errors, because a (b) closes an id while (c) keeps it visible. Caught three batches later while checking `DP-Ch39`'s subject, and only because `spec_oracle_rules.rs` says out loud that `wait_for_token` occurs 0 times. The outcome stands: `spec_oracle.rs:1191` asserts that register and reds the day a form becomes implemented, so A19 is mechanised exactly like `A11`. |
 | `DPD-11` | **A false citation resting on a coincidence of NUMBERS, caught one grep from being written.** `DP-A11` specifies that the NPC-to-node binding is *"client-side cached for 60 seconds"*, and `crates/dp/src/session.rs` carries `REFRESH_LEAD_MS = 60_000`. Different sixty: that constant is the capability-token refresh LEAD against a five-minute TTL, and `DP-A12` — a different invariant — is what session.rs actually cites. Citing `DP-A11` there would have pointed the id at an unrelated constant and closed it. The real answer is that A11 has no subject: `npc_binding` has no migration, `route_to_writer` occurs 0 times. |
 | `DPD-10` | **`DP-A8`'s first "proof" was a POINTER, not an assertion.** I cited it in a test file with a comment reading *"proven structurally instead — see the `dp` row in crate-purity-gate"*. That satisfies the gate's `proven` tier and satisfies nothing else: no assertion NAMING `DP-A8` would have gone red if the row were deleted. §0.4 says an id is not (a) until a test that names it reds — I wrote the rule this morning and broke it this afternoon, in the direction the rule warns about, because (a) is the cheapest verdict to type. The failing assertion names both ids now, bitten. |
