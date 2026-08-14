@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — the shadow comparison, which now has TWO real candidates. `T42` is CLOSED: both X1 entrants are built and conformed (AGE 2026-08-12, Kuzu 2026-08-14 — twenty operations, 30 passed on the full suite, and it honours `maintain_chain` which AGE refuses). ⚠️ Carry into the engine choice: Kuzu is EMBEDDED and refuses a second handle on a database, so an adapter can pass all thirty rules in one process and still be unshippable behind two — no conformance green surfaces that.**
+**RESUME: `T43` — make the shadow carry a REFUSED WRITE forward to the reads that depend on it. Measured: AGE refuses `merge_event`/`merge_fact`, so `events_page`, `events_in_window` and `facts_for` return empty and score DIVERGED when the read is correct and the write was refused. A shadow that reports a divergence it caused itself would condemn AGE for reads that are right. Then re-run against BOTH secondaries — **Kuzu refuses nothing, so it is the only one against which the coverage floor can ever be met.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 47 of 86 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 47 of 87 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/6) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/7) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10198,8 +10198,44 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   shadow store has no deployed caller. **(c)** 153 passed; `cutover_permitted: False` over 20
   operations, which is now a block that CAN be met.
 
-  ⬜ **What remains for T43:** the twenty wrapped operations need real traffic to gain
-  observations, and Kuzu is a second comparison target alongside AGE.
+  ### 🔴 T43-refusal 2026-08-14 — a REFUSED WRITE makes every dependent READ look divergent
+
+  ```
+  facts_for    primary=[('None','0.0','5')]        secondary=[]
+  events_page  primary=([Event E4, Event E6], 2)   secondary=([], 0)
+  seed=1 diverged on ['events_in_window', 'events_page', 'facts_for']
+  ```
+
+  The generator now drives all twenty operations (it drove nine, matching the old floor —
+  consistent, and both wrong). Running it against Neo4j↔AGE immediately produced divergences,
+  and **they are artifacts, not defects.**
+
+  🔻 **AGE REFUSES `merge_event` and `merge_fact`** (`D-AGE-EVENT-WRITE-UNIMPLEMENTED`,
+  `D-AGE-FACT-WRITE-UNIMPLEMENTED`). Those refusals are scored `uncovered`, correctly. But the
+  data then never exists in the secondary, so every later `events_page` / `events_in_window` /
+  `facts_for` returns empty and is scored **DIVERGED**. The read is right; the write was refused.
+
+  **`uncovered` is tracked for the refused write and never propagates to the reads that depend
+  on it.** A shadow that reports a divergence it caused itself is worse than one that reports
+  nothing: T43 exists to decide an engine by measurement, and this measurement would condemn
+  AGE for reads that are correct.
+
+  📐 **DECIDED — the shadow must carry refusal FORWARD.** When a secondary refuses a write, the
+  entity/event/fact family it would have created is unrepresented there, so reads touching that
+  family are `uncovered`, not `diverged`. Cheapest correct form: record refused write-kinds per
+  run and downgrade the dependent read verdicts.
+
+  ⚠️ **And it re-frames the engine choice.** With AGE as secondary, the fact and event surfaces
+  can NEVER reach a real observation — the floor is unmeetable there by construction. **Kuzu
+  refuses nothing** (twenty of twenty, including `maintain_chain`), so it is the only secondary
+  against which the coverage floor can actually be satisfied. That is a T43 input the
+  conformance suite could not surface.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service seam. **(c)** real: a
+  throwaway Neo4j (:7999) and a throwaway AGE off the T42b image, four seeds, the samples above.
+
+  ⬜ **What remains for T43:** propagate refusal to dependent reads, then re-run against BOTH
+  secondaries — Kuzu is the one that can actually meet the floor.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**

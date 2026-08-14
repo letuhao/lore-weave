@@ -87,14 +87,26 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
     known: list[str] = []          # primary entity ids the sequence has created
     ordinal = 0
 
+    rels: list[str] = []
+    events: list[str] = []
     for _ in range(SEQUENCE_LENGTH):
         # `resolve_or_merge_entity` is weighted up on purpose: it is the only operation that
         # teaches the shadow an id mapping, so a sequence starved of it would spend most of
         # its calls `unmapped` and quietly measure nothing.
         op = rng.choices(
+            # The eleven added 2026-08-14 with the coverage-floor widening. Before that the
+            # generator drove NINE operations while the floor counted nine — consistent, and
+            # both wrong. Widening one without the other is what
+            # `test_the_seed_corpus_reaches_every_operation` caught.
             ["merge", "find", "relate", "relations", "archive", "restore",
-             "status", "events", "neighborhood"],
-            weights=[5, 2, 3, 3, 1, 1, 1, 1, 1],
+             "status", "events", "neighborhood",
+             "getrel", "invalidate", "recreate",
+             "mergeevent", "getevent", "updateevent", "archiveevent", "eventspage",
+             "mergefact", "factsfor", "evidence"],
+            weights=[8, 2, 4, 3, 1, 1, 1, 1, 1,
+                     2, 1, 2,
+                     4, 2, 1, 1, 1,
+                     3, 2, 1],
         )[0]
 
         # ⚠️ A guarded op that cannot run must FALL BACK, not vanish. The first version let
@@ -102,8 +114,15 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
         # all — seed 1337 produced 8 comparisons from 25 calls, and the non-vacuity assertion
         # is what caught it. A generator that silently skips work makes a differential suite
         # report agreement it never tested for.
-        if op in ("relations", "archive", "restore", "status") and not known:
+        if op in ("relations", "archive", "restore", "status", "factsfor", "mergefact",
+                  "evidence") and not known:
             op = "merge"
+        elif op == "recreate" and len(known) < 2:
+            op = "merge"
+        elif op in ("getrel", "invalidate") and not rels:
+            op = "relate" if len(known) >= 2 else "merge"
+        elif op in ("getevent", "updateevent", "archiveevent") and not events:
+            op = "mergeevent"
         elif op == "relate" and len(known) < 2:
             op = "merge"
 
@@ -132,6 +151,85 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
                 confidence=round(rng.uniform(0.0, 1.0), 2),
                 valid_from_ordinal=rng.choice([None, ordinal]))
             trace.append(f"relate(->,{ordinal})")
+
+        elif op == "getrel":
+            await store.get_relation(user_id=user_id, relation_id=rng.choice(rels))
+            trace.append("getrel()")
+
+        elif op == "invalidate":
+            await store.invalidate_relation(user_id=user_id, relation_id=rng.choice(rels))
+            trace.append("invalidate()")
+
+        elif op == "recreate":
+            if len(known) < 2:
+                op = "merge"
+                continue
+            s2, o2 = rng.sample(known, 2)
+            ordinal += rng.randint(1, 5)
+            await store.recreate_relation(
+                user_id=user_id, subject_id=s2, object_id=o2,
+                predicate=rng.choice(_PREDICATES), valid_from_ordinal=ordinal)
+            trace.append("recreate()")
+
+        elif op == "mergeevent":
+            ordinal += rng.randint(1, 5)
+            ev = await store.merge_event(
+                user_id=user_id, project_id=project_id,
+                title=f"E{rng.randint(1, 6)}", chapter_id=f"ch-{rng.randint(1, 3)}",
+                source_type="chapter", event_order=ordinal,
+                participants=rng.sample(known, min(len(known), 2)) if known else None)
+            if ev is not None and ev.id not in events:
+                events.append(ev.id)
+            trace.append(f"mergeevent({ordinal})")
+
+        elif op == "getevent":
+            await store.get_event(user_id=user_id, event_id=rng.choice(events))
+            trace.append("getevent()")
+
+        elif op == "updateevent":
+            eid = rng.choice(events)
+            cur = await store.get_event(user_id=user_id, event_id=eid)
+            if cur is not None:
+                try:
+                    await store.update_event_fields(
+                        user_id=user_id, event_id=eid, title=f"T{rng.randint(1, 9)}",
+                        summary=None, time_cue=None, event_date_iso=None,
+                        expected_version=cur.version)
+                except Exception:  # noqa: BLE001 — an OCC clash is data, not a harness bug
+                    pass
+            trace.append("updateevent()")
+
+        elif op == "archiveevent":
+            await store.archive_event(user_id=user_id, event_id=rng.choice(events))
+            trace.append("archiveevent()")
+
+        elif op == "eventspage":
+            await store.events_page(
+                user_id=user_id, project_id=project_id, limit=rng.choice([5, 50]),
+                sort_dir=rng.choice(["asc", "desc"]))
+            trace.append("eventspage()")
+
+        elif op == "mergefact":
+            ordinal += rng.randint(1, 5)
+            await store.merge_fact(
+                user_id=user_id, project_id=project_id, type="statement",
+                content=rng.choice(["alive", "gone", "missing"]),
+                subject_id=rng.choice(known), valid_from_ordinal=ordinal,
+                maintain_chain=rng.choice([True, False]))
+            trace.append(f"mergefact({ordinal})")
+
+        elif op == "factsfor":
+            await store.facts_for(
+                user_id=user_id, subject_id=rng.choice(known),
+                as_of=rng.choice([None, ordinal]))
+            trace.append("factsfor()")
+
+        elif op == "evidence":
+            await store.add_evidence(
+                user_id=user_id, target_label="Entity", target_id=rng.choice(known),
+                source_id=f"src-{rng.randint(1, 3)}", extraction_model="m",
+                confidence=round(rng.uniform(0.0, 1.0), 2), job_id=f"job-{rng.randint(1, 3)}")
+            trace.append("evidence()")
 
         elif op == "relations":
             await store.relations_for(
