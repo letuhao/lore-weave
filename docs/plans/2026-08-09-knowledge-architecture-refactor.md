@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU adapter's LAST THREE operations (`add_evidence`, `update_event_fields`, `status_at_order`), after which `_KUZU_CONFORMED` can be deleted entirely and Kuzu is judged on T42a's whole suite. 25 of T42a's rules pass as `[kuzu]`, including `maintain_chain`, which AGE refuses.**
+**RESUME: `T43` — the shadow comparison now has TWO real candidates to run. The Kuzu adapter is COMPLETE (all twenty port operations, 30 passed on the full conformance suite, and it honours `maintain_chain` which AGE refuses). T42 still needs its own row closed: read its Do-list before ticking. ⚠️ Kuzu's file lock means one process per database — that is the single biggest input to the engine choice and no conformance green surfaces it.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 56 of 96 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 57 of 97 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (9/12) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (10/13) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,46 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### ✅ T42-kuzu-8 2026-08-14 — the last three, and **the scope list is DELETED**
+
+  ```
+  30 passed / 2 skipped  as [kuzu] — the WHOLE conformance suite, no named subset
+  151 passed  tests/integration/db/
+  ```
+
+  `add_evidence`, `update_event_fields`, `status_at_order`. **`_KUZU_CONFORMED` is gone**, and
+  with it the autouse gate and `test_kuzu_REFUSES_what_the_scope_list_skips`: nothing is unbuilt,
+  so there is nothing to scope. `KuzuGraphStore` is now judged by every rule the other adapters
+  are, which is what X1 asked for — **two candidates measured against one baseline**.
+
+  🔻 **The refusal test is replaced rather than removed.** It went red THREE times while the
+  adapter grew, each time because a method had landed and the list still called it unbuilt. Its
+  successor inverts the claim: `test_EVERY_port_operation_is_implemented` walks the port's own
+  surface and asserts nothing on it is missing. The check that guarded "these are unbuilt" now
+  guards "none of them are".
+
+  🔧 **Two contract details the suite caught, both silent if guessed:**
+  - `EvidenceWriteResult` carries `created` — the caller must be able to tell a new edge from a
+    re-run, and the counter bumps **only on create** (the AGE adapter's first cut got this wrong
+    and the same rule caught it there).
+  - `update_event_fields` returns `(updated, PRE-EDIT SNAPSHOT)`. The second element is the
+    state *before* the edit, not a conflict object — **a correction event has nothing to record
+    without it**. Returning `None` type-checks and loses the audit trail.
+
+  `Event` gained a `version` column in the same commit; OCC has nothing to compare without it.
+
+  **BITE:** `if have != expected_version:` → `if False:` — a lost update that reports success →
+  `FAILED test_a_stale_expected_version_RAISES_rather_than_silently_losing_the_edit[kuzu]`.
+  Restored, green.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service caller; `graph_store_provider`
+  still returns Neo4j and wiring a candidate is T43's harness, deliberately. **(c)** real Kuzu
+  databases per test.
+
+  ✅ **THE KUZU ADAPTER IS COMPLETE**: all twenty port operations, conformed on the full suite,
+  and it HONOURS `maintain_chain` — which AGE refuses. X1's bake-off finally has two entrants.
+
 
   ### ✅ T42-kuzu-7 2026-08-14 — facts, and **Kuzu honours the chain AGE refused**
 

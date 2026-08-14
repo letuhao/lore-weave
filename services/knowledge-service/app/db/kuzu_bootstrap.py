@@ -109,6 +109,7 @@ KUZU_NODE_TABLES: dict[str, str] = {
         participants STRING[], participant_entity_ids STRING[],
         confidence DOUBLE, source_types STRING[],
         evidence_count INT64, mention_count INT64,
+        version INT64,
         archived_at TIMESTAMP,
         PRIMARY KEY(id)
     """,

@@ -453,7 +453,7 @@ class KuzuGraphStore:
                     "canonical_title: $c, summary: $sum, chapter_id: $ch, "
                     "event_order: $eo, chronological_order: $co, event_date_iso: $edi, "
                     "time_cue: $tc, participants: $parts, source_types: $st, "
-                    "confidence: $conf, evidence_count: 0, mention_count: 1})",
+                    "confidence: $conf, evidence_count: 0, mention_count: 1, version: 1})",
                     {**key, "id": str(uuid.uuid4()), "t": title, "sum": summary,
                      "eo": event_order, "co": chronological_order, "edi": event_date_iso,
                      "tc": time_cue, "parts": list(participants or []),
@@ -765,10 +765,122 @@ class KuzuGraphStore:
             "evidence_count": row.get("evidence_count") or 0,
         }
 
-    # ── not yet written — each RAISES rather than half-honouring (rule 9) ──────────────────
-    def _refuse(self, op: str) -> Any:
-        raise NotImplementedError(f"KuzuGraphStore.{op} — {_UNIMPLEMENTED}")
+    # ── evidence, OCC, and status ─────────────────────────────────────────────────────────
+    async def add_evidence(
+        self, *, user_id: str, target_label: str, target_id: str, source_id: str,
+        extraction_model: str, confidence: float, job_id: str, quote: str | None = None,
+    ) -> Any:
+        """Attach one extraction's evidence. IDEMPOTENT on `job_id`, and the counter bumps
+        **only on create**.
 
-    async def update_event_fields(self, **kw: Any) -> Any: self._refuse("update_event_fields")
-    async def add_evidence(self, **kw: Any) -> Any: self._refuse("add_evidence")
-    async def status_at_order(self, **kw: Any) -> Any: self._refuse("status_at_order")
+        Validation mirrors the other adapters exactly — *a port whose two implementations
+        disagree about what is a CALLER error is a port that leaks its engine.*
+
+        ⚠️ The AGE adapter's first cut incremented on every call and the conformance rule caught
+        it on `[age]` while `[fake]` and `[neo4j]` passed. Same hazard here, so existence is
+        checked and the counter bumped under the SAME lock the identity path uses: Kuzu's
+        `MERGE` on a relationship has no `ON CREATE`-only counter increment, and two concurrent
+        extractions both seeing "absent" would both bump.
+        """
+        from app.domain.graph_models import EvidenceWriteResult
+
+        if not all((target_id, source_id, extraction_model, job_id)):
+            raise ValueError("target_id/source_id/extraction_model/job_id must be non-empty")
+        if not 0.0 <= confidence <= 1.0:
+            raise ValueError(f"confidence must be in [0,1], got {confidence}")
+        label = target_label if target_label in ("Entity", "Event", "Fact") else "Entity"
+        p = {"u": user_id, "t": target_id, "s": source_id, "j": job_id,
+             "m": extraction_model, "c": float(confidence), "q": quote}
+        async with self._identity_lock:
+            tgt = await self._run(
+                f"MATCH (n:{label}) WHERE n.id = $t AND n.user_id = $u RETURN n",
+                {"t": target_id, "u": user_id})
+            if not tgt:
+                return None
+            await self._run(
+                "MERGE (s:ExtractionSource {id: $s}) ON CREATE SET s.user_id = $u",
+                {"s": source_id, "u": user_id})
+            created = False
+            seen = await self._run(
+                f"MATCH (n:{label})-[r:EVIDENCED_BY]->(s:ExtractionSource) "
+                "WHERE n.id = $t AND n.user_id = $u AND s.id = $s AND r.job_id = $j "
+                "RETURN r", {"t": target_id, "u": user_id, "s": source_id, "j": job_id})
+            if not seen:
+                created = True
+                await self._run(
+                    f"MATCH (n:{label}), (s:ExtractionSource) "
+                    "WHERE n.id = $t AND n.user_id = $u AND s.id = $s "
+                    "CREATE (n)-[:EVIDENCED_BY {job_id: $j, extraction_model: $m, "
+                    "confidence: $c, quote: $q}]->(s)", p)
+                await self._run(
+                    f"MATCH (n:{label}) WHERE n.id = $t AND n.user_id = $u "
+                    "SET n.evidence_count = n.evidence_count + 1",
+                    {"t": target_id, "u": user_id})
+            row = self._props((await self._run(
+                f"MATCH (n:{label}) WHERE n.id = $t AND n.user_id = $u RETURN n",
+                {"t": target_id, "u": user_id}))[0])
+        return EvidenceWriteResult(evidence_count=row.get("evidence_count") or 0,
+                                   mention_count=row.get("mention_count") or 0,
+                                   created=created)
+
+    async def update_event_fields(
+        self, *, user_id: str, event_id: str, title: str | None, summary: str | None,
+        time_cue: str | None, event_date_iso: str | None, expected_version: int,
+    ) -> tuple[Any, dict | None]:
+        """Optimistic-concurrency edit, returning `(updated, pre_edit_snapshot)`.
+
+        The second element is the state BEFORE the edit — a correction event has nothing to
+        record without it, which is why it is part of the contract rather than a courtesy.
+        A STALE `expected_version` **RAISES** rather than silently no-opping: a lost update
+        that reports success is the failure this guard exists for."""
+        from app.db.repositories import VersionMismatchError
+        from app.domain.graph_models import Event
+
+        rows = await self._run(
+            "MATCH (n:Event) WHERE n.id = $id AND n.user_id = $u RETURN n",
+            {"id": event_id, "u": user_id})
+        if not rows:
+            return None, None
+        cur = self._props(rows[0])
+        have = cur.get("version") or 1
+        if have != expected_version:
+            raise VersionMismatchError(
+                f"event {event_id} is at version {have}, caller expected {expected_version}")
+        sets, p = ["n.version = n.version + 1"], {"id": event_id}
+        for col, val in (("title", title), ("summary", summary),
+                         ("time_cue", time_cue), ("event_date_iso", event_date_iso)):
+            if val is not None:
+                sets.append(f"n.{col} = ${col}")
+                p[col] = val
+        snapshot = self._event_props(cur)
+        out = await self._run(
+            f"MATCH (n:Event) WHERE n.id = $id SET {', '.join(sets)} RETURN n", p)
+        return Event.model_validate(self._event_props(self._props(out[0]))), snapshot
+
+    async def status_at_order(
+        self, *, user_id: str, project_id: str | None, entity_ids: list[str],
+        at_order: int, min_evidence: int = 1,
+    ) -> dict[str, str]:
+        """`{entity_id: status}` at a story position.
+
+        `min_evidence` is the bar, not a tuning knob: a status derived from a single mention is
+        a guess, and the canon guard raises the bar rather than acting on one. An entity with
+        no qualifying life-status fact at the position is simply ABSENT from the result — the
+        caller must not be able to read "unknown" as "alive".
+        """
+        if not entity_ids:
+            return {}
+        rows = await self._run(
+            "MATCH (n:Fact)-[:ABOUT]->(e:Entity) WHERE n.user_id = $u "
+            "AND list_contains($ids, e.id) AND n.type = 'life_status' "
+            "AND n.valid_from_ordinal IS NOT NULL AND n.valid_from_ordinal <= $ao "
+            "AND (n.valid_to_ordinal IS NULL OR $ao < n.valid_to_ordinal) "
+            "AND n.evidence_count >= $me "
+            "RETURN e.id AS eid, n.content AS status, n.valid_from_ordinal AS vfo "
+            "ORDER BY n.valid_from_ordinal",
+            {"u": user_id, "ids": list(entity_ids), "ao": int(at_order),
+             "me": int(min_evidence)})
+        # Latest qualifying fact wins within the window; ORDER BY ascending means the last
+        # write into the dict is the most recent one that still covers `at_order`.
+        return {r["eid"]: r["status"] for r in rows}
+

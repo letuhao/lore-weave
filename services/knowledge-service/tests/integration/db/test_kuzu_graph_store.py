@@ -137,12 +137,14 @@ async def test_a_name_full_of_quotes_round_trips_as_DATA(store):
 
 
 @pytest.mark.asyncio
-async def test_the_unwritten_operations_REFUSE_and_name_their_section(store):
-    """Rule 9, and the reason it matters: a skip in the conformance suite must correspond to a
-    real refusal, or "Kuzu is skipped here" quietly becomes "Kuzu passed"."""
-    # Shrinks as methods land — relations came off this list in the same commit that
-    # implemented them, which is the discipline: a stale refusal list is a claim that
-    # something is unbuilt when it is not.
-    for op in ("add_evidence", "update_event_fields", "status_at_order"):
-        with pytest.raises(NotImplementedError, match="T42"):
-            await getattr(store, op)()
+async def test_EVERY_port_operation_is_implemented(store):
+    """The refusal list is GONE, and this is what replaced it. It went red three times while
+    the adapter grew — each time because a method had landed and the list still called it
+    unbuilt. Now nothing is unbuilt, so the check inverts: every operation the port declares
+    must exist here and must not be a stub."""
+    from app.ports.graph_store import GraphStore
+
+    ops = [n for n in dir(GraphStore) if not n.startswith("_")]
+    assert len(ops) >= 20, f"port surface shrank unexpectedly: {len(ops)}"
+    missing = [n for n in ops if not callable(getattr(store, n, None))]
+    assert not missing, f"KuzuGraphStore does not implement: {missing}"
