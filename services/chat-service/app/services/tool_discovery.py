@@ -1049,6 +1049,71 @@ def _stamp_always_available(
     return payload
 
 
+#: DQ-T3 — how the intent gate is opened, in the model's terms. ONE string, used by both halves
+#: of the discovery pair, so the listing and the load can never describe the same gate differently.
+_SETUP_GATE_HOW = (
+    "These become available on a turn that is explicitly about setting up or restructuring the "
+    "world/ontology, or when a workflow step names one. You cannot enable them yourself, and "
+    "calling or loading them now will not work."
+)
+_SETUP_GATE_WHY = (
+    "They exist on this platform but are NOT callable on this turn: they make sweeping, "
+    "hard-to-undo changes to a book's ontology, so they are held back unless the turn is "
+    "world-setup."
+)
+_SETUP_GATE_DO = (
+    "Do NOT retry them and do NOT tell the user they do not exist. If one of them is what the "
+    "user actually needs, say so in plain words and ask whether they want to start world setup."
+)
+
+
+def _withheld_setup_tools(catalog: list[dict], category: str | None = None) -> list[str]:
+    """The intent-gated setup tools that are MISSING from this turn's catalog.
+
+    Absence from the catalog is the whole signal: `filter_intent_gated_setup_tools` returns the
+    catalog UNCHANGED on a setup turn, so on such a turn nothing is withheld and this is empty.
+    Deriving it from the catalog rather than re-evaluating the gate keeps one source of truth —
+    a second copy of the gate condition would drift from the first.
+    """
+    present = {tool_name(td) for td in catalog}
+    return sorted(
+        n for n in INTENT_GATED_SETUP_TOOLS
+        if n not in present
+        and (category in (None, "all") or _domain_of(n) == category)
+    )
+
+
+def _stamp_withheld_setup(payload: dict, catalog: list[dict], category: str | None) -> dict:
+    """DQ-T3 (a) — name the intent-gated tools the listing did not show, with the gate.
+
+    🔴 A LISTING THAT OMITS WITHOUT SAYING SO READS AS A COMPLETE, HEALTHY ANSWER — the same
+    class as `always_available` above and as `provider_unavailable` in tool_load. Measured
+    2026-08-13: five glossary tools are dropped at CATALOG ASSEMBLY unless the turn is
+    world-setup, so they are un-seeded, un-findable AND un-loadable. That is deliberate
+    (N5a-FULL, the confirmed over-reach) and it IS instrumented — but only into telemetry the
+    model never sees. From the model's side they are indistinguishable from tools that do not
+    exist, and it tells the user so.
+
+    Owner's decision on DQ-T3: option (a), stamp them the way T7-D2 stamps always-on tools.
+
+    THE OPPOSITE ERROR IS ALSO MEASURED, AND IT IS WORSE, WHICH IS WHY THE WORDING IS SHAPED THE
+    WAY IT IS. Naming a tool the capability floor had made unreachable produced 40,597 characters
+    of one repeated paragraph on the dogfood book before the author hit Stop (see
+    `filter_intent_gated_setup_tools`). So this stamp must never read as "here is a tool, go get
+    it". It says the tools are not callable, that the model cannot open the gate itself, and that
+    the move is to ASK THE USER — a route out that is not a retry.
+    """
+    withheld = _withheld_setup_tools(catalog, category)
+    if withheld:
+        payload["withheld_pending_setup_intent"] = {
+            "tools": withheld,
+            "why": _SETUP_GATE_WHY,
+            "how_to_open": _SETUP_GATE_HOW,
+            "do": _SETUP_GATE_DO,
+        }
+    return payload
+
+
 def tool_list_result(
     catalog: list[dict],
     category: str | None = None,
@@ -1121,6 +1186,7 @@ def tool_list_result(
             "not repeated here: " + ", ".join(held) + ". This category is not empty."
         )
     _stamp_always_available(payload, catalog, category, exclude)
+    _stamp_withheld_setup(payload, catalog, category)
     return _stamp_incomplete(payload, unavailable_providers)
 
 
@@ -1197,7 +1263,21 @@ def tool_load_result(
                 "try again shortly."
             )
         else:
-            payload["not_found"] = missing
+            # DQ-T3 — the SAME lie as the outage case above, from a different cause. An
+            # intent-gated setup tool is absent from this turn's catalog by design, so an
+            # unresolvable name here is not "no such tool" — it is "not on THIS turn". Asserting
+            # non-existence is what makes the model tell the user the capability is missing.
+            _gated = [n for n in missing if n in INTENT_GATED_SETUP_TOOLS]
+            _really_missing = [n for n in missing if n not in INTENT_GATED_SETUP_TOOLS]
+            if _gated:
+                payload["withheld_pending_setup_intent"] = {
+                    "tools": _gated,
+                    "why": _SETUP_GATE_WHY,
+                    "how_to_open": _SETUP_GATE_HOW,
+                    "do": _SETUP_GATE_DO,
+                }
+            if _really_missing:
+                payload["not_found"] = _really_missing
     if broken & want:
         payload["unavailable"] = sorted(broken & want)
         payload["unavailable_reason"] = (

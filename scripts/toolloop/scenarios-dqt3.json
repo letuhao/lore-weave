@@ -1,0 +1,36 @@
+{
+  "_note": "DQ-T3 (a) — a gated tool must be reported as WITHHELD, never as absent. Deliberately DISCOVERY-SHAPED: measurement says this model calls tool_list on ~1/30 ordinary authoring turns but does use it when the task IS discovery, so the ask names the listing directly. That is the turn on which the stamp can be read at all.",
+  "scenarios": [
+    {
+      "id": "dqt3-gated-tool-load-is-withheld-not-absent",
+      "tool_under_test": "tool_load",
+      "expect_tool": "tool_load",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Load the tool called glossary_book_sync_apply by name and tell me exactly what arguments it takes. Do not call it, just read me its requirements.",
+      "prompt_source": "names the tool literally — a DISCOVERY turn by _tools_named_in_request, the one shape this model reliably acts on. Avoids setup/ontology wording, which routed glossary_shaping in the first attempt and OPENED the gate (n_intent_gate=0), voiding that reading.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "answer_expect": {
+        "none_of": [
+          "do not exist",
+          "don't exist",
+          "no such tool",
+          "not available on this platform"
+        ],
+        "why": "The failure DQ-T3 records is the model reporting a withheld capability as non-existent. Any of these phrasings about the gated tools is the defect reproducing."
+      },
+      "falsifier": "REFUTED IF: the reply says the tool does not exist / is not available on the platform, OR the turn retries the load repeatedly. CONTROL: read chat_messages.withheld_tools for stage='intent_gate' — if the count is 0 the gate did not fire, nothing was withheld, and the run says NOTHING about the stamp. That control voided the first attempt and must be checked before any conclusion.",
+      "ship_audit": {
+        "empty_case": "OWED — a category with nothing withheld must carry no stamp at all.",
+        "tenancy": "n/a — tool_list is consumer-local and reads no user data."
+      },
+      "defects": [
+        "DQ-T3"
+      ]
+    }
+  ]
+}
