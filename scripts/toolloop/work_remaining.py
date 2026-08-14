@@ -41,8 +41,15 @@ def _ledger_state() -> tuple[int, int, list[str]]:
     data = json.loads(LEDGER.read_text(encoding="utf-8"))
     tools = data.get("tools") or {}
     declared = (data.get("denominator") or {}).get("federated_tools") or 0
-    concluded = [n for n, t in tools.items() if t.get("state") in TERMINAL]
-    in_flight = [n for n, t in tools.items() if t.get("state") not in TERMINAL]
+    # 🔴 THE DENOMINATOR IS THE RELEASE SURFACE, NOT THE CATALOGUE. Owner's decision 2026-08-14:
+    # ship every NON-DEPRECATED tool, because they were built for the workflows and the platform
+    # cannot release without them. A deprecated tool (visibility=legacy / superseded_by) is
+    # abandoned after its migration, so counting it inflates the work AND the progress. Re-derived:
+    # 315 federated, 117 deprecated, 198 shippable — the remaining count fell 280 -> 168 purely by
+    # measuring the right set.
+    in_surface = {n for n, t in tools.items() if t.get("counts_toward_release") is not False}
+    concluded = [n for n in in_surface if tools[n].get("state") in TERMINAL]
+    in_flight = [n for n in in_surface if tools[n].get("state") not in TERMINAL]
     # 🔴 REPORT THE SPLIT, NOT JUST THE COUNT. 30 of the first 35 conclusions were recorded before
     # the gate existed — one tool per cycle, as detailed LIVE/DATA/FALSIFIER prose in the ledger
     # row. That is real work and it is not being discarded, but nothing can RE-VERIFY it without

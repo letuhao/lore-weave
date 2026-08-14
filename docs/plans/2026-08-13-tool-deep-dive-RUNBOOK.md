@@ -120,6 +120,36 @@ Carried verbatim in force from the journey RUNBOOK:
 
 ---
 
+## DENOMINATOR — the RELEASE SURFACE (amended 2026-08-14)
+
+🔴 **THE COHORT IS EVERY NON-DEPRECATED FEDERATED TOOL, AND THE REASON IS RELEASE, NOT COVERAGE.**
+Owner's decision, 2026-08-14: *"all non deprecated tools because they build for the workflows, we
+need ship them to make platform work, not because they slow or not, no ship mean this platform
+cannot release."* So the set is not negotiable on grounds of effort, and **speed is never a reason
+to narrow it**.
+
+A tool is DEPRECATED when it carries `visibility=legacy` or `_meta.superseded_by` — the platform's
+own machine-readable statement that it has been migrated away from. A deprecated tool is abandoned
+after its migration; its successor carries the traffic, so it is not part of what ships.
+
+Re-derived against the live catalogue on 2026-08-14:
+
+```
+315  federated total
+117  deprecated (visibility=legacy ∪ superseded_by)
+198  SHIPPABLE — the denominator
+ 30  concluded within it
+168  remaining
+```
+
+That correction alone cut the remaining work from 280 to 168, and it moved five already-concluded
+rows out of the count (`book_get`, `book_get_chapter`, `book_list_chapters`,
+`glossary_list_chapter_links`, `glossary_web_search`) — kept with their evidence, marked
+`counts_toward_release: false`, because the work happened and is still true about those tools.
+
+By provider: composition 53, glossary 25, kg 20, world 17, book 16, plan 16, settings 12,
+translation 12, registry 9, jobs 5, memory 5, catalog 2.
+
 ## DENOMINATOR — derived, never typed
 
 Re-derive at every entry. Never read a total out of this file.
