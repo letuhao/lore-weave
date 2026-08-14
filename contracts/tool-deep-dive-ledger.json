@@ -1437,6 +1437,15 @@
    "root_cause_measured": "R1 is NOT at fault and is load-bearing: every tool R1 named reached the surface 3/3, and the one tool R1 matched (plan_compile) was the one tool surfaced. The defect is what R1 reasons FROM. (a) 59 of 62 supersession pairs let the DEPRECATED tool out-declare its successor — FIXED, commit 0bf7b5421. (b) 86 tools declare no synonyms at all, and one more (glossary_ontology_upsert) matched the WRONG tools (book_media_generate, book_read) — OPEN, this is the _meta.resource half of R2.",
    "live_before_after_for_the_fix": "composition_outline_node_edit: surfaced 0/3 -> 3/3, called 0/3 -> 2/3, and the write moved from loreweave_book.chapters (the wrong store) to loreweave_composition.outline_node (the right one).",
    "batch_state": "NOT concluded. 4 of 5 tools still have an open cause; the cycle continues."
+  },
+  {
+   "id": "D-LAZY-TAIL-UNUSED",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (30 runs across two batch-2 passes)",
+   "finding": "THE LAZY TAIL IS ADVERTISED AND UNUSED. Across 30 runs of five ordinary authoring requests, `tool_list` was called on 1 and `tool_load` on 0 — while BOTH were advertised on every single run (premise verified, not assumed). The model works from the ~48 tools already on the surface and does not go looking for the other ~267; when the right tool is not there it uses the nearest one that is.",
+   "why_it_matters": "The surfacing architecture is hot-seed (small, budgeted) PLUS a lazy tail reached by discovery. If discovery does not fire, the lazy tail is not a fallback — it is dead weight, and whatever the deterministic pre-filter puts on the wire is the entire reachable catalogue for that turn. That makes R1's answerability pass load-bearing rather than an optimisation, and it makes the 86 tools that declare no synonyms effectively unreachable in practice rather than merely harder to reach.",
+   "scope_of_the_claim": "Narrow on purpose. This is five authoring requests, one local model (gemma-4-26b), 30 runs. It does NOT contradict the earlier measurement that tool_list->tool_load works for a weak model — that was a discovery-SHAPED task. The finding is that on ordinary work the model does not choose discovery, which is a different question from whether it can.",
+   "state": "OPEN — this is the real subject of R2, and it reframes it: the fix is not 'make the tail easier to search', it is 'the pre-filter must be right, because nothing else runs'."
   }
  ],
  "progress": {
