@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU adapter, starting with `kuzu_bootstrap.py` (DDL + open/close, T42c's shape). The batch is MEASURED — see 📏 in the T42 row: kuzu 0.11.3 is schema-full, the port is closed and typed so the DDL derives from it, and the real constraint is that Kuzu is EMBEDDED and refuses a second handle on the same path. `kuzu` is not yet a declared dependency; adding it is part of the build.**
+**RESUME: `T42` — the KUZU ADAPTER's twenty port methods, judged by T42a's conformance suite parameterised over a third adapter. The bootstrap slice is done (`kuzu_bootstrap.py`, 9 passed against a real kuzu 0.11.3): DDL derived from the domain models, `EVIDENCED_BY` as one rel table with three endpoint pairs, project scoping as a column, and the embedded single-writer file lock pinned both ways. `kuzu` is test-only on purpose — shipping a candidate's driver would make T43's choice a deployment fact.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 50 of 89 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 51 of 90 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (3/5) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (4/6) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,66 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### ✅ T42-kuzu-1 2026-08-14 — the Kuzu bootstrap: DDL, the lock, and two probed semantics
+
+  ```
+  9 passed — tests/integration/db/test_kuzu_bootstrap.py, against a REAL kuzu 0.11.3
+  ```
+
+  T42c's shape for a different engine. AGE needs per-session `LOAD`/`search_path`; **Kuzu needs
+  the schema to EXIST before a single write**, and getting it wrong reads like a bad query
+  rather than a missing setup step (`Binder exception: Table Entity does not exist`).
+
+  ✅ **The DDL is DERIVED from `domain/graph_models.py`, and that it can be is a property of
+  the port.** `GraphStore` is twenty methods of closed, typed parameter lists — no property bag
+  anywhere — so the columns cannot drift from the models. A port carrying `attrs: dict[str,
+  Any]` would have forced Kuzu's `MAP(STRING, STRING)`, which is string→string, and every
+  ordinal, confidence and timestamp would have lost its type on the way in. *"The port probably
+  carries property bags"* was this work's starting assumption; it was checked, and it was wrong.
+
+  🔻 **Two semantics probed BEFORE the file was written, because both are load-bearing:**
+  - **Two `RELATES_TO` edges between the SAME pair survive** (count = 2). *"Kai betrayed Mira"*
+    and *"Kai guards Mira"* are two claims about one pair, and an engine that collapsed them
+    would lose half the canon **on a successful write**.
+  - **`MERGE` keyed on `predicate` matched instead of creating a third edge.** `upsert_relation`
+    is specified idempotent; without this every re-extraction multiplies the graph.
+
+  🔧 `EVIDENCED_BY` has a variable FROM label in the AGE adapter (`target_label` is a
+  parameter). Kuzu wants endpoint pairs declared up front, so it is **one rel table with three
+  pairs** — and a single un-labelled `MATCH ()-[r:EVIDENCED_BY]->()` still spans all of them,
+  which is what the adapter's queries assume.
+
+  📐 **Project scoping is a COLUMN, not a database per project**, and the reason is in the port
+  rather than in taste: `find_entities_by_name(..., exclude_project_ids=[...])` asks one
+  question of several projects at once, which per-project databases make unimplementable — and
+  they would hold N file locks besides.
+
+  ⚠️ **THE DEPLOYMENT CONSTRAINT, AND IT IS A T43 INPUT RATHER THAN A DEFECT.** Kuzu is
+  EMBEDDED: `kuzu.Database(path)` a second time returns `IO exception: Could not set lock on
+  file`. One process may hold the graph. That holds today — `knowledge-service` is the only
+  service with `NEO4J_URI`, and its Dockerfile runs a bare `uvicorn` with **no `--workers`** —
+  but nothing pins it, and `--workers 4` or a second replica breaks Kuzu **and nothing else**.
+  No conformance green surfaces this: an adapter can pass all 82 rules in one process and still
+  be unshippable behind two. Pinned by two tests, one each way (the lock refuses; `close_kuzu`
+  releases it so the path reopens).
+
+  📦 `kuzu` is declared in **`requirements-test.txt` only**, deliberately. Shipping a
+  candidate's driver in the runtime image would make T43's engine choice a deployment fact
+  instead of a configuration one; `kuzu_bootstrap` imports it lazily and the tests
+  `importorskip`, so a host that never heard of Kuzu still runs the other two adapters green.
+
+  **BITE:** drop the `FROM Fact TO ExtractionSource` pair →
+  `Binder exception: Query node t violates schema. Expected labels are Entity, Event.`
+  Restored, 9 passed.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service seam yet; this is the
+  bootstrap, and the adapter's twenty methods are the next slice. **(c)** a real Kuzu database
+  per test, created and torn down.
+
+  ⬜ **Next:** the twenty port methods, judged by T42a's conformance suite parameterised over a
+  third adapter.
+
 
   ### 📏 KUZU BATCH MEASURED 2026-08-14 (rule 8) — buildable, and the blocker is not the one recorded
 
