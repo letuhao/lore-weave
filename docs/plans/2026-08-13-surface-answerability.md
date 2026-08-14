@@ -239,3 +239,44 @@ Two distinct causes, and only the second is what the R2 section above predicted:
    `book_read`). That is still open. It is the `_meta.resource` half of R2: a tool should declare
    the resource it acts on and whether it reads or writes it, so answerability has a second,
    structured axis when the prose list is absent or ambiguous.
+
+---
+
+## R2 CLOSED (2026-08-14) — declaration is the mechanism, and it does not cost the prefix
+
+The declaration gap is closed on the release surface. Shippable tools that nothing a user types
+could reach: **42 → 3**, and the three left (`propose_edit`, `tool_list`, `tool_load`) are the
+gateway's own discovery/edit surface, always advertised by construction rather than by matching.
+
+| service | declared | examples |
+|---|---|---|
+| knowledge | `story_search` + 5 memory + 20 kg | "where did i write", "what do i know about", "how are they connected" |
+| glossary | 13 | "look up a character", "set up my story bible", "research this on the web" |
+| glossary | `curation_list`, `ontology_upsert` | "suggested entries", "add a category" |
+
+**The invariant, in one line:** a tool must declare the words a PERSON types, not the words the
+schema or the feature uses. `glossary_ontology_upsert` declared "add a kind" — the column name —
+while the author says "category"; `glossary_curation_list` declared "review inbox" while the
+author says "suggested entries waiting for review". Both were surfaced 0/3 and both went to 3/3
+once the user's words were declared.
+
+**Why declaration rather than prompting.** Three prose interventions were built, deployed and
+measured, and none moved `tool_list` off 0/3 — the model works from what is on the wire. The one
+that reached the model demonstrably (book_note 166 → 293 tokens) changed which wrong tool it
+called, not whether it discovered a right one.
+
+**And it did not widen the surface**, which was the obvious risk of adding 39 declarations.
+Measured against the live 315-tool catalogue over ten representative prompts:
+
+```
+chitchat ("how are you today?")   0 tools forced
+max seen                          4   (ANSWERABLE_MAX is 8 — never at the ceiling)
+mean                              1.7
+```
+
+So the pre-filter stays precise: the phrases are multi-word and specific, and the word-boundary
+matcher stops short synonyms firing inside longer words ("cat" in "category", "art" in "start").
+
+**What is still owed:** 59 of 86 supersession pairs orphan a phrasing — the runtime union covers
+them on the surface, and `scripts/lint_superseded_synonyms.py --max-orphans` ratchets the
+declarations toward agreement.
