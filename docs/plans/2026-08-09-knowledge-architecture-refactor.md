@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — four REAL Kuzu-pairing divergences remain, now isolated from the shadow's own noise: `relations_for` (after a `recreate`), `add_evidence` (counters), `update_event_fields`, `events_page`. Take them one at a time. Separately: add the `EntityStatus` node table + its transition write so `status_at_order` can stop refusing.**
+**RESUME: `T43` — four REAL Kuzu-pairing divergences, each with its evidence and a lead recorded in the T43 row's table. Start with `relations_for`: a `recreate()`d edge is returned by Neo4j and not by Kuzu, and the lead is the bare trailing `SET` after `MERGE … ON CREATE SET` in `recreate_relation` — **probe whether Kuzu applies it before changing anything.** Then `add_evidence`, `update_event_fields`, `events_page`. Separately: the `EntityStatus` node table + transition write so `status_at_order` can stop refusing.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -10324,10 +10324,24 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   check that they are ADAPTER differences, not more comparator noise. Isolating them is the
   point: before this, a real bug and a repr artifact were indistinguishable in the same list.
 
-  ⬜ **STILL OWED, suite RED on the Kuzu pairing:** `relations_for` (after a `recreate`),
-  `add_evidence` (counters), `update_event_fields`, `events_page`; plus the `EntityStatus` node
-  table + transition write so `status_at_order` can stop refusing. **Recorded red rather than
-  hidden** — a green would require deleting the pairing that found the bug.
+  ⬜ **STILL OWED, suite RED on the Kuzu pairing.** Four real divergences, with what is known
+  about each recorded so the next cycle starts from data rather than a mystery:
+
+  | operation | evidence | lead |
+  |---|---|---|
+  | `relations_for` | `primary=[('parent_of','1.0','12')]` secondary `[]`, after a `recreate()` | `KuzuGraphStore.recreate_relation` uses `MERGE … ON CREATE SET …` followed by a **bare trailing `SET`**. Whether Kuzu applies that trailing clause is UNVERIFIED — probe it before changing anything. |
+  | `add_evidence` | counters disagree | the increment is guarded by an existence check under `_identity_lock`; Neo4j bumps in one statement. Compare what each does on a REPEAT job_id. |
+  | `update_event_fields` | diverges on several seeds | returns `(updated, snapshot)`; the snapshot now compares (dict projection landed), so this is a real field difference. |
+  | `events_page` | diverges on some seeds only | seed-dependent ⇒ suspect ORDER or the `total`, not the row set. |
+
+  🔴 **Do NOT fix these by inspection.** `status_at_order` was written by reasoning about what
+  the operation *should* read and shipped answering `{}` where the contract requires every id
+  defaulting to `'active'` — the conformance suite passed it and only the differential caught
+  it. Each row above gets a probe first.
+
+  Plus the `EntityStatus` node table + its transition write, so `status_at_order` can stop
+  refusing. **Recorded red rather than hidden** — a green would require deleting the pairing
+  that found the bug.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**
