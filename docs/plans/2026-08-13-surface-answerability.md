@@ -202,3 +202,40 @@ without anyone maintaining a phrasebook.
 The two batch-2 tools get prompts written from their own DESCRIPTIONS in the meantime, marked
 `prompt_source: description (no synonyms — R2)`, so the batch measures whether the missing
 declaration actually costs reachability rather than assuming it.
+
+### R2, resolved — the defect was not the missing synonyms
+
+Batch 2 ran all five tools live, K=3, and **four of five were surfaced on 0 of 3 runs**. Three of
+those four requests were then answered by an ADJACENT tool that wrote the wrong thing:
+
+| asked for | surfaced | what happened instead |
+|---|---|---|
+| add a *cultivation realm* detail to the character type | 0/3 | created an **entity** (`glossary_propose_entities`), entities 3 → 4 |
+| rename an outline chapter | 0/3 | one run renamed the **manuscript** chapter in `loreweave_book` |
+| suggested entries awaiting review | 0/3 | nothing called; the question went unanswered |
+| add *Factions* as a new category | 0/3 | `glossary_adopt_standards` adopted a whole genre pack — kinds 4 → 5, attributes 29 → 36, genres 1 → 3, kind_genres 4 → 13 |
+| compile the plan | 3/3 | reached; `plan_run` created 3/3 |
+
+**R1 is not the problem — it is load-bearing and it works.** Every tool R1 named reached the
+surface on 3/3. `plan_compile` was the one tool R1 matched, and the one tool surfaced. The gap is
+what R1 has to reason FROM.
+
+Two distinct causes, and only the second is what the R2 section above predicted:
+
+1. **The successor is out-declared by the tool it replaced.** "Rename the chapter … in my outline"
+   matched `composition_outline_node_update`, which carries
+   `superseded_by: composition_outline_node_edit`. The DEPRECATED tool owns the words a person
+   types; the successor owns jargon and CREATE verbs. Swept: **59 of 62 supersession pairs orphan
+   at least one phrasing.** `composition_write_prose` → `book_chapter_save_draft` loses "write
+   prose" — the same request that in batch 1 reached `save_draft` and overwrote a chapter.
+
+   Fixed at the answerability chokepoint (a match on a superseded tool also surfaces its
+   successor — a union, never a redirect) plus
+   [`scripts/lint_superseded_synonyms.py`](../../scripts/lint_superseded_synonyms.py) so the
+   declarations converge and the next pair fails at build time.
+
+2. **86 tools declare nothing to match on**, so R1 is blind to them by construction — and a
+   further case, `glossary_ontology_upsert`, matched the *wrong* tools (`book_media_generate`,
+   `book_read`). That is still open. It is the `_meta.resource` half of R2: a tool should declare
+   the resource it acts on and whether it reads or writes it, so answerability has a second,
+   structured axis when the prose list is absent or ambiguous.
