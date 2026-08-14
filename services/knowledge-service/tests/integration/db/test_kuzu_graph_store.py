@@ -143,7 +143,7 @@ async def test_the_unwritten_operations_REFUSE_and_name_their_section(store):
     # Shrinks as methods land — relations came off this list in the same commit that
     # implemented them, which is the discipline: a stale refusal list is a claim that
     # something is unbuilt when it is not.
-    for op in ("merge_fact", "facts_for", "add_evidence", "events_page",
-               "update_event_fields", "status_at_order", "events_in_window"):
+    for op in ("merge_fact", "facts_for", "add_evidence",
+               "update_event_fields", "status_at_order"):
         with pytest.raises(NotImplementedError, match="T42"):
             await getattr(store, op)()

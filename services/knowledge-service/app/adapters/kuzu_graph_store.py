@@ -508,6 +508,105 @@ class KuzuGraphStore:
             {"id": event_id, "u": user_id})
         return Event.model_validate(self._event_props(self._props(rows[0]))) if rows else None
 
+    #: Which column each axis reads. A dict rather than an `if` chain so the browse and the
+    #: window cannot drift into two definitions of "narrative" — one conformance rule exists
+    #: precisely because a second definition of "matching" is what goes wrong here.
+    _AXIS_COL = {"narrative": "event_order", "chronological": "chronological_order",
+                 "date": "event_date_iso"}
+
+    def _window_where(self, axis: str, after: Any, before: Any) -> tuple[list[str], dict]:
+        """The range predicate, shared by `events_page` and `events_in_window`.
+
+        ⚠️ BOTH BOUNDS ARE INCLUSIVE, matching `FakeGraphStore` (`value < after` and
+        `value > before` are its skips). Not a free choice: T43 diffs adapters against each
+        other, and two stores that disagree about a boundary would report as a correctness
+        difference on every windowed read.
+
+        Shared rather than duplicated because the ONE rule that spans both operations asserts
+        they agree — and two copies of a predicate are how they stop agreeing.
+        """
+        col = self._AXIS_COL.get(axis, "event_order")
+        where, params = [], {}
+        if after is not None:
+            where.append(f"n.{col} IS NOT NULL AND n.{col} >= $after")
+            params["after"] = after
+        if before is not None:
+            where.append(f"n.{col} IS NOT NULL AND n.{col} <= $before")
+            params["before"] = before
+        return where, params
+
+    async def events_in_window(
+        self, *, user_id: str, project_id: str | None = None, after: Any = None,
+        before: Any = None, axis: str = "narrative", include_archived: bool = False,
+        limit: int = 200,
+    ) -> list[Any]:
+        """Events between two bounds on one axis. NO total — a windowed read answers "what
+        happened between here and there", and a count would be an unrelated second question
+        riding along. The port says so explicitly and `events_page` is where the count lives.
+        """
+        from app.domain.graph_models import Event
+
+        where = ["n.user_id = $u"]
+        params: dict[str, Any] = {"u": user_id, "lim": int(limit)}
+        if project_id is not None:
+            where.append("n.project_id = $p")
+            params["p"] = project_id
+        if not include_archived:
+            where.append("n.archived_at IS NULL")
+        w, wp = self._window_where(axis, after, before)
+        where += w
+        params.update(wp)
+        col = self._AXIS_COL.get(axis, "event_order")
+        rows = await self._run(
+            f"MATCH (n:Event) WHERE {' AND '.join(where)} RETURN n "
+            f"ORDER BY n.{col} LIMIT $lim", params)
+        return [Event.model_validate(self._event_props(self._props(r))) for r in rows]
+
+    async def events_page(
+        self, *, user_id: str, project_id: str | None = None, after: Any = None,
+        before: Any = None, axis: str = "narrative", participants: list[str] | None = None,
+        q: str | None = None, sort_dir: str = "asc", limit: int = 50, offset: int = 0,
+        exclude_project_ids: list[str] | None = None,
+    ) -> tuple[list[Any], int]:
+        """One PAGE plus the TOTAL that matched — the browse.
+
+        `total` counts everything matching the FILTERS, ignoring `limit`/`offset`. A total that
+        shrank with the page would make "showing 1–50 of 50" true on every page of a thousand,
+        which is an off-by-a-page bug nobody sees.
+        """
+        from app.domain.graph_models import Event
+
+        where = ["n.user_id = $u"]
+        params: dict[str, Any] = {"u": user_id}
+        if project_id is not None:
+            where.append("n.project_id = $p")
+            params["p"] = project_id
+        if exclude_project_ids:
+            where.append("(n.project_id IS NULL OR NOT list_contains($ex, n.project_id))")
+            params["ex"] = list(exclude_project_ids)
+        if participants:
+            # ANY overlap, not containment: an event matches if it involves any of them.
+            where.append("size(list_intersect(n.participants, $parts)) > 0")
+            params["parts"] = list(participants)
+        if q:
+            where.append("(contains(lower(n.title), lower($q)) "
+                         "OR contains(lower(n.summary), lower($q)))")
+            params["q"] = q
+        where.append("n.archived_at IS NULL")
+        w, wp = self._window_where(axis, after, before)
+        where += w
+        params.update(wp)
+        clause = " AND ".join(where)
+        total = (await self._run(
+            f"MATCH (n:Event) WHERE {clause} RETURN count(n) AS c", params))[0]["c"]
+        col = self._AXIS_COL.get(axis, "event_order")
+        direction = "DESC" if str(sort_dir).lower() == "desc" else "ASC"
+        rows = await self._run(
+            f"MATCH (n:Event) WHERE {clause} RETURN n ORDER BY n.{col} {direction} "
+            "SKIP $off LIMIT $lim",
+            {**params, "off": int(offset), "lim": int(limit)})
+        return [Event.model_validate(self._event_props(self._props(r))) for r in rows], total
+
     @staticmethod
     def _event_props(row: dict) -> dict:
         return {
@@ -530,10 +629,8 @@ class KuzuGraphStore:
     def _refuse(self, op: str) -> Any:
         raise NotImplementedError(f"KuzuGraphStore.{op} — {_UNIMPLEMENTED}")
 
-    async def events_page(self, **kw: Any) -> Any: self._refuse("events_page")
     async def update_event_fields(self, **kw: Any) -> Any: self._refuse("update_event_fields")
     async def merge_fact(self, **kw: Any) -> Any: self._refuse("merge_fact")
     async def facts_for(self, **kw: Any) -> Any: self._refuse("facts_for")
     async def add_evidence(self, **kw: Any) -> Any: self._refuse("add_evidence")
     async def status_at_order(self, **kw: Any) -> Any: self._refuse("status_at_order")
-    async def events_in_window(self, **kw: Any) -> Any: self._refuse("events_in_window")

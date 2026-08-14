@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU adapter's `events_page` + `events_in_window` (one conformance rule spans both: the browse and the window must AGREE about which events match), then facts (`merge_fact`, `facts_for`, `add_evidence`, `status_at_order`). 18 of T42a's rules pass as `[kuzu]`. Grow `_KUZU_CONFORMED` and shrink BOTH refusal lists in the SAME commit as each method — the adapter-level one has now caught a lag twice.**
+**RESUME: `T42` — the KUZU adapter's FACTS (`merge_fact`, `facts_for`, `add_evidence`, `status_at_order`) plus `update_event_fields`, after which Kuzu is judged on T42a's whole suite rather than a named subset. 19 of T42a's rules pass as `[kuzu]`. ⚠️ `merge_fact`'s `maintain_chain` is what AGE REFUSED (`D-AGE-FACT-WRITE-UNIMPLEMENTED`): re-deriving the valid_to_ordinal chain needs an ordered window over sibling facts — measure whether Kuzu can express it BEFORE building, and refuse naming the section if not.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 54 of 94 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 55 of 95 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (7/10) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (8/11) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,42 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### ✅ T42-kuzu-6 2026-08-14 — the browse and the window, sharing ONE definition of "matching"
+
+  ```
+  19 of T42a's rules PASS as [kuzu]   141 passed  tests/integration/db/
+  ```
+
+  `events_page` (page + TOTAL) and `events_in_window` (no total — the port is explicit that a
+  count belongs to a paginated browse, not to *"give me the events in this window"*).
+
+  🔻 **BOTH BOUNDS ARE INCLUSIVE, matched to `FakeGraphStore` rather than chosen.** Its skips
+  are `value < after` and `value > before`. Not a free decision: **T43 diffs adapters against
+  each other**, so two stores disagreeing about a boundary would surface as a correctness
+  difference on every windowed read — a shadow comparison reporting a bug that is really a
+  convention.
+
+  🔴 **The range predicate is ONE helper, called twice.** `test_the_browse_and_the_window_agree_about_which_events_match`
+  exists because the browse can quietly become a second, drifting definition of "matching";
+  duplicating the predicate is precisely how that happens.
+
+  ⚠️ **And the rule catches DIVERGENCE, not a wrong boundary** — stated because the bite made it
+  obvious. Shifting the shared helper's `>=` to `>` moves BOTH sides, they still agree, and the
+  rule stays green. So the bite that means something is the one that breaks the SHARING:
+  `events_page` given its own exclusive bound →
+  `FAILED test_the_browse_and_the_window_agree_about_which_events_match[kuzu]`. Restored, green.
+  The boundary itself is pinned by matching the fake, not by this rule.
+
+  📋 Both refusal lists shrank in this commit; the conformance one still named `events_in_window`
+  and went red by *calling* it — a `TypeError`, not a refusal. Third catch.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service caller yet. **(c)** real
+  Kuzu databases per test.
+
+  ⬜ **Next:** facts — `merge_fact`, `facts_for`, `add_evidence`, `status_at_order` — plus
+  `update_event_fields`, after which Kuzu is judged on the whole suite.
+
 
   ### ✅ T42-kuzu-5 2026-08-14 — the event core, and CM4 spoiler-safety pinned
 

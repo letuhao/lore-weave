@@ -587,6 +587,7 @@ _KUZU_CONFORMED = {
     "test_merge_event_is_idempotent_and_keeps_the_EARLIEST_reading_position",
     "test_get_event_is_a_MISS_for_another_user",
     "test_archive_event_is_idempotent",
+    "test_the_browse_and_the_window_agree_about_which_events_match",
 }
 
 
@@ -618,8 +619,8 @@ async def test_kuzu_REFUSES_what_the_scope_list_skips():
     from app.adapters.kuzu_graph_store import KuzuGraphStore
 
     store = KuzuGraphStore(conn=None)
-    for op in ("events_page", "update_event_fields", "merge_fact", "facts_for",
-               "add_evidence", "status_at_order", "events_in_window"):
+    for op in ("update_event_fields", "merge_fact", "facts_for",
+               "add_evidence", "status_at_order"):
         with pytest.raises(NotImplementedError, match="T42"):
             await getattr(store, op)()
 
