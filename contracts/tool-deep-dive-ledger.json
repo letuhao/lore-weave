@@ -1930,6 +1930,21 @@
    "finding": "Three scenarios in a row measured something other than what they claimed. The worst inverted the reading of three experiments: the fixture was supposed to hold ONE of three entities in the ai-suggested queue, but glossary_propose_entities tags everything it creates, so all three were queued and the 'wrong' answer was right.",
    "fix": "scripts/toolloop/provision.py::assert_seeded — a scenario declares `seed_assert` (SQL + expected value) and provisioning proves the claim against the STORE before any turn runs. A fixture that cannot discriminate now fails loudly instead of producing confident nonsense for an hour.",
    "state": "FIXED and in use; the ai-suggestions scenario carries two assertions (exactly 1 queued, 3 entities total)."
+  },
+  {
+   "id": "V2-INCIDENT-CLOSED-LIVE",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json",
+   "finding": "The 2026-08-13 v2 incident prompt, run verbatim with a fixture asserting exactly TWO outline nodes: composition_list_outline called 3/3, store UNCHANGED 3/3, and the reply names exactly the two seeded chapters ('The Ember Codex', 'The Sunless Marsh'). On 2026-08-13 the same sentence had the model reach for the Tier-A outline WRITE it could see, create three chapters (outline_node 7 -> 10) and describe them back as 'your current plan'.",
+   "what_closed_it": "Not one fix — the chain: ALWAYS_HOT_READS put the read on the wire, R1 answerability forces it from the user's own words, R5 scopes standing grants to request mood, and the answer_expect bar now fails a reply that says 'three chapters' over two nodes."
+  },
+  {
+   "id": "D-TOOL-LOAD-NOT-USED-FOR-SCHEMA",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (tool_load scenario)",
+   "finding": "Asked 'What exactly do you need from me to add a new character? Check the real requirements, don't guess', tool_load was surfaced 3/3 and called 0/3. The model answered 'I only require a Name' from glossary_book_ontology_read instead — plausible, and not sourced from the schema the tool exists to expose.",
+   "why_it_matters": "tool_load is the mechanism that stops argument guessing, and five 'obvious' argument names were wrong in one session of mine. It is consistent with D-LAZY-TAIL-UNUSED: the model works from what is already on the wire rather than fetching the contract.",
+   "state": "OPEN — recorded, not fixed. tool_load is one of the 3 remaining undeclared tools (gateway-local), so declaration is not the lever here."
   }
  ],
  "progress": {

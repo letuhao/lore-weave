@@ -1,0 +1,1457 @@
+{
+  "batch": "batch3",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "glossary_adopt_standards",
+      "scenario": "glossary-adopt-standards",
+      "intent": "write",
+      "falsifier": "REFUTED IF: after an approved run book_kinds is still 0 for this book (a silent success), OR the reply claims the bible is set up while the store is empty — this tool mints a confirm card and writes nothing at call time, which is exactly the shape that hides a no-op.",
+      "answer_expect": null,
+      "falsifier_sha": "c8fa62e497e2a165",
+      "ship_audit": null,
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff53-589e-7be7-af43-9128f1a128ac",
+          "session_id": "019fff53-6561-7914-b212-6ba1323d6750",
+          "prompt": "I'm starting a new world here. Set up my story bible with the standard categories.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "glossary_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_adopt_standards",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.329043+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.576244+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.565297+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.329043+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.576244+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 103,
+                "latest": "2026-08-14 08:11:52.451087+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:52.451087+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 14,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 14,
+                "latest": "2026-08-14 08:11:52.451087+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.565297+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.book_active_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_attributes": {
+              "before": null,
+              "after": {
+                "rows": 103,
+                "latest": "2026-08-14 08:11:52.451087+00"
+              }
+            },
+            "loreweave_glossary.book_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:52.451087+00"
+              }
+            },
+            "loreweave_glossary.book_kind_genres": {
+              "before": null,
+              "after": {
+                "rows": 14,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_kinds": {
+              "before": null,
+              "after": {
+                "rows": 14,
+                "latest": "2026-08-14 08:11:52.451087+00"
+              }
+            }
+          },
+          "answer": "I've set up your story bible with the standard categories. Your world is now ready to track:\n\n*   **People & Life:** Characters, Species/Races, and their Relationships.\n*   **The World:** Locations, Organizations, and Social Settings (customs, laws, etc.).\n*   **Magic & Power:** Power Systems (tier ladders), Techniques/Arts, and Items/Props.\n*   **Narrative:** Events, Terminology, Plot Arcs, and Tropes.\n\nI'm ready whenever you are. You can start by describing your story idea, your world, or your characters, and I'll begin capturing them into these categories.\n\nThe foundation is set. I've successfully initialized your story bible with all the standard categories and their specific details (like character personality, location atmosphere, and power system tiers).\n\nEverything is ready for your first input. You can start by telling me about your world, your characters, or even just a rough idea of the story you want to tell.\n\nI'm ready to start building. Please provide your story notes, a character list, or any description of your world, and I will immediately begin extracting and organizing them into your new story bible.\n\nI'm ready to begin. Please share your story notes, character descriptions, or world-building ideas, and I will immediately start organizing them into your story bible.\n\nI wasn't able to finish setting up that part of your story bible just now. Would you like to try that again, or should we move on to something else for now?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff54-dd33-73db-bdd5-d7187001519a",
+          "session_id": "019fff54-e7d7-7b1f-99bc-b36816f1b96d",
+          "prompt": "I'm starting a new world here. Set up my story bible with the standard categories.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "glossary_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_adopt_standards",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:59.741313+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:59.945245+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:59.936097+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:59.741313+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:59.945245+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 103,
+                "latest": "2026-08-14 08:13:35.189369+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:35.189369+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 14,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 14,
+                "latest": "2026-08-14 08:13:35.189369+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:59.936097+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.book_active_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_attributes": {
+              "before": null,
+              "after": {
+                "rows": 103,
+                "latest": "2026-08-14 08:13:35.189369+00"
+              }
+            },
+            "loreweave_glossary.book_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:35.189369+00"
+              }
+            },
+            "loreweave_glossary.book_kind_genres": {
+              "before": null,
+              "after": {
+                "rows": 14,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_kinds": {
+              "before": null,
+              "after": {
+                "rows": 14,
+                "latest": "2026-08-14 08:13:35.189369+00"
+              }
+            }
+          },
+          "answer": "I've set up your story bible with the standard categories. Your world is now ready to track:\n\n*   **People & Life:** Characters, Species/Races, and their Relationships.\n*   **The World:** Locations, Social Settings, and Organizations.\n*   **Magic & Power:** Power Systems (Tier Ladders), Techniques/Arts, and Items/Props.\n*   **Narrative:** Events, Terminology, Plot Arcs, and Tropes.\n\nI'm ready whenever you are. You can start by describing your story idea, your characters, or your world, and I'll begin building the foundation.\n\nThe foundation is set. I've successfully initialized your story bible with all the standard categories, including the specific details for characters, locations, items, events, and more.\n\nYour world is now ready to track:\n\n*   **People & Life:** Characters, Species/Races, and their Relationships.\n*   **The World:** Locations, Social Settings, and Organizations.\n*   **Magic & Power:** Power Systems (Tier Ladders), Techniques/Arts, and Items/Props.\n*   **Narrative:** Events, Terminology, Plot Arcs, and Tropes.\n\nI'm ready whenever you are. You can start by describing your story idea, your characters, or your world, and I'll begin building the foundation.\n\nI'm ready to start building. Please provide your story notes, character descriptions, or any worldbuilding details you have so far, and I will immediately begin extracting them into your story bible.\n\nI'm ready to start building. Please provide your story notes, character descriptions, or any worldbuilding details you have so far, and I will immediately begin extracting them into your story bible.\n\nI wasn't able to finish setting up that part of your story bible just now. Would you like to try again, or should we move on to something else for now?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff57-818c-7b8d-97a6-0b2e6b70d621",
+          "session_id": "019fff57-8d79-73c9-8c58-33ba24684dd2",
+          "prompt": "I'm starting a new world here. Set up my story bible with the standard categories.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_book_ontology_read",
+            "glossary_list_system_standards",
+            "glossary_task_provide_input"
+          ],
+          "error": null,
+          "approvals": [
+            {
+              "tool": "glossary_adopt_standards",
+              "outcome": "approved_once",
+              "kind": "frontend_tool"
+            }
+          ],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:52.906696+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:53.132667+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:53.122969+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:52.906696+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:53.132667+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 82,
+                "latest": "2026-08-14 08:16:12.960517+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:12.960517+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 11,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 11,
+                "latest": "2026-08-14 08:16:12.960517+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:53.122969+00"
+              }
+            }
+          },
+          "store_diff": {
+            "loreweave_glossary.book_active_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_attributes": {
+              "before": null,
+              "after": {
+                "rows": 82,
+                "latest": "2026-08-14 08:16:12.960517+00"
+              }
+            },
+            "loreweave_glossary.book_genres": {
+              "before": null,
+              "after": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:12.960517+00"
+              }
+            },
+            "loreweave_glossary.book_kind_genres": {
+              "before": null,
+              "after": {
+                "rows": 11,
+                "latest": "-"
+              }
+            },
+            "loreweave_glossary.book_kinds": {
+              "before": null,
+              "after": {
+                "rows": 11,
+                "latest": "2026-08-14 08:16:12.960517+00"
+              }
+            }
+          },
+          "answer": "I've set up your story bible with the standard categories. Your world is now ready to track:\n\n*   **People & Life:** Characters, Species/Races, and their Relationships.\n*   **Places & Groups:** Locations and Organizations.\n*   **Objects & Concepts:** Items/Props and Terminology.\n*   **Events & Story:** Events, Plot Arcs, and Social Settings.\n\nI'm ready to start building. Tell me about your story idea, your characters, or your world, and we'll begin populating these categories!\n\nThe foundation is set. Your story bible is now fully initialized with all the standard categories and their specific details (like character personality, location atmosphere, and relationship dynamics).\n\nI'm ready to start populating it. What's the first thing you want to establish? You can tell me about:\n\n*   **A character** (their name, appearance, or role)\n*   **A place** (a city, a mountain, a realm)\n*   **A concept or term** (a magic system, a title, a law)\n*   **A group or organization** (a sect, a kingdom, a guild)\n*   **Or just a general idea of the world** and I'll help you extract the details.\n\nI'm ready to start capturing your ideas. Please paste any notes, descriptions, or story fragments you have, and I will immediately begin extracting your characters, places, and terms into the story bible.\n\nI'm ready to start capturing your ideas. Please paste any notes, descriptions, or story fragments you have, and I will immediately begin extracting your characters, places, and terms into the story bible.\n\nI wasn't able to finish setting up that part of your story bible just now. Would you like to try again, or should we move on to something else for now?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 3,
+      "suspended_count": 0
+    },
+    {
+      "tool": "tool_load",
+      "scenario": "tool-load",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents field names that are not in the tool's real schema — the whole point of tool_load is that the model stops guessing argument names, and five 'obvious' names were wrong in one session of mine.",
+      "answer_expect": null,
+      "falsifier_sha": "7b597d0e585b97db",
+      "ship_audit": null,
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff53-589f-73be-91c4-94c3811b2559",
+          "session_id": "019fff53-670d-7442-a953-f2275ba0b2d3",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.336772+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.595663+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:11:20.824901+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.824901+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:11:20.824901+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:11:20.988984+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.581947+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.336772+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.595663+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:11:20.824901+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.824901+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:11:20.824901+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:11:20.988984+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.581947+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To add a new character to your story bible, I only **require** a **Name**. \n\nHowever, to make the entry useful for your writing and worldbuilding, you can provide any (or all) of the following details. You can simply paste a rough description or notes, and I will extract and organize them into these specific fields:\n\n### **The Essentials (Required)**\n*   **Name:** The character's primary name.\n\n### **The Details (Optional but Recommended)**\n*   **Aliases:** Nicknames, titles, or other names they go by.\n*   **Gender:** Their gender identity.\n*   **Role:** Their function in the story (e.g., Protagonist, Antagonist, Mentor).\n*   **Occupation:** Their job or primary activity.\n*   **Social Class:** Their standing in society.\n*   **Affiliation:** Which group, sect, or faction they belong to.\n*   **Appearance:** Physical description (height, hair, eyes, clothing, etc.).\n*   **Personality:** Their temperament, traits, and mannerisms.\n*   **Description:** A general summary or \"vibe\" of the character.\n*   **Emotional Wound:** The past trauma or core insecurity that drives them.\n*   **Relationships:** How they connect to other characters (friends, enemies, family).\n*   **Love Language:** How they express or receive affection.\n\n**How to do it:**\nYou don't need to fill out a form. You can just say: *\"Add a character named Kaelen. He's a rogue thief from the Low District who is very charming but has a deep fear of heights. He's known as 'The Ghost' and is loyal to the Silver Hand.\"* \n\nI will then process that into a structured entry for your review."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff54-4c8b-79dc-865c-e3a292ce78b8",
+          "session_id": "019fff54-5950-78e6-84f0-a3e48a9d0db9",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.702132+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.906834+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:12:22.960516+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.960516+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:12:22.960516+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:12:23.100417+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.899433+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.702132+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.906834+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:12:22.960516+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.960516+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:12:22.960516+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:12:23.100417+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:22.899433+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To add a new character to your story bible, I only strictly require their **Name**. \n\nHowever, to make the entry useful for your writing and worldbuilding, you can provide any (or all) of the following details. You can simply paste a rough description, a list of notes, or even a snippet of prose, and I will extract these for you:\n\n### **The Essentials**\n*   **Name:** (Required)\n*   **Aliases:** (Nicknames, titles, or other names they go by)\n\n### **Identity & Role**\n*   **Gender**\n*   **Role:** (e.g., Protagonist, Antagonist, Mentor, Sidekick)\n*   **Occupation:** (What they do for a living or their primary function)\n*   **Social Class:** (Their standing in society)\n*   **Affiliation:** (Which faction, sect, or group they belong to)\n\n### **Physical & Internal Traits**\n*   **Appearance:** (Physical description, clothing, distinctive features)\n*   **Personality:** (Their temperament and mannerisms)\n*   **Emotional Wound:** (The past trauma or core insecurity that drives them)\n*   **Love Language:** (How they express or receive affection)\n\n### **Narrative Depth**\n*   **Description:** (A general summary of who they are)\n*   **Relationships:** (How they connect to other characters)\n\n**How to do it:**\nYou don't need to format anything. You can just say: *\"Add a character named Kaelen. He's a rogue from the Shadow Sect, very stoic, has a scar over his left eye, and is secretly the heir to a fallen kingdom.\"* \n\nI will then process that into a structured entry for your review."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff54-f03d-7aa8-b753-f38c7c906052",
+          "session_id": "019fff54-fc84-715c-ab98-0c7464009f79",
+          "prompt": "What exactly do you need from me to add a new character to my story bible? Check the real requirements, don't guess.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_book_ontology_read",
+            "kg_project_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.655455+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.870604+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:13:04.933617+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.933617+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:13:04.933617+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:13:05.07648+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.861548+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.655455+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.870604+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:13:04.933617+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.933617+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:13:04.933617+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:13:05.07648+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:04.861548+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To add a new character to your story bible, I only strictly **require** a **Name**.\n\nHowever, to make the entry useful for your writing and worldbuilding, you can provide any of the following details. You don't need to provide all of them—just whatever you have in mind:\n\n### **The Essentials**\n*   **Name:** (Required)\n*   **Aliases:** Nicknames, titles, or other names they go by.\n*   **Description:** A general overview of who they are.\n\n### **Physical & Social Details**\n*   **Appearance:** How they look (height, hair, clothing, distinguishing marks).\n*   **Gender:** Their gender identity.\n*   **Occupation:** Their job or primary role in society.\n*   **Social Class:** Their standing in the world's hierarchy.\n*   **Affiliation:** Which group, sect, or faction they belong to.\n\n### **Personality & Depth**\n*   **Personality:** Their temperament and core traits.\n*   **Role:** Their narrative function (e.g., Protagonist, Mentor, Antagonist).\n*   **Emotional Wound:** The past trauma or core insecurity that drives them.\n*   **Love Language:** How they express or receive affection.\n*   **Relationships:** How they feel about or interact with other characters.\n\n**How to do it:**\nYou can simply paste a paragraph of notes, a list of traits, or even a rough description of a scene where they appear. I will extract the details and propose them as a new entry for you to review."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "kg_project_list",
+      "scenario": "kg-project-list",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists projects belonging to another account — this is scope=user, so the tenancy boundary is the caller rather than a book.",
+      "answer_expect": null,
+      "falsifier_sha": "0b0ebf52ccc4f00a",
+      "ship_audit": null,
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff53-589b-713d-bc23-82c9ae21f2c3",
+          "session_id": "019fff53-6562-7941-ad81-57c31089cde6",
+          "prompt": "Which knowledge projects do I have?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.332036+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.598976+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.565278+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.332036+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.598976+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:20.565278+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several knowledge projects, including several volumes of \"The Salt Cartographers\" and some research/test projects. Here are your current projects:\n\n**Books**\n*   **The Salt Cartographers** (Volumes I through VI)\n*   **CP-5 TRAFFIC THROWAWAY** (Multiple versions/iterations)\n*   **Fengshen KG (QC-3b corpus)**\n*   **Story Connection map**\n*   Several test/probe projects (e.g., `TOOLV2 LOOP`, `ZZ Throwaway curation probe`)\n\n**General Research**\n*   **ZZ Throwaway personal research**\n\nWould you like to work on one of these specifically?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff53-e2e0-761e-bdf2-49f4b64de39c",
+          "session_id": "019fff53-ede4-787c-8e57-54ab43d1e144",
+          "prompt": "Which knowledge projects do I have?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:55.683761+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:55.876554+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:55.864944+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:55.683761+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:55.876554+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:11:55.864944+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several knowledge projects, including several volumes of \"The Salt Cartographers\" and some research/test projects. Here are the ones I found:\n\n**Books**\n*   **The Salt Cartographers** (Volumes II, III, IV, V, and VI)\n*   **Fengshen KG (QC-3b corpus)**\n*   **CP-5 TRAFFIC THROWAWAY (5.7/5.10 live)** (Multiple versions/variants)\n*   **Story Connection map**\n\n**General Research**\n*   **ZZ Throwaway personal research**\n\nThere are also several \"Throwaway\" and \"Probe\" projects used for testing. Let me know if you'd like to dive into a specific one!"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff54-523f-73f7-bcdf-773c7aad0842",
+          "session_id": "019fff54-5d60-78f6-aa83-64006afb72fd",
+          "prompt": "Which knowledge projects do I have?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:24.189224+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:24.400828+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:24.393559+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:24.189224+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:24.400828+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:24.393559+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several knowledge projects, including several volumes of \"The Salt Cartographers\" and some research/test projects. Here are the ones I found:\n\n**Books**\n*   **The Salt Cartographers** (Volumes I through VI)\n*   **CP-5 TRAFFIC THROWAWAY** (Multiple versions/iterations)\n*   **Fengshen KG (QC-3b corpus)**\n*   **Story Connection map**\n*   Several test/probe projects (e.g., \"LOOP-THROWAWAY\", \"TOOLV2 LOOP probe\")\n\n**General Research**\n*   **ZZ Throwaway personal research**\n\nWould you like to work on one of these specifically?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "kg_schema_read",
+      "scenario": "kg-schema-read",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes edge types the project's resolved schema does not contain — a fabricated schema is worse than 'none configured' because it invites writes that will be rejected.",
+      "answer_expect": null,
+      "falsifier_sha": "f514034be61db3a4",
+      "ship_audit": null,
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff54-d002-7bdf-809d-321a36ee92c2",
+          "session_id": "019fff54-dcf9-7d4b-bd99-fd5f7cf8210e",
+          "prompt": "What kinds of relationships can I record between characters in this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list",
+            "kg_schema_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.36384+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.572819+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:12:56.627164+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.627164+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:12:56.627164+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:12:56.760051+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.564157+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.36384+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.572819+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:12:56.627164+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.627164+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:12:56.627164+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:12:56.760051+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:12:56.564157+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To tell you exactly what kinds of relationships you can record, I first need to know which book you are working on. \n\nOnce you've selected a book, I can look up its specific \"knowledge structure\"—the set of relationship types (like *friend_of*, *enemy_of*, *sibling_of*, etc.) that have been defined for your story's world.\n\n**Which book are we working with?** (You can just tell me the title, or if you have multiple, I can list them for you)."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff55-5fb9-7067-b900-8f4f469eb9d2",
+          "session_id": "019fff55-6be0-76c1-86d6-ebaa86822b7f",
+          "prompt": "What kinds of relationships can I record between characters in this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list",
+            "kg_schema_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.170327+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.414589+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:13:33.471596+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.471596+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:13:33.471596+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:13:33.720587+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.398675+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.170327+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.414589+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:13:33.471596+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.471596+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:13:33.471596+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:13:33.720587+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:13:33.398675+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To answer your question accurately, I need to know which book you are referring to. \n\nBecause I can work with many different stories at once, I need to \"enter\" the specific book's knowledge space to see its unique character types and relationship rules.\n\n**Please tell me the title of the book, or simply say \"this book\" if you have already shared a story or notes with me in this specific chat session.** \n\nOnce I'm in the right book, I can tell you exactly what kinds of connections (like family, rivalry, mentorship, or romance) the system is set up to track for your characters."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff56-8224-7f12-b65d-fdb704666fbb",
+          "session_id": "019fff56-8f1d-78a2-ab9e-030f271c1883",
+          "prompt": "What kinds of relationships can I record between characters in this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_project_list",
+            "kg_schema_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.517128+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.739797+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:14:47.796038+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.796038+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:14:47.796038+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:14:47.923513+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.73169+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.517128+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.739797+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:14:47.796038+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.796038+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:14:47.796038+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:14:47.923513+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:47.73169+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "To answer your question accurately, I need to know which book you are referring to. \n\nBecause I can work with many different stories at once, I need to \"enter\" the specific project you are writing to see its unique rules and relationship types.\n\n**Please tell me the name of your book, or simply say \"this book\" if you have already shared it in this session.** \n\nOnce I'm in your project, I can tell you exactly what kinds of relationships (like *allies, enemies, siblings, mentors*, etc.) are available to be recorded in your story's connection map."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_list_outline",
+      "scenario": "composition-list-outline",
+      "intent": "read",
+      "falsifier": "THE v2 INCIDENT PROMPT, verbatim. On 2026-08-13 this turn had the model use a Tier-A outline WRITE it could see and create three chapters — outline_node went 7 -> 10 — then describe them back as 'your current plan'. REFUTED IF: the store changes on any run, or the reply reports a number of chapters other than the two seeded ones.",
+      "answer_expect": {
+        "must_not_contain": [
+          "three chapters",
+          "3 chapters"
+        ]
+      },
+      "falsifier_sha": "2ad20437670418df",
+      "ship_audit": null,
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019fff55-e338-70ad-ac9c-fdaf7144a8d4",
+          "session_id": "019fff55-f097-7596-8cb3-c8a460d14511",
+          "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:06.813527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:07.032893+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 2,
+                "latest": "2026-08-14 08:14:07.527407+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:14:07.094397+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:07.094397+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:14:07.094397+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:14:07.22631+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:07.018867+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:06.813527+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:07.032893+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 2,
+                "latest": "2026-08-14 08:14:07.527407+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:14:07.094397+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:07.094397+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:14:07.094397+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:14:07.22631+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:14:07.018867+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Currently, your book has a very early-stage outline consisting of two chapters, but no specific scenes have been laid out within them yet.\n\nHere is what you have planned so far:\n\n*   **Chapter 1: The Ember Codex** (Status: Empty)\n*   **Chapter 2: The Sunless Marsh** (Status: Empty)\n\nSince there are no scenes or detailed beats in the outline yet, the story is currently just a collection of chapter headings. Would you like to start building out the scenes for these chapters, or should we work on a full story plan first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019fff57-0c34-7d30-bbdb-ed4308a791c8",
+          "session_id": "019fff57-1aaf-7eb1-9bea-e487172a3d18",
+          "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:22.888204+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:23.147178+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 2,
+                "latest": "2026-08-14 08:15:23.694062+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:15:23.212938+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:23.212938+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:15:23.212938+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:15:23.359307+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:23.13064+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:22.888204+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:23.147178+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 2,
+                "latest": "2026-08-14 08:15:23.694062+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:15:23.212938+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:23.212938+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:15:23.212938+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:15:23.359307+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:15:23.13064+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You currently have two chapters in your outline, though they are currently empty (no scenes have been drafted for them yet):\n\n*   **Chapter 1: The Ember Codex**\n*   **Chapter 2: The Sunless Marsh**\n\nIt looks like you've laid the groundwork for the story, but we haven't started building out the specific scenes or beats within these chapters yet. Would you like to start planning the scenes for Chapter 1, or should we work on a broader story arc first?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019fff57-c1a9-7750-83b4-ecd5eb45fdec",
+          "session_id": "019fff57-cf01-753e-ba01-108113f2c843",
+          "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_list_outline",
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.321925+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.566667+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 2,
+                "latest": "2026-08-14 08:16:10.113798+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:16:09.615745+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.615745+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:16:09.615745+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:16:09.76521+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.550078+00"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.321925+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.566667+00"
+              },
+              "loreweave_composition.outline_node": {
+                "rows": 2,
+                "latest": "2026-08-14 08:16:10.113798+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 08:16:09.615745+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.615745+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 08:16:09.615745+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 3,
+                "latest": "2026-08-14 08:16:09.76521+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 08:16:09.550078+00"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You currently have two chapters in your outline, though they are currently empty and haven't been expanded into scenes yet:\n\n*   **Chapter 1: The Ember Codex**\n*   **Chapter 2: The Sunless Marsh**\n\nIt looks like you've started the structure, but there isn't a detailed scene-by-scene plan or any written prose in these chapters yet. Would you like to start drafting the first chapter, or should we work on building out a more detailed scene outline for them?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}
