@@ -2,13 +2,38 @@
 
 ## ▶ GAME BUILD — the data foundation now has DATA IN IT: the SDK has production callers, end to end (2026-08-14, branch `feat/game-logic`)
 
-**HEAD:** `618a338b1` · **NO ACTIVE run-state — all four are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `618a338b1` · **NO ACTIVE run-state — all five are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged) · [spine drain-once](../plans/2026-08-14-spine-drain-once-RUN-STATE.md) (`DFO-7` closed). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
-> **▶ DO NEXT — see the four OPEN ROWS at the end of
-> [`2026-08-13-data-foundation-dataflow-RUN-STATE.md`](../plans/2026-08-13-data-foundation-dataflow-RUN-STATE.md).**
-> The board `DF1`..`DF5` is closed; what is left there is `DFO-6` (the workspace needs one DB per
-> live suite), `DFO-7` (**`bin/spine.rs --drain-once` HANGS**, at `HEAD`, measured with this whole
-> change stashed), and the two Redis roles `DP-X2` names that are still unbuilt.
+> ## ▶ `DFO-7` IS CLOSED — THE SPINE BINARY IS DRIVEN NOW (2026-08-14)
+>
+> **`BLOCK 0` is Redis for *wait forever*.** `epoch_signal::connect_signal_bus` passed `block_ms: 0`
+> under a doc comment reading *"`block_ms: 0` NEVER blocks"*, and `BusConfig`'s own field doc said
+> the same — **both false, and neither had ever been executed against a server.**
+> `drain_and_reconcile` is the FIRST statement of the spine's loop and reads `lw.meta.events`,
+> a stream its own module doc calls *"empty almost always"*, so the binary blocked on iteration one
+> **before it ever read a proposal**. That is why it hung identically at `HEAD` with the whole
+> data-foundation change stashed.
+>
+> Fixed at the one place the value becomes a command — `BusConfig::read_options()` OMITS the
+> argument at `0` — which makes both comments TRUE rather than rewriting them to describe the bug.
+>
+> **Bitten on the binary, not on a component:** `DRAIN_RC=0` (consumed 2, two `proposal.rejected`
+> rows) → mutate one side → **`MUTANT_RC=124`, stopping on the exact line the `DFO-7` row
+> recorded** → restore byte-exact (fresh mtime, `DFD-2`) → `RESTORED_RC=0`.
+> `SUITE_RC=0` — **583 passed / 0 failed across 47 suites** (`commit-service` + `dp` + `dp-kernel`).
+>
+> **The binary now has a mechanism**: `scripts/smoke/spine-drain-once.sh` provisions two throwaway
+> databases, migrates both, and runs `tests/spine_drain_once_live.rs`, which SPAWNS `spine` and
+> requires it to terminate. The smoke was bitten too (green 0.76s → **FAILED at 90.45s** → green),
+> and it skips loudly with no stack rather than passing quietly.
+>
+> **▶ DO NEXT — the remaining OPEN ROWS in
+> [`2026-08-13-data-foundation-dataflow-RUN-STATE.md`](../plans/2026-08-13-data-foundation-dataflow-RUN-STATE.md):**
+> `DFO-6` (the workspace needs one DB per live suite — and this run hit its cause again: two
+> per-reality migrations need pgvector, which no local postgres image has) and the two Redis roles
+> `DP-X2` names that are still unbuilt (`dp:events:*` has **zero producers** — decide whether it
+> should exist before building it). The product path, `G-S3`/`G-S4`, is still parked on the PO:
+> combat and progression have no complete design to write a schema against.
 >
 > ---
 >

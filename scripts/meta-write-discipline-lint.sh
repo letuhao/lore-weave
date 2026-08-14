@@ -32,6 +32,30 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 
+# ── what is NOT a subject of this rule ───────────────────────────────────────
+#
+# A function rather than an inline chain, so the self-test below exercises the
+# SAME filter the walk uses. A self-test that re-typed these patterns would be
+# checking a copy — and a check pointed at the copy with no defect is exactly
+# how `DFO-8` stayed green through a whole run.
+#
+# `/tests/*.rs` was ADDED 2026-08-14. The list knew `_test.(go|rs|ts)`, which is
+# GO's convention; Rust's integration tests live in `<crate>/tests/` with
+# ordinary filenames, and cargo compiles that directory as test targets and
+# nothing else. So a Rust fixture seeding a meta table was judged as production
+# code. Latent, not benign: it stayed quiet only because no Rust integration
+# test had ever seeded a meta table until `spine_drain_once_live.rs` did.
+exclude_nonsubject() {
+  grep -vE '/contracts/meta/' \
+  | grep -vE '/crates/meta-rs/' \
+  | grep -vE 'migrations/meta/' \
+  | grep -vE '_test\.(go|rs|ts)' \
+  | grep -vE '/tests/[^:]*\.rs:' \
+  | grep -vE '/cmd/(closure-drill|lifecycle-race|migrate-drill)/' \
+  | grep -vE '/src/bin/(provision_drill|capacity_place|freeze_drill)\.rs' \
+  | grep -vE ':[[:space:]]*(//|--|#|\*|///)'
+}
+
 # ── self-test: the gate's own teeth, before it is trusted about the repo ─────
 #
 # Convention borrowed from the Python gates in this directory. It runs on
@@ -63,11 +87,28 @@ EOF
   printf '%s\n' "$got" | grep -q 'SELECT \*'  && { echo "  selftest: a SELECT was counted as a write"; bad=1; }
   printf '%s\n' "$got" | grep -q 'reality_registry_shadow' || { echo "  selftest: the sibling table's write was MISSED"; bad=1; }
 
+  # ── the EXCLUSION, in both directions ──
+  #
+  # The arms above test the MATCHER. Nothing tested the filter chain, which is
+  # where the Rust-test scope bug lived: an exclusion that is too wide silences
+  # real findings and an exclusion that is too narrow reports correct code, and
+  # neither shows up in a matcher test.
+  local sample_src="$tmp/services/x/src/seed.rs:9:  \"INSERT INTO reality_registry (a) VALUES (1)\""
+  local sample_tst="$tmp/services/x/tests/live.rs:9:  \"INSERT INTO reality_registry (a) VALUES (1)\""
+  local sample_srcdir="$tmp/services/x/src/tests_helper.rs:9:  \"INSERT INTO reality_registry (a)\""
+
+  printf '%s\n' "$sample_src" | exclude_nonsubject | grep -q 'seed.rs' \
+    || { echo "  selftest: a write in src/ was EXCLUDED — the filter is too wide"; bad=1; }
+  printf '%s\n' "$sample_tst" | exclude_nonsubject | grep -q 'live.rs' \
+    && { echo "  selftest: a Rust integration test under tests/ was reported"; bad=1; }
+  printf '%s\n' "$sample_srcdir" | exclude_nonsubject | grep -q 'tests_helper.rs' \
+    || { echo "  selftest: a src/ file merely NAMED tests_* was excluded"; bad=1; }
+
   if [[ "$bad" -ne 0 ]]; then
     echo "[meta-write-discipline] SELFTEST FAIL"
     return 1
   fi
-  echo "[meta-write-discipline] SELFTEST PASS — flags INSERT/UPDATE/DELETE, ignores a comment and a SELECT, and does not confuse a table with its longer-named sibling"
+  echo "[meta-write-discipline] SELFTEST PASS — flags INSERT/UPDATE/DELETE, ignores a comment and a SELECT, does not confuse a table with its longer-named sibling, and the exclusion keeps src/ while dropping tests/*.rs"
   return 0
 }
 
@@ -154,13 +195,7 @@ alt=$(printf '%s\n' "$meta_tables" | awk '{ print length, $0 }' | sort -rn | cut
 all_hits=$(grep -rniE "(INSERT[[:space:]]+INTO[[:space:]]+(${alt})|UPDATE[[:space:]]+(${alt})|DELETE[[:space:]]+FROM[[:space:]]+(${alt}))[^a-z0-9_]" \
   --include='*.go' --include='*.rs' --include='*.sql' --include='*.ts' \
   "${scan_dirs[@]}" 2>/dev/null \
-  | grep -vE '/contracts/meta/' \
-  | grep -vE '/crates/meta-rs/' \
-  | grep -vE 'migrations/meta/' \
-  | grep -vE '_test\.(go|rs|ts)' \
-  | grep -vE '/cmd/(closure-drill|lifecycle-race|migrate-drill)/' \
-  | grep -vE '/src/bin/(provision_drill|capacity_place|freeze_drill)\.rs' \
-  | grep -vE ':[[:space:]]*(//|--|#|\*|///)' || true)
+  | exclude_nonsubject || true)
 
 violations=0
 if [[ -n "$all_hits" ]]; then

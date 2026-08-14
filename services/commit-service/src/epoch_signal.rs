@@ -77,9 +77,16 @@ pub fn signal_group(reality_id: &str, channel: i64) -> String {
 /// needs, and a second implementation of it is a second place for those rules to
 /// be got subtly wrong.
 ///
-/// `block_ms: 0` NEVER blocks. The proposal fetch already owns the loop's
-/// latency; blocking here would add this timeout to every idle iteration for a
-/// stream that is empty almost always.
+/// `block_ms: 0` NEVER blocks — see [`crate::bus::BusConfig::read_options`],
+/// which omits the argument rather than sending `BLOCK 0` (the server reads
+/// that as *wait forever*). The intent below was always right and was wrong in
+/// effect for the whole life of `DFO-7`: this rail is the FIRST read of the
+/// spine's loop, so *"never blocks"* silently meant the binary never got past
+/// iteration one.
+///
+/// The reason for `0` stands unchanged: the proposal fetch already owns the
+/// loop's latency, and blocking here would add this timeout to every idle
+/// iteration for a stream that is empty almost always.
 pub async fn connect_signal_bus(
     redis_url: &str,
     reality_id: &str,
