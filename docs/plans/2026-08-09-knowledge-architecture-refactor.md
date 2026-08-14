@@ -41,9 +41,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 47 of 85 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 47 of 86 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/5) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/6) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10169,8 +10169,37 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   shadow store has no deployed caller and the provider still returns Neo4j. **(c)** the floor
   itself: `cutover_permitted: False` over 20 operations, read from the live report.
 
-  ⬜ **What remains for T43** is now honestly visible: eleven operations need real shadow
-  observations before a cutover can be argued, and Kuzu is a second comparison target.
+  ### 🔴 T43-wrap 2026-08-14 — the floor counted eleven operations NOTHING WRAPPED
+
+  ```
+  OPERATIONS: 20 | wrapped: 9 -> 20 | unwrapped: none    153 passed
+  ```
+
+  Widening the floor was correct and **incomplete**. It made the report *name* eleven uncompared
+  operations — but `ShadowGraphStore` still wrapped only nine, so those eleven **could never gain
+  an observation no matter how much traffic ran**. The floor would have blocked forever, for a
+  reason nobody could act on, and *"blocked"* would have looked like diligence.
+
+  🔻 **A floor naming an operation nothing wraps is as dishonest as one that omits it.** The first
+  overstates coverage; the second makes the block unmeetable. Same defect — the list and the
+  surface disagreeing — pointing opposite ways.
+
+  ✅ All eleven wrapped, in the two shapes the file already uses: natural-keyed calls replay
+  directly, id-keyed ones go through `_shadow_by_id` so an unmapped id reports `unmapped` rather
+  than inventing an agreement. **`merge_event` also LEARNS the mapping** — it is keyed on natural
+  identity like `resolve_or_merge_entity`, and without that every id-keyed event operation would
+  have stayed `unmapped` forever, which is the unmeetable-block failure in miniature.
+
+  ✅ `test_every_OPERATION_is_actually_WRAPPED` closes it. **BITE:** rename `facts_for` →
+  *"the coverage floor counts ['facts_for'] but ShadowGraphStore does not wrap them, so they can
+  never gain an observation and the floor can never be met"*. Restored, 153 passed.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A because no service seam is crossed — the
+  shadow store has no deployed caller. **(c)** 153 passed; `cutover_permitted: False` over 20
+  operations, which is now a block that CAN be met.
+
+  ⬜ **What remains for T43:** the twenty wrapped operations need real traffic to gain
+  observations, and Kuzu is a second comparison target alongside AGE.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**

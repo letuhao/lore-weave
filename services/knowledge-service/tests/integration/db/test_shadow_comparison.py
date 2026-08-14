@@ -238,3 +238,24 @@ def test_OPERATIONS_covers_the_WHOLE_port():
         "Add them to OPERATIONS in the same commit that adds them to the port — the floor "
         "cannot block on an operation it does not know exists."
     )
+
+
+def test_every_OPERATION_is_actually_WRAPPED():
+    """🔴 The other half of the floor's honesty, and it was missing.
+
+    Widening `OPERATIONS` to twenty made the floor *report* eleven uncompared operations — but
+    the shadow store still wrapped only NINE, so those eleven could never gain an observation
+    no matter how much traffic ran. The floor would have blocked forever, for a reason nobody
+    could act on, and "blocked" would have looked like diligence.
+
+    A floor naming an operation nothing wraps is as dishonest as one that omits it: the first
+    overstates coverage, the second makes the block unmeetable. Both are the same defect —
+    the list and the surface disagreeing.
+    """
+    from app.adapters.shadow_graph_store import OPERATIONS, ShadowGraphStore
+
+    unwrapped = [op for op in OPERATIONS if not callable(getattr(ShadowGraphStore, op, None))]
+    assert not unwrapped, (
+        f"the coverage floor counts {unwrapped} but ShadowGraphStore does not wrap them, so "
+        "they can never gain an observation and the floor can never be met"
+    )

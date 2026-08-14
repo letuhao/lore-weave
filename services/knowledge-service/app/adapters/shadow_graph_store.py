@@ -309,3 +309,97 @@ class ShadowGraphStore:
     async def events_in_window(self, **kw):
         out = await self._primary.events_in_window(**kw)
         return await self._shadow("events_in_window", out, lambda s: s.events_in_window(**kw))
+
+    # ── the ELEVEN that were never wrapped ────────────────────────────────────────────────
+    # Added 2026-08-14 with the coverage-floor widening. Until then `OPERATIONS` listed nine,
+    # so the floor could not block on these and `cutover_permitted` was answerable True while
+    # they had never been compared once — including the rare correction paths the floor's own
+    # justification names as *"would diverge silently"*.
+    #
+    # Each is the same two shapes as above: NATURAL-keyed calls replay directly; ID-keyed ones
+    # go through `_shadow_by_id`, which reports `unmapped` rather than inventing an agreement
+    # when the primary's node has no twin yet.
+
+    async def get_relation(self, **kw):
+        out = await self._primary.get_relation(**kw)
+        return await self._shadow_by_id(
+            "get_relation", out, kw.get("relation_id"),
+            lambda s, sid: s.get_relation(**{**kw, "relation_id": sid}))
+
+    async def invalidate_relation(self, **kw):
+        out = await self._primary.invalidate_relation(**kw)
+        return await self._shadow_by_id(
+            "invalidate_relation", out, kw.get("relation_id"),
+            lambda s, sid: s.invalidate_relation(**{**kw, "relation_id": sid}))
+
+    async def recreate_relation(self, **kw):
+        out = await self._primary.recreate_relation(**kw)
+        subj = self._map_id(kw.get("subject_id"))
+        obj = self._map_id(kw.get("object_id"))
+        if subj is None or obj is None:
+            self.stats.unmapped["recreate_relation"] = (
+                self.stats.unmapped.get("recreate_relation", 0) + 1)
+            return out
+        return await self._shadow(
+            "recreate_relation", out,
+            lambda s: s.recreate_relation(**{**kw, "subject_id": subj, "object_id": obj}))
+
+    async def events_page(self, **kw):
+        out = await self._primary.events_page(**kw)
+        return await self._shadow("events_page", out, lambda s: s.events_page(**kw))
+
+    async def get_event(self, **kw):
+        out = await self._primary.get_event(**kw)
+        return await self._shadow_by_id(
+            "get_event", out, kw.get("event_id"),
+            lambda s, sid: s.get_event(**{**kw, "event_id": sid}))
+
+    async def merge_event(self, **kw):
+        out = await self._primary.merge_event(**kw)
+
+        async def _call(s):
+            twin = await s.merge_event(**kw)
+            # Keyed on NATURAL identity (user + project + chapter + title), so — like
+            # `resolve_or_merge_entity` — this is a place the mapping can be LEARNED rather
+            # than assumed. Without it every id-keyed event op below stays `unmapped` forever.
+            if out is not None and twin is not None:
+                self._ids[out.id] = twin.id
+            return twin
+
+        return await self._shadow("merge_event", out, _call)
+
+    async def update_event_fields(self, **kw):
+        out = await self._primary.update_event_fields(**kw)
+        return await self._shadow_by_id(
+            "update_event_fields", out, kw.get("event_id"),
+            lambda s, sid: s.update_event_fields(**{**kw, "event_id": sid}))
+
+    async def archive_event(self, **kw):
+        out = await self._primary.archive_event(**kw)
+        return await self._shadow_by_id(
+            "archive_event", out, kw.get("event_id"),
+            lambda s, sid: s.archive_event(**{**kw, "event_id": sid}))
+
+    async def merge_fact(self, **kw):
+        out = await self._primary.merge_fact(**kw)
+        subj = kw.get("subject_id")
+        if subj is not None:
+            mapped = self._map_id(subj)
+            if mapped is None:
+                self.stats.unmapped["merge_fact"] = self.stats.unmapped.get("merge_fact", 0) + 1
+                return out
+            kw = {**kw, "subject_id": mapped}
+        return await self._shadow("merge_fact", out, lambda s: s.merge_fact(**kw))
+
+    async def facts_for(self, **kw):
+        out = await self._primary.facts_for(**kw)
+        return await self._shadow_by_id(
+            "facts_for", out, kw.get("subject_id"),
+            lambda s, sid: s.facts_for(**{**kw, "subject_id": sid}))
+
+    async def add_evidence(self, **kw):
+        out = await self._primary.add_evidence(**kw)
+        return await self._shadow_by_id(
+            "add_evidence", out, kw.get("target_id"),
+            lambda s, sid: s.add_evidence(**{**kw, "target_id": sid}))
+
