@@ -36,8 +36,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import hashlib
 import pathlib
 import sys
+
+
+def _sha(text) -> str:
+    """Must match fe_runner._sha exactly — the two sides of the same commitment."""
+    if not text:
+        return ""
+    return hashlib.sha256(str(text).strip().encode("utf-8")).hexdigest()[:16]
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 LEDGER = ROOT / "contracts" / "tool-deep-dive-ledger.json"
@@ -94,6 +102,12 @@ class Gate:
             "the tool's own response is not evidence of what it wrote")
         self._check(bool(t.get("falsifier")), f"[{t['tool']}] DATA falsifier",
                     "state explicitly what result would REFUTE this conclusion")
+        amended = t.get("falsifier_amended_after_run")
+        self._check(
+            not amended, f"[{t['tool']}] DATA falsifier not back-dated",
+            "the falsifier was CHANGED after the run it judges. A prediction edited once the "
+            "result is known is a description, not a falsifier. Re-run against the new one, or "
+            "keep the one that was actually committed to")
         if with_both and t.get("intent") == "read":
             wrote = [i for i, p in enumerate(with_both) if p["before"] != p["after"]]
             self._check(
@@ -196,7 +210,23 @@ def cmd_refresh(a) -> int:
         sc = by_scenario.get(t.get("scenario"))
         if not sc:
             continue
-        for field in ("falsifier", "ship_audit", "defects", "suite", "deploy"):
+        # 🔴 THE FALSIFIER IS THE ONE FIELD REFRESH MAY NOT QUIETLY REWRITE. ship_audit, defects,
+        # suite and deploy are RECORDS OF WORK DONE — they can only be written after the work, so
+        # back-filling them is the point of this command. A falsifier is the opposite: it is a
+        # commitment made BEFORE the result is known, and one written afterwards is just a
+        # description of what happened wearing a prediction's clothes. The run stamped its hash;
+        # a changed falsifier is recorded as amended and the gate fails on it rather than being
+        # silently overwritten here.
+        if "falsifier" in sc:
+            stamped = t.get("falsifier_sha")
+            now = _sha(sc["falsifier"])
+            if stamped and now != stamped:
+                t["falsifier_amended_after_run"] = {
+                    "was_sha": stamped, "now_sha": now, "new_text": sc["falsifier"]}
+            elif not stamped:
+                t["falsifier"] = sc["falsifier"]
+                n += 1
+        for field in ("ship_audit", "defects", "suite", "deploy"):
             if field in sc:
                 t[field] = sc[field]
                 n += 1

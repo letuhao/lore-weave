@@ -483,6 +483,14 @@ def report(results, scenarios, repeats):
           "from '0/5 surfaced'.")
 
 
+def _sha(text) -> str:
+    """Stable fingerprint of a judgement field, or "" when there is nothing to fingerprint."""
+    import hashlib
+    if not text:
+        return ""
+    return hashlib.sha256(str(text).strip().encode("utf-8")).hexdigest()[:16]
+
+
 APPROVAL_MODE = "none"
 #: Investigation only. A kept fixture is a book left on the account, so the sweep in
 #: provision.py --sweep is the way back.
@@ -540,6 +548,13 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
             # keyboard on both sides of the check — the measured fields and the asserted ones
             # would live in the same document, one save away from each other.
             "falsifier": sc.get("falsifier"),
+            # 🔴 STAMPED BY THE RUN, SO A LATER EDIT CANNOT HIDE. A falsifier written after the
+            # results are in is not a falsifier, it is a description of what happened — and
+            # `gate.py refresh` (which exists so a defect noticed while reading results need not
+            # cost a ten-minute re-run) is exactly the door that lets one be back-dated. The hash
+            # of the falsifier AS IT STOOD WHEN THE TURNS RAN is recorded here by the machine;
+            # refresh compares against it and the gate fails on a mismatch.
+            "falsifier_sha": _sha(sc.get("falsifier")),
             "ship_audit": sc.get("ship_audit"),
             "defects": sc.get("defects") or [],
             "runs": runs,
