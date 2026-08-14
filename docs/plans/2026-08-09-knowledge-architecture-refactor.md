@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — the shadow comparison now has TWO real candidates to run. The Kuzu adapter is COMPLETE (all twenty port operations, 30 passed on the full conformance suite, and it honours `maintain_chain` which AGE refuses). T42 still needs its own row closed: read its Do-list before ticking. ⚠️ Kuzu's file lock means one process per database — that is the single biggest input to the engine choice and no conformance green surfaces it.**
+**RESUME: `T43` — the shadow comparison, which now has TWO real candidates. `T42` is CLOSED: both X1 entrants are built and conformed (AGE 2026-08-12, Kuzu 2026-08-14 — twenty operations, 30 passed on the full suite, and it honours `maintain_chain` which AGE refuses). ⚠️ Carry into the engine choice: Kuzu is EMBEDDED and refuses a second handle on a database, so an adapter can pass all thirty rules in one process and still be unshippable behind two — no conformance green surfaces that.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 57 of 97 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 47 of 84 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (10/13) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9342,14 +9342,33 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   pooled connection is queried from a *different* one, which is the cross-connection case the
   session state governs.
   **QC (c) real data** — 19 graphs created in `ag_catalog.ag_graph` across this cycle's runs.
-- [~] **T42** — Second `GraphStore` adapter — **AGE FIRST**, then Kuzu / Postgres-relational
+- [x] **T42** — Second `GraphStore` adapter — **AGE FIRST**, then Kuzu / Postgres-relational
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
-  ⬜ **STILL OWED, checked 2026-08-14: the KUZU adapter is NOT built.** `app/adapters/` holds
-  `age_graph_store.py` and no Kuzu sibling. The AGE half is done and its evidence is below —
-  which is why `plan-row-honesty-gate` flags this row at 9 completion-markers — but **X1 (PO)
-  says build BOTH candidates and let T43 choose**, so shipping one and ticking the box would
-  hand T43 a single-candidate bake-off and call it a decision. This sentence is here so the
-  gate reads the row correctly; the row is genuinely open.
+  ✅ **CLOSED 2026-08-14 — X1's bake-off has BOTH entrants.** X1 (PO) scoped this row as
+  *"build BOTH candidates and let T43 choose"*: `age_graph_store.py` (2026-08-12) and
+  `kuzu_graph_store.py` (2026-08-14, all twenty port operations, **30 passed on the full
+  conformance suite with no scope list**). Its three dependencies — T42a/T42b/T42c — are closed.
+  The `⬜ STILL OWED — the KUZU adapter is NOT built` sentence that stood here is now false and
+  is replaced rather than left beside the evidence.
+
+  🔴 **This row was nearly the SEVENTH to ship and sit `[~]`.** The previous cycle wrote *"T42
+  still needs its own row closed"* into the RESUME instead of closing it — in the same session
+  that built four tools against exactly that. Rule 11 (*tick the box in the commit that does the
+  work*) exists because writing the intention down is not the same as doing it.
+
+  **QC, each control stated rather than abbreviated:**
+  **(a) gates** — green: plan-verify PASS, `plan-row-honesty-gate` OK, `plan-progress-block --check`
+  OK, `plan-acceptance --floor` OK. **(b) live smoke** — **N/A because this row crosses no service
+  seam**: `graph_store_provider` returns Neo4j and is unchanged, so no deployed process can reach
+  either candidate. Wiring one is T43's shadow harness, and doing it here would decide the engine
+  by configuration drift — the exact thing the provider's docstring refuses. **(c) real-run data**
+  — the conformance suite runs against a **real Kuzu database per test** and a **throwaway AGE
+  container** off the T42b image; the 30/151 counts above are those runs, not fixtures.
+
+  ⚠️ **The one thing no conformance green can surface, carried to T43:** Kuzu is EMBEDDED and
+  refuses a second handle on a database (`Could not set lock on file`). An adapter can pass all
+  thirty rules in one process and still be unshippable behind two. It is the single biggest input
+  to the engine choice.
   ⚠️ **Candidate set restored 2026-08-11**: **AGE · Kuzu · Postgres-relational**. The prior text
   read *"Postgres-relational recommended; Kuzu the alternative — AGE is eliminated"*, which now
   contradicts amended sealed rows **T1** and **T2**; an implementer following it would build the
