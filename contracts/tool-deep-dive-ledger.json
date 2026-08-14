@@ -1549,6 +1549,61 @@
    "evidence_class": "gate-backed",
    "state": "proven",
    "note": "Called 3/3 from pasted notes, store UNCHANGED 3/3 — exactly its declared contract (returns candidates, writes nothing), which is the falsifier that mattered here. Held on the empty fixture too (called 2/3, store unchanged 3/3). Tenancy refused 'book not accessible'."
+  },
+  "composition_list_outline": {
+   "cycle": "batch-3",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "THE v2 INCIDENT TOOL, and its own prompt run verbatim. Fixture asserts exactly TWO outline nodes. Called 3/3, store UNCHANGED 3/3, reply names exactly the two seeded chapters. On 2026-08-13 this sentence had the model use the Tier-A outline WRITE it could see, take outline_node 7 -> 10, and describe the result as 'your current plan'. Empty-outline case also clean (called 3/3, unchanged) — that is where it previously reached for the write. Tenancy refused at PROJECT scope; the seeded node was not disclosed to another account."
+  },
+  "glossary_adopt_standards": {
+   "cycle": "batch-3",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Called 3/3 from 'set up my story bible with the standard categories'; after the confirm card was granted it wrote 5 glossary tables 3/3. Its fixture IS the absent case — seed_assert demands 0 book_kinds before the turn, so a silent no-op could not pass. Tenancy refused 'book not accessible'. Declared this session (it had no synonyms)."
+  },
+  "kg_project_list": {
+   "cycle": "batch-3",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Called 3/3, store unchanged 3/3 on both fixtures. scope=USER, so the tenancy boundary is the caller: probed as claude-test2, it returned only that account's own projects and not the harness user's. Declared this session."
+  },
+  "kg_schema_read": {
+   "cycle": "batch-3",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Called 3/3, store unchanged 3/3 on both fixtures, no fabricated edge types — the specific risk in its falsifier, since an invented schema invites writes that will be rejected. Tenancy refused 'project not found' at PROJECT scope. Declared this session."
+  },
+  "tool_load": {
+   "cycle": "batch-3",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch3.json (+ batch3-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "blocked",
+   "note": "BLOCKED, not proven. Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read instead of loading the schema. Plausible and NOT sourced from the contract this tool exists to expose. The LIVE bar is not met: the tool was never exercised by the model. Cause recorded as D-TOOL-LOAD-NOT-USED-FOR-SCHEMA and it is NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. Store unchanged and tenancy not-applicable (it loads schemas, identical for every caller)."
   }
  },
  "defects": {
@@ -1964,7 +2019,7 @@
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
-  "concluded_in_release_surface": 35,
-  "remaining_in_release_surface": 163
+  "concluded_in_release_surface": 40,
+  "remaining_in_release_surface": 158
  }
 }
