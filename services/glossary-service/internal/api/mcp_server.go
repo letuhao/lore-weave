@@ -373,11 +373,31 @@ type searchToolIn struct {
 	Limit  int    `json:"limit,omitempty" jsonschema:"max entities to return (default 20, max 50)"`
 }
 type searchToolOut struct {
+	// RESULTS. Empty means the query matched nothing — always, with no exceptions and nothing
+	// else to read. See RecentForOrientation.
 	Entities []glossaryEntityForContext `json:"entities"`
-	// T28-D1 — set ONLY when the query matched nothing and the entities above are the recent
-	// fallback. Absent on a real match, so a caller that ignores it is never misled by its
-	// presence; a caller that reads it can tell 4 results from 0 results.
+	// T28-D1 — set ONLY when the query matched nothing and the recents were returned instead.
+	// Absent on a real match, so a caller that ignores it is never misled by its presence.
 	Note string `json:"note,omitempty"`
+	// T28-D1 ROUND 2 (2026-08-14) — the recents live HERE now, not in Entities.
+	//
+	// 🔴 THE NOTE WAS WRITTEN, IT WAS CORRECT, AND THE MODEL IGNORED IT. T28-D1 added a plain
+	// sentence — "NO ENTITY MATCHED this query … returned for orientation only … Do NOT treat
+	// them as results for this search" — on the reasoning that a caller who ignores it is never
+	// misled. Measured live 2026-08-14, K=3: asked "Are there any suggested entries waiting for
+	// me to review?" against a book with exactly ONE queued entity, the model called
+	// glossary_search, got this fallback with all three recents and that exact note, and replied
+	// "3 suggested entries waiting for your review" on 3 of 3 runs.
+	//
+	// It used the data and dropped the sentence. That is the same lesson three other experiments
+	// gave this week: prose in the payload, prose in the system note and prose in a context block
+	// all failed to stop a weak model from using answer-shaped data that was sitting right there.
+	// A disclaimer is not a mechanism.
+	//
+	// So the mechanism is the SHAPE: on a no-match `entities` is empty, which cannot be read as
+	// three results by any caller, careful or not. The recents are still available — orientation
+	// was a real need — but under a key whose name is what it is for.
+	RecentForOrientation []glossaryEntityForContext `json:"recent_for_orientation,omitempty"`
 }
 
 // searchIsRecentFallback reports whether EVERY returned entity is the tier-3 "recent" fallback,
@@ -490,10 +510,16 @@ func (s *Server) toolSearch(ctx context.Context, _ *mcp.CallToolRequest, in sear
 	}
 	out := searchToolOut{Entities: resp.Entities}
 	if strings.TrimSpace(in.Query) != "" && searchIsRecentFallback(resp.Entities) {
-		out.Note = "NO ENTITY MATCHED this query. The entities listed are the book's most recently " +
-			"touched ones, returned for orientation only — every one is tier=\"recent\" with " +
-			"rank_score 0.1. Do NOT treat them as results for this search: if you needed a match, " +
-			"the glossary does not have one under this wording."
+		// T28-D1 ROUND 2 — MOVE them, do not merely label them. Leaving the recents in
+		// `entities` beside a "do not treat these as results" note was measured 3/3 to produce
+		// exactly that: three orientation rows reported as three search hits. An empty
+		// `entities` cannot be misread.
+		out.RecentForOrientation = resp.Entities
+		out.Entities = []glossaryEntityForContext{}
+		out.Note = "NO ENTITY MATCHED this query — `entities` is empty. `recent_for_orientation` " +
+			"holds the book's most recently touched entities (tier=\"recent\", rank_score 0.1) " +
+			"purely so you can orient; they are NOT results for this search and answer no " +
+			"question about how many or which entities match anything."
 	}
 	return nil, out, nil
 }

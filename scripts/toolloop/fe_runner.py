@@ -367,6 +367,10 @@ async def main_async(scenarios, repeats, concurrency, approval_mode="none"):
             try:
                 fx = await asyncio.to_thread(
                     lambda: Throwaway(f"{sc['id']}-{i}").build(seed=sc.get("seed") or []))
+                # A seed is a CLAIM about the world; this checks it against the store before any
+                # turn runs. Three scenarios in a row measured something other than what they
+                # claimed, and the third inverted the reading of three experiments.
+                await asyncio.to_thread(fx.assert_seeded, sc.get("seed_assert"))
                 before = await asyncio.to_thread(snapshot, fx.book_id)
                 try:
                     r = await run_scenario(client, auth, sc, i, fx)

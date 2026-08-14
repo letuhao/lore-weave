@@ -77,3 +77,48 @@ func TestTheNoteIsOmittedFromTheJSONWhenEmpty(t *testing.T) {
 		t.Error("the note field lost `omitempty`; it would then appear on every successful search")
 	}
 }
+
+// ── T28-D1 ROUND 2 (2026-08-14) — the note was correct and the model ignored it ──────────────
+//
+// The original fix put the recents in `entities` and added a plain sentence beside them: "NO
+// ENTITY MATCHED this query … returned for orientation only … Do NOT treat them as results for
+// this search." Its own comment reasoned that "a caller that ignores it is never misled by its
+// presence".
+//
+// Measured live 2026-08-14, K=3, through the real chat path: asked "Are there any suggested
+// entries waiting for me to review?" against a book with exactly ONE queued entity, the model
+// called glossary_search, received this fallback — three recents plus that exact note — and
+// answered "3 suggested entries waiting for your review" on 3 of 3 runs. It used the data and
+// dropped the sentence.
+//
+// A disclaimer is not a mechanism. These guards pin the SHAPE instead.
+
+func TestNoMatchEmptiesEntitiesRatherThanLabellingThem(t *testing.T) {
+	src := readAPISourceForSearch(t)
+	if !containsAll(src,
+		"out.RecentForOrientation = resp.Entities",
+		"out.Entities = []glossaryEntityForContext{}",
+	) {
+		t.Error("a no-match must EMPTY `entities` and move the recents to " +
+			"`recent_for_orientation`. Leaving them in `entities` beside a note was measured 3/3 " +
+			"to be read as three search results (T28-D1 round 2)")
+	}
+}
+
+func TestTheOrientationFieldIsOmittedOnARealMatch(t *testing.T) {
+	// A real match must stay byte-identical to before, or every consumer starts branching on a
+	// field that is always present — the same reasoning that put `omitempty` on Note.
+	src := readAPISourceForSearch(t)
+	if !containsAll(src, `RecentForOrientation []glossaryEntityForContext `+"`"+`json:"recent_for_orientation,omitempty"`+"`") {
+		t.Error("recent_for_orientation lost `omitempty`; it would appear on successful searches")
+	}
+}
+
+func TestTheNoteSaysEntitiesIsEmpty(t *testing.T) {
+	// The note survives, but it now describes the SHAPE the caller can verify for itself rather
+	// than asking it to disregard data it can see.
+	src := readAPISourceForSearch(t)
+	if !containsAll(src, "`entities` is empty") {
+		t.Error("the no-match note no longer tells the caller that entities is empty")
+	}
+}

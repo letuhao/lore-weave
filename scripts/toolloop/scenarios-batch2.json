@@ -170,7 +170,7 @@
         {
           "sql": {
             "db": "loreweave_glossary",
-            "statement": "UPDATE glossary_entities SET tags = ARRAY['ai-suggested'], status='draft' WHERE book_id='{book_id}' AND cached_name='Mira Solene'"
+            "statement": "UPDATE glossary_entities SET tags = ARRAY['assistant'], status='active' WHERE book_id='{book_id}' AND cached_name <> 'Mira Solene'"
           }
         }
       ],
@@ -190,7 +190,21 @@
           "not have any suggested",
           "no entries waiting"
         ]
-      }
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND 'ai-suggested' = ANY(tags) AND status='draft'",
+          "expect": "1",
+          "why": "exactly ONE entity must be in the ai-suggested review queue, or a truthful answer and a lazy 'three' are the same sentence and the scenario proves nothing"
+        },
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "three entities must exist, so 'one' is a filtered answer rather than a total"
+        }
+      ]
     },
     {
       "id": "glossary-ontology-upsert",

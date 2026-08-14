@@ -71,9 +71,27 @@ func (s *Server) RegisterCurationTools(srv *mcp.Server) {
 			"status": {"proposed", "dismissed", "merged", "draft", "active", "inactive", "rejected", "all"},
 		}),
 		OutputSchema: curationListOutputSchema(),
+		// 🔴 THE DECLARED PHRASES MUST BE WHAT A PERSON TYPES, NOT WHAT THE FEATURE IS CALLED.
+		// Measured live 2026-08-14, K=3. Fixture: three entities, exactly ONE tagged
+		// 'ai-suggested'. Asked "Are there any suggested entries waiting for me to review?" this
+		// tool — the one that answers precisely that — was surfaced on 0 of 3 runs, because the
+		// answerability pass matches a DECLARED phrase against the request and none of the seven
+		// above appears in that sentence. "what needs review" is close and matches nothing;
+		// "review inbox" and "curation inbox" are the product's words for it, not the author's.
+		//
+		// With no tool on the wire the model answered from whatever it could reach: first
+		// glossary_search's orientation rows ("3 suggested entries" over a queue of one), then,
+		// once that payload was fixed, "you don't have any". Both confidently wrong, in opposite
+		// directions, about a queue that had exactly one item in it.
+		//
+		// The additions below are the phrasings the failing runs actually used. This is the
+		// per-tool half of R2; scripts/lint_superseded_synonyms.py counts what is still owed.
 		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{
 			"review inbox", "curation inbox", "duplicates to merge", "triage unknown entities",
 			"ai suggestions to review", "what needs review", "entity review queue",
+			"suggested entries", "suggested entry", "waiting for review", "waiting for my review",
+			"awaiting review", "pending review", "anything to review", "entries to review",
+			"suggestions to review", "review queue", "needs my review",
 		})),
 	}, s.toolCurationList)
 }

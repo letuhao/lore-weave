@@ -119,6 +119,36 @@ class Throwaway:
             self._seed_step(step)
         return self
 
+    def assert_seeded(self, checks: list[dict] | None) -> None:
+        """Prove the fixture is in the state the scenario CLAIMS, by reading the store.
+
+        🔴 THREE SCENARIOS IN A ROW MEASURED SOMETHING OTHER THAN WHAT THEY CLAIMED, AND THE THIRD
+        INVERTED THE READING OF THREE EXPERIMENTS. The `glossary_list_ai_suggestions` fixture was
+        supposed to hold three entities with exactly ONE tagged 'ai-suggested', so that a truthful
+        answer ("one, Mira Solene") and a lazy one ("three") differ. It never did:
+        `glossary_propose_entities` already tags everything it creates `ai-suggested+assistant`,
+        so the SQL step that "tagged one" changed nothing observable. All three were always in the
+        review queue.
+
+        Every conclusion drawn on top of that was therefore wrong in the same direction: "3
+        suggested entries" was the CORRECT answer being scored as a fabrication, and two fixes
+        were evaluated against it — one of them reverted on that basis.
+
+        A seed is a claim about the world. This makes the claim checkable at the moment it is
+        made, against the store, before a single turn runs — so a scenario that cannot
+        discriminate fails loudly instead of producing confident nonsense for an hour.
+        """
+        for c in (checks or []):
+            sql = self._substitute(c["query"])
+            rows = oracle.db_query(c["db"], sql)
+            got = (rows[0][0] if rows and rows[0] else "")
+            if str(got).strip() != str(c["expect"]).strip():
+                raise ProvisionError(
+                    f"SEED ASSERTION FAILED: {c.get('why', c['query'])}\n"
+                    f"    expected {c['expect']!r}, store says {got!r}\n"
+                    f"    The fixture is not in the state this scenario claims, so whatever it "
+                    f"measures is not what it says it measures.")
+
     def _make_chapter(self) -> str | None:
         r = self.mcp.call("book_chapter_create", {
             "book_id": self.book_id,

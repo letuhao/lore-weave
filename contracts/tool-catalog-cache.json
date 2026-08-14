@@ -16291,7 +16291,18 @@
     "triage unknown entities",
     "ai suggestions to review",
     "what needs review",
-    "entity review queue"
+    "entity review queue",
+    "suggested entries",
+    "suggested entry",
+    "waiting for review",
+    "waiting for my review",
+    "awaiting review",
+    "pending review",
+    "anything to review",
+    "entries to review",
+    "suggestions to review",
+    "review queue",
+    "needs my review"
    ],
    "tier": "R"
   }
