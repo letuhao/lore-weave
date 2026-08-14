@@ -6882,6 +6882,45 @@ async def stream_response(
     # asyncpg.Record supports .get() since 0.27; using it lets test mocks
     # that pass a plain dict without project_id continue to work.
     project_id = session_row.get("project_id") if session_row else None
+    # ── D-MEMORY-FACT-STORED-UNSCOPED (2026-08-14) — GIVE project_id THE CHAIN ITS SIBLING HAS ──
+    #
+    # `book_id` is resolved a few lines below from editor_context -> book_context ->
+    # studio_context -> the session row. `project_id` had ONE source: the session row. Measured:
+    # 417 of 503 book-bound sessions (83%) carry a book and no project, and on every one of them
+    # each `ambient_project` tool is told the project is absent — the memory tools, the kg tools,
+    # story_search. They do not fail, they degrade silently.
+    #
+    # Live: memory_remember returned {"remembered": true, "fact_id": …, "confidence": 0.7} and the
+    # fact IS in Neo4j — with project_id NULL, one of only 4 such nodes out of 343. Unscoped means
+    # unrecallable, so the same session then said "I don't have any information about Mira Solene"
+    # about the thing it had just been asked to remember.
+    #
+    # The invariant: an id the platform can resolve from the turn's OWN context must be resolved
+    # before a tool is told it is absent. Deliberately narrow — it fires only when the turn has a
+    # book and resolves to THAT book's project, so it can never redirect across scopes (the
+    # failure mode `_inject_context_ids` refuses by leaving a valid-but-unknown UUID alone).
+    if not project_id:
+        _pid_book = (
+            (editor_context or {}).get("book_id")
+            or (book_context or {}).get("book_id")
+            or (studio_context or {}).get("book_id")
+            or (session_row.get("book_id") if session_row else None)
+        )
+        # The FE already hands us the project on a studio turn, and today that value is used ONLY
+        # to write the id into the model's prose note — the turn told the MODEL its project id and
+        # left its own envelope empty. That inconsistency is what led here.
+        project_id = (studio_context or {}).get("project_id")
+        if not project_id and _pid_book:
+            try:
+                from app.services.book_state_probe import project_for_book
+                project_id = await project_for_book(str(_pid_book))
+            except Exception:  # noqa: BLE001 — a probe failure must leave today's behaviour
+                project_id = None                # exactly as it was: None, and fail closed.
+        if project_id:
+            logger.info(
+                "turn project resolved from the book (session row had none): book=%s project=%s",
+                _pid_book, project_id,
+            )
     # A2A phase-2: optional composer model for in-turn prose delegation.
     composer_src = session_row.get("composer_model_source") if session_row else None
     composer_ref = session_row.get("composer_model_ref") if session_row else None

@@ -1783,6 +1783,14 @@
    "invariant": "A tool must declare the words a PERSON types, not the words the schema or the feature uses. The answerability pre-filter matches declared phrases against the request, and it is the only dynamic path onto the wire because the lazy tail does not fire (tool_list 1/30 runs, tool_load 0/30).",
    "evidence": "glossary_curation_list surfaced 0/3 -> called 3/3 with a correct filtered answer; glossary_ontology_upsert surfaced 0/3 -> 3/3; 26 more tools declared (story_search, 5 memory, 20 kg). Undeclared shippable tools 42 -> 36 -> 16.",
    "lint": "scripts/lint_superseded_synonyms.py --max-undeclared"
+  },
+  "D-MEMORY-FACT-STORED-UNSCOPED": {
+   "date": "2026-08-14",
+   "service": "chat-service",
+   "invariant": "An id the platform can resolve from the turn's OWN context must be resolved before a tool is told it is absent — the guarantee book_id already had.",
+   "chokepoint": "stream_service project_id derivation + book_state_probe.project_for_book",
+   "test": "services/chat-service/tests/test_turn_project_resolves_from_the_book.py",
+   "blast_radius": "417 of 503 book-bound sessions (83%) had a book and no project"
   }
  },
  "deferred_questions": {
@@ -2015,11 +2023,14 @@
    "date": "2026-08-14",
    "finding": "On a book-scoped turn, memory_remember stored its fact with project_id NULL. Measured in Neo4j: 339 of 343 Fact nodes carry a project_id; the one this turn wrote is among the 4 that do not. The handler reads `project_id = str(ctx.project_id) if ctx.project_id else None`, so the ambient project did not resolve for that turn — plausibly because the model created the knowledge project mid-turn via kg_project_create, after the envelope was built.",
    "consequence": "A fact stored unscoped is invisible to project-scoped recall. That is consistent with the same batch's memory_recall_entity run answering 'I don't have any information about Mira Solene' — the user is told nothing is known about something they just asked to be remembered.",
-   "state": "OPEN — recorded with the measurement, not fixed.",
+   "state": "FIXED 2026-08-14 — shipped, deployed, proven live at the store.",
    "root_cause": "stream_service reads the turn's project from ONE place — session_row.project_id — while book_id ten lines earlier has a four-step fallback chain (editor_context -> book_context -> studio_context -> session_row). No project_id means no X-Project-Id header, which means knowledge-service's ctx.project_id is None, which means merge_fact(project_id=None).",
    "blast_radius": "417 of 503 book-bound chat sessions (83%) have a book and NO project, so every ambient_project tool on them is told the project is absent; 448 composition_work rows have a resolvable project_id.",
    "proposal": "docs/plans/2026-08-14-turn-project-resolution.md",
-   "fix_costs_nothing_extra": "book_state_probe._connections() already calls GET /internal/books/{book_id}/kg-state once per turn and that response carries project_id — the current code reads entity_count and discards the rest. And studio_context.project_id is already read, but only to write the id into the model's PROSE note, never into the envelope."
+   "fix_costs_nothing_extra": "book_state_probe._connections() already calls GET /internal/books/{book_id}/kg-state once per turn and that response carries project_id — the current code reads entity_count and discards the rest. And studio_context.project_id is already read, but only to write the id into the model's PROSE note, never into the envelope.",
+   "fix": "stream_service gives project_id the fallback chain its sibling book_id already had: session_row -> studio_context -> the book's project via book_state_probe.project_for_book (the same kg-state endpoint _connections already calls) -> None. Guarded on the turn HAVING a book, so it resolves only to that book's own project and can never redirect across scopes.",
+   "live_before_after": "memory_remember on a book-bound session with chat_sessions.project_id NULL: f.project_id was NULL, is now the book's project id, read back from Neo4j. The harness store diff went from 'unchanged' to 'WROTE neo4j.Fact.project'.",
+   "falsifier_red": "Disabling the book lookup reds test_the_chain_is_wired_at_the_single_derivation_point and leaves the other five green — including the safety guards."
   }
  ],
  "progress": {
