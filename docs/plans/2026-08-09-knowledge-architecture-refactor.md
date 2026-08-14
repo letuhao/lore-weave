@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — the Kuzu pairing is GREEN (495 passed, zero divergences). What remains is the `EntityStatus` node table + its transition write so `status_at_order` can stop refusing — it is the ONE operation Kuzu still declines, and until it lands the coverage floor cannot clear for the pairing that is otherwise equivalent. Then re-run the floor and record whether `cutover_permitted` can finally be true.**
+**RESUME: `T43`'s shadow work is COMPLETE — `cutover_permitted: True` for the Kuzu pairing, 20 of 20 operations compared, zero divergences, 495 passed against two real engines. Read T43's own Do-list before ticking the row: the property-based differential and the coverage floor are both delivered, so what remains (if anything) is the row's own wording. ⚠️ The engine CHOICE is not this row's to make — that is QC-7's POST-REVIEW checkpoint and the PO's call on sealed T1/T2, and Kuzu's one-process file lock is the input they need.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 50 of 91 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 51 of 92 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (5/11) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (6/12) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10341,6 +10341,33 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `status_at_order`; none re-reads after an edit. **Conformance proves an adapter obeys the
   rules someone thought to write. The differential proves two engines agree.** They are
   different questions and this row is the evidence.
+
+  ### ✅ T43-floor-clears 2026-08-14 — **`cutover_permitted: True` for the Kuzu pairing**
+
+  ```
+  cutover_permitted: True
+  operations with ZERO observations: none        (20 of 20, five seeds)
+  495 passed / 370 skipped   the whole db suite, REAL Neo4j + REAL Kuzu
+  ```
+
+  `EntityStatus` is in the schema and `status_at_order` reads it, so **Kuzu now refuses
+  nothing**. The contract is mirrored exactly: the latest transition with
+  `from_order <= at_order` and `evidence_count >= min_evidence` wins, and an entity with no
+  qualifying transition **defaults to `'active'` — every requested id appears**. A caller must
+  never have to tell *"no transition recorded"* from *"absent"*; a canon guard reading a gap as
+  *gone* would drop a living character out of the story.
+
+  🔻 **The floor's whole journey, in one place, because each step looked fine from the last:**
+  it reported `True` over **9 of 20** operations · widened to 20 and reported `False` · but
+  eleven of those were WRAPPED BY NOTHING, so the block was unmeetable · wrapped, and then
+  refused writes and unlearned mappings made reads look divergent · fixed, and six real adapter
+  bugs surfaced · fixed, and the floor now clears **honestly**, over the full port surface,
+  with every operation actually compared.
+
+  ⚠️ **`cutover_permitted` is a DATA statement, not an authorisation** — the shadow has no
+  remaining objection for this pairing. Whether the swap happens is QC-7's POST-REVIEW
+  checkpoint and the PO's call on sealed T1/T2. **AGE cannot reach this state at all**: it
+  refuses `merge_event`/`merge_fact`, so nine operations there are uncovered by construction.
 
   ⬜ **STILL OWED, and no longer a divergence:** Four real divergences, with what is known
   about each recorded so the next cycle starts from data rather than a mystery:

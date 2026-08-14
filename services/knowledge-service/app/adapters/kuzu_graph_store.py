@@ -901,31 +901,35 @@ class KuzuGraphStore:
         self, *, user_id: str, project_id: str | None, entity_ids: list[str],
         at_order: int, min_evidence: int = 1,
     ) -> dict[str, str]:
-        """RAISES — see T42 · the Kuzu slices, and rule 9.
+        """`{entity_id: status}` at a story position.
 
-        🔴 **The first cut answered, and answered WRONGLY**, which the shadow comparison caught
-        against Neo4j on its first Kuzu run:
+        🔴 **The first cut ANSWERED, and answered wrongly** — it read `Fact` nodes with a
+        hardcoded type and returned `{}`, which the differential caught against Neo4j
+        (`primary={'…': 'active'} secondary={}`) and the conformance suite could not, because no
+        rule covers this operation. Two contract violations at once: the wrong source, and a
+        silent drop where **every requested id must appear**.
 
-            primary={'b2e8f025…': 'active'}   secondary={}
+        The contract, mirrored from the concrete repo: the latest transition with
+        `from_order <= at_order` and `evidence_count >= min_evidence` wins, and an entity with
+        no qualifying transition **defaults to `'active'`**. A caller must never have to tell
+        "no transition recorded" from "absent" — a canon guard reading a gap as *gone* would
+        drop a living character out of the story.
 
-        Neo4j derives this from an `:EntityStatus` node carrying `from_order`/`status`/
-        `evidence_count`, takes the latest transition at or before `at_order`, **defaults every
-        entity with no transition to `'active'`, and guarantees every requested id appears**.
-        Mine read `Fact` nodes with a hardcoded `type` and silently dropped unknowns — a
-        different source AND a different contract.
-
-        `EntityStatus` is not in this engine's schema yet, so the operation cannot be honoured.
-        Refusing rather than half-answering: a canon guard handed `{}` reads it as *"no entity
-        is gone"*, which is the same silent-wrong-direction failure `maintain_chain` describes —
-        it looks like a working answer.
-
-        Implementing it means adding the `EntityStatus` node table to `kuzu_bootstrap` and the
-        transition write that populates it, which is its own slice.
+        `min_evidence` is the bar, not a knob: a status derived from a single mention is a
+        guess, and the guard raises the bar rather than acting on one.
         """
-        raise NotImplementedError(
-            "KuzuGraphStore.status_at_order — the Kuzu schema has no EntityStatus node, and "
-            "the first implementation answered from Fact nodes with a hardcoded type, dropping "
-            "entities the contract says must default to 'active'. Caught by the shadow "
-            "comparison against Neo4j. See T42 · the Kuzu slices."
-        )
+        if not entity_ids:
+            return {}
+        rows = await self._run(
+            "MATCH (s:EntityStatus) WHERE s.user_id = $u AND list_contains($ids, s.entity_id) "
+            "AND s.from_order <= $ao AND s.evidence_count >= $me "
+            + ("AND s.project_id = $p " if project_id is not None else "")
+            + "RETURN s.entity_id AS eid, s.status AS status, s.from_order AS fo "
+            "ORDER BY s.from_order",
+            {"u": user_id, "ids": list(entity_ids), "ao": int(at_order),
+             "me": int(min_evidence), **({"p": project_id} if project_id is not None else {})})
+        # Ascending order means the LAST write per entity is the latest qualifying transition.
+        latest = {r["eid"]: r["status"] for r in rows}
+        # Every requested id appears; the default is 'active'. This line is the contract.
+        return {eid: latest.get(eid, "active") for eid in entity_ids}
 

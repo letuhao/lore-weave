@@ -127,6 +127,14 @@ KUZU_NODE_TABLES: dict[str, str] = {
         archived_at TIMESTAMP, created_at TIMESTAMP,
         PRIMARY KEY(id)
     """,
+    # T43 — the source `status_at_order` reads. Mirrors Neo4j's `:EntityStatus`: a TRANSITION
+    # at a story position, not a field on the entity. Keeping it a separate node is what lets
+    # the status be asked "as of chapter N" instead of only "now".
+    "EntityStatus": """
+        id STRING, user_id STRING, project_id STRING, entity_id STRING,
+        status STRING, from_order INT64, evidence_count INT64,
+        PRIMARY KEY(id)
+    """,
     # The EVIDENCED_BY target. Its own columns are thin — it exists to be pointed at.
     "ExtractionSource": """
         id STRING, user_id STRING, project_id STRING,
