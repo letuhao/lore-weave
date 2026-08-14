@@ -252,6 +252,40 @@ def _answer_norm(text: str) -> str:
     return re.sub(r"\s+", " ", _ANSWER_STOPWORDS.sub(" ", text.lower())).strip()
 
 
+#: A synonym written entirely in latin script. `\b` is only meaningful for these.
+_LATIN_SYNONYM = re.compile(r"^[a-z0-9][a-z0-9 \-_'/]*$")
+
+
+@lru_cache(maxsize=4096)
+def _synonym_pattern(syn: str):
+    """A word-boundary matcher for a latin synonym, or None when boundaries do not apply.
+
+    🔴 A RAW SUBSTRING TEST MAKES SHORT SYNONYMS MATCH INSIDE LONGER WORDS, AND IT COST A LIVE
+    RUN. Measured 2026-08-14 on "I want to start tracking the factions in this world. Add
+    Factions as a new category alongside characters and items.":
+
+        book_read           declares "cat"  →  matches inside "**cat**egory"
+        book_media_generate declares "art"  →  matches inside "st**art**"
+
+    Those two were the ENTIRE answerable set for that request. `glossary_ontology_upsert`, which
+    declares "add a kind"/"add a genre"/"new entity type" and is precisely the tool for it, was
+    surfaced on 0 of 3 runs — so the model reached for `glossary_adopt_standards` instead and
+    adopted a whole genre pack: kinds 4→5, attributes 29→36, genres 1→3, kind_genres 4→13, from
+    a request to add ONE category.
+
+    The failure is worst exactly where the surface is weakest: when the right tool declares
+    nothing matchable, the noise is all that is left, and a set of confident false positives is
+    indistinguishable from a correct answer.
+
+    CJK is deliberately exempt. `\\b` is defined on word characters with spaces around them, and
+    Vietnamese/Chinese requests are a first-class case here — a boundary rule would silently stop
+    matching for them, which is the same defect with a different victim.
+    """
+    if not _LATIN_SYNONYM.match(syn):
+        return None
+    return re.compile(rf"(?<![a-z0-9]){re.escape(syn)}(?![a-z0-9])")
+
+
 def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
     """The tools whose OWN declared vocabulary says they answer THIS request.
 
@@ -295,7 +329,8 @@ def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
             if not isinstance(syn, str):
                 continue
             ns = _answer_norm(syn)
-            if ns and ns in lp:
+            pat = _synonym_pattern(ns) if ns else None
+            if ns and (pat.search(lp) if pat is not None else ns in lp):
                 # longest match wins the ceiling — a 3-word synonym is far stronger evidence
                 # than a 1-word one, so a truncated set keeps the most specific answers.
                 hits.append((len(ns), name))
