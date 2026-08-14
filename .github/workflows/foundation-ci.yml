@@ -605,6 +605,46 @@ jobs:
           LOREWEAVE_TEST_PG_ADMIN_URL: postgres://foundation:foundation@localhost:5432/postgres?sslmode=disable
         run: cargo test -p world-service --test provisioner_reentry_live
 
+      # ── EVERY live suite, one database each — driven by the registry ──────
+      #
+      # `DFO-6`. The six legs above are the ones anybody ever got round to
+      # writing. There are **21** live Rust targets, and the
+      # `cargo test --workspace` leg at the top of this file sets NO DSN — so
+      # for the other fifteen, CI has been running them in their SKIPPED form
+      # and reporting green. That is how `epoch_activation_live` sat DEAD since
+      # `M1`: its fixture never declared the role-bound `resources` that
+      # `RealityRules::resolve` has required all along, four tests failed on
+      # their first line, and nothing anywhere said so.
+      #
+      # This step is ONE leg rather than fifteen more, because fifteen legs
+      # would be fifteen copies of a mapping that already exists as data.
+      # `contracts/testing/live-suites.yaml` is the registry;
+      # `live-suite-registry-gate.py` (pre-commit) checks it against the legs
+      # above in both directions and refuses a suite that cannot announce a
+      # skip; and the runner reports SKIPPED as NOT a pass, so this leg cannot
+      # go green by doing nothing.
+      #
+      # It talks to the service container over TCP (a `services:` container has
+      # no `docker exec` route), which is why the runner has a TCP mode at all.
+      # `db-smoke` sets up Rust and Go and NOT Python — every other `python`
+      # invocation in this file lives in a different job, which has this step.
+      # Found by reading the job rather than by the leg failing on its first
+      # line, which is the only way it could have been found here: Actions
+      # cannot be run on the dev box.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: cargo test EVERY live suite (registry-driven, one DB per suite)
+        env:
+          LS_PG_MODE: tcp
+          LS_PG_HOSTPORT: localhost:5432
+          LS_PG_USER: foundation
+          LS_PG_PASSWORD: foundation
+          LS_REDIS_URL: redis://localhost:6379/0
+        run: |
+          python -m pip install --quiet pyyaml
+          python scripts/live-suites.py
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

@@ -92,6 +92,7 @@ agreement with the CI legs, which are structured YAML, and a ratchet on the unco
 | `L3` the runner — provision, migrate, run; one database per suite | `[x]` | `scripts/live-suites.py`; 22 databases for 21 suites |
 | `L4` it actually runs, and the suites that were never run are RUN | `[x]` | **21/21 PASS**, see below |
 | `L5` sweep + suite green; `DFO-6` closed | `[x]` | `LS_RC=0` 21/21 · `SUITE_RC=0` 682/0 across 52 suites |
+| `L6` CI RUNS THEM — one registry-driven leg, and the ratchet is gone | `[x]` | see §2.1; both mutations red against the real workflow |
 
 ### What running them found — and this is the whole argument for the runner
 
@@ -113,6 +114,57 @@ declared before the caller's varying ones. Both fixed; 4/4 pass.
 `commit-epoch-activation` once repaired, and `commit-spine-drain-once`, which now runs from the
 registry rather than only from its own script.
 
+### §2.1 `L6` — CI runs them now, and the ratchet I shipped is already gone
+
+**What changed the design was a fact, not a reconsideration.** `foundation-ci.yml`'s postgres
+service is **`pgvector/pgvector:pg16`** and it has a **redis** service too, and GitHub runners ship
+a `psql` client. So the obstacle I had assumed — that a dev runner could not be what CI runs —
+was not there. The runner needed one thing: a **TCP** path, because an Actions `services:`
+container has no `docker exec` route. Validated locally before it was wired (`LS_PG_MODE=tcp`,
+5/5 dp-kernel suites green over TCP against the same endpoint).
+
+**One leg, not fifteen.** The obvious move was to generate fifteen `cargo test -p X --test Y`
+steps from the registry. That would have been fifteen copies of a mapping that already exists as
+data — the exact shape `D-319` says to remove rather than watch. Instead CI gained a single step:
+
+```yaml
+- name: cargo test EVERY live suite (registry-driven, one DB per suite)
+  env: { LS_PG_MODE: tcp, LS_PG_HOSTPORT: localhost:5432, … }
+  run: |
+    python -m pip install --quiet pyyaml
+    python scripts/live-suites.py
+```
+
+**And that made the ratchet I shipped four hours earlier meaningless.** `UNCOVERED_MAX = 15`
+counted suites with no CI leg, on the reasoning that a shrinking count stops a new suite being
+default-uncovered. Once one leg runs every row, the same number means *"15 suites with no leg OF
+THEIR OWN"* — all of them running. **A check whose subject drifts out from under it is worse than
+no check**, because it still reports. It is deleted, and what replaced it is stronger: the gate
+asserts the workflow invokes the runner **over the whole registry**, and reds if the invocation
+carries `--only` or `--filter` — a narrowed run looks like coverage and is not.
+
+The field `ci:` was renamed `dedicated_ci_leg:` in the same breath. It read as *"CI runs this"* and
+meant *"this one has a step of its own"*, and those stopped being the same thing the moment the
+registry leg landed. A name that was accurate for one commit is still a name that lies.
+
+**Bitten against the REAL workflow, not a synthetic one** — the self-test's YAML is a fixture, and
+a fixture cannot tell you the pattern matches the file that ships:
+
+```text
+MUTANT: the registry leg is GONE
+  foundation-ci.yml never runs `python scripts/live-suites.py`. …  RC=1
+MUTANT: the registry leg is NARROWED
+  the registry leg is NARROWED (`--filter dp-kernel`). A filtered run looks like
+  coverage and is not — the suites outside the filter report nothing at all.  RC=1
+RESTORED byte-exact -> OK — 21 live suite(s), ALL run by the registry leg
+```
+
+**Stated limit, and it is the honest one:** GitHub Actions cannot be run on this box. Every
+component of the leg is validated here — the TCP path, the provisioning, all 21 suites, the
+pgvector requirement against an image CI also uses — but *the leg itself has never executed*. What
+would settle it is the first CI run on this branch. It is additive: the six existing legs are
+untouched, so the worst case is one new red step, not a broken pipeline.
+
 ## §3 OPEN
 
 | row | what |
@@ -130,4 +182,7 @@ registry rather than only from its own script.
 | `LD-7` | **I wrote the warning, then shipped the bug it warns about — and the bite did not red TWICE.** The runner carries a comment I typed myself: *"the single most likely way this file could lie is by running every suite with the wrong variable set and reporting a clean sweep of skips."* Biting it — misname one suite's env var in the registry, watch the verdict — came back **`PASS`, `BITE_RC=0`**. First diagnosis: the announcement goes to stderr and I scanned stdout. Fixed that; bit again; **`PASS`, `BITE_RC=0` again.** The stream was never the cause: **cargo swallows a PASSING test's output entirely**, so no `SKIP` line ever left the harness on either stream. `-- --nocapture` is what made it real: `SKIPPED`, `BITE_RC=1`, restore, `PASS`, `RESTORE_RC=0`. Without the bite this run would have ended reporting 21/21 from a tool that could not tell a run from a no-op. |
 | `LD-8` | **The gate's new arm found a bug in the gate, then a third spelling in the tree.** `announces_skip` globbed the whole `tests/` directory, so ONE suite's `[skip]` vouched for every sibling target in the same crate — the arm scored 0 findings against a file that says nothing, and the self-test case is the only reason anyone knew. Narrowed to helper SUBDIRECTORIES; it then red on `declared_verb_live`, whose own module doc says *"skipped-with-a-reason"* and which announced `live infra unavailable:` — a **third** spelling of *I did nothing*, in a tree that already had `SKIP` and `[skip]`. Normalised that one; the gate now REQUIRES a known form, so a fourth spelling is a red rather than a silent pass. |
 | `LD-9` | Scope honesty: fixing `epoch_activation_live` and `declared_verb_live` is outside §0.2's stated IN (registry · runner · gate). Done anyway, and named rather than quietly widened — a runner whose first run leaves two permanent reds is a tool nobody will trust by its third use, and both fixes were one fixture function and one `eprintln!`. The boundary held everywhere it mattered: `foundation-ci.yml` is unchanged, and the fifteen uncovered suites are RECORDED with a ratchet rather than papered over by adding legs blind. |
+| `LD-12` | **The leg's first line would have failed, and only READING the job found it.** `python -m pip install --quiet pyyaml` went into `db-smoke`, which sets up Rust and Go and NOT Python — every one of the 40 `python` invocations in this repo's workflows lives in a job with `actions/setup-python`. Actions cannot run on this box, so no amount of local green would have caught it; the only available instrument was reading the job I was editing. Added the setup step. It is also the sharpest illustration of `L6`'s stated limit: the components are all validated and the LEG is not. |
+| `LD-10` | **I shipped a ratchet and deleted it four hours later, and that is the right outcome recorded honestly.** `UNCOVERED_MAX = 15` was a correct mechanism for the world where fifteen suites had no CI leg. One step later they all run, and the same number measured something that no longer bore on coverage. The tempting move is to keep it — it is green, it cost work, and nobody would notice. That is precisely the *check whose subject drifted* shape `NV` names, and the reason `D-319` prefers deriving to watching. |
+| `LD-11` | **Hazard #5, three times in one session, in a run-state that lists it.** A heredoc carrying `\\n` inside a Python string produced a literal newline and a `SyntaxError`, twice in this slice alone, after doing the same in the `DFO-7` slice. The rule *"never use a heredoc for a patch containing backslashes"* is written down, was read, and was violated anyway. Intent is not a mechanism — the standard's own sentence, demonstrated on the person quoting it. |
 | `LD-1` | **The first discovery pass was wrong and looked right.** 17 targets by grep, and the two it missed were missed for the same reason — the DSN name reaches `env::var` as a parameter, not a literal. Had the gate been built on that pass it would have reported complete coverage of a list with holes in it. The design changed because the measurement failed, not because the design was reconsidered. |

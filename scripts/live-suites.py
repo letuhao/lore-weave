@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -78,7 +79,30 @@ def dev_db(suite_id: str, env: str) -> str:
     return f"ls_{suite_id.replace('-', '_')}_{slug(env)}_smoke"
 
 
+def _have_host_psql() -> bool:
+    return shutil.which("psql") is not None
+
+
+# TCP when a `psql` client is on PATH, `docker exec` otherwise.
+#
+# Not a convenience: a GitHub Actions `services:` container has no `docker exec`
+# route — it is reachable only over TCP on the mapped port — so without this the
+# runner could never be the thing CI runs, and the registry would stay a
+# dev-only document mirroring CI instead of driving it. Runners ship `psql`;
+# this box has one too, which is what let the path be validated before it was
+# wired.
+USE_TCP = os.environ.get("LS_PG_MODE", "auto") == "tcp" or (
+    os.environ.get("LS_PG_MODE", "auto") == "auto" and _have_host_psql()
+)
+
+
 def psql(db: str, *args: str, stdin: bytes | None = None) -> subprocess.CompletedProcess:
+    host, _, port = PG_HOSTPORT.partition(":")
+    if USE_TCP:
+        cmd = ["psql", "-h", host, "-p", port or "5432", "-U", PG_USER,
+               "-d", db, "-v", "ON_ERROR_STOP=1", "-q", *args]
+        env = {**os.environ, "PGPASSWORD": PG_PASSWORD}
+        return subprocess.run(cmd, input=stdin, capture_output=True, env=env)
     cmd = ["docker", "exec"]
     if stdin is not None:
         cmd.append("-i")
@@ -96,11 +120,12 @@ def provision(db: str, schema: str) -> list[str]:
     """
     if not any(m in db for m in THROWAWAY_MARKERS):
         raise SystemExit(f"REFUSING to create `{db}`: it carries no throwaway marker")
-    subprocess.run(
-        ["docker", "exec", PG_CONTAINER, "psql", "-U", PG_USER, "-d", "postgres", "-q",
-         "-c", f"DROP DATABASE IF EXISTS {db}", "-c", f"CREATE DATABASE {db}"],
-        capture_output=True, check=True,
-    )
+    r = psql("postgres", "-c", f"DROP DATABASE IF EXISTS {db}", "-c", f"CREATE DATABASE {db}")
+    if r.returncode != 0:
+        raise SystemExit(
+            f"could not create `{db}`: "
+            f"{r.stderr.decode(errors='replace').strip().splitlines()[-1:] or ['?']}"
+        )
     if schema in ("self", "none"):
         return []
     d = SCHEMA_DIRS[schema]
@@ -199,19 +224,17 @@ def main() -> int:
         # PREFLIGHT. Say what this endpoint cannot do BEFORE running anything,
         # so a pgvector failure is never read as a defect in the suite that
         # tripped over it. Silence here is how "environmental" became a habit.
-        probe = subprocess.run(
-            ["docker", "exec", PG_CONTAINER, "psql", "-U", PG_USER, "-d", "postgres", "-tAc",
-             "SELECT 1 FROM pg_available_extensions WHERE name='vector'"],
-            capture_output=True, text=True,
-        )
+        probe = psql("postgres", "-tAc",
+                     "SELECT 1 FROM pg_available_extensions WHERE name='vector'")
+        where = f"{PG_HOSTPORT} over TCP" if USE_TCP else f"container `{PG_CONTAINER}`"
         if probe.returncode != 0:
-            print(f"cannot reach postgres in `{PG_CONTAINER}`: "
-                  f"{probe.stderr.strip().splitlines()[-1] if probe.stderr.strip() else '?'}",
-                  file=sys.stderr)
+            err = probe.stderr.decode(errors="replace").strip()
+            print(f"cannot reach postgres at {where}: "
+                  f"{err.splitlines()[-1] if err else '?'}", file=sys.stderr)
             return 2
-        if probe.stdout.strip() != "1":
+        if probe.stdout.decode(errors="replace").strip() != "1":
             print(
-                f"!! `{PG_CONTAINER}` has NO pgvector. `0006_projections` declares VECTOR(1536),\n"
+                f"!! {where} has NO pgvector. `0006_projections` declares VECTOR(1536),\n"
                 f"   so it will not apply and any suite needing a projection table will fail for\n"
                 f"   THAT reason and not its own. Point LS_PG_CONTAINER / LS_PG_HOSTPORT at an\n"
                 f"   image that has it (loreweave/postgres-knowledge:18 does).\n",

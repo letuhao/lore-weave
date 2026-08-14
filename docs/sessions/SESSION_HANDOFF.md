@@ -35,13 +35,32 @@
 > positional; an additive epoch switch may only APPEND). **Eight further suites that had no home
 > anywhere now run and pass.**
 >
-> **▶ DO NEXT.** The data-foundation run-state's open rows are now **empty** — `DFO-2..8` are all
-> closed. What remains named anywhere: the two `DP-X2` Redis roles that are still unbuilt
-> (invalidation pub/sub, and `dp:events:*` which has **zero producers** — decide whether it should
-> exist before building it), and **lowering the `UNCOVERED_MAX` ratchet from 15** by giving the
-> uncovered suites real CI legs, which is a `foundation-ci.yml` edit this run deliberately did not
-> make blind. The product path, `G-S3`/`G-S4`, is still parked on the PO: combat and progression
-> have no complete design to write a schema against.
+> **AND CI RUNS THEM NOW.** The follow-up landed in the same session: `foundation-ci.yml` gained
+> ONE registry-driven step — `python scripts/live-suites.py` — rather than fifteen hand-written
+> mirrors of a mapping that already exists as data. What made it possible was a fact, not a
+> reconsideration: CI's postgres is **`pgvector/pgvector:pg16`**, there is a **redis** service, and
+> runners ship `psql`, so the runner only needed a TCP path (an Actions `services:` container has
+> no `docker exec` route). Validated over TCP locally before wiring.
+>
+> **The `UNCOVERED_MAX = 15` ratchet is deleted, four hours after I shipped it.** Once one leg runs
+> every row, that number meant *"suites with no leg of their own"* — all of them running. A check
+> whose subject drifts is worse than none because it still reports. What replaced it is stronger:
+> the gate asserts the workflow invokes the runner **over the whole registry** and reds on `--only`
+> / `--filter`. Both mutations bitten against the REAL workflow, not the self-test's fixture.
+> `ci:` was renamed `dedicated_ci_leg:` in the same breath — it read as "CI runs this" and meant
+> "this one has a step of its own", and those stopped being the same thing.
+>
+> ⚠ **Stated limit: the leg itself has never executed.** GitHub Actions cannot run on this box.
+> Every component is validated here — TCP path, provisioning, all 21 suites, the pgvector
+> requirement against an image CI also uses — but the first CI run on this branch is what settles
+> it. It is additive; the six existing legs are untouched, so the worst case is one new red step.
+>
+> **▶ DO NEXT.** The data-foundation run-state's open rows are **empty** — `DFO-2..8` all closed.
+> What remains named anywhere: **watch the first CI run** of the registry leg, and the two `DP-X2`
+> Redis roles that are still unbuilt (invalidation pub/sub, and `dp:events:*` which has **zero
+> producers** — decide whether it should exist before building it). The product path, `G-S3`/`G-S4`,
+> is still parked on the PO: combat and progression have no complete design to write a schema
+> against.
 >
 > ---
 >

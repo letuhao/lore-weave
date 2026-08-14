@@ -28,10 +28,18 @@
 #   package  cargo -p
 #   target   cargo --test  (must be <package-dir>/tests/<target>.rs on disk)
 #   features cargo --features, if the target needs any
-#   ci       true  ⇒ foundation-ci.yml provisions a database and runs it.
-#            The gate checks this BOTH WAYS against the workflow.
-#   ci_absent_reason  required when ci is false. "nobody got to it" is an
-#            honest reason; an empty string is not.
+#   dedicated_ci_leg
+#            true ⇒ foundation-ci.yml has a `cargo test -p X --test Y` step of
+#            its own for this suite. Checked BOTH WAYS against the workflow, so
+#            neither a dropped leg nor an aspirational row survives.
+#
+#            **It is NOT the coverage question.** Coverage comes from the single
+#            registry-driven leg — `python scripts/live-suites.py` — which runs
+#            EVERY row here. The field was called `ci` for one commit and that
+#            name was a lie the moment that leg landed: it read as "CI runs
+#            this" when it meant "this one has a leg of its own".
+#   no_leg_reason  required when dedicated_ci_leg is false. Records why this
+#            suite has no step of its own; it is no longer a coverage gap.
 #   needs    one entry per backing store.
 #     env     the variable the suite reads
 #     kind    postgres | postgres-admin | redis
@@ -51,7 +59,7 @@ suites:
   - id: dp-kernel-event-store
     package: dp-kernel
     target: integration_event_store
-    ci: true
+    dedicated_ci_leg: true
     needs:
       # `per_reality`, NOT `self` — this row said `self` on the first draft,
       # from a bad heuristic (counting the word "migration" in the file). The
@@ -66,8 +74,8 @@ suites:
   - id: dp-kernel-channel-writer
     package: dp-kernel
     target: integration_channel_writer
-    ci: false
-    ci_absent_reason: >-
+    dedicated_ci_leg: false
+    no_leg_reason: >-
       No CI leg was ever added. It is the writer-lease fencing path, which is
       load-bearing for every channel write, so this is a gap and not a choice.
     needs:
@@ -78,8 +86,8 @@ suites:
   - id: dp-kernel-writer-lease
     package: dp-kernel
     target: integration_writer_lease
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -88,8 +96,8 @@ suites:
   - id: dp-kernel-dp-channel
     package: dp-kernel
     target: integration_dp_channel
-    ci: false
-    ci_absent_reason: >-
+    dedicated_ci_leg: false
+    no_leg_reason: >-
       Shipped in the data-foundation run (DF1) after the CI file was last
       touched; the leg was never added.
     needs:
@@ -100,8 +108,8 @@ suites:
   - id: dp-kernel-dp-cache
     package: dp-kernel
     target: integration_dp_cache
-    ci: false
-    ci_absent_reason: >-
+    dedicated_ci_leg: false
+    no_leg_reason: >-
       Shipped in the data-foundation run (DF3). Needs Redis, which the
       foundation-ci postgres service job does not start.
     needs:
@@ -114,7 +122,7 @@ suites:
     package: meta-rs
     target: control_plane_live
     features: [sqlx-pg]
-    ci: true
+    dedicated_ci_leg: true
     needs:
       - env: LOREWEAVE_TEST_META_URL
         kind: postgres
@@ -125,8 +133,8 @@ suites:
     package: meta-rs
     target: pg_live
     features: [sqlx-pg]
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: META_RS_TEST_DATABASE_URL
         kind: postgres
@@ -136,8 +144,8 @@ suites:
   - id: commit-dataflow
     package: commit-service
     target: dataflow_live
-    ci: false
-    ci_absent_reason: >-
+    dedicated_ci_leg: false
+    no_leg_reason: >-
       Shipped in the data-foundation run (DF5) after the CI file was last
       touched. It is the end-to-end hub -> SDK -> row hop.
     needs:
@@ -148,8 +156,8 @@ suites:
   - id: commit-reject-commit
     package: commit-service
     target: reject_commit_live
-    ci: false
-    ci_absent_reason: Shipped in the data-foundation run (DF1b-ii); leg never added.
+    dedicated_ci_leg: false
+    no_leg_reason: Shipped in the data-foundation run (DF1b-ii); leg never added.
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -158,8 +166,8 @@ suites:
   - id: commit-recovery
     package: commit-service
     target: recovery
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -168,8 +176,8 @@ suites:
   - id: commit-failover
     package: commit-service
     target: failover
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -178,8 +186,8 @@ suites:
   - id: commit-pg-binding
     package: commit-service
     target: pg_binding_live
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: META_RS_TEST_DATABASE_URL
         kind: postgres
@@ -188,8 +196,8 @@ suites:
   - id: commit-declared-verb
     package: commit-service
     target: declared_verb_live
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       # `per_reality`, NOT `meta`. The variable's name reads meta-ish and the
       # first draft followed the name; the suite takes a writer lease, so it
@@ -202,8 +210,8 @@ suites:
   - id: commit-epoch-activation
     package: commit-service
     target: epoch_activation_live
-    ci: false
-    ci_absent_reason: >-
+    dedicated_ci_leg: false
+    no_leg_reason: >-
       Needs TWO databases (meta + channel) and no leg was written for it. This
       is the suite whose DSNs a source grep cannot see.
     needs:
@@ -217,8 +225,8 @@ suites:
   - id: commit-spine-drain-once
     package: commit-service
     target: spine_drain_once_live
-    ci: false
-    ci_absent_reason: >-
+    dedicated_ci_leg: false
+    no_leg_reason: >-
       Shipped 2026-08-14 closing DFO-7. Needs two databases AND Redis AND the
       built binary; it has its own runner, scripts/smoke/spine-drain-once.sh.
     needs:
@@ -236,7 +244,7 @@ suites:
   - id: world-embedding
     package: world-service
     target: embedding_live
-    ci: true
+    dedicated_ci_leg: true
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -250,7 +258,7 @@ suites:
   - id: world-replay-aggregate
     package: world-service
     target: replay_aggregate_live
-    ci: true
+    dedicated_ci_leg: true
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -260,7 +268,7 @@ suites:
   - id: world-rebuilder
     package: world-service
     target: rebuilder_live
-    ci: true
+    dedicated_ci_leg: true
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -270,7 +278,7 @@ suites:
   - id: world-provisioner-reentry
     package: world-service
     target: provisioner_reentry_live
-    ci: true
+    dedicated_ci_leg: true
     needs:
       - env: LOREWEAVE_TEST_PG_ADMIN_URL
         kind: postgres-admin
@@ -280,8 +288,8 @@ suites:
   - id: world-pool-lock-release
     package: world-service
     target: pool_lock_release
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres
@@ -291,8 +299,8 @@ suites:
   - id: roleplay-integration
     package: roleplay-service
     target: integration
-    ci: false
-    ci_absent_reason: No CI leg was ever added.
+    dedicated_ci_leg: false
+    no_leg_reason: No CI leg was ever added.
     needs:
       - env: LOREWEAVE_TEST_PG_URL
         kind: postgres

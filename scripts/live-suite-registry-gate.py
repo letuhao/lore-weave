@@ -9,22 +9,22 @@ source: `epoch_activation_live` reads its DSNs through a helper, and
 discovery pass that misses a suite reports complete coverage of an incomplete
 list, which is worse than no discovery at all.
 
-So this gate never greps Rust for env vars. It checks the registry against two
+So this gate never greps Rust for env vars. It checks the registry against
 things that cannot lie about themselves:
 
-  * **`foundation-ci.yml`**, which is structured YAML. Every `cargo test -p X
-    --test Y` leg in it must have a `ci: true` row naming the same databases,
-    and every `ci: true` row must have a leg. Both directions, so neither a
-    dropped leg nor an aspirational row survives.
+  * **the coverage claim** — `foundation-ci.yml` must run
+    `python scripts/live-suites.py` over the WHOLE registry. That single leg is
+    what makes every row actually execute; a `--only` or `--filter` on it looks
+    like coverage and is not, so it reds.
+  * **`foundation-ci.yml`'s per-target legs**, which are structured YAML. Every
+    `cargo test -p X --test Y` step must have a `dedicated_ci_leg: true` row
+    naming the same databases, and every such row must have a step. Both
+    directions, so neither a dropped leg nor an aspirational row survives.
   * **the filesystem**, for `tests/<target>.rs`. A row naming a target that
     does not exist is a phantom.
-
-and one ratchet:
-
-  * **`UNCOVERED_MAX`** — how many rows say `ci: false`. It may only SHRINK. A
-    new live suite added tomorrow with no CI leg pushes the count up and reds
-    here, which is the whole point: without it a new live suite is
-    *default-uncovered* (`NV-3`) and nothing says so.
+  * **each target's own source**, for a skip announcement. A live suite that
+    skips SILENTLY is indistinguishable from one that ran — both exit 0 — so
+    the runner could report a clean sweep of no-ops.
 
 Exit 0 clean · 1 finding · 2 misuse (the gate could not do its job).
 """
@@ -40,9 +40,21 @@ REPO = Path(__file__).resolve().parent.parent
 REGISTRY = REPO / "contracts" / "testing" / "live-suites.yaml"
 WORKFLOW = REPO / ".github" / "workflows" / "foundation-ci.yml"
 
-# The ratchet. Measured 2026-08-14: 21 live targets, CI provisions a database
-# for 6. It may only go DOWN — lower it in the same commit that adds a leg.
-UNCOVERED_MAX = 15
+# THE COVERAGE CHECK, and it replaced a ratchet.
+#
+# For one commit this file carried `UNCOVERED_MAX = 15` — how many live suites
+# had no CI leg — on the reasoning that a count which may only shrink stops a
+# new suite being default-uncovered. Then CI gained a single registry-driven
+# leg that runs EVERY row, and the ratchet was measuring a quantity that no
+# longer meant coverage: 15 suites with no leg OF THEIR OWN, all of them run.
+# A check whose subject has drifted out from under it is worse than none, so it
+# is gone, and this is what took its place.
+#
+# The workflow must invoke the runner over the WHOLE registry. `--only` or
+# `--filter` would silently narrow it back to a subset, which is the exact
+# shape — a leg that looks like coverage and is not — this exists to refuse.
+REGISTRY_LEG = re.compile(r"python\s+scripts/live-suites\.py(?P<args>[^\r\n]*)")
+NARROWING = ("--only", "--filter")
 
 # A dev database name must announce itself as disposable. Same list the
 # fixtures' own `guarded()` uses; these fixtures seed and truncate.
@@ -172,11 +184,11 @@ def check(reg: dict, workflow_text: str) -> list[str]:
             if n.get("kind") in ("postgres", "postgres-admin") and n.get("schema") is None:
                 findings.append(f"`{sid}`: `{n.get('env')}` has no `schema`")
 
-        if s.get("ci"):
+        if s.get("dedicated_ci_leg"):
             claimed.add((pkg, target))
             if (pkg, target) not in legs:
                 findings.append(
-                    f"`{sid}`: claims `ci: true` but foundation-ci.yml has no "
+                    f"`{sid}`: claims `dedicated_ci_leg: true` but foundation-ci.yml has no "
                     f"`cargo test -p {pkg} --test {target}` leg"
                 )
             else:
@@ -189,9 +201,9 @@ def check(reg: dict, workflow_text: str) -> list[str]:
                     )
         else:
             uncovered += 1
-            if not (s.get("ci_absent_reason") or "").strip():
+            if not (s.get("no_leg_reason") or "").strip():
                 findings.append(
-                    f"`{sid}`: `ci: false` with no `ci_absent_reason`. "
+                    f"`{sid}`: `dedicated_ci_leg: false` with no `no_leg_reason`. "
                     f'"nobody got to it" is an honest reason; blank is not.'
                 )
 
@@ -199,20 +211,24 @@ def check(reg: dict, workflow_text: str) -> list[str]:
         if (pkg, target) not in claimed:
             findings.append(
                 f"foundation-ci.yml runs `-p {pkg} --test {target}` and the registry has no "
-                f"`ci: true` row for it — CI drifted ahead of the registry"
+                f"`dedicated_ci_leg: true` row for it — CI drifted ahead of the registry"
             )
 
-    if uncovered > UNCOVERED_MAX:
+    # THE COVERAGE CHECK. Everything above is about the six legacy legs not
+    # drifting; THIS is the line that makes every suite actually run.
+    m = REGISTRY_LEG.search(workflow_text)
+    if not m:
         findings.append(
-            f"{uncovered} suite(s) have no CI leg, and the ratchet is {UNCOVERED_MAX}. "
-            f"A new live suite with no CI leg is default-uncovered: it is green in "
-            f"`cargo test --workspace` because it SKIPPED. Add a leg, or raise this "
-            f"deliberately with the reason in the commit."
+            "foundation-ci.yml never runs `python scripts/live-suites.py`. Without it CI "
+            "covers only the suites with a leg of their own, and the rest are green in "
+            "`cargo test --workspace` because they SKIPPED — which is how "
+            "`epoch_activation_live` stayed dead since `M1`."
         )
-    if uncovered < UNCOVERED_MAX:
+    elif any(n in m.group("args") for n in NARROWING):
         findings.append(
-            f"only {uncovered} suite(s) are uncovered but the ratchet still says "
-            f"{UNCOVERED_MAX} — lower it. A ratchet that does not tighten stops meaning anything."
+            f"the registry leg is NARROWED (`{m.group('args').strip()}`). A filtered run "
+            f"looks like coverage and is not — the suites outside the filter report nothing "
+            f"at all."
         )
     return findings
 
@@ -226,6 +242,8 @@ def selftest() -> int:
         env:
           LOREWEAVE_TEST_PG_URL: postgres://u:p@localhost:5432/real_smoke
         run: cargo test -p dp-kernel --test integration_event_store
+      - name: every live suite
+        run: python scripts/live-suites.py
 """
 
     def reg(**over):
@@ -236,7 +254,7 @@ def selftest() -> int:
                     "id": "covered",
                     "package": "dp-kernel",
                     "target": "integration_event_store",
-                    "ci": True,
+                    "dedicated_ci_leg": True,
                     "needs": [{"env": "X", "kind": "postgres", "schema": "self",
                                "ci_db": "real_smoke"}],
                 },
@@ -244,8 +262,8 @@ def selftest() -> int:
                     "id": "uncovered",
                     "package": "dp-kernel",
                     "target": "integration_writer_lease",
-                    "ci": False,
-                    "ci_absent_reason": "no leg",
+                    "dedicated_ci_leg": False,
+                    "no_leg_reason": "no leg",
                     "needs": [{"env": "Y", "kind": "postgres", "schema": "per_reality"}],
                 },
             ],
@@ -253,9 +271,6 @@ def selftest() -> int:
         base.update(over)
         return base
 
-    global UNCOVERED_MAX
-    saved = UNCOVERED_MAX
-    UNCOVERED_MAX = 1
     cases: list[tuple[str, dict, str, int]] = []
 
     cases.append(("a matching registry passes", reg(), ok_wf, 0))
@@ -273,22 +288,27 @@ def selftest() -> int:
     cases.append(("a package that does not exist fails", r, ok_wf, 1))
 
     r = reg()
-    r["suites"][1]["ci_absent_reason"] = "   "
-    cases.append(("`ci: false` with a blank reason fails", r, ok_wf, 1))
+    r["suites"][1]["no_leg_reason"] = "   "
+    cases.append(("`dedicated_ci_leg: false` with a blank reason fails", r, ok_wf, 1))
 
     r = reg()
-    r["suites"][0]["ci"] = False
-    r["suites"][0]["ci_absent_reason"] = "pretend"
-    cases.append(("a leg CI runs with no `ci: true` row fails", r, ok_wf, 1))
+    r["suites"][0]["dedicated_ci_leg"] = False
+    r["suites"][0]["no_leg_reason"] = "pretend"
+    cases.append(("a leg CI runs with no `dedicated_ci_leg: true` row fails", r, ok_wf, 1))
 
-    r = reg()
-    r["suites"].append(dict(r["suites"][1], id="uncovered-2",
-                            target="integration_channel_writer"))
-    cases.append(("one MORE uncovered suite than the ratchet fails", r, ok_wf, 1))
+    # THE COVERAGE ARMS. Everything else here is about drift between two
+    # existing things; these two are the only ones that ask whether the suites
+    # RUN at all.
+    no_leg_wf = "\n".join(
+        ln for ln in ok_wf.splitlines() if "live-suites.py" not in ln and "every live suite" not in ln
+    )
+    cases.append(("no registry leg in CI fails — nothing would run the other 15",
+                  reg(), no_leg_wf, 1))
 
-    r = reg()
-    r["suites"] = [r["suites"][0]]
-    cases.append(("FEWER uncovered than the ratchet also fails — it must tighten", r, ok_wf, 1))
+    narrowed_wf = ok_wf.replace("run: python scripts/live-suites.py",
+                                "run: python scripts/live-suites.py --filter dp-kernel")
+    cases.append(("a NARROWED registry leg fails — it looks like coverage and is not",
+                  reg(), narrowed_wf, 1))
 
     r = reg()
     r["suites"][1]["needs"] = []
@@ -330,7 +350,6 @@ def selftest() -> int:
             print(f"  FAIL {name}: it returned instead of refusing")
             bad = 1
 
-    UNCOVERED_MAX = saved
     if bad:
         print("live-suite-registry-gate --self-test: FAIL")
         return 2
@@ -373,10 +392,11 @@ def main() -> int:
         return 1
 
     total = len(reg["suites"])
-    covered = sum(1 for s in reg["suites"] if s.get("ci"))
+    covered = sum(1 for s in reg["suites"] if s.get("dedicated_ci_leg"))
     print(
-        f"live-suite-registry-gate: OK — {total} live suite(s); {covered} have a CI leg whose "
-        f"databases match, {total - covered} do not and each says why (ratchet {UNCOVERED_MAX})"
+        f"live-suite-registry-gate: OK — {total} live suite(s), ALL run by the registry leg; "
+        f"{covered} also have a per-target leg whose databases match, and the other "
+        f"{total - covered} each say why they have none"
     )
     return 0
 
