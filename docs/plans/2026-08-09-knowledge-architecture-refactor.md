@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T41` — the graph rebuild, now unblocked: it was re-sequenced behind the engine decision (X3) and T43's shadow work is complete. ⚠️ Read its 🔻 `D-T41-RELATIONS-NOT-REBUILDABLE` row first — the glossary is the SSOT for ENTITIES, not edges, so a rebuild is entity-complete and edge-empty BY DESIGN and must say so. Alternatively `T39` (15/21) or `T17` (12/20) are the largest open rows by slice count.**
+**RESUME: `T39` (15/21 evidence blocks) — the largest open row by remaining work, and its first half already shipped (B9: the anchor cache is invalidated by EVENT, not by a 300-second guess). Read what B9 left for the SECOND cache before building. Alternatives: `T17` (12/20) or `QC-5` (12/30).**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**48 of 66 rows done · 18 open · 45 of 80 evidence blocks closed inside them.**
+**49 of 66 rows done · 17 open · 44 of 78 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10064,11 +10064,20 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **To unblock** | Migrate application modules off `neo4j_repos` onto `GraphStore`, raising `port-adoption-gate`'s floor with each one. **Partly done** — the floor has moved 0 → 11 (T17 batches plus the mirror detector), so the port is reachable and T43 can observe real traffic; the ceiling of 69 direct binders is what remains. |
   | **Mechanism** | The **floor** in `port-adoption-gate`: the moment a module adopts `GraphStore`, the gate reds demanding the floor be raised, so adoption is recorded rather than drifting. |
   | **Retry when** | T17's migration reaches the graph read/write sites. **This is now the critical path to T43**, not background cleanup. |
-- [~] **T41** — ~~⛔ RE-SCOPE AFTER the engine decision, do not build first~~ ✅ **BUILT 2026-08-12**
+- [x] **T41** — ~~⛔ RE-SCOPE AFTER the engine decision, do not build first~~ ✅ **BUILT 2026-08-12**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.4. Unfinished, not undecided.
   It did not exist — the only sweepers were `reconcile_evidence_count` and `stats_updater` — and
   three claims depended on it (graph HA unnecessary, P3 rollback, DR).
   ~~(depends on T43's outcome)~~
+  ✅ **TICKED 2026-08-14 — re-verified by RUNNING it: `16 passed, 6 skipped`.**
+  `app/jobs/graph_rebuild.py` exists, was **drilled on a real book and timed**, and its
+  dependency on T43's outcome is struck — the engine work is now closed anyway.
+
+  Its one deferral, `D-T41-RELATIONS-NOT-REBUILDABLE`, is **DECIDED and ACCEPTED** (§4.4), not
+  outstanding: the glossary is the SSOT for **entities, not edges**, so a rebuild is
+  entity-complete and edge-empty **by design** — and `ISOLATED_STACK.md` says so rather than
+  leaving a reader to discover it. Making relations rebuildable would mean a SECOND SSOT, which
+  is the thing this refactor exists to remove. An accepted design consequence is not owed work.
   ---
   ### ✅ BUILT AND DRILLED — `app/jobs/graph_rebuild.py`
 
