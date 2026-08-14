@@ -1791,6 +1791,29 @@
    "chokepoint": "stream_service project_id derivation + book_state_probe.project_for_book",
    "test": "services/chat-service/tests/test_turn_project_resolves_from_the_book.py",
    "blast_radius": "417 of 503 book-bound sessions (83%) had a book and no project"
+  },
+  "DQ-T30-ANSWER-FROM-THIS-TURN": {
+   "date": "2026-08-14",
+   "service": "chat-service",
+   "found_by": "DQ-T30 (c), owner-cleared",
+   "state": "proven",
+   "invariant": "An answer that states stored data must come from a read performed in THIS turn — the read-side twin of D-NARRATED-WRITE, whose docstring wrongly called a named-but-uncalled read harmless.",
+   "chokepoint": "stream_service._unanswered_data_question_reads + the end-of-turn directive site, which ARMS what it names",
+   "test": "services/chat-service/tests/test_a_data_question_is_answered_from_this_turn.py",
+   "commit": "5093177a1",
+   "note": "Detection reuses answerable_tools — the platform's OWN machine-readable statement that a request names stored data. Independent of any rail per decision (c); a test asserts the call takes no rail input. THE FIRST VERSION REQUIRED THE TOOL ON THE WIRE and measured 0/3 because of it; corrected to arm, the same decision the sister guard already makes."
+  },
+  "D-RAIL-DONE-SUPPRESSES-THE-REREAD": {
+   "date": "2026-08-14",
+   "service": "chat-service",
+   "found_by": "measuring the DQ-T30 guard and getting 0/3",
+   "state": "proven",
+   "invariant": "A rail step being satisfied means the rail need not DRIVE it again; it must never mean the author may no longer ASK. The gate conflates two claims that coincide only for a WRITE.",
+   "chokepoint": "stream_service — the one point where rail_gate_suppressions joins the suppressors; reclaimed BEFORE the loop breakers so failure/repeat-read still win",
+   "test": "services/chat-service/tests/test_a_satisfied_rail_step_still_answers_a_reask.py",
+   "commit": "e133167d2",
+   "evidence": "withheld_tools stage=rail_gate reason='rail step already satisfied (mode=done_suppress)' on all 14 passes of the re-ask. A/B/C at K=3: baseline invented a rule; guard only 0/3 called; guard+reclaim 3/3 called, both rules from a live read, store unchanged.",
+   "blast_radius": "Every rail-driven READ step: once the journey completes, the tool that answers it leaves the wire for the rest of the session."
   }
  },
  "deferred_questions": {
@@ -1822,7 +1845,9 @@
   "DQ-T30": {
    "question": "When a rail is DONE, what re-reads the data? A completed rail correctly stops driving, and the model then answers data questions from conversation memory — which goes stale the moment anything changes outside the chat. MEASURED 2026-08-13: with two rules in the store, a re-ask returned 'one rule' (the count from the earlier turn); told a rule had been added, the model claimed 'I have checked your consistency rules again' with ZERO tool calls and INVENTED a plausible rule paraphrased from the chapter prose in place of the real one. Options seen, none chosen: (a) a rail step whose tool is a READ never latches done, so a re-ask always re-drives; (b) a freshness window — a read step older than N minutes is re-actionable; (c) a turn-level rule that a question naming stored data must be answered from a tool call in THIS turn, independent of any rail. (c) is the general fix and the most expensive.",
    "evidence": "Session 019ff929, book 019ff8f5, 2026-08-13 14:0x-14:2x. Store: 2 active canon_rule rows ('Sat khi luon tieu hao tuoi tho — magic always costs lifespan', 'The Obsidian Trench never appears on two maps at once'). Turn A (rail drove): tool called, answer correct. Turn B (canon-check now 3/3, 'guards held but no actionable step'): no tool call, answered 'one rule'. Turn C: no tool call, answered with the real first rule plus a FABRICATED second one, 'The world is constantly rewriting itself through shifting geography'. Note this is NOT the same gap as D-FJ-18, which is now fixed and covers the first ask; it is what happens after that ask has already succeeded.",
-   "decision": "ANSWERED 2026-08-14 by the owner: option (c) — a question naming stored data must be answered from a tool call in THIS turn, independent of any rail. The general fix and the most expensive, chosen over the two rail-scoped options."
+   "decision": "ANSWERED 2026-08-14 by the owner: option (c) — a question naming stored data must be answered from a tool call in THIS turn, independent of any rail. The general fix and the most expensive, chosen over the two rail-scoped options.",
+   "status": "ANSWERED AND SHIPPED 2026-08-14",
+   "shipped": "(c) built as the turn-level guard (5093177a1). MEASURING it exposed the real mechanism — a completed rail REMOVES the answering read (e133167d2). Both are load-bearing: guard alone 0/3, guard+reclaim 3/3."
   }
  },
  "carried_observations": [
