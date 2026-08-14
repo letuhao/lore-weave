@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — `relations_for` is FIXED (the arm labels were `"out"`/`"in"` against the port's `"outgoing"`/`"incoming"`, so two of three directions read EMPTY and conformance never noticed, because every rule uses `"both"`). THREE divergences remain: `update_event_fields` (all seeds), `events_page` and `get_event` (seed-dependent), `add_evidence` (counters). Same discipline: reproduce with a fixed sequence, then probe. Separately the `EntityStatus` table so `status_at_order` can stop refusing.**
+**RESUME: `T43` — ONE divergence left: `add_evidence`, on one seed. The Kuzu increment is guarded by an existence check under `_identity_lock` while Neo4j bumps in a single statement; **compare them on a REPEAT `job_id`** — the counter must bump only on create. Then the `EntityStatus` node table + transition write so `status_at_order` can stop refusing. `relations_for`, `update_event_fields`, `events_page` and `get_event` are all FIXED; the Kuzu differential is 6 passed / 1 failed.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -10330,9 +10330,9 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | operation | evidence | lead |
   |---|---|---|
   | `relations_for` | ✅ **FIXED — the arm labels were not the port's values.** `RelationDirection = Literal["outgoing","incoming","both"]`; the adapter's arms were `"out"`/`"in"`, so `direction="outgoing"` matched neither `"both"` nor `"out"`, **both arms were skipped and the read was ALWAYS EMPTY**. Five leads were eliminated on the way (trailing `SET`, unmapped endpoints, peer-exclusion timing, swallowed exception, unlabelled `peer`). |
-  | `add_evidence` | counters disagree | the increment is guarded by an existence check under `_identity_lock`; Neo4j bumps in one statement. Compare what each does on a REPEAT job_id. |
-  | `update_event_fields` | diverges on several seeds | returns `(updated, snapshot)`; the snapshot now compares (dict projection landed), so this is a real field difference. |
-  | `events_page` | diverges on some seeds only | seed-dependent ⇒ suspect ORDER or the `total`, not the row set. |
+  | `update_event_fields` | ✅ **FIXED — two causes.** The pre-edit snapshot returned the whole event; the contract is exactly `{title, summary, time_cue, event_date_iso, participants}`, and a richer snapshot is still a different one. Then `canonical_title` was left STALE on a title edit — and it is the identity key `merge_event` upserts on, so a stale one **silently splits the event into two on its next mention**. Fixing it also cleared `events_page` and `get_event`. |
+  | `events_page` · `get_event` | ✅ **FIXED** by the `canonical_title` recompute above — they were reading the inconsistency, not creating one. |
+  | `add_evidence` | ⬜ **the last one**, one seed. The increment is guarded by an existence check under `_identity_lock` while Neo4j bumps in a single statement; compare on a REPEAT `job_id`. |
 
   ✅ **PROBED 2026-08-14 — and the first lead was WRONG**, which is the point of probing:
 

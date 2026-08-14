@@ -867,7 +867,24 @@ class KuzuGraphStore:
             if val is not None:
                 sets.append(f"n.{col} = ${col}")
                 p[col] = val
-        snapshot = self._event_props(cur)
+        if title is not None:
+            # The canonical form is DERIVED from the title, so an edit that moves one and not
+            # the other leaves the row self-inconsistent — and `canonical_title` is the
+            # identity key `merge_event` upserts on, so a stale one silently splits the event
+            # into two on its next mention. The concrete repo recomputes it here; this is that,
+            # not an embellishment.
+            sets.append("n.canonical_title = $ct")
+            p["ct"] = canonicalize_entity_name(title)
+        # EXACTLY the five keys the concrete repo returns —
+        # `{title, summary, time_cue, event_date_iso, participants}`. Returning the whole
+        # event read fine and diverged on every seed: the snapshot is a CONTRACT (it is what a
+        # correction event records), not a convenience dump, and a richer one is still a
+        # different one.
+        snapshot = {
+            "title": cur.get("title"), "summary": cur.get("summary"),
+            "time_cue": cur.get("time_cue"), "event_date_iso": cur.get("event_date_iso"),
+            "participants": list(cur.get("participants") or []),
+        }
         out = await self._run(
             f"MATCH (n:Event) WHERE n.id = $id SET {', '.join(sets)} RETURN n", p)
         return Event.model_validate(self._event_props(self._props(out[0]))), snapshot
