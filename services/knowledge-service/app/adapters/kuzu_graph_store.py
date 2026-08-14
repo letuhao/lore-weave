@@ -625,12 +625,150 @@ class KuzuGraphStore:
             "archived_at": row.get("archived_at"),
         }
 
+    # ── facts, and the ordinal chain ──────────────────────────────────────────────────────
+    async def merge_fact(
+        self, *, user_id: str, project_id: str | None, type: str, content: str,
+        confidence: float = 0.0, pending_validation: bool = False,
+        source_type: str = "book_content", source_chapter: str | None = None,
+        provenance: str = "human_authored", subject_id: str | None = None,
+        from_order: int | None = None, valid_from_ordinal: int | None = None,
+        event_date_iso: str | None = None, predicate: str | None = None,
+        object: str | None = None, maintain_chain: bool = False,
+    ) -> Any:
+        """Idempotent, CONTENT-KEYED fact upsert, with the ordinal chain.
+
+        🔻 **KUZU CAN HONOUR `maintain_chain`, WHICH AGE REFUSED — and the reason is the same
+        structural fact that forced this adapter's identity workaround.** AGE's refusal
+        (`D-AGE-FACT-WRITE-UNIMPLEMENTED`) is that re-deriving the chain needs *"an ordered
+        window over sibling facts in ONE statement, which AGE has no APOC-free shape for."*
+        Kuzu does not need one statement: it is embedded and **single-writer**, so reading the
+        `(subject, type)` family, computing the chain in Python and writing it back cannot
+        interleave with another writer. The file lock that makes this adapter unable to scale
+        out is the same property that makes a read-compute-write chain sound.
+
+        The chain: each fact closes at the NEXT strictly-greater `valid_from_ordinal` among its
+        siblings, and the last stays open. Derived by sorting the whole family every time
+        rather than by patching neighbours, so out-of-order and backfill arrival — the whole
+        difficulty the port names — are handled by construction.
+
+        An adapter that ACCEPTED the flag and did nothing would leave every fact open forever,
+        and every as-of read would answer with the latest value at every position: a book with
+        no history, reported as a working timeline.
+        """
+        from app.domain.graph_models import Fact
+
+        vfo = valid_from_ordinal if valid_from_ordinal is not None else from_order
+        canonical = canonicalize_entity_name(content)
+        key = {"u": user_id, "c": canonical, "t": type}
+        # ⚠️ The subject is the `(Fact)-[:ABOUT]->(Entity)` EDGE, not a column — the shape
+        # both other adapters use. Adding a `subject_id` property instead would give the same
+        # fact two homes and make T43's cross-adapter diff report a difference that is really a
+        # schema choice. Kuzu said so first: `Cannot find property subject_id for n`.
+        where = "n.user_id = $u AND n.canonical_content = $c AND n.type = $t"
+        async with self._identity_lock:
+            found = await self._run(f"MATCH (n:Fact) WHERE {where} RETURN n", key)
+            if not found:
+                await self._run(
+                    "CREATE (n:Fact {id: $id, user_id: $u, project_id: $p, type: $t, "
+                    "content: $ct, canonical_content: $c, confidence: $conf, "
+                    "pending_validation: $pv, source_types: $st, source_chapter: $sc, "
+                    "provenance: $prov, from_order: $fo, "
+                    "valid_from_ordinal: $vfo, event_date_iso: $edi, predicate: $pred, "
+                    "object: $obj, evidence_count: 0})",
+                    {**key, "id": str(uuid.uuid4()), "p": project_id, "ct": content,
+                     "conf": float(confidence), "pv": bool(pending_validation),
+                     "st": [source_type], "sc": source_chapter, "prov": provenance,
+                     "fo": from_order, "vfo": vfo, "edi": event_date_iso,
+                     "pred": predicate, "obj": object})
+                if subject_id:
+                    await self._run(
+                        "MATCH (f:Fact), (e:Entity) WHERE f.canonical_content = $c "
+                        "AND f.type = $t AND f.user_id = $u AND e.id = $s AND e.user_id = $u "
+                        "MERGE (f)-[:ABOUT {user_id: $u}]->(e)",
+                        {"c": canonical, "t": type, "u": user_id, "s": subject_id})
+            else:
+                fid = self._props(found[0])["id"]
+                sets = ["n.source_types = list_distinct(list_concat(n.source_types, $st))",
+                        "n.confidence = CASE WHEN n.confidence >= $conf THEN n.confidence "
+                        "ELSE $conf END"]
+                p2: dict[str, Any] = {"id": fid, "st": [source_type], "conf": float(confidence)}
+                if vfo is not None:
+                    sets.append("n.valid_from_ordinal = $vfo")
+                    p2["vfo"] = vfo
+                await self._run(f"MATCH (n:Fact) WHERE n.id = $id SET {', '.join(sets)}", p2)
+            if maintain_chain and subject_id:
+                await self._rederive_chain(user_id, subject_id, type)
+            rows = await self._run(f"MATCH (n:Fact) WHERE {where} RETURN n", key)
+        return Fact.model_validate(self._fact_props(self._props(rows[0])))
+
+    async def _rederive_chain(self, user_id: str, subject_id: str, type_: str) -> None:
+        """Close each positioned sibling at the NEXT strictly-greater ordinal; the last stays
+        open. Recomputed over the WHOLE family rather than patched at the insertion point —
+        patching is what gets out-of-order and backfill arrival wrong, and both are normal
+        here."""
+        fam = await self._run(
+            "MATCH (n:Fact)-[:ABOUT]->(e:Entity) WHERE n.user_id = $u AND e.id = $s "
+            "AND n.type = $t AND n.valid_from_ordinal IS NOT NULL "
+            "RETURN n ORDER BY n.valid_from_ordinal",
+            {"u": user_id, "s": subject_id, "t": type_})
+        rows = [self._props(r) for r in fam]
+        for i, row in enumerate(rows):
+            nxt = next((r["valid_from_ordinal"] for r in rows[i + 1:]
+                        if r["valid_from_ordinal"] > row["valid_from_ordinal"]), None)
+            if nxt is None:
+                await self._run("MATCH (n:Fact) WHERE n.id = $id "
+                                "SET n.valid_to_ordinal = NULL", {"id": row["id"]})
+            else:
+                await self._run("MATCH (n:Fact) WHERE n.id = $id "
+                                "SET n.valid_to_ordinal = $vt",
+                                {"id": row["id"], "vt": nxt})
+
+    async def facts_for(
+        self, *, user_id: str, subject_id: str, type: str | None = None,
+        as_of: int | None = None, limit: int = 100,
+    ) -> list[Any]:
+        """Facts ABOUT one subject. `as_of` is HALF-OPEN — `valid_from <= N < valid_to` — and a
+        POSITIONLESS fact is EXCLUDED from a timed read, for the same reason as relations: it
+        cannot be placed on the axis."""
+        from app.domain.graph_models import Fact
+
+        where = ["n.user_id = $u", "e.id = $s"]
+        params: dict[str, Any] = {"u": user_id, "s": subject_id, "lim": int(limit)}
+        if type is not None:
+            where.append("n.type = $t")
+            params["t"] = type
+        if as_of is not None:
+            where += ["n.valid_from_ordinal IS NOT NULL", "n.valid_from_ordinal <= $ao",
+                      "(n.valid_to_ordinal IS NULL OR $ao < n.valid_to_ordinal)"]
+            params["ao"] = int(as_of)
+        rows = await self._run(
+            f"MATCH (n:Fact)-[:ABOUT]->(e:Entity) WHERE {' AND '.join(where)} RETURN n "
+            "ORDER BY n.valid_from_ordinal LIMIT $lim", params)
+        return [Fact.model_validate(self._fact_props(self._props(r))) for r in rows]
+
+    @staticmethod
+    def _fact_props(row: dict) -> dict:
+        return {
+            "id": row.get("id") or "", "user_id": row.get("user_id") or "",
+            "project_id": row.get("project_id"), "type": row.get("type") or "",
+            "content": row.get("content") or "",
+            "canonical_content": row.get("canonical_content") or "",
+            "confidence": row.get("confidence") or 0.0,
+            "pending_validation": bool(row.get("pending_validation")),
+            "source_types": list(row.get("source_types") or []),
+            "source_chapter": row.get("source_chapter"),
+            "from_order": row.get("from_order"),
+            "valid_from_ordinal": row.get("valid_from_ordinal"),
+            "valid_to_ordinal": row.get("valid_to_ordinal"),
+            "event_date_iso": row.get("event_date_iso"),
+            "predicate": row.get("predicate"), "object": row.get("object"),
+            "evidence_count": row.get("evidence_count") or 0,
+        }
+
     # ── not yet written — each RAISES rather than half-honouring (rule 9) ──────────────────
     def _refuse(self, op: str) -> Any:
         raise NotImplementedError(f"KuzuGraphStore.{op} — {_UNIMPLEMENTED}")
 
     async def update_event_fields(self, **kw: Any) -> Any: self._refuse("update_event_fields")
-    async def merge_fact(self, **kw: Any) -> Any: self._refuse("merge_fact")
-    async def facts_for(self, **kw: Any) -> Any: self._refuse("facts_for")
     async def add_evidence(self, **kw: Any) -> Any: self._refuse("add_evidence")
     async def status_at_order(self, **kw: Any) -> Any: self._refuse("status_at_order")

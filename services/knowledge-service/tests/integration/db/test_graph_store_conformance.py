@@ -588,6 +588,13 @@ _KUZU_CONFORMED = {
     "test_get_event_is_a_MISS_for_another_user",
     "test_archive_event_is_idempotent",
     "test_the_browse_and_the_window_agree_about_which_events_match",
+    # facts (T42-kuzu-7). Kuzu HONOURS maintain_chain where AGE refused it -- see the method.
+    "test_merge_fact_returns_a_CONTENT_KEYED_id",
+    "test_merge_fact_ACCEPTS_maintain_chain_without_raising",
+    "test_facts_for_sees_the_ORDINAL_CHAIN_that_merge_fact_maintained",
+    "test_facts_for_COUNTS_so_a_re_merge_cannot_hide_a_duplicate",
+    "test_facts_for_as_of_is_HALF_OPEN_at_the_boundary_chapter",
+    "test_facts_for_EXCLUDES_a_positionless_fact_from_a_TIMED_read",
 }
 
 
@@ -619,8 +626,7 @@ async def test_kuzu_REFUSES_what_the_scope_list_skips():
     from app.adapters.kuzu_graph_store import KuzuGraphStore
 
     store = KuzuGraphStore(conn=None)
-    for op in ("update_event_fields", "merge_fact", "facts_for",
-               "add_evidence", "status_at_order"):
+    for op in ("update_event_fields", "add_evidence", "status_at_order"):
         with pytest.raises(NotImplementedError, match="T42"):
             await getattr(store, op)()
 

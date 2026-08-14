@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU adapter's FACTS (`merge_fact`, `facts_for`, `add_evidence`, `status_at_order`) plus `update_event_fields`, after which Kuzu is judged on T42a's whole suite rather than a named subset. 19 of T42a's rules pass as `[kuzu]`. ⚠️ `merge_fact`'s `maintain_chain` is what AGE REFUSED (`D-AGE-FACT-WRITE-UNIMPLEMENTED`): re-deriving the valid_to_ordinal chain needs an ordered window over sibling facts — measure whether Kuzu can express it BEFORE building, and refuse naming the section if not.**
+**RESUME: `T42` — the KUZU adapter's LAST THREE operations (`add_evidence`, `update_event_fields`, `status_at_order`), after which `_KUZU_CONFORMED` can be deleted entirely and Kuzu is judged on T42a's whole suite. 25 of T42a's rules pass as `[kuzu]`, including `maintain_chain`, which AGE refuses.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 55 of 95 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 56 of 96 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (8/11) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (9/12) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,47 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### ✅ T42-kuzu-7 2026-08-14 — facts, and **Kuzu honours the chain AGE refused**
+
+  ```
+  25 of T42a's rules PASS as [kuzu]   147 passed  tests/integration/db/
+  ```
+
+  🔻 **`maintain_chain` is the headline.** `D-AGE-FACT-WRITE-UNIMPLEMENTED` refuses it because
+  re-deriving the chain needs *"an ordered window over sibling facts in ONE statement, which AGE
+  has no APOC-free shape for."* **Kuzu does not need one statement.** It is embedded and
+  single-writer, so reading the `(subject, type)` family, computing the chain in Python and
+  writing it back cannot interleave with another writer.
+
+  **The file lock that makes this adapter unable to scale out is the same property that makes a
+  read-compute-write chain sound.** That is now the THIRD time Kuzu's central limitation has
+  turned out to be the enabling condition for its workaround — identity, then the concurrent
+  resolve, now the chain. It is the single most useful thing T43 will weigh: Kuzu buys
+  correctness that AGE cannot express, and pays for it with one process.
+
+  The chain is recomputed over the WHOLE family rather than patched at the insertion point:
+  out-of-order and backfill arrival are what the port names as "the whole difficulty", and
+  patching neighbours is exactly what gets them wrong.
+
+  🔧 **The subject is the `(Fact)-[:ABOUT]->(Entity)` EDGE, not a column** — and Kuzu said so
+  first (`Binder exception: Cannot find property subject_id for n`). A `subject_id` property
+  would have given one fact two homes and made **T43's diff report a difference that is really a
+  schema choice**. The schema-full engine caught a modelling slip a schemaless one would have
+  accepted silently.
+
+  **BITE:** `if maintain_chain and subject_id:` → `if False:` — the flag accepted, no interval
+  closed, which is the exact silent failure the port describes (*"every fact open forever …
+  a book with no history, reported as a working timeline"*) →
+  `FAILED test_facts_for_sees_the_ORDINAL_CHAIN_that_merge_fact_maintained[kuzu]` **and**
+  `test_facts_for_as_of_is_HALF_OPEN_at_the_boundary_chapter[kuzu]`. Restored, green.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service caller. **(c)** real Kuzu
+  databases per test.
+
+  ⬜ **Next:** the last three — `add_evidence`, `update_event_fields`, `status_at_order` — after
+  which Kuzu is judged on T42a's whole suite with no named subset at all.
+
 
   ### ✅ T42-kuzu-6 2026-08-14 — the browse and the window, sharing ONE definition of "matching"
 
