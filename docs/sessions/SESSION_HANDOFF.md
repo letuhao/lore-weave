@@ -1,9 +1,50 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the data foundation now has DATA IN IT: the SDK has production callers, end to end (2026-08-14, branch `feat/game-logic`)
+## ▶ GAME BUILD — the live suites have a home, and one of them had been dead since `M1` (2026-08-14, branch `feat/game-logic`)
 
-**HEAD:** `618a338b1` · **NO ACTIVE run-state — all five are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged) · [spine drain-once](../plans/2026-08-14-spine-drain-once-RUN-STATE.md) (`DFO-7` closed). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
+**HEAD:** `b17d4f9b9`+ · **NO ACTIVE run-state — all six are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged) · [spine drain-once](../plans/2026-08-14-spine-drain-once-RUN-STATE.md) (`DFO-7` closed) · [live suites](../plans/2026-08-14-live-suites-RUN-STATE.md) (`DFO-6` closed). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 
+> ## ▶ `DFO-6` IS CLOSED — AND THE ROW UNDERSTATED IT (2026-08-14)
+>
+> It asked for a dev runner mirroring *"`foundation-ci.yml`'s five"*. Measured: CI provisions a
+> database for **6 of 21** live Rust targets, and the `cargo test --workspace` leg sets **no DSN at
+> all** — so the other **fifteen** have been running in CI only in their SKIPPED form. Green
+> because they did nothing. `NV-3` at the CI level.
+>
+> **A live suite cannot be discovered from source**, and that decided the design: a grep for
+> `env::var("…")` finds 19 of 21 (`epoch_activation_live` reads its DSNs through a helper;
+> `spine_drain_once_live` reaches `env::var` with the name as a PARAMETER) and would report
+> complete coverage of an incomplete list. So the registry is AUTHORED and kept honest by things
+> that cannot lie about themselves.
+>
+> * **[`contracts/testing/live-suites.yaml`](../../contracts/testing/live-suites.yaml)** — 21
+>   suites: databases, env vars, schema set, `ci` yes/no with a reason for no.
+> * **`scripts/live-suite-registry-gate.py`** — 13 biting arms. Cross-checks CI's legs BOTH ways,
+>   proves each target exists on disk, requires every suite to ANNOUNCE its skip, and ratchets the
+>   uncovered count (**15**, may only shrink). Wired pre-commit; 106 gates discovered.
+> * **`scripts/live-suites.py`** — one database per suite, defaults to the pgvector postgres,
+>   prints WHY a suite failed rather than a count, and reports **SKIPPED as NOT a pass**.
+>
+> **`LS_RC=0` — 21/21.** `SUITE_RC=0` — 682 passed / 0 failed across 52 suites.
+>
+> **What it found on its first run is the argument for it.** `epoch_activation_live` had been
+> **dead since `M1`**: its fixture wrote `quantities` and nothing else while every test calls
+> `resolve(…).expect("the reality binds every engine role")`, which has required role-bound
+> `resources` since. Four tests failing on their first line, invisible for as long as that
+> requirement has existed. Repairing it surfaced `OrdinalReused` immediately (ordinals are
+> positional; an additive epoch switch may only APPEND). **Eight further suites that had no home
+> anywhere now run and pass.**
+>
+> **▶ DO NEXT.** The data-foundation run-state's open rows are now **empty** — `DFO-2..8` are all
+> closed. What remains named anywhere: the two `DP-X2` Redis roles that are still unbuilt
+> (invalidation pub/sub, and `dp:events:*` which has **zero producers** — decide whether it should
+> exist before building it), and **lowering the `UNCOVERED_MAX` ratchet from 15** by giving the
+> uncovered suites real CI legs, which is a `foundation-ci.yml` edit this run deliberately did not
+> make blind. The product path, `G-S3`/`G-S4`, is still parked on the PO: combat and progression
+> have no complete design to write a schema against.
+>
+> ---
+>
 > ## ▶ `DFO-7` IS CLOSED — THE SPINE BINARY IS DRIVEN NOW (2026-08-14)
 >
 > **`BLOCK 0` is Redis for *wait forever*.** `epoch_signal::connect_signal_bus` passed `block_ms: 0`
@@ -1166,7 +1207,7 @@ the two design contracts that are its only specification are in
 move · the Go mirror `contracts/entity_status` still agrees · `actor-hub` and `entity-existence` are clippy- and rustdoc-clean (the other three crates in that command carry a handful of pre-existing doc and clippy warnings, none of them this round's — counts deliberately not stated, because nothing here measures them and a figure with no measurement rule goes stale by construction; run the two commands if you want the numbers — a round-12 verifier measured the flat claim `clippy clean · cargo doc 0 warnings` FALSE, in the sentence that claims every figure in this block is emitted by a checker) ·
 every mutation in the committed
 mutation harness reds its gate's self-test (`python scripts/gate-bite-harness.py` — one mutation per
-PRODUCTION RULE, run it rather than trust this sentence) · the **51**
+PRODUCTION RULE, run it rather than trust this sentence) · the **52**
 gate scripts the pre-commit hook
 wires all green, and every `--self-test` among them runs pre-commit via
 `scripts/gate-self-tests.py`, which DISCOVERS them rather than naming them.

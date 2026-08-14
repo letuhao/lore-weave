@@ -328,6 +328,16 @@ fi
 # the same week. Default-uncovered is NV-3 at the process level.
 "$PY" "$ROOT/scripts/phase0-reconcile-gate.py"
 
+# DFO-6 — the registry of live suites and the databases they need. It is
+# AUTHORED, because a live suite cannot be discovered from Rust source: two of
+# the 21 reach `env::var` with the DSN name as a parameter, so a grep finds 19
+# and reports complete coverage. This checks the registry against the two things
+# that cannot lie about themselves — foundation-ci.yml's legs, both directions,
+# and the filesystem — plus a ratchet on how many live suites have no CI leg at
+# all. That count was 15 of 21 when it was first measured, and every one of
+# those suites is green in `cargo test --workspace` because it SKIPPED.
+"$PY" "$ROOT/scripts/live-suite-registry-gate.py"
+
 # A GATE NOBODY RUNS IS NOT A GATE. Wired 2026-07-29 after an audit found 26 of
 # the repo's 58 gate/lint scripts running NOWHERE — not here, not in any
 # workflow — six of them RED, two reporting "NEW offender(s)" for regressions

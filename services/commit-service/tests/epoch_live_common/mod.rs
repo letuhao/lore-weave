@@ -53,10 +53,54 @@ pub fn content_store(tag: &str) -> RulesetStore {
 
 /// A ruleset carrying exactly these quantities — distinct names ⇒ distinct
 /// bytes ⇒ a distinct digest, which is what makes an epoch switch observable.
+///
+/// # The three role-bound resources are NOT decoration
+///
+/// This wrote `quantities = [...]` and nothing else, and every caller then did
+/// `RealityRules::resolve(rules).expect("the reality binds every engine role")`
+/// — which has required `resources` rows for `vital`, `initiative` and
+/// `action_budget` since `M1`. So the whole suite failed on its first line with
+/// `RoleUnbound { role: "vital" }`, and had done for as long as that
+/// requirement has existed.
+///
+/// **Nothing noticed, because nothing ran it.** `epoch_activation_live` has no
+/// CI leg (`contracts/testing/live-suites.yaml`), so it was green in
+/// `cargo test --workspace` by SKIPPING. It is the first thing `DFO-6`'s runner
+/// found, and it is the whole argument for that runner in one fixture.
+///
+/// The names below are deliberately NOT the engine's declared vocabulary: the
+/// role is what `resolve` reads, the name is free, and borrowing the real ones
+/// would tie this fixture to a preset it has no reason to track.
+/// `ceiling_fixed` throughout, so the fixture needs no `stats` slot to resolve.
 pub fn put_quantities(store: &RulesetStore, names: &[&str]) -> ruleset_core::RulesetDigest {
+    // The three role quantities go FIRST, and the order is load-bearing.
+    //
+    // A quantity's ORDINAL is its position, and an additive epoch switch may
+    // only APPEND — `OrdinalReuse` refuses a reorder, correctly. With the
+    // varying names in front, `["qi"] -> ["qi", "karma"]` pushed `karma` into
+    // ordinal 1 where `ls_vital` had been, and the switch was refused:
+    // `OrdinalReused { ordinal: 1, was: "ls_vital", now: "karma" }`. Fixed
+    // quantities first means the caller's names always append past them.
+    let mut all: Vec<String> = ["ls_vital", "ls_initiative", "ls_budget"]
+        .iter()
+        .map(|q| format!("\"{q}\""))
+        .collect();
+    all.extend(names.iter().map(|n| format!("\"{n}\"")));
     let toml = format!(
-        "quantities = [{}]\n",
-        names.iter().map(|n| format!("\"{n}\"")).collect::<Vec<_>>().join(", ")
+        "quantities = [{}]\n\
+         \n\
+         [[resources]]\n\
+         quantity = \"ls_vital\"\nrole = \"vital\"\nmin = 0\nbase = 100\n\
+         ceiling_fixed = 100\nregen_type = \"none\"\nzero_behaviour = \"clamp\"\n\
+         \n\
+         [[resources]]\n\
+         quantity = \"ls_initiative\"\nrole = \"initiative\"\nmin = 0\nbase = 100\n\
+         ceiling_fixed = 10000\nregen_type = \"none\"\nzero_behaviour = \"clamp\"\n\
+         \n\
+         [[resources]]\n\
+         quantity = \"ls_budget\"\nrole = \"action_budget\"\nmin = 0\nbase = 1\n\
+         ceiling_fixed = 1\nregen_type = \"none\"\nzero_behaviour = \"clamp\"\n",
+        all.join(", ")
     );
     let layer = parse_layer(Layer::Reality, &toml).expect("parses");
     store.put(&ruleset_loader::resolve(&[layer]).expect("resolves")).expect("put")

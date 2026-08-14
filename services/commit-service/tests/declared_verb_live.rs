@@ -68,8 +68,14 @@ fn proposal(id: &str, tool: &str) -> String {
 #[tokio::test]
 async fn a_declared_verb_reaches_the_log_and_the_wire() -> anyhow::Result<()> {
     let Some(dsn) = guarded() else {
+        // `SKIP` first, then the reason. The prefix is what
+        // `scripts/live-suites.py` reads to tell "did nothing" from "passed" —
+        // without it the runner reports this suite as a PASS on a run where it
+        // never connected. This line announced only "live infra unavailable",
+        // a THIRD spelling of skip in a tree that already had two, and
+        // `live-suite-registry-gate` red on it.
         eprintln!(
-            "live infra unavailable: {DSN_VAR} is unset. \
+            "SKIP declared_verb_live — live infra unavailable: {DSN_VAR} is unset. \
              Run scripts/declared-verb-live-smoke.sh"
         );
         return Ok(());
