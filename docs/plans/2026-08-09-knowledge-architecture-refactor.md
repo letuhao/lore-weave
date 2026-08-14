@@ -6857,6 +6857,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The measurement file records both coverages side by side, so the disagreement is visible rather than inferable. Any future run that reports a flow-level `canon_consistency` contradicts this row and closes it. |
   | **Retry when** | ~~The PO picks (a), (b) or (c).~~ ✅ **DECIDED BY THE PO 2026-08-13: option (a) — wire the D5 continuity critic into the drafting flow** so a chapter genuinely carries `canon_consistency` and QC-5 reads as originally written. Costs an extra LLM pass per chapter on the authoring path, accepted. **This deferral is now WORK, not a question.** |
 - [x] **T38** — Migrate the authored-catalog readers; shrink the gate allowlist per consumer
+  verify: python scripts/authored-catalog-reader-gate.py
   ✅ **CLOSED 2026-08-14 — re-verified, not assumed.** `authored-catalog-reader-gate` PASS at
   **3 files / 3 call sites**, exactly the pinned set. T38's migration target was **10 → 3**, and
   the three that remain are the ones it was never for: two eval scripts on `canon-content`
@@ -9039,6 +9040,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 > harness to be judged against and no engine to run on.
 
 - [x] **T42a** — **Adapter-parameterised behavioural conformance suite** *(NEW — do this FIRST)*
+  verify: python scripts/graph-port-gate.py
   ✅ **CLOSED 2026-08-14 — re-verified against all three adapters.**
   `tests/integration/db/test_graph_store_conformance.py` with `CONFORMANCE_REQUIRE_REAL=1`,
   a real Neo4j and a real AGE container: **82 passed, 15 skipped**. The suite this task exists
@@ -9188,6 +9190,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **Mechanism** | The test `test_as_of_respects_the_interval_start` names this deferral in its docstring and covers the lower bound only, so the gap is stated where a reader meets it rather than in a note elsewhere. |
   | **Retry when** | T42 designs the AGE adapter — that is when a second implementation of the upper bound first exists, and when the port either grows a close operation or the write path is declared out of port scope deliberately. |
 - [x] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
+  verify: bash scripts/postgres-knowledge-image-smoke.sh
   ✅ **TICKED 2026-08-14, two days late — re-verified by RUNNING it, not by reading the block:**
   `bash scripts/postgres-knowledge-image-smoke.sh` → **passed=9 failed=0**, image label
   `com.loreweave.age.version=1.7.0`. Every item of the *Do:* below is in the tree: the AGE
@@ -9581,6 +9584,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **(c) real data** — **419 integration**, up from 410 (+6 differential, +3 conformance across
   the three adapters).
 - [x] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
+  verify: python scripts/port-adoption-gate.py
   ✅ **TICKED 2026-08-14 — the gate runs and its own deferral is now factually false.**
   `python scripts/port-adoption-gate.py` → *"57 module(s) bind `neo4j_repos` directly (ceiling
   57); 8 import a port; **17 import GraphStore** (floor 17) — PASS, exactly at the ceiling; it

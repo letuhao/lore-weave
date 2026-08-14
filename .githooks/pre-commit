@@ -63,6 +63,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # is OPEN rather than what is done, on purpose: nobody notices an absence from a done-list,
 # which is precisely how T42b hid; a row you just finished sitting under **OPEN** is loud.
 "$PY" "$ROOT/scripts/plan-progress-block.py" --check
+# Executable acceptance: rows that CAN name a runnable command do, and the count can only rise.
+# Only the FLOOR runs here (instant) -- `--run` needs docker and a live stack, so it belongs to
+# a cycle's QC, not to every commit. This is the one signal that is not self-report: T42b's
+# smoke had been returning `passed=9 failed=0` for two days while its row said `[~]`, and no
+# amount of prose-checking reaches that. Nobody ran it.
+"$PY" "$ROOT/scripts/plan-acceptance.py" --floor
 # T37b/SPEC 4.2c -- the cast-prompt eval's OFFLINE selftest (0.7s; the model arms are opt-in
 # and are not run here). Wired because the thing it guards fails SILENTLY: the eval builds its
 # control arm by removing the `roles` spans from the LIVE prompt, so an unrelated edit to
