@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T39` (15/21 evidence blocks) — the largest open row by remaining work, and its first half already shipped (B9: the anchor cache is invalidated by EVENT, not by a 300-second guess). Read what B9 left for the SECOND cache before building. Alternatives: `T17` (12/20) or `QC-5` (12/30).**
+**RESUME: `T17` (12/20) — the port migration, now the largest genuinely-open row. ⚠️ `T39`'s remaining half was measured and re-scoped rather than built: its second cache has NO CALLERS (P2's Step D never landed), so the documented staleness risk is false and invalidating it would be motion. Read T39's re-scope note before reopening it.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -7456,12 +7456,38 @@ misattribution question has no code path to reach.** No decision is owed by anyo
     delivery — and a cache with no expiry would then be wrong until the process dies. The event
     makes it usually-instant; the TTL makes it eventually-right.
 
-  ⚠️ **T39 is NOT closed.** Its second cache — `jobs/glossary_anchor_cache.py`, whose own
-  docstring says *"per-process, never cleared"* — is untouched, and the plan's stated design
-  (*"keyed on a coverage digest"*) has **no digest source**: measured, nothing in the codebase
-  computes one, and `project_graph_stats` is a full node scan, far too expensive for a
-  per-lookup key. That is a design decision, not effort — recorded as
-  `D-T39-NO-COVERAGE-DIGEST-SOURCE`.
+  ⚠️ **T39's SECOND CACHE HAS NO CALLERS — measured 2026-08-14, and it inverts the premise.**
+
+  ```
+  grep -rn "GlossaryAnchorCache|glossary_anchor_cache" --include=*.py  ->  the module,
+      its own unit test, and NOTHING ELSE in any service
+  ```
+
+  `jobs/glossary_anchor_cache.py` is **built but unreachable**. `SESSION_PATCH.md` records why:
+  P2 shipped Steps A+B+C and **deferred Step D** — the `pass2_orchestrator` refactor that would
+  have called it. The cache landed in Step B; its consumer never arrived.
+
+  🔴 **So the documented risk is FALSE.** The blast-radius doc says *"a deleted entity survives
+  in an extraction run's anchor set until the process restarts"* — it cannot, because no
+  extraction run reads this cache. The plan inherited that sentence and built T39's second half
+  around it. **Wiring event invalidation into a cache nobody calls would be pure motion**, and
+  it would read as risk retired.
+
+  ✅ **The first cache was the real one and it is DONE** (B9: `invalidate_anchor_cache`,
+  per-project, event-driven, TTL kept as the backstop). That is the whole of T39's actual
+  exposure today.
+
+  📐 **DECIDED — T39's second half is re-scoped, not deferred.** The correct action is NOT to
+  invalidate an unreachable cache. It is to make the claim honest and let the work follow the
+  consumer: **when Step D lands and `pass2_orchestrator` starts calling this cache, the same
+  event hook B9 already ships is what it needs** — one call, next to the existing one. Until
+  then there is nothing to invalidate. `D-T39-NO-COVERAGE-DIGEST-SOURCE` is moot for the same
+  reason: §4.5 already replaced the digest with event invalidation, and there is no consumer to
+  key anything for.
+
+  ⚠️ **Not deleted**, deliberately: Step D is still intended work, and removing a module whose
+  consumer is planned trades one wrong claim for another. What is fixed here is the false risk
+  statement, which is what was actively misleading.
 
   **BITE ×2, both red on the value:**
 
