@@ -6724,6 +6724,53 @@ _ORIENTATION_SCENT = (
 )
 
 
+#: D-LAZY-TAIL-UNUSED (2026-08-14) — the sentence that tells the model the surface is PARTIAL.
+#:
+#: The surfacing architecture is a small budgeted hot seed plus a lazy tail the model reaches
+#: through `tool_list`/`tool_load`. Measured across 30 live runs of five ordinary authoring
+#: requests: `tool_list` was called ONCE and `tool_load` NEVER — with both advertised on every
+#: single run. The tail was not a fallback, it was dead weight, and whatever the deterministic
+#: pre-filter put on the wire was the entire reachable catalogue for that turn.
+#:
+#: Nothing told the model otherwise. `_ORIENTATION_SCENT` names three composition reads; the rest
+#: of the note explains ids. The advertised set was presented as simply "the tools", so a model
+#: that could not find one for the request did the reasonable thing with what it had — and the
+#: reasonable thing is exactly the failure this loop keeps finding: answer from the context block
+#: (a queue of one reported as three), or use the nearest write that IS on the wire (three chapters
+#: created by a read question).
+#:
+#: So the last clause is the load-bearing one. It is not "discover more tools"; it is "do not
+#: answer a question about the user's data without having called something".
+#:
+#: 🔴 DEPLOYED, MEASURED, REFUTED — AND IT IS THE THIRD PROSE INTERVENTION TO FAIL THE SAME WAY.
+#: Same discriminating fixture (three entities, exactly ONE tagged 'ai-suggested'), K=3, deployed
+#: and md5-verified:
+#:
+#:   baseline                 -> "3 suggested entries"   tool_list 0/3
+#:   story_state scope note   -> "you don't have any"    tool_list 0/3   (reverted)
+#:   this discovery scent     -> "3 suggested entries"   tool_list 0/3
+#:
+#: The scent DID change behaviour — the model stopped answering from nothing and called a tool.
+#: It called `glossary_search`, which returns EVERY entity, and reported three. It satisfied
+#: "call something" by calling the wrong thing, because the right thing was not on the wire.
+#:
+#: That is the conclusion, and it is worth more than the sentence: PROSE DOES NOT MOVE THIS MODEL
+#: OFF THE ADVERTISED SURFACE. Three interventions, zero tool_list calls in 39 runs. Telling the
+#: model the surface is partial cannot help when every tool it can actually see is the wrong one.
+#: The lever is not the prompt, it is which tools are ON the wire — the declaration gap.
+#:
+#: Kept as a constant (with its tests) rather than deleted, because it is a clean negative result
+#: and the next person WILL propose it. It is not applied.
+_DISCOVERY_SCENT = (
+    " The tools advertised this turn are a SUBSET chosen from your words, not everything that"
+    " exists — a request phrased differently may have no matching tool on the wire even though"
+    " one exists. If nothing advertised clearly answers the request, call tool_list (a category,"
+    " or \"all\") and then tool_load, before replying. Never answer a question about the user's"
+    " own data — counts, lists, what is pending or missing — from memory or from a context block"
+    " when no tool returned it; say you are checking, and check."
+)
+
+
 #: U-2 — the outage the model can NAME. Without it the model has no tool left to ask with and every
 #: explanation it gives is invented; a verifier watched exactly that, with the model asserting a
 #: withheld tool "does not exist at all". The wording says TEMPORARY and says what to do, because
@@ -7318,6 +7365,7 @@ async def stream_response(
                 " For a tool that requires chapter_id, use the exact id above; never pass a placeholder."
             )
         book_context_note += _ORIENTATION_SCENT  # 28 AN-9 / AN-C2 — the discovery scent
+        # _DISCOVERY_SCENT is NOT applied — measured and refuted, see its definition.
 
     # ── RAID C1 (DR-C1) — per-book steering ─────────────────────────────────
     # Book-scoped turn → fetch the ENABLED steering entries from book-service,
