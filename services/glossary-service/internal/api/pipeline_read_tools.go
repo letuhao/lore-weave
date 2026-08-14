@@ -36,7 +36,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"status": {"proposed", "dismissed", "merged"},
 		}),
 		// LEGACY (catalog-unification 2026-07-22 Part B): superseded by glossary_curation_list.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_curation_list"),
 	}, s.toolListMergeCandidates)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -45,7 +45,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"relevance + notes. book_id + entity_id. " +
 			"NOTE: superseded by glossary_get_entity (include=chapter_links) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolListChapterLinks)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -54,7 +54,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"book_id + entity_id. Use to find a revision to restore. " +
 			"NOTE: superseded by glossary_get_entity (include=revisions) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolListEntityRevisions)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -68,7 +68,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"status": {"draft", "active", "inactive", "rejected", "all"},
 		}),
 		// LEGACY (catalog-unification 2026-07-22 Part B): superseded by glossary_curation_list.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_curation_list"),
 	}, s.toolListUnknownEntities)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -78,7 +78,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"attribute, or before adding evidence with glossary_create_evidence. " +
 			"NOTE: superseded by glossary_get_entity (include=evidence) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolGetEntityEvidence)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -93,7 +93,7 @@ func (s *Server) RegisterPipelineReadTools(srv *mcp.Server) {
 			"status": {"draft", "active", "inactive", "rejected", "all"},
 		}),
 		// LEGACY (catalog-unification 2026-07-22 Part B): superseded by glossary_curation_list.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_curation_list"),
 	}, s.toolListAISuggestions)
 }
 

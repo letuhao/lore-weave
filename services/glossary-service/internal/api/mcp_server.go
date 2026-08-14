@@ -154,7 +154,7 @@ func (s *Server) mcpHandler() http.Handler {
 		// Tier was previously unset (defaulting to R) despite being a direct write --
 		// corrected to A (auto-commit, draft-only so low-risk) while legacy-tagging it,
 		// since both edits touch this same registration.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_entities"),
 	}, s.toolProposeNewEntity)
 
 	// Class-C proposals. These MINT a generalized action confirm token (no write) +
@@ -179,7 +179,7 @@ func (s *Server) mcpHandler() http.Handler {
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W. LEGACY (catalog-unification
 		// 2026-07-22): superseded by glossary_propose_batch's create_kinds op — hidden from the
 		// hot-set, still loadable for existing callers.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_batch"),
 	}, s.toolProposeNewKind)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -196,7 +196,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"kinds[].attributes[].field_type": enumFieldTypes,
 		}),
 		// LEGACY (catalog-unification 2026-07-22): superseded by glossary_propose_batch's create_kinds op.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_batch"),
 	}, s.toolProposeKinds)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -265,7 +265,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"field_type": enumFieldTypes,
 		}),
 		// LEGACY (catalog-unification 2026-07-22): superseded by glossary_propose_batch's add_attributes op.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_batch"),
 	}, s.toolProposeNewAttribute)
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 

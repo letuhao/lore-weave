@@ -55,7 +55,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[bookCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_upsert"),
 	}, s.toolBookCreate)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -71,7 +71,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			}),
 			"changes[]", // the tolerance-shim diff absorbs weak-model extras (old_value, …)
 		),
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_upsert"),
 	}, s.toolBookPatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -82,7 +82,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"Address by code: level=genre|kind|attribute + code (for attribute also kind_code + genre_code). " +
 			"NOTE: superseded by glossary_ontology_delete — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[bookDeleteToolIn](map[string][]any{"level": enumLevels}),
-		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_delete"),
 	}, s.toolBookDelete)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -106,7 +106,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"NOTE: superseded by glossary_set_genres (target=book_active) — kept for existing callers only.",
 		// Direct, reversible delta write (INSERT/DELETE active-genre rows) ⇒ Tier A.
 		// LEGACY (catalog-unification 2026-07-22 Part D): superseded by glossary_set_genres.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_set_genres"),
 	}, s.toolBookSetActiveGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -115,7 +115,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"of genre codes. Adds or removes which genres' attributes apply to that kind. " +
 			"NOTE: superseded by glossary_set_genres (target=kind) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part D): superseded by glossary_set_genres.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_set_genres"),
 	}, s.toolBookSetKindGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -124,7 +124,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"entity follows the book's active genres. " +
 			"NOTE: superseded by glossary_get_entity (include=genres) — kept for existing callers only.",
 		// LEGACY (catalog-unification 2026-07-22 Part B2): folded into glossary_get_entity.include.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_get_entity"),
 	}, s.toolEntityGetGenres)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -134,7 +134,7 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"NOTE: superseded by glossary_set_genres (target=entity) — kept for existing callers only.",
 		// Direct, reversible write (replaces the entity's genre override) ⇒ Tier A.
 		// LEGACY (catalog-unification 2026-07-22 Part D): superseded by glossary_set_genres.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_set_genres"),
 	}, s.toolEntitySetGenres)
 }
 

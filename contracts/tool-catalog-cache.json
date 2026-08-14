@@ -15687,6 +15687,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_ontology_upsert",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -15730,6 +15731,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_ontology_delete",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -15921,6 +15923,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_ontology_upsert",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -16002,6 +16005,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_set_genres",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -16047,6 +16051,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_set_genres",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -16380,6 +16385,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_get_entity",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -16529,6 +16535,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_set_genres",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -16651,6 +16658,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_get_entity",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -16680,6 +16688,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_curation_list",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -16706,6 +16715,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_get_entity",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -16732,6 +16742,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_get_entity",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -16759,6 +16770,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_curation_list",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -16799,6 +16811,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_curation_list",
    "tier": "R",
    "visibility": "legacy"
   }
@@ -17460,6 +17473,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_batch",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -17496,6 +17510,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_curation",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -17561,6 +17576,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_batch",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -17600,6 +17616,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_entities",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -17705,6 +17722,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_batch",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -17735,6 +17753,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_curation",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -17765,6 +17784,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_curation",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -17807,6 +17827,7 @@
   },
   "meta": {
    "scope": "book",
+   "superseded_by": "glossary_propose_curation",
    "tier": "W",
    "visibility": "legacy"
   }
@@ -18094,6 +18115,7 @@
   },
   "meta": {
    "scope": "user",
+   "superseded_by": "glossary_ontology_upsert",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -18133,6 +18155,7 @@
   },
   "meta": {
    "scope": "user",
+   "superseded_by": "glossary_ontology_delete",
    "tier": "A",
    "visibility": "legacy"
   }
@@ -18255,6 +18278,7 @@
   },
   "meta": {
    "scope": "user",
+   "superseded_by": "glossary_ontology_upsert",
    "tier": "A",
    "visibility": "legacy"
   }
