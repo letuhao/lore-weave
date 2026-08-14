@@ -90,7 +90,49 @@ def _counts(db: str, tables: list[str], column: str, value: str) -> dict:
     return out
 
 
-def snapshot(book_id: str) -> dict:
+def _neo4j(project_id: str | None) -> dict:
+    """Graph counts — the store the Postgres sweep CANNOT see.
+
+    🔴 THIS BLIND SPOT NEARLY PRODUCED A FALSE DEFECT. `memory_remember` returned
+    {"remembered": true, "fact_id": ..., "confidence": 0.7} and the Postgres snapshot said the
+    store was unchanged, which is the textbook silent-success shape — and I was one step from
+    filing it. The tool was honest: `_handle_memory_remember` ends in `merge_fact` inside
+    `neo4j_session()`, so memory facts live in the GRAPH and no amount of Postgres sweeping will
+    ever see them.
+
+    This file's own docstring already warned that a tool writing outside the four databases is
+    out of scope "because a snapshot whose silence is read as 'nothing happened' is exactly the
+    failure this file exists to prevent". The warning was written and still nearly missed, which
+    is the argument for measuring rather than documenting.
+
+    Counted globally as well as per-project: a fact stored with project_id NULL is invisible to
+    a project-scoped count, and that is precisely the case that surfaced here (339 of 343 facts
+    carry a project; the one this turn wrote did not).
+    """
+    pw = subprocess.run(["docker", "exec", "infra-knowledge-service-1", "printenv",
+                         "NEO4J_PASSWORD"], capture_output=True, text=True).stdout.strip()
+    if not pw:
+        return {}
+
+    def q(cypher: str) -> str:
+        out = subprocess.run(
+            ["docker", "exec", "-i", "infra-neo4j-1", "cypher-shell", "-u", "neo4j", "-p", pw,
+             "--format", "plain", cypher],
+            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+        lines = [ln.strip() for ln in out.stdout.splitlines()
+                 if ln.strip() and not ln.startswith("WARNING")]
+        return lines[-1] if len(lines) >= 2 else "0"
+
+    snap = {"neo4j.Fact.total": {"rows": int(q("MATCH (f:Fact) RETURN count(f);") or 0),
+                                 "latest": "-"}}
+    if project_id:
+        snap["neo4j.Fact.project"] = {
+            "rows": int(q(f"MATCH (f:Fact) WHERE f.project_id = '{project_id}' "
+                          "RETURN count(f);") or 0), "latest": "-"}
+    return snap
+
+
+def snapshot(book_id: str, project_id: str | None = None) -> dict:
     """Everything the owning stores hold for this book. Empty tables are omitted, so a snapshot
     reads as "what exists" rather than a wall of zeros — and a table APPEARING in the diff is
     itself the signal that something was created."""
@@ -107,6 +149,11 @@ def snapshot(book_id: str) -> dict:
         ptables = _scoped_tables("loreweave_composition", "project_id")
         for k, v in _counts("loreweave_composition", ptables, "project_id", proj[0]).items():
             snap[f"loreweave_composition.{k}"] = v
+        project_id = project_id or proj[0]
+    try:
+        snap.update(_neo4j(project_id))
+    except Exception as e:  # noqa: BLE001 — a graph that is down must not silently read as "clean"
+        snap["neo4j.__error__"] = {"rows": -1, "latest": str(e)[:80]}
     return snap
 
 

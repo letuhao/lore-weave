@@ -2000,6 +2000,22 @@
    "finding": "Asked 'What exactly do you need from me to add a new character? Check the real requirements, don't guess', tool_load was surfaced 3/3 and called 0/3. The model answered 'I only require a Name' from glossary_book_ontology_read instead — plausible, and not sourced from the schema the tool exists to expose.",
    "why_it_matters": "tool_load is the mechanism that stops argument guessing, and five 'obvious' argument names were wrong in one session of mine. It is consistent with D-LAZY-TAIL-UNUSED: the model works from what is already on the wire rather than fetching the contract.",
    "state": "OPEN — recorded, not fixed. tool_load is one of the 3 remaining undeclared tools (gateway-local), so declaration is not the lever here."
+  },
+  {
+   "id": "D-HARNESS-BLIND-TO-THE-GRAPH",
+   "date": "2026-08-14",
+   "finding": "The DATA bar was structurally blind to an entire store. memory_remember returned {'remembered': true, 'fact_id': ..., 'confidence': 0.7} and the store snapshot said unchanged — the textbook silent-success shape, and I was one step from filing it as a defect. The tool was honest: _handle_memory_remember ends in merge_fact inside neo4j_session(), so memory facts live in the GRAPH and no amount of Postgres sweeping will ever see them. Verified by querying Neo4j directly: the fact is there, verbatim.",
+   "why_it_nearly_landed": "store_snapshot.py's OWN docstring already warned that a tool writing outside the four databases is out of scope 'because a snapshot whose silence is read as nothing happened is exactly the failure this file exists to prevent'. The warning was written, and still nearly missed. Documenting a blind spot does not remove it.",
+   "fix": "store_snapshot now counts Neo4j Fact nodes, globally AND per-project, and a graph that is unreachable records neo4j.__error__ rather than reading as clean.",
+   "limit_stated": "merge_fact MERGES by content, so re-remembering the same sentence is idempotent and a COUNT cannot distinguish 'merged into an existing node' from 'wrote nothing'. Content has to be read for that, as it was here.",
+   "state": "FIXED (harness)."
+  },
+  {
+   "id": "D-MEMORY-FACT-STORED-UNSCOPED",
+   "date": "2026-08-14",
+   "finding": "On a book-scoped turn, memory_remember stored its fact with project_id NULL. Measured in Neo4j: 339 of 343 Fact nodes carry a project_id; the one this turn wrote is among the 4 that do not. The handler reads `project_id = str(ctx.project_id) if ctx.project_id else None`, so the ambient project did not resolve for that turn — plausibly because the model created the knowledge project mid-turn via kg_project_create, after the envelope was built.",
+   "consequence": "A fact stored unscoped is invisible to project-scoped recall. That is consistent with the same batch's memory_recall_entity run answering 'I don't have any information about Mira Solene' — the user is told nothing is known about something they just asked to be remembered.",
+   "state": "OPEN — recorded with the measurement, not fixed."
   }
  ],
  "progress": {
