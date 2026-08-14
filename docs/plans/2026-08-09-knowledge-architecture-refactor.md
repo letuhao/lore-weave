@@ -35,7 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the END-TO-END REVISION SMOKE both T37d halves owe — a real planning run appends a plan-authored role, a revision drops it, and the stale role CLOSES, live, against rebuilt images. It is the last thing T37 owes.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T37b-eval` · ✅ `T37c` · ✅ `T37d` · ✅ `T38` · ✅ `T42a`. 🔻 **T37 is functionally COMPLETE**: two producers write roles, the plan retracts its own and only its own, `relation 0 → 1` was proved live, and the prompt change is now MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286). What remains is the revision smoke — one live proof, not a batch.
+**RESUME: `T42b` — put AGE in the `loreweave/postgres-knowledge:18` image. T42a is closed (82 rules, three adapters), so the conformance suite that was blocking Phase 7 now exists and T42b/T42c are what stand between it and a second engine.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ **`T37` (CLOSED — all seven slices)** · ✅ `T38` · ✅ `T42a`.
+🔻 **T37 CLOSED 2026-08-14.** Two producers write roles; the plan retracts its own and **only** its own; the prompt change is MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286); and the revision is proved LIVE — where it immediately found that **the close had never worked once**: it closed at the same ordinal it opened at, glossary 422'd every attempt, and the pipeline swallowed it while six unit tests stayed green. Fixed, bitten, re-proved on real rows with 48 611 unmarked legacy facts untouched.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -5117,20 +5118,34 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | The count is a one-command re-run and self-describing (`count(r)` vs `count(r.valid_from_ordinal)` for the project). The role check itself is inert on unplaced edges rather than wrong about them — the as-of read drops them — so this degrades coverage visibly rather than producing false verdicts. |
   | **Retry when** | ~~(a) lands.~~ **CLOSED 2026-08-11, same session.** (a) was the missing `valid_from_ordinal` on the authoring path — fixed above, and the roles are authored and live-verified. (b) — the event-phrase-as-entity edge (`"Sự phản bội tại khởi đầu" -[betrayed]->`) <!-- doc-language-gate: ok -- a stored node name from the cited corpus; translating it would break the identity this evidence turns on --> is still in the graph and still positionless, so it stays invisible to the as-of read rather than being wrong in it; it belongs to the extractor's over-extraction class, not here. QC-5 can now run with the role check on — see the ⚠️ note under `D-QC5-FULL-FLOW-CAPTURE` for how it is turned on **since `96b5ebf2d`**; it is no longer an env flag. |
 
-- [~] **T37** — composition-service becomes a KAL **command producer**
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.2. Unfinished, not undecided.
-  Roles are plan-authored, not extracted — this is the scope widening M2 implies.
-  (depends on T36)
+- [x] **T37** — composition-service becomes a KAL **command producer**
+  ✅ **CLOSED 2026-08-14 — both producers write, the plan retracts its own and only its own,
+  and the retraction is proved LIVE.**
+  Composition was a KAL **reader** only (`roster`, `state`); it now writes. Seven slices, each
+  with its own evidence block above: `T37a` (client) · `T37b-studio` (the author declares, live
+  `relation 0 → 1`) · `T37b-planforge` 1+2 (the plan says a role, and writes it) ·
+  `T37b-eval` (the prompt change MEASURED — `NO-SHIFT`) · `T37c` (chain 0066 `origin`, without
+  which a close erases the author) · `T37d` (the close path) · `T37-smoke` (live, and it found
+  the close had never worked).
+  Roles are plan-authored, not extracted — this is the scope widening M2 implied.
   ---
-  ### 🔻 DEFERRAL `D-T37-COMPOSITION-COMMAND-PRODUCER`
+  ### ~~🔻 DEFERRAL `D-T37-COMPOSITION-COMMAND-PRODUCER`~~ — ✅ **DISCHARGED 2026-08-14**
+
+  Its *To unblock* row named `D-T36-ROLE-FACTS`, which closed; the producer was then built on
+  the settled payload shape. The ordering it protected turned out to be right for a reason it
+  did not anticipate: **T36's fact shape had no authorship column**, and finding that while
+  building the close (T37c) is what stopped a plan revision from silently erasing the author's
+  own declarations. Table kept rather than struck — its **Evidence** row is the measurement
+  the whole task was scoped from (*composition is a KAL reader only; it has no write path*),
+  and that is now false in exactly the way the row predicted.
 
   | | |
   |---|---|
   | **Blocker** | Strictly downstream of T36: this task exists to WRITE the role facts T36 defines. Building the producer before the thing it produces is settled means shipping a command surface whose payload shape is still open. |
   | **Evidence** | Q2's own wording makes the ordering explicit — *"roles are **plan-authored, not extracted**, so **composition-service becomes a KAL command producer** … the command vocabulary is wider than entity CRUD"*. Today composition is a KAL **reader** only (`kal_client.py`: `roster`, `state`); it has no write path. |
-  | **To unblock** | `D-T36-ROLE-FACTS` closes. |
+  | **To unblock** | `D-T36-ROLE-FACTS` closes. ✅ **It did.** |
   | **Mechanism** | T50's `command_transport.go` already logs the transport on every entity command, so a new producer arriving on that surface is visible in the parity suite rather than needing its own tracker. `scripts/entity-lifecycle-outbox-gate.py` covers the mutations it will call. |
-  | **Retry when** | T36 closes. |
+  | **Retry when** | T36 closes. ✅ **Retried and completed 2026-08-14.** |
 
 - [~] **QC-6** — Identity live proof
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.3. Unfinished, not undecided.
@@ -8831,6 +8846,87 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   shift in LOCATION. A change that left both means alone while widening the distribution would
   pass, so both arms' ranges print on every run for a human to read. And it is one model —
   a second would be a stronger claim, and is a cheap follow-up rather than a hole.
+
+  ### 🔴 T37-smoke 2026-08-14 — the close had NEVER worked, and six green tests said it had
+
+  ```
+  plan   | <tag>_betrayed | 3000000 | OPEN        the revision still implies it
+  plan   | <tag>_guards   | 3000000 | 3000001     dropped -> CLOSED
+  author | <tag>_sworn_to | 1000000 | OPEN        survived a plan revision
+  NULL   | 48611 rows                             unmarked legacy, count UNCHANGED
+  ```
+
+  The last thing T37 owed: a real planning revision, live, against rebuilt images. It found a
+  production bug on its first run.
+
+  🔴 **`close_stale_planned_roles` closed at `introduce_at × STRIDE` — the SAME ordinal
+  `publish_planned_roles` opens the role at.** The story interval is half-open
+  (`valid_from <= N < valid_to`), so `valid_to == valid_from` describes a span in which the
+  fact was never true. Glossary is right to refuse it:
+
+  ```
+  422 GLOSS_INVALID  "valid_to_ordinal must be greater than the fact's valid_from_ordinal"
+  T37d: stale planned role not closed fact=019fff0a-b59e-7bdd-b0af-f5076e82fc3b
+  ```
+
+  **That is the ORDINARY revision, not an edge case** — a plan that drops a role while leaving
+  its holder's introduction alone hits it every single time. And `close_stale_planned_roles`
+  swallows exceptions **by design** (the pipeline degrades rather than costing a user their
+  plan), so the failure was a `logger.warning` and a silently-still-open role. The retraction
+  path shipped, was tested, and retracted nothing.
+
+  🔻 **WHY SIX GREEN TESTS MISSED IT: the double had no interval to violate.** `_fact()` in
+  `test_close_stale_planned_roles.py` never set `valid_from_ordinal`, so the field the SERVER
+  validates did not exist in the fake. This is the narrow-double class this branch keeps
+  recording — but a sharper instance than the earlier ones, which failed loudly at the call.
+  This one passed, and agreed.
+
+  ✅ **Fixed** — `ordinal = max(ordinal, fact.valid_from_ordinal + 1)`. Clamped UP rather than
+  skipped: a role the plan no longer implies must stop being served, and the minimum legal
+  span is the closest a *close* can come to "retracted" without deleting the interval the
+  drafted chapters relied on. Where a revision moves the holder LATER, the original
+  holder-position semantics still applies unchanged.
+
+  ✅ **The test that would have caught it** — `test_the_close_is_never_at_or_BEFORE_the_facts_own_start`,
+  with `_fact()` widened to carry `valid_from_ordinal`. **BITE:** clamp removed at line 172 →
+  `AssertionError: closed at 3000000 against a fact starting at 3000000`. Restored, green.
+
+  ✅ **What the smoke PROVED, each against a real service:**
+  - `publish_planned_roles` appends 2 roles over real HTTP, `origin='plan'` — **written=2**
+  - **the real read CARRIES `origin`** — `['author','plan','plan']`. This is T37d's DTO fix
+    under test; a fake would have returned the field whether or not the server sent it.
+  - the revision **closes the dropped role and only it**, live
+  - **the AUTHOR's role survived** — the safety property, on real rows rather than in a mock
+  - **48 611 unmarked legacy facts, count unchanged** before and after. The *"never touch
+    what you cannot prove you wrote"* rule, measured against a real population of exactly the
+    rows it protects.
+
+  📎 **A false red the smoke produced, recorded because it read as a bug:** the second run
+  reported `closed=3` where the run had dropped one role. Those were plan-origin roles left by
+  the FIRST run — a previous plan's roles that this plan does not imply, which is the
+  definition of stale. **The code was right and the assertion was wrong**; it now scopes its
+  claim to the rows its own `SMOKE_TAG` owns.
+
+  ⚠️ **Scope, stated rather than implied.** This drives the two producers through the real
+  `get_kal_client()` factory with a DETERMINISTIC cast, not an LLM plan run. That is
+  deliberate: an LLM cannot be made to drop a specific role on cue, so an end-to-end run
+  through `propose_cast` would assert on output nobody controls. The LLM half is covered
+  separately and on purpose — `T37b-planforge` proved the live write, `T37b-eval` measured
+  the prompt. What was UNPROVEN was the seam, and the seam is what this ran.
+
+  🔧 The first attempt built its own `KalClient` against `GLOSSARY_INTERNAL_URL` and got a
+  404: the KAL is a **knowledge-gateway** surface. Switched to the production factory, so the
+  base URL, token and timeout are the ones a real run uses — a smoke that configures itself
+  can be wrong in a way the thing it tests is not.
+
+  **QC (a) gates:** all green, plan-verify PASS. **(b) the seam:** THIS — rebuilt images
+  (`grep -c close_stale_planned_roles /app/...` = 2 in the running container, `origin|text`
+  present after chain 0066 applied on boot), real HTTP through knowledge-gateway, real rows
+  read back from Postgres. **(c) real data:** the four rows above, and 48 611 untouched.
+
+  ✅ **T37 IS COMPLETE.** Both producers write, the plan retracts its own and only its own,
+  the prompt change is measured, and the retraction is proved live rather than assumed.
+
 
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never

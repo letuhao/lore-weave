@@ -155,6 +155,21 @@ async def close_stale_planned_roles(
             # being in force from the chapter this revision places them at.
             chapter = introduce_at.get(name) or 1
             ordinal = max(1, int(chapter)) * KG_EVENT_ORDER_CHAPTER_STRIDE
+            # ...but NEVER at or before the fact's own start. The interval is half-open
+            # (`valid_from <= N < valid_to`), so closing at `valid_from` describes a span in
+            # which the fact was never true, and glossary rejects it outright:
+            #   422 GLOSS_INVALID "valid_to_ordinal must be greater than the fact's
+            #                      valid_from_ordinal"
+            # That is the COMMON case, not an edge one — `publish_planned_roles` opens the
+            # role at exactly this ordinal, so a revision that merely drops a role while
+            # leaving its holder's introduction alone computed `valid_to == valid_from` every
+            # single time. Six unit tests passed over it because a fake KAL has no interval to
+            # violate; the live smoke against a real glossary is what surfaced it.
+            #
+            # Clamping UP rather than skipping: a role the plan no longer implies must stop
+            # being served, and the minimum legal span is the closest a *close* can come to
+            # "retracted" without deleting the interval the drafted chapters relied on.
+            ordinal = max(ordinal, int(fact.get("valid_from_ordinal") or 0) + 1)
             try:
                 await kal.close_fact(book_id, fact_id=fact["fact_id"],
                                      valid_to_ordinal=ordinal, user_id=user_id)

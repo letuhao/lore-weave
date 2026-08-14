@@ -38,9 +38,17 @@ BOOK = uuid4()
 USER = uuid4()
 
 
-def _fact(fid: str, pred: str, value: str, origin: str | None = "plan", kind="relation"):
+def _fact(fid: str, pred: str, value: str, origin: str | None = "plan", kind="relation",
+          valid_from: int | None = None):
+    """`valid_from` defaults to the ordinal `publish_planned_roles` would have opened a role
+    at for a holder introduced at chapter 5 — the double's most important field, added after
+    a live smoke found the close 422ing on every unmoved holder because this fake had no
+    interval to violate. A double that omits a field the server VALIDATES cannot fail the way
+    the server does."""
     return {"fact_id": fid, "fact_kind": kind, "attr_or_predicate": pred,
-            "value": value, "origin": origin, "valid_to_ordinal": None}
+            "value": value, "origin": origin, "valid_to_ordinal": None,
+            "valid_from_ordinal": 5 * KG_EVENT_ORDER_CHAPTER_STRIDE
+            if valid_from is None else valid_from}
 
 
 class _Kal:
@@ -67,13 +75,44 @@ async def test_a_role_the_revision_DROPPED_is_closed_at_the_holders_position():
     """The base case. The old plan had Kai betray Mira; the new one does not, so that role
     stops being in force from where Kai now stands — closed, not deleted, because the chapters
     already drafted under the old plan must still see it."""
-    kal = _Kal({"ent-kai": [_fact("f1", "betrayed", "Mira")]})
+    kal = _Kal({"ent-kai": [_fact("f1", "betrayed", "Mira",
+                                  valid_from=2 * KG_EVENT_ORDER_CHAPTER_STRIDE)]})
     n = await close_stale_planned_roles(
         kal, BOOK, cast_objs=[_char("Kai", [])],
         id_by_name={"Kai": "ent-kai"}, introduce_at={"Kai": 5}, user_id=USER)
     assert n == 1
     assert kal.closed == [{"fact_id": "f1",
                            "valid_to_ordinal": 5 * KG_EVENT_ORDER_CHAPTER_STRIDE}]
+
+
+@pytest.mark.asyncio
+async def test_the_close_is_never_at_or_BEFORE_the_facts_own_start():
+    """🔴 THE LIVE BUG, and the fake KAL is why six green tests missed it.
+
+    `publish_planned_roles` opens a role at `introduce_at * STRIDE`. This function closed it
+    at the SAME expression — so for the ordinary revision, the one that drops a role and
+    leaves its holder's introduction alone, `valid_to == valid_from`. The interval is
+    half-open (`valid_from <= N < valid_to`), so that describes a span in which the fact was
+    never true, and a real glossary rejects it:
+
+        422 GLOSS_INVALID "valid_to_ordinal must be greater than the fact's valid_from_ordinal"
+
+    Every close failed live. Nothing here caught it because the double had no
+    `valid_from_ordinal` to contradict — the server validated a field the fake did not model.
+    """
+    at_3 = 3 * KG_EVENT_ORDER_CHAPTER_STRIDE
+    kal = _Kal({"ent-kai": [_fact("f1", "betrayed", "Mira", valid_from=at_3)]})
+    n = await close_stale_planned_roles(
+        kal, BOOK, cast_objs=[_char("Kai", [])],
+        id_by_name={"Kai": "ent-kai"},
+        introduce_at={"Kai": 3},          # holder did NOT move — the common revision
+        user_id=USER)
+    assert n == 1
+    got = kal.closed[0]["valid_to_ordinal"]
+    assert got > at_3, (
+        f"closed at {got} against a fact starting at {at_3} — a real glossary 422s this, and "
+        "the role would stay open forever while the pipeline swallowed the error")
+    assert got == at_3 + 1, "clamp to the MINIMUM legal span, not an invented chapter"
 
 
 @pytest.mark.asyncio
