@@ -43,12 +43,14 @@ def _probe(**counts):
     return _fn
 
 
-async def _decide(*, request=None, stuck=frozenset(), rails=None, counts=None, out=None):
+async def _decide(*, request=None, stuck=frozenset(), rails=None, counts=None, out=None,
+                  succeeded=None):
     return await decide_rail_drive(
         probe_fn=_probe(plan=0, cast=0),
         rail_specs=rails if rails is not None else _RAILS,
         book_id="b", user_id="u",
-        turn_start_counts=None, turn_succeeded=Counter(),
+        turn_start_counts=None,
+        turn_succeeded=succeeded if succeeded is not None else Counter(),
         async_tools=frozenset(),
         nudged_out=out if out is not None else set(),
         nudge_counts=counts if counts is not None else Counter(),
@@ -146,13 +148,38 @@ class TestAStuckStepIsAWallNotAModelThatNeedsSteering:
     forever: `plan_propose_spec`, 4 identical refusals across 2 turns, breaker never fired."""
 
     @pytest.mark.asyncio
-    async def test_the_LIVE_defect_a_stuck_step_gets_the_honest_giveup_not_another_nudge(self):
+    async def test_the_LIVE_defect_a_stuck_step_is_never_re_nudged_at_the_same_tool(self):
+        """The rule this class exists for, unchanged: a wall must NOT get another nudge at the
+        same tool, and the exhausted step must be marked so it is not re-driven.
+
+        AMENDED 2026-08-14 (D-LAZY-TAIL-UNUSED). What a wall gets FIRST is now discovery, not the
+        give-up: the platform holds ~267 tools the turn cannot see and a working way to reach
+        them, so "the tool I was told to use does not work" must first become "find the tool that
+        does". The give-up still stands once discovery has been tried — see the test below. The
+        original assertion (`giving_up is True` on the first wall) was the instance; the invariant
+        is that the failing tool is not re-driven, and that is asserted here directly."""
         out: set = set()
         v = await _decide(stuck=frozenset({"plan_propose_spec"}), out=out)
-        assert v.giving_up is True
-        assert "not able to finish" in (v.directive_text or "")
         assert "b1" in out, "the exhausted step must be marked so it is not re-driven"
         assert v.declined_reason and "keeps failing identically" in v.declined_reason
+        assert "plan_propose_spec" not in (v.directive_text or ""), (
+            "the wall must never be re-nudged at the tool that keeps failing"
+        )
+        assert "tool_list" in (v.directive_text or "")
+        assert v.giving_up is False
+
+    @pytest.mark.asyncio
+    async def test_the_honest_giveup_still_stands_once_discovery_has_been_tried(self):
+        """The give-up is deferred by exactly one step, never removed. With discovery already
+        succeeded and the step still walled, the honest 'I could not finish that' returns — a
+        silent give-up reads as success, and an unbounded escape hatch is the retry loop again."""
+        out: set = set()
+        v = await _decide(
+            stuck=frozenset({"plan_propose_spec"}), out=out,
+            succeeded=Counter({"tool_list": 1}),
+        )
+        assert v.giving_up is True
+        assert "not able to finish" in (v.directive_text or "")
 
     @pytest.mark.asyncio
     async def test_it_does_not_burn_a_nudge_on_a_wall(self):

@@ -25,9 +25,11 @@ from dataclasses import dataclass
 from typing import Awaitable, Callable, Protocol
 
 from .rail import (
+    DISCOVERY_TOOL,
     DRIVE,
     StepProgress,
     compute_rail_progress,
+    discovery_directive,
     enforcement_for,
     honest_giveup_directive,
     next_actionable_step,
@@ -203,6 +205,27 @@ async def decide_rail_drive(
             # "not found or not accessible" across 2 turns, breaker never fired. The consumer
             # now supplies the cross-turn verdict and the rail honours it.
             nudged_out.add(step.step_id)
+            # D-LAZY-TAIL-UNUSED — DISCOVERY IS THE RAIL'S NEXT STEP HERE, NOT THE GIVE-UP.
+            #
+            # Giving up is right eventually; it is wrong as the FIRST answer to "the tool I was
+            # told to use does not work", when the platform holds ~267 tools this turn cannot see
+            # and a working way to reach them. The lazy tail is advertised and unused (measured:
+            # tool_list 1/30 runs, tool_load 0/30, both advertised every run), so it is dead weight
+            # unless something DRIVES it — and rails are the thing that drives reliably.
+            #
+            # Bounded to once per rail: if discovery has already succeeded and the step is STILL
+            # walled, the honest give-up stands. A discovery step that can fire twice is the retry
+            # loop it replaces. `started` is succeeded-tools for this turn AND session, so this
+            # cannot re-fire on a later turn of the same stuck rail either.
+            if DISCOVERY_TOOL not in started:
+                return DriveVerdict(
+                    should_drive=True, slug=slug, step=step,
+                    directive_text=discovery_directive(step), giving_up=False,
+                    declined_reason=(
+                        "step tool " + str(step.tool) + " keeps failing identically — driving "
+                        "discovery once before giving up"
+                    ),
+                )
             return DriveVerdict(
                 should_drive=True, slug=slug, step=step,
                 directive_text=honest_giveup_directive(step), giving_up=True,
