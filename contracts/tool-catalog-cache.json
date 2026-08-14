@@ -15585,6 +15585,14 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "set up my story bible",
+    "scaffold the glossary",
+    "adopt the standard categories",
+    "set up the world",
+    "start my world bible",
+    "give me the default categories"
+   ],
    "tier": "W"
   }
  },
@@ -15751,6 +15759,13 @@
   "meta": {
    "ambient_book": true,
    "scope": "book",
+   "synonyms": [
+    "what categories does this book have",
+    "my story bible structure",
+    "what kinds are in this book",
+    "show my ontology",
+    "what attributes do characters have"
+   ],
    "tier": "R"
   }
  },
@@ -16112,6 +16127,11 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "apply the standard updates",
+    "take the upstream changes",
+    "sync my ontology"
+   ],
    "tier": "W"
   }
  },
@@ -16129,6 +16149,11 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "are there ontology updates",
+    "is my story bible out of date",
+    "what standard updates are available"
+   ],
    "tier": "R"
   }
  },
@@ -16170,6 +16195,11 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "this character appears in this chapter",
+    "link an entity to a chapter",
+    "mark where this character shows up"
+   ],
    "tier": "A"
   }
  },
@@ -16240,6 +16270,12 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "add a quote supporting this",
+    "attach evidence",
+    "cite where this is stated",
+    "back this up with a passage"
+   ],
    "tier": "A"
   }
  },
@@ -16338,6 +16374,12 @@
   "meta": {
    "paid": true,
    "scope": "book",
+   "synonyms": [
+    "research this on the web",
+    "look this up online",
+    "find sources for this character",
+    "research and cite"
+   ],
    "tier": "W"
   }
  },
@@ -16794,6 +16836,13 @@
   },
   "meta": {
    "scope": "none",
+   "synonyms": [
+    "what categories can i use",
+    "what kinds exist",
+    "what can i track in a story bible",
+    "available entity types",
+    "built in categories"
+   ],
    "tier": "R"
   }
  },
@@ -17107,6 +17156,12 @@
   "meta": {
    "paid": true,
    "scope": "book",
+   "synonyms": [
+    "plan my ontology",
+    "design a story bible",
+    "how should i structure my world",
+    "plan the categories for this book"
+   ],
    "tier": "W"
   }
  },
@@ -17163,6 +17218,12 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "add an alias",
+    "another name for this character",
+    "alternate names",
+    "also known as"
+   ],
    "tier": "A"
   }
  },
@@ -17228,6 +17289,12 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "make several ontology changes",
+    "batch of glossary changes",
+    "apply these changes together",
+    "several kinds and attributes at once"
+   ],
    "tier": "W"
   }
  },
@@ -17901,6 +17968,12 @@
   },
   "meta": {
    "scope": "book",
+   "synonyms": [
+    "translate the entity names",
+    "names in another language",
+    "localise the glossary",
+    "vietnamese names for these characters"
+   ],
    "tier": "A"
   }
  },
@@ -17930,6 +18003,16 @@
   "meta": {
    "ambient_book": true,
    "scope": "book",
+   "synonyms": [
+    "look up a character",
+    "find a character",
+    "who is",
+    "do i have an entry for",
+    "search my story bible",
+    "find an entity",
+    "is there an entry for",
+    "look up in the glossary"
+   ],
    "tier": "R"
   }
  },

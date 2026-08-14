@@ -32,7 +32,11 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"Use before proposing entities or shaping the book's schema. Every genre/kind/attribute " +
 			"row carries a `base_version` — copy it verbatim into glossary_ontology_upsert to get " +
 			"concurrent-edit detection.",
-		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"what categories does this book have", "my story bible structure", "what kinds are in this book", "show my ontology", "what attributes do characters have"})),
 	}, s.toolBookOntologyRead)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -43,7 +47,11 @@ func (s *Server) RegisterBookTools(srv *mcp.Server) {
 			"which a human confirms via glossary_confirm_action. `universal` genre + `unknown` kind are " +
 			"always included. Args are genre/kind CODES (see glossary_list_system_standards).",
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"set up my story bible", "scaffold the glossary", "adopt the standard categories", "set up the world", "start my world bible", "give me the default categories"}),
 	}, s.toolAdoptStandards)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{

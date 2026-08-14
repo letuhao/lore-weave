@@ -31,7 +31,11 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		// Direct, additive, reversible write (no confirm_token) ⇒ lwmcp Tier A. (The file's
 		// "class W" is internal jargon for a direct Edit-gated write, NOT lwmcp's TierW,
 		// which means confirm_action — those are the "class C" propose tools.)
-		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"this character appears in this chapter", "link an entity to a chapter", "mark where this character shows up"}),
 	}, s.toolCreateChapterLink)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -46,7 +50,11 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 			"evidence_type": {"quote", "summary", "reference"},
 		}),
 		// Direct, additive, reversible write (no confirm_token) ⇒ lwmcp Tier A.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add a quote supporting this", "attach evidence", "cite where this is stated", "back this up with a passage"}),
 	}, s.toolCreateEvidence)
 }
 

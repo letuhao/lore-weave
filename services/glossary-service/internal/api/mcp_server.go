@@ -54,7 +54,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"concepts) by name, alias, or natural-language terms. Returns ranked entities " +
 			"with name, aliases, kind, and a short description. Use this to find what the " +
 			"glossary already knows before answering or proposing changes.",
-		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"look up a character", "find a character", "who is", "do i have an entry for", "search my story bible", "find an entity", "is there an entry for", "look up in the glossary"})),
 	}, s.toolSearch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -87,7 +91,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"Calling this twice returns the identical list. For what a specific book ALREADY has, " +
 			"use glossary_book_ontology_read.",
 		// Global System-standards read, no scope key (not book/user scoped) ⇒ ScopeNone.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"what categories can i use", "what kinds exist", "what can i track in a story bible", "available entity types", "built in categories"}),
 	}, s.toolListKinds)
 
 	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
@@ -211,7 +219,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"nothing until confirmed.",
 		// Mints a grant confirm_token ⇒ Tier W. Calls a PLANNER LLM synchronously at
 		// mint time (runPlanner → provider-registry) ⇒ Paid (spends real money on call).
-		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"plan my ontology", "design a story bible", "how should i structure my world", "plan the categories for this book"})),
 	}, s.toolPlan)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -251,7 +263,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"", "ops[]",
 		),
 		// Mints a grant confirm_token ⇒ Tier W. NO planner LLM (deterministic) ⇒ not paid.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"make several ontology changes", "batch of glossary changes", "apply these changes together", "several kinds and attributes at once"}),
 	}, s.toolProposeBatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
