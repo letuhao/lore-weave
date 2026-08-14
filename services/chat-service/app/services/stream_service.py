@@ -1033,7 +1033,6 @@ DATA_QUESTION_NUDGE_CAP = 1
 
 def _unanswered_data_question_reads(
     request_text: str | None, *, catalog_index: dict, attempted: set[str],
-    on_wire: set[str],
 ) -> list[str]:
     """The READ tools whose OWN declared vocabulary answers THIS request, when the turn called
     NONE of them — i.e. the model is about to answer a data question from conversation memory.
@@ -1068,10 +1067,23 @@ def _unanswered_data_question_reads(
     * NONE of those reads is in `attempted` — successes AND failures both count, exactly as the
       sister guard counts them: a model that TRIED and got a real error already has honest
       feedback, and one that read ANY of the answering tools has satisfied (c);
-    * the tool is already ON THE WIRE. A directive to call a withheld tool is empty ceremony, and
-      an answerable read that is withheld is a SURFACING defect with its own row (that is R1's
-      job, and the v1/v2 incidents) — not this one. Keeping them separate is what stops one
-      guard's nudge from papering over the other's bug.
+    🔴 THIS DELIBERATELY DOES NOT REQUIRE THE TOOL TO BE ON THE WIRE, AND THE FIRST VERSION DID.
+    MEASURED 2026-08-14 on the fixture this docstring describes: turn 1 called
+    `composition_list_canon_rules` and answered correctly; the RE-ASK did not, and
+    `advertised_tools` for that turn shows the tool was NOT advertised — so the guard fired, told
+    the model to call a tool that was not on its surface, and the model took the honest-disclosure
+    branch instead ("I did not re-read the book on this turn, so my answer may be stale") while
+    thrashing through twelve OTHER composition tools hunting for it.
+
+    That is the same lesson the sister guard already carries in its own words — *"a directive to
+    'call it now' is empty if the tool is not on the wire, and OFF-SURFACE is the usual reason the
+    model narrated instead of calling in the first place"* — so the CALL SITE arms what it names,
+    exactly as the sister guard does. Requiring the tool to be pre-surfaced made the guard silent
+    in precisely the case it exists for.
+
+    An answerable read that is withheld is STILL a surfacing defect with its own row (R1's job,
+    and the v1/v2 incidents). Arming is a repair at the answer boundary, not a substitute for
+    putting the tool on the wire.
     """
     if not request_text or not catalog_index:
         return []
@@ -1082,7 +1094,7 @@ def _unanswered_data_question_reads(
     # ANY answering read having run satisfies (c) — the question was served from this turn.
     if not reads or (reads & attempted):
         return []
-    return sorted(reads & on_wire)
+    return sorted(reads)
 
 
 #: A catalog name must be at least this long, and contain an underscore, before a literal
@@ -3208,7 +3220,45 @@ async def _stream_with_tools(
                             rail_progress, turn_succeeded, _rail_gate_mode
                         )
                         if _rail_suppress:
-                            _suppress = set(_suppress) | _rail_suppress
+                            # 🔴 A SATISFIED RAIL STEP MEANS THE RAIL NEED NOT DRIVE IT AGAIN.
+                            # IT MUST NOT MEAN THE AUTHOR MAY NO LONGER ASK.
+                            #
+                            # MEASURED 2026-08-14 (sessions 019ffff4 / 01a00003-5, three runs
+                            # each): turn 1 asked "What canon rules have I declared for this
+                            # book?", composition_list_canon_rules ran, and the answer was right.
+                            # The RE-ASK was then withheld at `rail_gate: rail step already
+                            # satisfied (mode=done_suppress)` on EVERY pass — 14 of them — so the
+                            # one tool that answers the question was off the wire, and the model
+                            # thrashed through twelve OTHER composition tools before answering
+                            # from conversation memory. That is DQ-T30's mechanism, and it is
+                            # sharper than the DQ's own wording: a completed rail does not merely
+                            # stop driving, it actively REMOVES the answering read.
+                            #
+                            # The gate conflates two claims that are only the same for a WRITE.
+                            # "This step is done" -> a second write would duplicate data, so drop
+                            # it. For a READ there is nothing to duplicate: re-reading IS the
+                            # freshness the author asked for. So a rail-gated READ whose own
+                            # declared vocabulary answers THIS request is reclaimed here.
+                            #
+                            # Deliberately narrow, and reclaimed BEFORE the breakers below rather
+                            # than after: `failure_suppress` (gave up after repeated errors) and
+                            # `repeat_read_suppress` (hammering the same read) are LOOP breakers
+                            # and still win, because those describe a model misbehaving now, not
+                            # a journey that finished earlier.
+                            _reclaimed_reads = {
+                                n for n in _rail_suppress
+                                if n in cat_index and tool_tier(cat_index[n]) == "R"
+                                and answerable_tools(request_text, [cat_index[n]])
+                            }
+                            if _reclaimed_reads:
+                                logger.info(
+                                    "rail gate: reclaiming %s — a satisfied rail step must not "
+                                    "take an answering READ off the wire",
+                                    sorted(_reclaimed_reads),
+                                )
+                                _rail_suppress = set(_rail_suppress) - _reclaimed_reads
+                            if _rail_suppress:
+                                _suppress = set(_suppress) | _rail_suppress
                     # De-advertise escalation — a tool the repeated-failure breaker gave up on is
                     # taken off the wire so a weak model can't keep re-emitting it (dispatch is
                     # already short-circuited; this stops the wasted EMIT passes too).
@@ -4021,7 +4071,6 @@ async def _stream_with_tools(
                     request_text,
                     catalog_index=cat_index,
                     attempted=turn_attempted,
-                    on_wire=active_tool_names,
                 )
                 if _unread:
                     _dq_guards = {
@@ -4040,11 +4089,29 @@ async def _stream_with_tools(
                         )
                     else:
                         data_question_nudges += 1
+                        # ARM what we name. Measured 2026-08-14: the re-ask fired this guard
+                        # while `composition_list_canon_rules` was NOT in that turn's
+                        # advertised_tools, so option (a) was impossible and the model took (b)
+                        # after thrashing through twelve other composition tools looking for it.
+                        # Same decision the sister guard already makes, for the same reason.
+                        _dq_armed = [
+                            nm for nm in _unread
+                            if discovery and nm in cat_index and nm not in active_tool_names
+                        ]
+                        if _dq_armed:
+                            from app.services.tool_surface import merge_activated_tools
+                            active_tool_names.update(_dq_armed)
+                            if activation_state is not None:
+                                activation_state["activated_tools"] = merge_activated_tools(
+                                    activation_state["activated_tools"], _dq_armed,
+                                    catalog=discovery_catalog, context_length=context_length,
+                                )
+                                activation_state["dirty"] = True
                         logger.warning(
                             "DQ-T30 (session=%s): the turn is ending with a data question "
                             "answered from memory — %s declare(s) this request and none was "
-                            "called; nudging once",
-                            session_id, _unread,
+                            "called; nudging once (armed off-surface: %s)",
+                            session_id, _unread, _dq_armed or "—",
                         )
                         if trace is not None:
                             trace.add("compile", "T6", "tools",
@@ -4061,7 +4128,7 @@ async def _stream_with_tools(
                             "without having read it on this turn. "
                             f"{', '.join(_unread)} "
                             + ("is" if len(_unread) == 1 else "are")
-                            + " available to you right now and "
+                            + " available to you right now — no tool_load needed — and "
                             + ("declares" if len(_unread) == 1 else "declare")
                             + " exactly this request.\n"
                             "Anything you remember from earlier in this conversation may be "

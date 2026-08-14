@@ -63,13 +63,12 @@ CATALOG = {
     "composition_declare_canon_rule": _tool(
         "composition_declare_canon_rule", "W", ["declare canon rule", "add canon rules"]),
 }
-ALL_ON_WIRE = set(CATALOG)
 
 
 def test_the_measured_turn_is_caught():
     """THE FALSIFIER. Turn B/C exactly: the question declares a read, and nothing ran."""
     assert _unanswered_data_question_reads(
-        MEASURED_QUESTION, catalog_index=CATALOG, attempted=set(), on_wire=ALL_ON_WIRE,
+        MEASURED_QUESTION, catalog_index=CATALOG, attempted=set(),
     ) == ["composition_list_canon_rules"], (
         "the turn answered a data question from conversation memory and nothing was "
         "accountable for re-reading the store"
@@ -81,7 +80,7 @@ def test_a_read_that_ran_satisfies_the_rule():
     the answering reads having run, so this must stay silent or it would nudge a correct turn."""
     assert _unanswered_data_question_reads(
         MEASURED_QUESTION, catalog_index=CATALOG,
-        attempted={"composition_list_canon_rules"}, on_wire=ALL_ON_WIRE,
+        attempted={"composition_list_canon_rules"},
     ) == []
 
 
@@ -92,7 +91,7 @@ def test_a_read_that_was_tried_and_failed_is_not_nudged():
     failed case separately from the succeeded one above."""
     assert _unanswered_data_question_reads(
         MEASURED_QUESTION, catalog_index=CATALOG,
-        attempted={"composition_list_canon_rules"}, on_wire=ALL_ON_WIRE,
+        attempted={"composition_list_canon_rules"},
     ) == []
 
 
@@ -101,7 +100,6 @@ def test_a_write_matched_by_the_same_words_is_never_nudged():
     read-intent turn ends up changing the store. Only the READ may ever be returned."""
     out = _unanswered_data_question_reads(
         "Add canon rules to this book", catalog_index=CATALOG, attempted=set(),
-        on_wire=ALL_ON_WIRE,
     )
     assert "composition_declare_canon_rule" not in out
 
@@ -110,19 +108,39 @@ def test_chitchat_forces_nothing():
     """Precision comes from the declarations, not from tuning. A request that names no stored
     data matches no synonym and must leave the turn alone."""
     assert _unanswered_data_question_reads(
-        "thanks, that is great", catalog_index=CATALOG, attempted=set(), on_wire=ALL_ON_WIRE,
+        "thanks, that is great", catalog_index=CATALOG, attempted=set(),
     ) == []
     assert _unanswered_data_question_reads(
-        None, catalog_index=CATALOG, attempted=set(), on_wire=ALL_ON_WIRE) == []
+        None, catalog_index=CATALOG, attempted=set()) == []
 
 
-def test_a_withheld_read_is_not_nudged():
-    """A directive to call a tool that is not on the wire is empty ceremony. An answerable read
-    that is WITHHELD is a SURFACING defect with its own row (R1, and the v1/v2 incidents) —
-    keeping them separate is what stops this guard papering over that one."""
+def test_a_withheld_read_is_STILL_named_and_is_armed_by_the_call_site():
+    """🔴 THE FIRST VERSION OF THIS GUARD REQUIRED THE TOOL TO BE ON THE WIRE, AND MEASUREMENT
+    KILLED THAT. Live 2026-08-14, session 019ffff4: turn 1 called composition_list_canon_rules
+    and answered correctly; the RE-ASK did not, and that turn's `advertised_tools` did NOT
+    contain the tool. So the guard fired, named a tool the model could not call, and the model
+    took the honest-disclosure branch — "I did not re-read the book on this turn, so my answer
+    may be stale" — after thrashing through TWELVE other composition tools hunting for it.
+
+    The sister guard already carries the lesson: a directive to call it now is empty if the tool
+    is not on the wire, and OFF-SURFACE is the usual reason the model did not call it. So the
+    guard names it regardless of the wire and the CALL SITE arms it.
+
+    A withheld answerable read remains a SURFACING defect with its own row — arming is a repair
+    at the answer boundary, never a substitute for putting the tool on the wire."""
     assert _unanswered_data_question_reads(
-        MEASURED_QUESTION, catalog_index=CATALOG, attempted=set(), on_wire=set(),
-    ) == []
+        MEASURED_QUESTION, catalog_index=CATALOG, attempted=set(),
+    ) == ["composition_list_canon_rules"]
+
+
+def test_the_call_site_arms_what_it_names():
+    """CALL-SITE GUARD for the arming, because the helper cannot express it. Without this the
+    directive is ceremony in exactly the case the guard exists for."""
+    i = SRC.index("_unread = _unanswered_data_question_reads(")
+    block = SRC[i:i + 3000]
+    assert "_dq_armed = [" in block
+    assert "active_tool_names.update(_dq_armed)" in block
+    assert "merge_activated_tools(" in block
 
 
 def test_the_fixture_still_matches_the_live_declaration():
@@ -155,7 +173,6 @@ def test_the_chokepoint_calls_it_and_takes_no_rail_input():
     i = SRC.index("_unread = _unanswered_data_question_reads(")
     call = SRC[i:i + 400]
     assert "request_text" in call and "attempted=turn_attempted" in call
-    assert "on_wire=active_tool_names" in call
     for railish in ("rail_progress", "rail_specs", "rail_intent_slugs", "rail_book_id"):
         assert railish not in call, (
             "the guard must not read " + railish + ": a COMPLETED rail is the case DQ-T30 "

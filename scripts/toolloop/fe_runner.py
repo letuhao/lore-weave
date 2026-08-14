@@ -320,11 +320,31 @@ async def run_scenario(client, auth, sc, idx, fx):
     # detail: with it set, "write a chapter" plausibly means "write THIS chapter's prose", which
     # is exactly what the model did (save_draft, 3/3). A scenario about creating a chapter has to
     # be able to run from the chat panel, where no chapter is open.
-    res = await send_turn(client, auth, sid, sc["prompt"],
-                          book_id=fx.book_id,
-                          chapter_id=fx.chapter_id if sc.get("editor_context", True) else None,
-                          permission_mode=sc.get("permission_mode", "write"),
-                          approve=sc.get("approve"))
+    # 🔴 SOME DEFECTS ONLY EXIST ON TURN 2+, AND A ONE-TURN HARNESS IS BLIND TO THEM BY
+    # CONSTRUCTION. DQ-T30 is the case: with two canon rules in the store, turn A (rail-driven)
+    # called the tool and answered correctly, and the RE-ASK answered "one rule" from
+    # conversation memory with zero tool calls. Every single-turn scenario in this harness would
+    # have recorded that scenario as a clean pass on the strength of turn A.
+    #
+    # `follow_ups` sends further prompts in the SAME session, and THE LAST TURN IS THE MEASURED
+    # ONE — the re-ask is the thing under test, not the setup that precedes it. The earlier
+    # turns are kept in `prior_turns` so the evidence can show turn A worked, which is exactly
+    # what makes the failure of turn B a finding rather than a broken fixture.
+    turns = [sc["prompt"], *(sc.get("follow_ups") or [])]
+    prior = []
+    for _ti, _prompt in enumerate(turns):
+        res = await send_turn(client, auth, sid, _prompt,
+                              book_id=fx.book_id,
+                              chapter_id=fx.chapter_id if sc.get("editor_context", True) else None,
+                              permission_mode=sc.get("permission_mode", "write"),
+                              approve=sc.get("approve"))
+        if _ti < len(turns) - 1:
+            prior.append({"prompt": _prompt,
+                          "called": sorted(called_names(res)),
+                          "text": (res.get("text") or "")[:800]})
+    res["prior_turns"] = prior
+    # The measured prompt is the one the bars are read against.
+    res["prompt"] = turns[-1]
     res["session_id"] = sid
     res["scenario"] = sc["id"]
     res["rep"] = idx
