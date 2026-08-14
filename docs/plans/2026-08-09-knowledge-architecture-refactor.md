@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU ADAPTER's twenty port methods, judged by T42a's conformance suite parameterised over a third adapter. The bootstrap slice is done (`kuzu_bootstrap.py`, 9 passed against a real kuzu 0.11.3): DDL derived from the domain models, `EVIDENCED_BY` as one rel table with three endpoint pairs, project scoping as a column, and the embedded single-writer file lock pinned both ways. `kuzu` is test-only on purpose — shipping a candidate's driver would make T43's choice a deployment fact.**
+**RESUME: `T42` — the KUZU ADAPTER's entity surface (`resolve_or_merge_entity`, `find_entities_by_name`, `neighborhood`, `archive`/`restore`), wired into T42a's conformance suite as a fourth param. The design is SETTLED — see 📏 T42-kuzu-2: identity is MATCH-then-CREATE in a transaction under an in-process lock, because Kuzu demands the PK in every MERGE and offers no unique index on the identity tuple. The remaining methods RAISE naming that section (rule 9), and the suite asserts the refusal so a skip cannot become a pass.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 51 of 90 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 51 of 91 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (4/6) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (4/7) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,48 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### 📏 T42-kuzu-2 2026-08-14 — Kuzu's PRIMARY KEY collides with the port's identity model
+
+  ```
+  MERGE (n:Entity {user_id:…, canonical_name:…, kind:…}) ON CREATE SET n.id = <uuid>
+    -> Binder exception: Create node n expects primary key id as input.
+  CREATE NODE TABLE T(id STRING, a STRING, PRIMARY KEY(id), UNIQUE(a))
+    -> Parser exception  — there is NO uniqueness constraint on a non-PK column
+  ```
+
+  Measured before writing the adapter (rule 8), and it re-scopes the slice. **This is a bigger
+  gap than the one the row records.** `CALL {}` (14 sites) is real but lives in the *Neo4j*
+  repos, and a fresh adapter writes its own queries. This one is structural.
+
+  🔴 **The port MERGEs on the IDENTITY TUPLE, deliberately.** `age_graph_store.resolve_or_merge_entity`
+  says why, in the code: *"MERGE keys on the identity tuple, not on a derived id — the derived-id
+  scheme is what T35 is retiring, and repeating it here would build the second adapter on the
+  defect the first one is being cured of."* **Kuzu requires the primary key in every MERGE.**
+
+  The obvious escape — make the PK `hash(user, project, canonical_name, kind)` — is the one
+  thing that must not be done: it is `e.id = hash(name, kind)`, the exact scheme T35 exists to
+  retire, and it would arrive in the codebase as a *new* adapter's design rather than as legacy.
+
+  ✅ **DECIDED: MATCH-then-CREATE inside an explicit transaction**, then `MERGE` by the now-known
+  PK for updates. Probed end to end: the lookup misses, `CREATE` with a fresh UUID succeeds,
+  `COMMIT`, and a later `MERGE (n {id: …})` accumulates `['book'] → ['book','web']` via
+  `list_distinct(list_concat(...))`. Identity stays opaque; nothing is derived from the name.
+
+  🔻 **AND ITS SOUNDNESS RESTS ON THE CONSTRAINT THAT LOOKED LIKE KUZU'S WEAKNESS.** With no
+  unique index available on the identity tuple, read-then-write is only safe if writers are
+  serialised — and Kuzu enforces exactly that, one process per database, via the file lock this
+  row already records. **The limitation and the workaround are the same fact.** Within the
+  process the sequence must still be serialised (async tasks can interleave between MATCH and
+  CREATE), so the adapter takes an in-process lock around it — a cost the other two adapters do
+  not pay, and a T43 input rather than an implementation detail.
+
+  📌 **What the next cycle types, with the design settled:** the entity surface first
+  (`resolve_or_merge_entity`, `find_entities_by_name`, `neighborhood`, `archive`/`restore`),
+  wired into T42a's conformance suite as a fourth param. Per rule 9 the remaining methods RAISE
+  naming this section, exactly as AGE refuses its two event writes — and the suite asserts the
+  refusal, so "Kuzu is skipped here" can never quietly become "Kuzu passed".
+
 
   ### ✅ T42-kuzu-1 2026-08-14 — the Kuzu bootstrap: DDL, the lock, and two probed semantics
 
