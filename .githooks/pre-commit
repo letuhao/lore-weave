@@ -51,6 +51,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # would push people to tick boxes to get green. Found 3 finished-but-unticked rows on
 # 2026-08-14 (T36, T38, T42a) that had sent a session chasing work already done.
 "$PY" "$ROOT/scripts/plan-row-honesty-gate.py"
+# ...and the SAME gate at the authoring moment, which is the one that BLOCKS (exit 1). The
+# warning above reports on a plan that is already wrong; this fires while the author is still
+# in the file. Backtested over all 183 commits that ever touched the plan: 5 fire, and all
+# five are rows that shipped and sat `[~]` (T38, T42a-d). Blocking is fair because the remedy
+# is three keystrokes and the gate prints all three options.
+"$PY" "$ROOT/scripts/plan-row-honesty-gate.py" --staged
 # T37b/SPEC 4.2c -- the cast-prompt eval's OFFLINE selftest (0.7s; the model arms are opt-in
 # and are not run here). Wired because the thing it guards fails SILENTLY: the eval builds its
 # control arm by removing the `roles` spans from the LIVE prompt, so an unrelated edit to

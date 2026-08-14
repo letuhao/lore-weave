@@ -118,6 +118,31 @@ BOILERPLATE_RE = re.compile(r"Unfinished, not undecided")
 COMPLETION_HEADING_RE = re.compile(
     r"^\s*#{3,}\s*(?!~~).*?(?:✅|DONE|CLOSED|SHIPPED)", re.I,
 )
+#: ── SIGNAL 3 · THE AUTHORING MOMENT (`--staged`) ─────────────────────────────────────────
+#: A **row-level** completion claim: `### ✅ DONE 2026-08-12`, where "done" IS the whole claim
+#: and it carries a date. Distinguished from a SLICE claim — `### ✅ B4 2026-08-13 — second
+#: consumer migrated`, `### ✅ BATCH 5 …`, `### ✅ A8 … facts_for ships` — which says a piece
+#: landed while the row stays open, and is completely legitimate.
+#:
+#: That distinction is the whole reason this signal is usable at all. Measured across all 183
+#: commits that ever touched the plan:
+#:
+#:     "adds ANY ✅ heading, touches no checkbox"        -> 68 commits   unusable as a gate
+#:     "adds ✅ DONE/CLOSED <date>, touches no checkbox" ->  5 commits   ALL FIVE ARE REAL
+#:
+#: The five are `T38` (08-11) and `T42a`/`T42b`/`T42c`/`T42d` (08-12) — five of the six rows
+#: that shipped and sat `[~]`, each caught **in the commit that shipped it** rather than days
+#: later by a hand scan. Requiring the DATE is what removes the last two false positives: the
+#: T43 sub-deferral closures write `#### ✅ CLOSED — the mapping is built` with none.
+#:
+#: WHY THIS IS THE ONE THAT MATTERS. Ticking used to happen inside the building commit — 23
+#: rows between 08-09 and 08-11 — and stopped when the plan grew a second, better-maintained
+#: head. This gate is the only signal that fires while the author is still in the file with
+#: the context to act. Every other signal here reports on a plan that is already wrong.
+ROW_DONE_CLAIM_RE = re.compile(
+    r"^\s*#{3,}\s*✅\s*(?:DONE|CLOSED)\s+\d{4}-\d{2}-\d{2}", re.I,
+)
+
 #: A row needs this many completion markers before it is worth mentioning. Set from the
 #: observed data: the three real finds carried 8, 13 and 18; the rows correctly left open
 #: carried 0-2. Three is comfortably below the floor of the true positives.
@@ -152,6 +177,71 @@ def scan(text: str) -> list[tuple[str, int, int]]:
         if owed <= MAX_OWED and (done >= MIN_DONE or heading):
             out.append((m.group(2), done, owed))
     return out
+
+
+def scan_staged(post: str, added: set[str]) -> list[tuple[str, str]]:
+    """`[~]` rows to which THIS commit adds a row-level completion claim.
+
+    `post` is the staged post-image; `added` the set of added lines. Matching on the heading
+    TEXT rather than on diff line numbers: line arithmetic across a 9 000-line file with
+    multiple hunks is the kind of thing that silently drifts, and the heading is unique enough
+    to key on.
+
+    A row that names outstanding work is exempt — a slice landing inside an openly-unfinished
+    row is normal, and is the case that made the un-dated variant of this signal unusable.
+    """
+    lines = post.split("\n")
+    rows = [(n, m) for n, l in enumerate(lines) if (m := ROW_RE.match(l))]
+    out: list[tuple[str, str]] = []
+    for idx, (n, m) in enumerate(rows):
+        if m.group(1) != "~":
+            continue
+        end = rows[idx + 1][0] if idx + 1 < len(rows) else len(lines)
+        raw = lines[n:end]
+        if OWED_RE.search(BOILERPLATE_RE.sub("", "\n".join(raw))):
+            continue
+        for line in raw:
+            if ROW_DONE_CLAIM_RE.match(line) and line.strip() in added:
+                out.append((m.group(2), line.strip()))
+                break
+    return out
+
+
+def staged_mode() -> int:
+    import subprocess
+
+    rel = os.path.relpath(PLAN, ROOT).replace("\\", "/")
+    def git(*a: str) -> str:
+        return subprocess.run(["git", *a], cwd=ROOT, capture_output=True,
+                              text=True, encoding="utf-8").stdout
+
+    diff = git("diff", "--cached", "-U0", "--", rel)
+    if not diff.strip():
+        return 0
+    added = {l[1:].strip() for l in diff.split("\n")
+             if l.startswith("+") and not l.startswith("+++")}
+    post = git("show", f":{rel}")
+    if not post:
+        return 0
+    hits = scan_staged(post, added)
+    if not hits:
+        print("[plan-row-honesty-gate] staged: OK — no row-level completion claim lands on an "
+              "open row")
+        return 0
+    print("[plan-row-honesty-gate] STAGED: this commit declares a row DONE and leaves its box "
+          "open:")
+    for name, heading in hits:
+        print(f"    - [~] **{name}**   <-  {heading[:88]}")
+    print("\n  Ticking used to happen in the commit that did the work — 23 rows did, and then")
+    print("  it stopped, and six rows shipped `[~]`. One of them sent a later session to")
+    print("  rebuild work that had already landed. You are in the file right now; the next")
+    print("  reader is not.\n")
+    print("  Do ONE of:")
+    print("    * tick the box            - [~] -> - [x]")
+    print("    * say what is still owed  add a ⬜ sentence naming the remainder")
+    print("    * name the SLICE          '### ✅ B4 2026-08-13 — …' instead of '✅ DONE <date>'")
+    print("      (a slice landing inside an openly-unfinished row is normal and not flagged)")
+    return 1
 
 
 def markers(text: str, row: str) -> list[str]:
@@ -245,6 +335,32 @@ def selftest() -> int:
     if g:
         print(f"  SELFTEST FAIL: a struck-through (retracted) heading read as completion: {g}")
         ok = False
+
+    # ── signal 3, the authoring moment. Both directions, and the SLICE case is the one that
+    # decides whether this gate is usable at all: 68 commits add a ✅ heading while touching no
+    # checkbox, and only 5 add a DATED row-level one. Flagging the other 63 would make it noise.
+    post = (
+        "- [~] **TP** — a task\n"
+        "  ### ✅ DONE 2026-08-12 — the image ships and the smoke proves it\n"
+        "- [~] **TQ** — another\n"
+        "  ### ✅ B4 2026-08-13 — second consumer migrated, the gate shrinks\n"
+        "- [~] **TR** — a third\n"
+        "  ### ✅ DONE 2026-08-12 — shipped\n"
+        "  ⬜ but the Kuzu half is still owed\n"
+        "- [x] **TY** — next\n"
+    )
+    all_added = {l.strip() for l in post.split("\n")}
+    h = [n for n, _ in scan_staged(post, all_added)]
+    if h != ["TP"]:
+        print(f"  SELFTEST FAIL: staged signal wrong. want ['TP'] (row-level claim on an open "
+              f"row); a SLICE heading and a row naming its remainder must NOT fire: {h}")
+        ok = False
+    # An unchanged block must not fire: the claim has to be ADDED by this commit, or every
+    # later commit touching the plan would be blocked by a heading someone else wrote.
+    i = [n for n, _ in scan_staged(post, set())]
+    if i:
+        print(f"  SELFTEST FAIL: staged signal fired on a heading this commit did not add: {i}")
+        ok = False
     if a != ["TX"]:
         print(f"  SELFTEST FAIL: a finished-looking [~] row was not flagged: {a}")
         ok = False
@@ -266,6 +382,8 @@ def selftest() -> int:
 def main() -> int:
     if "--selftest" in sys.argv:
         return selftest()
+    if "--staged" in sys.argv:
+        return staged_mode()
     if not os.path.exists(PLAN):
         print(f"[plan-row-honesty-gate] SKIP — no plan at {PLAN}")
         return 0
