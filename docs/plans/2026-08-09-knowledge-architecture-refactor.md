@@ -41,9 +41,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 47 of 84 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 47 of 85 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/5) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10134,11 +10134,43 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   triage are rare and would diverge silently, and the graph feeds canon checks.
   ⚠️ **Rests on T42a**: a shadow comparison between two unproven adapters measures agreement, not
   correctness. Two adapters can agree by sharing a bug.
-  ⬜ **STILL OWED, stated here because it was buried:** the harness is built and run, but the
-  coverage floor **still blocks** (`cutover_permitted: False`) — id-keyed operations remain
-  uncompared, and **this session added ten port operations** (A7's nine + `facts_for`), each of
-  which starts at zero observations. That is A12's re-run, and **the floor re-blocking is the
-  floor working**, not a regression.
+  ⬜ **STILL OWED:** the harness is built and run, but the coverage floor **blocks**
+  (`cutover_permitted: False`) — operations remain uncompared, which is **the floor working**.
+
+  ### 🔴 T43-floor 2026-08-14 — the floor was computed over NINE of TWENTY operations
+
+  ```
+  port=20  shadowed=9  UNSHADOWED=11   ->  OPERATIONS widened to 20, cutover_permitted: False
+  152 passed  tests/integration/db/
+  ```
+
+  The row said ten operations *"start at zero observations"*. They did not — **`OPERATIONS` never
+  listed them**, so the floor could not block on them and `cutover_permitted` was answerable
+  `True` while eleven operations had never been compared once:
+
+  `get_relation` · `invalidate_relation` · `recreate_relation` · `events_page` · `get_event` ·
+  `merge_event` · `update_event_fields` · `archive_event` · `merge_fact` · `facts_for` ·
+  `add_evidence`
+
+  🔻 **And the row's OWN justification for the floor names that exact class** — *"merge/split/
+  restore/coref/triage are rare and would diverge silently, and the graph feeds canon checks."*
+  The rare correction paths were precisely the ones outside the count. **A floor computed over a
+  subset of the surface is not a floor, it is a floor-shaped number**: a criterion that cannot
+  fail for eleven of the things it exists to guard (rule 3).
+
+  Same shape as this session's other three: a scope list that lagged its surface. The
+  conformance scope list, both refusal lists, and now the coverage floor.
+
+  ✅ `OPERATIONS` is the port's full surface, and `test_OPERATIONS_covers_the_WHOLE_port` reads
+  the port's own `async def`s so the two cannot drift again. **BITE:** remove `merge_fact` →
+  *"1 port operation(s) are invisible to the coverage floor: ['merge_fact']"*. Restored.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A because no service seam is crossed — the
+  shadow store has no deployed caller and the provider still returns Neo4j. **(c)** the floor
+  itself: `cutover_permitted: False` over 20 operations, read from the live report.
+
+  ⬜ **What remains for T43** is now honestly visible: eleven operations need real shadow
+  observations before a cutover can be argued, and Kuzu is a second comparison target.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**

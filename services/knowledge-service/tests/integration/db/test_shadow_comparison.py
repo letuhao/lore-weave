@@ -23,6 +23,8 @@ WHAT EACH TEST IS FOR
 """
 from __future__ import annotations
 
+import pathlib
+
 import os
 import uuid
 
@@ -204,4 +206,35 @@ async def test_the_caller_gets_the_primary_answer_even_when_the_secondary_dies(s
     assert shadow.stats.errored.get("resolve_or_merge_entity") == 1
     assert shadow.stats.observations("resolve_or_merge_entity") == 0, (
         "a secondary crash counted as a comparison"
+    )
+
+
+def test_OPERATIONS_covers_the_WHOLE_port():
+    """🔴 The floor was computed over NINE of twenty operations until 2026-08-14.
+
+    `cutover_permitted` was answerable `True` while `invalidate_relation`, `recreate_relation`,
+    `merge_fact`, `facts_for` and seven more had never been compared once — the floor could not
+    block on them because `OPERATIONS` did not list them. And the row's own justification names
+    exactly that class: *"merge/split/restore/coref/triage are rare and would diverge silently,
+    and the graph feeds canon checks."*
+
+    **A floor computed over a subset of the surface is not a floor, it is a floor-shaped
+    number** — a criterion that cannot fail for eleven of the things it exists to guard.
+
+    This keeps the two in step, so an operation added to the port can never again be invisible
+    to the gate that decides the cutover.
+    """
+    import re
+
+    from app.adapters.shadow_graph_store import OPERATIONS
+
+    src = (pathlib.Path(__file__).parents[3] / "app" / "ports" / "graph_store.py").read_text(
+        encoding="utf-8")
+    port = re.findall(r"^    async def (\w+)", src, re.M)
+    assert port, "could not read the port surface — the guard would pass vacuously"
+    missing = [op for op in port if op not in OPERATIONS]
+    assert not missing, (
+        f"{len(missing)} port operation(s) are invisible to the coverage floor: {missing}. "
+        "Add them to OPERATIONS in the same commit that adds them to the port — the floor "
+        "cannot block on an operation it does not know exists."
     )

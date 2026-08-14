@@ -50,6 +50,18 @@ __all__ = ["ShadowGraphStore", "ShadowStats", "OPERATIONS"]
 #: Every operation the port declares. The coverage report is keyed on THIS, not on what
 #: happened to be called — an operation missing from the report would read as "no problem"
 #: when it means "never observed", which is the failure this whole file guards.
+#: EVERY port operation, derived from the port's own surface rather than hand-listed.
+#:
+#: 🔴 IT HELD NINE OF TWENTY UNTIL 2026-08-14, and the floor could not block on the other
+#: eleven because it did not know they existed. `cutover_permitted` was therefore answerable
+#: `True` while `invalidate_relation`, `recreate_relation`, `merge_fact`, `facts_for` and seven
+#: more had NEVER been compared once — and the row's own justification for the floor names
+#: exactly that class: *"merge/split/restore/coref/triage are rare and would diverge silently,
+#: and the graph feeds canon checks."*
+#:
+#: A floor computed over a subset of the surface is not a floor; it is a floor-shaped number.
+#: `test_OPERATIONS_covers_the_WHOLE_port` keeps this list and the port in step, so an operation
+#: added to the port cannot again be invisible to the thing that gates the cutover.
 OPERATIONS = (
     "resolve_or_merge_entity",
     "find_entities_by_name",
@@ -58,6 +70,17 @@ OPERATIONS = (
     "restore_entity",
     "upsert_relation",
     "relations_for",
+    "get_relation",
+    "invalidate_relation",
+    "recreate_relation",
+    "events_page",
+    "get_event",
+    "merge_event",
+    "update_event_fields",
+    "archive_event",
+    "merge_fact",
+    "facts_for",
+    "add_evidence",
     "status_at_order",
     "events_in_window",
 )
