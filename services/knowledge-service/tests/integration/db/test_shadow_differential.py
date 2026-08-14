@@ -377,3 +377,31 @@ async def test_the_seed_corpus_reaches_every_operation(shadow):
             "the floor reports a cutover permitted while operations are unreachable against "
             f"this secondary: {sorted(unreachable)}"
         )
+
+
+async def test_REPRODUCER_relations_for_after_a_recreate(shadow):
+    """T43 — a FIXED sequence for the `relations_for` divergence.
+
+    The random seeds reported `agreed: 1, diverged: 1`: conditional, not structural. Two leads
+    were already eliminated by measurement (the trailing `SET`; unmapped endpoints), and a
+    conditional bug needs a REPRODUCER before it needs a fix — which is what this is.
+
+    The failing trace ordered it `recreate() … archive() … relations()`, so the sequence below
+    is exactly that, with nothing random in it.
+    """
+    u = f"u-{uuid.uuid4().hex[:10]}"
+    p = f"p-{uuid.uuid4().hex[:10]}"
+    a = await shadow.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    b = await shadow.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Mira", kind="character", source_type="chapter")
+    await shadow.recreate_relation(
+        user_id=u, subject_id=a.id, object_id=b.id, predicate="parent_of",
+        valid_from_ordinal=12)
+    out = await shadow.relations_for(
+        user_id=u, entity_id=a.id, project_id=p, direction="outgoing", min_confidence=0.8)
+    rep = shadow.coverage_report()
+    assert not rep["operations"]["relations_for"]["diverged"], (
+        f"reproduced: relations_for diverges after a recreate. primary returned {len(out)} "
+        f"edge(s). samples={rep['samples']}"
+    )
