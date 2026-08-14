@@ -51,6 +51,13 @@ command -v python >/dev/null 2>&1 || PY=python3
 # would push people to tick boxes to get green. Found 3 finished-but-unticked rows on
 # 2026-08-14 (T36, T38, T42a) that had sent a session chasing work already done.
 "$PY" "$ROOT/scripts/plan-row-honesty-gate.py"
+# T37b/SPEC 4.2c -- the cast-prompt eval's OFFLINE selftest (0.7s; the model arms are opt-in
+# and are not run here). Wired because the thing it guards fails SILENTLY: the eval builds its
+# control arm by removing the `roles` spans from the LIVE prompt, so an unrelated edit to
+# `build_propose_cast_messages` makes both arms identical and the eval then reports "no shift"
+# forever -- a green that means the instrument stopped looking. The selftest asserts the spans
+# still apply, and that the verdict can still RED. A drift guard nobody runs is not a guard.
+"$PY" "$ROOT/services/composition-service/scripts/eval_cast_prompt.py" --selftest
 # T38 — the authored-catalog readers can only shrink. The two knowledge gates deliberately
 # EXEMPT this surface (it is the authored source, not the bi-temporal substrate), so before
 # this gate existed T38 had no check that could fail — see D-T38-MECHANISM-IS-VACUOUS.

@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the CAST-PLAN EVAL that SPEC §4.2c requires for T37b part 1's prompt change — a prompt edit that shifts `is_new` classification or cast sizing is a regression the graph write is not worth. Then the end-to-end revision smoke both T37d halves owe (plan → revise → the stale role closes, live).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T37c` · ✅ `T37d` · ✅ `T38` · ✅ `T42a`. 🔻 **T37 is functionally COMPLETE**: two producers write roles, the plan retracts its own and only its own, and `relation 0 → 1` was proved live. What remains is the eval and the revision smoke.
+**RESUME: the END-TO-END REVISION SMOKE both T37d halves owe — a real planning run appends a plan-authored role, a revision drops it, and the stale role CLOSES, live, against rebuilt images. It is the last thing T37 owes.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T37b-eval` · ✅ `T37c` · ✅ `T37d` · ✅ `T38` · ✅ `T42a`. 🔻 **T37 is functionally COMPLETE**: two producers write roles, the plan retracts its own and only its own, `relation 0 → 1` was proved live, and the prompt change is now MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286). What remains is the revision smoke — one live proof, not a batch.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8598,6 +8598,8 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **T37b still owes two things, both named rather than assumed:** the **close path** a plan
   revision needs (§4.2b — a role appended at plan time outlives the plan that justified it),
   and the **cast-plan eval** §4.2c requires for the part-1 prompt change.
+  → ✅ Both paid: the close path in **T37c/T37d**, the eval in **T37b-eval** (NO-SHIFT on both
+  spec metrics, p = 1.0 / 0.4286 / 1.0, with a sabotage arm proving the criterion can red).
 
 
   ### 🔴 T37c 2026-08-14 — a close path would have ERASED the author's own roles
@@ -8740,12 +8742,96 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (b) the seam:** the Go half is driven against a **real throwaway Postgres** —
   `TestAppendFactOrigin` and `TestFactsHTTP` both green, the latter being what caught the Scan
   mismatch. ⬜ The Python close is proved against a fake KAL; an end-to-end revision smoke
-  (plan → revise → the role closes) is owed with the cast-plan eval.
+  (plan → revise → the role closes) is owed. **It is now the whole of what T37 has left** —
+  the cast-plan eval that used to share this line is done (`T37b-eval`), so the smoke is no
+  longer sequenced behind anything and is the RESUME.
   **QC (c) real data:** real `entity_facts` rows read back through the real router.
 
   ```
   3751 passed, 403 skipped — composition · TestAppendFactOrigin + TestFactsHTTP ok
   ```
+
+  ### ✅ T37b-eval 2026-08-14 — the prompt did not move the model, and the instrument can prove it
+
+  ```
+  control 6.75 / 6.5 / 7.0     treatment 6.5 / 6.0 / 7.0     p = 1.0 / 0.4286 / 1.0    NO-SHIFT
+  sabotage arm (cast capped)   p = 0.0286 on 6 of 6 metrics                            SHIFT
+  ```
+
+  §4.2c sequenced the part-1 prompt change to land **with** this eval, in one sentence: *"a
+  prompt change that shifts `is_new` classification or cast sizing would be a regression the
+  graph write is not worth."* The two metrics are read off the spec, not chosen here.
+
+  The defence T37b shipped with was *"additive by construction — one more key requested, none
+  removed, and the parser tolerates its absence."* That argument is why the change was safe to
+  **write**. It is not evidence about a model, which does not read a diff: it reads a longer
+  instruction with a JSON example embedded in it, and a longer schema line is exactly the kind
+  of edit that quietly costs a slot in the output array or tips a borderline `is_new`.
+
+  🔻 **THE CONTROL ARM IS DERIVED FROM THE LIVE PROMPT, NOT COPIED.**
+  `scripts/eval_cast_prompt.py` builds its pre-T37b arm by removing the `roles` spans from
+  whatever `build_propose_cast_messages` returns today, and **asserts both removals applied**.
+  A hand-copied "old prompt" constant would rot on the first unrelated wording change and then
+  measure two differences while reporting one. The assert matters more than that: without it
+  `str.replace` on a non-matching string is a **silent no-op**, both arms run identical text,
+  and the eval reports NO-SHIFT forever — a green that means the instrument stopped looking.
+  Same silent-no-op class as the CRLF bites this session already records.
+
+  🔴 **THE FIRST SCORING RULE WAS SELF-SERVING AND WAS THROWN AWAY.** It read
+  `shifted = delta > max(range(control), range(treatment))`. The arm **under test** can buy its
+  own acquittal there: being noisy raises the bar its own mean shift has to clear. Replaced
+  with an **exact permutation test** over all C(2R,R) relabellings — the treatment's variance
+  enters the null distribution on the same footing as the control's, and there is no knob.
+  Pinned by a selftest case the old rule acquitted (control 10×4 vs treatment 5,5,5,9: delta 4,
+  old floor 4, `4 > 4` is False → "ok"; permutation p = 0.0286 → SHIFT).
+
+  ✅ **`--repeats < 4` is REFUSED, and that is rule 3 as arithmetic.** With R repeats the
+  smallest attainable p is `2 / C(2R,R)`: at **R=3 that is 0.100**, above α=0.05, so the eval
+  could never report SHIFT no matter what the model did — green by construction. At R=4 it is
+  **0.029** and can fire. The refusal is derived, not taste, and two selftest cases assert both
+  halves.
+
+  ✅ **An unparsed run is ERROR, never a datapoint.** A failed run contributes `cast_size 0`,
+  and two arms that both fail would agree perfectly and score NO-SHIFT. Same lesson
+  `app/eval/suite.py` already carries: an outage scored as a quiet detector is fiction.
+
+  **BITE ×2, both red for the right reason:**
+  ```
+  BITE 1 (line 112, the live prompt): "ties to other cast, as prose" -> "ties between cast members"
+    FAIL  reverse-patches apply to the live prompt — the cast prompt changed and this eval's
+          control is stale                                                          exit 1
+  BITE 2 (--sabotage, against the REAL model): " Return EXACTLY two characters, no more."
+    SHIFT on cast_size AND is_new, all 3 premises, p=0.0286                          caught
+  ```
+  The sabotage arm is the one that matters: the selftest proves the criterion reds on synthetic
+  rows, `--sabotage` proves it reds on a real model. It stayed red even though the model
+  returned 5 and 3.25 rather than the 2 it was told — the criterion is not keyed to obedience.
+
+  ✅ **WIRED INTO `.githooks/pre-commit`** (`--selftest`, 0.7 s, model arms opt-in). The drift
+  guard only fires if something runs it, and nothing would have. A guard nobody runs is not a
+  guard — the *"skip defence cites a check that never runs"* class, pre-empted.
+
+  📌 **Baseline recorded** — `eval/baselines/cast-prompt-v1.json`, model pinned
+  (`google/gemma-4-26b-a4b-qat`). Pinning a model name is why this file lives at
+  `services/<svc>/scripts/eval_*`: `ai-provider-gate.py` exempts exactly that shape, for
+  exactly this reason — *"an eval that silently switches models measures nothing."*
+  Premises are reused from `eval_a_validate.PREMISES`, so this measures the same three the
+  other A-evals do rather than three invented to be measured.
+
+  **QC (a) gates:** all green, plan-verify PASS, provider gate clean on staged. `--selftest`
+  is the new instrument's own gate and it is wired.
+  **QC (b) the seam:** **N/A** — the eval drives the engine's two pure functions against a
+  chat endpoint and crosses no LoreWeave service boundary. The seam smoke this owed is
+  T37d's revision smoke, which is the next task and is named in RESUME rather than absorbed
+  here.
+  **QC (c) real data:** 72 live model calls across three runs (treatment ×2, sabotage ×1),
+  every number above measured rather than argued.
+
+  ⬜ **What this does NOT prove**, stated rather than left to be assumed: it convicts on a
+  shift in LOCATION. A change that left both means alone while widening the distribution would
+  pass, so both arms' ranges print on every run for a human to read. And it is one model —
+  a second would be a stronger claim, and is a cheap follow-up rather than a hole.
+
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
