@@ -35,7 +35,8 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42b` — put AGE in the `loreweave/postgres-knowledge:18` image. T42a is closed (82 rules, three adapters), so the conformance suite that was blocking Phase 7 now exists and T42b/T42c are what stand between it and a second engine.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ **`T37` (CLOSED — all seven slices)** · ✅ `T38` · ✅ `T42a`.
+**RESUME: `T42` — the KUZU adapter. It is the only thing left in T42, and X1 (PO) requires BOTH candidates before T43 picks one; a bake-off with one entrant is not a decision.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ **`T37` (CLOSED — all seven slices)** · ✅ `T38` · ✅ `T42a` · ✅ `T42b` · ✅ `T42c` · ✅ `T42d`.
+🔻 **THE PLAN WAS UNDER-REPORTING BY THREE TASKS (2026-08-14).** The previous RESUME said *"T42b — put AGE in the image"*; T42b shipped **2026-08-12** with a 9/9 smoke. T42c and T42d had shipped the same day. All three were `[~]`, and `plan-row-honesty-gate` — the gate that exists for exactly this — ran **clean** the whole time, because it recognised one dialect of "done" and these blocks used another (`✅ DONE <date>` unbolded, `passed=9` rather than `9 passed`). Gate widened, bitten, and the flagged count went **0 → 5 of 23**; three were real and ticked after being **re-run**, two were genuine false positives resolved by reading the block, exactly as the gate's contract says.
 🔻 **T37 CLOSED 2026-08-14.** Two producers write roles; the plan retracts its own and **only** its own; the prompt change is MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286); and the revision is proved LIVE — where it immediately found that **the close had never worked once**: it closed at the same ordinal it opened at, glossary 422'd every attempt, and the pipeline swallowed it while six unit tests stayed green. Fixed, bitten, re-proved on real rows with 48 611 unmarked legacy facts untouched.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
@@ -4538,6 +4539,10 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   check, and the relation proposer already measured 3-of-8 defensible.
   **Bite:** run over the corpus → edge count non-zero **and** the graph acyclic.
   (depends on T32)
+  ⬜ **STILL OWED, checked 2026-08-14:** the code, the unit evidence and the corpus bite are all
+  done below — which is why the honesty gate flags this row — but it **depends on T32**, which
+  is open and names its own remainder. Coverage is not the gap: §4.3 moved that to **QC-6**
+  deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
   ---
   ✅ **Code + unit evidence done; the corpus bite is running (see below).**
 
@@ -9095,8 +9100,17 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **To unblock** | Give the port a way to CLOSE an interval — either `valid_to_ordinal` on `upsert_relation` or a separate close operation — then extend `test_as_of_respects_the_interval_start` to assert the upper bound through the port. Alternatively declare the relation WRITE path out of port scope deliberately and say so, so the gap is a decision rather than an omission. |
   | **Mechanism** | The test `test_as_of_respects_the_interval_start` names this deferral in its docstring and covers the lower bound only, so the gap is stated where a reader meets it rather than in a note elsewhere. |
   | **Retry when** | T42 designs the AGE adapter — that is when a second implementation of the upper bound first exists, and when the port either grows a close operation or the write path is declared out of port scope deliberately. |
-- [~] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
+- [x] **T42b** — **Add AGE to the `loreweave/postgres-knowledge:18` image** *(NEW)*
+  ✅ **TICKED 2026-08-14, two days late — re-verified by RUNNING it, not by reading the block:**
+  `bash scripts/postgres-knowledge-image-smoke.sh` → **passed=9 failed=0**, image label
+  `com.loreweave.age.version=1.7.0`. Every item of the *Do:* below is in the tree: the AGE
+  stage (`FROM apache/age`), the version pin (`AGE_VERSION` is interpolated into the COPY
+  path, so a moved upstream version fails the BUILD rather than shipping a mislabelled image),
+  and the smoke's three AGE assertions.
+  🔴 **This row is why `plan-row-honesty-gate` was widened in the same commit.** It shipped on
+  2026-08-12 and the gate scored it `done=0` for two days, because its block spells finished as
+  `✅ DONE 2026-08-12` (no bold) and `passed=9` (not `9 passed`). The RESUME pointer then sent a
+  session to build it again.
   The image **already exists** — `infra/postgres-knowledge/Dockerfile` (PG18 + pgvector +
   pgvectorscale), pinned by `infra/docker-compose.knowledge-pg.yml:29`. Sealed **T5** already
   accepted *"publish a prebuilt Postgres image; own the extension matrix"* and priced owning it.
@@ -9163,8 +9177,13 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   no per-PG-major pinned tag equivalent to the other two. **If T43 selects AGE, pin it by digest**
   — an unpinned base for a shipped binary is a supply-chain hole that only a chosen engine makes
   worth paying for.
-- [~] **T42c** — **AGE graph bootstrap / DDL** *(NEW)*
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
+- [x] **T42c** — **AGE graph bootstrap / DDL** *(NEW)*
+  ✅ **TICKED 2026-08-14 — re-verified against a REAL AGE, which is the only run that counts
+  here.** `tests/integration/db/test_age_bootstrap.py` with `TEST_AGE_DSN` pointed at a
+  throwaway container off the T42b image: **11 passed**. Without the DSN the same file reports
+  **3 passed, 8 skipped** — and 8 of the 11 assertions about AGE are in those skips, so the
+  bare-suite green says nothing about this row. (The block below recorded 10; it has grown
+  by one since.)
   AGE needs per-database setup Neo4j does not: `LOAD 'age'`,
   `SET search_path = ag_catalog, "$user", public`, `SELECT create_graph(<name>)`.
   ⚠️ **AGE rejects single-character graph names** (`graph name is invalid`) — measured, and it
@@ -9235,6 +9254,12 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (c) real data** — 19 graphs created in `ag_catalog.ag_graph` across this cycle's runs.
 - [~] **T42** — Second `GraphStore` adapter — **AGE FIRST**, then Kuzu / Postgres-relational
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
+  ⬜ **STILL OWED, checked 2026-08-14: the KUZU adapter is NOT built.** `app/adapters/` holds
+  `age_graph_store.py` and no Kuzu sibling. The AGE half is done and its evidence is below —
+  which is why `plan-row-honesty-gate` flags this row at 9 completion-markers — but **X1 (PO)
+  says build BOTH candidates and let T43 choose**, so shipping one and ticking the box would
+  hand T43 a single-candidate bake-off and call it a decision. This sentence is here so the
+  gate reads the row correctly; the row is genuinely open.
   ⚠️ **Candidate set restored 2026-08-11**: **AGE · Kuzu · Postgres-relational**. The prior text
   read *"Postgres-relational recommended; Kuzu the alternative — AGE is eliminated"*, which now
   contradicts amended sealed rows **T1** and **T2**; an implementer following it would build the
@@ -9416,8 +9441,14 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a)** 4184 unit. **(b) live** — both engines in throwaway containers.
   **(c) real data** — **419 integration**, up from 410 (+6 differential, +3 conformance across
   the three adapters).
-- [~] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
-  📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.2. Unfinished, not undecided.
+- [x] **T42d** — **Port-adoption gate** *(NEW — guards B1, which nothing guards today)*
+  ✅ **TICKED 2026-08-14 — the gate runs and its own deferral is now factually false.**
+  `python scripts/port-adoption-gate.py` → *"57 module(s) bind `neo4j_repos` directly (ceiling
+  57); 8 import a port; **17 import GraphStore** (floor 17) — PASS, exactly at the ceiling; it
+  can only fall."* `D-T42D-GRAPHSTORE-HAS-NO-CALLERS` said the port was unreachable at **ZERO**
+  adopters; it is at **17**, so the deferral is discharged by measurement rather than by
+  argument. The *Do:* — a shrink-only gate on the import count — is built, wired, and bitten in
+  three directions with exit codes asserted.
   `scripts/graph-port-gate.py` walks `ast.Constant` strings and enforces that **Cypher** does not
   appear outside adapter dirs. It **never inspects imports**. So it proves Cypher is *centralised*,
   not that the code is *engine-swappable*: a module can call `neo4j_repos` functions, carry no
