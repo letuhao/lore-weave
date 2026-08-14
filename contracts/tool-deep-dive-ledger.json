@@ -1814,6 +1814,18 @@
    "commit": "e133167d2",
    "evidence": "withheld_tools stage=rail_gate reason='rail step already satisfied (mode=done_suppress)' on all 14 passes of the re-ask. A/B/C at K=3: baseline invented a rule; guard only 0/3 called; guard+reclaim 3/3 called, both rules from a live read, store unchanged.",
    "blast_radius": "Every rail-driven READ step: once the journey completes, the tool that answers it leaves the wire for the rest of the session."
+  },
+  "DQ-T3-WITHHELD-NOT-ABSENT": {
+   "date": "2026-08-14",
+   "service": "chat-service",
+   "found_by": "DQ-T3 (a), owner-cleared",
+   "state": "shipped",
+   "invariant": "A tool held back by a gate must be reported as WITHHELD with the gate named, never as non-existent. Same class as always_available (T7-D2) and provider_unavailable.",
+   "chokepoint": "tool_discovery._stamp_withheld_setup — one string shared by tool_list and tool_load's not_found branch",
+   "test": "services/chat-service/tests/test_a_withheld_setup_tool_is_not_reported_as_absent.py",
+   "commit": "5ddffdece",
+   "wording_is_the_risk": "The OPPOSITE error is measured and worse: naming an unreachable tool produced 40,597 chars of one repeated paragraph. Four tests pin that the stamp says not-callable, that the model cannot open the gate itself, and that the route out is to ASK THE USER — not a retry.",
+   "live": "VOID x2 — see the observation below. Unit-proven with falsifiers RED on both halves; deployed md5-verified."
   }
  },
  "deferred_questions": {
@@ -2071,6 +2083,15 @@
    "state": "ANSWERED. The measurement is the flag. The _carries_lore fix is shipped on its own merits and is INERT until the flag is on — which is a product decision (it is tied to the T5 compaction A/B), not a defect.",
    "answer": "story_state=0 is explained by the FEATURE FLAG, not by any logic bug. STORY_STATE_BLOCK_ENABLED is 'false' in the container; infra/docker-compose.yml sets ${STORY_STATE_BLOCK_ENABLED:-false} deliberately, with the comment 'Default OFF; flip on (with T5) for the compaction A/B — T4's degraded-safety-net only fires when T5 gates grounding to empty'. The whole path, including the turn-counter query, is skipped. So there is no chat_session_blocks row to project, and 0 tokens is correct for THIS deployment.",
    "what_i_nearly_claimed": "I found a real logic defect on the way (the projection keyed on full_context being EMPTY, which a build returning only `instructions` satisfies) and fixed it — but it does NOT explain the measurement, and saying it did would have been the same error as the withdrawn D-CONTEXT-BLOCK: attributing an observation to a component that was not running."
+  },
+  {
+   "id": "OBS-DQT3-GATE-OPENS-ON-THE-WORDS-THAT-REACH-IT",
+   "date": "2026-08-14",
+   "finding": "Two live attempts to observe the DQ-T3 condition both recorded chat_messages.withheld_tools stage='intent_gate' COUNT 0 — the gate did not fire, so nothing was withheld and neither run tests the stamp. Attempt 1 asked the model to list the glossary tools (tool_list called 3/3, and the payload CONTAINED glossary_adopt_standards and glossary_book_sync_apply — they were never withheld). Attempt 2 named glossary_book_sync_apply and asked for its arguments (tool_load called 3/3, schema returned correctly).",
+   "why": "Structural, not bad luck: any prompt that directs the model at these tools contains the words that route the glossary_shaping skill, and injecting that skill is precisely what OPENS the gate.",
+   "what_it_implies_about_the_DQ": "DQ-T3's premise — 'from the model's side they are indistinguishable from tools that do not exist' — was an inference from the CATALOG state, not an observed model reply. The condition may be far rarer in practice than the DQ assumed, because reaching for these tools tends to open the gate first. The stamp is still correct where it fires and is harmless where it does not (it is derived from absence), but its VALUE is now an open question rather than an established one.",
+   "what_a_valid_fixture_needs": "A book-scoped turn that calls tool_list('glossary') or tool_load on a gated name WITHOUT any setup/ontology/glossary wording in the prompt — i.e. the model must reach them on its own. Not yet constructed.",
+   "state": "OPEN — recorded so the next cycle starts from this rather than re-running the same void scenario."
   }
  ],
  "progress": {
