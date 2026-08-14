@@ -137,3 +137,22 @@ async def test_a_cast_with_no_roles_writes_nothing_and_says_so():
         id_by_name={"Kai": "ent-kai", "Mira": "ent-mira"},
         introduce_at={"Kai": 1}, user_id=USER)
     assert n == 0 and kal.calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_planned_role_is_marked_as_the_PLANS_not_the_authors():
+    """🔴 T37c — the mark is what makes the close path safe to build.
+
+    A role appended at plan time outlives the plan that justified it (SPEC §4.2b), so a
+    revision must be able to retract what it no longer implies. It must retract ONLY that: an
+    author's hand-declared tie is not the plan's to remove, and before chain step 0066 nothing
+    in `entity_facts` could tell them apart — both were `fact_kind='relation'` with a NULL
+    episode.
+    """
+    kal = _Kal()
+    await publish_planned_roles(
+        kal, BOOK, cast_objs=[_char("Kai", [{"predicate": "betrayed", "object": "Mira"}])],
+        id_by_name={"Kai": "ent-kai"}, introduce_at={"Kai": 3}, user_id=USER)
+    assert kal.calls[0]["origin"] == "plan", (
+        "the plan's role was not marked as the plan's — a later revision could not retract "
+        "it, or would have to retract the author's declarations alongside it")

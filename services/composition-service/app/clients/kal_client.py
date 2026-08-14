@@ -206,6 +206,7 @@ class KalClient:
         source_episode_id: UUID | str | None = None,
         user_id: UUID | str | None = None,
         writeback_key: str | None = None,
+        origin: str = "author",
     ) -> dict[str, Any]:
         """T37 — composition's FIRST write to the KAL. Appends one role as a
         `fact_kind='relation'` fact carrying a story interval.
@@ -242,6 +243,12 @@ class KalClient:
             "attr_or_predicate": predicate,
             "value": object_value,
             "valid_from_ordinal": valid_from_ordinal,
+            # T37c — WHICH producer wrote this, so one can retract its own claims without
+            # touching another's. Defaults to `author` because that is the conservative one:
+            # an author-marked fact is never closed by a plan revision, so a caller that
+            # forgets to say gets its role KEPT rather than silently retracted later. The
+            # dangerous default would be `plan`.
+            "origin": origin,
         }
         # ⚠️ OMITTED when absent, never sent as null or as a fresh UUID. `entity_facts
         # .source_episode_id` carries a FOREIGN KEY to `episodes`, so an invented id is a

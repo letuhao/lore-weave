@@ -188,6 +188,11 @@ var chain = []Step{
 	// T34 / design D7 — write-time dedupe needs somewhere to put the re-assertion. 11.7% of
 	// fact rows carried no new information; they become citations on the open fact instead.
 	{"0065_entity_fact_evidence", UpEntityFactEvidence},
+	// T37c / SPEC §4.2b — roles got two producers (the studio and planforge), and the
+	// plan-time one owes a retraction path. `entity_facts` had no authorship column, so
+	// "close what this plan no longer implies" would have closed the AUTHOR's declarations
+	// too. A producer may only retract facts it can prove it wrote.
+	{"0066_entity_facts_origin", UpEntityFactsOrigin},
 }
 
 // EnsureLedger creates the schema_migrations bookkeeping table. Idempotent; must run

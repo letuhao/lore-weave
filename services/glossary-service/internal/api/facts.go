@@ -140,6 +140,19 @@ func reconcileEpisode(ctx context.Context, q pgxRWQuerier, episodeID uuid.UUID) 
 	return nil
 }
 
+// The closed producer set for `entity_facts.origin` (T37c / SPEC §4.2b). Constants, not
+// literals, because the WRITER and the eventual CLOSE path must agree exactly — a fact
+// written as one string and searched for as another is un-retractable in a way nothing
+// reports. One home, one spelling.
+//
+// Deliberately NOT a SQL CHECK: see migrate/entity_facts_origin.go. The handler rejects an
+// unknown value with 400, which fails loudly and needs no migration when a producer is added.
+const (
+	factOriginPlan       = "plan"       // planforge — the roles a plan implies
+	factOriginAuthor     = "author"     // the studio — a human declaring a tie directly
+	factOriginExtraction = "extraction" // the pipeline reading it out of prose
+)
+
 // appendFactParams is one bi-temporal fact to OPEN (Path A, §4 step 4 / §12.2.2).
 type appendFactParams struct {
 	BookID    uuid.UUID
@@ -153,6 +166,12 @@ type appendFactParams struct {
 	// SourceEpisodeID cites the immutable episode (anti-hallucination, §3.2).
 	// nil for cold-start/migration facts.
 	SourceEpisodeID *uuid.UUID
+
+	// Origin records WHICH PRODUCER wrote this fact (T37c / SPEC §4.2b), so one can retract
+	// its own claims without touching another's. Empty = unknown, which every fact written
+	// before chain step 0066 is: a producer may only close facts it can prove it wrote, so
+	// an unmarked fact is never anyone's to retract. See migrate/entity_facts_origin.go.
+	Origin string
 }
 
 // appendFact opens a fact (Path A), idempotently:
@@ -217,13 +236,14 @@ func appendFact(ctx context.Context, q pgxRWQuerier, p appendFactParams) (uuid.U
 	// so a future unique constraint on entity_facts can't be silently swallowed.
 	err := q.QueryRow(ctx, `
 		INSERT INTO entity_facts
-		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		  (book_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal, cardinality, source_episode_id, origin)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULLIF($9, ''))
 		ON CONFLICT (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
 		             coalesce(source_episode_id, '00000000-0000-0000-0000-000000000000'::uuid))
 		DO NOTHING
 		RETURNING fact_id`,
 		p.BookID, p.EntityID, p.FactKind, p.Attr, p.Value, p.ValidFrom, p.Card, p.SourceEpisodeID,
+		p.Origin,
 	).Scan(&factID)
 	if errors.Is(err, pgx.ErrNoRows) {
 		inserted = false

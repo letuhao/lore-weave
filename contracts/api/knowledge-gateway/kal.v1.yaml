@@ -889,6 +889,17 @@ components:
         cardinality: { type: string, enum: [single, multi], default: single }
         evidence: { $ref: '#/components/schemas/Evidence' }
         writeback_key: { type: string, description: Path-A idempotency gate (reused, §12.2.2) }
+        origin:
+          type: string
+          enum: [plan, author, extraction]
+          description: >-
+            Which producer wrote this fact (T37c, chain step 0066). A producer may retract only
+            facts it can prove it wrote: roles have two writers (planforge and the studio), and
+            without this a plan revision closing "what the plan no longer implies" would erase
+            the author's own declarations. OMITTED means unknown — every fact older than 0066 —
+            and an unmarked fact is never anyone's to retract. An unrecognised value is a 400,
+            not a silent write, because a fact stored under a misspelt origin is un-retractable
+            and nothing reports it.
   responses:
     Unauthorized: { description: Missing/invalid auth }
     # `applied` is always true on a 200 — the field exists so the shape stays stable if a

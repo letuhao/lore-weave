@@ -180,3 +180,34 @@ async def test_source_episode_id_is_OMITTED_when_absent_never_invented():
         "an FK to `episodes`, so an invented id is a 500, not a provenance gap")
     assert bodies[1]["source_episode_id"] == str(EPISODE), (
         "an extracted role must still be able to cite its episode")
+
+
+@pytest.mark.asyncio
+async def test_the_origin_default_is_AUTHOR_because_that_is_the_safe_one():
+    """🔴 T37c — the default is the decision, and the dangerous default is `plan`.
+
+    `entity_facts.origin` exists so a producer retracts only its own claims: roles have two
+    writers, and without it a plan revision closing *"what the plan no longer implies"* would
+    erase the author's own declarations (chain step 0066).
+
+    So the default matters asymmetrically. A caller that forgets to say gets `author`, and an
+    author-marked fact is never closed by a plan revision — its role is KEPT. Defaulting to
+    `plan` would mean a forgotten argument silently enrols the fact in someone else's
+    retraction sweep, and the loss would surface as a role that quietly stopped existing.
+    """
+    bodies = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        bodies.append(__import__("json").loads(request.content))
+        return httpx.Response(200, json={})
+
+    c = _client(handler)
+    await c.append_role_fact(BOOK, subject_entity_id=SUBJECT, predicate="betrayed",
+                             object_value="Mira", valid_from_ordinal=1)
+    await c.append_role_fact(BOOK, subject_entity_id=SUBJECT, predicate="betrayed",
+                             object_value="Mira", valid_from_ordinal=1, origin="plan")
+
+    assert bodies[0]["origin"] == "author", (
+        "the default origin is not `author` — a caller that forgets becomes retractable by a "
+        "plan revision it has nothing to do with")
+    assert bodies[1]["origin"] == "plan"

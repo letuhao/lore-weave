@@ -215,8 +215,21 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 		ValidFrom       int64  `json:"valid_from_ordinal"`
 		Cardinality     string `json:"cardinality"`
 		SourceEpisodeID string `json:"source_episode_id"`
+		Origin          string `json:"origin"`
 	}
 	if !decodeJSON(w, r, &body) {
+		return
+	}
+	// T37c — the closed producer set, enforced HERE rather than as a SQL CHECK (see
+	// migrate/entity_facts_origin.go for why). A typo'd origin must fail LOUDLY: the whole
+	// point of the column is that a producer retracts only its own facts, so a fact written
+	// as "planforge" when the close looks for "plan" would be silently un-retractable —
+	// exactly the class of quiet drift this field exists to remove.
+	switch body.Origin {
+	case "", factOriginPlan, factOriginAuthor, factOriginExtraction:
+	default:
+		writeError(w, http.StatusBadRequest, "GLOSS_BAD_REQUEST",
+			"origin must be one of plan|author|extraction, or omitted")
 		return
 	}
 	entityID, err := uuid.Parse(body.EntityID)
@@ -248,6 +261,7 @@ func (s *Server) internalAppendFact(w http.ResponseWriter, r *http.Request) {
 	factID, inserted, err := appendFact(r.Context(), tx, appendFactParams{
 		BookID: bookID, EntityID: entityID, FactKind: body.FactKind, Attr: body.Attr,
 		Value: body.Value, ValidFrom: body.ValidFrom, Card: body.Cardinality, SourceEpisodeID: epPtr,
+		Origin: body.Origin,
 	})
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "append failed: "+err.Error())

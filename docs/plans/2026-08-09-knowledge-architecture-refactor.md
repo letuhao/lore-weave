@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37c` — the two things T37b still owes, both named: (1) the CLOSE PATH a plan revision needs (§4.2b — a role appended at plan time outlives the plan that justified it, and an as-of read would hand the guard a role the book abandoned; `POST facts/close` exists and is ordinal-aware), and (2) the CAST-PLAN EVAL §4.2c requires for the part-1 prompt change.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T38` · ✅ `T42a`. 🔻 Both role producers are now BUILT: the studio declares one (live-proven, `relation 0` → `1`, HTTP 201) and the plan writes what it implies, at each holder's `introduce_at_chapter` — because a role cannot be in force before its holder appears.
+**RESUME: `T37d` — the CLOSE PATH, now buildable. A plan revision closes the roles it no longer implies, matching ONLY `origin='plan'` (chain step 0066): read the book's open plan-origin relation facts, diff against what the new plan implies, `POST facts/close` the difference at the revision's ordinal. Provenance was its missing precondition and now exists. Then the cast-plan EVAL §4.2c requires.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T37c` · ✅ `T38` · ✅ `T42a`. 🔻 T37c's finding: `entity_facts` had NO authorship column, so the close would have ERASED the author's own declarations. A stale role is wrong; an erased one is gone.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8598,6 +8598,80 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **T37b still owes two things, both named rather than assumed:** the **close path** a plan
   revision needs (§4.2b — a role appended at plan time outlives the plan that justified it),
   and the **cast-plan eval** §4.2c requires for the part-1 prompt change.
+
+
+  ### 🔴 T37c 2026-08-14 — a close path would have ERASED the author's own roles
+
+  ```
+  glossary chain 0065 -> 0066      composition 3743 -> 3745 passed      KAL 34 passed
+  ```
+
+  §4.2b said the plan-time producer owes a retraction path: a role appended when a plan was
+  designed outlives the plan that justified it, and an as-of read would then hand the guard a
+  role the book abandoned. **Building that close is what found the real problem.**
+
+  🔴 **`entity_facts` had NO authorship column.** Both producers write `fact_kind='relation'`
+  with `source_episode_id = NULL`, and nothing else distinguishes them — verified against the
+  live table's full column list, not inferred. So *"close the roles this plan no longer
+  implies"* would have closed **the author's own declarations**, on a plan revision they may
+  not even associate with it. **A stale role is wrong; an erased one is gone.** That is a
+  worse failure than the staleness the close was meant to fix, and it would have been silent.
+
+  ✅ **Chain step 0066 — `entity_facts.origin`** (`plan | author | extraction`), plus a partial
+  index on the close path's actual access pattern (`book_id, origin` where the interval is
+  open — a closed fact is never a retraction candidate).
+
+  🔧 **No SQL CHECK on the value, for the reason `0064_entity_facts_status_kind` already
+  records** for `life_status`: pinning a second enum in SQL means a migration every time a
+  producer is added, and extraction is an obvious third. The closed set is enforced where it
+  fails loudly and cheaply instead — the Go handler 400s on an unknown origin, and the KAL
+  contract declares the enum. **A misspelt origin is un-retractable and nothing reports it**,
+  which is exactly the quiet drift the column exists to remove, so it must never be stored.
+
+  🔧 **NULL means unknown, and is never backfilled.** Every fact older than 0066 is unmarked;
+  guessing an authorship nobody claimed would be worse than absence. A producer may only close
+  facts it can prove it wrote.
+
+  🔧 **The client default is `author`, and the default IS the decision.** A caller that forgets
+  gets its role KEPT — an author-marked fact is never swept by a plan revision. Defaulting to
+  `plan` would mean a forgotten argument silently enrols a fact in someone else's retraction.
+
+  **BITE ×4 across two languages:**
+
+  ```
+  Go  1. admit "planforge" in the origin switch
+         E  a misspelt origin was accepted with 200 — it would be stored, never matched by
+            the close path, and never reported
+      2. Origin: body.Origin -> factOriginAuthor
+         E  origin not persisted: got author, want "plan"
+  Py  3. client default origin -> plan
+         E  the default origin is not `author` — a caller that forgets becomes retractable
+            by a plan revision it has nothing to do with
+      4. planforge producer omits origin
+         E  the plan's role was not marked as the plan's
+  ```
+
+  ⚠️ **Two bites were red for the WRONG reason first and were re-cut**: mutating the `case`
+  line produced a duplicate `default:` (a compile error), and dropping `$9` from the INSERT
+  produced *"expected 8 arguments, got 9"* — arity, not the value. Both re-aimed at the value
+  itself.
+
+  **QC (a) gates:** all 100 green; plan-verify PASS. `go build ./...` + `go vet` clean.
+  **QC (b) the seam:** the Go test drives the REAL router end to end
+  (`POST /internal/books/{id}/facts/append`) against a **real throwaway Postgres** and reads
+  the column back — origin persisted, omitted stays NULL, misspelt rejected **with zero rows
+  written**. ⚠️ The full glossary suite shows **31 failures with this change and 32 without**
+  (measured by stashing it): a bare `postgres:18-alpine` lacks what the K2a trigger tests need.
+  **The change adds none of them**, and that was checked rather than asserted.
+  **QC (c) real data:** real `entity_facts` rows in a real Postgres, before and after.
+
+  ```
+  3745 passed — composition · 34 passed — knowledge-gateway · TestAppendFactOrigin ok
+  ```
+
+  **The close path itself is now BUILDABLE and is what T37d does** — provenance was its
+  precondition, and it was missing. That is the finding, not a deferral: the retraction cannot
+  be written safely until a producer can recognise its own mark, and now it can.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.

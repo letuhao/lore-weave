@@ -86,6 +86,9 @@ async def publish_planned_roles(
                     book_id, subject_entity_id=subject_id,
                     predicate=role["predicate"], object_value=role["object"],
                     valid_from_ordinal=ordinal, user_id=user_id,
+                    # T37c — marked as the PLAN's, so a later revision can close what it no
+                    # longer implies without touching a role the author declared by hand.
+                    origin="plan",
                 )
                 written += 1
             except Exception:  # noqa: BLE001 — see the docstring; the plan outranks the role
