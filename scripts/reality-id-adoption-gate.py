@@ -297,6 +297,16 @@ INPUT_BOUNDARY: dict[str, str] = {
         "`dp::RealityId`, so it cannot already be one. Everything downstream of "
         "that call now takes `dp::RealityId`."
     ),
+    "services/world-service/src/server/handlers/actor_control": (
+        "the HTTP INPUT the bind consumes. The five sites are wire DTO fields "
+        "— `GrantRequest`/`RevokeRequest`/`CreateActorRequest` and the two "
+        "responses — carrying a uuid decoded from a request body before any "
+        "control-plane call exists. `actor_control::bind` is what turns it into "
+        "a verified `dp::RealityId`, and it runs BEFORE every registry touch, so "
+        "granting control in a frozen or archived reality is refused rather than "
+        "recorded. Everything downstream of that call takes `dp::RealityId`: "
+        "`actor_registry`'s four functions and `reality_pool` all do."
+    ),
     "services/commit-service/src/spine_args": (
         "the CLI INPUT the bind consumes. `Args::reality` is parsed from argv "
         "before any connection exists, and `reality_bind::bind_reality` is what "

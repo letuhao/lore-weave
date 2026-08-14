@@ -15,6 +15,10 @@
 //! `panic_canary` test guards the runtime behavior.
 
 pub mod admission;
+pub mod dedup;
+pub mod proposal;
+pub mod demo_encounter;
+pub mod subject;
 pub mod bus;
 pub mod domain;
 /// Q0b B3c — the lease-holding writer transcribing an epoch switch into its own

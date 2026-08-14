@@ -21,7 +21,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use commit_service::admission::{admit_signed, AdmissionOutcome, DedupCache, Verdict};
+use commit_service::admission::{AdmissionOutcome, DedupCache, Verdict};
 use commit_service::spine_args::parse_args;
 use commit_service::producer::ProducerRegistry;
 use commit_service::bus::{BusConfig, ProposalBus};
@@ -29,13 +29,12 @@ use commit_service::wire::discard_reason_wire;
 // `DF5` — this file builds no event envelope at all now: both commit paths
 // go through the SDK, so the aggregate and the node own what it stamped.
 use commit_service::{epoch_commit, epoch_signal};
-use commit_service::combat::Side;
-use commit_service::{Actor, CombatDomain, CombatState, Vocabulary, COMBAT_V1_JSON};
+use commit_service::{Vocabulary, COMBAT_V1_JSON};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use commit_service::{reality_bind, reject_commit};
 use dp_kernel::channel::{acquire_writer_lease, ChannelId, ChannelWriter};
-use sim_core::{EntityId, Island, IslandId, Lane, Outcome, SeenWindow, StepStatus};
+use sim_core::{Lane, Outcome, StepStatus};
 use sqlx::postgres::PgPoolOptions;
 
 #[tokio::main]
@@ -60,7 +59,6 @@ async fn main() -> anyhow::Result<()> {
     println!("lease acquired: channel {} epoch {}", args.channel, lease.epoch);
 
     // ── resolution side: the island (encounter demo state) ──
-    let npc = EntityId(1);
     // ── F2: where this node's rules come from ─────────────────────────────
     //
     // RLS-A3 EARLY BINDING: the stack is resolved ONCE at creation, validated,
@@ -78,30 +76,11 @@ async fn main() -> anyhow::Result<()> {
     )
     .await?;
 
-    // The island DERIVES its pin from these rules via `Domain::rules_digest`,
-    // so it cannot report a digest for rules it is not running.
-    let mut state = CombatState::default();
-    state.actors.insert(npc, Actor::spawn(&ruleset, npc, Side::A));
-    for h in [EntityId(2), EntityId(3)] {
-        let mut a = Actor::spawn(&ruleset, h, Side::B);
-        a.set_vital(&ruleset, 40);
-        state.actors.insert(h, a);
-    }
-    // THE EPOCH COMES FROM THE BINDING, never a default. An island that
-    // started at 1 for a reality bound at 5 would compute RLS-I1 monotonicity
-    // against the wrong number, and a redelivered switch to an epoch BETWEEN
-    // them would be accepted.
-    let mut isle: Island<CombatDomain> = Island::new(
-        IslandId(args.channel as u64),
-        0x53A5_71DE,
-        reality_epoch,
-        Arc::clone(&ruleset),
-        SeenWindow::TtlTicks(300),
-        state,
-    );
-    isle.spawn_entity(npc);
-    isle.spawn_entity(EntityId(2));
-    isle.spawn_entity(EntityId(3));
+    // The fixture — three entities and a demo vitality — lives in
+    // `demo_encounter` so this file stays wiring. The epoch comes from the
+    // BINDING, never a default; see that module for why.
+    let mut isle = commit_service::demo_encounter::island(
+        Arc::clone(&ruleset), reality_epoch, args.channel);
 
     // ── CNC-D2: recover what the last writer knew, from the log ──
     //
@@ -170,6 +149,11 @@ async fn main() -> anyhow::Result<()> {
     // dropped, so restarts rewound it (DFO-5; recovered_values_are_consumed).
     let turn_number = Arc::new(AtomicU64::new(recovered.turn_number));
 
+    // `SEALED-SUBJECT` — the subject is RESOLVED here, never read off the wire.
+    let subjects = commit_service::subject::SubjectSource::connect(
+        args.meta_url.as_deref(), (*pool).clone(), session.reality_id().to_owned()).await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
+
     // `DF1b-ii` — session enters its channel; node declares its facts.
     let (chan_ctx, dp_backend) = reject_commit::wire(
         pool.clone(), &session, args.channel,
@@ -232,7 +216,7 @@ async fn main() -> anyhow::Result<()> {
             // The signature is a SIBLING stream field, so the verifier hashes
             // the exact bytes the producer sent (PID-D2).
             let sig = msg.field("producer_sig");
-            let record = admit_signed(body, sig, &producers, &vocab, &ruleset.rules().verbs, &mut dedup);
+            let record = subjects.admit(body, sig, &producers, &vocab, &ruleset.rules().verbs, &mut dedup).await;
             match record.outcome {
                 AdmissionOutcome::Rejected { stage, ref reason } => {
                     rejected += 1;

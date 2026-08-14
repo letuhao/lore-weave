@@ -1,0 +1,120 @@
+//! The per-reality actor registry — `S-9`'s conversion site, and the PRODUCER
+//! `actor_control_binding` has been pointing at since migration `034`.
+//!
+//! # Why this is a library module and not SQL in a handler
+//!
+//! Two callers need it and they need different halves. Creating an actor is a
+//! write; *checking* that an actor exists is a read the GRANT path must do
+//! before it records a binding — because a binding to an actor that does not
+//! exist is the dangling pointer `S-9` describes, and refusing it at the write
+//! edge is cheaper than discovering it in a resolver at turn time.
+//!
+//! # `actors` is a PER-REALITY table
+//!
+//! So the SQL is here rather than behind the Go meta-write bridge. `I8` and
+//! `meta-write-discipline-lint` govern the META tables — the lint derives its
+//! table list from `migrations/meta/*.up.sql`, and `actors` is not in it. The
+//! audit trail for who created an actor is the `actor.control.granted` event on
+//! the binding, which is a meta write and does go through `MetaWrite`.
+
+use dp::RealityId;
+use sqlx::{PgPool, Row};
+use uuid::Uuid;
+
+use crate::errors::ProvisionerError;
+
+/// One row of the registry: the platform's identity, and the island's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ActorRow {
+    /// What `actor_control_binding.actor_id` points at.
+    pub actor_id: Uuid,
+    /// What the island acts on — `sim_core::EntityId`'s inner `u64`.
+    ///
+    /// `i64` here and `u64` there: Postgres has no unsigned integer, and the
+    /// registry ALLOCATES from an identity column, so the values are small and
+    /// positive by construction. The conversion is the caller's and is checked
+    /// at the one place it happens rather than assumed all over.
+    pub entity_id: i64,
+}
+
+/// Create an actor in `reality`, letting the registry allocate its `entity_id`.
+///
+/// The allocation is the point. If the island kept assigning ids and this table
+/// merely recorded them, the two would be a second SSOT for one number and
+/// would drift the first time an actor was created twice.
+pub async fn create_actor(
+    reality_pool: &PgPool,
+    reality: &RealityId,
+) -> Result<ActorRow, ProvisionerError> {
+    let actor_id = Uuid::new_v4();
+    let row = sqlx::query(
+        "INSERT INTO actors (reality_id, actor_id) VALUES ($1, $2) RETURNING entity_id",
+    )
+    .bind(reality.as_uuid())
+    .bind(actor_id)
+    .fetch_one(reality_pool)
+    .await
+    .map_err(|e| ProvisionerError::Bridge(format!("create actor: {e}")))?;
+    Ok(ActorRow { actor_id, entity_id: row.get::<i64, _>("entity_id") })
+}
+
+/// Adopt an entity the island already has, under an explicit `entity_id`.
+///
+/// Exists for exactly one reason: `bin/spine.rs` hardcodes `EntityId(1)`, `(2)`
+/// and `(3)`, and those actors are real in every running island. Without a way
+/// to register them at their existing ids, the registry could only describe
+/// actors created after it shipped, and the demo spine would be undrivable by
+/// the feature built to drive it.
+pub async fn adopt_actor(
+    reality_pool: &PgPool,
+    reality: &RealityId,
+    entity_id: i64,
+) -> Result<ActorRow, ProvisionerError> {
+    let actor_id = Uuid::new_v4();
+    sqlx::query("INSERT INTO actors (reality_id, actor_id, entity_id) VALUES ($1, $2, $3)")
+        .bind(reality.as_uuid())
+        .bind(actor_id)
+        .bind(entity_id)
+        .execute(reality_pool)
+        .await
+        .map_err(|e| ProvisionerError::Bridge(format!("adopt actor {entity_id}: {e}")))?;
+    Ok(ActorRow { actor_id, entity_id })
+}
+
+/// Does this actor exist in this reality?
+///
+/// The GRANT path's precondition. `034` left `actor_id` unconstrained because
+/// its FK lives in another database — that is a correct reason not to have a
+/// foreign key and a bad reason to skip the check, so the check happens here,
+/// in the one process that can reach both databases.
+pub async fn actor_exists(
+    reality_pool: &PgPool,
+    reality: &RealityId,
+    actor_id: Uuid,
+) -> Result<bool, ProvisionerError> {
+    let row = sqlx::query("SELECT 1 FROM actors WHERE reality_id = $1 AND actor_id = $2")
+        .bind(reality.as_uuid())
+        .bind(actor_id)
+        .fetch_optional(reality_pool)
+        .await
+        .map_err(|e| ProvisionerError::Bridge(format!("actor lookup: {e}")))?;
+    Ok(row.is_some())
+}
+
+/// The island id for an actor, or `None` when the actor is unknown here.
+///
+/// This is the function `S-9` says has zero instances. Everything else in this
+/// module exists so that this one can answer.
+pub async fn entity_id_for(
+    reality_pool: &PgPool,
+    reality: &RealityId,
+    actor_id: Uuid,
+) -> Result<Option<i64>, ProvisionerError> {
+    let row = sqlx::query("SELECT entity_id FROM actors WHERE reality_id = $1 AND actor_id = $2")
+        .bind(reality.as_uuid())
+        .bind(actor_id)
+        .fetch_optional(reality_pool)
+        .await
+        .map_err(|e| ProvisionerError::Bridge(format!("entity_id lookup: {e}")))?;
+    Ok(row.map(|r| r.get::<i64, _>("entity_id")))
+}

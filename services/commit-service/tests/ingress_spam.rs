@@ -48,6 +48,11 @@ use sim_core::{
     SeenWindow, StepStatus,
 };
 
+/// The submitter. Any uuid — these suites are about admission, not identity.
+/// Before `SEALED-SUBJECT` the proposal carried `"actor": 1` and admission
+/// believed it; the SUBJECT is now a parameter the CALLER supplies.
+const TEST_USER: &str = "7e57ab1e-0000-4000-8000-00000000ac70";
+
 const SPAM: usize = 100;
 /// Fixed seed — replay-exact, no ambient randomness (SC-A1).
 const SEED: u64 = 0x1A5_0001;
@@ -63,7 +68,7 @@ fn strike(client_request_id: &str) -> String {
         "producer_service": "game-server",
         "proposal_id": client_request_id,
         "target_channel": 1,
-        "actor": 1,
+        "user_ref_id": TEST_USER,
         "candidates": [[2, "hostile-2"]],
         "event_category": "T1",
         "decision": {
@@ -111,7 +116,7 @@ fn distinct_client_request_ids_all_pass_idempotency() {
     let admitted = (0..SPAM)
         .filter(|i| {
             matches!(
-                admit_t6(&strike(&format!("req-{i}")), &v, &verbs(), &mut dedup).outcome,
+                admit_t6(&strike(&format!("req-{i}")), EntityId(1), &v, &verbs(), &mut dedup).outcome,
                 AdmissionOutcome::Admitted(_)
             )
         })
@@ -136,7 +141,7 @@ fn spam_is_gated_by_the_turn_economy() {
     let mut isle = island();
 
     for i in 0..SPAM {
-        let rec = admit_t6(&strike(&format!("req-{i}")), &v, &verbs(), &mut dedup);
+        let rec = admit_t6(&strike(&format!("req-{i}")), EntityId(1), &v, &verbs(), &mut dedup);
         let AdmissionOutcome::Admitted(input) = rec.outcome else {
             continue;
         };
@@ -176,7 +181,7 @@ fn refused_spam_is_recorded_as_a_precondition_failure() {
 
     for i in 0..SPAM {
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("req-{i}")), &v, &verbs(), &mut dedup).outcome
+            admit_t6(&strike(&format!("req-{i}")), EntityId(1), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }
@@ -211,13 +216,13 @@ fn end_turn_refills_the_slot_so_legitimate_play_continues() {
     for turn in 0..5 {
         // One legitimate action for this turn.
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("turn-{turn}")), &v, &verbs(), &mut dedup).outcome
+            admit_t6(&strike(&format!("turn-{turn}")), EntityId(1), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }
         // …plus a spam attempt in the SAME turn, which must not land.
         if let AdmissionOutcome::Admitted(a) =
-            admit_t6(&strike(&format!("turn-{turn}-spam")), &v, &verbs(), &mut dedup).outcome
+            admit_t6(&strike(&format!("turn-{turn}-spam")), EntityId(1), &v, &verbs(), &mut dedup).outcome
         {
             isle.submit(Lane::Live, *a);
         }

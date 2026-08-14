@@ -22,6 +22,25 @@ type fakeReg struct {
 	lastOrphanReq  RecordOrphansReq
 	orphanRecorded int
 	orphanCleared  int
+
+	grantErr      error
+	grantCalls    int
+	lastGrantReq  GrantControlReq
+	revokeErr     error
+	revokeCalls   int
+	lastRevokeReq RevokeControlReq
+}
+
+func (f *fakeReg) GrantActorControl(_ context.Context, r GrantControlReq) error {
+	f.grantCalls++
+	f.lastGrantReq = r
+	return f.grantErr
+}
+
+func (f *fakeReg) RevokeActorControl(_ context.Context, r RevokeControlReq) error {
+	f.revokeCalls++
+	f.lastRevokeReq = r
+	return f.revokeErr
 }
 
 func (f *fakeReg) Register(context.Context, RegisterReq) error { f.registers++; return f.registerErr }

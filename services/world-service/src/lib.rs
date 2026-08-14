@@ -53,6 +53,7 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+pub mod actor_registry;
 pub mod capacity_glue;
 pub mod capacity_planner;
 pub mod db_pool;

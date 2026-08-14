@@ -170,7 +170,10 @@ export class ChannelRoom extends Room {
   private view: ChannelView = emptyView();
   /** sessionId → the entity this connection may act as (D3). */
   private actorOf = new Map<string, string>();
-  /** sessionId → authenticated user, for the CNC-Q1 user-keyed global cap. */
+  /**
+   * sessionId → authenticated user, for the CNC-Q1 user-keyed global cap —
+   * and, since `SEALED-SUBJECT`, for the `user_ref_id` the proposal carries.
+   */
   private userOf = new Map<string, string>();
 
   /**
@@ -311,6 +314,13 @@ export class ChannelRoom extends Room {
     }
 
     const actor = this.actorOf.get(client.sessionId);
+    if (!userId) {
+      // Unreachable if `onAuth` ran — asserted rather than assumed, because a
+      // proposal with no submitter is refused at the far side's schema stage
+      // and would arrive there as an opaque malformed body.
+      client.send('turn.error', { code: 'no_user_bound', message: 'session has no user' });
+      return;
+    }
     if (!actor) {
       client.send('turn.error', { code: 'no_actor_bound', message: 'session has no actor' });
       return;
@@ -337,7 +347,20 @@ export class ChannelRoom extends Room {
       producer_service: PRODUCER_NAME,
       proposal_id: msg.client_request_id,
       target_channel: Number(this.opts.channelId),
-      actor: Number(actor),
+      // SEALED-SUBJECT — the USER, never the actor.
+      //
+      // This sent `actor: Number(actor)` and commit-service believed it. The
+      // room stamped it from the authenticated session, so the CLIENT could
+      // not choose — but the field still existed on the wire, and a field on
+      // the wire is a field some other producer can set. The subject is now
+      // resolved from `actor_control_binding` on the authoritative side, and
+      // the way to make it unassertable is for it to be ABSENT rather than
+      // trusted: `admission::Proposal` has no `actor` to deserialise into.
+      //
+      // `candidates` still needs the local actor, and that is fine — it is an
+      // OFFER the far side re-validates against island state (THR-A4), not a
+      // claim about who is acting.
+      user_ref_id: userId,
       candidates: this.candidates(actor),
       decision: msg.action,
     };

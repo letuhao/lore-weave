@@ -60,6 +60,10 @@ type Registrar interface {
 	Transition(ctx context.Context, t TransitionReq) (newState string, err error)
 	// RecordOrphans replaces the finding set for one shard (W5-REMEDIATE).
 	RecordOrphans(ctx context.Context, r RecordOrphansReq) (recorded, cleared int, err error)
+	// GrantActorControl / RevokeActorControl are `actor_control_binding`'s
+	// writer — the one it has never had. See actor_control.go.
+	GrantActorControl(ctx context.Context, r GrantControlReq) error
+	RevokeActorControl(ctx context.Context, r RevokeControlReq) error
 }
 
 // AuditSink records one service_to_service_audit row per bridge call.
@@ -164,6 +168,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("POST /internal/provisioner/register-reality", s.guarded("register-reality", s.handleRegister))
 	mux.HandleFunc("POST /internal/provisioner/transition", s.guarded("transition", s.handleTransition))
 	mux.HandleFunc("POST /internal/provisioner/record-orphans", s.guarded("record-orphans", s.handleRecordOrphans))
+	// `actor_control_binding`'s writer — see actor_control.go. Same auth, same
+	// audit row, same server-builds-the-intent scoping as the three above.
+	mux.HandleFunc("POST /internal/provisioner/grant-actor-control", s.guarded("grant-actor-control", s.handleGrantControl))
+	mux.HandleFunc("POST /internal/provisioner/revoke-actor-control", s.guarded("revoke-actor-control", s.handleRevokeControl))
 	return mux
 }
 
@@ -300,6 +308,11 @@ type MetaRegistrar struct {
 	// contracts/meta exposes no upsert (OpInsert/OpUpdate/OpDelete only), so
 	// the reconcile has to know what is already there.
 	Pool *pgxpool.Pool
+	// ReadAudit records the `actor_binding_cross_user` row for the by-actor
+	// binding read. Optional so unit tests need no database; production wires
+	// it, and `nil` means the read happens WITHOUT its audit row, which is why
+	// the wiring is asserted rather than assumed at startup.
+	ReadAudit ReadAuditor
 }
 
 // deriveOwner turns the ONE field a client may send into the (owner_kind,

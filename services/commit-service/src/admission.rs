@@ -28,21 +28,6 @@ pub enum Verdict {
     Skip,
 }
 
-/// A T6 proposal as carried on the bus (flat fields → parsed).
-#[derive(Debug, Clone, serde::Deserialize)]
-pub struct Proposal {
-    /// EVT-L3 idempotency triple, parts 1..3.
-    pub producer_service: String,
-    pub proposal_id: String,
-    pub target_channel: i64,
-    /// The AGT-A6 Decision this proposal carries (executes nothing).
-    pub decision: serde_json::Value,
-    /// Acting entity (island-side id).
-    pub actor: u64,
-    /// Offered candidates at decision time — (entity id, token) pairs; the
-    /// validation set for `strike.target` (THR-A4 / REC-79).
-    pub candidates: Vec<(u64, String)>,
-}
 
 // `event_category` is deliberately ABSENT (PID-D5). It used to ride the wire
 // and SELECT THE VALIDATOR SUBSET, so a proposal could elect its own trust
@@ -52,39 +37,6 @@ pub struct Proposal {
 // the wire cannot be forged; the same reason `TurnSubmit` carries no `actor`
 // (CWC-D3).
 
-/// EVT-L3 dedup cache — commit-service-owned, 60 s TTL (bus layer; the
-/// kernel seen-set stays the second, step-time layer).
-pub struct DedupCache {
-    ttl: Duration,
-    seen: BTreeMap<(String, String, i64), Instant>,
-}
-
-impl DedupCache {
-    pub fn new(ttl: Duration) -> Self {
-        Self { ttl, seen: BTreeMap::new() }
-    }
-
-    /// Returns false iff the triple is a live duplicate.
-    pub fn insert(&mut self, key: (String, String, i64)) -> bool {
-        let now = Instant::now();
-        self.seen.retain(|_, t| now.duration_since(*t) < self.ttl);
-        match self.seen.get(&key) {
-            Some(_) => false,
-            None => {
-                self.seen.insert(key, now);
-                true
-            }
-        }
-    }
-
-    pub fn len(&self) -> usize {
-        self.seen.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.seen.is_empty()
-    }
-}
 
 /// The admission record: every registered stage's verdict + the outcome.
 /// CS-A4: both rejection kinds are recorded; neither is silent.
@@ -92,6 +44,22 @@ impl DedupCache {
 pub struct AdmissionRecord {
     pub stages: Vec<(&'static str, Verdict)>,
     pub outcome: AdmissionOutcome,
+}
+
+impl AdmissionRecord {
+    /// A rejection recorded at one named stage, before any later stage ran.
+    ///
+    /// The stage list carries ONLY that stage — not a row of `NotRun` for the
+    /// rest. `NotRun` means *"this stage was skipped and something downstream
+    /// may have to re-check"*; a proposal refused for having no resolvable
+    /// subject has no downstream, and manufacturing the rows would put a
+    /// meaningless obligation on the commit that records it.
+    pub fn rejected(stage: &'static str, reason: &str) -> Self {
+        Self {
+            stages: vec![(stage, Verdict::Fail(reason.to_string()))],
+            outcome: AdmissionOutcome::Rejected { stage, reason: reason.to_string() },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -183,16 +151,26 @@ impl Category {
     }
 }
 
+
+pub use crate::dedup::DedupCache;
+pub use crate::proposal::{peek_user_ref_id, Proposal};
+
 /// Run the T6 (LLM-proposal) admission subset over one bus message body.
 pub fn admit_t6(
     raw_json: &str,
+    subject: EntityId,
     vocab: &Vocabulary,
     verbs: &ruleset_core::VerbTable,
     dedup: &mut DedupCache,
 ) -> AdmissionRecord {
     // Back-compat entry point for callers that do not sign (tests, the POC
     // runner). Trusts the caller to have established identity out-of-band.
-    admit_signed(raw_json, None, &ProducerRegistry::new(), vocab, verbs, dedup)
+    //
+    // `subject` is NOT back-compat and has no default: SEALED-SUBJECT applies to
+    // every path into admission, and an entry point that invented one would be
+    // the hole the sealed decision closes, reopened for the convenience of
+    // callers that do not sign.
+    admit_signed(raw_json, None, subject, &ProducerRegistry::new(), vocab, verbs, dedup)
 }
 
 /// Admit a proposal whose producer identity is PROVEN (PID-A2..A4).
@@ -204,6 +182,11 @@ pub fn admit_t6(
 pub fn admit_signed(
     raw_json: &str,
     sig_hex: Option<&str>,
+    // The RESOLVED acting entity, from `actor_control_binding` — not from
+    // `raw_json`, which no longer carries one. The caller does the two-hop
+    // lookup because it owns the pools; admission stays pure, and could not
+    // read a subject off the wire now even if it were asked to.
+    subject: EntityId,
     registry: &ProducerRegistry,
     vocab: &Vocabulary,
     // `M2` — the reality's DECLARED verbs. Admission judges a proposal against
@@ -295,7 +278,7 @@ pub fn admit_signed(
         .cloned()
         .unwrap_or(serde_json::json!({}));
     let payload = match vocab.validate(
-        EntityId(proposal.actor),
+        subject,
         &tool,
         &params.to_string(),
         &candidates,
@@ -340,9 +323,9 @@ pub fn admit_signed(
             // between here and there (the generation-stamped variants need a
             // caller that holds the island; these deliberately do not).
             preconditions: vec![
-                sim_core::Precondition::IslandOwns { id: EntityId(proposal.actor) },
+                sim_core::Precondition::IslandOwns { id: subject },
                 sim_core::Precondition::ResourceAtLeast {
-                    id: EntityId(proposal.actor),
+                    id: subject,
                     kind: crate::domain::CombatResource::TurnSlot,
                     amount: 1,
                 },

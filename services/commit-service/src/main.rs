@@ -88,6 +88,15 @@ fn parse_args() -> anyhow::Result<Args> {
     })
 }
 
+/// The POC runner's submitter.
+///
+/// Not a real principal — this runner has no auth and no binding table. It
+/// exists so the wire field carries one honest value instead of three literals.
+/// The SUBJECT passed to `admit_t6` is the entity the runner already knows,
+/// which is what `SEALED-SUBJECT` requires: resolved by the caller, never read
+/// out of the proposal.
+const POC_USER: &str = "00000000-0000-4000-8000-00000000p0c2";
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = parse_args()?;
@@ -211,7 +220,7 @@ async fn main() -> anyhow::Result<()> {
             "producer_service": "poc2-turn-runner",
             "proposal_id": format!("poc2-{input_seq}"),
             "target_channel": 1,
-            "actor": npc.0,
+            "user_ref_id": POC_USER,
             "candidates": ctx.candidates.iter().map(|c| (c.id.0, c.token.clone())).collect::<Vec<_>>(),
             "decision": {
                 "vocabulary": "combat_v1",
@@ -220,7 +229,7 @@ async fn main() -> anyhow::Result<()> {
                     .unwrap_or(serde_json::json!({})),
             },
         });
-        match admit_t6(&proposal.to_string(), &vocab, &ruleset.rules().verbs, &mut dedup).outcome {
+        match admit_t6(&proposal.to_string(), npc, &vocab, &ruleset.rules().verbs, &mut dedup).outcome {
             AdmissionOutcome::Admitted(a) => {
                 isle.submit(Lane::Live, *a);
             }
@@ -235,12 +244,12 @@ async fn main() -> anyhow::Result<()> {
                     "producer_service": "poc2-turn-runner",
                     "proposal_id": format!("poc2-fb-{input_seq}"),
                     "target_channel": 1,
-                    "actor": npc.0,
+                    "user_ref_id": POC_USER,
                     "candidates": Vec::<(u64, String)>::new(),
                     "decision": {"vocabulary": "combat_v1", "tool": "defend", "params": {}},
                 });
                 if let AdmissionOutcome::Admitted(a) =
-                    admit_t6(&fb.to_string(), &vocab, &ruleset.rules().verbs, &mut dedup).outcome
+                    admit_t6(&fb.to_string(), npc, &vocab, &ruleset.rules().verbs, &mut dedup).outcome
                 {
                     isle.submit(Lane::Live, *a);
                 }
@@ -257,7 +266,7 @@ async fn main() -> anyhow::Result<()> {
                     "producer_service": "poc2-script-driver",
                     "proposal_id": format!("poc2-h-{input_seq}"),
                     "target_channel": 1,
-                    "actor": h.0,
+                    "user_ref_id": POC_USER,
                     "candidates": [[npc.0, format!("hostile-{}", npc.0)]],
                     "decision": {
                         "vocabulary": "combat_v1", "tool": "strike",
@@ -265,7 +274,7 @@ async fn main() -> anyhow::Result<()> {
                     },
                 });
                 if let AdmissionOutcome::Admitted(a) =
-                    admit_t6(&hp.to_string(), &vocab, &ruleset.rules().verbs, &mut dedup).outcome
+                    admit_t6(&hp.to_string(), h, &vocab, &ruleset.rules().verbs, &mut dedup).outcome
                 {
                     isle.submit(Lane::Live, *a);
                 }

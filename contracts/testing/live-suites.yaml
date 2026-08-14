@@ -222,6 +222,21 @@ suites:
         kind: postgres
         schema: per_reality
 
+  - id: commit-subject
+    package: commit-service
+    target: subject_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped 2026-08-14 with SEALED-SUBJECT. It runs under the registry-driven
+      leg like every other suite; a step of its own would add nothing.
+    needs:
+      - env: SUBJECT_META_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+      - env: SUBJECT_CHANNEL_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+
   - id: commit-spine-drain-once
     package: commit-service
     target: spine_drain_once_live

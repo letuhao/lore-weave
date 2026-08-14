@@ -98,12 +98,35 @@ bare_selects() {
     "$@" 2>/dev/null \
     | grep -vE '/contracts/meta/' \
     | grep -vE '_test\.go|_test\.rs' \
-    | grep -vE 'services/meta-worker/pkg/user_erased_writer/' || true
+    | grep -vE 'services/meta-worker/pkg/user_erased_writer/' \
+    | grep -vE 'services/commit-service/src/subject\.rs' \
+    | grep -vE 'services/meta-worker/pkg/bridge/actor_control\.go' || true
   # ^ The GDPR erasure cascade (P2/071) reads actor_control_binding OWNER-scoped
   #   (WHERE user_ref_id = $1) to find which realities to scrub for the subject
   #   being erased — NOT a cross-user read (the != case the discipline targets).
   #   The erasure is audited end-to-end (each per-reality scrub writes a
   #   meta_write_audit row); a separate read-audit would be redundant. Tracked.
+  #
+  # ^ commit-service/src/subject.rs — SEALED-SUBJECT's resolver. Two reasons,
+  #   and the second is a gap in the discipline rather than in the caller:
+  #     1. It is OWNER-SCOPED — `WHERE reality_id = $1 AND user_ref_id = $2`,
+  #        resolving the SUBMITTER'S OWN binding. Exactly the class the erasure
+  #        exclusion above is written for; the yml's own description of this
+  #        path is the `!=` case.
+  #     2. There is NO RUST-SIDE SANCTIONED READER. The audit wrapper this lint
+  #        points callers at is `contracts/meta`, which is Go, and the read
+  #        audit writer is `sdks/go/piikms`. A Rust service therefore cannot
+  #        comply by any route — the only compliant Rust read is one that does
+  #        not happen. Recorded as PC-NO-RUST-READ-AUDIT rather than left as an
+  #        exclusion that looks like a preference.
+  #
+  # ^ meta-worker/pkg/bridge/actor_control.go — genuinely CROSS-USER (keyed by
+  #   actor, no user predicate: "who drives this actor"), and it now WRITES the
+  #   meta_read_audit row — `ReadAuditor.RecordBindingRead`, tag
+  #   `actor_binding_cross_user`, which had no SDK constant until 2026-08-14 and
+  #   so was unreachable for this table. The exclusion is here because this lint
+  #   tests WHERE a SELECT lives, not whether it audits; the discipline it
+  #   enforces is satisfied, the grep cannot see it.
 }
 
 run_lint() {

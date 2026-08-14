@@ -186,6 +186,100 @@ impl BridgeClient {
             ))),
         }
     }
+
+    /// Grant `user` control of `actor` in `reality` (`SEALED-BINDING`).
+    ///
+    /// Through the bridge and not by a direct INSERT, for the same `I8` reason
+    /// every other meta write here goes that way: the `meta_write_audit` row
+    /// and the `actor.control.granted` outbox event must land in the SAME
+    /// transaction as the binding, and only Go's `MetaWrite` can do that.
+    ///
+    /// `201` created · `200` the same user already holds it (a retry) · `409`
+    /// somebody else does. The last is a normal answer, not a failure.
+    pub async fn grant_actor_control(
+        &self,
+        user_ref_id: Uuid,
+        reality_id: Uuid,
+        actor_id: Uuid,
+        reason: &str,
+    ) -> Result<bool, ProvisionerError> {
+        let resp = self
+            .http
+            .post(format!("{}/internal/provisioner/grant-actor-control", self.base_url))
+            .header("X-Service-Token", &self.token)
+            .json(&serde_json::json!({
+                "user_ref_id": user_ref_id.to_string(),
+                "reality_id": reality_id.to_string(),
+                "actor_id": actor_id.to_string(),
+                "reason": reason,
+            }))
+            .send()
+            .await
+            .map_err(|e| ProvisionerError::Bridge(format!("grant send: {e}")))?;
+        match resp.status().as_u16() {
+            201 => Ok(true),  // granted
+            200 => Ok(false), // idempotent: this user already drives it
+            409 => Err(ProvisionerError::ActorAlreadyDriven(actor_id.to_string())),
+            401 => Err(ProvisionerError::Bridge("grant: 401 unauthorized".into())),
+            code => Err(ProvisionerError::Bridge(format!(
+                "grant: unexpected {code}: {}",
+                resp.text().await.unwrap_or_default()
+            ))),
+        }
+    }
+
+    /// End the live binding for `(reality, actor)`.
+    ///
+    /// `expected_user_ref_id` is the optional CAS: when supplied, the revoke
+    /// applies only while that user still holds the binding. Omitting it
+    /// revokes whoever holds it, which is what an operator forcibly freeing a
+    /// stuck actor wants and is NOT what a client acting on a stale character
+    /// list wants.
+    ///
+    /// Returns whether anything was revoked — `false` means it was already
+    /// revoked, which is success by end state.
+    pub async fn revoke_actor_control(
+        &self,
+        reality_id: Uuid,
+        actor_id: Uuid,
+        expected_user_ref_id: Option<Uuid>,
+        reason: &str,
+    ) -> Result<bool, ProvisionerError> {
+        let mut body = serde_json::json!({
+            "reality_id": reality_id.to_string(),
+            "actor_id": actor_id.to_string(),
+            "reason": reason,
+        });
+        // Omitted entirely when absent, so "no CAS" and "CAS on the nil uuid"
+        // cannot be confused — the same shape `register`'s `owner_user_id` uses.
+        if let Some(u) = expected_user_ref_id {
+            body["expected_user_ref_id"] = serde_json::Value::String(u.to_string());
+        }
+        let resp = self
+            .http
+            .post(format!("{}/internal/provisioner/revoke-actor-control", self.base_url))
+            .header("X-Service-Token", &self.token)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| ProvisionerError::Bridge(format!("revoke send: {e}")))?;
+        let code = resp.status().as_u16();
+        match code {
+            200 => {
+                // The bridge distinguishes the two 200s in the body, and the
+                // caller needs that difference: "I ended a binding" and "there
+                // was nothing to end" are different facts about the world.
+                let body: serde_json::Value = resp.json().await.unwrap_or_default();
+                Ok(body.get("status").and_then(|s| s.as_str()) == Some("revoked"))
+            }
+            409 => Err(ProvisionerError::ControlCasMismatch(actor_id.to_string())),
+            401 => Err(ProvisionerError::Bridge("revoke: 401 unauthorized".into())),
+            _ => Err(ProvisionerError::Bridge(format!(
+                "revoke: unexpected {code}: {}",
+                resp.text().await.unwrap_or_default()
+            ))),
+        }
+    }
 }
 
 /// Production `Effects`. Holds a runtime handle to block on the async bridge +

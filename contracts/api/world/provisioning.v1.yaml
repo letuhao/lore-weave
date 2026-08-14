@@ -28,6 +28,11 @@ servers:
 tags:
   - name: probes
     description: Liveness / readiness / metrics. Unauthenticated by design.
+  - name: actor-control
+    description: |
+      Who drives which actor, in which reality (`SEALED-BINDING`, migration 034).
+      A player is not a KIND of actor — it is a CONTROL INTERFACE — so these
+      operations are about the BINDING, never about a character's lifecycle.
   - name: realities
     description: Per-reality database provisioning.
 
@@ -132,6 +137,133 @@ paths:
         "504":
           description: The request exceeded the 300s ceiling.
 
+  /internal/v1/actors:
+    post:
+      tags: [actor-control]
+      summary: Create (or adopt) an actor in a reality
+      description: |
+        The per-reality actor registry — `S-9`'s missing conversion site, and
+        the precondition `actor_control_binding` has assumed since migration
+        `034` without it existing.
+
+        The registry ALLOCATES `entity_id` (the island's `sim-core::EntityId`)
+        so that it is the source of truth for that number rather than a second
+        copy of one the island also assigns. Supply `entity_id` explicitly only
+        to ADOPT an entity that already exists in a running island.
+
+        This mints no new vocabulary and is not a fifth spelling of
+        who-is-acting under `SF-6`: it writes down the mapping between two
+        spellings that already exist, which is the conversion site `S-9`
+        measured as having zero instances.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateActorRequest" }
+      responses:
+        "201":
+          description: The actor exists and carries both identities.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CreateActorResponse" }
+        "400":
+          description: The reality is not registered, or the entity id is taken.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /internal/v1/actor-control/grant:
+    post:
+      tags: [actor-control]
+      summary: Grant a user control of an actor
+      description: |
+        Creates the live binding `(user_ref_id, reality_id, actor_id)`. The write
+        goes through the Go meta-write bridge so the `meta_write_audit` row and
+        the `actor.control.granted` outbox event land in the SAME transaction as
+        the binding (`I8`).
+
+        **One live driver per actor.** Enforced by a partial unique index over
+        the non-revoked rows (migration `041`). A grant for an actor somebody
+        else drives is a `409` and never an idempotent `200`: a second principal
+        claiming a subject is not a retry, and reporting it as success would
+        hide the confused-deputy refusal from the caller.
+
+        A handoff is therefore **revoke, then grant** — which is also what keeps
+        the event names honest, because a grant is an INSERT and a revoke is an
+        UPDATE.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/GrantControlRequest" }
+      responses:
+        "201":
+          description: "`outcome: granted` — a new live binding was created."
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlResponse" }
+        "200":
+          description: |
+            `outcome: already_granted` — this same user already holds the live
+            binding. Idempotent: a retried grant carries the identical intent.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlResponse" }
+        "400":
+          description: |
+            The actor does not exist in this reality. A binding to an actor with
+            no durable identity is the dangling pointer `S-9` describes, so the
+            grant refuses at the write edge rather than leaving a resolver to
+            discover it at turn time.
+          $ref: "#/components/responses/Problem"
+        "409":
+          description: |
+            A DIFFERENT user holds the live binding. Revoke first; do not
+            blind-retry.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /internal/v1/actor-control/revoke:
+    post:
+      tags: [actor-control]
+      summary: End the live binding for an actor
+      description: |
+        Sets `revoked_at` on the live row. The actor lives on — only the binding
+        ends, which is why this is a timestamp and not a status enum
+        (migration `034` dropped its predecessor's enum after finding five of
+        its six members belonged to the transport, to `GoneState`, or to user
+        preferences).
+
+        Keyed by the ACTOR, not by the user: the invariant is one live driver
+        per actor, so the actor is what names the row. `expected_user_ref_id` is
+        an optional compare-and-set — send it when acting on a character list
+        that may be stale, or the revoke will remove whoever took over instead.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevokeControlRequest" }
+      responses:
+        "200":
+          description: |
+            `outcome: revoked` — a live binding was ended. Or
+            `outcome: already_revoked` — there was none, which is the end state
+            the caller asked for. Idempotent by END STATE; the body says which.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ControlResponse" }
+        "409":
+          description: |
+            `expected_user_ref_id` no longer holds the binding. Reload and
+            decide — a stale caller must surface, never blind-retry.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     internalToken:
@@ -153,6 +285,80 @@ components:
               endpoint: { type: string, enum: [livez, readyz] }
 
   schemas:
+    CreateActorRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id]
+      properties:
+        reality_id: { type: string, format: uuid }
+        entity_id:
+          type: integer
+          format: int64
+          description: |
+            Omit to let the registry allocate. Supply only to adopt an entity
+            the island already has.
+    CreateActorResponse:
+      type: object
+      required: [reality_id, actor_id, entity_id]
+      properties:
+        reality_id: { type: string, format: uuid }
+        actor_id:
+          type: string
+          format: uuid
+          description: The PLATFORM identity — what a binding points at.
+        entity_id:
+          type: integer
+          format: int64
+          description: The ISLAND identity — what the simulation acts on.
+    GrantControlRequest:
+      type: object
+      additionalProperties: false
+      required: [user_ref_id, reality_id, actor_id]
+      properties:
+        user_ref_id:
+          type: string
+          format: uuid
+          description: WHO drives. Opaque; carries no PII on its own.
+        reality_id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+          description: |
+            The per-reality actor identity. Its FK lives in the per-reality
+            database, so it is deliberately unconstrained in the meta table.
+        reason:
+          type: string
+          description: Recorded on the `meta_write_audit` row.
+    RevokeControlRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, actor_id]
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+        actor_id:
+          type: string
+          format: uuid
+        expected_user_ref_id:
+          type: string
+          format: uuid
+          description: |
+            Optional CAS. When present the revoke applies only while this user
+            still holds the binding; otherwise 409.
+        reason:
+          type: string
+    ControlResponse:
+      type: object
+      required: [outcome, reality_id, actor_id]
+      properties:
+        outcome:
+          type: string
+          enum: [granted, already_granted, revoked, already_revoked]
+        reality_id: { type: string, format: uuid }
+        actor_id: { type: string, format: uuid }
     ProvisionRequest:
       type: object
       required: [reality_id, locale, deploy_cohort, reason]

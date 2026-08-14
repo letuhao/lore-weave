@@ -34,6 +34,16 @@ const (
 	// this tag without an explicit Bulk SDK method (NOT shipped this
 	// cycle — admin-cli will add the bulk surface separately).
 	TagBulkPIIRead SensitiveReadTag = "bulk_pii_read"
+
+	// TagActorBindingCrossUser — reading `actor_control_binding` by ACTOR
+	// rather than by user, i.e. "who drives this actor". Registered in
+	// meta-sensitive-read-paths.yml since 035 renamed it off
+	// `player_index_cross_user`, with NO constant here until 2026-08-14 —
+	// so the audited path was unreachable for this table and the first
+	// cross-user reader bypassed the discipline by default rather than by
+	// choice. An owner-scoped read (`WHERE user_ref_id = $caller`) is NOT
+	// this tag; the yml's own description is the `!=` case.
+	TagActorBindingCrossUser SensitiveReadTag = "actor_binding_cross_user"
 )
 
 // IsValid is the SDK-side guard. Mirrors the cycle-3 yml `paths` keys.

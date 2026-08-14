@@ -85,6 +85,10 @@ pub struct EffectsConfig {
     pub pg_pass: String,
     /// Directory holding `<id>.up.sql` (`contracts/migrations/per_reality`).
     pub sql_dir: String,
+    /// The polyglot allowlist the control plane validates against — needed to
+    /// BIND a reality before touching its actor control, so a frozen or
+    /// archived world refuses the grant rather than accepting it.
+    pub meta_allowlist: String,
 }
 
 impl EffectsConfig {

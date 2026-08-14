@@ -10,7 +10,7 @@ use axum::routing::post;
 use service_http::{health, require_internal};
 use tower_http::timeout::TimeoutLayer;
 
-use crate::server::handlers::realities;
+use crate::server::handlers::{actor_control, realities};
 use crate::server::state::AppState;
 
 /// 256 KiB request-body cap. A provision request is a handful of scalars;
@@ -61,6 +61,12 @@ pub const ROUTES: &[RouteSpec] = &[
     RouteSpec { method: "get", path: "/readyz", gate: Gate::Open },
     RouteSpec { method: "get", path: "/metrics", gate: Gate::Open },
     RouteSpec { method: "post", path: "/internal/v1/realities", gate: Gate::Internal },
+    // SEALED-BINDING — `actor_control_binding`'s writer. Internal-gated: a
+    // grant decides who may act as a subject, so it is never reachable from
+    // the public edge.
+    RouteSpec { method: "post", path: "/internal/v1/actors", gate: Gate::Internal },
+    RouteSpec { method: "post", path: "/internal/v1/actor-control/grant", gate: Gate::Internal },
+    RouteSpec { method: "post", path: "/internal/v1/actor-control/revoke", gate: Gate::Internal },
 ];
 
 /// Assemble the service router.
@@ -69,6 +75,9 @@ pub fn build_router(state: AppState) -> Router {
 
     let internal = Router::new()
         .route("/internal/v1/realities", post(realities::provision_reality))
+        .route("/internal/v1/actors", post(actor_control::create_actor))
+        .route("/internal/v1/actor-control/grant", post(actor_control::grant_control))
+        .route("/internal/v1/actor-control/revoke", post(actor_control::revoke_control))
         .layer(from_fn_with_state(state.clone(), require_internal::<AppState>));
 
     Router::new()

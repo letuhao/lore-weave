@@ -75,7 +75,14 @@ test('turn.submit over the cap closes the socket and reaches NEITHER the bus nor
       leftWith = code;
     },
   };
+  // Both maps, because `onJoin` sets both: `userOf` UNCONDITIONALLY and
+  // `actorOf` only when a binding exists. Setting the actor alone builds a
+  // session with an actor and no user — a state production cannot reach,
+  // and one that `SEALED-SUBJECT` now refuses, because a proposal carries
+  // the USER. The fixture reached past `onJoin` into the privates, which is
+  // why it could construct it at all.
   (room as unknown as { actorOf: Map<string, string> }).actorOf.set('s1', '1');
+  (room as unknown as { userOf: Map<string, string> }).userOf.set('s1', 'u-1');
   (room as unknown as { submitLimiters: Map<string, unknown> }).submitLimiters.set(
     's1',
     new (await import('../ws/rate-limit.js')).MessageRateLimiter(3, 60000),

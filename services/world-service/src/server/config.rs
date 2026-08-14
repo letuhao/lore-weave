@@ -19,6 +19,13 @@ pub const DEFAULT_BIND: &str = "0.0.0.0:7120";
 /// Default location of the per-reality migration set.
 pub const DEFAULT_SQL_DIR: &str = "contracts/migrations/per_reality";
 
+/// The polyglot allowlist `MetaWrite`/`MetaControlPlane` validate against.
+///
+/// Optional-with-a-default, exactly like [`DEFAULT_SQL_DIR`]: it names a
+/// file this repo ships, not a per-deployment choice, so it is not a
+/// setting. Overridable for a relocated checkout and nothing else.
+pub const DEFAULT_META_ALLOWLIST: &str = "contracts/meta/events_allowlist.yaml";
+
 /// Every environment variable that must be present and non-empty.
 ///
 /// `PROVISION_PG_PASSWORD` is **not** here: it may legitimately be empty under
@@ -93,6 +100,9 @@ impl Config {
                 sql_dir: lookup("PROVISION_SQL_DIR")
                     .filter(|s| !s.trim().is_empty())
                     .unwrap_or_else(|| DEFAULT_SQL_DIR.to_string()),
+                meta_allowlist: lookup("PROVISION_META_ALLOWLIST")
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| DEFAULT_META_ALLOWLIST.to_string()),
             },
         })
     }

@@ -58,6 +58,18 @@ pub enum ProvisionerError {
     /// 5xx). The provisioner cannot complete the registry write without it.
     #[error("provisioner: bridge call failed: {0}")]
     Bridge(String),
+    /// A DIFFERENT user already holds the live binding for this actor.
+    ///
+    /// Distinct from [`ProvisionerError::Bridge`] on purpose: the caller must
+    /// be able to tell "the bridge is broken" from "somebody else drives this
+    /// actor", because the second is a normal, expected answer and the first is
+    /// an outage. Collapsing them would make a 409 look like a 500.
+    #[error("actor control: actor {0} is already driven by another user")]
+    ActorAlreadyDriven(String),
+    /// The caller named the user it expected to revoke, and someone else holds
+    /// the binding now — a stale read that must SURFACE, never blind-retry.
+    #[error("actor control: expected user does not hold the live binding for actor {0}")]
+    ControlCasMismatch(String),
 
     /// W1.5 — a bridge transition returned 409 (stale FromState / concurrent
     /// modification). The caller must reload + decide, NOT blind-retry.

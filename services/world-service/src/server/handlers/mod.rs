@@ -8,4 +8,5 @@
 //! to `dp::RealityId`. A new file is default-uncovered by the exemption table,
 //! which means default-ADOPTABLE, which is the safe direction.
 
+pub mod actor_control;
 pub mod realities;

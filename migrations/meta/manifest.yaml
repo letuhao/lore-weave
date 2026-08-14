@@ -263,3 +263,9 @@ migrations:
     breaking: false
     dependencies: []
     description: "meta — DP-C4 tier policy registry + per-service capability grants; unblocks 5 of the control plane's 8 UNIMPLEMENTED RPCs"
+
+  - id: "041_actor_control_binding_live_unique"
+    version: 41
+    breaking: false
+    dependencies: ["034_actor_control_binding"]
+    description: "meta — 034's PK made revoke TERMINAL (one row total, not one LIVE row as its header states); a partial unique index enforces the invariant as written and lets a handoff be revoke-then-grant"

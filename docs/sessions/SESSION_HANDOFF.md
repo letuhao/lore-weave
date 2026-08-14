@@ -1,6 +1,85 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — the live suites have a home, and one of them had been dead since `M1` (2026-08-14, branch `feat/game-logic`)
+## ▶ GAME BUILD — FEATURE #2: a player is a CONTROL INTERFACE, and the subject can no longer be forged (2026-08-14, branch `feat/game-logic`)
+
+> ## ▶ THE PLAYER FEATURE — first slice shipped
+>
+> **The PO picked feature #2: a hub for a player to control the actors they own.** Phase 0 found it
+> already half-designed and carrying a live security defect.
+>
+> **What existed:** `migrations/meta/034_actor_control_binding`, sealed 2026-08-06, stating the
+> framing almost word for word — *"a player is not a KIND of actor — it is a CONTROL INTERFACE"* —
+> with three declared events and **one reader and no writer at all**. The only `INSERT` in the tree
+> was a test fixture, so the table was empty by construction: the same state `035` recorded about
+> the table `034` replaced, and the reason that one was deleted.
+>
+> **The defect it closes:** `admission::Proposal` carried `pub actor: u64` and `ChannelRoom`
+> supplied it. The producer SIGNATURE was verified and the SUBJECT was not, so the field naming who
+> you act as arrived from the party claiming it. `PID-D5`'s *"a field that is not on the wire cannot
+> be forged"* sat eleven lines below it, making that argument about a different field.
+>
+> ### Two sealed decisions turned out to be wrong, and both were measured, not guessed
+>
+> * **`034`'s PK made revoke TERMINAL.** Its header promises *"two LIVE rows … unrepresentable"*;
+>   `PRIMARY KEY (reality_id, actor_id)` permits one row TOTAL, so an actor whose driver left could
+>   never be driven again. Migration **`041`** replaces it with a partial unique index over live
+>   rows. Handoff works, two live drivers still refused.
+> * **`S-9` fired**: the binding said UUID, the island says `EntityId(u64)`, zero conversion sites
+>   existed — and after `0017` dropped the `pc_*`/`npc_*` projections, **no per-reality actor table
+>   survived at all**. The binding was a durable pointer to something that did not durably exist.
+>   The PO chose to build the registry; migration **`0022_actors`** is `S-9`'s conversion site, and
+>   `SF-6` (three days old) says why it is not a fifth spelling: it mints no vocabulary, it writes
+>   down the mapping between two that already exist.
+>
+> ### Shipped
+>
+> | | |
+> |---|---|
+> | `041` + `0022` | the binding's constraint repaired; the per-reality actor registry, which ALLOCATES the island id so it is the SSOT rather than a second copy |
+> | the WRITER | two scoped ops on the Rust→Go meta bridge (`I8` audit in the same TX) + `world-service` routes + a frozen contract. A grant REFUSES an actor the registry does not have |
+> | the RESOLVER | `commit_service::subject` — two hops, meta binding (live rows only) → per-reality `actors` → `EntityId`, with three distinguishable refusals and a CHECKED `i64→u64` |
+> | the WIRE | `pub actor: u64` is GONE. `user_ref_id` replaces it; the transport sends the user |
+>
+> ### Evidence
+>
+> **The forgery, demonstrated and then killed** — the new suite run against a mutant that reads the
+> acting entity off the wire again:
+>
+> ```text
+> MUTANT  a_proposal_naming_another_actor_does_not_become_that_actor ... FAILED
+>           left: EntityId(99)      right: EntityId(1)
+>         the_callers_resolved_subject_is_the_one_that_acts ... FAILED
+>           left: EntityId(0)       right: EntityId(7)
+> RESTORED byte-exact -> test result: ok. 4 passed; 0 failed
+> ```
+>
+> **Live, two databases in two tiers** (`scripts/live-suites.py --only commit-subject`):
+>
+> ```text
+> GRANTED   user 29731ffa-… -> EntityId(4242)
+> STRANGER  user bb171b31-… -> refused (no live binding)
+> REVOKED   user 29731ffa-… -> refused (binding is history)
+> HANDOFF   user 076d7efe-… -> EntityId(4242)
+> DANGLING  actor f1065f68-… -> refused (no registry row)
+> ```
+>
+> `CARGO_RC=0` — **785 passed / 0 failed across 68 suites**. `GO_RC=0` across 13 packages.
+> game-server **70 pass / 0 fail**. Removing the field rather than ignoring it is what made the
+> compiler find all **19** call sites.
+>
+> **▶ DO NEXT — three tracked rows, none of them started, each with its trigger** in
+> [`2026-08-14-player-control-RUN-STATE.md`](../plans/2026-08-14-player-control-RUN-STATE.md) §4:
+> `PC-AGENT` (can a controller be an LLM? deferred by the PO to the AI feature — it needs an agent
+> runtime and a state machine) · `PC-SF6-REVERSAL` (this round ARMS `SF-6`'s reversal trigger and
+> does not discharge it; `0021`'s `current_turn_actor JSONB` should eventually hold a typed actor
+> identity) · `PC-SEATS` (the PK makes one-driver-per-actor a database LAW where Unreal's is an
+> overridable default, so **spectating** and **GM override** must each be something other than a
+> second binding). Plus `PC-METAWRITE-NOOP-EVENT` — `MetaWrite` emits the outbox event without
+> checking `RowsAffected`, which is shared by every meta table and not this feature's to fix.
+
+---
+
+## ▶ THE LIVE SUITES HAVE A HOME, and one of them had been dead since `M1` (2026-08-14)
 
 **HEAD:** `b17d4f9b9`+ · **NO ACTIVE run-state — all six are CLOSED.** [gate-teeth](../plans/2026-08-12-gate-teeth-RUN-STATE.md) (baseline 0, 46 gates / 457 mutations in CI) · [data-plane coverage](../plans/2026-08-13-data-plane-coverage-RUN-STATE.md) (84/84 sited) · [authorable-surface](../plans/2026-08-14-authorable-surface-RUN-STATE.md) (`G-S5a` discharged) · [spine drain-once](../plans/2026-08-14-spine-drain-once-RUN-STATE.md) (`DFO-7` closed) · [live suites](../plans/2026-08-14-live-suites-RUN-STATE.md) (`DFO-6` closed). **The next task opens its own**, and adopts §0.6d of [the reality-layer run-state](../plans/2026-08-08-reality-layer-RUN-STATE.md) as its execution contract; that file still holds §0.6c (sealed forks) and §5 (`BDR-57`..`BDR-90`).
 

@@ -37,6 +37,11 @@ use sqlx::postgres::PgPoolOptions;
 use sqlx::Row;
 use uuid::Uuid;
 
+/// The submitter. Any uuid — these suites are about admission, not identity.
+/// Before `SEALED-SUBJECT` the proposal carried `"actor": 1` and admission
+/// believed it; the SUBJECT is now a parameter the CALLER supplies.
+const TEST_USER: &str = "7e57ab1e-0000-4000-8000-00000000ac70";
+
 const DSN_VAR: &str = "DECLARED_VERB_TEST_DATABASE_URL";
 const ACTOR: EntityId = EntityId(1);
 
@@ -58,7 +63,7 @@ fn proposal(id: &str, tool: &str) -> String {
         "producer_service": "commit-service-live-smoke",
         "proposal_id": id,
         "target_channel": 1,
-        "actor": ACTOR.0,
+        "user_ref_id": TEST_USER,
         "candidates": [],
         "decision": { "tool": tool, "params": {} },
     })
@@ -118,7 +123,7 @@ async fn a_declared_verb_reaches_the_log_and_the_wire() -> anyhow::Result<()> {
 
     for i in 0..=uses {
         let raw = proposal(&format!("p-{i}"), "gather");
-        let admitted = match admit_t6(&raw, &vocab, &rules.rules().verbs, &mut dedup).outcome {
+        let admitted = match admit_t6(&raw, ACTOR, &vocab, &rules.rules().verbs, &mut dedup).outcome {
             AdmissionOutcome::Admitted(input) => input,
             other => panic!("a declared verb must be ADMITTED, got {other:?}"),
         };
