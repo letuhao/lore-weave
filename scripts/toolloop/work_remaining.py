@@ -37,13 +37,20 @@ TERMINAL = ("proven", "blocked")
 
 def _ledger_state() -> tuple[int, int, list[str]]:
     if not LEDGER.exists():
-        return 0, 0, []
+        return 0, 0, [], 0
     data = json.loads(LEDGER.read_text(encoding="utf-8"))
     tools = data.get("tools") or {}
     declared = (data.get("denominator") or {}).get("federated_tools") or 0
     concluded = [n for n, t in tools.items() if t.get("state") in TERMINAL]
     in_flight = [n for n, t in tools.items() if t.get("state") not in TERMINAL]
-    return declared, len(concluded), in_flight
+    # 🔴 REPORT THE SPLIT, NOT JUST THE COUNT. 30 of the first 35 conclusions were recorded before
+    # the gate existed — one tool per cycle, as detailed LIVE/DATA/FALSIFIER prose in the ledger
+    # row. That is real work and it is not being discarded, but nothing can RE-VERIFY it without
+    # re-running the tool, and a single headline number quietly presents it as the same kind of
+    # fact as a conclusion the gate can re-check on demand. Two different things should not share
+    # one number.
+    backed = [n for n in concluded if tools[n].get("evidence_class") == "gate-backed"]
+    return declared, len(concluded), in_flight, len(backed)
 
 
 def _uncommitted() -> list[str]:
@@ -57,7 +64,7 @@ def main() -> int:
     ap.add_argument("--quiet", action="store_true")
     a = ap.parse_args()
 
-    declared, concluded, in_flight = _ledger_state()
+    declared, concluded, in_flight, backed = _ledger_state()
     dirty = _uncommitted()
     remaining = max(declared - concluded, 0)
 
@@ -71,8 +78,9 @@ def main() -> int:
         reasons.append(f"{len(dirty)} uncommitted file(s) — loop work that would be lost")
 
     if not a.quiet:
-        print(f"declared={declared} concluded={concluded} remaining={remaining} "
-              f"in_flight={len(in_flight)} dirty={len(dirty)}")
+        print(f"declared={declared} concluded={concluded} "
+              f"(gate-backed={backed}, pre-gate prose={concluded - backed}) "
+              f"remaining={remaining} in_flight={len(in_flight)} dirty={len(dirty)}")
         for r in reasons:
             print(f"  - {r}")
         if reasons:
