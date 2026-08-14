@@ -414,15 +414,124 @@ class KuzuGraphStore:
             "valid_to_ordinal": r.get("valid_to_ordinal"),
         })
 
+    # ── events ────────────────────────────────────────────────────────────────────────────
+    async def merge_event(
+        self, *, user_id: str, project_id: str | None, title: str,
+        summary: str | None = None, chapter_id: str | None = None,
+        event_order: int | None = None, chronological_order: int | None = None,
+        event_date_iso: str | None = None, time_cue: str | None = None,
+        participants: list[str] | None = None, source_type: str = "book_content",
+        confidence: float = 0.0,
+    ) -> Any:
+        """Idempotent upsert keyed on (user, project, chapter, title).
+
+        FOUR merge semantics, every one of them silent when wrong:
+          * `source_types` accumulate, `confidence` is a MAX, `participants` union-merge —
+            a re-mention must never NARROW what is already known.
+          * `summary` upgrades from NULL and **never overwrites** — a later, thinner mention
+            must not erase a richer one.
+          * `event_order` keeps the **MINIMUM** (CM4 spoiler-safety). The earliest reading
+            position at which the event is known wins, so an event re-mentioned in chapter 40
+            does not migrate forward and become invisible to a reader at chapter 12. An
+            adapter taking the latest leaks nothing and hides everything.
+
+        Same MATCH-then-CREATE-under-the-lock shape as `resolve_or_merge_entity`, for the same
+        reason: Kuzu wants the primary key in every MERGE and the identity here is a tuple.
+        """
+        from app.domain.graph_models import Event
+
+        canonical = canonicalize_entity_name(title)
+        key = {"u": user_id, "p": project_id, "c": canonical, "ch": chapter_id}
+        where = ("n.user_id = $u AND n.canonical_title = $c "
+                 "AND ((n.project_id IS NULL AND $p IS NULL) OR n.project_id = $p) "
+                 "AND ((n.chapter_id IS NULL AND $ch IS NULL) OR n.chapter_id = $ch)")
+        async with self._identity_lock:
+            found = await self._run(f"MATCH (n:Event) WHERE {where} RETURN n", key)
+            if not found:
+                await self._run(
+                    "CREATE (n:Event {id: $id, user_id: $u, project_id: $p, title: $t, "
+                    "canonical_title: $c, summary: $sum, chapter_id: $ch, "
+                    "event_order: $eo, chronological_order: $co, event_date_iso: $edi, "
+                    "time_cue: $tc, participants: $parts, source_types: $st, "
+                    "confidence: $conf, evidence_count: 0, mention_count: 1})",
+                    {**key, "id": str(uuid.uuid4()), "t": title, "sum": summary,
+                     "eo": event_order, "co": chronological_order, "edi": event_date_iso,
+                     "tc": time_cue, "parts": list(participants or []),
+                     "st": [source_type], "conf": float(confidence)})
+            else:
+                # Each clause is chosen in PYTHON where a NULL is involved — see the note on
+                # `upsert_relation`: Kuzu type-checks both arms of a CASE, so a NULL parameter
+                # inside one poisons the bind even when that arm never runs.
+                eid = self._props(found[0])["id"]
+                sets = ["n.source_types = list_distinct(list_concat(n.source_types, $st))",
+                        "n.confidence = CASE WHEN n.confidence >= $conf THEN n.confidence "
+                        "ELSE $conf END",
+                        "n.participants = list_distinct(list_concat(n.participants, $parts))",
+                        "n.mention_count = n.mention_count + 1"]
+                p2: dict[str, Any] = {"id": eid, "st": [source_type],
+                                      "conf": float(confidence),
+                                      "parts": list(participants or [])}
+                if summary is not None:
+                    # Upgrades from NULL, never overwrites.
+                    sets.append("n.summary = CASE WHEN n.summary IS NULL THEN $sum "
+                                "ELSE n.summary END")
+                    p2["sum"] = summary
+                if event_order is not None:
+                    # MINIMUM wins. Not `least(...)`: the existing value may be NULL, and the
+                    # first stamped position must then take.
+                    sets.append("n.event_order = CASE WHEN n.event_order IS NULL "
+                                "OR $eo < n.event_order THEN $eo ELSE n.event_order END")
+                    p2["eo"] = event_order
+                await self._run(
+                    f"MATCH (n:Event) WHERE n.id = $id SET {', '.join(sets)}", p2)
+            rows = await self._run(f"MATCH (n:Event) WHERE {where} RETURN n", key)
+        return Event.model_validate(self._event_props(self._props(rows[0])))
+
+    async def get_event(self, *, user_id: str, event_id: str) -> Any:
+        """`None` for a miss — another user's event is ABSENT, not forbidden."""
+        from app.domain.graph_models import Event
+
+        rows = await self._run(
+            "MATCH (n:Event) WHERE n.id = $id AND n.user_id = $u RETURN n",
+            {"id": event_id, "u": user_id})
+        return Event.model_validate(self._event_props(self._props(rows[0]))) if rows else None
+
+    async def archive_event(self, *, user_id: str, event_id: str, reason: str = "") -> Any:
+        """Soft-delete, IDEMPOTENT — re-archiving restamps rather than failing, for the same
+        reason `invalidate_relation` does: a correction that errors on a repeat cannot be
+        retried after a timeout."""
+        from app.domain.graph_models import Event
+
+        rows = await self._run(
+            "MATCH (n:Event) WHERE n.id = $id AND n.user_id = $u "
+            "SET n.archived_at = current_timestamp() RETURN n",
+            {"id": event_id, "u": user_id})
+        return Event.model_validate(self._event_props(self._props(rows[0]))) if rows else None
+
+    @staticmethod
+    def _event_props(row: dict) -> dict:
+        return {
+            "id": row.get("id") or "", "user_id": row.get("user_id") or "",
+            "project_id": row.get("project_id"), "title": row.get("title") or "",
+            "canonical_title": row.get("canonical_title") or "",
+            "summary": row.get("summary"), "chapter_id": row.get("chapter_id"),
+            "event_order": row.get("event_order"),
+            "chronological_order": row.get("chronological_order"),
+            "event_date_iso": row.get("event_date_iso"), "time_cue": row.get("time_cue"),
+            "participants": list(row.get("participants") or []),
+            "source_types": list(row.get("source_types") or []),
+            "confidence": row.get("confidence") or 0.0,
+            "evidence_count": row.get("evidence_count") or 0,
+            "mention_count": row.get("mention_count") or 0,
+            "archived_at": row.get("archived_at"),
+        }
+
     # ── not yet written — each RAISES rather than half-honouring (rule 9) ──────────────────
     def _refuse(self, op: str) -> Any:
         raise NotImplementedError(f"KuzuGraphStore.{op} — {_UNIMPLEMENTED}")
 
     async def events_page(self, **kw: Any) -> Any: self._refuse("events_page")
-    async def get_event(self, **kw: Any) -> Any: self._refuse("get_event")
-    async def merge_event(self, **kw: Any) -> Any: self._refuse("merge_event")
     async def update_event_fields(self, **kw: Any) -> Any: self._refuse("update_event_fields")
-    async def archive_event(self, **kw: Any) -> Any: self._refuse("archive_event")
     async def merge_fact(self, **kw: Any) -> Any: self._refuse("merge_fact")
     async def facts_for(self, **kw: Any) -> Any: self._refuse("facts_for")
     async def add_evidence(self, **kw: Any) -> Any: self._refuse("add_evidence")

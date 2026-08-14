@@ -583,6 +583,10 @@ _KUZU_CONFORMED = {
     "test_invalidate_hides_the_edge_from_ordinary_reads_and_is_idempotent",
     "test_recreate_RESURRECTS_an_invalidated_edge_rather_than_duplicating_it",
     "test_an_authored_relation_carries_its_story_position",
+    # events (T42-kuzu-5), added WITH the methods
+    "test_merge_event_is_idempotent_and_keeps_the_EARLIEST_reading_position",
+    "test_get_event_is_a_MISS_for_another_user",
+    "test_archive_event_is_idempotent",
 }
 
 
@@ -614,8 +618,7 @@ async def test_kuzu_REFUSES_what_the_scope_list_skips():
     from app.adapters.kuzu_graph_store import KuzuGraphStore
 
     store = KuzuGraphStore(conn=None)
-    for op in ("events_page", "get_event", "merge_event",
-               "update_event_fields", "archive_event", "merge_fact", "facts_for",
+    for op in ("events_page", "update_event_fields", "merge_fact", "facts_for",
                "add_evidence", "status_at_order", "events_in_window"):
         with pytest.raises(NotImplementedError, match="T42"):
             await getattr(store, op)()
