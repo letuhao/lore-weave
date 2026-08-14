@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — run the shadow with **KUZU** as the secondary. It is the only pairing whose coverage floor can be cleared: AGE refuses `merge_event`/`merge_fact` and takes nine operations down with them, which the suite now asserts rather than merely records. The Neo4j↔AGE pairing is green at 530 passed with zero divergences over what it can compare.**
+**RESUME: `T43` — diagnose the Kuzu-pairing divergences ONE AT A TIME. The shadow now diffs BOTH candidates and the Kuzu pairing is RED on nine operations; the suite states that rather than hiding it. Start with `merge_event` (id/timestamp shape), then `relations_for` after a `recreate`, then `add_evidence`'s counters. Separately: add the `EntityStatus` node table + its transition write so `status_at_order` can stop refusing — it answered WRONGLY before (`{}` where the contract requires every id defaulting to 'active') and only the differential caught it, because no conformance rule covers it.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 48 of 88 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 48 of 89 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (3/8) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (3/9) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10265,8 +10265,45 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service seam; the shadow has no
   deployed caller. **(c)** 530 passed against two real engines in throwaway containers.
 
-  ⬜ **What remains for T43:** run the shadow with **Kuzu** as secondary — the only pairing whose
-  coverage floor can actually be cleared — and record that comparison.
+  ### 🔴 T43-kuzu-pairing 2026-08-14 — the second candidate is DIFFED, and it is not equivalent
+
+  ```
+  shadow fixture now parameterised: primary=Neo4j, secondary in (age, kuzu)
+  kuzu pairing DIVERGES on: merge_event · get_event · events_page · events_in_window
+                            relations_for · status_at_order · add_evidence
+                            update_event_fields · archive_event
+  69 passed — Kuzu's conformance is UNBROKEN by the fixes below
+  ```
+
+  The suite diffed only Neo4j↔AGE until now, which is **half of X1's bake-off**. A differential
+  suite that only ever diffs one candidate cannot choose between two. The Kuzu pairing was wired
+  and immediately reported real differences — **that is the shadow working**, and it is the first
+  evidence that conformance-green does not mean engine-equivalent.
+
+  ✅ **Three representational differences fixed**, each of which would have shown up forever as a
+  divergence between engines rather than as a default chosen here: `mention_count` started at 1
+  instead of 0 (a create is not a re-mention) · `participant_entity_ids` returned `None` where
+  Neo4j returns `[]` · `created_at`/`updated_at` were never written (column added).
+
+  🔴 **`status_at_order` was answering WRONGLY and now RAISES (rule 9).**
+
+  ```
+  primary={'b2e8f025…': 'active'}    secondary={}
+  ```
+
+  Neo4j derives it from an `:EntityStatus` node (`from_order`/`status`/`evidence_count`), takes
+  the latest transition at or before `at_order`, **defaults every entity with no transition to
+  `'active'`, and guarantees every requested id appears**. Mine read `Fact` nodes with a
+  hardcoded type and silently dropped unknowns — a different source AND a different contract.
+  A canon guard handed `{}` reads it as *"no entity is gone"*. **The conformance suite passed it
+  because no rule covers `status_at_order`; only the differential caught it** — which is exactly
+  the argument for having both.
+
+  ⬜ **STILL OWED, and the suite is RED on the Kuzu pairing until it is done:** diagnose the
+  remaining divergences one at a time (`merge_event` id/timestamp shape, `relations_for` after a
+  `recreate`, `add_evidence` counters, the event correction pair), and add the `EntityStatus`
+  node table plus its transition write so `status_at_order` can stop refusing. **Recorded red
+  rather than hidden** — a green here would require deleting the pairing that found the bug.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**

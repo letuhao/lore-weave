@@ -110,6 +110,7 @@ KUZU_NODE_TABLES: dict[str, str] = {
         confidence DOUBLE, source_types STRING[],
         evidence_count INT64, mention_count INT64,
         version INT64,
+        created_at TIMESTAMP, updated_at TIMESTAMP,
         archived_at TIMESTAMP,
         PRIMARY KEY(id)
     """,

@@ -453,7 +453,8 @@ class KuzuGraphStore:
                     "canonical_title: $c, summary: $sum, chapter_id: $ch, "
                     "event_order: $eo, chronological_order: $co, event_date_iso: $edi, "
                     "time_cue: $tc, participants: $parts, source_types: $st, "
-                    "confidence: $conf, evidence_count: 0, mention_count: 1, version: 1})",
+                    "confidence: $conf, evidence_count: 0, mention_count: 0, version: 1, "
+                    "created_at: current_timestamp(), updated_at: current_timestamp()})",
                     {**key, "id": str(uuid.uuid4()), "t": title, "sum": summary,
                      "eo": event_order, "co": chronological_order, "edi": event_date_iso,
                      "tc": time_cue, "parts": list(participants or []),
@@ -618,6 +619,12 @@ class KuzuGraphStore:
             "chronological_order": row.get("chronological_order"),
             "event_date_iso": row.get("event_date_iso"), "time_cue": row.get("time_cue"),
             "participants": list(row.get("participants") or []),
+            # [] not None: Neo4j returns an empty list and a shadow comparison would
+            # score the difference as a divergence between engines rather than a
+            # default chosen here.
+            "participant_entity_ids": list(row.get("participant_entity_ids") or []),
+            "created_at": row.get("created_at"),
+            "updated_at": row.get("updated_at"),
             "source_types": list(row.get("source_types") or []),
             "confidence": row.get("confidence") or 0.0,
             "evidence_count": row.get("evidence_count") or 0,
@@ -861,26 +868,31 @@ class KuzuGraphStore:
         self, *, user_id: str, project_id: str | None, entity_ids: list[str],
         at_order: int, min_evidence: int = 1,
     ) -> dict[str, str]:
-        """`{entity_id: status}` at a story position.
+        """RAISES — see T42 · the Kuzu slices, and rule 9.
 
-        `min_evidence` is the bar, not a tuning knob: a status derived from a single mention is
-        a guess, and the canon guard raises the bar rather than acting on one. An entity with
-        no qualifying life-status fact at the position is simply ABSENT from the result — the
-        caller must not be able to read "unknown" as "alive".
+        🔴 **The first cut answered, and answered WRONGLY**, which the shadow comparison caught
+        against Neo4j on its first Kuzu run:
+
+            primary={'b2e8f025…': 'active'}   secondary={}
+
+        Neo4j derives this from an `:EntityStatus` node carrying `from_order`/`status`/
+        `evidence_count`, takes the latest transition at or before `at_order`, **defaults every
+        entity with no transition to `'active'`, and guarantees every requested id appears**.
+        Mine read `Fact` nodes with a hardcoded `type` and silently dropped unknowns — a
+        different source AND a different contract.
+
+        `EntityStatus` is not in this engine's schema yet, so the operation cannot be honoured.
+        Refusing rather than half-answering: a canon guard handed `{}` reads it as *"no entity
+        is gone"*, which is the same silent-wrong-direction failure `maintain_chain` describes —
+        it looks like a working answer.
+
+        Implementing it means adding the `EntityStatus` node table to `kuzu_bootstrap` and the
+        transition write that populates it, which is its own slice.
         """
-        if not entity_ids:
-            return {}
-        rows = await self._run(
-            "MATCH (n:Fact)-[:ABOUT]->(e:Entity) WHERE n.user_id = $u "
-            "AND list_contains($ids, e.id) AND n.type = 'life_status' "
-            "AND n.valid_from_ordinal IS NOT NULL AND n.valid_from_ordinal <= $ao "
-            "AND (n.valid_to_ordinal IS NULL OR $ao < n.valid_to_ordinal) "
-            "AND n.evidence_count >= $me "
-            "RETURN e.id AS eid, n.content AS status, n.valid_from_ordinal AS vfo "
-            "ORDER BY n.valid_from_ordinal",
-            {"u": user_id, "ids": list(entity_ids), "ao": int(at_order),
-             "me": int(min_evidence)})
-        # Latest qualifying fact wins within the window; ORDER BY ascending means the last
-        # write into the dict is the most recent one that still covers `at_order`.
-        return {r["eid"]: r["status"] for r in rows}
+        raise NotImplementedError(
+            "KuzuGraphStore.status_at_order — the Kuzu schema has no EntityStatus node, and "
+            "the first implementation answered from Fact nodes with a hardcoded type, dropping "
+            "entities the contract says must default to 'active'. Caught by the shadow "
+            "comparison against Neo4j. See T42 · the Kuzu slices."
+        )
 

@@ -66,19 +66,50 @@ _KINDS = ("character", "location", "organization")
 _PREDICATES = ("ally_of", "rival_of", "knows", "parent_of")
 
 
-@pytest_asyncio.fixture
-async def shadow(neo4j_driver):
-    dsn = os.environ.get("TEST_AGE_DSN")
-    if not dsn:
-        pytest.skip("TEST_AGE_DSN not set — the differential suite needs BOTH engines")
-    pool = await create_age_pool(dsn, min_size=2, max_size=4)
+@pytest_asyncio.fixture(params=["age", "kuzu"])
+async def shadow(request, neo4j_driver):
+    """Neo4j as primary, each CANDIDATE as secondary in turn.
+
+    🔴 The suite ran only Neo4j↔AGE until 2026-08-14, which is exactly one half of X1's
+    bake-off — *"build BOTH candidates and let T43 choose"*. A differential suite that only
+    ever diffs one candidate cannot choose between two.
+
+    And the two pairings answer different questions, which is the point: AGE refuses
+    `merge_event`/`merge_fact`, so nine operations there are `uncovered` BY CONSTRUCTION and its
+    coverage floor can never clear. Kuzu refuses nothing. Running both is how that difference
+    becomes a measurement instead of a claim.
+    """
+    if request.param == "age":
+        dsn = os.environ.get("TEST_AGE_DSN")
+        if not dsn:
+            pytest.skip("TEST_AGE_DSN not set — the AGE pairing needs it")
+        pool = await create_age_pool(dsn, min_size=2, max_size=4)
+        try:
+            async with pool.acquire() as conn:
+                gname = await ensure_graph(conn, uuid.uuid4())
+            async with neo4j_driver.session() as session:
+                yield ShadowGraphStore(Neo4jGraphStore(session), AgeGraphStore(pool, gname))
+        finally:
+            await pool.close()
+        return
+
+    pytest.importorskip("kuzu", reason="kuzu is an optional T43-candidate dependency")
+    import shutil
+    import tempfile
+
+    from app.adapters.kuzu_graph_store import KuzuGraphStore
+    from app.db.kuzu_bootstrap import close_kuzu, open_kuzu
+
+    # A fresh directory per test: Kuzu is EMBEDDED and one process holds one handle per path,
+    # so a shared database would fail the second test with `Could not set lock on file`.
+    tmp = tempfile.mkdtemp(prefix="kuzu-shadow-")
+    db, conn = open_kuzu(os.path.join(tmp, "kg"))
     try:
-        async with pool.acquire() as conn:
-            gname = await ensure_graph(conn, uuid.uuid4())
         async with neo4j_driver.session() as session:
-            yield ShadowGraphStore(Neo4jGraphStore(session), AgeGraphStore(pool, gname))
+            yield ShadowGraphStore(Neo4jGraphStore(session), KuzuGraphStore(conn))
     finally:
-        await pool.close()
+        close_kuzu(db, conn)
+        shutil.rmtree(tmp, ignore_errors=True)
 
 
 async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str) -> list[str]:
