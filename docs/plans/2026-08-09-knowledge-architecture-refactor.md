@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43`'s shadow work is COMPLETE — `cutover_permitted: True` for the Kuzu pairing, 20 of 20 operations compared, zero divergences, 495 passed against two real engines. Read T43's own Do-list before ticking the row: the property-based differential and the coverage floor are both delivered, so what remains (if anything) is the row's own wording. ⚠️ The engine CHOICE is not this row's to make — that is QC-7's POST-REVIEW checkpoint and the PO's call on sealed T1/T2, and Kuzu's one-process file lock is the input they need.**
+**RESUME: `T41` — the graph rebuild, now unblocked: it was re-sequenced behind the engine decision (X3) and T43's shadow work is complete. ⚠️ Read its 🔻 `D-T41-RELATIONS-NOT-REBUILDABLE` row first — the glossary is the SSOT for ENTITIES, not edges, so a rebuild is entity-complete and edge-empty BY DESIGN and must say so. Alternatively `T39` (15/21) or `T17` (12/20) are the largest open rows by slice count.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 51 of 92 evidence blocks closed inside them.**
+**48 of 66 rows done · 18 open · 45 of 80 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (6/12) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10128,14 +10128,31 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **To unblock** | Either give relations a Postgres original (so they re-project like identity does), or accept re-extraction as the recovery path and measure its cost — a PO call, because it is LLM spend per chapter. Until one of those, the DR claim must keep saying "identity, not edges". |
   | **Mechanism** | The module docstring and this row both name the boundary; the drill's assertions are entity-scoped, so nobody can read edge-recovery into a passing run. |
   | **Retry when** | Either re-extraction is accepted as the relation-recovery path (it costs LLM spend — a PO call), or relations gain a Postgres original. **Neither is in this plan's scope.** |
-- [~] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
+- [x] **T43** — Shadow comparison + **property-based differential suite** + coverage floor
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §5.1. Unfinished, not undecided.
   No cutover while any port operation has **zero shadow observations** — merge/split/restore/coref/
   triage are rare and would diverge silently, and the graph feeds canon checks.
   ⚠️ **Rests on T42a**: a shadow comparison between two unproven adapters measures agreement, not
   correctness. Two adapters can agree by sharing a bug.
-  ⬜ **STILL OWED:** the harness is built and run, but the coverage floor **blocks**
-  (`cutover_permitted: False`) — operations remain uncompared, which is **the floor working**.
+  ✅ **CLOSED 2026-08-14 — all three deliverables, and the floor CLEARS honestly.**
+  **Shadow comparison** (Neo4j primary, both candidates as secondary) · **property-based
+  differential suite** (five seeds × twenty operations, plus a deterministic reproducer) ·
+  **coverage floor** — `cutover_permitted: True` for the Kuzu pairing with **zero operations
+  unobserved**, 495 passed against a real Neo4j and a real Kuzu. Its dependency `T42a` is closed.
+
+  🔻 **The row's own warning turned out to be the point.** It said *"a shadow comparison between
+  two unproven adapters measures agreement, not correctness — two adapters can agree by sharing
+  a bug."* The inverse is what happened: **the conformance suite stayed 30/30 green on Kuzu while
+  six real bugs sat behind it**, and only the differential found them. Conformance proves an
+  adapter obeys the rules someone thought to write; the differential proves two engines agree.
+  Both were needed, and this row is the evidence for keeping both.
+
+  ⚠️ **What is NOT decided here, deliberately:** `cutover_permitted` is a DATA statement, not an
+  authorisation. **The engine choice is QC-7's POST-REVIEW checkpoint and the PO's call on sealed
+  T1/T2.** The input they need and no green number can give them: **Kuzu is EMBEDDED and refuses
+  a second handle on a database**, so an adapter that clears every rule in one process may still
+  be unshippable behind two. AGE cannot clear the floor at all — it refuses `merge_event`/
+  `merge_fact`, taking nine operations with them.
 
   ### 🔴 T43-floor 2026-08-14 — the floor was computed over NINE of TWENTY operations
 
