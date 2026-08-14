@@ -41,6 +41,62 @@ from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
+#: The KG reading axis. **NOT** composition's own `STORY_ORDER_CHAPTER_STRIDE` (1 000), which
+#: orders the outline. Same constant and same reason as `routers/canon.py`: a role written on
+#: the wrong scale lands 1000x too early, every as-of read at the real position misses it, and
+#: the canon check reports a character with no ties rather than a bad write.
+KG_EVENT_ORDER_CHAPTER_STRIDE = 1_000_000
+
+
+async def publish_planned_roles(
+    kal, book_id, *, cast_objs, id_by_name: dict[str, str],
+    introduce_at: dict[str, int | None], user_id,
+) -> int:
+    """T37 — write the roles the PLAN implies as `fact_kind='relation'` facts. Returns the
+    count written.
+
+    SPEC §4.2b gave roles two producers; this is the plan-time one. It runs AFTER Stage 3
+    because of what Stage 3 knows: **a role cannot be in force before its holder appears on
+    the page.** `introduce_at_chapter` is the character-arc stage's answer to exactly that,
+    already clamped to `[1, n_chapters]`, so the role opens where the character does. An
+    existing character has no introduction and opens at chapter 1.
+
+    NEVER RAISES, and that is the opposite of `KalClient.append_role_fact`'s own convention —
+    deliberately, because the callers differ. The studio endpoint raises so an author learns
+    their declaration did not land. Here the caller is a planning pipeline whose every stage
+    *"degrades independently"*: a KAL hiccup must not cost the user the plan they just waited
+    for. A missing role is a thinner canon check; a lost plan is the run.
+
+    Subjects are resolved through `id_by_name` — the roster read back AFTER seeding — so a
+    role about a character the glossary did not accept is dropped rather than written against
+    a guessed id. The OBJECT stays a NAME, matching `AppendFactRequest.value`: the KG's own
+    relation facts are subject-id + predicate + string, and resolving the object here would
+    invent an identity claim the plan did not make.
+    """
+    written = 0
+    for c in cast_objs:
+        subject_id = id_by_name.get(c.name)
+        if not subject_id or not getattr(c, "roles", None):
+            continue
+        chapter = introduce_at.get(c.name) or 1
+        ordinal = max(1, int(chapter)) * KG_EVENT_ORDER_CHAPTER_STRIDE
+        for role in c.roles:
+            try:
+                await kal.append_role_fact(
+                    book_id, subject_entity_id=subject_id,
+                    predicate=role["predicate"], object_value=role["object"],
+                    valid_from_ordinal=ordinal, user_id=user_id,
+                )
+                written += 1
+            except Exception:  # noqa: BLE001 — see the docstring; the plan outranks the role
+                logger.warning(
+                    "T37: planned role not written subject=%s predicate=%s",
+                    c.name, role.get("predicate"), exc_info=True,
+                )
+    if written:
+        logger.info("T37: %d planned role(s) written as relation facts", written)
+    return written
+
 
 @dataclass
 class PipelineResult:
@@ -108,6 +164,16 @@ async def run_planning_pipeline(
     arcs = await plan_character_arcs(llm, premise=premise, cast=cast_chars,
                                      beat_roles=beat_roles, source_language=source_language, **mk)
     arc_dicts = [{"name": a.name, "introduce_at_chapter": a.introduce_at_chapter} for a in arcs]
+
+    # ── T37 — the plan-time role producer (SPEC §4.2b). HERE, not in Stage 0, because a role
+    # cannot be in force before its holder appears and `introduce_at_chapter` is the answer
+    # Stage 3 just computed. Degrades like every other stage: never raises.
+    if seed_cast and cast_objs:
+        await publish_planned_roles(
+            kal, book_id, cast_objs=cast_objs, id_by_name=id_by_name,
+            introduce_at={a.name: a.introduce_at_chapter for a in arcs},
+            user_id=UUID(str(user_id)),
+        )
 
     # ── Stage 4 — grounded decompose. skip_l1=True: L1 already ran ONCE above (its result
     # fed Stage 3's char arcs), so grounded reuses `mapped` as-is — even on an L1 degrade

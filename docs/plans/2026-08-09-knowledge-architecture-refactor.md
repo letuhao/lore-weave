@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37b-planforge` part 2 — the CALLER. The plan can now SAY a role (`ProposedChar.roles`, prompt + tolerant parser, 5 rules, 2 bites); nothing yet carries it to the KAL. Append each parsed role at `planned_chapter × EVENT_ORDER_CHAPTER_STRIDE`, wire the close path a plan revision owes (§4.2b), and run the cast-plan EVAL that §4.2c says this prompt change must land with.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T38` · ✅ `T42a`. 🔻 **T37's acceptance number is PROVEN: `relation 0` → `relation 1`**, live, HTTP 201 through the studio path — so the write end is no longer in doubt; what is owed is the plan-time producer reaching it.
+**RESUME: `T37c` — the two things T37b still owes, both named: (1) the CLOSE PATH a plan revision needs (§4.2b — a role appended at plan time outlives the plan that justified it, and an as-of read would hand the guard a role the book abandoned; `POST facts/close` exists and is ordinal-aware), and (2) the CAST-PLAN EVAL §4.2c requires for the part-1 prompt change.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T38` · ✅ `T42a`. 🔻 Both role producers are now BUILT: the studio declares one (live-proven, `relation 0` → `1`, HTTP 201) and the plan writes what it implies, at each holder's `introduce_at_chapter` — because a role cannot be in force before its holder appears.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8542,6 +8542,62 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   at 42 done / 24 tracked.
   **QC (b) the seam:** N/A — it reads a markdown file.
   **QC (c) real data:** the real plan, and it changed a real row.
+
+
+  ### ✅ T37b-planforge part 2 2026-08-14 — the plan writes its own roles
+
+  ```
+  composition-service   3738 -> 3743 passed
+  ```
+
+  `publish_planned_roles(...)` in `planning_pipeline.py`. The plan could SAY a role since part
+  1; now it carries them to the KAL, so T36's `relation` count moves without an author typing
+  anything.
+
+  🔧 **MEASURED FIRST, and it decided WHERE the call goes.** Stage 0 already holds everything
+  the write needs — `cast_objs` with `.roles`, `id_by_name` from the roster read back after
+  seeding, a `KalClient` in scope — and calling there would have been wrong. **A role cannot
+  be in force before its holder appears on the page**, and Stage 0 runs before the chapter map.
+  Stage 3's `introduce_at_chapter` is the answer to exactly that question, already clamped to
+  `[1, n_chapters]`. So the producer waits for Stage 3 and opens each role where its subject
+  does; an existing character has no introduction and opens at chapter 1.
+
+  ⚠️ **It NEVER RAISES — the opposite of the studio path, deliberately.**
+  `KalClient.append_role_fact` raises and `routers/canon.py` lets it, because an author must
+  learn their declaration did not land. Here the caller is a pipeline whose every stage
+  *"degrades independently"*, and a KAL hiccup must not cost the user the plan they waited
+  minutes for. **A missing role is a thinner canon check; a lost plan is the run.** One
+  failure does not stop its siblings — a partial write beats rolling back work the plan
+  already did.
+
+  🔧 **A role about an UNSEEDED character is DROPPED, not guessed.** `id_by_name` is the
+  roster read back *after* seeding, so a character the glossary refused has no id. Writing its
+  role against a minted one would attach a canon claim to the wrong entity, which is worse
+  than the claim being absent. The OBJECT stays a NAME (matching `AppendFactRequest.value`):
+  resolving it here would invent an identity claim the plan did not make.
+
+  **BITE ×3, each red on its own value:**
+
+  ```
+  1. drop the stride multiplication
+     E  the role opened at 4; chapter 4 on the KG reading axis is 4_000_000, and 4_000
+        would be composition's outline scale
+     E  assert 4 == (4 * 1000000)
+  2. drop the `subject_id` guard
+     E  a role was written for a character with no entity id
+     E  assert 2 == 1
+  3. (covered by rule 4) a KAL failure must not stop the siblings — asserted directly
+  ```
+
+  **QC (a) gates:** all 100 green; plan-verify PASS. **3743 passed, 403 skipped.**
+  **QC (b) the seam:** ⬜ owed with the eval — the producer is proved against a fake KAL, and
+  the path it uses was proved end to end by the studio half (`relation 0 -> 1`, HTTP 201,
+  live). What is NOT yet proved live is this producer running inside a real planning run.
+  **QC (c) real data:** N/A — no LLM call made here.
+
+  **T37b still owes two things, both named rather than assumed:** the **close path** a plan
+  revision needs (§4.2b — a role appended at plan time outlives the plan that justified it),
+  and the **cast-plan eval** §4.2c requires for the part-1 prompt change.
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
