@@ -62,7 +62,11 @@
         }
       ],
       "falsifier": "REFUTED IF: after an approved run the outline node's title in loreweave_composition is still 'The Ember Codex', OR a SECOND node is created instead of the first being renamed (op=create where op=update was meant — this is a unified op-dispatch tool and picking the wrong op is its most likely failure), OR the node count changes at all.",
-      "ship_audit": null,
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with op=update, the real project_id/node_id and the correct expected_version: refused 'not found or not accessible', and the node's title was re-read UNCHANGED ('Mine').",
+        "gate": "Tier A — approval card required before any write."
+      },
       "seed_assert": [
         {
           "db": "loreweave_composition",
@@ -131,7 +135,11 @@
         }
       ],
       "falsifier": "REFUTED IF: after an approved run no new kind row exists for this book in loreweave_glossary (its description says it WRITES IMMEDIATELY with no confirmation, so an unchanged store with ok:true is a silent success), OR an existing kind is overwritten rather than a new one added (it mixes create and update by presence of base_version — omitting it must CREATE).",
-      "ship_audit": null,
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with a schema-valid item (level=kind, name, code): refused 'book not accessible', and book_kinds was re-read with 0 rows for code='hijack'.",
+        "gate": "Tier A — writes immediately once approved, per its own description."
+      },
       "seed_assert": [
         {
           "db": "loreweave_glossary",
@@ -210,13 +218,17 @@
         }
       ],
       "falsifier": "REFUTED IF: the tool is reached and returns ok while no PlanningPackage row appears in loreweave_composition, OR it is refused for want of a run_id/arc_id the turn could have resolved from the book it is already looking at — its three required args (book_id, run_id, arc_id) are exactly the shape that produced the cross-wire in batch 1.",
-      "ship_audit": null,
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'not found or not accessible' against another user's book.",
+        "gate": "Tier A."
+      },
       "seed_assert": [
         {
           "db": "loreweave_composition",
-          "query": "SELECT count(*)::text FROM composition_arc WHERE book_id='{book_id}'",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}'",
           "expect": "1",
-          "why": "an arc must exist for plan_compile to have something to compile"
+          "why": "one arc (a structure_node) must exist for plan_compile to have anything to compile"
         }
       ]
     },
@@ -286,7 +298,11 @@
           "why": "the three seeded entities must exist"
         }
       ],
-      "ship_audit": null
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. NO BOOK BOUNDARY BY DESIGN: scope=none, it lists the SYSTEM standards catalogue, which is identical for every user and carries no per-user data. Recorded as not-applicable rather than as a pass — there is nothing here to leak, and calling that a tenancy pass would be a category error.",
+        "gate": "Tier R."
+      }
     },
     {
       "id": "glossary-extract-entities-from-doc",
@@ -352,7 +368,11 @@
           "why": "the three seeded entities must exist"
         }
       ],
-      "ship_audit": null
+      "ship_audit": {
+        "empty_case": "owed",
+        "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'book not accessible' against another user's book.",
+        "gate": "Tier R — its own description states it WRITES NOTHING; the falsifier checks that."
+      }
     }
   ]
 }

@@ -49,6 +49,22 @@ BOOK_DB = "loreweave_book"
 REFUSAL_MARKERS = ("not accessible", "not found", "forbidden", "denied", "no access",
                    "unauthorized", "permission")
 
+#: 🔴 A VALIDATION ERROR IS NOT A REFUSAL, AND IT FOOLED ME THREE TIMES.
+#:
+#: `glossary_entity_set_attributes` came back "entity_id must be a UUID";
+#: `composition_outline_node_edit` came back "op=update requires project_id, node_id, and
+#: expected_version"; `glossary_ontology_upsert` came back "validating /properties/items".
+#: Every one of those is the schema rejecting my placeholder BEFORE the ownership check ran, so
+#: the tenancy boundary was never exercised — and each one looked like a pass in a report that
+#: only asked "did it fail?".
+#:
+#: The tell is in the message, so it is checkable: these strings mean the call died in
+#: validation, and the correct verdict is UNPROBED, not refused. Fix the arguments from the
+#: schema and probe again — every one of them, once given valid arguments, refused on ownership
+#: with the store verified unchanged.
+VALIDATION_MARKERS = ("validating", "must be a uuid", "is required", "required:", "invalid input",
+                      "unexpected additional properties", "field required")
+
 
 def make_other_users_book() -> str:
     """A real book owned by the OTHER account.
@@ -101,9 +117,16 @@ def probe(tool: str, book_id: str, cat: dict) -> dict:
                 "response": json.dumps(res)[:300]}
     except Exception as e:  # noqa: BLE001 — an MCPToolError IS the refusal on this path
         msg = str(e)
+        low = msg.lower()
+        if any(m in low for m in VALIDATION_MARKERS) and not any(m in low for m in REFUSAL_MARKERS):
+            # The schema rejected the call before ownership ran, so the boundary was never
+            # exercised. NOT a pass — and it read as one three times before this existed.
+            return {"tool": tool, "args": args, "verdict": "UNPROBED (validation)",
+                    "why": "died in argument validation, so the tenancy check never ran — fix "
+                           "the args from the schema and probe again",
+                    "response": msg[:300]}
         return {"tool": tool, "args": args,
-                "verdict": "refused" if any(m in msg.lower() for m in REFUSAL_MARKERS)
-                           else "refused_other",
+                "verdict": "refused" if any(m in low for m in REFUSAL_MARKERS) else "refused_other",
                 "response": msg[:300]}
 
 
@@ -125,6 +148,13 @@ def main() -> int:
     finally:
         drop_book(book)
     leaks = [r for r in out if r["verdict"] == "LEAK"]
+    unprobed = [r for r in out if str(r["verdict"]).startswith("UNPROBED")]
+    if unprobed:
+        print("
+   UNPROBED is NOT a pass — these died in validation before the ownership "
+              "check ran:")
+        for r in unprobed:
+            print(f"     {r['tool']}")
     print(f"\n{len(out)} probed, {len(leaks)} LEAK(S)")
     if a.out:
         pathlib.Path(a.out).write_text(json.dumps(out, indent=2), encoding="utf-8")
