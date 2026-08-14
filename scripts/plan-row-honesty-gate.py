@@ -23,11 +23,26 @@ that the row's own block reads like it. Ticking a box is a judgement about evide
 gate that failed the build over one would push people to tick boxes to get green, which is
 the exact failure it is trying to prevent. `--strict` exits 1 for a caller that wants it.
 
-The heuristic is deliberately crude and its crudeness is stated: count completion markers
-against owed markers inside each `[~]` block. A row with many of the first and none of the
-second is worth a HUMAN look, nothing more. It found 3 of 26 rows and both false positives
-it produced (QC-3, and T42a's narrative "not yet") were resolved by reading the block — which
-is the intended workflow, not a defect.
+TWO signals, either sufficient, and the second exists because the first was not enough:
+
+  1. MARKER COUNT — completion phrases against owed phrases inside the block. Crude on
+     purpose, and dialect-bound however wide the word list gets.
+  2. COMPLETION HEADING — a `### ✅ DONE …` inside an open row. Structural: it does not care
+     how the sentence is punctuated.
+
+A row that trips either, and names no outstanding work, is worth a HUMAN look — nothing more.
+
+🔴 **AND IT MISSED THREE ROWS ON ITS FIRST REAL TEST, which is why signal 2 exists.** Signal 1
+was calibrated on the three rows above, all of which wrote `✅ **BOLD**` and `N passed`; the
+selftest fixtures were written in that dialect too. `T42b`/`T42c`/`T42d` shipped 2026-08-12
+writing `✅ DONE <date>` and `passed=N`, scored **0 and 2**, and sat `[~]` for two days while
+this gate reported OK — until a RESUME pointer sent a session to rebuild `T42b`. **A detector
+fitted to the examples that motivated it, and validated against those same examples, is green
+by construction.** Signal 2 is backtested against the plan at the commit that ADDED this gate,
+where it flags T42b and T42c and this gate said OK.
+
+The false positives are the intended workflow, not a defect: they are resolved by reading the
+block, and a row that then names its remainder stops being flagged.
 
     python scripts/plan-row-honesty-gate.py [--strict] [--selftest]
 """
@@ -77,6 +92,32 @@ OWED_RE = re.compile(
 #: made `MAX_OWED = 1` mean zero in practice: every row arrived with its whole tolerance
 #: already spent, so a single genuine owed-marker anywhere silenced the row for good.
 BOILERPLATE_RE = re.compile(r"Unfinished, not undecided")
+
+#: ── THE STRUCTURAL SIGNAL, and it exists because counting words was the wrong instrument ──
+#: A completion HEADING inside an open row. `### ✅ DONE 2026-08-12` is the author declaring
+#: the row finished; whether they bolded it is not information about the work.
+#:
+#: 🔴 WHY THIS IS SEPARATE FROM THE MARKER COUNT ABOVE. That count was calibrated on the three
+#: rows that motivated the gate (T36 · T38 · T42a) — the docstring says so: *"the three real
+#: finds carried 8, 13 and 18"*, and `MIN_DONE = 3` was read off that distribution. All three
+#: happened to write `✅ **BOLD**` and `N passed`. The selftest fixtures were then written in
+#: that same dialect, so the gate proved it could fire on the vocabulary it already knew. The
+#: rows it went on to miss wrote `✅ DONE <date>` and `passed=N` and scored **0 and 2**.
+#:
+#: A detector fitted to the examples that motivated it, validated against those same examples,
+#: is green by construction — the same shape as an eval whose smallest attainable p-value sits
+#: above its own alpha. Widening the word list only buys the next dialect; keying on the
+#: STRUCTURE of the claim does not care which words are in it.
+#:
+#: Backtested rather than asserted: run against the plan at `cd8b1be8f` — the commit that
+#: ADDED this gate, where it reported `OK — no [~] row reads as finished` — this signal flags
+#: T42b and T42c, both of which had shipped ~20 hours earlier.
+#:
+#: `(?!~~)` skips struck-through headings: `~~### DEFERRAL …~~ — DISCHARGED` is a retracted
+#: block, not a completion claim.
+COMPLETION_HEADING_RE = re.compile(
+    r"^\s*#{3,}\s*(?!~~).*?(?:✅|DONE|CLOSED|SHIPPED)", re.I,
+)
 #: A row needs this many completion markers before it is worth mentioning. Set from the
 #: observed data: the three real finds carried 8, 13 and 18; the rows correctly left open
 #: carried 0-2. Three is comfortably below the floor of the true positives.
@@ -88,7 +129,14 @@ ROW_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9.\-]+)\*\*")
 
 
 def scan(text: str) -> list[tuple[str, int, int]]:
-    """Return `(row_name, done_markers, owed_markers)` for each SUSPECT `[~]` row."""
+    """Return `(row_name, done_markers, owed_markers)` for each SUSPECT `[~]` row.
+
+    TWO independent signals, either sufficient. The marker count is the original heuristic and
+    it is dialect-bound however wide the word list gets; the completion HEADING is structural
+    and does not care how the sentence is punctuated. Keeping both means a row that declares
+    itself finished in prose OR in a heading is caught, and neither signal has to anticipate
+    the other's blind spot.
+    """
     lines = text.split("\n")
     rows = [(n, m) for n, l in enumerate(lines) if (m := ROW_RE.match(l))]
     out: list[tuple[str, int, int]] = []
@@ -96,10 +144,12 @@ def scan(text: str) -> list[tuple[str, int, int]]:
         if m.group(1) != "~":
             continue
         end = rows[idx + 1][0] if idx + 1 < len(rows) else len(lines)
-        block = BOILERPLATE_RE.sub("", "\n".join(lines[n:end]))
+        raw = lines[n:end]
+        block = BOILERPLATE_RE.sub("", "\n".join(raw))
         done = len(DONE_RE.findall(block))
         owed = len(OWED_RE.findall(block))
-        if done >= MIN_DONE and owed <= MAX_OWED:
+        heading = any(COMPLETION_HEADING_RE.match(line) for line in raw)
+        if owed <= MAX_OWED and (done >= MIN_DONE or heading):
             out.append((m.group(2), done, owed))
     return out
 
@@ -154,6 +204,25 @@ def selftest() -> int:
         "- [x] **TY** — next\n"
     )
 
+    # 🔴 A THIRD DIALECT, deliberately sharing no vocabulary with either of the two above —
+    # no bold, no "N passed", no "passed=N", no RETRACTED/DISCHARGED. Only the structure of
+    # the claim: a completion HEADING inside an open row. Written this way ON PURPOSE, because
+    # the previous selftest reused the exact dialect of the three rows that motivated the gate
+    # and therefore only ever proved it could fire on what it already knew.
+    third_dialect = (
+        "- [~] **TD** — a task\n"
+        "  ### ✅ Shipped 2026-08-20 — the thing works and here is how we know\n"
+        "  It runs against the real service and the numbers agree.\n"
+        "- [x] **TY** — next\n"
+    )
+    # A struck-through heading is a RETRACTED block, not a completion claim.
+    struck = (
+        "- [~] **TS** — a task\n"
+        "  ### ~~DEFERRAL `D-X`~~ — superseded, kept for the record\n"
+        "  the work itself has not started\n"
+        "- [x] **TY** — next\n"
+    )
+
     a = [r[0] for r in scan(finished)]
     b = [r[0] for r in scan(open_row)]
     c = [r[0] for r in scan(ticked)]
@@ -167,6 +236,15 @@ def selftest() -> int:
     if e != ["TB"]:
         print(f"  SELFTEST FAIL: template boilerplate was counted as owed work: {e}")
         ok = False
+    f = [r[0] for r in scan(third_dialect)]
+    if f != ["TD"]:
+        print("  SELFTEST FAIL: a completion HEADING in an unseen dialect was missed — the "
+              f"gate is fitted to its examples again: {f}")
+        ok = False
+    g = [r[0] for r in scan(struck)]
+    if g:
+        print(f"  SELFTEST FAIL: a struck-through (retracted) heading read as completion: {g}")
+        ok = False
     if a != ["TX"]:
         print(f"  SELFTEST FAIL: a finished-looking [~] row was not flagged: {a}")
         ok = False
@@ -177,9 +255,11 @@ def selftest() -> int:
         print(f"  SELFTEST FAIL: an already-ticked [x] row was flagged: {c}")
         ok = False
     print("[plan-row-honesty-gate] SELFTEST "
-          + ("PASS — flags a finished-looking open row (bolded AND the unbolded/`passed=N` "
-             "spellings that once went blind), ignores template boilerplate, and stays quiet "
-             "on a row that names owed work and on an already-ticked row" if ok else "FAIL"))
+          + ("PASS — flags a finished-looking open row across THREE dialects (bolded, the "
+             "unbolded/`passed=N` pair that once went blind, and a heading-only one sharing no "
+             "vocabulary with either), ignores template boilerplate and struck-through "
+             "headings, and stays quiet on a row that names owed work and on a ticked row"
+             if ok else "FAIL"))
     return 0 if ok else 1
 
 
@@ -200,7 +280,7 @@ def main() -> int:
     print(f"[plan-row-honesty-gate] {len(suspects)} `[~]` row(s) READ AS FINISHED — "
           f"open the block and decide:")
     for name, done, owed in suspects:
-        seen = ", ".join(markers(text, name)[:4])
+        seen = ", ".join(markers(text, name)[:4]) or "a ✅ completion HEADING (structural)"
         print(f"    {name:<8} completion-markers={done:<3} owed-markers={owed}   saw: {seen}")
     print("\n  This is a WARNING, not a verdict: the gate cannot know a row is complete, only")
     print("  that its own block reads like it. Tick it, or add the sentence that says what is")

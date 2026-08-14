@@ -41,6 +41,80 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
+### 🔬 WHY THIS PLAN UNDER-REPORTS — the root cause, from git rather than from memory (2026-08-14)
+
+Six rows have now shipped and stayed `[~]`: **T36 · T38 · T42a** (found 08-14), then
+**T42b · T42c · T42d** (found 08-14, after the gate built to prevent exactly this). Three is
+an accident; six is a mechanism. Reconstructed by walking the plan's history and diffing the
+checkbox line of every task at every commit.
+
+**① TICKING USED TO HAPPEN IN THE BUILDING COMMIT, AND THEN IT STOPPED.**
+
+```
+08-09 → 08-12   ~30 rows ticked, each inside its own feat(...) commit
+08-12 T30       the LAST row ticked by the commit that built it
+08-13 →         every tick since comes from a SEPARATE audit commit:
+                QC-7 (docs), T36/T38/T42a (chore), T42b/c/d (a gate fix)
+```
+
+**② THE ROWS THAT WENT MISSING WERE AUTHORED MINUTES BEFORE THE WORK.**
+
+```
+08-12 00:04   plan(improve): T42a, T42b, T42c, T42d added — all four, one commit
+08-12 00:59   feat(t42b): the image ships          55 min after its row existed
+08-12 01:18   feat(t42c): the bootstrap ships      74 min after its row existed
+```
+
+`git show 45ab5f69d -- <plan>` is **70 insertions and zero checkbox changes.** The commit
+added `### ✅ DONE 2026-08-12 — one image now holds graph + vectors` and left `- [~]` alone.
+
+A row authored an hour before the work is not experienced as a checklist item to satisfy — it
+is a **heading for work already in progress**. Writing the evidence block under it *feels*
+like closing it, and the box is a single character ~70 lines above, in a different edit. The
+rows from the original 08-09 plan were ticked in-build precisely because they were someone
+else's checklist first.
+
+**③ THE GATE BUILT TO CATCH THIS WAS FITTED TO THE THREE EXAMPLES THAT MOTIVATED IT.**
+
+`plan-row-honesty-gate` (cd8b1be8f) was written from T36/T38/T42a. Measured across those
+blocks as they stood at that commit:
+
+```
+              bold ✅   plain ✅DONE   "N passed"   "passed=N"      verdict
+  T36  [x]       3           0            11           0        <- training
+  T38  [x]       2           0            16           0        <- training
+  T42a [x]       1           2             8           0        <- training
+  T42b [~]       0           1             0           1        MISSED (scored 0)
+  T42c [~]       0           1             2           0        MISSED (scored 2)
+```
+
+Its `MIN_DONE = 3` was read off that distribution — the docstring says so: *"the three real
+finds carried 8, 13 and 18."* Its **selftest fixtures were written in the same dialect**
+(`✅ **DONE.**`, `4228 passed`), so the gate proved it could fire on the vocabulary it already
+knew. It was structurally incapable of seeing `✅ DONE <date>` + `passed=9`, and it reported
+`OK — no [~] row reads as finished` for two days while three finished rows sat in front of it.
+
+🔻 **This is the session's recurring shape, a third time.** The cast-plan eval's first scoring
+rule let the arm under test buy its own acquittal; its `R=3` variant could never reach its own
+alpha. T37d's close was validated by a fake with no interval to violate. Here a detector was
+validated against the examples it was derived from. **Each was green by construction, and each
+green was reported as evidence.**
+
+✅ **THE FIX IS STRUCTURAL, NOT A BIGGER WORD LIST** — widening the vocabulary only buys the
+next dialect. A second, independent signal now fires on a **completion HEADING** inside an open
+row (`### ✅ …`), which does not care how the sentence is punctuated. **Backtested against the
+plan at `cd8b1be8f`** — the commit that added the gate, where it reported OK — the new signal
+flags **T42b and T42c**. The selftest gains a case in a *third* dialect sharing no vocabulary
+with either of the other two, plus one asserting a struck-through `~~### DEFERRAL~~` heading is
+a retraction rather than a completion claim. **BITE:** signal removed → *"a completion HEADING
+in an unseen dialect was missed — the gate is fitted to its examples again."*
+
+⚠️ **What this still does NOT fix.** The gate reads the plan's own prose either way; it cannot
+know a row is complete, only that the row says so. The durable fix is ①'s regime — ticking the
+box in the commit that does the work — and no gate can enforce that. This one shortens the
+window from "until someone hand-scans" to "until the next commit".
+
+
 > ✅ **2026-08-13 — the PO decided all four open questions, and QC-7 is signed off.**
 > `T17: the port owns EVERYTHING` · `T38: the KAL grows a detail read` ·
 > `QC-5: wire the D5 critic into the flow` · `QC-7: signed off`.
