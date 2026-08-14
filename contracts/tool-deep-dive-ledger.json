@@ -2015,7 +2015,11 @@
    "date": "2026-08-14",
    "finding": "On a book-scoped turn, memory_remember stored its fact with project_id NULL. Measured in Neo4j: 339 of 343 Fact nodes carry a project_id; the one this turn wrote is among the 4 that do not. The handler reads `project_id = str(ctx.project_id) if ctx.project_id else None`, so the ambient project did not resolve for that turn — plausibly because the model created the knowledge project mid-turn via kg_project_create, after the envelope was built.",
    "consequence": "A fact stored unscoped is invisible to project-scoped recall. That is consistent with the same batch's memory_recall_entity run answering 'I don't have any information about Mira Solene' — the user is told nothing is known about something they just asked to be remembered.",
-   "state": "OPEN — recorded with the measurement, not fixed."
+   "state": "OPEN — recorded with the measurement, not fixed.",
+   "root_cause": "stream_service reads the turn's project from ONE place — session_row.project_id — while book_id ten lines earlier has a four-step fallback chain (editor_context -> book_context -> studio_context -> session_row). No project_id means no X-Project-Id header, which means knowledge-service's ctx.project_id is None, which means merge_fact(project_id=None).",
+   "blast_radius": "417 of 503 book-bound chat sessions (83%) have a book and NO project, so every ambient_project tool on them is told the project is absent; 448 composition_work rows have a resolvable project_id.",
+   "proposal": "docs/plans/2026-08-14-turn-project-resolution.md",
+   "fix_costs_nothing_extra": "book_state_probe._connections() already calls GET /internal/books/{book_id}/kg-state once per turn and that response carries project_id — the current code reads entity_count and discards the rest. And studio_context.project_id is already read, but only to write the id into the model's PROSE note, never into the envelope."
   }
  ],
  "progress": {
