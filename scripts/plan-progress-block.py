@@ -51,32 +51,71 @@ END = "<!-- /generated:progress -->"
 
 ROW_RE = re.compile(r"^- \[([ x~])\] \*\*([A-Za-z0-9.\-]+)\*\*")
 
+#: An EVIDENCE BLOCK inside a row: a `###`/`####` heading carrying a status marker. These are
+#: the units work is actually done in — `A1…A9`, `B1…B9`, `BATCH 1…7`, `T37a…T37d`, `HALF 1…3`.
+#: 111 of them across the plan.
+#:
+#: 🔴 THIS IS THE GRANULARITY MISMATCH THAT CAUSED THE UNDER-REPORTING, and it is measurable:
+#:
+#:     T17    20 blocks, 12 ✅      checkbox [~] the whole time
+#:     QC-5   30 blocks, 12 ✅      checkbox [~]
+#:     T39    21 blocks, 15 ✅      checkbox [~]
+#:
+#: Three open rows carry 71 blocks. The plan's unit of ACCOUNTING is the row, so none of that
+#: work could move the number: `46 of 66` is unchanged by twelve closed slices in T17. An
+#: accounting that cannot register a day's work is one people stop maintaining — and they did,
+#: on 08-11. Surfacing the ratio is what lets the count move without the checkbox lying.
+SLICE_RE = re.compile(r"^\s*#{3,4}\s*(✅|🔴|🔻|📏|🎯|⏸)\s*(?!~~)")
+SLICE_DONE_RE = re.compile(r"^\s*#{3,4}\s*✅")
 
-def tally(text: str) -> tuple[int, int, list[str]]:
-    """(done, total, open-rows-in-plan-order). Plan order is the queue order, so the list
-    doubles as "what may be started", which is the question the run-state block exists to
-    answer."""
-    rows = [(m.group(1), m.group(2)) for m in (ROW_RE.match(l) for l in text.split("\n")) if m]
-    return (sum(1 for s, _ in rows if s == "x"), len(rows),
-            [n for s, n in rows if s == "~"])
+
+def tally(text: str) -> tuple[int, int, list[tuple[str, int, int]]]:
+    """(done, total, open rows in plan order as `(name, closed_blocks, total_blocks)`).
+
+    Plan order is the queue order, so the open list doubles as "what may be started" — the
+    question the run-state block exists to answer.
+    """
+    lines = text.split("\n")
+    rows = [(n, m) for n, m in ((n, ROW_RE.match(l)) for n, l in enumerate(lines)) if m]
+    done = sum(1 for _, m in rows if m.group(1) == "x")
+    open_rows: list[tuple[str, int, int]] = []
+    for i, (n, m) in enumerate(rows):
+        if m.group(1) != "~":
+            continue
+        end = rows[i + 1][0] if i + 1 < len(rows) else len(lines)
+        blk = lines[n:end]
+        total = sum(1 for l in blk if SLICE_RE.match(l))
+        closed = sum(1 for l in blk if SLICE_DONE_RE.match(l))
+        open_rows.append((m.group(2), closed, total))
+    return done, len(rows), open_rows
 
 
 def render(text: str) -> str:
     done, total, open_rows = tally(text)
-    listed = " · ".join(f"`{r}`" for r in open_rows) or "*none — every row is closed.*"
+    parts = [f"`{n}`" + (f" ({c}/{t})" if t else "") for n, c, t in open_rows]
+    listed = " · ".join(parts) or "*none — every row is closed.*"
+    blocks = sum(t for _, _, t in open_rows)
+    closed = sum(c for _, c, t in open_rows)
     return "\n".join([
         BEGIN,
         "<!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:",
         "     a hand-maintained copy of this is what drifted for two days and sent a session",
         "     to rebuild T42b, which had already shipped. Tick the row instead. -->",
-        f"**{done} of {total} done · {len(open_rows)} open.** The list below is what is NOT "
-        "finished, in plan order.",
+        f"**{done} of {total} rows done · {len(open_rows)} open"
+        + (f" · {closed} of {blocks} evidence blocks closed inside them.**" if blocks
+           else ".**"),
         "",
         f"**OPEN:** {listed}",
         "",
-        "> A row you just finished appearing here means its checkbox is still `[~]`. That is "
-        "the drift this block exists to make loud — an absence from a done-list is invisible, "
-        "a presence in an open-list is not.",
+        "> `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row "
+        "has accumulated and how many are ✅. It is a progress signal, not a contract: the row "
+        "is done when its own criteria are met, not at `m/m`.",
+        ">",
+        "> Two things this makes visible that the checkbox cannot. **A row you just finished "
+        "appearing here at all** means its box is still `[~]` — an absence from a done-list is "
+        "invisible, a presence in an open-list is not. And **a row moving from 12/20 to 13/20** "
+        "is a day's work the binary box could not register; that it registered nothing is why "
+        "ticking stopped on 08-11.",
         END,
     ])
 
@@ -107,10 +146,27 @@ def selftest() -> int:
             fails.append(name)
 
     sample = ("**RESUME:** something\n"
-              "- [x] **T1** — done\n- [~] **T2** — open\n- [x] **T3** — done\n- [~] **T4** — open\n")
+              "- [x] **T1** — done\n"
+              "- [~] **T2** — open\n"
+              "  ### ✅ A1 2026-08-13 — a slice landed\n"
+              "  ### ✅ A2 2026-08-13 — another\n"
+              "  ### 🔴 A3 — this one is not done\n"
+              "- [x] **T3** — done\n"
+              "- [~] **T4** — open\n")
     done, total, open_rows = tally(sample)
     check("counts the checkboxes", (done, total) == (2, 4), f"{done}/{total}")
-    check("lists the OPEN rows, in plan order", open_rows == ["T2", "T4"], str(open_rows))
+    check("lists the OPEN rows, in plan order",
+          [r[0] for r in open_rows] == ["T2", "T4"], str(open_rows))
+    # ④ — the granularity fix. A row whose slices are landing must show movement, or the
+    # accounting stays frozen through a day's work exactly as it did for T17 (12 of 20 closed,
+    # `46 of 66` unmoved) — which is what made the checkbox feel pointless to maintain.
+    check("counts evidence blocks inside an open row", open_rows[0] == ("T2", 2, 3),
+          str(open_rows[0]))
+    check("a row with no blocks reports none", open_rows[1] == ("T4", 0, 0), str(open_rows[1]))
+    check("the ratio is rendered", "(2/3)" in render(sample))
+    moved = sample.replace("### 🔴 A3 — this one is not done", "### ✅ A3 2026-08-14 — landed")
+    check("closing ONE slice moves the block, with no checkbox change",
+          render(moved) != render(sample) and "(3/3)" in render(moved))
 
     out = replace(sample)
     check("installs under the RESUME line", out.index(BEGIN) > out.index("**RESUME:**"))

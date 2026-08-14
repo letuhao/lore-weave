@@ -41,11 +41,13 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 done · 20 open.** The list below is what is NOT finished, in plan order.
+**46 of 66 rows done · 20 open · 50 of 89 evidence blocks closed inside them.**
 
-**OPEN:** `T17` · `T25` · `QC-3` · `T32` · `T33` · `T35` · `QC-6` · `QC-5` · `T51` · `T39` · `T40` · `T42` · `T41` · `T43` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (3/5) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
-> A row you just finished appearing here means its checkbox is still `[~]`. That is the drift this block exists to make loud — an absence from a done-list is invisible, a presence in an open-list is not.
+> `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
+>
+> Two things this makes visible that the checkbox cannot. **A row you just finished appearing here at all** means its box is still `[~]` — an absence from a done-list is invisible, a presence in an open-list is not. And **a row moving from 12/20 to 13/20** is a day's work the binary box could not register; that it registered nothing is why ticking stopped on 08-11.
 <!-- /generated:progress -->
 🔻 **THE PLAN WAS UNDER-REPORTING BY THREE TASKS (2026-08-14).** The previous RESUME said *"T42b — put AGE in the image"*; T42b shipped **2026-08-12** with a 9/9 smoke. T42c and T42d had shipped the same day. All three were `[~]`, and `plan-row-honesty-gate` — the gate that exists for exactly this — ran **clean** the whole time, because it recognised one dialect of "done" and these blocks used another (`✅ DONE <date>` unbolded, `passed=9` rather than `9 passed`). Gate widened, bitten, and the flagged count went **0 → 5 of 23**; three were real and ticked after being **re-run**, two were genuine false positives resolved by reading the block, exactly as the gate's contract says.
 🔻 **T37 CLOSED 2026-08-14.** Two producers write roles; the plan retracts its own and **only** its own; the prompt change is MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286); and the revision is proved LIVE — where it immediately found that **the close had never worked once**: it closed at the same ordinal it opened at, glossary 422'd every attempt, and the pipeline swallowed it while six unit tests stayed green. Fixed, bitten, re-proved on real rows with 48 611 unmarked legacy facts untouched.
