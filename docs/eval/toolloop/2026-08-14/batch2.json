@@ -17,7 +17,7 @@
       },
       "falsifier_sha": "8e5ac464d8dcafbd",
       "ship_audit": {
-        "empty_case": "owed",
+        "empty_case": "EXERCISED K=3 (batch2-empty.json), book with one chapter and NO outline. Called 3/3 and the store was clean on 2 of 3 — but on the third run it wrote to loreweave_book.chapters: asked to rename an outline chapter that does not exist, it renamed a MANUSCRIPT chapter instead. Recorded as a finding, not waived: the outline and the manuscript are different graphs and an absent node must not silently redirect to the other one.",
         "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with op=update, the real project_id/node_id and the correct expected_version: refused 'not found or not accessible', and the node's title was re-read UNCHANGED ('Mine').",
         "gate": "Tier A — approval card required before any write."
       },
@@ -405,7 +405,7 @@
       "answer_expect": null,
       "falsifier_sha": "8eca0fad37a90a7f",
       "ship_audit": {
-        "empty_case": "owed",
+        "empty_case": "EXERCISED K=3 on an empty book: the tool itself was NOT called (0/3) — the turn ran glossary_adopt_standards and scaffolded the default ontology instead (5 glossary tables written 3/3). Defensible as first-run scaffolding, and recorded rather than waived because it is the same adjacent-write shape this batch exists to watch.",
         "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Called as claude-test2 with a schema-valid item (level=kind, name, code): refused 'book not accessible', and book_kinds was re-read with 0 rows for code='hijack'.",
         "gate": "Tier A — writes immediately once approved, per its own description."
       },
@@ -830,7 +830,7 @@
       "answer_expect": null,
       "falsifier_sha": "9b1e2e483de32f40",
       "ship_audit": {
-        "empty_case": "owed",
+        "empty_case": "EXERCISED K=3 on a book with no arc and no spec: called 0/3, store UNCHANGED 3/3. Nothing was fabricated and nothing was written when there was nothing to compile — the correct absent-case behaviour for a tool whose inputs do not exist yet.",
         "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'not found or not accessible' against another user's book.",
         "gate": "Tier A."
       },
@@ -1264,7 +1264,7 @@
       },
       "falsifier_sha": "fe607c3821396de3",
       "ship_audit": {
-        "empty_case": "owed",
+        "empty_case": "EXERCISED K=3 on an empty book: called 3/3, store unchanged 3/3. Correct by construction — the SYSTEM catalogue does not depend on the book, so 'empty book' cannot empty it.",
         "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. NO BOOK BOUNDARY BY DESIGN: scope=none, it lists the SYSTEM standards catalogue, which is identical for every user and carries no per-user data. Recorded as not-applicable rather than as a pass — there is nothing here to leak, and calling that a tenancy pass would be a category error.",
         "gate": "Tier R."
       },
@@ -1576,7 +1576,7 @@
       },
       "falsifier_sha": "1d2eb766379c7a9e",
       "ship_audit": {
-        "empty_case": "owed",
+        "empty_case": "EXERCISED K=3 on an empty book with the notes still pasted in the prompt: called 2/3, store UNCHANGED 3/3 — which is exactly its declared contract (it returns candidates and writes nothing). The absent case for this tool is the book, not the input, and it held.",
         "refusals": "EXERCISED 2026-08-14. Probed at the TOOL boundary as a different account, with SCHEMA-VALID arguments — a placeholder dies in validation before ownership runs, which fooled this audit three times and is now scored UNPROBED rather than refused. Refused 'book not accessible' against another user's book.",
         "gate": "Tier R — its own description states it WRITES NOTHING; the falsifier checks that."
       },

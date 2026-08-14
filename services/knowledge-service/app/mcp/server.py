@@ -699,6 +699,16 @@ async def memory_forget(
     ),
     meta=require_meta(
         "A", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "set up the knowledge graph",
+            "start a knowledge project",
+            "create the knowledge project",
+            "enable the graph for this book",
+        ],
         tool_name="kg_project_create",
     ),
 )
@@ -735,6 +745,15 @@ async def kg_project_create(
     ),
     meta=require_meta(
         "R", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "my knowledge projects",
+            "list knowledge projects",
+            "which projects do i have",
+        ],
         tool_name="kg_project_list",
     ),
 )
@@ -766,6 +785,15 @@ async def kg_project_list(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "set the embedding model",
+            "configure embeddings",
+            "choose an embedding model",
+        ],
         tool_name="kg_project_set_embedding_model",
     ),
 )
@@ -807,6 +835,19 @@ async def kg_project_set_embedding_model(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "show the graph",
+            "knowledge graph",
+            "how are they connected",
+            "relationships between",
+            "who knows who",
+            "connections in this story",
+            "entity relationships",
+        ],
         tool_name="kg_graph_query",
     ),
 )
@@ -963,6 +1004,16 @@ async def kg_multi_query(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "relationship over time",
+            "how did their relationship change",
+            "timeline of a relationship",
+            "history between two characters",
+        ],
         tool_name="kg_entity_edge_timeline",
     ),
 )
@@ -996,6 +1047,16 @@ async def kg_entity_edge_timeline(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph schema",
+            "what edge types exist",
+            "what relationships can i use",
+            "show the schema",
+        ],
         tool_name="kg_schema_read",
     ),
 )
@@ -1017,6 +1078,15 @@ async def kg_schema_read(
     ),
     meta=require_meta(
         "R", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph templates",
+            "available graph schemas",
+            "what templates can i adopt",
+        ],
         tool_name="kg_list_templates",
     ),
 )
@@ -1054,6 +1124,15 @@ async def kg_list_templates(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph template updates",
+            "is my schema out of date",
+            "upstream schema changes",
+        ],
         tool_name="kg_sync_available",
     ),
 )
@@ -1074,6 +1153,15 @@ async def kg_sync_available(
     ),
     meta=require_meta(
         "R", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "my saved views",
+            "list graph views",
+            "what lenses do i have",
+        ],
         tool_name="kg_view_read",
     ),
 )
@@ -1095,6 +1183,17 @@ async def kg_view_read(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "graph triage",
+            "what did not match the schema",
+            "unmatched graph items",
+            "graph review queue",
+            "items needing triage",
+        ],
         tool_name="kg_triage_list",
     ),
 )
@@ -1128,6 +1227,16 @@ async def kg_triage_list(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "record a fact",
+            "note a story fact",
+            "add a narrative fact",
+            "remember this happened",
+        ],
         tool_name="kg_propose_fact",
     ),
 )
@@ -1158,6 +1267,17 @@ async def kg_propose_fact(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add a relationship",
+            "link two characters",
+            "connect these entities",
+            "they are related",
+            "record that they know each other",
+        ],
         tool_name="kg_propose_edge",
     ),
 )
@@ -1218,6 +1338,16 @@ async def kg_propose_edge(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add to the graph",
+            "add a node",
+            "put this entity in the graph",
+            "add characters to the knowledge graph",
+        ],
         tool_name="kg_add_nodes",
     ),
 )
@@ -1330,6 +1460,16 @@ async def kg_create_node(
     ),
     meta=require_meta(
         "A", "user",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "save a graph view",
+            "create a lens",
+            "edit a saved view",
+            "delete a view",
+        ],
         tool_name="kg_view_edit",
     ),
 )
@@ -1444,6 +1584,16 @@ async def kg_view_delete(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "resolve triage",
+            "map this triage item",
+            "drop this edge",
+            "fix the triage",
+        ],
         tool_name="kg_triage_resolve",
     ),
 )
@@ -1486,6 +1636,17 @@ async def kg_triage_resolve(
     ),
     meta=require_meta(
         "W", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add an edge type",
+            "change the graph schema",
+            "adopt a graph template",
+            "deprecate an edge type",
+            "new relationship type",
+        ],
         tool_name="kg_ontology_propose",
     ),
 )
@@ -1658,6 +1819,15 @@ async def kg_sync_apply(
     ),
     meta=require_meta(
         "W", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "place this edge",
+            "accept the proposed edge",
+            "put the edge in the graph",
+        ],
         tool_name="kg_triage_place_edge",
     ),
 )
@@ -1687,6 +1857,15 @@ async def kg_triage_place_edge(
     ),
     meta=require_meta(
         "W", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "add to the vocabulary",
+            "add this value to the schema",
+            "resolve triage by changing the schema",
+        ],
         tool_name="kg_triage_schema_write",
     ),
 )
@@ -1748,6 +1927,16 @@ async def kg_triage_schema_write(
     meta=require_meta(
         "W", "project",
         async_job=True,
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "build the knowledge graph",
+            "generate the wiki",
+            "rebuild the graph",
+            "extract the graph from my book",
+        ],
         tool_name="kg_build",
     ),
 )
@@ -1928,6 +2117,16 @@ async def kg_build_wiki(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE
+        # in 30 live runs and tool_load never, so the answerability pre-filter is the only
+        # dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+        # are phrasings a PERSON types, not the feature's name.
+        synonyms=[
+            "benchmark the embedding model",
+            "how good is retrieval",
+            "test the embeddings",
+            "retrieval quality",
+        ],
         tool_name="kg_run_benchmark",
     ),
 )

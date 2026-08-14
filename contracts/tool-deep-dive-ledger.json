@@ -1494,6 +1494,61 @@
    "note": "Called 3/3, read-clean across SIX runs (3 with approvals cleared, 3 with the account's 46 standing approvals in place). Absent case reports the one real condition rather than inventing problems. OBSERVATION: with approvals cleared it proposed a Tier-A write (composition_error_block_edit) on 3/3 and suspended on the card; under standing approvals it proposed no write at all. The store never changed in either state.",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "composition_outline_node_edit": {
+   "cycle": "batch-2",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Surfaced 3/3, called 2/3, wrote loreweave_composition.outline_node 3/3 — the RIGHT store. Before the R2 supersession union it was surfaced 0/3 and its deprecated sibling composition_outline_node_update took the words; one run then renamed the MANUSCRIPT chapter instead. Tenancy refused with schema-valid args (node re-read unchanged). OBSERVATION carried: on an EMPTY outline, 1 of 3 runs still renamed a manuscript chapter — an absent outline node must not silently redirect to the other graph."
+  },
+  "glossary_ontology_upsert": {
+   "cycle": "batch-2",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "D-DECLARE-THE-USERS-WORD found and fixed here. It declared 'add a kind' (the column name) and the author said 'category'; surfaced 0/3, and the model ran glossary_adopt_standards instead — adopting a whole genre pack (kinds 4->5, attributes 29->36, genres 1->3, kind_genres 4->13) from a request to add ONE category. After declaring 'category'/'new category'/'start tracking': surfaced 3/3, called 1/3, wrote book_kinds 3/3. Tenancy refused (0 rows written). Empty-case scaffolding recorded."
+  },
+  "plan_compile": {
+   "cycle": "batch-2",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Surfaced 3/3, 0 errors, plan_run written 3/3. Called 0/3 — the model reaches plan_propose_spec, which produces the run this tool would compile; that is sequencing, not a miss, and it is recorded rather than waived. Absent case is clean: no arc, no spec, called 0/3, store UNCHANGED 3/3 — nothing fabricated, nothing written. Tenancy refused."
+  },
+  "glossary_list_system_standards": {
+   "cycle": "batch-2",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Called 3/3 and store unchanged 3/3 on BOTH the seeded and the empty fixture, from a prompt written off its own description (it declares no synonyms — one of the 36). Tenancy is NOT APPLICABLE by design: scope=none, the system catalogue is identical for every user and has nothing to leak; recorded as such rather than as a pass, because calling it a tenancy pass would be a category error."
+  },
+  "glossary_extract_entities_from_doc": {
+   "cycle": "batch-2",
+   "date": "2026-08-14",
+   "counts_toward_release": true,
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
+   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
+   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
+   "evidence_class": "gate-backed",
+   "state": "proven",
+   "note": "Called 3/3 from pasted notes, store UNCHANGED 3/3 — exactly its declared contract (returns candidates, writes nothing), which is the falsifier that mattered here. Held on the empty fixture too (called 2/3, store unchanged 3/3). Tenancy refused 'book not accessible'."
   }
  },
  "defects": {
@@ -1666,6 +1721,13 @@
    "chokepoint": "stream_service._inject_context_ids (both call sites) + services/id_ledger.py",
    "test": "services/chat-service/tests/test_id_from_a_tool_result_is_not_a_book_id.py",
    "commit": "d0ae94154"
+  },
+  "D-DECLARE-THE-USERS-WORD": {
+   "date": "2026-08-14",
+   "service": "glossary-service + knowledge-service",
+   "invariant": "A tool must declare the words a PERSON types, not the words the schema or the feature uses. The answerability pre-filter matches declared phrases against the request, and it is the only dynamic path onto the wire because the lazy tail does not fire (tool_list 1/30 runs, tool_load 0/30).",
+   "evidence": "glossary_curation_list surfaced 0/3 -> called 3/3 with a correct filtered answer; glossary_ontology_upsert surfaced 0/3 -> 3/3; 26 more tools declared (story_search, 5 memory, 20 kg). Undeclared shippable tools 42 -> 36 -> 16.",
+   "lint": "scripts/lint_superseded_synonyms.py --max-undeclared"
   }
  },
  "deferred_questions": {
@@ -1887,7 +1949,7 @@
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
-  "concluded_in_release_surface": 30,
-  "remaining_in_release_surface": 168
+  "concluded_in_release_surface": 35,
+  "remaining_in_release_surface": 163
  }
 }
