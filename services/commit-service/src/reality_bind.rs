@@ -24,7 +24,7 @@
 //! reach the registry cannot know whether its world is open, and the safe
 //! failure is to refuse rather than to write.
 
-use dp::{BindRequest, ControlPlane, ServiceIdentity, SessionContext};
+use dp::{BindRequest, ServiceIdentity, SessionContext};
 use meta_rs::allowlist::Allowlist;
 use meta_rs::control_plane::MetaControlPlane;
 use meta_rs::metawrite::{Actor, ActorType};

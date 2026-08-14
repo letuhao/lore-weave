@@ -37,7 +37,6 @@
 
 use sqlx::postgres::PgPool;
 use sqlx::Row;
-use uuid::Uuid;
 
 use sim_core::{InputId, Tick};
 

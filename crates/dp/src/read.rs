@@ -311,7 +311,7 @@ pub fn read_tier<A: DpAggregate>() -> crate::tier::TierLevel {
 mod tests {
     use super::*;
     use crate::session::{BindRequest, ControlPlane, VerifiedBind};
-    use crate::tier::{TierLevel, T0, T2};
+    use crate::tier::{TierLevel, T2};
 
     struct Prof;
     impl DpAggregate for Prof {
