@@ -231,19 +231,35 @@ def build(names: list[str], cat: dict | None = None) -> dict:
 
 
 def next_from_ledger(n: int) -> list[str]:
-    """The next n tools in RUNBOOK order: group A, then B, then C, skipping concluded ones.
+    """The next n SHIPPABLE tools in RUNBOOK order: group A, then B, then C, skipping concluded.
 
     The ledger is the progress authority, so the batch is DERIVED rather than chosen. A batch I
     pick is a batch I can pick easy tools for.
+
+    🔴 DEPRECATED TOOLS ARE NOT DRAWN. The ordering groups were derived from the whole federated
+    catalogue, so they include tools carrying `visibility=legacy` / `_meta.superseded_by`. Batch 2
+    drew two of them (`glossary_list_ai_suggestions`, `glossary_propose_new_attribute`) and I
+    spent most of a session treating their silence as a defect — when a deprecated tool going
+    unreached is the migration working, and its successor is what must ship.
+
+    The denominator is the RELEASE SURFACE (owner's decision 2026-08-14: ship every non-deprecated
+    tool, because the platform cannot release without them). Drawing from anything wider spends
+    batches on tools nobody will run.
     """
     d = json.loads(LEDGER.read_text(encoding="utf-8"))
-    done = {k for k, v in (d.get("tools") or {}).items() if v.get("state") in ("proven", "blocked")}
+    tools = d.get("tools") or {}
+    done = {k for k, v in tools.items() if v.get("state") in ("proven", "blocked")}
     den = d.get("denominator") or {}
+    shippable = set(den.get("shippable_list") or [])
     order: list[str] = []
     order += [r["tool"] for r in (den.get("group_A") or [])]
     order += [r["tool"] for r in (den.get("group_B") or [])]
     order += list(den.get("group_C") or [])
-    return [t for t in order if t not in done][:n]
+    picked = [t for t in order if t not in done and (not shippable or t in shippable)]
+    # Anything shippable that the ordering groups never listed still has to ship — append it so
+    # the tail of the release surface cannot be silently unreachable by the derivation itself.
+    picked += [t for t in sorted(shippable) if t not in done and t not in set(order)]
+    return picked[:n]
 
 
 def main() -> int:
