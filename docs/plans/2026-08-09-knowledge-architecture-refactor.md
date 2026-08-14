@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — `relations_for`'s fault is LOCATED: the `recreate` write is correct (counters agreed, edge present in Kuzu with the right values), so the read excludes an edge that exists. Four leads are eliminated. **Next suspect: `relations_for` matches `(e)-[r:RELATES_TO]->(peer)` with `peer` UNLABELLED, and Kuzu is schema-full — probe whether `peer.archived_at` resolves at all.** Then `add_evidence`, `update_event_fields`, `events_page`; separately the `EntityStatus` table so `status_at_order` can stop refusing.**
+**RESUME: `T43` — `relations_for` is FIXED (the arm labels were `"out"`/`"in"` against the port's `"outgoing"`/`"incoming"`, so two of three directions read EMPTY and conformance never noticed, because every rule uses `"both"`). THREE divergences remain: `update_event_fields` (all seeds), `events_page` and `get_event` (seed-dependent), `add_evidence` (counters). Same discipline: reproduce with a fixed sequence, then probe. Separately the `EntityStatus` table so `status_at_order` can stop refusing.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -10329,7 +10329,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   | operation | evidence | lead |
   |---|---|---|
-  | `relations_for` | ✅ **REPRODUCED + FAULT LOCATED.** `test_REPRODUCER_relations_for_after_a_recreate`: four steps, no randomness. Then measured directly — `recreate_relation` counters `{'agreed': 1, 'errored': 0, 'unmapped': 0}` and the Kuzu edge EXISTS: `{'predicate':'parent_of','confidence':1.0,'valid_from_ordinal':12}`. **So the write is correct and the bug is in `relations_for`, which excludes an edge that is present.** FOUR leads eliminated (trailing `SET`, unmapped endpoints, peer-exclusion timing, a swallowed exception). Next suspect: the query is `MATCH (e:Entity), (e)-[r:RELATES_TO]->(peer)` with **`peer` UNLABELLED** — Kuzu is schema-full, so `peer.archived_at` may not resolve. Probe that predicate in isolation. |
+  | `relations_for` | ✅ **FIXED — the arm labels were not the port's values.** `RelationDirection = Literal["outgoing","incoming","both"]`; the adapter's arms were `"out"`/`"in"`, so `direction="outgoing"` matched neither `"both"` nor `"out"`, **both arms were skipped and the read was ALWAYS EMPTY**. Five leads were eliminated on the way (trailing `SET`, unmapped endpoints, peer-exclusion timing, swallowed exception, unlabelled `peer`). |
   | `add_evidence` | counters disagree | the increment is guarded by an existence check under `_identity_lock`; Neo4j bumps in one statement. Compare what each does on a REPEAT job_id. |
   | `update_event_fields` | diverges on several seeds | returns `(updated, snapshot)`; the snapshot now compares (dict projection landed), so this is a real field difference. |
   | `events_page` | diverges on some seeds only | seed-dependent ⇒ suspect ORDER or the `total`, not the row set. |
@@ -10344,6 +10344,12 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Kuzu applies the trailing `SET` exactly as written. Had that been "fixed" by inspection, the
   change would have been a no-op dressed as a fix and the real cause would have moved further
   out of view. **One command refuted it.**
+
+  🔴 **AND THE CONFORMANCE SUITE COULD NOT HAVE CAUGHT IT.** Every relation rule calls
+  `direction="both"` — the one value that happened to work. Two of the three legal values
+  returned nothing, silently, and 30/30 conformance stayed green. **That is the second time
+  today the differential caught what conformance could not** (the first was `status_at_order`
+  answering `{}`), and it is the concrete argument for keeping both instruments.
 
   🔴 **Do NOT fix these by inspection.** `status_at_order` was written by reasoning about what
   the operation *should* read and shipped answering `{}` where the contract requires every id

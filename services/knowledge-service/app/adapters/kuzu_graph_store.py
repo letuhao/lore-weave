@@ -312,7 +312,15 @@ class KuzuGraphStore:
         would mix untimed legacy data into an answer whose whole value is that it is timed.
         """
         out: list[Relation] = []
-        arms = (("out", "(e)-[r:RELATES_TO]->(peer)"), ("in", "(peer)-[r:RELATES_TO]->(e)"))
+        # ⚠️ The arm labels ARE the port's `RelationDirection` values —
+        # `Literal["outgoing", "incoming", "both"]` — not abbreviations of them. They were
+        # "out"/"in" until 2026-08-14, so `direction="outgoing"` matched neither "both" nor
+        # "out", BOTH arms were skipped, and the result was ALWAYS EMPTY. Every conformance
+        # rule passed because they all use `direction="both"` — the one value that happened to
+        # work. Only the shadow comparison caught it, and only because its random sequence
+        # picks "outgoing" and "incoming" too.
+        arms = (("outgoing", "(e)-[r:RELATES_TO]->(peer)"),
+                ("incoming", "(peer)-[r:RELATES_TO]->(e)"))
         for arm, pattern in arms:
             if direction not in ("both", arm):
                 continue
