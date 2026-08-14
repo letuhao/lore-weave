@@ -150,8 +150,7 @@ def main() -> int:
     leaks = [r for r in out if r["verdict"] == "LEAK"]
     unprobed = [r for r in out if str(r["verdict"]).startswith("UNPROBED")]
     if unprobed:
-        print("
-   UNPROBED is NOT a pass — these died in validation before the ownership "
+        print("\n   UNPROBED is NOT a pass — these died in validation before the ownership "
               "check ran:")
         for r in unprobed:
             print(f"     {r['tool']}")
