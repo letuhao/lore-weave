@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — four REAL Kuzu-pairing divergences, each with evidence in the T43 row's table. `relations_for`'s first lead (the bare trailing `SET`) is **REFUTED by probe**; the next suspect is the SHADOW's own `recreate_relation` wrapper returning early as `unmapped`, which would make the secondary's empty read CORRECT — the refusal-artifact class a third time. **Check the `unmapped` counts before touching the adapter.** Then `add_evidence`, `update_event_fields`, `events_page`; separately the `EntityStatus` table + transition write so `status_at_order` can stop refusing.**
+**RESUME: `T43` — `relations_for` is `agreed: 1, diverged: 1`, i.e. CONDITIONAL. Two leads are already eliminated by measurement (the trailing `SET`, refuted by probe; unmapped endpoints, weakened because those would diverge every time). **Next: reproduce with a FIXED sequence rather than a random seed** — the failing trace has an `archive()` before the `relations()`, so suspect peer-exclusion timing, then `min_confidence`/`as_of` against an edge `recreate` set to 1.0. Then `add_evidence`, `update_event_fields`, `events_page`; separately the `EntityStatus` table so `status_at_order` can stop refusing.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -10329,7 +10329,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   | operation | evidence | lead |
   |---|---|---|
-  | `relations_for` | `primary=[('parent_of','1.0','12')]` secondary `[]`, after a `recreate()` | ~~bare trailing `SET`~~ **REFUTED by probe** (see below). Next suspect: the SHADOW's `recreate_relation` wrapper returns early counting `unmapped` when either endpoint is unmapped, so the edge is never written to the secondary and the later read is correctly empty — **the refusal-artifact class again, from a third cause**. Check `unmapped` counts before touching the adapter. |
+  | `relations_for` | `primary=[('parent_of','1.0','12')]` secondary `[]`, after a `recreate()` | ~~bare trailing `SET`~~ **REFUTED by probe.** ~~unmapped endpoints~~ **WEAKENED**: the counters read `agreed: 1, diverged: 1` over 2 observations, so it is **CONDITIONAL, not systematic** — an unmapped endpoint would empty the secondary every time. Remaining suspects, in order: the `archive()` that precedes `relations()` in the failing trace (peer-exclusion timing), and `min_confidence`/`as_of` interacting with an edge `recreate` set to 1.0. Probe with a FIXED sequence, not a random seed. |
   | `add_evidence` | counters disagree | the increment is guarded by an existence check under `_identity_lock`; Neo4j bumps in one statement. Compare what each does on a REPEAT job_id. |
   | `update_event_fields` | diverges on several seeds | returns `(updated, snapshot)`; the snapshot now compares (dict projection landed), so this is a real field difference. |
   | `events_page` | diverges on some seeds only | seed-dependent ⇒ suspect ORDER or the `total`, not the row set. |
