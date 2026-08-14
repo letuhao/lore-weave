@@ -1481,6 +1481,16 @@
    "why_it_matters": "The surfacing architecture is hot-seed (small, budgeted) PLUS a lazy tail reached by discovery. If discovery does not fire, the lazy tail is not a fallback — it is dead weight, and whatever the deterministic pre-filter puts on the wire is the entire reachable catalogue for that turn. That makes R1's answerability pass load-bearing rather than an optimisation, and it makes the 86 tools that declare no synonyms effectively unreachable in practice rather than merely harder to reach.",
    "scope_of_the_claim": "Narrow on purpose. This is five authoring requests, one local model (gemma-4-26b), 30 runs. It does NOT contradict the earlier measurement that tool_list->tool_load works for a weak model — that was a discovery-SHAPED task. The finding is that on ordinary work the model does not choose discovery, which is a different question from whether it can.",
    "state": "OPEN — this is the real subject of R2, and it reframes it: the fix is not 'make the tail easier to search', it is 'the pre-filter must be right, because nothing else runs'."
+  },
+  {
+   "id": "D-CONTEXT-BLOCK-ANSWERS-A-FILTERED-QUERY",
+   "date": "2026-08-14",
+   "evidence": "scripts/toolloop/scenarios-batch2.json (glossary_list_ai_suggestions) + live K=3",
+   "finding": "A fixture with three glossary entities, exactly ONE tagged 'ai-suggested'. Asked 'Are there any suggested entries waiting for me to review?', the model answered '3 suggested entries waiting for your review' — reading the injected `story_state` block, which carries EVERY entity, and reporting the total as the review queue. Measured 2 of 3 on one run and 1 of 3 on a repeat; the tool was never called and the store never changed.",
+   "why_every_bar_missed_it": "Store unchanged, no error, LIVE clean, DATA read-is-read green. A read that writes nothing can still be confidently wrong, and nothing in the gate was looking at whether the ANSWER was true. This is the 2026-08-13 incident in mirror image: 'you haven't declared any' over a populated table, versus 'you have three waiting' over a queue of one.",
+   "how_it_became_visible": "Only by fixing MY OWN seed. The first version tagged all three entities, so 'list the ai-suggested ones' and 'list every entity' produced the same answer — a fabrication was indistinguishable from a correct reply, and I had nearly filed the run as a surfacing defect. Tagging one of three makes the right answer and the lazy answer differ.",
+   "invariant_candidate": "A cached context projection may answer a question about the WHOLE set it projects, and must not be used to answer a FILTERED question about a subset it does not distinguish. Either the block declares its scope so the model knows it cannot answer the filter, or the filtered question must route to the tool that can.",
+   "state": "OPEN — recorded with a machine-checked falsifier (gate DATA answer-is-true), fix not yet made."
   }
  ],
  "progress": {

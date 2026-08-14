@@ -108,6 +108,35 @@ class Gate:
             "the falsifier was CHANGED after the run it judges. A prediction edited once the "
             "result is known is a description, not a falsifier. Re-run against the new one, or "
             "keep the one that was actually committed to")
+        # 🔴 A READ THAT WROTE NOTHING CAN STILL BE WRONG, AND THE GATE COULD NOT SEE IT.
+        # Measured 2026-08-14: a fixture with three entities, exactly ONE tagged 'ai-suggested'.
+        # Asked "Are there any suggested entries waiting for me to review?", the model answered
+        # "3 suggested entries" on 2 of 3 runs — it read the injected story_state block, which
+        # holds every entity, and reported the total as the review queue. Store unchanged, no
+        # error, DATA read-is-read green: a confidently false answer that passed every bar.
+        #
+        # This is the 2026-08-13 incident in mirror image ("you haven't declared any" over a
+        # populated table), and the only thing that made it visible was a seed where the right
+        # answer and the lazy answer DIFFER. So the expectation is declared in the scenario and
+        # checked here, rather than being prose I grade by eye after seeing the reply.
+        exp = t.get("answer_expect") or {}
+        if exp:
+            must = [str(x).lower() for x in (exp.get("must_contain") or [])]
+            mustnt = [str(x).lower() for x in (exp.get("must_not_contain") or [])]
+            bad = []
+            for r in runs:
+                a = str(r.get("answer") or "").lower()
+                if not a:
+                    continue
+                miss = [m for m in must if m not in a]
+                hit = [m for m in mustnt if m in a]
+                if miss or hit:
+                    bad.append((r.get("rep"), miss, hit))
+            self._check(
+                not bad, f"[{t['tool']}] DATA answer is true",
+                f"{len(bad)} of {len(runs)} replies failed the declared expectation "
+                f"{bad[:3]} — a read that wrote nothing can still be confidently wrong, and "
+                "that is the failure this loop has now seen in both directions")
         if with_both and t.get("intent") == "read":
             wrote = [i for i, p in enumerate(with_both) if p["before"] != p["after"]]
             self._check(

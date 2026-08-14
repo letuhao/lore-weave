@@ -170,12 +170,20 @@
         {
           "sql": {
             "db": "loreweave_glossary",
-            "statement": "UPDATE glossary_entities SET tags = ARRAY['ai-suggested'], status='draft' WHERE book_id='{book_id}'"
+            "statement": "UPDATE glossary_entities SET tags = ARRAY['ai-suggested'], status='draft' WHERE book_id='{book_id}' AND cached_name='Mira Solene'"
           }
         }
       ],
-      "falsifier": "REFUTED IF: the reply says nothing is waiting while the store holds three entities tagged 'ai-suggested' (the exact 2026-08-13 shape — an answer of 'you haven't declared any' over a populated table), OR the store changes on this read-intent turn, OR — the R2 question — the tool is never reached despite the request being a plain-English rendering of its own description.",
-      "ship_audit": null
+      "falsifier": "DISCRIMINATING SEED: three entities exist, exactly ONE (Mira Solene) is tagged 'ai-suggested'. REFUTED IF: the reply reports three entries awaiting review, or names Aldric Vane or Ember Codex as awaiting review — either means the answer came from the injected story_state block rather than from the inbox. Also refuted if the store changes on this read-intent turn.",
+      "ship_audit": null,
+      "answer_expect": {
+        "must_not_contain": [
+          "3 suggested",
+          "three suggested",
+          "3 entries",
+          "three entries"
+        ]
+      }
     },
     {
       "id": "glossary-ontology-upsert",

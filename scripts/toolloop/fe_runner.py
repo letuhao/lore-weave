@@ -548,6 +548,10 @@ def emit_batch(results, scenarios, batch_id: str) -> dict:
             # keyboard on both sides of the check — the measured fields and the asserted ones
             # would live in the same document, one save away from each other.
             "falsifier": sc.get("falsifier"),
+            # The machine-checkable half of the falsifier. Prose states what would refute the
+            # conclusion; this states it in terms the gate can evaluate against the recorded
+            # reply, so whether the falsifier FIRED is not my judgement call.
+            "answer_expect": sc.get("answer_expect"),
             # 🔴 STAMPED BY THE RUN, SO A LATER EDIT CANNOT HIDE. A falsifier written after the
             # results are in is not a falsifier, it is a description of what happened — and
             # `gate.py refresh` (which exists so a defect noticed while reading results need not
