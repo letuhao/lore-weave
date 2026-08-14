@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU adapter. It is the only thing left in T42, and X1 (PO) requires BOTH candidates before T43 picks one; a bake-off with one entrant is not a decision.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ **`T37` (CLOSED — all seven slices)** · ✅ `T38` · ✅ `T42a` · ✅ `T42b` · ✅ `T42c` · ✅ `T42d`.
+**RESUME: `T42` — the KUZU adapter, starting with `kuzu_bootstrap.py` (DDL + open/close, T42c's shape). The batch is MEASURED — see 📏 in the T42 row: kuzu 0.11.3 is schema-full, the port is closed and typed so the DDL derives from it, and the real constraint is that Kuzu is EMBEDDED and refuses a second handle on the same path. `kuzu` is not yet a declared dependency; adding it is part of the build.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ **`T37` (CLOSED — all seven slices)** · ✅ `T38` · ✅ `T42a` · ✅ `T42b` · ✅ `T42c` · ✅ `T42d`.
 🔻 **THE PLAN WAS UNDER-REPORTING BY THREE TASKS (2026-08-14).** The previous RESUME said *"T42b — put AGE in the image"*; T42b shipped **2026-08-12** with a 9/9 smoke. T42c and T42d had shipped the same day. All three were `[~]`, and `plan-row-honesty-gate` — the gate that exists for exactly this — ran **clean** the whole time, because it recognised one dialect of "done" and these blocks used another (`✅ DONE <date>` unbolded, `passed=9` rather than `9 passed`). Gate widened, bitten, and the flagged count went **0 → 5 of 23**; three were real and ticked after being **re-run**, two were genuine false positives resolved by reading the block, exactly as the gate's contract says.
 🔻 **T37 CLOSED 2026-08-14.** Two producers write roles; the plan retracts its own and **only** its own; the prompt change is MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286); and the revision is proved LIVE — where it immediately found that **the close had never worked once**: it closed at the same ordinal it opened at, glossary 422'd every attempt, and the pipeline swallowed it while six unit tests stayed green. Fixed, bitten, re-proved on real rows with 48 611 unmarked legacy facts untouched.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
@@ -9278,6 +9278,58 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### 📏 KUZU BATCH MEASURED 2026-08-14 (rule 8) — buildable, and the blocker is not the one recorded
+
+  ```
+  kuzu 0.11.3, probed directly:
+    FAIL  schemaless CREATE          Binder exception: Table Entity does not exist
+    FAIL  undeclared property        Binder exception: Cannot find property surprise for n
+    FAIL  CALL {} subquery           Parser exception
+    OK    CREATE NODE TABLE IF NOT EXISTS   (idempotent on re-run)
+    OK    MERGE ... ON CREATE SET / ON MATCH SET
+    OK    STRING[] list property, read back intact
+    OK    REL TABLE (FROM x TO y) + rel creation
+    OK    list_distinct(list_concat(...))   the port's union-merge contract
+    FAIL  second Database handle on one path   IO exception: Could not set lock on file
+  ```
+
+  The row above records Kuzu's gap as **`CALL {}` (14 sites)**. That is real but it is not the
+  interesting one: those 14 sites are in the **Neo4j** repos, and a fresh adapter written
+  against the port writes its own queries rather than porting theirs.
+
+  🔴 **THE SCHEMA MODEL WAS NEVER MEASURED, and it is the thing that decides the batch.**
+  Kuzu is **schema-full**: every node/rel table needs DDL first, and a property not named in
+  that DDL is rejected at bind time. Neo4j and AGE are schemaless and accept both. An adapter
+  that assumed the AGE shape would fail on its first write.
+
+  ✅ **And it turns out to be FINE, for a reason that is a property of this port rather than
+  luck.** `GraphStore`'s twenty methods take **closed, typed parameter lists** — there is no
+  free-form property bag anywhere on the surface, and `domain/graph_models.py` is Pydantic with
+  concrete field types. So the DDL is **derivable from the port itself** and cannot drift from
+  it. A port with an `attrs: dict[str, Any]` would have forced the arbitrary-attribute
+  question (Kuzu's `MAP(STRING, STRING)` exists but is string→string, so typed values would
+  have lost their types); this one never asks it. Checked before relying on it, because
+  "the port probably carries property bags" was the assumption this measurement started from
+  and it was wrong.
+
+  ⚠️ **THE REAL CONSTRAINT IS DEPLOYMENT, and it is measured rather than read off a doc.**
+  Kuzu is **embedded** — a directory on disk, not a server — and a second `Database` handle on
+  the same path is refused outright (`Could not set lock on file`). One process may hold the
+  graph. Today that is satisfied: `knowledge-service` is the only service with `NEO4J_URI` in
+  its environment, and its Dockerfile runs a bare `uvicorn app.main:app` with **no
+  `--workers`**. But nothing PINS that — adding `--workers 4`, or a second replica, breaks
+  Kuzu and nothing else. **This is exactly the kind of input X1 wanted T43 to weigh**, and it
+  is a property no amount of conformance-suite green can surface: an adapter that passes all
+  82 rules in one process still cannot be scaled out.
+
+  **The batch, now that it is sized:** a `kuzu_bootstrap.py` (DDL + open/close, mirroring
+  `age_bootstrap.py` — T42c's shape, for the same reason: per-engine setup that fails looking
+  like a missing graph) then the adapter's twenty methods, judged by T42a's conformance suite
+  parameterised over a third adapter. `kuzu` is **not yet a declared dependency** — it was
+  installed on the host to run this probe, and adding it to the service is part of the build,
+  not of the measurement.
+
   ### ✅ AGE ADAPTER DONE 2026-08-12 — `app/adapters/age_graph_store.py`
 
   **The second `GraphStore` adapter exists and passes the same conformance suite as the
