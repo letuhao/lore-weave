@@ -812,9 +812,17 @@ class KuzuGraphStore:
                 {"t": target_id, "u": user_id})
             if not tgt:
                 return None
-            await self._run(
-                "MERGE (s:ExtractionSource {id: $s}) ON CREATE SET s.user_id = $u",
+            # ⚠️ The source must ALREADY EXIST. Creating it here is what diverged from Neo4j,
+            # which treats an absent `ExtractionSource` as a MISS and returns None:
+            #     neo4j: [None, None]        kuzu: [(1, 0, True), (1, 0, False)]
+            # An adapter that mints the node it was asked to attach to turns a caller's mistake
+            # — evidence citing a source that was never recorded — into a silent success, and
+            # the provenance chain then points at a node nothing else knows about.
+            src = await self._run(
+                "MATCH (s:ExtractionSource) WHERE s.id = $s AND s.user_id = $u RETURN s.id",
                 {"s": source_id, "u": user_id})
+            if not src:
+                return None
             created = False
             seen = await self._run(
                 f"MATCH (n:{label})-[r:EVIDENCED_BY]->(s:ExtractionSource) "

@@ -163,8 +163,14 @@ async def store(request):
             _EXERCISED.add("kuzu")
             kz = KuzuGraphStore(conn)
 
-            async def _mk_kuzu_source(_u, _sid):
-                return None
+            async def _mk_kuzu_source(u, sid):
+                # Really creates it, as the AGE branch does. It was a no-op while the adapter
+                # silently minted missing sources; now that `add_evidence` correctly treats an
+                # absent source as a MISS (matching Neo4j), a no-op here would make the rule
+                # fail for the fixture's reason rather than the adapter's.
+                await kz._run(
+                    "MERGE (s:ExtractionSource {id: $s}) ON CREATE SET s.user_id = $u",
+                    {"s": sid, "u": u})
 
             kz._mk_source = _mk_kuzu_source            # type: ignore[attr-defined]
             yield kz

@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — ONE divergence left: `add_evidence`, on one seed. The Kuzu increment is guarded by an existence check under `_identity_lock` while Neo4j bumps in a single statement; **compare them on a REPEAT `job_id`** — the counter must bump only on create. Then the `EntityStatus` node table + transition write so `status_at_order` can stop refusing. `relations_for`, `update_event_fields`, `events_page` and `get_event` are all FIXED; the Kuzu differential is 6 passed / 1 failed.**
+**RESUME: `T43` — the Kuzu pairing is GREEN (495 passed, zero divergences). What remains is the `EntityStatus` node table + its transition write so `status_at_order` can stop refusing — it is the ONE operation Kuzu still declines, and until it lands the coverage floor cannot clear for the pairing that is otherwise equivalent. Then re-run the floor and record whether `cutover_permitted` can finally be true.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 49 of 90 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 50 of 91 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (4/10) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (5/11) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10324,7 +10324,25 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   check that they are ADAPTER differences, not more comparator noise. Isolating them is the
   point: before this, a real bug and a repr artifact were indistinguishable in the same list.
 
-  ⬜ **STILL OWED, suite RED on the Kuzu pairing.** Four real divergences, with what is known
+  ### ✅ T43-kuzu-green 2026-08-14 — **the Kuzu pairing is GREEN; zero divergences**
+
+  ```
+  495 passed / 370 skipped   the whole db suite, against a REAL Neo4j and a REAL Kuzu
+  108 passed                 differential + conformance + shadow, no divergence anywhere
+  ```
+
+  Six real adapter bugs, found by the differential and each fixed after being MEASURED:
+  `relations_for` read empty for two of three directions · `update_event_fields` returned the
+  wrong snapshot shape · `canonical_title` went stale on a title edit (which alone caused
+  `events_page` and `get_event` too) · `add_evidence` minted a source node the others require.
+
+  🔴 **Not one of them could have been caught by the conformance suite**, which is 30/30 green
+  on this adapter throughout. Every relation rule passes `direction="both"`; no rule covers
+  `status_at_order`; none re-reads after an edit. **Conformance proves an adapter obeys the
+  rules someone thought to write. The differential proves two engines agree.** They are
+  different questions and this row is the evidence.
+
+  ⬜ **STILL OWED, and no longer a divergence:** Four real divergences, with what is known
   about each recorded so the next cycle starts from data rather than a mystery:
 
   | operation | evidence | lead |
@@ -10332,7 +10350,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | `relations_for` | ✅ **FIXED — the arm labels were not the port's values.** `RelationDirection = Literal["outgoing","incoming","both"]`; the adapter's arms were `"out"`/`"in"`, so `direction="outgoing"` matched neither `"both"` nor `"out"`, **both arms were skipped and the read was ALWAYS EMPTY**. Five leads were eliminated on the way (trailing `SET`, unmapped endpoints, peer-exclusion timing, swallowed exception, unlabelled `peer`). |
   | `update_event_fields` | ✅ **FIXED — two causes.** The pre-edit snapshot returned the whole event; the contract is exactly `{title, summary, time_cue, event_date_iso, participants}`, and a richer snapshot is still a different one. Then `canonical_title` was left STALE on a title edit — and it is the identity key `merge_event` upserts on, so a stale one **silently splits the event into two on its next mention**. Fixing it also cleared `events_page` and `get_event`. |
   | `events_page` · `get_event` | ✅ **FIXED** by the `canonical_title` recompute above — they were reading the inconsistency, not creating one. |
-  | `add_evidence` | ⬜ **the last one**, one seed. The increment is guarded by an existence check under `_identity_lock` while Neo4j bumps in a single statement; compare on a REPEAT `job_id`. |
+  | `add_evidence` | ✅ **FIXED — the adapter was minting a node the others require.** `neo4j: [None, None]` vs `kuzu: [(1,0,True),(1,0,False)]`: Neo4j treats an absent `ExtractionSource` as a MISS; Kuzu created it and proceeded. An adapter that mints the node it was asked to attach to turns a caller's mistake — evidence citing a source never recorded — into a silent success, with the provenance chain pointing at a node nothing else knows about. |
 
   ✅ **PROBED 2026-08-14 — and the first lead was WRONG**, which is the point of probing:
 
