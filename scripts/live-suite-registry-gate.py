@@ -234,9 +234,16 @@ def check(reg: dict, workflow_text: str) -> list[str]:
 
 
 def selftest() -> int:
-    """Each rule, bitten. A gate is not trusted about the tree until it is."""
-    import yaml  # already proven importable by load_yaml's caller path
+    """Each rule, bitten. A gate is not trusted about the tree until it is.
 
+    No `import yaml` here. It had one — UNUSED, under a comment claiming it was
+    *"already proven importable by load_yaml's caller path"*, which is backwards:
+    `main` runs `selftest()` BEFORE it ever calls `load_yaml`. On a runner
+    without PyYAML that import made this gate die as a bare `Traceback` where
+    its siblings printed a reason, and the self-test cases below need no YAML at
+    all — they pass dicts. Second unused import to break something in one
+    session; the first failed the only CI job on the branch.
+    """
     ok_wf = """
       - name: run it
         env:
