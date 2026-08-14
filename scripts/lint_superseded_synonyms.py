@@ -61,11 +61,29 @@ def audit(cat: dict) -> list[dict]:
     return out
 
 
+def undeclared(cat: dict) -> list[str]:
+    """Federated tools that declare no synonyms at all.
+
+    🔴 WHY THIS IS A HARD CONTRACT AND NOT A NICETY, measured 2026-08-14. The surfacing design is
+    a small budgeted hot seed PLUS a lazy tail the model reaches through `tool_list`/`tool_load`.
+    Across 30 live runs of five ordinary authoring requests, `tool_list` was called ONCE and
+    `tool_load` NEVER — with both advertised on every run. So the tail is not a fallback in
+    practice; whatever the deterministic pre-filter puts on the wire is the entire reachable
+    catalogue for that turn.
+
+    A tool that declares nothing to match on therefore cannot be pre-filtered in, and nothing else
+    will fetch it. It is not "harder to reach" — it is unreachable on an ordinary turn.
+    """
+    return sorted(n for n, e in cat.items() if not _syn(e))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--catalog", default=str(CACHE))
     ap.add_argument("--max-orphans", type=int, default=None,
                     help="fail when more pairs than this orphan a phrasing (0 = strict)")
+    ap.add_argument("--max-undeclared", type=int, default=None,
+                    help="fail when more tools than this declare no synonyms (0 = strict)")
     a = ap.parse_args()
 
     p = pathlib.Path(a.catalog)
@@ -83,16 +101,27 @@ def main() -> int:
     if not bad:
         print("Every superseded tool's vocabulary is claimed by its successor.")
 
-    if a.max_orphans is None:
-        # Report-only by default: 59 of 62 fail today, so a strict gate would block every
-        # commit before the declarations are fixed. Pin --max-orphans in CI and ratchet it
-        # down; a number that only ever decreases is a fix in progress, and a silent report
-        # nobody enforces is not.
+    import collections
+    undec = undeclared(cat)
+    by_provider = collections.Counter(n.split("_")[0] for n in undec)
+    print(f"{len(undec)} of {len(cat)} tools declare NO synonyms "
+          f"({', '.join(f'{k} {v}' for k, v in by_provider.most_common(4))}) — unreachable on an "
+          "ordinary turn, because the lazy tail does not fire.")
+
+    if a.max_orphans is None and a.max_undeclared is None:
+        # Report-only by default: 59 of 62 pairs and 86 of 315 tools fail today, so a strict
+        # gate would block every commit before the declarations are written. Pin the numbers in
+        # CI and ratchet them down; a count that only ever decreases is a fix in progress, and
+        # a silent report nobody enforces is not.
         return 0
-    if len(bad) > a.max_orphans:
-        print(f"FAIL: {len(bad)} > --max-orphans {a.max_orphans}")
-        return 1
-    return 0
+    rc = 0
+    if a.max_orphans is not None and len(bad) > a.max_orphans:
+        print(f"FAIL: {len(bad)} orphaned pair(s) > --max-orphans {a.max_orphans}")
+        rc = 1
+    if a.max_undeclared is not None and len(undec) > a.max_undeclared:
+        print(f"FAIL: {len(undec)} undeclared tool(s) > --max-undeclared {a.max_undeclared}")
+        rc = 1
+    return rc
 
 
 if __name__ == "__main__":
