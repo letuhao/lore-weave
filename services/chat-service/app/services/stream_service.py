@@ -7081,6 +7081,11 @@ async def stream_response(
                 current_turn=int(_cur_turn or 0),
                 lore_gate=settings.t5_intent_gate_enabled and _grounding_presence.grounding_needed,
                 context_length=creds.context_length,
+                # W1's per-section split, so the safety net can tell "grounding returned lore"
+                # from "grounding returned only project instructions" — measured 2026-08-14 as
+                # total=50 / sections={instructions: 32} on every turn, with the block standing
+                # down and the turn carrying no lore at all.
+                sections=getattr(kctx, "sections", None),
             )
         except Exception:  # noqa: BLE001 — degrade to no-block, never break the turn
             logger.warning("story_state block projection skipped (error)", exc_info=True)
