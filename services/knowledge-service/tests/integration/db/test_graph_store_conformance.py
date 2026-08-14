@@ -572,6 +572,17 @@ _KUZU_CONFORMED = {
     "test_an_archived_entity_is_excluded_from_name_resolution_by_default",
     "test_archiving_another_users_entity_is_a_miss_not_a_write",
     "test_restore_undoes_an_archive",
+    # relations, added WITH the methods (T42-kuzu-4) rather than after — see the note above:
+    # a scope list that lags the implementation leaves rules unjudged and says nothing.
+    "test_as_of_respects_the_interval_start",
+    "test_a_positionless_edge_is_excluded_by_a_timed_read_but_not_by_a_head_read",
+    "test_low_confidence_edges_are_filtered_by_default",
+    "test_an_edge_to_an_ARCHIVED_peer_is_excluded",
+    "test_another_users_relations_are_not_returned",
+    "test_get_relation_finds_it_and_is_a_MISS_for_another_user",
+    "test_invalidate_hides_the_edge_from_ordinary_reads_and_is_idempotent",
+    "test_recreate_RESURRECTS_an_invalidated_edge_rather_than_duplicating_it",
+    "test_an_authored_relation_carries_its_story_position",
 }
 
 
@@ -603,8 +614,7 @@ async def test_kuzu_REFUSES_what_the_scope_list_skips():
     from app.adapters.kuzu_graph_store import KuzuGraphStore
 
     store = KuzuGraphStore(conn=None)
-    for op in ("upsert_relation", "relations_for", "get_relation", "invalidate_relation",
-               "recreate_relation", "events_page", "get_event", "merge_event",
+    for op in ("events_page", "get_event", "merge_event",
                "update_event_fields", "archive_event", "merge_fact", "facts_for",
                "add_evidence", "status_at_order", "events_in_window"):
         with pytest.raises(NotImplementedError, match="T42"):

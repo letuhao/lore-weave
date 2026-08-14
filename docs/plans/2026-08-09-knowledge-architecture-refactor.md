@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU adapter's RELATIONS (`upsert_relation`, `relations_for`, and the three corrections), which also unlocks `neighborhood`'s edge half. The entity surface is done and conformed on 6 of T42a's rules; add each new rule to `_KUZU_CONFORMED` in the same commit as the method, and keep `test_kuzu_REFUSES_what_the_scope_list_skips` shrinking with it so a skip can never become a pass.**
+**RESUME: `T42` — the KUZU adapter's EVENTS and FACTS (`merge_event`, `events_page`, `merge_fact`, `facts_for`, `add_evidence`, `status_at_order`, `events_in_window`), after which Kuzu is judged on T42a's whole suite rather than a named subset. Relations are done and conformed: 15 of T42a's rules pass as `[kuzu]`. Keep `_KUZU_CONFORMED` growing and the refusal list shrinking in the SAME commit as each method.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 52 of 92 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 53 of 93 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (5/8) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (6/9) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,50 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### ✅ T42-kuzu-4 2026-08-14 — relations, and Kuzu's two binding rules found by running it
+
+  ```
+  15 of T42a's rules PASS as [kuzu]  (6 entity + 9 relation) + the refusal test
+  137 passed  tests/integration/db/  — nothing else moved
+  ```
+
+  `upsert_relation`, `relations_for`, `get_relation`, `invalidate_relation`,
+  `recreate_relation`. The predicate is a PROPERTY on a fixed `:RELATES_TO` type, matching both
+  other adapters — and Kuzu could not do otherwise anyway: rel tables are declared up front, so
+  a type per predicate would mean DDL per domain verb.
+
+  🔻 **TWO KUZU BINDING RULES, neither documented where one looks, both found by running it:**
+  - **Parameters bind STRICTLY.** A key in the dict that the query never names is
+    `RuntimeError: Parameter vfo not found` — not a harmless extra. A read-back cannot reuse the
+    write's parameter dict, so each statement now gets exactly the keys it names.
+  - **A `CASE` type-checks BOTH arms.** `CASE WHEN $ev IS NULL THEN … ELSE [$ev] END` fails to
+    bind when `$ev` is NULL, because `[NULL]` infers `INT64[]`:
+    `Cannot bind LIST_CONCAT with parameter type STRING[] and INT64[]`. The NULL branches moved
+    into **Python**, so every parameter reaches Kuzu concretely typed. Neither adapter on a
+    schemaless engine has to think about this.
+
+  ⚠️ **Re-asserting an edge without a position must not STRIP one already there** — the defect
+  T36 fixed on the Neo4j authoring path. Expressed as an explicit `ON MATCH` branch chosen in
+  Python rather than a `coalesce`, so the intent survives a reader.
+
+  📋 **The scope list grew WITH the methods**, in this commit: nine relation rules added to
+  `_KUZU_CONFORMED`, and the same five operations removed from the refusal assertions. A scope
+  list that lags the implementation leaves rules unjudged and says nothing about it; a refusal
+  list that lags claims something is unbuilt when it is not. The adapter-level refusal test
+  caught exactly that and went red until it was shrunk — the discipline enforcing itself.
+
+  **BITE:** `valid_from_ordinal <= $ao` → `<` →
+  `FAILED test_as_of_respects_the_interval_start[kuzu]` **and**
+  `test_an_authored_relation_carries_its_story_position[kuzu]`. The half-open boundary is
+  pinned by two independent rules. Restored, green.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — still no service caller; the provider
+  returns Neo4j and wiring a candidate is T43's harness. **(c)** real Kuzu databases per test.
+
+  ⬜ **Next:** events and facts (`merge_event`, `events_page`, `merge_fact`, `facts_for`), after
+  which Kuzu is judged on the whole suite rather than a named subset.
+
 
   ### ✅ T42-kuzu-3 2026-08-14 — the entity surface, and it joins the conformance suite
 

@@ -140,6 +140,9 @@ async def test_a_name_full_of_quotes_round_trips_as_DATA(store):
 async def test_the_unwritten_operations_REFUSE_and_name_their_section(store):
     """Rule 9, and the reason it matters: a skip in the conformance suite must correspond to a
     real refusal, or "Kuzu is skipped here" quietly becomes "Kuzu passed"."""
-    for op in ("upsert_relation", "merge_event", "merge_fact", "facts_for", "add_evidence"):
+    # Shrinks as methods land — relations came off this list in the same commit that
+    # implemented them, which is the discipline: a stale refusal list is a claim that
+    # something is unbuilt when it is not.
+    for op in ("merge_event", "merge_fact", "facts_for", "add_evidence", "events_page"):
         with pytest.raises(NotImplementedError, match="T42"):
             await getattr(store, op)()

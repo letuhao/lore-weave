@@ -50,6 +50,14 @@ from app.domain.graph_models import Entity, EntityDetail, Relation
 
 __all__ = ["KuzuGraphStore"]
 
+#: ⚠️ Kuzu binds parameters STRICTLY: a key present in the dict but absent from the query is
+#: `RuntimeError: Parameter <name> not found`, not a harmless extra. So a read-back cannot
+#: reuse the write's parameter dict, and each statement is given exactly the keys it names.
+_REL_BY_TUPLE = (
+    "MATCH (s:Entity)-[r:RELATES_TO]->(o:Entity) WHERE s.id = $s AND o.id = $o "
+    "AND r.predicate = $p AND r.user_id = $u RETURN r, s.id AS sid, o.id AS oid"
+)
+
 #: Named once so a refusal cannot drift from the section that explains it.
 _UNIMPLEMENTED = (
     "see T42 · 'Kuzu's PRIMARY KEY collides with the port's identity model' and the slice that "
@@ -242,15 +250,174 @@ class KuzuGraphStore:
             {"id": canonical_id, "u": user_id})
         return _to_entity(self._props(rows[0])) if rows else None
 
+    # ── relations ─────────────────────────────────────────────────────────────────────────
+    async def upsert_relation(
+        self, *, user_id: str, subject_id: str, predicate: str, object_id: str,
+        confidence: float = 0.0, source_event_id: str | None = None,
+        valid_from_ordinal: int | None = None,
+    ) -> Relation:
+        """Create or update one edge.
+
+        The predicate is a PROPERTY on a fixed `:RELATES_TO` type, not the edge type — the
+        same choice both other adapters make, and the agreement is what lets T43 compare them
+        at all. Kuzu could not do otherwise anyway: rel tables are declared up front, so a
+        type per predicate would mean DDL per domain verb.
+
+        ⚠️ `valid_from_ordinal` is written only when supplied. Re-asserting an edge WITHOUT a
+        position must never STRIP one already there — that is the exact defect T36 fixed on
+        the Neo4j authoring path, and it is expressed here as an explicit `ON MATCH` CASE
+        rather than a `coalesce`, so the intent survives a reader.
+        """
+        params = {
+            "u": user_id, "s": subject_id, "o": object_id, "p": predicate,
+            "conf": float(confidence), "vfo": valid_from_ordinal,
+            "ev": source_event_id, "nid": str(uuid.uuid4()),
+        }
+        # ⚠️ The NULL branches are chosen in PYTHON, not in a Cypher CASE. Kuzu type-checks
+        # BOTH arms of a CASE regardless of which one runs, and `[$ev]` with `$ev` bound to
+        # NULL infers `INT64[]`, so the whole statement fails to bind:
+        #     Binder exception: Cannot bind LIST_CONCAT with parameter type STRING[] and INT64[]
+        # Building the two shapes here keeps every parameter concretely typed.
+        ev_create = "[$ev]" if source_event_id is not None else "CAST([] AS STRING[])"
+        ev_match = ("list_distinct(list_concat(r.source_event_ids, [$ev]))"
+                    if source_event_id is not None else "r.source_event_ids")
+        vfo_match = "$vfo" if valid_from_ordinal is not None else "r.valid_from_ordinal"
+        keys = ["u", "s", "o", "p", "conf", "nid"]
+        if source_event_id is not None:
+            keys.append("ev")
+        if valid_from_ordinal is not None:
+            keys.append("vfo")
+        await self._run(
+            "MATCH (s:Entity), (o:Entity) WHERE s.id = $s AND s.user_id = $u "
+            "AND o.id = $o AND o.user_id = $u "
+            "MERGE (s)-[r:RELATES_TO {predicate: $p, user_id: $u}]->(o) "
+            f"ON CREATE SET r.id = $nid, r.confidence = $conf, r.source_event_ids = {ev_create}"
+            + (", r.valid_from_ordinal = $vfo " if valid_from_ordinal is not None else " ")
+            + f"ON MATCH SET r.confidence = $conf, r.valid_from_ordinal = {vfo_match}, "
+            f"  r.source_event_ids = {ev_match}",
+            {k: params[k] for k in keys})
+        rows = await self._run(_REL_BY_TUPLE, {k: params[k] for k in ("s", "o", "p", "u")})
+        return self._to_relation(rows[0])
+
+    async def relations_for(
+        self, *, user_id: str, entity_id: str, project_id: str | None = None,
+        direction: str = "both", min_confidence: float = 0.8,
+        as_of: int | None = None, limit: int = 100,
+    ) -> list[Relation]:
+        """This entity's edges. `as_of=None` reads the HEAD.
+
+        With `as_of=N` the window is HALF-OPEN — `valid_from_ordinal <= N < valid_to_ordinal`
+        — and a POSITIONLESS edge is EXCLUDED. That exclusion is the point rather than an
+        omission: an edge with no position cannot be placed on the axis, and returning it
+        would mix untimed legacy data into an answer whose whole value is that it is timed.
+        """
+        out: list[Relation] = []
+        arms = (("out", "(e)-[r:RELATES_TO]->(peer)"), ("in", "(peer)-[r:RELATES_TO]->(e)"))
+        for arm, pattern in arms:
+            if direction not in ("both", arm):
+                continue
+            where = ["e.id = $id", "e.user_id = $u", "r.user_id = $u",
+                     "r.confidence >= $mc", "r.valid_until IS NULL",
+                     # An edge to an entity the author archived must not surface: the peer is
+                     # gone from every other read, and a canon check handed it would enforce
+                     # a tie the book retired.
+                     "peer.archived_at IS NULL"]
+            params: dict[str, Any] = {"id": entity_id, "u": user_id,
+                                      "mc": float(min_confidence), "lim": int(limit)}
+            if as_of is not None:
+                where += ["r.valid_from_ordinal IS NOT NULL", "r.valid_from_ordinal <= $ao",
+                          "(r.valid_to_ordinal IS NULL OR $ao < r.valid_to_ordinal)"]
+                params["ao"] = int(as_of)
+            if project_id is not None:
+                where.append("e.project_id = $p")
+                params["p"] = project_id
+            rows = await self._run(
+                f"MATCH (e:Entity), {pattern} WHERE {' AND '.join(where)} "
+                "RETURN r, e.id AS eid, peer.id AS pid LIMIT $lim", params)
+            for row in rows:
+                sid = row["eid"] if arm == "out" else row["pid"]
+                oid = row["pid"] if arm == "out" else row["eid"]
+                out.append(self._to_relation({**row, "sid": sid, "oid": oid}))
+        return out[:limit]
+
+    async def get_relation(self, *, user_id: str, relation_id: str) -> Relation | None:
+        """`None` is a MISS, never a permission error — a caller must not be able to learn
+        that someone else's relation exists."""
+        rows = await self._run(
+            "MATCH (s:Entity)-[r:RELATES_TO]->(o:Entity) WHERE r.id = $r AND r.user_id = $u "
+            "RETURN r, s.id AS sid, o.id AS oid", {"r": relation_id, "u": user_id})
+        return self._to_relation(rows[0]) if rows else None
+
+    async def invalidate_relation(
+        self, *, user_id: str, relation_id: str, valid_until: Any = None,
+    ) -> Relation | None:
+        """Soft-invalidate by stamping `valid_until`. IDEMPOTENT — re-invalidating moves the
+        instant rather than failing, because a correction that errors on a repeat is one that
+        cannot be retried after a timeout.
+
+        ⚠️ This closes the WALL-CLOCK interval, not the STORY interval (`valid_to_ordinal`).
+        Two axes, two closes; conflating them is what T45 exists to prevent.
+        """
+        rows = await self._run(
+            "MATCH (s:Entity)-[r:RELATES_TO]->(o:Entity) WHERE r.id = $r AND r.user_id = $u "
+            "SET r.valid_until = CASE WHEN $vu IS NULL THEN current_timestamp() ELSE $vu END "
+            "RETURN r, s.id AS sid, o.id AS oid",
+            {"r": relation_id, "u": user_id, "vu": valid_until})
+        return self._to_relation(rows[0]) if rows else None
+
+    async def recreate_relation(
+        self, *, user_id: str, subject_id: str, predicate: str, object_id: str,
+        source_chapter: str | None = None, valid_from_ordinal: int | None = None,
+    ) -> Relation | None:
+        """The AUTHOR-asserted edge: confidence 1.0, and it RESURRECTS `valid_until` to NULL.
+
+        Separate from `upsert_relation` on purpose. An extraction writer re-mentioning a pair
+        must never revive an edge a human removed, and a shared entry point with a boolean
+        would make that one wrong argument away.
+        """
+        params = {"u": user_id, "s": subject_id, "o": object_id, "p": predicate,
+                  "vfo": valid_from_ordinal, "sc": source_chapter, "nid": str(uuid.uuid4())}
+        exists = await self._run(
+            "MATCH (s:Entity), (o:Entity) WHERE s.id = $s AND s.user_id = $u "
+            "AND o.id = $o AND o.user_id = $u RETURN s.id",
+            {k: params[k] for k in ("s", "o", "u")})
+        if not exists:
+            return None
+        vfo_set = "$vfo" if valid_from_ordinal is not None else "r.valid_from_ordinal"
+        keys2 = ["u", "s", "o", "p", "sc", "nid"] + (
+            ["vfo"] if valid_from_ordinal is not None else [])
+        await self._run(
+            "MATCH (s:Entity), (o:Entity) WHERE s.id = $s AND s.user_id = $u "
+            "AND o.id = $o AND o.user_id = $u "
+            "MERGE (s)-[r:RELATES_TO {predicate: $p, user_id: $u}]->(o) "
+            "ON CREATE SET r.id = $nid, r.source_event_ids = CAST([] AS STRING[]) "
+            "SET r.confidence = 1.0, r.valid_until = NULL, r.source_chapter = $sc, "
+            f"  r.valid_from_ordinal = {vfo_set}",
+            {k: params[k] for k in keys2})
+        rows = await self._run(_REL_BY_TUPLE, {k: params[k] for k in ("s", "o", "p", "u")})
+        return self._to_relation(rows[0]) if rows else None
+
+    @staticmethod
+    def _to_relation(row: dict) -> Relation:
+        r = dict(row.get("r") or {})
+        return Relation.model_validate({
+            "id": r.get("id") or "",
+            "user_id": r.get("user_id") or "",
+            "subject_id": row.get("sid") or "",
+            "object_id": row.get("oid") or "",
+            "predicate": r.get("predicate") or "",
+            "confidence": r.get("confidence") or 0.0,
+            "source_event_ids": list(r.get("source_event_ids") or []),
+            "source_chapter": r.get("source_chapter"),
+            "valid_until": r.get("valid_until"),
+            "valid_from_ordinal": r.get("valid_from_ordinal"),
+            "valid_to_ordinal": r.get("valid_to_ordinal"),
+        })
+
     # ── not yet written — each RAISES rather than half-honouring (rule 9) ──────────────────
     def _refuse(self, op: str) -> Any:
         raise NotImplementedError(f"KuzuGraphStore.{op} — {_UNIMPLEMENTED}")
 
-    async def upsert_relation(self, **kw: Any) -> Any: self._refuse("upsert_relation")
-    async def relations_for(self, **kw: Any) -> Any: self._refuse("relations_for")
-    async def get_relation(self, **kw: Any) -> Any: self._refuse("get_relation")
-    async def invalidate_relation(self, **kw: Any) -> Any: self._refuse("invalidate_relation")
-    async def recreate_relation(self, **kw: Any) -> Any: self._refuse("recreate_relation")
     async def events_page(self, **kw: Any) -> Any: self._refuse("events_page")
     async def get_event(self, **kw: Any) -> Any: self._refuse("get_event")
     async def merge_event(self, **kw: Any) -> Any: self._refuse("merge_event")
