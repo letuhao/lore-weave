@@ -1008,8 +1008,12 @@ def _narrated_uncalled_writes(
     * the token is a REAL tool in this turn's catalog (not a plausible-looking invention —
       an invented name is a different bug with its own honest message at the dispatch
       chokepoint, and must not be confused with this one);
-    * its tier is a WRITE (A/W/S). A read named-but-not-called is harmless: nothing was
-      claimed to have changed, so there is nothing for the author to go and not find;
+    * its tier is a WRITE (A/W/S). A read named-but-not-called is a DIFFERENT failure with a
+      different remedy, and it is NOT harmless — this docstring used to say it was ("nothing
+      was claimed to have changed, so there is nothing for the author to go and not find"),
+      and DQ-T30 measured the harm directly: the store is untouched and the ANSWER is false.
+      It is handled by `_unanswered_data_question_reads` below, keyed on the request rather
+      than on the prose;
     * it is absent from `attempted` — successes AND failures both count as attempted,
       because a model that TRIED and got a real error already has honest feedback to
       report, and nudging it there would just be noise.
@@ -1019,6 +1023,66 @@ def _narrated_uncalled_writes(
         nm for nm in named & set(catalog_index)
         if nm not in attempted and tool_tier(catalog_index[nm]) in ("A", "W", "S")
     )
+
+
+# DQ-T30 — one nudge per turn, for exactly the reason the write twin above is capped at one:
+# a guard that exists to stop a model answering without looking must never itself become the
+# loop it prevents.
+DATA_QUESTION_NUDGE_CAP = 1
+
+
+def _unanswered_data_question_reads(
+    request_text: str | None, *, catalog_index: dict, attempted: set[str],
+    on_wire: set[str],
+) -> list[str]:
+    """The READ tools whose OWN declared vocabulary answers THIS request, when the turn called
+    NONE of them — i.e. the model is about to answer a data question from conversation memory.
+
+    🔴 THE READ-SIDE TWIN OF D-NARRATED-WRITE, AND THE HARM IS THE ANSWER RATHER THAN THE STORE.
+    `_narrated_uncalled_writes` catches "claimed a write it never made". This catches "stated the
+    data without reading it". The store is untouched, so every write-side guard is silent by
+    construction — and the author is told something false about their own book.
+
+    MEASURED 2026-08-13 (session 019ff929, book 019ff8f5), with TWO active canon_rule rows in the
+    store. Turn A, rail-driven: the tool ran, the answer was right. Turn B, the rail now complete
+    and correctly not driving: ZERO tool calls, answered *"one rule"* — the count from the earlier
+    turn. Turn C, told a rule had been added: ZERO tool calls, claimed *"I have checked your
+    consistency rules again"*, and INVENTED a plausible second rule paraphrased out of the chapter
+    prose. Conversation memory went stale the moment the store changed outside the chat, and
+    nothing was accountable for re-reading it.
+
+    Owner's decision on DQ-T30, 2026-08-14: option (c) — **a question naming stored data must be
+    answered from a tool call in THIS turn, independent of any rail.** So this guard deliberately
+    takes NO rail input. The two rail-scoped options were rejected precisely because a completed
+    rail is the case that fails: it is right for a finished rail to stop driving, and wrong for
+    the turn to stop reading.
+
+    Mechanical, with no NLP and no tense-guessing — the four conditions are:
+
+    * the request matches the tool's OWN declared synonyms (`answerable_tools`, the same signal
+      R1 already trusts to decide the surface). The platform's machine-readable statement that
+      this request names stored data; never a keyword list maintained here, which would rot as
+      domains are added;
+    * the tool's tier is READ. A write matched by the same words is the sister guard's business,
+      and nudging a write from a question would be this loop's own worst defect;
+    * NONE of those reads is in `attempted` — successes AND failures both count, exactly as the
+      sister guard counts them: a model that TRIED and got a real error already has honest
+      feedback, and one that read ANY of the answering tools has satisfied (c);
+    * the tool is already ON THE WIRE. A directive to call a withheld tool is empty ceremony, and
+      an answerable read that is withheld is a SURFACING defect with its own row (that is R1's
+      job, and the v1/v2 incidents) — not this one. Keeping them separate is what stops one
+      guard's nudge from papering over the other's bug.
+    """
+    if not request_text or not catalog_index:
+        return []
+    reads = {
+        nm for nm in answerable_tools(request_text, list(catalog_index.values()))
+        if nm in catalog_index and tool_tier(catalog_index[nm]) == "R"
+    }
+    # ANY answering read having run satisfies (c) — the question was served from this turn.
+    if not reads or (reads & attempted):
+        return []
+    return sorted(reads & on_wire)
 
 
 #: A catalog name must be at least this long, and contain an underscore, before a literal
@@ -2976,6 +3040,7 @@ async def _stream_with_tools(
         turn_succeeded: Counter = Counter()
         rail_redrive_count = 0           # per-turn cap on how many times the server re-drives
         narrated_write_nudges = 0        # D-NARRATED-WRITE — per-turn cap (see the guard)
+        data_question_nudges = 0         # DQ-T30 — per-turn cap (see the guard)
         # D-NARRATED-WRITE — every pass's prose, accumulated for the WHOLE turn.
         # `text_parts` is re-created per pass, so scanning it alone misses the common
         # case: the model announces the write in one pass ("I will now create the 5
@@ -3941,6 +4006,73 @@ async def _stream_with_tools(
                             "Do not re-read anything — you have already read enough. Never "
                             "report a change as done, and never tell the author to go and "
                             "check for it, unless a tool call actually returned a result."
+                        )})
+                        continue
+
+                # DQ-T30 — the model is about to END the turn answering a question whose own
+                # words match a READ tool's declared vocabulary, having called none of them. The
+                # store is untouched, so every write-side guard above is silent by construction,
+                # and the failure is in the ANSWER: measured live, "one rule" when the store held
+                # two, then a wholly invented second rule. See _unanswered_data_question_reads.
+                #
+                # Runs only when the write guards did not claim the turn: a narrated write is the
+                # more damaging failure and owns the single directive slot when both are true.
+                _unread = _unanswered_data_question_reads(
+                    request_text,
+                    catalog_index=cat_index,
+                    attempted=turn_attempted,
+                    on_wire=active_tool_names,
+                )
+                if _unread:
+                    _dq_guards = {
+                        "under_cap": data_question_nudges < DATA_QUESTION_NUDGE_CAP,
+                        "not_last_iter": not last_iter,
+                        "passes_left": write_passes < max_iterations - 1,
+                    }
+                    if not all(_dq_guards.values()):
+                        # Same discipline as the sister guard: a guard that declines silently is
+                        # indistinguishable from one that saw nothing.
+                        logger.warning(
+                            "DQ-T30 (session=%s): %s answer(s) this request and none ran — "
+                            "NOT nudging, held by: %s",
+                            session_id, _unread,
+                            ", ".join(k for k, v in _dq_guards.items() if not v),
+                        )
+                    else:
+                        data_question_nudges += 1
+                        logger.warning(
+                            "DQ-T30 (session=%s): the turn is ending with a data question "
+                            "answered from memory — %s declare(s) this request and none was "
+                            "called; nudging once",
+                            session_id, _unread,
+                        )
+                        if trace is not None:
+                            trace.add("compile", "T6", "tools",
+                                      f"data_question:{','.join(_unread)}", is_error=True)
+                        working.append({"role": "assistant", "content": "".join(text_parts)})
+                        _directive_before_this_pass = True  # D-FJ-19
+                        working.append({"role": "user", "content": (
+                            # It asserts ONLY what was measured — these tools declare this
+                            # request, and none of them ran. It does NOT accuse the model of
+                            # having claimed anything: the runtime did not read the prose here,
+                            # and asserting an unmeasured claim is the false-report defect this
+                            # loop has already fixed three times, pointed the other way.
+                            "[SYSTEM DIRECTIVE] You are answering a question about stored data "
+                            "without having read it on this turn. "
+                            f"{', '.join(_unread)} "
+                            + ("is" if len(_unread) == 1 else "are")
+                            + " available to you right now and "
+                            + ("declares" if len(_unread) == 1 else "declare")
+                            + " exactly this request.\n"
+                            "Anything you remember from earlier in this conversation may be "
+                            "out of date — the book can change outside this chat, and a "
+                            "journey that has finished no longer re-reads anything.\n"
+                            "Do ONE of these, and nothing else:\n"
+                            "(a) call the tool now and answer from what it returns; or\n"
+                            "(b) if you genuinely cannot, tell the author plainly that you did "
+                            "NOT re-read, and that your answer may be stale.\n"
+                            "Never state a count, a name, or a detail from this book unless a "
+                            "tool call on THIS turn returned it."
                         )})
                         continue
 

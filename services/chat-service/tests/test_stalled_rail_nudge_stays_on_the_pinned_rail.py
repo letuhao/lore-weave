@@ -265,8 +265,29 @@ class TestTwoPassesAreNotWeldedIntoOneSentence:
                / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
         assert "                            and _directive_before_this_pass" in src
         assert '_delta = "' + chr(92) + 'n' + chr(92) + 'n" + _delta.lstrip()' in src
-        # both injection sites must arm it, or the seam is dead for one of them
-        assert src.count("_directive_before_this_pass = True  # D-FJ-19") == 2
+        # EVERY injection site must arm it, or the seam is dead for that one.
+        #
+        # This used to assert a literal `== 2`, which is the instance rather than the rule the
+        # line above it states. DQ-T30 added a THIRD directive site (the data-question nudge),
+        # armed correctly, and the count still went red — a test that fails on a conforming
+        # change teaches the next author to edit the number, which is how the real guarantee
+        # gets quietly dropped. Pairing the two counts is strictly STRONGER than any literal:
+        # a new site that forgets to arm cannot satisfy it at any count.
+        lines = src.splitlines()
+        injections = [i for i, ln in enumerate(lines)
+                      if 'working.append({"role": "user"' in ln]
+        armed = [i for i, ln in enumerate(lines)
+                 if "_directive_before_this_pass = True  # D-FJ-19" in ln]
+        assert len(injections) >= 2, "the two known directive sites must still be here"
+        assert len(armed) == len(injections), (
+            f"{len(injections)} directive injection site(s) but {len(armed)} armed — "
+            "an unarmed site means the seam silently welds two passes into one sentence"
+        )
+        for i in injections:
+            assert any(abs(i - a) <= 2 for a in armed), (
+                f"the directive injected at line {i + 1} is not armed within two lines; "
+                "a distant arming line is how a later edit separates the pair"
+            )
 
     def test_the_seam_rule_itself(self):
         """The rule as a pure function of its inputs, so the intent is pinned independently of
