@@ -57,6 +57,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # five are rows that shipped and sat `[~]` (T38, T42a-d). Blocking is fair because the remedy
 # is three keystrokes and the gate prints all three options.
 "$PY" "$ROOT/scripts/plan-row-honesty-gate.py" --staged
+# The run-state progress line is DERIVED from the checkboxes, not hand-written. It replaced a
+# curated `✅ A8 · ✅ T24b · …` tail that drifted for two days -- the second copy CLAUDE.md
+# warns about ("duplicated goes stale in one copy and then actively misleads"). It lists what
+# is OPEN rather than what is done, on purpose: nobody notices an absence from a done-list,
+# which is precisely how T42b hid; a row you just finished sitting under **OPEN** is loud.
+"$PY" "$ROOT/scripts/plan-progress-block.py" --check
 # T37b/SPEC 4.2c -- the cast-prompt eval's OFFLINE selftest (0.7s; the model arms are opt-in
 # and are not run here). Wired because the thing it guards fails SILENTLY: the eval builds its
 # control arm by removing the `roles` spans from the LIVE prompt, so an unrelated edit to
