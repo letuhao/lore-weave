@@ -1,0 +1,263 @@
+"""`GraphStore` on Kuzu — the second X1 candidate (plan T42).
+
+The entity surface is implemented; every other operation RAISES naming its section, which is
+this repo's convention for an adapter that cannot honour something (`AgeGraphStore` refuses the
+two event writes the same way). Refusing is not a gap to be embarrassed about: a half-written
+operation that accepts a flag it does not honour is how a book ends up with no history and a
+timeline that reports as working.
+
+THREE THINGS THIS ADAPTER DOES THAT NEITHER OTHER ONE DOES, each measured before it was written
+------------------------------------------------------------------------------------------
+**1 · Identity is MATCH-then-CREATE, not MERGE.** Kuzu demands the primary key in every MERGE:
+
+    MERGE (n:Entity {user_id:…, canonical_name:…, kind:…}) ON CREATE SET n.id = <uuid>
+      -> Binder exception: Create node n expects primary key id as input.
+
+and it offers no uniqueness constraint on a non-PK column (`UNIQUE(a)` is a parser error). The
+port MERGEs on the IDENTITY TUPLE on purpose — `age_graph_store` records why: *"the derived-id
+scheme is what T35 is retiring, and repeating it here would build the second adapter on the
+defect the first one is being cured of."* Making the PK `hash(user, project, canonical_name,
+kind)` is therefore the one escape that must not be taken. So: look up by the tuple, create with
+a fresh UUID when absent, and MERGE by the now-known PK to update.
+
+**2 · That read-then-write is serialised, and Kuzu's own limitation is what makes it sound.**
+With no unique index to lean on, the sequence is only safe if writers cannot interleave. Kuzu
+guarantees exactly that ACROSS processes — one `Database` handle per path, enforced by a file
+lock. WITHIN the process it guarantees nothing about two async tasks, so `_identity_lock` closes
+that half. The limitation and the workaround are the same fact, and the lock is a cost the other
+two adapters do not pay: a T43 input, not an implementation detail.
+
+**3 · Every call runs in a thread.** `kuzu.Connection.execute` is SYNCHRONOUS (verified:
+`inspect.iscoroutinefunction` is False). Awaiting it directly would block the event loop for the
+duration of every graph query — the whole service, not just this call. `asyncio.to_thread` is
+the boundary.
+
+⚠️ QUERIES ARE PARAMETERISED, WITHOUT EXCEPTION. This repo has already shipped a SQL injection
+in `age_graph_store` and had to fix it; that adapter interpolates through a `_lit()` helper
+because AGE's cypher() takes a string literal, which is the shape that went wrong. Kuzu takes
+real parameters, so there is no reason to build strings — verified with a name containing
+`'; DROP TABLE Entity; --`, which round-trips as data.
+"""
+from __future__ import annotations
+
+import asyncio
+import uuid
+from typing import Any
+
+from loreweave_extraction.canonical import canonicalize_entity_name
+
+from app.domain.graph_models import Entity, EntityDetail, Relation
+
+__all__ = ["KuzuGraphStore"]
+
+#: Named once so a refusal cannot drift from the section that explains it.
+_UNIMPLEMENTED = (
+    "see T42 · 'Kuzu's PRIMARY KEY collides with the port's identity model' and the slice that "
+    "follows it. The entity surface is implemented; this operation is not yet written. Refusing "
+    "rather than half-writing, exactly as AgeGraphStore refuses the event writes."
+)
+
+
+def _to_entity(row: dict) -> Entity:
+    """One node's properties → the domain model. Mirrors `age_graph_store._to_entity` field for
+    field: two adapters that disagree about defaults would pass the conformance suite
+    separately and diverge in production."""
+    return Entity.model_validate({
+        "id": row.get("id") or "",
+        "user_id": row.get("user_id") or "",
+        "project_id": row.get("project_id"),
+        "name": row.get("name") or "",
+        "canonical_name": row.get("canonical_name") or "",
+        "kind": row.get("kind") or "",
+        "aliases": list(row.get("aliases") or []),
+        "canonical_version": row.get("canonical_version") or 1,
+        "source_types": list(row.get("source_types") or []),
+        "confidence": row.get("confidence") or 0.0,
+        "glossary_entity_id": row.get("glossary_entity_id"),
+        "anchor_score": row.get("anchor_score") or 0.0,
+        "archived_at": row.get("archived_at"),
+        "archive_reason": row.get("archive_reason"),
+    })
+
+
+class KuzuGraphStore:
+    """`GraphStore` over an embedded Kuzu database.
+
+    Takes an open connection rather than a path: the file lock means the process may hold
+    exactly one, so ownership belongs to whoever opened it (`kuzu_bootstrap.open_kuzu`). An
+    adapter that opened its own would make a second instance impossible to construct, and the
+    error would read like corruption.
+    """
+
+    def __init__(self, conn: Any) -> None:
+        self._conn = conn
+        #: Guards MATCH-then-CREATE. See point 2 in the module docstring — without it, two
+        #: async tasks resolving the same name both miss the lookup and both create, and the
+        #: identity tuple has no unique index to catch the duplicate.
+        self._identity_lock = asyncio.Lock()
+
+    # ── plumbing ──────────────────────────────────────────────────────────────────────────
+    async def _run(self, query: str, params: dict | None = None) -> list[dict]:
+        """Execute off the event loop and return rows as dicts."""
+        def _sync() -> list[dict]:
+            res = self._conn.execute(query, parameters=params or {})
+            cols = res.get_column_names()
+            out = []
+            while res.has_next():
+                out.append(dict(zip(cols, res.get_next())))
+            return out
+
+        return await asyncio.to_thread(_sync)
+
+    @staticmethod
+    def _props(row: dict, alias: str = "n") -> dict:
+        """`RETURN n` yields one column holding the node; unwrap it to a flat dict."""
+        node = row.get(alias)
+        return dict(node) if isinstance(node, dict) else row
+
+    # ── entities ──────────────────────────────────────────────────────────────────────────
+    async def resolve_or_merge_entity(
+        self, *, user_id: str, project_id: str | None, name: str, kind: str,
+        source_type: str, confidence: float = 0.0, auto_created: bool = False,
+        provenance: str = "human_authored", job_id: str | None = None,
+    ) -> Entity:
+        """Idempotent upsert keyed on (user, project, canonical name, kind).
+
+        `source_types` ACCUMULATE and `confidence` is a MAX — the conformance suite asserts
+        both, and they are what distinguish an upsert from an adapter that rebuilds the object
+        at the same key. Kuzu expresses the accumulation directly, which AGE could not:
+        `list_distinct(list_concat(...))`.
+        """
+        canonical = canonicalize_entity_name(name)
+        key = {"u": user_id, "p": project_id, "c": canonical, "k": kind}
+        async with self._identity_lock:
+            found = await self._run(
+                "MATCH (n:Entity) WHERE n.user_id = $u AND n.canonical_name = $c "
+                "AND n.kind = $k AND ((n.project_id IS NULL AND $p IS NULL) "
+                "OR n.project_id = $p) RETURN n", key)
+            if not found:
+                await self._run(
+                    "CREATE (n:Entity {id: $id, user_id: $u, project_id: $p, name: $name, "
+                    "canonical_name: $c, kind: $k, source_types: $st, confidence: $conf, "
+                    "auto_created: $auto, provenance: $prov, job_id: $job, "
+                    "canonical_version: 1, aliases: [], anchor_score: 0.0, "
+                    "evidence_count: 0, mention_count: 0, version: 1, user_edited: false})",
+                    {**key, "id": str(uuid.uuid4()), "name": name, "st": [source_type],
+                     "conf": float(confidence), "auto": bool(auto_created),
+                     "prov": provenance, "job": job_id})
+            else:
+                # By the PRIMARY KEY now that it is known — the shape Kuzu accepts.
+                await self._run(
+                    "MATCH (n:Entity) WHERE n.id = $id SET "
+                    "n.source_types = list_distinct(list_concat(n.source_types, $st)), "
+                    "n.confidence = CASE WHEN n.confidence >= $conf THEN n.confidence "
+                    "ELSE $conf END",
+                    {"id": self._props(found[0])["id"], "st": [source_type],
+                     "conf": float(confidence)})
+            rows = await self._run(
+                "MATCH (n:Entity) WHERE n.user_id = $u AND n.canonical_name = $c "
+                "AND n.kind = $k AND ((n.project_id IS NULL AND $p IS NULL) "
+                "OR n.project_id = $p) RETURN n", key)
+        return _to_entity(self._props(rows[0]))
+
+    async def find_entities_by_name(
+        self, *, user_id: str, project_id: str | None, name: str,
+        include_archived: bool = False, exclude_project_ids: list[str] | None = None,
+    ) -> list[Entity]:
+        """Canonical-name and display-name matches, archived excluded by default.
+
+        `exclude_project_ids` is why this adapter scopes projects with a COLUMN rather than a
+        database per project (see `kuzu_bootstrap`): the operation asks one question of several
+        projects at once, which per-project databases make unimplementable.
+        """
+        q = ["MATCH (n:Entity) WHERE n.user_id = $u AND (n.canonical_name = $c OR n.name = $n)"]
+        params: dict[str, Any] = {"u": user_id, "c": canonicalize_entity_name(name), "n": name}
+        if project_id is not None:
+            q.append("AND n.project_id = $p")
+            params["p"] = project_id
+        if not include_archived:
+            q.append("AND n.archived_at IS NULL")
+        if exclude_project_ids:
+            q.append("AND (n.project_id IS NULL OR NOT list_contains($ex, n.project_id))")
+            params["ex"] = list(exclude_project_ids)
+        rows = await self._run(" ".join(q) + " RETURN n", params)
+        return [_to_entity(self._props(r)) for r in rows]
+
+    async def neighborhood(
+        self, *, user_id: str, glossary_entity_id: str, project_id: str | None = None,
+        rel_cap: int = 50,
+    ) -> EntityDetail | None:
+        """One entity plus its capped one-hop neighbourhood.
+
+        `rel_cap` is contract, not tuning: this feeds a context block, and an uncapped
+        neighbourhood on a hub entity is how a prompt budget disappears. The TOTAL is counted
+        separately from the capped page, so `relations_truncated` is a fact rather than
+        `len(page) == cap` — which is wrong exactly when the count equals the cap.
+        """
+        params: dict[str, Any] = {"u": user_id, "g": glossary_entity_id}
+        scope = ""
+        if project_id is not None:
+            scope, params["p"] = " AND n.project_id = $p", project_id
+        rows = await self._run(
+            f"MATCH (n:Entity) WHERE n.user_id = $u AND n.glossary_entity_id = $g{scope} "
+            "RETURN n", params)
+        if not rows:
+            return None
+        ent = _to_entity(self._props(rows[0]))
+        total = (await self._run(
+            "MATCH (s:Entity)-[r:RELATES_TO]->(o:Entity) WHERE s.id = $id AND r.user_id = $u "
+            "RETURN count(r) AS c", {"id": ent.id, "u": user_id}))[0]["c"]
+        edges = await self._run(
+            "MATCH (s:Entity)-[r:RELATES_TO]->(o:Entity) WHERE s.id = $id AND r.user_id = $u "
+            "RETURN r, o.id AS oid LIMIT $cap",
+            {"id": ent.id, "u": user_id, "cap": int(rel_cap)})
+        rels = [
+            Relation.model_validate({
+                "id": dict(e["r"]).get("id") or "", "user_id": user_id,
+                "subject_id": ent.id, "object_id": e["oid"],
+                "predicate": dict(e["r"]).get("predicate") or "",
+                "confidence": dict(e["r"]).get("confidence") or 0.0,
+            })
+            for e in edges
+        ]
+        return EntityDetail(entity=ent, relations=rels,
+                            relations_truncated=total > len(rels), total_relations=total)
+
+    async def archive_entity(
+        self, *, user_id: str, canonical_id: str, reason: str,
+    ) -> Entity | None:
+        """Soft-delete. `reason` is required because the archive is auditable — an entity that
+        vanished with no reason cannot be told from one lost to a bug."""
+        rows = await self._run(
+            "MATCH (n:Entity) WHERE n.id = $id AND n.user_id = $u "
+            "SET n.archived_at = current_timestamp(), n.archive_reason = $r RETURN n",
+            {"id": canonical_id, "u": user_id, "r": reason})
+        return _to_entity(self._props(rows[0])) if rows else None
+
+    async def restore_entity(self, *, user_id: str, canonical_id: str) -> Entity | None:
+        """Undo an archive. `None` when the id does not exist or is not this user's."""
+        rows = await self._run(
+            "MATCH (n:Entity) WHERE n.id = $id AND n.user_id = $u "
+            "SET n.archived_at = NULL, n.archive_reason = NULL RETURN n",
+            {"id": canonical_id, "u": user_id})
+        return _to_entity(self._props(rows[0])) if rows else None
+
+    # ── not yet written — each RAISES rather than half-honouring (rule 9) ──────────────────
+    def _refuse(self, op: str) -> Any:
+        raise NotImplementedError(f"KuzuGraphStore.{op} — {_UNIMPLEMENTED}")
+
+    async def upsert_relation(self, **kw: Any) -> Any: self._refuse("upsert_relation")
+    async def relations_for(self, **kw: Any) -> Any: self._refuse("relations_for")
+    async def get_relation(self, **kw: Any) -> Any: self._refuse("get_relation")
+    async def invalidate_relation(self, **kw: Any) -> Any: self._refuse("invalidate_relation")
+    async def recreate_relation(self, **kw: Any) -> Any: self._refuse("recreate_relation")
+    async def events_page(self, **kw: Any) -> Any: self._refuse("events_page")
+    async def get_event(self, **kw: Any) -> Any: self._refuse("get_event")
+    async def merge_event(self, **kw: Any) -> Any: self._refuse("merge_event")
+    async def update_event_fields(self, **kw: Any) -> Any: self._refuse("update_event_fields")
+    async def archive_event(self, **kw: Any) -> Any: self._refuse("archive_event")
+    async def merge_fact(self, **kw: Any) -> Any: self._refuse("merge_fact")
+    async def facts_for(self, **kw: Any) -> Any: self._refuse("facts_for")
+    async def add_evidence(self, **kw: Any) -> Any: self._refuse("add_evidence")
+    async def status_at_order(self, **kw: Any) -> Any: self._refuse("status_at_order")
+    async def events_in_window(self, **kw: Any) -> Any: self._refuse("events_in_window")

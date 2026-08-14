@@ -56,6 +56,8 @@ adapter list is asserted, not assumed.
 from __future__ import annotations
 
 import os
+import shutil
+import tempfile
 import uuid
 from datetime import datetime, timezone
 
@@ -88,7 +90,7 @@ def _ids() -> tuple[str, str, str]:
 # ── the adapters under test ──────────────────────────────────────────────────
 
 
-@pytest_asyncio.fixture(params=["fake", "neo4j", "age"])
+@pytest_asyncio.fixture(params=["fake", "neo4j", "age", "kuzu"])
 async def store(request):
     """One GraphStore per param. `fake` always runs; `neo4j` skips only its own param when
     no throwaway is configured — and that skip is what `test_a_real_adapter_actually_ran`
@@ -144,6 +146,31 @@ async def store(request):
             yield age
         finally:
             await pool.close()
+        return
+
+    if request.param == "kuzu":
+        pytest.importorskip("kuzu", reason="kuzu is an optional T43-candidate dependency")
+        from app.adapters.kuzu_graph_store import KuzuGraphStore
+        from app.db.kuzu_bootstrap import close_kuzu, open_kuzu
+
+        # A directory per test rather than a shared one, and that is not the usual isolation
+        # shortcut: Kuzu is EMBEDDED and one process may hold one handle per path, so a shared
+        # database would make the second test fail with `Could not set lock on file`. The
+        # tenancy rules still discriminate because they filter on user_id within the store.
+        tmp = tempfile.mkdtemp(prefix="kuzu-conformance-")
+        db, conn = open_kuzu(os.path.join(tmp, "kg"))
+        try:
+            _EXERCISED.add("kuzu")
+            kz = KuzuGraphStore(conn)
+
+            async def _mk_kuzu_source(_u, _sid):
+                return None
+
+            kz._mk_source = _mk_kuzu_source            # type: ignore[attr-defined]
+            yield kz
+        finally:
+            close_kuzu(db, conn)
+            shutil.rmtree(tmp, ignore_errors=True)
         return
 
     uri = os.environ.get("TEST_NEO4J_URI")
@@ -533,11 +560,62 @@ async def test_an_authored_relation_carries_its_story_position(store):
 _EVENT_WRITE_REFUSERS = {"age"}
 
 
+#: The rules `KuzuGraphStore` is CONFORMED ON today. It implements the entity surface and
+#: refuses the rest (T42, rule 9), so it is judged on exactly these and skipped elsewhere —
+#: named individually rather than gated by a blanket "kuzu is partial", because a blanket skip
+#: grows silently: an operation implemented later would stay unjudged and nothing would say so.
+#: Adding a method means adding its rules HERE, in the same commit.
+_KUZU_CONFORMED = {
+    "test_resolving_the_same_name_twice_returns_the_same_entity",
+    "test_the_same_name_in_two_projects_is_two_entities",
+    "test_another_users_entity_is_not_found_by_name",
+    "test_an_archived_entity_is_excluded_from_name_resolution_by_default",
+    "test_archiving_another_users_entity_is_a_miss_not_a_write",
+    "test_restore_undoes_an_archive",
+}
+
+
+@pytest.fixture(autouse=True)
+def _kuzu_scope(request):
+    """Skip the rules Kuzu does not yet implement — and ONLY those.
+
+    ⚠️ The skip is the danger this file already warns about, so it is paired with
+    `test_kuzu_REFUSES_what_the_scope_list_skips` below: every unimplemented operation must
+    actually raise. Without that, "Kuzu is skipped here" silently becomes "Kuzu passed",
+    which is the exact failure mode `_EVENT_WRITE_REFUSERS` exists to prevent for AGE.
+    """
+    if "store" not in request.fixturenames:
+        return
+    if request.node.callspec.params.get("store") != "kuzu":
+        return
+    name = request.node.originalname or request.node.name
+    if name not in _KUZU_CONFORMED:
+        pytest.skip(f"KuzuGraphStore implements the entity surface only — {name} needs an "
+                    "operation it refuses (T42; see test_kuzu_REFUSES_what_the_scope_list_skips)")
+
+
+@pytest.mark.asyncio
+async def test_kuzu_REFUSES_what_the_scope_list_skips():
+    """The other half of `_KUZU_CONFORMED`. A scope list is a claim about what is unbuilt; this
+    is the check that the claim is true, so a skipped rule can never be mistaken for a passing
+    one. Runs without the `store` fixture on purpose — it needs no database."""
+    pytest.importorskip("kuzu", reason="kuzu is an optional T43-candidate dependency")
+    from app.adapters.kuzu_graph_store import KuzuGraphStore
+
+    store = KuzuGraphStore(conn=None)
+    for op in ("upsert_relation", "relations_for", "get_relation", "invalidate_relation",
+               "recreate_relation", "events_page", "get_event", "merge_event",
+               "update_event_fields", "archive_event", "merge_fact", "facts_for",
+               "add_evidence", "status_at_order", "events_in_window"):
+        with pytest.raises(NotImplementedError, match="T42"):
+            await getattr(store, op)()
+
+
 def _which(store) -> str:
     """Which adapter this parameterisation is, by CLASS — not by a marker attribute the
     fixture would have to remember to set."""
     return {"AgeGraphStore": "age", "Neo4jGraphStore": "neo4j",
-            "FakeGraphStore": "fake"}[type(store).__name__]
+            "FakeGraphStore": "fake", "KuzuGraphStore": "kuzu"}[type(store).__name__]
 
 
 async def _an_event(store, u, p, title="The Betrayal", **kw):

@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T42` — the KUZU ADAPTER's entity surface (`resolve_or_merge_entity`, `find_entities_by_name`, `neighborhood`, `archive`/`restore`), wired into T42a's conformance suite as a fourth param. The design is SETTLED — see 📏 T42-kuzu-2: identity is MATCH-then-CREATE in a transaction under an in-process lock, because Kuzu demands the PK in every MERGE and offers no unique index on the identity tuple. The remaining methods RAISE naming that section (rule 9), and the suite asserts the refusal so a skip cannot become a pass.**
+**RESUME: `T42` — the KUZU adapter's RELATIONS (`upsert_relation`, `relations_for`, and the three corrections), which also unlocks `neighborhood`'s edge half. The entity surface is done and conformed on 6 of T42a's rules; add each new rule to `_KUZU_CONFORMED` in the same commit as the method, and keep `test_kuzu_REFUSES_what_the_scope_list_skips` shrinking with it so a skip can never become a pass.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**46 of 66 rows done · 20 open · 51 of 91 evidence blocks closed inside them.**
+**46 of 66 rows done · 20 open · 52 of 92 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (4/7) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T42` (5/8) · `T41` (1/2) · `T43` (2/4) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9368,6 +9368,61 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   rebuild-from-Postgres path built now would target a topology about to change.
   (depends on T42a, T42b, T42c)
   ---
+
+  ### ✅ T42-kuzu-3 2026-08-14 — the entity surface, and it joins the conformance suite
+
+  ```
+  8 passed  tests/integration/db/test_kuzu_graph_store.py   (a REAL kuzu 0.11.3)
+  6 of T42a's rules PASS as [kuzu], + test_kuzu_REFUSES_what_the_scope_list_skips
+  59 passed / 71 skipped  conformance with fake + AGE + Kuzu (no Neo4j configured here)
+  ```
+
+  `KuzuGraphStore` implements `resolve_or_merge_entity`, `find_entities_by_name`,
+  `neighborhood`, `archive_entity`, `restore_entity`. The other fifteen **RAISE naming this
+  section** (rule 9), exactly as `AgeGraphStore` refuses its two event writes.
+
+  🔻 **Identity is MATCH-then-CREATE under a lock, and the id stays OPAQUE.** The tempting
+  escape from Kuzu's PK demand was `PK = hash(user, project, canonical_name, kind)` — which is
+  `e.id = hash(name, kind)`, the scheme **T35 exists to retire**. Taking it would have
+  introduced the defect as a NEW adapter's design rather than as legacy.
+  `test_the_id_is_OPAQUE_and_not_derived_from_the_name` asserts the id leaks neither the name
+  nor the canonical name.
+
+  🔴 **`_identity_lock` covers the half the file lock does not.** Kuzu serialises writers across
+  PROCESSES — which is what makes read-then-write sound at all — but inside one process two
+  async tasks can both miss the lookup and both create, and Kuzu has **no unique index on a
+  non-PK column** to catch the duplicate. `test_CONCURRENT_resolves_of_one_name_do_not_double_create`
+  fires eight concurrent resolves and asserts ONE identity; it is the test that goes red if
+  someone removes the lock as redundant.
+
+  🔧 **Every call runs in a thread.** `kuzu.Connection.execute` is synchronous (verified via
+  `inspect.iscoroutinefunction`), so awaiting it directly would block the event loop for the
+  whole service on every graph query. `asyncio.to_thread` is the boundary.
+
+  ⚠️ **Parameterised without exception**, and asserted: this repo already shipped a SQL
+  injection in `age_graph_store` (which interpolates because AGE's `cypher()` takes a string
+  literal). Kuzu takes real parameters, so a name of `Kai'; DROP TABLE Entity; --` round-trips
+  as DATA — pinned by a test rather than left to review.
+
+  📋 **The scope list is NAMED, not blanket.** `_KUZU_CONFORMED` enumerates the six rules Kuzu
+  is judged on; everything else skips with a reason. A blanket *"kuzu is partial"* grows
+  silently — an operation implemented later would stay unjudged and nothing would say so. Its
+  companion `test_kuzu_REFUSES_what_the_scope_list_skips` asserts all fifteen actually raise, so
+  **a skip can never quietly become a pass** (the same guard AGE's event writes already carry).
+
+  **BITE:** `if not found:` → `if True:` (always create) →
+  `FAILED test_resolving_the_same_name_twice_returns_the_same_entity[kuzu]`. The conformance
+  suite can red for this adapter. Restored, green.
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — the adapter has no service caller yet;
+  `graph_store_provider` still returns Neo4j by default and wiring a candidate is T43's harness.
+  **(c)** real Kuzu databases per test, plus a throwaway AGE container alongside for the
+  cross-adapter run.
+
+  ⬜ **Next:** relations (`upsert_relation`, `relations_for`, and the three corrections), which
+  unlocks `neighborhood`'s edge half — already written and currently exercised against an empty
+  edge set.
+
 
   ### 📏 T42-kuzu-2 2026-08-14 — Kuzu's PRIMARY KEY collides with the port's identity model
 
