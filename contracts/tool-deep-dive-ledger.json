@@ -1428,6 +1428,15 @@
   {
    "id": "OBS-T29",
    "note": "knowledge-service's MCP tools return their payload ONLY in content[0].text as a JSON STRING and emit no structuredContent — measured 2026-08-13 on kg_list_templates, and consistent with cycle 9's finding that kg_project_create declares outputSchema: null. It cost this loop a false alarm: a probe reading structuredContent reported 'zero templates' for a tool that was correctly returning seven. Any cycle on a knowledge-service tool must parse content[0].text, and any consumer written against structuredContent will silently see nothing. Whether these tools SHOULD emit structuredContent (as book-service and glossary-service do) is worth asking, since the difference is invisible until something reads the wrong half."
+  },
+  {
+   "id": "batch-2-surfacing",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json",
+   "finding": "Batch 2 ran 5 tools live K=3. FOUR were surfaced on 0/3 runs, and three of those requests were then answered by an ADJACENT tool that wrote the wrong thing: 'add a cultivation realm detail to the character type' created an ENTITY (entities 3->4); 'rename the chapter in my outline' renamed the MANUSCRIPT chapter in loreweave_book; 'add Factions as a category' ran glossary_adopt_standards and adopted a whole genre pack (kinds 4->5, attributes 29->36, genres 1->3, kind_genres 4->13).",
+   "root_cause_measured": "R1 is NOT at fault and is load-bearing: every tool R1 named reached the surface 3/3, and the one tool R1 matched (plan_compile) was the one tool surfaced. The defect is what R1 reasons FROM. (a) 59 of 62 supersession pairs let the DEPRECATED tool out-declare its successor — FIXED, commit 0bf7b5421. (b) 86 tools declare no synonyms at all, and one more (glossary_ontology_upsert) matched the WRONG tools (book_media_generate, book_read) — OPEN, this is the _meta.resource half of R2.",
+   "live_before_after_for_the_fix": "composition_outline_node_edit: surfaced 0/3 -> 3/3, called 0/3 -> 2/3, and the write moved from loreweave_book.chapters (the wrong store) to loreweave_composition.outline_node (the right one).",
+   "batch_state": "NOT concluded. 4 of 5 tools still have an open cause; the cycle continues."
   }
  ],
  "progress": {
