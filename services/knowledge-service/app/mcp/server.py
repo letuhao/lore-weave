@@ -387,6 +387,25 @@ async def _dispatch(ctx: MCPContext, tool_name: str, tool_args: dict) -> dict:
     meta=require_meta(
         "R", "project",
         ambient_project=True,  # resolves project from X-Project-Id when omitted (already backend-resolved)
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called once in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a person types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3.
+        synonyms=[
+            "where is",
+            "where does",
+            "find in the text",
+            "search the prose",
+            "search my manuscript",
+            "which chapter mentions",
+            "where did i write",
+            "find the passage",
+            "find the scene where",
+            "search the book text",
+            "locate in the manuscript",
+        ],
         tool_name="story_search",
     ),
 )
@@ -439,6 +458,22 @@ async def story_search(
     meta=require_meta(
         "R", "project",
         ambient_project=True,  # resolves project from X-Project-Id when omitted (already backend-resolved)
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "what do i know about",
+            "what do we know about",
+            "what has been established",
+            "recall what",
+            "what is known about",
+            "check continuity",
+            "has this been established",
+            "look this up in my notes",
+        ],
         tool_name="memory_search",
     ),
 )
@@ -477,6 +512,20 @@ async def memory_search(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "who is",
+            "tell me about the character",
+            "remind me about",
+            "what do we know about this character",
+            "details on this character",
+            "refresh me on",
+        ],
         tool_name="memory_recall_entity",
     ),
 )
@@ -500,6 +549,21 @@ async def memory_recall_entity(
     ),
     meta=require_meta(
         "R", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "what happened when",
+            "timeline of events",
+            "in what order did",
+            "chronology",
+            "sequence of events",
+            "what happened first",
+            "story timeline",
+        ],
         tool_name="memory_timeline",
     ),
 )
@@ -549,6 +613,21 @@ async def memory_timeline(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "remember that",
+            "remember this",
+            "note that",
+            "keep in mind",
+            "store this fact",
+            "save this detail",
+            "make a note that",
+        ],
         tool_name="memory_remember",
     ),
 )
@@ -578,6 +657,19 @@ async def memory_remember(
     ),
     meta=require_meta(
         "A", "project",
+        # R2 (2026-08-14) — DECLARED so a user's words can reach it. The lazy tail does not
+        # fire in practice (tool_list called ONCE in 30 live runs, tool_load never), so the
+        # answerability pre-filter is the only dynamic way onto the wire, and a tool that
+        # declares nothing cannot be pre-filtered in. These are phrasings a PERSON types,
+        # not the feature's name — the distinction that took glossary_curation_list from
+        # surfaced 0/3 to called 3/3 with a correct answer.
+        synonyms=[
+            "forget that",
+            "no longer true",
+            "remove that fact",
+            "retract that",
+            "that was wrong",
+        ],
         tool_name="memory_forget",
     ),
 )

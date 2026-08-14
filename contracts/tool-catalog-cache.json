@@ -20978,6 +20978,13 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "forget that",
+    "no longer true",
+    "remove that fact",
+    "retract that",
+    "that was wrong"
+   ],
    "tier": "A"
   }
  },
@@ -21012,6 +21019,14 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "who is",
+    "tell me about the character",
+    "remind me about",
+    "what do we know about this character",
+    "details on this character",
+    "refresh me on"
+   ],
    "tier": "R"
   }
  },
@@ -21060,6 +21075,15 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "remember that",
+    "remember this",
+    "note that",
+    "keep in mind",
+    "store this fact",
+    "save this detail",
+    "make a note that"
+   ],
    "tier": "A"
   }
  },
@@ -21131,6 +21155,16 @@
   "meta": {
    "ambient_project": true,
    "scope": "project",
+   "synonyms": [
+    "what do i know about",
+    "what do we know about",
+    "what has been established",
+    "recall what",
+    "what is known about",
+    "check continuity",
+    "has this been established",
+    "look this up in my notes"
+   ],
    "tier": "R"
   }
  },
@@ -21214,6 +21248,15 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "what happened when",
+    "timeline of events",
+    "in what order did",
+    "chronology",
+    "sequence of events",
+    "what happened first",
+    "story timeline"
+   ],
    "tier": "R"
   }
  },
@@ -23048,6 +23091,19 @@
   "meta": {
    "ambient_project": true,
    "scope": "project",
+   "synonyms": [
+    "where is",
+    "where does",
+    "find in the text",
+    "search the prose",
+    "search my manuscript",
+    "which chapter mentions",
+    "where did i write",
+    "find the passage",
+    "find the scene where",
+    "search the book text",
+    "locate in the manuscript"
+   ],
    "tier": "R"
   }
  },
