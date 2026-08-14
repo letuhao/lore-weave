@@ -8,8 +8,8 @@
       "tier": "W",
       "scope": "book",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "__HAND_WRITE_ME__ (glossary_propose_new_attribute declares no synonyms)",
-      "prompt_source": null,
+      "prompt": "I want every character in this book to track a cultivation realm. Add that as a new detail on the character type.",
+      "prompt_source": "description (no _meta.synonyms declared — R2). Its own text gives the example \"add 'cultivation_realm' to the character kind\"; this is that example said the way a user would say it.",
       "needs_target": false,
       "approve": "approved_once",
       "seed": [
@@ -51,9 +51,8 @@
           }
         }
       ],
-      "falsifier": null,
-      "ship_audit": null,
-      "needs_prompt": true
+      "falsifier": "REFUTED IF: the tool is reached but no attribute appears on the character kind in loreweave_glossary after the confirm round-trip (it mints a confirm_token and writes NOTHING at call time, so a store diff of zero with ok:true is the silent-success shape), OR the attribute lands on a different kind than 'character', OR — the R2 question — the tool is never reached at all despite the request naming exactly what its own description says it does.",
+      "ship_audit": null
     },
     {
       "id": "composition-outline-node-edit",
@@ -63,8 +62,8 @@
       "tier": "A",
       "scope": "book",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "Please edit outline node. Rename The Ember Codex chapter to The Ember Codex Opens.",
-      "prompt_source": "_meta.synonyms['edit outline node']",
+      "prompt": "Rename the chapter called The Ember Codex in my outline to The Ember Codex Opens.",
+      "prompt_source": "_meta.synonyms['edit outline node'] + the fixture's own seeded node",
       "needs_target": false,
       "approve": "approved_once",
       "seed": [
@@ -104,9 +103,18 @@
               }
             ]
           }
+        },
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Ember Codex",
+            "synopsis": "Aldric reaches Hollow Keep and is given the Codex."
+          }
         }
       ],
-      "falsifier": null,
+      "falsifier": "REFUTED IF: after an approved run the outline node's title in loreweave_composition is still 'The Ember Codex', OR a SECOND node is created instead of the first being renamed (op=create where op=update was meant — this is a unified op-dispatch tool and picking the wrong op is its most likely failure), OR the node count changes at all.",
       "ship_audit": null
     },
     {
@@ -117,8 +125,8 @@
       "tier": "R",
       "scope": "book",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "__HAND_WRITE_ME__ (glossary_list_ai_suggestions declares no synonyms)",
-      "prompt_source": null,
+      "prompt": "Are there any suggested entries waiting for me to review?",
+      "prompt_source": "description (no _meta.synonyms declared — R2). Its own text calls it \"the triage inbox\" of \"AI-SUGGESTED entities awaiting review\"; this asks for that without naming the tool or its jargon.",
       "needs_target": false,
       "approve": null,
       "seed": [
@@ -158,11 +166,16 @@
               }
             ]
           }
+        },
+        {
+          "sql": {
+            "db": "loreweave_glossary",
+            "statement": "UPDATE glossary_entities SET tags = ARRAY['ai-suggested'], status='draft' WHERE book_id='{book_id}'"
+          }
         }
       ],
-      "falsifier": null,
-      "ship_audit": null,
-      "needs_prompt": true
+      "falsifier": "REFUTED IF: the reply says nothing is waiting while the store holds three entities tagged 'ai-suggested' (the exact 2026-08-13 shape — an answer of 'you haven't declared any' over a populated table), OR the store changes on this read-intent turn, OR — the R2 question — the tool is never reached despite the request being a plain-English rendering of its own description.",
+      "ship_audit": null
     },
     {
       "id": "glossary-ontology-upsert",
@@ -172,8 +185,8 @@
       "tier": "A",
       "scope": "book",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "Please add an attribute. Add a category called Factions for the groups in this world.",
-      "prompt_source": "_meta.synonyms['add an attribute']",
+      "prompt": "I want to start tracking the factions in this world. Add Factions as a new category alongside characters and items.",
+      "prompt_source": "_meta.synonyms + the fixture's adopted kinds",
       "needs_target": false,
       "approve": "approved_once",
       "seed": [
@@ -215,7 +228,7 @@
           }
         }
       ],
-      "falsifier": null,
+      "falsifier": "REFUTED IF: after an approved run no new kind row exists for this book in loreweave_glossary (its description says it WRITES IMMEDIATELY with no confirmation, so an unchanged store with ok:true is a silent success), OR an existing kind is overwritten rather than a new one added (it mixes create and update by presence of base_version — omitting it must CREATE).",
       "ship_audit": null
     },
     {
@@ -226,8 +239,8 @@
       "tier": "A",
       "scope": "book",
       "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "Please build plan. Use the plan I already have for this book.",
-      "prompt_source": "_meta.synonyms['build plan']",
+      "prompt": "Turn the plan I've got for this book into a proper planning package.",
+      "prompt_source": "_meta.synonyms['build plan'] + the fixture's seeded arc",
       "needs_target": false,
       "approve": "approved_once",
       "seed": [
@@ -267,9 +280,26 @@
               }
             ]
           }
+        },
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Ember Codex",
+            "synopsis": "Aldric reaches Hollow Keep and is given the Codex."
+          }
+        },
+        {
+          "tool": "composition_arc_create",
+          "args": {
+            "book_id": "{book_id}",
+            "title": "The Road to the Marsh",
+            "summary": "Aldric and Mira cross the Sunless Marsh with the Codex."
+          }
         }
       ],
-      "falsifier": null,
+      "falsifier": "REFUTED IF: the tool is reached and returns ok while no PlanningPackage row appears in loreweave_composition, OR it is refused for want of a run_id/arc_id the turn could have resolved from the book it is already looking at — its three required args (book_id, run_id, arc_id) are exactly the shape that produced the cross-wire in batch 1.",
       "ship_audit": null
     }
   ],

@@ -175,6 +175,16 @@ class Throwaway:
         mints a confirm_token and writes nothing at call time, so a fixture that used it would
         report "no entities were created — unknown kind: character" and look like a glossary bug.
         """
+        if "sql" in step:
+            # A third setup kind, for substrate NO tool can create. `glossary_list_ai_suggestions`
+            # reads entities tagged 'ai-suggested' — a tag the extractor writes and no MCP tool
+            # sets, so without this the scenario could only ever exercise the EMPTY case and
+            # would report "the inbox is empty" as if that were the tool working. Setup only:
+            # the thing under test is still the model's turn, never this.
+            spec = self._substitute(step["sql"])
+            oracle.db_query(spec["db"], spec["statement"])
+            self.seeded.append({"sql": spec["db"], "ok": True})
+            return
         if "rest" in step:
             spec = self._substitute(step["rest"])
             base = _tle_config.DOMAIN_BASE[spec["domain"]]

@@ -301,7 +301,40 @@ def answerable_tools(request_text: str | None, catalog: list[dict]) -> set[str]:
                 hits.append((len(ns), name))
                 break
     hits.sort(key=lambda h: (-h[0], h[1]))
-    return {n for _, n in hits[:ANSWERABLE_MAX]}
+    chosen = {n for _, n in hits[:ANSWERABLE_MAX]}
+
+    # 🔴 R2 — A SUPERSEDED TOOL MUST NOT OUT-DECLARE ITS SUCCESSOR, AND 59 OF 62 PAIRS DO.
+    #
+    # Measured live 2026-08-14. "Rename the chapter called The Ember Codex in my outline to The
+    # Ember Codex Opens" matched `composition_outline_node_update` — which carries
+    # `superseded_by: composition_outline_node_edit`. The DEPRECATED tool declares the words a
+    # user actually says ("rename chapter", "edit scene", "update node"); its SUCCESSOR, the
+    # unified entry point the platform intends to serve those words, declares "edit outline
+    # node", "manage outline node" and a set of CREATE verbs. So the successor was surfaced on
+    # 0 of 3 runs, and the request that names its exact job could not reach it.
+    #
+    # Swept across the live catalogue: of 62 pairs carrying `superseded_by`, 59 orphan at least
+    # one phrasing — `book_get`→`book_read` loses "open book"/"show book", `book_scene_list`→
+    # `book_list` loses "scenes"/"scene index", `composition_arc_create`→`composition_arc_edit`
+    # loses "create story arc"/"start a saga". This is not a per-tool slip; it is what happens
+    # every time a tool is split or unified and the synonyms stay with the old name.
+    #
+    # THE INVARIANT: whatever phrasing reaches A must also be able to reach the tool that
+    # REPLACED A. Enforced here, at the one place answerability is decided, rather than by
+    # editing 59 synonym lists — a hand-edit is correct the day it is made and silent the next
+    # time a tool is superseded. `scripts/lint_superseded_synonyms.py` fails the pair at build
+    # time so the declarations converge; this keeps the SURFACE correct meanwhile, and stays
+    # correct for whatever pair is added next.
+    #
+    # Deliberately a UNION, not a redirect: the deprecated tool keeps working (existing callers
+    # depend on it) and the successor merely becomes reachable by the same words.
+    by_name = {tool_name(td): td for td in catalog}
+    for name in list(chosen):
+        td = by_name.get(name) or {}
+        succ = ((td.get("function") or {}).get("_meta") or {}).get("superseded_by")
+        if isinstance(succ, str) and succ and succ in by_name:
+            chosen.add(succ)
+    return chosen
 
 
 def _budget_names_impl(
