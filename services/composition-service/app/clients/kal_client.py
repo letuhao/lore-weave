@@ -269,6 +269,55 @@ class KalClient:
 
 
 
+    async def open_facts_for(
+        self, book_id: UUID, entity_id: UUID | str, *,
+        user_id: UUID | str | None = None,
+    ) -> list[dict[str, Any]]:
+        """The entity's currently-OPEN facts (`valid_to_ordinal IS NULL`), each carrying its
+        `origin` (T37d).
+
+        `origin` is what makes a retraction path possible at all: the close must find the
+        facts ITS producer wrote and leave every other producer's alone. Before chain step
+        0066 the read did not expose it, so "close what this plan no longer implies" was
+        undecidable at the only layer that can decide it.
+
+        Degrade-tolerant, like `roster` and unlike the writes: a close that cannot see the
+        current state must do NOTHING rather than guess. Returning `[]` on failure means the
+        caller retracts nothing, which is the safe direction — the alternative is closing
+        roles because a read timed out.
+        """
+        url = f"{self._base_url}/v1/kal/books/{book_id}/entities/{entity_id}/facts"
+        try:
+            resp = await self._http.get(url, headers=self._headers(user_id))
+            resp.raise_for_status()
+            return list(resp.json().get("items") or [])
+        except Exception:  # noqa: BLE001 — see the docstring: blind means do nothing
+            logger.warning("kal: open_facts_for failed entity=%s", entity_id, exc_info=True)
+            return []
+
+    async def close_fact(
+        self, book_id: UUID, *, fact_id: str, valid_to_ordinal: int,
+        user_id: UUID | str | None = None,
+    ) -> dict[str, Any]:
+        """Valid-time close (supersede) at a story position — `POST facts/close` (§12.3.2).
+
+        NOT an invalidation: the fact stays true for the interval it covered, and an as-of
+        read before `valid_to_ordinal` still returns it. That distinction is the whole reason
+        a plan revision closes rather than deletes — the chapters written under the old plan
+        did happen, and their canon checks must still see the role that was in force then.
+
+        Raises on a non-2xx. The caller decides whether to tolerate it; `close_stale_planned_roles`
+        does, for the same reason the rest of the pipeline degrades.
+        """
+        url = f"{self._base_url}/v1/kal/books/{book_id}/facts/close"
+        resp = await self._http.post(
+            url, json={"fact_id": str(fact_id), "valid_to_ordinal": valid_to_ordinal},
+            headers=self._headers(user_id),
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+
 def init_kal_client() -> KalClient:
     global _client
     if _client is None:

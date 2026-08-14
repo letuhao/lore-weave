@@ -101,6 +101,72 @@ async def publish_planned_roles(
     return written
 
 
+#: The producer mark this pipeline writes and — critically — the ONLY one it will close.
+#: A constant rather than a literal at each site: a role written under one spelling and
+#: searched for under another is un-retractable in a way nothing reports.
+PLAN_FACT_ORIGIN = "plan"
+
+
+async def close_stale_planned_roles(
+    kal, book_id, *, cast_objs, id_by_name: dict[str, str],
+    introduce_at: dict[str, int | None], user_id,
+) -> int:
+    """T37d — a plan REVISION closes the roles it no longer implies. Returns the count closed.
+
+    §4.2b named this the plan-time producer's debt: a role appended when a plan was designed
+    outlives the plan that justified it, and an as-of read would then hand the canon guard a
+    tie the book abandoned — the same *stale but confidently served* failure T36 found in the
+    175 already-closed `:RELATES_TO` edges.
+
+    ⚠️ **IT CLOSES ONLY `origin='plan'`, AND THAT IS THE WHOLE SAFETY PROPERTY.** Roles have
+    two producers (SPEC §4.2b). An author's hand-declared tie is not the plan's to remove, and
+    before chain step 0066 nothing in `entity_facts` could tell them apart — both were
+    `fact_kind='relation'` with a NULL episode. A close without that mark would have silently
+    erased what a human deliberately said. **A stale role is wrong; an erased one is gone.**
+    A fact with NO origin (anything older than 0066) is likewise never touched: unmarked means
+    unclaimed, and this producer only retracts what it can prove it wrote.
+
+    CLOSED, not deleted or invalidated. The fact stays true for the interval it covered, so a
+    chapter drafted under the old plan still sees the role that was in force when it was
+    written. Deleting would rewrite history; invalidating would say the claim was never
+    believed. Neither is what a revision means.
+
+    Never raises, for the same reason `publish_planned_roles` does not: this runs inside a
+    pipeline whose every stage degrades independently. A close that cannot see the current
+    state does NOTHING — `open_facts_for` returns `[]` on failure, so a read timeout retracts
+    nothing rather than everything.
+    """
+    wanted: set[tuple[str, str, str]] = {
+        (id_by_name[c.name], r["predicate"], r["object"])
+        for c in cast_objs if c.name in id_by_name
+        for r in (getattr(c, "roles", None) or [])
+    }
+    closed = 0
+    for name, entity_id in id_by_name.items():
+        for fact in await kal.open_facts_for(book_id, entity_id, user_id=user_id):
+            if fact.get("fact_kind") != "relation":
+                continue
+            if fact.get("origin") != PLAN_FACT_ORIGIN:
+                continue  # the author's, or unmarked — not this producer's to retract
+            key = (entity_id, fact.get("attr_or_predicate") or "", fact.get("value") or "")
+            if key in wanted:
+                continue  # the revised plan still implies it
+            # Closed AT the holder's current position: the role held up to here, and stops
+            # being in force from the chapter this revision places them at.
+            chapter = introduce_at.get(name) or 1
+            ordinal = max(1, int(chapter)) * KG_EVENT_ORDER_CHAPTER_STRIDE
+            try:
+                await kal.close_fact(book_id, fact_id=fact["fact_id"],
+                                     valid_to_ordinal=ordinal, user_id=user_id)
+                closed += 1
+            except Exception:  # noqa: BLE001 — the plan outranks the retraction
+                logger.warning("T37d: stale planned role not closed fact=%s",
+                               fact.get("fact_id"), exc_info=True)
+    if closed:
+        logger.info("T37d: %d planned role(s) closed by this revision", closed)
+    return closed
+
+
 @dataclass
 class PipelineResult:
     decompose: DecomposeResult
@@ -172,10 +238,18 @@ async def run_planning_pipeline(
     # cannot be in force before its holder appears and `introduce_at_chapter` is the answer
     # Stage 3 just computed. Degrades like every other stage: never raises.
     if seed_cast and cast_objs:
+        _intro = {a.name: a.introduce_at_chapter for a in arcs}
         await publish_planned_roles(
             kal, book_id, cast_objs=cast_objs, id_by_name=id_by_name,
-            introduce_at={a.name: a.introduce_at_chapter for a in arcs},
-            user_id=UUID(str(user_id)),
+            introduce_at=_intro, user_id=UUID(str(user_id)),
+        )
+        # T37d — and CLOSE what this revision no longer implies. After the publish, not
+        # before: the append is idempotent on its content key, so a role the new plan still
+        # implies is already re-opened and will not be seen as stale. Closing first would
+        # briefly leave a role the plan still wants marked as ended.
+        await close_stale_planned_roles(
+            kal, book_id, cast_objs=cast_objs, id_by_name=id_by_name,
+            introduce_at=_intro, user_id=UUID(str(user_id)),
         )
 
     # ── Stage 4 — grounded decompose. skip_l1=True: L1 already ran ONCE above (its result

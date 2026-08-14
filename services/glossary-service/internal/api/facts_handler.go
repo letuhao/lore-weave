@@ -27,6 +27,11 @@ type factDTO struct {
 	ValidTo       *int64  `json:"valid_to_ordinal"`
 	Cardinality   string  `json:"cardinality"`
 	SourceEpisode *string `json:"source_episode_id"`
+	// Origin — which producer wrote this fact (T37c/T37d, chain step 0066). READ-side because
+	// a retraction path is blind without it: the close must find the facts IT wrote and leave
+	// every other producer's alone, and a DTO that omits the mark makes that undecidable at
+	// the only layer that can decide it. null for anything written before 0066.
+	Origin *string `json:"origin"`
 }
 
 // internalGetFacts — GET /internal/books/{book_id}/entities/{entity_id}/facts?as_of=&attrs=
@@ -49,7 +54,7 @@ func (s *Server) internalGetFacts(w http.ResponseWriter, r *http.Request) {
 	}
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts
 		WHERE entity_id = $1 AND book_id = $2 AND invalidated_at IS NULL AND `+pred+`
 		ORDER BY attr_or_predicate, valid_from_ordinal DESC`, args...)
@@ -87,7 +92,7 @@ func (s *Server) internalFactTimeline(w http.ResponseWriter, r *http.Request) {
 	args = append(args, limit)
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts
 		WHERE `+where+`
 		ORDER BY valid_from_ordinal DESC, created_at DESC
@@ -132,7 +137,7 @@ func (s *Server) internalListAttrValues(w http.ResponseWriter, r *http.Request) 
 	}
 	rows, err := s.pool.Query(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts
 		WHERE entity_id = $1 AND attr_or_predicate = $2 AND book_id = $3 AND invalidated_at IS NULL`+pred+`
 		ORDER BY value`, args...)
@@ -423,10 +428,10 @@ func (s *Server) internalCloseFact(w http.ResponseWriter, r *http.Request) {
 	var ep *uuid.UUID
 	if err := s.pool.QueryRow(r.Context(), `
 		SELECT fact_id, entity_id, fact_kind, attr_or_predicate, value, valid_from_ordinal,
-		       valid_to_ordinal, cardinality, source_episode_id
+		       valid_to_ordinal, cardinality, source_episode_id, origin
 		FROM entity_facts WHERE fact_id = $1`, factID).Scan(
 		&f.FactID, &f.EntityID, &f.FactKind, &f.Attr, &f.Value, &f.ValidFrom, &f.ValidTo,
-		&f.Cardinality, &ep); err != nil {
+		&f.Cardinality, &ep, &f.Origin); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "reload failed")
 		return
 	}
@@ -631,7 +636,7 @@ func scanFacts(rows interface {
 		var f factDTO
 		var ep *uuid.UUID
 		if err := rows.Scan(&f.FactID, &f.EntityID, &f.FactKind, &f.Attr, &f.Value,
-			&f.ValidFrom, &f.ValidTo, &f.Cardinality, &ep); err != nil {
+			&f.ValidFrom, &f.ValidTo, &f.Cardinality, &ep, &f.Origin); err != nil {
 			continue
 		}
 		if ep != nil {

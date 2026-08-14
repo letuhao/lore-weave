@@ -788,6 +788,15 @@ components:
         valid_to_ordinal: { type: integer, format: int64, nullable: true, description: NULL = +∞ (open) }
         cardinality: { type: string, enum: [single, multi], default: single }
         source_episode_id: { type: string, format: uuid, nullable: true }
+        origin:
+          type: string
+          enum: [plan, author, extraction]
+          nullable: true
+          description: >-
+            Which producer wrote this fact (chain step 0066). Returned on READS because a
+            retraction path is blind without it — a producer must close the facts it wrote and
+            leave every other producer's alone. NULL for anything written before 0066, and an
+            unmarked fact is never anyone's to retract.
         evidence: { $ref: '#/components/schemas/Evidence' }
         invalidated_at: { type: string, format: date-time, nullable: true }
     Evidence:

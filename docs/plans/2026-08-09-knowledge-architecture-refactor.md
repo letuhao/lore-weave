@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T37d` — the CLOSE PATH, now buildable. A plan revision closes the roles it no longer implies, matching ONLY `origin='plan'` (chain step 0066): read the book's open plan-origin relation facts, diff against what the new plan implies, `POST facts/close` the difference at the revision's ordinal. Provenance was its missing precondition and now exists. Then the cast-plan EVAL §4.2c requires.** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T37c` · ✅ `T38` · ✅ `T42a`. 🔻 T37c's finding: `entity_facts` had NO authorship column, so the close would have ERASED the author's own declarations. A stale role is wrong; an erased one is gone.
+**RESUME: the CAST-PLAN EVAL that SPEC §4.2c requires for T37b part 1's prompt change — a prompt edit that shifts `is_new` classification or cast sizing is a regression the graph write is not worth. Then the end-to-end revision smoke both T37d halves owe (plan → revise → the stale role closes, live).** ✅ `A8` · ✅ `T24b` · ✅ `T25 ②` · ✅ `A9` · ✅ `T35a/b/c` · ✅ `T36` · ✅ `T37a` · ✅ `T37b-studio` · ✅ `T37b-planforge` · ✅ `T37c` · ✅ `T37d` · ✅ `T38` · ✅ `T42a`. 🔻 **T37 is functionally COMPLETE**: two producers write roles, the plan retracts its own and only its own, and `relation 0 → 1` was proved live. What remains is the eval and the revision smoke.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.
 Nothing here is blocked on a decision any more.
 
@@ -8672,6 +8672,80 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **The close path itself is now BUILDABLE and is what T37d does** — provenance was its
   precondition, and it was missing. That is the finding, not a deferral: the retraction cannot
   be written safely until a producer can recognise its own mark, and now it can.
+
+
+  ### ✅ T37d 2026-08-14 — a plan revision retracts its own roles, and ONLY its own
+
+  ```
+  composition 3745 -> 3751 passed      the debt §4.2b named when the PO chose two producers
+  ```
+
+  §4.2b's consequence, paid. A role appended when a plan was designed outlives the plan that
+  justified it, and an as-of read would hand the canon guard a tie the book abandoned — the
+  same *stale but confidently served* failure T36 measured in the 175 already-closed
+  `:RELATES_TO` edges being served as currently true.
+
+  🔴 **THE READ WAS BLIND, and that was the last missing piece.** T37c added
+  `entity_facts.origin`, but the fact READ did not return it — `factDTO` carried nine fields
+  and none was the mark. So the close could not tell the plan's roles from the author's **at
+  the only layer that can decide it**. Added to the DTO, all four SELECTs, and the KAL
+  contract's `Fact` schema.
+
+  ⚠️ **AND THE BLANKET EDIT THAT ADDED IT BROKE A FOURTH CALL SITE.** Replacing the column
+  list updated four SELECTs; `scanFacts` was updated to match, but the close handler has a
+  **hand-written `Scan`** that still bound nine destinations to ten columns:
+
+  ```
+  close 状态: code=500 resp=map[code:GLOSS_INTERNAL message:reload failed]
+  ```
+
+  Caught by `TestFactsHTTP`, which existed. A blanket string replace across a file is the same
+  hazard as the CRLF bites this session keeps recording — it changes what matches and nothing
+  else, and the mismatch surfaces somewhere the edit never looked.
+
+  ✅ **`close_stale_planned_roles(...)`** — read the cast's open facts, keep only
+  `fact_kind='relation'` AND `origin='plan'`, diff against what the revised plan implies,
+  close the difference at the holder's current position.
+
+  **THE SAFETY PROPERTY, which is the whole task:**
+
+  * **only `origin='plan'`** — an author's hand-declared tie is not the plan's to remove;
+  * **never an unmarked fact** — everything before chain 0066 has NULL, and unmarked means
+    unclaimed. This producer retracts only what it can prove it wrote;
+  * **only relations** — `origin='plan'` will eventually mark more than roles, and closing an
+    attribute here would make this a general-purpose retractor of everything the planner said;
+  * **CLOSED, not deleted or invalidated** — the fact stays true for the interval it covered,
+    so a chapter drafted under the old plan still sees the role in force when it was written.
+    Deleting rewrites history; invalidating says the claim was never believed.
+
+  🔧 **It runs AFTER the publish, not before.** The append is idempotent on its content key, so
+  a role the new plan still implies is already re-opened and cannot be mistaken for stale.
+  Closing first would briefly end a role the plan still wants.
+
+  **BITE ×2, both red on the value:**
+
+  ```
+  1. drop the `origin != PLAN_FACT_ORIGIN` guard
+     E  a plan revision closed a role the AUTHOR declared — that is not the plan's to remove
+     E  assert 2 == 1          (and: an unmarked legacy fact was retracted)
+  2. drop the `key in wanted` guard
+     E  a plan re-run that changed nothing closed the role it had just re-asserted
+  ```
+
+  🔧 **A narrow test double failed at the call and was widened, not worked around** —
+  `'_Kal' object has no attribute 'open_facts_for'`. That is the third time this session a
+  double narrower than the real client caught a change; the break belongs in the test.
+
+  **QC (a) gates:** all 100 green; plan-verify PASS. `go build` + `go vet` clean.
+  **QC (b) the seam:** the Go half is driven against a **real throwaway Postgres** —
+  `TestAppendFactOrigin` and `TestFactsHTTP` both green, the latter being what caught the Scan
+  mismatch. ⬜ The Python close is proved against a fake KAL; an end-to-end revision smoke
+  (plan → revise → the role closes) is owed with the cast-plan eval.
+  **QC (c) real data:** real `entity_facts` rows read back through the real router.
+
+  ```
+  3751 passed, 403 skipped — composition · TestAppendFactOrigin + TestFactsHTTP ok
+  ```
 
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
