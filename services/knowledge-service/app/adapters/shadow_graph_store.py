@@ -86,6 +86,30 @@ OPERATIONS = (
 )
 
 
+#: Which WRITE each read depends on. A read whose write the secondary refused cannot be
+#: compared: the secondary's store legitimately has nothing to return. Declared rather than
+#: inferred, so adding an operation forces the question "what has to exist for this to mean
+#: anything?" — which is the question the refusal artifact came from not asking.
+_DEPENDS_ON: dict[str, tuple[str, ...]] = {
+    "find_entities_by_name": ("resolve_or_merge_entity",),
+    "neighborhood": ("resolve_or_merge_entity",),
+    "archive_entity": ("resolve_or_merge_entity",),
+    "restore_entity": ("resolve_or_merge_entity",),
+    "relations_for": ("upsert_relation",),
+    "get_relation": ("upsert_relation",),
+    "invalidate_relation": ("upsert_relation",),
+    "recreate_relation": ("upsert_relation",),
+    "events_page": ("merge_event",),
+    "events_in_window": ("merge_event",),
+    "get_event": ("merge_event",),
+    "update_event_fields": ("merge_event",),
+    "archive_event": ("merge_event",),
+    "facts_for": ("merge_fact",),
+    "status_at_order": ("merge_fact",),
+    "add_evidence": ("resolve_or_merge_entity",),
+}
+
+
 @dataclass
 class ShadowStats:
     """Per-operation observations. Three counters, deliberately — see the module docstring."""
@@ -137,6 +161,9 @@ class ShadowGraphStore:
         # exemption list: an exemption would have made the report *look* clean while 6 of 9
         # operations stayed uncompared.
         self._ids: dict[str, str] = {}
+        #: Write operations the SECONDARY has refused this run. Reads that depend on one
+        #: are `uncovered` rather than compared — see `_DEPENDS_ON` and `_shadow`.
+        self._refused: set[str] = set()
 
     def _map_id(self, primary_id: str | None) -> str | None:
         """Translate a primary node id for the secondary, or None if unknown.
@@ -197,10 +224,25 @@ class ShadowGraphStore:
         return str(value)
 
     async def _shadow(self, op: str, primary_result: Any, call) -> Any:
+        # ⚠️ REFUSAL PROPAGATES FORWARD. If the secondary refused the write that would have
+        # created this data, its read is EMPTY for a reason that is not a defect — and
+        # comparing it would score a divergence the shadow caused itself.
+        #
+        # Measured 2026-08-14 against Neo4j↔AGE, which refuses `merge_event` and `merge_fact`:
+        #     facts_for    primary=[('None','0.0','5')]      secondary=[]
+        #     events_page  primary=([Event E4, Event E6],2)  secondary=([],0)
+        # Three read operations scored DIVERGED while every one of them was correct. T43 exists
+        # to choose an engine by measurement; a measurement that condemns an adapter for reads
+        # that are right is worse than no measurement.
+        blocked_by = [w for w in _DEPENDS_ON.get(op, ()) if w in self._refused]
+        if blocked_by:
+            self.stats.uncovered[op] = self.stats.uncovered.get(op, 0) + 1
+            return primary_result
         try:
             secondary_result = await call(self._secondary)
         except NotImplementedError:
             # The adapter refused, on purpose. NOT a divergence and NOT an agreement.
+            self._refused.add(op)
             self.stats.uncovered[op] = self.stats.uncovered.get(op, 0) + 1
             return primary_result
         except Exception as exc:  # noqa: BLE001 — a shadow must never break the caller
@@ -292,9 +334,19 @@ class ShadowGraphStore:
             self.stats.unmapped["upsert_relation"] = (
                 self.stats.unmapped.get("upsert_relation", 0) + 1)
             return out
-        return await self._shadow(
-            "upsert_relation", out,
-            lambda s: s.upsert_relation(**{**kw, "subject_id": subj, "object_id": obj}))
+        async def _call(s):
+            twin = await s.upsert_relation(**{**kw, "subject_id": subj, "object_id": obj})
+            # LEARNS the relation mapping, for the same reason `resolve_or_merge_entity` and
+            # `merge_event` do: this is the only relation operation keyed on natural identity
+            # (subject + predicate + object). Without it every id-keyed relation op —
+            # `get_relation`, `invalidate_relation` — reports `unmapped` FOREVER and can never
+            # gain an observation, so the coverage floor is unmeetable for them by
+            # construction. Found by the corpus-coverage assertion, not by reading.
+            if out is not None and twin is not None:
+                self._ids[out.id] = twin.id
+            return twin
+
+        return await self._shadow("upsert_relation", out, _call)
 
     async def relations_for(self, **kw):
         out = await self._primary.relations_for(**kw)

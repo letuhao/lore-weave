@@ -128,25 +128,45 @@ async def test_the_coverage_floor_names_every_unobserved_operation(shadow):
     that agreed perfectly on `relations_for` and never touched `restore_entity` would be
     evidence about one operation wearing the costume of evidence about the port.
 
-    As of 2026-08-12 the floor is EMPTY — every one of the nine operations is compared. The
-    assertion is kept (rather than deleted as satisfied) because it is what reds if an
-    operation regresses to a raise, or if a future port method arrives with no adapter behind
-    it: `OPERATIONS` is the checklist, and an unobserved entry blocks cutover.
+    As of 2026-08-12 the floor was EMPTY — every one of the NINE operations then tracked was
+    compared. `OPERATIONS` became the full port surface on 2026-08-14, so `_traffic` (which
+    exercises the entity/relation core) leaves the event, fact and id-keyed-correction
+    operations unobserved, and the floor names them. **That is the floor working**: this
+    scenario genuinely does not exercise them.
+
+    So the assertion is against what THIS traffic covers, not a frozen list. It still reds for
+    the reasons it was written for — an operation regressing to a raise, or a port method
+    arriving with no adapter behind it — because either would move an operation from the
+    observed side to the blocked side.
     """
     user_id, project_id = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
     await _traffic(shadow, user_id, project_id)
     report = shadow.coverage_report()
 
-    assert set(report["blocked_by"]) == _UNIMPLEMENTED, (
-        f"unexpected coverage floor: {report['blocked_by']}"
+    observed = {op for op in OPERATIONS if report["operations"][op]["observations"]}
+    assert set(report["blocked_by"]) == set(OPERATIONS) - observed - _UNIMPLEMENTED, (
+        f"the floor and the observations disagree: blocked={report['blocked_by']} "
+        f"observed={sorted(observed)}"
+    )
+    # The entity/relation core is what this traffic drives; if THOSE stop being observed the
+    # scenario has broken, and that is a different failure from "the floor grew".
+    assert {"resolve_or_merge_entity", "upsert_relation", "relations_for"} <= observed, (
+        f"the core traffic stopped being compared: observed={sorted(observed)}"
     )
     # ⚠️ `cutover_permitted` is a DATA statement, not an authorisation. It says the shadow
     # has no remaining objection: every operation was compared and none disagreed. Whether
     # the swap HAPPENS is QC-7's POST-REVIEW checkpoint and the PO's call on sealed rows
     # T1/T2 — a harness that could authorise its own cutover would be the plan's
     # stop-and-wait discipline written out of existence.
-    assert report["cutover_permitted"] is True, (
-        f"the shadow still objects: blocked_by={report['blocked_by']} "
+    # ...and since 2026-08-14 `OPERATIONS` is the whole port, so THIS scenario cannot clear
+    # the floor: it drives the entity/relation core and nothing else. Asserting `True` here
+    # would only be satisfiable by shrinking the floor back to what the traffic happens to
+    # touch — which is the floor-shaped-number defect the widening removed. What is asserted
+    # instead is that nothing DISAGREED: zero divergences over the operations this traffic
+    # really compared.
+    diverged = {op: r["diverged"] for op, r in report["operations"].items() if r["diverged"]}
+    assert not diverged, (
+        f"the shadow found real disagreement: {diverged} "
         f"samples={report['samples']}"
     )
     for op in OPERATIONS:

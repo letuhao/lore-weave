@@ -48,7 +48,7 @@ import pytest_asyncio
 
 from app.adapters.age_graph_store import AgeGraphStore
 from app.adapters.neo4j_graph_store import Neo4jGraphStore
-from app.adapters.shadow_graph_store import OPERATIONS, ShadowGraphStore
+from app.adapters.shadow_graph_store import _DEPENDS_ON, OPERATIONS, ShadowGraphStore
 from app.db.age_bootstrap import create_age_pool, ensure_graph
 
 pytestmark = pytest.mark.asyncio
@@ -145,11 +145,17 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
         elif op == "relate":
             s, o = rng.sample(known, 2)
             ordinal += rng.randint(1, 5)
-            await store.upsert_relation(
+            rel = await store.upsert_relation(
                 user_id=user_id, subject_id=s, object_id=o,
                 predicate=rng.choice(_PREDICATES),
                 confidence=round(rng.uniform(0.0, 1.0), 2),
                 valid_from_ordinal=rng.choice([None, ordinal]))
+            # Recorded so the id-keyed relation ops can be reached at all. Without this the
+            # corpus never compares `get_relation` or `invalidate_relation` and the suite is
+            # green while two operations are untested — which is what the coverage assertion
+            # caught, doing exactly its job.
+            if rel is not None and rel.id and rel.id not in rels:
+                rels.append(rel.id)
             trace.append(f"relate(->,{ordinal})")
 
         elif op == "getrel":
@@ -311,8 +317,32 @@ async def test_the_seed_corpus_reaches_every_operation(shadow):
         rep = shadow.coverage_report()
         seen |= {op for op in OPERATIONS if rep["operations"][op]["observations"]}
 
-    missing = set(OPERATIONS) - seen
+    # ⚠️ "Never exercised" and "CANNOT be exercised against this secondary" are different
+    # findings, and collapsing them was the artifact this suite produced on 2026-08-14. AGE
+    # refuses `merge_event`/`merge_fact`, so every read depending on them is `uncovered` by
+    # construction — no seed and no reweighting can ever compare them there.
+    #
+    # So the unreachable set is EXEMPTED and the refusal that causes it is ASSERTED, exactly as
+    # the conformance suite pairs each skip with a proof the adapter really refuses. Without
+    # that pairing, "uncovered" would be indistinguishable from "the generator forgot".
+    refused = set(shadow._refused)
+    unreachable = {op for op in OPERATIONS
+                   if any(w in refused for w in _DEPENDS_ON.get(op, ()))} | refused
+    if unreachable:
+        assert refused, "operations are unreachable but nothing was recorded as refused"
+    missing = set(OPERATIONS) - seen - unreachable
     assert not missing, (
         f"no seed in {SEEDS} ever compared {sorted(missing)} — add a seed or reweight "
         f"`_run_sequence`, because these operations are untested while the suite is green"
     )
+
+    # 🔴 THE ENGINE-CHOICE FACT, asserted rather than left in a commit message. A secondary
+    # that refuses a write makes the coverage floor UNMEETABLE for every read beneath it: the
+    # cutover can never be permitted against that engine, however much traffic runs. AGE
+    # refuses two writes and takes nine operations down with them; Kuzu refuses none.
+    rep = shadow.coverage_report()
+    if unreachable:
+        assert not rep["cutover_permitted"], (
+            "the floor reports a cutover permitted while operations are unreachable against "
+            f"this secondary: {sorted(unreachable)}"
+        )

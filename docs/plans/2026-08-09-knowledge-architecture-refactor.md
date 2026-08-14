@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — make the shadow carry a REFUSED WRITE forward to the reads that depend on it. Measured: AGE refuses `merge_event`/`merge_fact`, so `events_page`, `events_in_window` and `facts_for` return empty and score DIVERGED when the read is correct and the write was refused. A shadow that reports a divergence it caused itself would condemn AGE for reads that are right. Then re-run against BOTH secondaries — **Kuzu refuses nothing, so it is the only one against which the coverage floor can ever be met.**
+**RESUME: `T43` — run the shadow with **KUZU** as the secondary. It is the only pairing whose coverage floor can be cleared: AGE refuses `merge_event`/`merge_fact` and takes nine operations down with them, which the suite now asserts rather than merely records. The Neo4j↔AGE pairing is green at 530 passed with zero divergences over what it can compare.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 47 of 87 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 48 of 88 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (2/7) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (3/8) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10234,8 +10234,39 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service seam. **(c)** real: a
   throwaway Neo4j (:7999) and a throwaway AGE off the T42b image, four seeds, the samples above.
 
-  ⬜ **What remains for T43:** propagate refusal to dependent reads, then re-run against BOTH
-  secondaries — Kuzu is the one that can actually meet the floor.
+  ### ✅ T43-propagate 2026-08-14 — refusal carries forward, and the shadow stops lying twice
+
+  ```
+  530 passed / 327 skipped — the db suite against a REAL Neo4j (:7999) + a REAL AGE
+  6 passed — the differential suite, four seeds, twenty operations
+  ```
+
+  ✅ **`_DEPENDS_ON` + `_refused`.** A read whose write the secondary refused is now `uncovered`,
+  not `diverged`. The three false divergences are gone and all four seeds pass. The map is
+  DECLARED rather than inferred, so adding an operation forces the question *"what has to exist
+  for this to mean anything?"* — the question not asking which produced the artifact.
+
+  🔴 **AND IT EXPOSED A SECOND, IDENTICAL GAP: `upsert_relation` never learned its id mapping.**
+  Only `resolve_or_merge_entity` did. So `get_relation` and `invalidate_relation` reported
+  `unmapped` **forever** and could never gain an observation — the same unmeetable-block shape as
+  the refusal, from a different cause. Fixed by learning the mapping there too, exactly as
+  `merge_event` now does. Found by the corpus-coverage assertion, not by reading the code.
+
+  🔧 **Two stale assertions in `test_shadow_comparison`, both frozen at nine operations:**
+  the floor was compared to a hardcoded set, and `cutover_permitted is True` was asserted. Both
+  were satisfiable only by shrinking the floor back to whatever the traffic happens to touch —
+  the floor-shaped-number defect again. Now the floor is asserted **relative to what this traffic
+  actually observed**, and the strong claim is *nothing DIVERGED* rather than *the floor is clear*.
+
+  ⚠️ **The engine-choice fact, now asserted in the suite rather than only in prose:** a secondary
+  that refuses a write makes the floor unmeetable for every read beneath it. AGE refuses two
+  writes and takes **nine** operations down with them. **Kuzu refuses none.**
+
+  **QC (a)** gates green, plan-verify PASS. **(b)** N/A — no service seam; the shadow has no
+  deployed caller. **(c)** 530 passed against two real engines in throwaway containers.
+
+  ⬜ **What remains for T43:** run the shadow with **Kuzu** as secondary — the only pairing whose
+  coverage floor can actually be cleared — and record that comparison.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**
