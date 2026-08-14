@@ -203,6 +203,23 @@ class ShadowGraphStore:
             return None
         if isinstance(value, list):
             return sorted(ShadowGraphStore._comparable(v) for v in value)
+        # TUPLE — `events_page` returns `(rows, total)`, and without this the whole tuple fell
+        # through to its repr, carrying every row's engine-assigned id straight back into the
+        # comparison the projections below exist to keep them out of. Position is preserved
+        # (unlike the list branch, which sorts): a page and its count are not interchangeable.
+        if isinstance(value, tuple):
+            return tuple(ShadowGraphStore._comparable(v) for v in value)
+        # DICT — `update_event_fields` returns `(updated, PRE-EDIT SNAPSHOT)`, and the snapshot
+        # is a plain dict carrying the engine-assigned id and both wall-clock stamps. Those
+        # three keys are dropped for the same reason the object projections drop them; every
+        # other key is compared, because the snapshot is what a correction event records and a
+        # difference in it is a real difference.
+        if isinstance(value, dict):
+            return sorted(
+                (str(k), ShadowGraphStore._comparable(v))
+                for k, v in value.items()
+                if k not in ("id", "created_at", "updated_at")
+            )
         if all(hasattr(value, a) for a in ("canonical_name", "kind", "project_id")):
             # ⚠️ `archived_at` is compared as PRESENCE, not as an instant. Each engine stamps
             # its own clock — Neo4j with Cypher's `datetime()`, AGE with Python's `now()` —
@@ -217,6 +234,30 @@ class ShadowGraphStore:
             return (
                 str(value.canonical_name), str(value.kind), str(value.project_id),
                 value.archived_at is not None,
+            )
+        # EVENT — projected for exactly the reason entities are. Without this an Event fell
+        # through to its full repr, which carries the engine-assigned `id` and the wall-clock
+        # `created_at`/`updated_at`, so `merge_event`, `get_event`, `events_page` and
+        # `events_in_window` ALL reported divergence on their first Kuzu run while agreeing on
+        # every field a caller acts on. The shadow was reporting a difference it created.
+        #
+        # `event_order` is in and the timestamps are out on purpose: the story position is the
+        # thing a canon read depends on, the wall clock is when the row happened to be written.
+        if all(hasattr(value, a) for a in ("canonical_title", "chapter_id", "event_order")):
+            return (
+                str(value.canonical_title), str(value.chapter_id), str(value.event_order),
+                str(value.chronological_order), str(value.project_id),
+                sorted(str(x) for x in (value.participants or [])),
+                sorted(str(x) for x in (value.source_types or [])),
+                str(value.confidence), str(value.archived_at is not None),
+            )
+        # FACT — same reason. The ordinal CHAIN is the point (`maintain_chain` is what AGE
+        # refuses and Kuzu honours), so both bounds are compared and the id is not.
+        if all(hasattr(value, a) for a in ("canonical_content", "valid_from_ordinal", "type")):
+            return (
+                str(value.type), str(value.canonical_content), str(value.project_id),
+                str(value.valid_from_ordinal), str(value.valid_to_ordinal),
+                str(value.predicate), str(value.object), str(value.confidence),
             )
         if all(hasattr(value, a) for a in ("predicate", "confidence", "valid_from_ordinal")):
             return (str(value.predicate), str(value.confidence),

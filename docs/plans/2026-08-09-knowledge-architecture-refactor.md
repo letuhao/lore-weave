@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T43` — diagnose the Kuzu-pairing divergences ONE AT A TIME. The shadow now diffs BOTH candidates and the Kuzu pairing is RED on nine operations; the suite states that rather than hiding it. Start with `merge_event` (id/timestamp shape), then `relations_for` after a `recreate`, then `add_evidence`'s counters. Separately: add the `EntityStatus` node table + its transition write so `status_at_order` can stop refusing — it answered WRONGLY before (`{}` where the contract requires every id defaulting to 'active') and only the differential caught it, because no conformance rule covers it.**
+**RESUME: `T43` — four REAL Kuzu-pairing divergences remain, now isolated from the shadow's own noise: `relations_for` (after a `recreate`), `add_evidence` (counters), `update_event_fields`, `events_page`. Take them one at a time. Separately: add the `EntityStatus` node table + its transition write so `status_at_order` can stop refusing.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**47 of 66 rows done · 19 open · 48 of 89 evidence blocks closed inside them.**
+**47 of 66 rows done · 19 open · 49 of 90 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (3/9) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T41` (1/2) · `T43` (4/10) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -10299,11 +10299,35 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   because no rule covers `status_at_order`; only the differential caught it** — which is exactly
   the argument for having both.
 
-  ⬜ **STILL OWED, and the suite is RED on the Kuzu pairing until it is done:** diagnose the
-  remaining divergences one at a time (`merge_event` id/timestamp shape, `relations_for` after a
-  `recreate`, `add_evidence` counters, the event correction pair), and add the `EntityStatus`
-  node table plus its transition write so `status_at_order` can stop refusing. **Recorded red
-  rather than hidden** — a green here would require deleting the pairing that found the bug.
+  ### ✅ T43-comparator 2026-08-14 — the shadow's OWN noise removed; nine divergences → four REAL
+
+  ```
+  kuzu pairing: 9 diverging operations -> 4     71 passed (conformance + shadow-comparison)
+  remaining, and NOT artifacts: relations_for · add_evidence · update_event_fields · events_page
+  ```
+
+  🔴 **The comparator projected `Entity` and `Relation` and NOTHING ELSE.** Its docstring is
+  explicit that *"node ids are engine-assigned and must NOT be compared"* — and then an `Event`,
+  a `Fact`, a tuple or a dict fell through to its full repr, carrying the id and both wall-clock
+  stamps straight back into the comparison. So `merge_event`, `get_event`, `events_page` and
+  `events_in_window` all reported divergence **while agreeing on every field a caller acts on**.
+
+  Four projections added, each for the reason the entity one already existed:
+  **Event** (identity + story position + participants; timestamps out — the story ordinal is what
+  a canon read depends on, the wall clock is when the row happened to be written) · **Fact**
+  (both chain bounds IN — `maintain_chain` is the thing AGE refuses and Kuzu honours) ·
+  **tuple**, position-preserved (`events_page` returns `(rows, total)`; a page and its count are
+  not interchangeable) · **dict**, dropping only `id`/`created_at`/`updated_at` (the pre-edit
+  snapshot is what a correction event records, so the rest is real signal).
+
+  🔻 **The four survivors did not move when the last two projections landed** — which is the
+  check that they are ADAPTER differences, not more comparator noise. Isolating them is the
+  point: before this, a real bug and a repr artifact were indistinguishable in the same list.
+
+  ⬜ **STILL OWED, suite RED on the Kuzu pairing:** `relations_for` (after a `recreate`),
+  `add_evidence` (counters), `update_event_fields`, `events_page`; plus the `EntityStatus` node
+  table + transition write so `status_at_order` can stop refusing. **Recorded red rather than
+  hidden** — a green would require deleting the pairing that found the bug.
   (depends on T42, T42a)
   ---
   ### ✅ HARNESS BUILT AND RUN 2026-08-12 — **Neo4j vs AGE, on real traffic**
