@@ -18744,6 +18744,12 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "add to the graph",
+    "add a node",
+    "put this entity in the graph",
+    "add characters to the knowledge graph"
+   ],
    "tier": "A"
   }
  },
@@ -18932,6 +18938,12 @@
   "meta": {
    "async": true,
    "scope": "project",
+   "synonyms": [
+    "build the knowledge graph",
+    "generate the wiki",
+    "rebuild the graph",
+    "extract the graph from my book"
+   ],
    "tier": "W"
   }
  },
@@ -19183,6 +19195,12 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "relationship over time",
+    "how did their relationship change",
+    "timeline of a relationship",
+    "history between two characters"
+   ],
    "tier": "R"
   }
  },
@@ -19306,6 +19324,15 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "show the graph",
+    "knowledge graph",
+    "how are they connected",
+    "relationships between",
+    "who knows who",
+    "connections in this story",
+    "entity relationships"
+   ],
    "tier": "R"
   }
  },
@@ -19346,6 +19373,11 @@
   },
   "meta": {
    "scope": "user",
+   "synonyms": [
+    "graph templates",
+    "available graph schemas",
+    "what templates can i adopt"
+   ],
    "tier": "R"
   }
  },
@@ -19591,6 +19623,13 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "add an edge type",
+    "change the graph schema",
+    "adopt a graph template",
+    "deprecate an edge type",
+    "new relationship type"
+   ],
    "tier": "W"
   }
  },
@@ -19656,6 +19695,12 @@
   },
   "meta": {
    "scope": "user",
+   "synonyms": [
+    "set up the knowledge graph",
+    "start a knowledge project",
+    "create the knowledge project",
+    "enable the graph for this book"
+   ],
    "tier": "A"
   }
  },
@@ -19726,6 +19771,11 @@
   },
   "meta": {
    "scope": "user",
+   "synonyms": [
+    "my knowledge projects",
+    "list knowledge projects",
+    "which projects do i have"
+   ],
    "tier": "R"
   }
  },
@@ -19760,6 +19810,11 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "set the embedding model",
+    "configure embeddings",
+    "choose an embedding model"
+   ],
    "tier": "A"
   }
  },
@@ -19860,6 +19915,13 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "add a relationship",
+    "link two characters",
+    "connect these entities",
+    "they are related",
+    "record that they know each other"
+   ],
    "tier": "A"
   }
  },
@@ -19908,6 +19970,12 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "record a fact",
+    "note a story fact",
+    "add a narrative fact",
+    "remember this happened"
+   ],
    "tier": "A"
   }
  },
@@ -19934,6 +20002,12 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "benchmark the embedding model",
+    "how good is retrieval",
+    "test the embeddings",
+    "retrieval quality"
+   ],
    "tier": "A"
   }
  },
@@ -20021,6 +20095,12 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "graph schema",
+    "what edge types exist",
+    "what relationships can i use",
+    "show the schema"
+   ],
    "tier": "R"
   }
  },
@@ -20146,6 +20226,11 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "graph template updates",
+    "is my schema out of date",
+    "upstream schema changes"
+   ],
    "tier": "R"
   }
  },
@@ -20202,6 +20287,13 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "graph triage",
+    "what did not match the schema",
+    "unmatched graph items",
+    "graph review queue",
+    "items needing triage"
+   ],
    "tier": "R"
   }
  },
@@ -20236,6 +20328,11 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "place this edge",
+    "accept the proposed edge",
+    "put the edge in the graph"
+   ],
    "tier": "W"
   }
  },
@@ -20297,6 +20394,12 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "resolve triage",
+    "map this triage item",
+    "drop this edge",
+    "fix the triage"
+   ],
    "tier": "A"
   }
  },
@@ -20377,6 +20480,11 @@
   },
   "meta": {
    "scope": "project",
+   "synonyms": [
+    "add to the vocabulary",
+    "add this value to the schema",
+    "resolve triage by changing the schema"
+   ],
    "tier": "W"
   }
  },
@@ -20514,6 +20622,12 @@
   },
   "meta": {
    "scope": "user",
+   "synonyms": [
+    "save a graph view",
+    "create a lens",
+    "edit a saved view",
+    "delete a view"
+   ],
    "tier": "A"
   }
  },
@@ -20540,6 +20654,11 @@
   },
   "meta": {
    "scope": "user",
+   "synonyms": [
+    "my saved views",
+    "list graph views",
+    "what lenses do i have"
+   ],
    "tier": "R"
   }
  },
