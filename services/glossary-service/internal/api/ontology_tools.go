@@ -41,8 +41,22 @@ func (s *Server) RegisterOntologyTools(srv *mcp.Server) {
 			"items; each item succeeds or fails independently. (For a human-confirmed proposal " +
 			"of a single new attribute instead, use glossary_propose_batch.)",
 		InputSchema: ontologyUpsertSchema(),
+		// 🔴 DECLARE THE USER'S WORD, NOT THE SCHEMA'S. Measured live 2026-08-14, K=3: "I want to
+		// start tracking the factions in this world. Add Factions as a new category alongside
+		// characters and items." surfaced this tool on 0 of 3 runs. Every phrase above says
+		// "kind" — the column name — and the author said "category", which is what the UI calls
+		// it and what a person types. With nothing on the wire the model ran
+		// glossary_adopt_standards instead and adopted an entire genre pack: kinds 4->5,
+		// attributes 29->36, genres 1->3, kind_genres 4->13, from a request to add ONE category.
+		//
+		// "category" is not a synonym of "kind" in the abstract; it is the word this product's
+		// own users use for this concept. The same fix on glossary_curation_list took it from
+		// surfaced 0/3 to called 3/3 with a correct answer.
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"add a kind", "add a genre", "add an attribute", "edit a kind", "rename a kind", "new entity type",
+			"add a category", "new category", "add category", "another category", "categories",
+			"start tracking", "track a new kind of thing", "add a type", "new type of entity",
+			"rename a category", "edit a category",
 		}),
 	}, s.toolOntologyUpsert)
 

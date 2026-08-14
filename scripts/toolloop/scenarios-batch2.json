@@ -1,59 +1,6 @@
 {
+  "_note": "",
   "scenarios": [
-    {
-      "id": "glossary-propose-new-attribute",
-      "tool_under_test": "glossary_propose_new_attribute",
-      "expect_tool": "glossary_propose_new_attribute",
-      "intent": "write",
-      "tier": "W",
-      "scope": "book",
-      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "I want every character in this book to track a cultivation realm. Add that as a new detail on the character type.",
-      "prompt_source": "description (no _meta.synonyms declared — R2). Its own text gives the example \"add 'cultivation_realm' to the character kind\"; this is that example said the way a user would say it.",
-      "needs_target": false,
-      "approve": "approved_once",
-      "seed": [
-        {
-          "rest": {
-            "domain": "glossary",
-            "method": "POST",
-            "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {
-              "genres": [
-                "universal"
-              ],
-              "kinds": [
-                "character",
-                "location",
-                "item"
-              ]
-            }
-          }
-        },
-        {
-          "tool": "glossary_propose_entities",
-          "args": {
-            "book_id": "{book_id}",
-            "items": [
-              {
-                "kind": "character",
-                "name": "Aldric Vane"
-              },
-              {
-                "kind": "character",
-                "name": "Mira Solene"
-              },
-              {
-                "kind": "item",
-                "name": "Ember Codex"
-              }
-            ]
-          }
-        }
-      ],
-      "falsifier": "REFUTED IF: the tool is reached but no attribute appears on the character kind in loreweave_glossary after the confirm round-trip (it mints a confirm_token and writes NOTHING at call time, so a store diff of zero with ok:true is the silent-success shape), OR the attribute lands on a different kind than 'character', OR — the R2 question — the tool is never reached at all despite the request naming exactly what its own description says it does.",
-      "ship_audit": null
-    },
     {
       "id": "composition-outline-node-edit",
       "tool_under_test": "composition_outline_node_edit",
@@ -115,96 +62,22 @@
         }
       ],
       "falsifier": "REFUTED IF: after an approved run the outline node's title in loreweave_composition is still 'The Ember Codex', OR a SECOND node is created instead of the first being renamed (op=create where op=update was meant — this is a unified op-dispatch tool and picking the wrong op is its most likely failure), OR the node count changes at all.",
-      "ship_audit": null
-    },
-    {
-      "id": "glossary-list-ai-suggestions",
-      "tool_under_test": "glossary_list_ai_suggestions",
-      "expect_tool": "glossary_list_ai_suggestions",
-      "intent": "read",
-      "tier": "R",
-      "scope": "book",
-      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
-      "prompt": "Are there any suggested entries waiting for me to review?",
-      "prompt_source": "description (no _meta.synonyms declared — R2). Its own text calls it \"the triage inbox\" of \"AI-SUGGESTED entities awaiting review\"; this asks for that without naming the tool or its jargon.",
-      "needs_target": false,
-      "approve": null,
-      "seed": [
-        {
-          "rest": {
-            "domain": "glossary",
-            "method": "POST",
-            "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {
-              "genres": [
-                "universal"
-              ],
-              "kinds": [
-                "character",
-                "location",
-                "item"
-              ]
-            }
-          }
-        },
-        {
-          "tool": "glossary_propose_entities",
-          "args": {
-            "book_id": "{book_id}",
-            "items": [
-              {
-                "kind": "character",
-                "name": "Aldric Vane"
-              },
-              {
-                "kind": "character",
-                "name": "Mira Solene"
-              },
-              {
-                "kind": "item",
-                "name": "Ember Codex"
-              }
-            ]
-          }
-        },
-        {
-          "sql": {
-            "db": "loreweave_glossary",
-            "statement": "UPDATE glossary_entities SET tags = ARRAY['assistant'], status='active' WHERE book_id='{book_id}' AND cached_name <> 'Mira Solene'"
-          }
-        }
-      ],
-      "falsifier": "DISCRIMINATING SEED: three entities exist, exactly ONE (Mira Solene) is tagged 'ai-suggested'. REFUTED IF: the reply reports three entries awaiting review, or names Aldric Vane or Ember Codex as awaiting review — either means the answer came from the injected story_state block rather than from the inbox. Also refuted if the store changes on this read-intent turn.",
       "ship_audit": null,
-      "answer_expect": {
-        "must_contain": [
-          "mira solene"
-        ],
-        "must_not_contain": [
-          "3 suggested",
-          "three suggested",
-          "3 entries",
-          "three entries",
-          "don't have any",
-          "no suggested entries",
-          "not have any suggested",
-          "no entries waiting"
-        ]
-      },
       "seed_assert": [
         {
-          "db": "loreweave_glossary",
-          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}' AND 'ai-suggested' = ANY(tags) AND status='draft'",
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM outline_node WHERE project_id='{project_id}' AND title='The Ember Codex'",
           "expect": "1",
-          "why": "exactly ONE entity must be in the ai-suggested review queue, or a truthful answer and a lazy 'three' are the same sentence and the scenario proves nothing"
-        },
-        {
-          "db": "loreweave_glossary",
-          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
-          "expect": "3",
-          "why": "three entities must exist, so 'one' is a filtered answer rather than a total"
+          "why": "exactly one node titled 'The Ember Codex' must exist to be renamed"
         }
-      ]
+      ],
+      "answer_expect": {
+        "must_not_contain": [
+          "couldn't find",
+          "could not find",
+          "no outline"
+        ]
+      }
     },
     {
       "id": "glossary-ontology-upsert",
@@ -258,7 +131,15 @@
         }
       ],
       "falsifier": "REFUTED IF: after an approved run no new kind row exists for this book in loreweave_glossary (its description says it WRITES IMMEDIATELY with no confirmation, so an unchanged store with ok:true is a silent success), OR an existing kind is overwritten rather than a new one added (it mixes create and update by presence of base_version — omitting it must CREATE).",
-      "ship_audit": null
+      "ship_audit": null,
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM book_kinds WHERE book_id='{book_id}' AND lower(name)='factions'",
+          "expect": "0",
+          "why": "'Factions' must NOT already exist, or 'added it' is unfalsifiable"
+        }
+      ]
     },
     {
       "id": "plan-compile",
@@ -329,18 +210,149 @@
         }
       ],
       "falsifier": "REFUTED IF: the tool is reached and returns ok while no PlanningPackage row appears in loreweave_composition, OR it is refused for want of a run_id/arc_id the turn could have resolved from the book it is already looking at — its three required args (book_id, run_id, arc_id) are exactly the shape that produced the cross-wire in batch 1.",
-      "ship_audit": null
-    }
-  ],
-  "_generator": "scengen.py",
-  "_needs_attention": [
-    {
-      "tool": "glossary_propose_new_attribute",
-      "why": "declares no _meta.synonyms — R1's answerability pass is blind to it too (R2)"
+      "ship_audit": null,
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM composition_arc WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "an arc must exist for plan_compile to have something to compile"
+        }
+      ]
     },
     {
-      "tool": "glossary_list_ai_suggestions",
-      "why": "declares no _meta.synonyms — R1's answerability pass is blind to it too (R2)"
+      "id": "glossary-list-system-standards",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "glossary_list_system_standards",
+      "prompt": "What kinds of things can I track in a story bible here — what categories does the system offer out of the box?",
+      "prompt_source": "description (declares no _meta.synonyms — R2). Its own text: 'List the SYSTEM standards catalogue — the entity kinds a book can adopt'.",
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "editor_context": false,
+      "falsifier": "REFUTED IF: the reply lists categories that are this BOOK's adopted kinds (character/location/item, seeded here) rather than the SYSTEM catalogue — that is the tool next door answering, not this one. Also refuted if a read-intent turn changes the store.",
+      "answer_expect": {
+        "must_not_contain": [
+          "i don't have",
+          "i cannot",
+          "no categories"
+        ]
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "the three seeded entities must exist"
+        }
+      ],
+      "ship_audit": null
+    },
+    {
+      "id": "glossary-extract-entities-from-doc",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "glossary_extract_entities_from_doc",
+      "prompt": "Here are my notes — turn them into glossary entries please:\nKessa Duhrin is a salt-cartographer from the drowned city of Ilmarch. She carries the Tidewrit, a chart that redraws itself. Her rival is Warden Sabel.",
+      "prompt_source": "_meta.synonyms['turn my notes into glossary entries'] + a pasted document, which is the shape its description names",
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "editor_context": false,
+      "falsifier": "This tool RETURNS candidates and WRITES NOTHING (its own description). REFUTED IF: glossary_entities grows on this turn — that means something wrote when the tool contracts not to. Also refuted if the reply names none of Kessa Duhrin, Ilmarch, Tidewrit or Warden Sabel, which would mean the notes were never read.",
+      "answer_expect": {
+        "must_contain": [
+          "kessa"
+        ]
+      },
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "3",
+          "why": "the three seeded entities must exist"
+        }
+      ],
+      "ship_audit": null
     }
   ]
 }

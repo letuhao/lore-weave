@@ -17061,7 +17061,18 @@
     "add an attribute",
     "edit a kind",
     "rename a kind",
-    "new entity type"
+    "new entity type",
+    "add a category",
+    "new category",
+    "add category",
+    "another category",
+    "categories",
+    "start tracking",
+    "track a new kind of thing",
+    "add a type",
+    "new type of entity",
+    "rename a category",
+    "edit a category"
    ],
    "tier": "A"
   }
