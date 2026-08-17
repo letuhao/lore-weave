@@ -34,4 +34,4 @@ mcp==1.28.1
 jsonschema>=4.18
 # D-TOOLCALL-GEMMA-TOKEN-LEAK — generic JSON-repair fallback for malformed
 # tool-call arguments some local models emit (see _parse_tool_args).
-json-repair>=0.30
+json-repair>=0.63.2
