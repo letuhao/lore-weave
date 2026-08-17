@@ -649,6 +649,12 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                 job = await llm_client.get_job(jid, user_id=owner)
             except Exception:  # noqa: BLE001 — a transient get_job fault: try the next id/tick
                 continue
+            # A terminal provider id can remain in the persisted list after its fold
+            # won the row lock. It is no longer a recovery candidate; treating it as
+            # progress makes the sweep break before reaching a later failed sibling
+            # (the exact fact→event loop that used to run forever).
+            if _provider_job_superseded(rs, jid):
+                continue
             # Only replay a TERMINAL job — _resume folds the job result unconditionally
             # (it's normally driven by a terminal event), so re-driving a still-running
             # job would fold an incomplete result. Slow ≠ stuck. Use the SDK's own
@@ -656,6 +662,35 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
             # status set to drift out of sync).
             if not job.is_terminal():
                 continue
+            # A terminal provider failure is not a result that can be folded. Passing a
+            # failed/cancelled job to the extractor used to leave the same provider id
+            # in resume_state (the stage could not advance), so the sweeper submitted
+            # the identical no-op recovery attempt forever. Fail-stop the domain row
+            # here and retain the provider diagnostic for an explicit retry/resume.
+            provider_status = getattr(job.status, "value", job.status)
+            if provider_status != "completed":
+                provider_error = getattr(job, "error", None)
+                error_code = getattr(provider_error, "code", None) or "PROVIDER_JOB_TERMINAL"
+                error_message = getattr(provider_error, "message", None) or (
+                    f"provider job ended with status {provider_status}"
+                )
+                message = (
+                    f"provider job {jid} ended with {provider_status} during "
+                    f"stage {rs.get('stage')}: {error_code}: {error_message}"
+                )[:2000]
+                await pool.execute(
+                    """UPDATE extraction_jobs
+                       SET status='failed', error_message=$2,
+                           resume_state=NULL, provider_job_ids=NULL,
+                           pipeline_stage='failed', completed_at=now(), updated_at=now()
+                       WHERE job_id=$1 AND status IN ('running','paused')""",
+                    row["job_id"], message,
+                )
+                logger.error(
+                    "resume-sweep: stopped ej=%s after provider job %s became %s: %s",
+                    row["job_id"], jid, provider_status, message,
+                )
+                break
             try:
                 await _resume(pool, knowledge_client, llm_client, None, jid, row["job_id"], rs)
                 redriven += 1
@@ -686,6 +721,19 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                 )
             break  # _resume advanced/persisted the row; re-evaluate on the next tick
     return redriven
+
+
+def _provider_job_superseded(rs: dict, provider_job_id: str) -> bool:
+    """Return whether a provider id is no longer actionable for this stage."""
+    stage = rs.get("stage")
+    if stage == dx.TRIO:
+        op = dx.op_for_job(rs, provider_job_id)
+        return op is not None and op in set(rs.get("trio_folded", []))
+    if stage == dx.RECOVERY:
+        return dx.recovery_task_for_job(rs, provider_job_id) is None
+    if stage == dx.FILTER:
+        return dx.filter_task_for_job(rs, provider_job_id) is None
+    return False
 
 
 async def run_resume_sweeper(pool, knowledge_client, llm_client: LLMClient, *,
