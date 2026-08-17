@@ -43,7 +43,7 @@ dependencies = [
   # was `>=1.27` with no ceiling, so the break was latent in EVERY image and would have
   # surfaced on whichever service happened to be rebuilt next — with nothing in the diff
   # to explain it. Raise the ceiling deliberately, after porting to the 2.x import path.
-  "mcp>=1.29,<2",
+  "mcp>=1.29,<3",
   # SDK-2 / SEC-2 (2026-07-04) — loreweave_authn is the shared platform-user JWT
   # verifier (replaces the ~6 copy-pasted jwt.decode blocks). It needs PyJWT; every
   # service that `pip install /sdk`s + imports the verifier gets it (a migrated
