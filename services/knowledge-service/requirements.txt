@@ -38,7 +38,7 @@ jieba>=0.42.1
 # even when the answer is a 1-hop relation. We instead Aho-Corasick match the message
 # against the project's KNOWN entity-name dictionary (language-agnostic: zh/ja/ko/vi).
 # Prebuilt manylinux wheels (no build toolchain needed); C-ext = sub-ms at scale.
-pyahocorasick>=2.0
+pyahocorasick>=2.3.1
 # D-T2-01 — tiktoken for accurate token counting (CJK especially).
 # The len/4 heuristic undercounts CJK by ~3-7x, which over-promises
 # context budget. tiktoken.cl100k_base matches GPT-4/Claude-3.x
