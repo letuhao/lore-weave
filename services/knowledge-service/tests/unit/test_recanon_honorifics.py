@@ -8,7 +8,11 @@ the C17 backfill split).
 
 from __future__ import annotations
 
-from app.db.migrations.recanon_honorifics import EntityRow, plan_recanon
+from app.db.migrations.recanon_honorifics import (
+    EntityRow,
+    plan_recanon,
+    run_recanon_backfill,
+)
 from loreweave_extraction.canonical import entity_canonical_id
 
 _U = "user-1"
@@ -107,3 +111,99 @@ def test_plan_is_deterministic():
     p2 = plan_recanon(rows)
     assert [(a.op, a.from_id, a.into_id) for a in p1.actions] == \
            [(a.op, a.from_id, a.into_id) for a in p2.actions]
+
+
+# ── T35e: the anchor collision guard ─────────────────────────────────────────
+
+def _anchored(id_: str, name: str, canonical_name: str, anchor: str | None) -> EntityRow:
+    return EntityRow(id=id_, user_id=_U, project_id=_P, kind=_K, name=name,
+                     canonical_name=canonical_name, anchor=anchor)
+
+
+def test_two_DISTINCT_glossary_entities_are_never_folded_together():
+    """🔴 The destructive case, measured on the dev graph before it was guarded: of 1826
+    planned actions, 7 were merges and SIX would have folded a node carrying one glossary
+    anchor into a node carrying a different one — 卡維嘉小姐, 精靈小姐, 魔王殿, 魔王大人.
+
+    Honorific stripping is precisely the operation that makes two different characters
+    canonicalise together: 精靈小姐 ("Miss Elf") and 精靈 are one honorific apart, and the
+    glossary knows they are two entities even when the canonicaliser cannot.
+
+    `:Entity(user_id, project_id, glossary_entity_id)` is UNIQUE, so the fold either raises or
+    silently unanchors one of them — and an unanchored glossary entity is invisible in the KG
+    while looking perfectly healthy in the glossary. The group is REFUSED, not merged.
+    """
+    rows = [
+        _anchored("id-a", "精靈小姐", "精靈小姐", anchor="glossary-A"),
+        _anchored("id-b", "精靈大人", "精靈大人", anchor="glossary-B"),
+    ]
+    # Both strip to the same canonical, so they collide on one new id.
+    plan = plan_recanon(rows)
+    assert plan.conflicted == 2, plan
+    assert plan.actions == [], "a distinct-anchor group must produce NO action"
+    assert plan.conflicts == [("id-a", "id-b")], plan.conflicts
+
+
+def test_the_SAME_anchor_still_merges_normally():
+    """The guard must not refuse everything. Two stranded spellings of ONE glossary entity are
+    the case this migration exists for, and they still fold — otherwise the guard would trade
+    a destructive bug for a silently inert migration, which the plan would report as 'ran'."""
+    rows = [
+        _anchored("id-a", "田中様", "田中様", anchor="glossary-A"),
+        _anchored("id-b", "田中大人", "田中大人", anchor="glossary-A"),
+    ]
+    plan = plan_recanon(rows)
+    assert plan.conflicted == 0, plan
+    assert plan.actions, "same-anchor drift must still reconcile"
+    assert {a.op for a in plan.actions} <= {"rekey", "merge"}
+
+
+def test_an_UNANCHORED_node_does_not_block_a_merge():
+    """`None` is 'no claim', not 'a different claim'. A pre-anchor node folding into an
+    anchored one loses nothing — and treating None as distinct would freeze the whole legacy
+    population, which is most of what this backfill is for."""
+    rows = [
+        _anchored("id-a", "田中様", "田中様", anchor=None),
+        _anchored("id-b", "田中大人", "田中大人", anchor="glossary-A"),
+    ]
+    plan = plan_recanon(rows)
+    assert plan.conflicted == 0, plan
+    assert plan.actions, "an unanchored node must not veto reconciliation"
+
+
+def test_the_LOADER_actually_feeds_the_anchor_guard():
+    """🔴 The wiring, not the rule. The guard above shipped correct and DEAD: the apply path's
+    Cypher never selected `glossary_entity_id`, so every `EntityRow.anchor` defaulted to None,
+    the distinct-anchor set never held two members, and the guard could not fire once against
+    a real graph. Unit tests that build rows by hand cannot see that — they supply the field
+    the loader forgot.
+
+    So this drives `run_recanon_backfill` through a fake session and asserts the REFUSAL
+    reaches the plan. It is the difference between "the guard is right" and "the guard runs".
+    """
+    import asyncio
+
+    class _Result:
+        def __init__(self, rows): self._rows = rows
+        def __aiter__(self):
+            async def gen():
+                for r in self._rows:
+                    yield r
+            return gen()
+
+    rows = [
+        {"id": "id-a", "user_id": _U, "project_id": _P, "kind": _K,
+         "name": "精靈小姐", "canonical_name": "精靈小姐", "anchor": "glossary-A"},
+        {"id": "id-b", "user_id": _U, "project_id": _P, "kind": _K,
+         "name": "精靈大人", "canonical_name": "精靈大人", "anchor": "glossary-B"},
+    ]
+
+    class _Session:
+        async def run(self, cypher, **kw):
+            assert "glossary_entity_id" in cypher, (
+                "the loader stopped selecting the anchor — the guard is dead again")
+            return _Result(rows)
+
+    plan = asyncio.run(run_recanon_backfill(_Session(), apply=False))
+    assert plan.conflicted == 2, plan
+    assert plan.actions == [], "the loader fed the guard but the plan still acted"

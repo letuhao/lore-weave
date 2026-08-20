@@ -112,7 +112,7 @@ RULES = """1 Measure DATA on the real stack (5555/7688); run CODE on lw-iso (bas
 5 A gate's number moves in the SAME COMMIT as the code that moved it. So does a scope list.
 6 Anything that WRITES goes to a throwaway DB. Dev Postgres and Neo4j are READ-ONLY — a count is a read, a MERGE is not.
 7 Glossary migrations are an append-only ledger: new step, never edit.
-8 MEASURE THE BATCH BEFORE BUILDING IT. Twice this week it killed the batch; that was the result.
+8 MEASURE THE BATCH BEFORE BUILDING IT. Three times this week it killed the batch; that was the result.
 9 An adapter that cannot honour an operation RAISES, naming its spec section. Never empty, never half-written, never silently truncated.
 10 Do NOT fan out subagents per list element. No workflows, no AgentTool unless I ask.
 11 Tick the box in the COMMIT THAT DOES THE WORK.
@@ -125,7 +125,7 @@ BITE = mutate by LINE NUMBER (exact-match replace silently no-ops on CRLF), watc
 
 DISCIPLINE = """NO "BLOCKED", NO "DEFERRED". A task may be unfinished; it may not be undecided. Decide it, spec it in docs/specs/2026-08-13-knowledge-refactor-open-decisions.md, keep building.
 No prose-only cycles. Editing the plan is step 5 of a cycle, never a cycle of its own.
-Commit and push every cycle. Keep plan-final-verification, plan-row-honesty-gate, plan-progress-block --check and plan-acceptance --floor green."""
+Commit and push every cycle. Keep the four plan gates green (verify, row-honesty, progress-block --check, acceptance --floor)."""
 
 STOP_BLOCK = """STOP — these five, nothing else:
 · a stop condition fires: {stops}
@@ -240,9 +240,8 @@ def build(plan: str) -> str:
             lines.append(f"{name} {spec}  " + " → ".join(live))
     lines += [
         "",
-        "T17 is NOT the head of the queue, ever again. §1.3 says its ceiling should not reach "
-        "zero and A10 priced the rest at 1 module per port operation. Its FLOOR is what "
-        "matters. Opportunistic, never the task.",
+        "T17 is NOT the head of the queue, ever again (§1.3: its ceiling should not reach zero; "
+        "A10 priced the rest at 1 module per operation). Its FLOOR is what matters.",
         "",
         CYCLE,
         "",

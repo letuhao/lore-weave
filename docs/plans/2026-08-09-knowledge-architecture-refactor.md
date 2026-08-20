@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35` — decide whether it CLOSES. Minting half closed (T35a/b/c); **T35d closed the event half** (an Event's id derives from its TITLE; Kuzu and the fake forked the event on re-extraction after an author rename — both fixed). Own test 9/9, `derived-entity-id-gate` PASS at 4, §4.1 says nothing further is owed on entities. Its ⏸ means DEFERRED, **not** a checkpoint — those are QC-3/QC-5/QC-7. Verify by RUNNING, then tick it or write what it owes. Then `T32` → `T33` ⛔.**
+**RESUME: `T35` ⛔ **DOES NOT CLOSE — live data says so.** Row claimed 77 stale nodes; on `:7688` it is **1826**, and the broken field is `canonical_name` (the resolution key), not `id` (a mint fallback): 37 % of the graph forks on next extraction, reproduced end-to-end. `recanon_honorifics` already plans exactly that population — but 6 of its merges would have **destroyed distinct glossary anchors**. Planner is anchor-aware now (1820 repaired / 6 refused / 0 lost); its guard had shipped DEAD until the loader was wired. **Owed: an operator runs the backfill.** Then `T32`.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**49 of 66 rows done · 17 open · 37 of 69 evidence blocks closed inside them.**
+**49 of 66 rows done · 17 open · 37 of 71 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (4/7) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -8248,6 +8248,135 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4229 passed — knowledge-service unit suite
   ```
 
+
+  ### 🔴 T35e 2026-08-14 — **T35 does NOT close: the defect is live on 1826 nodes, and the fix would have destroyed six anchors**
+
+  ```
+  unit 4229 -> 4233 passed      T35 identity 9/9 vs a real Neo4j      gates green
+  ```
+
+  The row was one decision from `[x]`: minting closed at all three writers (T35a/b/c), T35d
+  closed the event half, its own test green, `derived-entity-id-gate` PASS at 4, and §4.1
+  saying nothing further is owed. **Rule 2 says run it, not read it.** The row's own claim was
+  the thing to run:
+
+  > *"the 2026-08-02 kind backfill left **77 nodes** whose derived id disagrees with their own
+  > properties"*
+
+  📊 **MEASURED on the dev graph (`:7688`, READ-ONLY), 2026-08-14 — it is 1826, not 77, and
+  the field that matters is not the one named.**
+
+  ```
+  entities with an id + name                    4872
+  stale DERIVED id                              1847     (the row said 77)
+    ...carrying a glossary anchor               1846
+  canonical_name INCONSISTENT with its name     1826     <- THE RESOLUTION KEY
+    ...all of them CJK                          1826
+    ...all at canonical_version = 1             1826
+  ```
+
+  🎯 **The id was never the dangerous field.** `_MERGE_ENTITY_CYPHER` resolves on
+  `(user, project, canonical_name, kind)` — what the node currently SAYS it is — and falls back
+  to the derived id only to mint. So a stale id is harmless; **a stale `canonical_name` is
+  not**, because it is the only key the resolver looks at. For those 1826, both paths miss.
+
+  **Proven, not inferred** — seeded one node with the exact live shape on a throwaway and
+  re-extracted the same name once:
+
+  ```
+  seeded   name='規則之力'  canonical_name='规則之力'      <- partial simplified conversion
+  resolver would compute canonical_name = '规则之力'
+  after ONE re-extraction of the same name: 2 node(s)     => DUPLICATE MINTED
+  ```
+
+  **37 % of the graph forks on next extraction.** The cause is a canonicaliser change without a
+  backfill: `canonical_version` — the field that exists to catch exactly this — reads `1` on
+  every node, stale and clean alike, so nothing knew.
+
+  ### 🔧 …and Rule 8 killed the batch, for the third time this week
+
+  Before writing a backfill: `recanon_honorifics.py` already is one, dry-run by default,
+  operator-run, with a pure planner. Run against the live rows it plans **exactly** the
+  population:
+
+  ```
+  scanned 4872   clean 3046   actions 1826        3046 + 1826 = 4872
+  ```
+
+  So T35 does not owe a migration. It owed **proof that running this one is safe** — and it
+  was not.
+
+  ### 🔴 THE MIGRATION WOULD HAVE DESTROYED SIX GLOSSARY ANCHORS
+
+  ```
+  rekey 1819    merge 7    of those merges, folding a node with a DIFFERENT anchor: 6
+      卡維嘉小姐   精靈小姐 ×2   魔王殿 ×2   魔王大人
+  ```
+
+  `:Entity(user_id, project_id, glossary_entity_id)` is UNIQUE, so folding two differently
+  anchored nodes either raises or **silently unanchors one** — and an unanchored glossary
+  entity is invisible in the KG while looking perfectly healthy in the glossary.
+
+  Honorific stripping is precisely the operation that creates the collision: 精靈小姐
+  ("Miss Elf") and 精靈 are one honorific apart, and the glossary knows they are two entities
+  when the canonicaliser cannot. **`merge_entity`'s own Cypher had already found this class**
+  and said so — *"ALL 17 are multi-ANCHORED … a bare 'oldest wins' would have silently moved
+  extraction writes between those nodes"* — while this planner, written earlier, does a bare
+  oldest-wins and had never been re-read against that finding.
+
+  ✅ **The planner is anchor-aware now.** A group whose members mirror different glossary
+  entities is **REFUSED**, not merged: both want the same derived id so neither can be
+  re-keyed, and leaving them stranded preserves the status quo (they still fork) while
+  destroying nothing. Refusing is the only option here that cannot lose an author's data.
+
+  ```
+  ANCHOR-AWARE on the real graph:
+    rekey 1819   merge 1   CONFLICTED 6 in 5 group(s)
+    -> 1820 repaired, 6 refused, 0 anchors lost
+  ```
+
+  🔴 **AND THE GUARD SHIPPED DEAD.** `_LIST_ENTITIES_CYPHER` never selected
+  `glossary_entity_id`, so every `EntityRow.anchor` defaulted to `None`, the distinct-anchor
+  set never held two members, and the guard **could not fire once against a real graph**. Unit
+  tests that build rows by hand cannot see this — they supply the field the loader forgot. It
+  is the same defect class as T39's cache, T42d's port and the T38 gate, found here only
+  because the wiring got its own test.
+
+  **BITE ×3, each red for the right reason:**
+
+  ```
+  6. remove the anchor guard (real graph)
+       conflicted 0   merges destroying a distinct anchor: 6
+  7. remove the anchor guard (unit)
+       E  assert 0 == 2   test_two_DISTINCT_glossary_entities_are_never_folded_together
+  8. loader stops passing `anchor` — the guard goes dead again
+       E  assert 0 == 2   test_the_LOADER_actually_feeds_the_anchor_guard
+  ```
+
+  Bite 8 is the one that matters: rules 6 and 7 stay green under it, because a hand-built row
+  supplies what the loader dropped.
+
+  **QC (a) gates:** `derived-entity-id-gate` PASS at 4 (unchanged — this batch retires no
+  derivation); `db-safety-gate` exit 0; `plan-verify` PASS; unit **4229 → 4233**.
+  **QC (b) the seam:** N/A — a pure planner plus the Cypher that feeds it, inside one service;
+  no wire contract crossed. The live proof is the plan computed against the real dev graph and
+  the duplicate reproduced on a throwaway.
+  **QC (c) real data:** the whole finding IS real data — 4872 entities read from `:7688`
+  READ-ONLY, 1826 broken, the fork reproduced end-to-end, and the repaired plan re-derived
+  against the same corpus.
+
+  ### ⛔ WHAT T35 STILL OWES, and it is not code
+
+  Running the backfill is a **write to the shared dev graph** — 1820 nodes re-keyed. That is a
+  hand-back by the run policy, not a task to improvise. The row stays `[~]` with exactly one
+  thing owed:
+
+  > **Operator: `python -m app.db.migrations.recanon_honorifics` (dry-run, review the 5
+  > conflict groups), then `--apply`.** 1820 repaired · 6 refused · 0 anchors lost.
+
+  Until it runs, 37 % of the graph forks on re-extraction — which also means **QC-6's identity
+  live proof would measure a corpus that is still broken**, so the order in §6.1 holds for a
+  reason that is now numeric.
 
   ### ✅ T35d 2026-08-14 — identity on the EVENT node type, and **A10's diagnosis was inverted**
 

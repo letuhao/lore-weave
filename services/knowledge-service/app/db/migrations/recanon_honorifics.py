@@ -57,6 +57,13 @@ class EntityRow:
     kind: str
     name: str
     canonical_name: str
+    #: The glossary entity this node mirrors, when it has one. **Load-bearing, not metadata.**
+    #: `:Entity(user_id, project_id, glossary_entity_id)` is UNIQUE, so folding two nodes that
+    #: carry DIFFERENT anchors either raises or silently unanchors one of them — and an
+    #: unanchored glossary entity is invisible in the KG while looking perfectly healthy in
+    #: the glossary. Defaulted so existing callers and tests keep working; the collision
+    #: guard treats `None` as "no claim", which is what a pre-anchor node is.
+    anchor: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,12 +89,17 @@ class RecanonPlan:
     skipped_empty: int = 0    # name canonicalizes to empty (degenerate) — untouched
     rekeyed: int = 0
     merged: int = 0
+    #: Groups left untouched because their members mirror DIFFERENT glossary entities. Not a
+    #: failure and not a deferral — a refusal. See the guard in `plan_recanon`.
+    conflicts: list[tuple[str, ...]] = field(default_factory=list)
+    conflicted: int = 0
 
     def __repr__(self) -> str:  # pragma: no cover (debug aid)
         return (
             f"RecanonPlan(scanned={self.scanned}, clean={self.clean}, "
             f"skipped_empty={self.skipped_empty}, rekeyed={self.rekeyed}, "
-            f"merged={self.merged}, actions={len(self.actions)})"
+            f"merged={self.merged}, conflicted={self.conflicted}, "
+            f"actions={len(self.actions)})"
         )
 
 
@@ -128,6 +140,33 @@ def plan_recanon(rows: list[EntityRow]) -> RecanonPlan:
         group_sorted = sorted(group, key=lambda r: r.id)
         clean_sibling_exists = new_id in all_ids and new_id not in {r.id for r in group}
 
+        # 🔴 TWO DISTINCT GLOSSARY ENTITIES MUST NEVER BE FOLDED TOGETHER (T35e).
+        #
+        # Measured on the dev graph 2026-08-14: of 1826 planned actions, 7 were merges and
+        # SIX of them would have folded a node carrying one anchor into a node carrying a
+        # different one — 卡維嘉小姐, 精靈小姐, 魔王殿, 魔王大人. Honorific stripping is exactly
+        # the operation that makes two different characters canonicalise together: 精靈小姐
+        # ("Miss Elf") and 精靈 are one string apart, and the glossary knows they are two
+        # entities even when the canonicaliser cannot see it.
+        #
+        # `merge_entity`'s own Cypher had already found this class and said so — *"ALL 17 are
+        # multi-ANCHORED … a bare 'oldest wins' would have silently moved extraction writes
+        # between those nodes"* — and this planner, written earlier, does a bare oldest-wins.
+        #
+        # Such a group is REPORTED and LEFT ALONE. Both nodes want the same derived id, so
+        # they cannot both be re-keyed; leaving them stranded preserves the status quo (they
+        # still fork on re-extraction) while destroying nothing, and a human decides whether
+        # they are really one entity. Refusing to act is the only option here that cannot
+        # lose an author's data.
+        anchors = {r.anchor for r in group_sorted if r.anchor}
+        target_anchor = next((r.anchor for r in rows if r.id == new_id and r.anchor), None)
+        if target_anchor:
+            anchors.add(target_anchor)
+        if len(anchors) > 1:
+            plan.conflicts.append(tuple(r.id for r in group_sorted))
+            plan.conflicted += len(group_sorted)
+            continue
+
         if clean_sibling_exists:
             # A post-A5 node already lives at new_id → every stranded node merges
             # into it; the sibling survives untouched.
@@ -163,7 +202,13 @@ _LIST_ENTITIES_CYPHER = """
 MATCH (e:Entity)
 WHERE e.archived_at IS NULL
 RETURN e.id AS id, e.user_id AS user_id, e.project_id AS project_id,
-       e.kind AS kind, e.name AS name, e.canonical_name AS canonical_name
+       e.kind AS kind, e.name AS name, e.canonical_name AS canonical_name,
+       // 🔴 WITHOUT THIS THE COLLISION GUARD IS DEAD CODE. It shipped for exactly as long as
+       // it took to write a wiring test: every `EntityRow.anchor` defaulted to None, so the
+       // "two distinct glossary entities" set never had more than one member and the guard
+       // could not fire once in production. Built, unit-tested, and connected to nothing —
+       // the defect class this plan has now hit in a cache, a port and a gate.
+       e.glossary_entity_id AS anchor
 """
 
 
@@ -183,6 +228,7 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
         rows.append(EntityRow(
             id=rec["id"], user_id=rec["user_id"], project_id=rec["project_id"],
             kind=rec["kind"], name=rec["name"], canonical_name=rec["canonical_name"] or "",
+            anchor=rec["anchor"],
         ))
 
     plan = plan_recanon(rows)
