@@ -151,6 +151,13 @@ QC-5 passes when, over **three runs of the same chapter with the same models**:
 run makes it pass on a broken one. The second clause is the one that matters — a clean 5/5 with
 *nothing found* is the defect signature, and it must not appear in any of the three.
 
+⚠️ **APPLIED 2026-08-14 (QC-5 C6): the recorded runs FAIL both clauses** — 1 of 3 on clause 1,
+and run C is a `5/5` with zero raw findings, which clause 2 exists to make unpassable. Note the
+limit honestly: these are the same three runs this section cites as its reason, so the
+evaluation scores a rule against its own motivating examples and cannot validate the RULE. It
+validates the PIPELINE, and only because the rule fitted to these runs still fails on them. A
+fresh three-run measurement on a chapter that did not set the rule is what QC-5 now owes.
+
 **Each run re-drafts**, so this measures the pipeline, not the judge alone. That is deliberate:
 QC-5's claim is about the flow a user runs, and a fixed-draft experiment would measure a
 component nobody uses in isolation.

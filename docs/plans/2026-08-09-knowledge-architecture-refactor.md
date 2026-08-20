@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-3` — ⏸ **ALL THREE OWED ITEMS ARE NOW DELIVERED**; only the sign-off is left, and it is the PO's. `/review-impl` (QC-3c: no HIGH, 3 MED, MED-1 fixed) · restore drill (2026-08-10) · **real-corpus recall (QC-3d): diskann 0.500 with one query at 0.000, everything else 1.000, `control_ok: true`** — diskann must not serve this corpus; `halfvec_hnsw` is perfect at 0.82× exact and 41 % of hnsw's size. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6`. `T33` ⛔ · `T49` ⛔ · `QC-5` ⏸.**
+**RESUME: two ⏸ rows now have everything but their sign-off. `QC-3`: all three owed items delivered (review · restore drill · **real-corpus recall — diskann 0.500, one query at 0.000**). `QC-5`: the decided rule (§2.1) APPLIED for the first time — **DOES NOT PASS on both clauses**, run C being a 5/5 with zero findings; a FRESH three-run measurement is owed and it re-drafts against a real DB, so it is the PO's to authorise. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6`. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -5706,6 +5706,69 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### ⛔ QC-5 C6 2026-08-14 — the decided rule applied: **DOES NOT PASS, on both clauses**
+
+  `D-QC5-PIPELINE-NOT-REPRODUCIBLE`'s *Retry when* reads **"The measurement rule is chosen"** —
+  and §2.1 chose it on 2026-08-13 (*three runs, majority rule*). Nobody had applied it. The
+  runs it needs are already recorded, so this is an evaluation, not a spend.
+
+  **§2.1's rule, verbatim:** QC-5 passes when, over three runs of the same chapter with the same
+  models, **(1)** at least two produce `canon_consistency <= 3` **and** at least one attributed
+  violation, and **(2)** **no** run produces `5/5` with zero raw findings.
+
+  **Runs A/B/C, chapter 11, 2026-08-13:**
+
+  ```
+  run A: canon=2  raw=2 dropped=0 kept=2    clause-1 PASS
+  run B: canon=4  raw=2 dropped=2 kept=0    clause-1 fail   (found two, attributed neither)
+  run C: canon=5  raw=0 dropped=0 kept=0    clause-1 fail
+
+  clause 1   >=2 runs with canon<=3 AND an attributed violation : 1/3   -> FAIL
+  clause 2   NO run is 5/5 with zero raw findings               : run C -> FAIL
+
+  VERDICT: DOES NOT PASS
+  ```
+
+  🔴 **Run C is the defect signature verbatim.** QC-5's own assertion calls out
+  *"`canon_consistency` scoring 5/5 on a misattributed betrayal"*, and clause 2 exists to make
+  that unpassable. Run C scored 5 with **zero raw findings** — the pipeline looked at a chapter
+  containing a planted misattribution and reported nothing wrong. One run in three.
+
+  ⚠️ **Run B is the subtler failure and is only visible because C3 shipped `violations_dropped`.**
+  It *found* two violations and attributed neither, so without that counter it would read
+  `violations: []` — indistinguishable from run C. The flow can say *"something is wrong"* and
+  still not say **what** or **about whom**, which is the half of QC-5's assertion C4 flagged as
+  unevaluable and C5 wired the channel for. The channel works; the pipeline still drops the
+  findings 1 run in 3.
+
+  ### ⚠️ AND THIS EVALUATION CANNOT VALIDATE THE RULE — only the pipeline
+
+  §2.1's *"Why majority and not unanimity"* cites **these same three runs** as its reason
+  (*"Measured 2026-08-13: three runs gave severe / warn / ok"*). So applying the rule to them is
+  scoring a detector against its own motivating examples — **rule 3's green-by-construction
+  shape**, and it must be said out loud rather than banked.
+
+  What saves the conclusion is its direction: **the rule fitted to these runs still FAILS on
+  them.** A rule chosen to make its examples pass would have passed; this one does not, twice.
+  So the verdict about the *pipeline* stands, while the verdict about the *rule* is not
+  available from this data and is not claimed.
+
+  📐 **What QC-5 now owes is therefore narrower and stateable:** a **fresh** three-run
+  measurement on a chapter these runs did not set the rule from — which is also the only way
+  clause 1 can ever be observed passing, since 1-of-3 attribution is what the current pipeline
+  produces. **That run re-drafts three times through the real flow**, so it writes to a real
+  database and spends real provider calls: it is the PO's to authorise, not a review's to start.
+
+  **BITE — N/A, and the reason:** no code changed; this batch applies an existing decision to
+  existing evidence. Its own non-vacuity is that **the rule could have passed and did not** —
+  both clauses were evaluated and both produced a named offender rather than a summary verdict.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-qc-evidence-gate` OK.
+  **QC (b) the seam:** N/A — an evaluation of recorded runs; C5 already records the live proof
+  (`composition-service` **and** `composition-worker` rebuilt, `grep`-verified in-container).
+  **QC (c) real data:** the three runs are real — 6 real canon rules, 2 real rule ids on the
+  violations, real drafts, against the acceptance book.
+
   ### 🎯 C5 2026-08-13 — the attribution channel is WIRED, it caught a misattribution, and **QC-5 still does not go `[x]`**
 
   PO decision (2026-08-13): *`active_rules` comes from the canon-rule corpus the critique
