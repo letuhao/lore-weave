@@ -35,6 +35,8 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/loreweave/foundation/contracts/meta"
+	"github.com/loreweave/foundation/contracts/pii"
+	"github.com/loreweave/foundation/sdks/go/piikms"
 )
 
 // ErrActorAlreadyDriven — a DIFFERENT user already holds the live binding.
@@ -421,4 +423,63 @@ func (m MetaRegistrar) ReadActorControl(ctx context.Context, r ReadControlReq) (
 		return nil, fmt.Errorf("actor_id: %w", err)
 	}
 	return m.liveBinding(ctx, realityID, actorID)
+}
+
+// ─── the production ReadAuditor ──────────────────────────────────────────────
+
+// PgReadAuditor writes the `actor_binding_cross_user` row through the PII SDK's
+// audit writer.
+//
+// # This did not exist, and its absence was silent
+//
+// `liveBinding` has guarded its audit write with `if m.ReadAudit != nil` since
+// `034`, and **no production construction ever set the field**. Both entry
+// points — `cmd/bridge-server` and `cmd/meta-worker` — built
+// `MetaRegistrar{Cfg, Caller, Pool}` and stopped. Measured 2026-08-21 against
+// the live dev stack: `SELECT count(*) FROM meta_read_audit` returned **0**,
+// after grants, revokes and previews that all took the cross-user read.
+//
+// So the discipline `034` declared, `035` registered in
+// `meta-sensitive-read-paths.yml`, `PD-10` chased down to a missing SDK
+// constant, and `D-PC-NO-RUST-READ-AUDIT` was written about, produced **no rows
+// at all**. A nil-guarded side effect with no wiring is the write-only-behaviour
+// bug in its purest form: every layer above it is correct, every test passes,
+// and the table stays empty.
+//
+// Found by checking the row rather than the code — the preview reported the
+// slot correctly, and only `count(*)` said the audit had not happened.
+type PgReadAuditor struct {
+	W *piikms.PgReadAuditWriter
+	// Now returns the timestamp; injected so a test can pin it.
+	Now func() time.Time
+}
+
+// RecordBindingRead writes one `actor_binding_cross_user` row.
+//
+// `actor_type` is `system`, not `admin`: the caller here is a SERVICE
+// (world-service, via the bridge token), and migration `014`'s CHECK is the
+// real gate on that value. The human who typed the command is recorded by
+// `admin_action_audit` on the admin-cli side; conflating the two would put a
+// service identity in a column that means "a person".
+//
+// The reality and actor go into `parameters` rather than into columns, because
+// `meta_read_audit` is a shared table across every sensitive read and its
+// columns are the shape all of them have.
+func (a PgReadAuditor) RecordBindingRead(ctx context.Context, r BindingRead) error {
+	now := a.Now
+	if now == nil {
+		now = time.Now
+	}
+	return a.W.WriteSensitiveRead(ctx, pii.SensitiveReadEntry{
+		AuditID:   uuid.New(),
+		QueryType: pii.TagActorBindingCrossUser,
+		Parameters: map[string]string{
+			"reality_id": r.RealityID.String(),
+			"actor_id":   r.ActorID.String(),
+		},
+		ActorID:        r.Caller,
+		ActorType:      "system",
+		ResultCount:    r.ResultCount,
+		CreatedAtNanos: now().UnixNano(),
+	})
 }

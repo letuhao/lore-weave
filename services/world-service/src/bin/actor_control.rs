@@ -329,10 +329,13 @@ async fn dry_run(args: &Args, meta: &PgPool, cfg: &Config) -> Result<Value, Prov
                 "mode": "dry-run",
                 "reality_accepts_commands": p.reality_accepts_commands,
                 "actor_exists": p.actor_exists,
-                "would_grant": p.actor_exists,
-                "note": "whether another user already drives this actor is NOT checked \
-                         here — that is a cross-user read only the audited write path may \
-                         take. A real run refuses with a conflict if so.",
+                "actor_is_driven": p.actor_is_driven,
+                // `RA3`: a grant is refused when the actor is missing OR
+                // already driven, so the verdict is both — not just the first.
+                "would_grant": p.actor_exists && !p.actor_is_driven,
+                "note": "the driver slot IS checked; who holds it is not reported — that \
+                         is a per-user fact 034 registers as sensitive. The read behind \
+                         this writes a meta_read_audit row.",
             }))
         }
         Op::CreateActor => {

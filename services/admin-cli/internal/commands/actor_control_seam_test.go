@@ -218,6 +218,40 @@ func TestOpConstantsMatchTheContract(t *testing.T) {
 	}
 }
 
+// RA3 — THE PREVIEW REPORTS THE SLOT, NEVER THE PERSON.
+//
+// The PO ruled that `grant-control --dry-run` may say whether a grant will be
+// refused and must not say by whom. That ruling is enforced by a TYPE — the
+// worker cannot send a holder because `flow::Preview` cannot hold one — and a
+// type is not something a test can watch decay. What a test CAN watch is the
+// contract: a holder key appearing here is the first move anyone would make
+// toward leaking it, and it is reviewable in a way a forgotten redaction is not.
+//
+// `actor_is_driven` is the sanctioned shape: the slot, as a bool.
+func TestTheContractDeclaresNoHolderKey(t *testing.T) {
+	c := loadContract(t)
+	all := append(append([]string{}, c.OutcomeKeys.Always...), c.OutcomeKeys.Conditional...)
+
+	// Non-vacuity: the sanctioned key must be present, or a contract that
+	// declared no keys at all would satisfy the ban below for free.
+	var sawSlot bool
+	for _, k := range all {
+		if k == "actor_is_driven" {
+			sawSlot = true
+		}
+		if strings.Contains(k, "user") || strings.Contains(k, "holder") ||
+			strings.Contains(k, "driver") {
+			t.Errorf("the contract declares %q — the preview may report the SLOT and not "+
+				"the person (RA3). If this key is legitimate, it needs the PO, not a "+
+				"contract edit", k)
+		}
+	}
+	if !sawSlot {
+		t.Fatal("the contract no longer declares actor_is_driven — the ban above is then " +
+			"satisfied by a contract that says nothing about the slot at all")
+	}
+}
+
 // ── the closed-set values ───────────────────────────────────────────────────
 
 // Every outcome word the Go summary branches on must be one the contract

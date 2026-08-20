@@ -35,6 +35,7 @@ import (
 	"github.com/loreweave/foundation/contracts/meta"
 	"github.com/loreweave/foundation/contracts/realityreg"
 	"github.com/loreweave/foundation/sdks/go/metapg"
+	"github.com/loreweave/foundation/sdks/go/piikms"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/bridge"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/canon_writer"
 	"github.com/loreweave/foundation/services/meta-worker/pkg/consumer"
@@ -269,7 +270,14 @@ func buildBridge(cfg config, metaPool *pgxpool.Pool) (*http.Server, error) {
 		DB: metapg.New(metaPool), Allowlist: allow, Transitions: graph,
 		QueryBuilder: meta.PostgresQueryBuilder{}, Clock: sysClock{}, UUIDGen: randUUID{},
 	}
-	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID, Pool: metaPool}
+	reg := bridge.MetaRegistrar{Cfg: mwCfg, Caller: bridge.WorldServiceActorID, Pool: metaPool,
+		// ReadAudit is NOT optional in production, and it was missing here.
+		// `liveBinding` writes the `actor_binding_cross_user` row only
+		// `if m.ReadAudit != nil`, and no construction ever set it — measured
+		// 2026-08-21 on the live dev stack: meta_read_audit held ZERO rows
+		// after grants, revokes and previews that all took the cross-user read.
+		// The discipline existed at every layer above and produced nothing.
+		ReadAudit: bridge.PgReadAuditor{W: piikms.NewPgReadAuditWriter(metaPool)}}
 	audit := bridge.PgAuditSink{Pool: metaPool, Callee: "meta-worker"}
 	bsrv, err := bridge.New(reg, audit, cfg.BridgeToken, "world-service")
 	if err != nil {
@@ -352,10 +360,10 @@ type config struct {
 	HTTPAddr         string
 	// W1.5 Rust→Go meta-write bridge. Disabled (not exposed) unless
 	// BridgeToken is set — fail-closed: no secret, no internal write surface.
-	BridgeAddr       string
-	BridgeToken      string
-	AllowlistPath    string
-	TransitionsPath  string
+	BridgeAddr      string
+	BridgeToken     string
+	AllowlistPath   string
+	TransitionsPath string
 }
 
 func loadConfig() (config, error) {

@@ -63,7 +63,7 @@ whether an operator may use it.
 | `SC3` a rename on ONE side reds the OTHER — bitten in both directions | `[x]` | folded into `SC1`/`SC2`: each half's harness mutates the OTHER half's subject, so the cross-language direction is what the arms measure |
 | `RA1` the bridge READ route — `liveBinding` over HTTP, `meta_read_audit` in the same call | `[x]` | `POST /internal/provisioner/read-actor-control`; 7 Go arms; the one-implementation guard BITTEN (an inlined SELECT reds both of its assertions) |
 | `RA2` the Rust half — `BridgeClient` method + a flow function that cannot bypass the audit | `[x]` | `BridgeClient::read_actor_control` + `flow::current_driver`; 6 wiremock arms; the CONTRADICTION guard bitten (`driven:true` with no user must not read as an empty slot) |
-| `RA3` ⏸ **POST-REVIEW checkpoint** — expose the holder in `grant-control --dry-run`? | `[ ]` | |
+| `RA3` ⏸ **POST-REVIEW checkpoint** — expose the holder in `grant-control --dry-run`? | `[x]` | PO: **the SLOT, never the PERSON**. `Preview.actor_is_driven` is a bool so the id is unrepresentable; 3 contract arms bitten; live both ways, and `meta_read_audit` went **0 → 1** — the first row this repo has ever written |
 | `SW` suite + sweep green, and the deferral rows closed | `[ ]` | |
 
 ### `SC1`–`SC3` — the contract, and what measuring it first changed
@@ -145,6 +145,52 @@ every function in the file, including ones written afterwards — the escape hat
 own reason. So `TestTheAuditedReadHasOneImplementation` is not belt-and-braces; it is the only belt,
 and the test says so in its own header rather than implying company it does not have.
 
+### `RA3` — the decision, and the four-layer discipline that had produced nothing
+
+**The PO ruled: report the SLOT, never the PERSON.** A preview may say a grant will be refused; it
+may not say by whom. *"Will my grant succeed?"* is the operator's real question and a bool answers
+it, while *"who holds it?"* is the per-user fact `034` registered as sensitive — and handing that to
+every `admin:write` holder would make the dry run a who-holds-what oracle over the one table whose
+purpose is that mapping.
+
+**The ruling is enforced by a TYPE.** `Preview.actor_is_driven` is a `bool`; the audited read
+returns a `user_ref_id` and the reduction happens at the boundary, so the worker *cannot* send the
+id. A future edit that wanted to leak it would have to change the type — a reviewable act.
+Forgetting a redaction is not. The read is also skipped entirely when the actor does not exist: a
+sensitive read taken for a question already answered is a probe with no purpose, and the audit row
+would still be written.
+
+#### And then the live proof failed, four times, one layer at a time
+
+The preview reported the slot correctly on the first run. `SELECT count(*) FROM meta_read_audit`
+returned **0**. Peeling it:
+
+1. **The auditor was never wired.** `liveBinding` writes the row `if m.ReadAudit != nil`, and
+   *neither* production entry point — `cmd/bridge-server` nor `cmd/meta-worker` — ever set the
+   field. Both built `MetaRegistrar{Cfg, Caller, Pool}` and stopped.
+2. **There was no production `ReadAuditor` to wire.** The interface's own comment described the
+   implementation that "lives on the side of the module boundary where `contracts/pii` already is".
+   It did not exist. Written here as `PgReadAuditor`, which needed `contracts/pii` +
+   `sdks/go/piikms` added to meta-worker's module — symmetric with the `contracts/meta` it already
+   has for the WRITE audit.
+3. **Wired, it failed validation.** `invalid query_type "actor_binding_cross_user"`. The SDK
+   constant was added by `PD-10` on 2026-08-14 and **never added to `IsValid`'s switch**, six lines
+   below it. For a week the only way to use the registered name was to be rejected.
+4. **Fixed, the row landed.** `0 → 1`, `query_type=actor_binding_cross_user`, `actor_type=system`,
+   `result_count=1`, the reality and actor in `parameters`.
+
+**Four layers of one discipline, each correct-looking, with an empty table underneath.** The
+migration declared it, the yml registered it, the constant named it, the interface guarded it — and
+nobody had ever CALLED it, so nothing could report the gap. `meta_read_audit` had been empty since
+`014` created it.
+
+**The mechanism that would have caught it** is now in `contracts/pii/sdk_test.go`: the yml and the
+SDK must agree in both directions. It found a second gap on its first run — three yml paths
+(`audit_query`, `admin_bulk_export`, `bulk_meta_query`) have no Go constant at all, so `IsValid`'s
+claim to "mirror the yml" was false for three of seven. Those are now declared in
+`ymlPathsWithNoGoCaller` with a reason each, and a path that gains a constant must LEAVE that list
+or the test reds.
+
 ## §4 OPEN
 
 | row | what | mechanism |
@@ -156,6 +202,9 @@ and the test says so in its own header rather than implying company it does not 
 
 | id | what |
 |---|---|
+| `AD-3` | **`git checkout --` to undo a bite reverted the FIX along with the mutant.** Biting `IsValid` twice in one command, I restored with `git checkout -- contracts/pii/sdk.go` — which returns the file to HEAD, and HEAD did not contain the one-line fix I had made ninety seconds earlier in the same uncommitted session. Both bites had scored correctly, so the harness output said everything was fine while the working tree had silently lost the change. Caught by the file-changed notice, not by any check. **A backup copy and a `git checkout` are not the same operation**, and the difference only shows when the file is dirty for a good reason. Every other bite in this run used `cp` to a `/tmp` backup taken immediately before the mutation; this was the one that reached for git, and it is the one that lost work. |
+| `AD-4` | **A `cd` inside a compound command stranded a mutation, and `cp` failing is the only reason I know.** Restoring a Go bite with a repo-relative path after `cd services/admin-cli` produced *"cannot create regular file … No such file or directory"* — the mutant stayed on disk. Third cwd-drift of the run (`AD-1`), and the first that left a defect in the tree rather than merely mis-measuring one. Fixed by making every path in a bite absolute, and by keeping the `cd` inside a subshell so it cannot escape. |
+| `AD-5` | **The Docker image did not pick up the fix, and the stack lied twice about it.** After wiring `ReadAudit` I rebuilt `meta-bridge`, saw *"Image infra-meta-bridge Built"* and *"Container Started"*, and the audit row still did not land. `--force-recreate` changed nothing either. Only running the bridge FROM SOURCE on a spare port produced the error that explained everything. Two reassuring status lines and a healthy container, all true, none of them evidence that the running binary contained the change — which is `PD-15`'s lesson arriving from the other direction: last time the image was stale and said nothing, this time it was stale and said *"Built"*. |
 | `AD-1` | **My shell's cwd had drifted and I read three empty greps as a finding.** Checking whether `contracts/frontend-tools.contract.json` — the pattern this row cites — still had consumers, I ran the greps from `services/admin-cli`, where a repo-relative path matches nothing. The output was empty three times and I was one sentence from recording *"the pattern the row names is itself an orphan, a contract file with no test behind it"* in Phase 0. It is not: it has readers in `chat-service`'s tests and in four `ai-gateway` files. **Rule 1 is written about numbers and this was its shape exactly — an EMPTY result read as a result.** What caught it was `ls` on the same path failing with *"No such file or directory"* for a file I had listed successfully ten minutes earlier; the contradiction was the tell, not any check. A grep that finds nothing and a grep that cannot see anything are the same output. **It then happened AGAIN** an hour later, from `services/meta-worker`, on the check that the bite harness had left nothing stranded — so the fix is not vigilance: every repo-relative command in this run now starts from an explicit `cd` to the root. |
 | `AD-2` | **The lint that should have been the second guard on the audited read cannot see the file at all.** `meta-sensitive-read-bypass-lint` excludes `services/meta-worker/pkg/bridge/actor_control.go` **wholesale** — a reasoned exclusion, granted because `liveBinding`'s SELECT *is* the sanctioned audited read. But it was granted for one FUNCTION and covers the whole FILE, forever, including functions written afterwards. Measured, not assumed: the `RA1` mutant that inlines a second `SELECT` and skips `RecordBindingRead` passes the lint. **This is the escape-hatch-cannot-reach-its-reason shape from the Non-Vacuity standard**, and it is why `TestTheAuditedReadHasOneImplementation` is the ONLY mechanism rather than a redundant one. Narrowing a shell-grep exclusion to a function is not something that tool can express, so the honest resolution was a structural test plus this row — not a claim of defence in depth that does not exist. |
 
@@ -170,4 +219,4 @@ stop: |
   a bite does not go red, or goes red for the wrong reason
 ```
 
-**RESUME: `RA3` — the ⏸ POST-REVIEW checkpoint. The capability now EXISTS; whether `grant-control --dry-run` should expose the holder to every operator with `admin:write` is the decision `D-PC-NO-RUST-READ-AUDIT` reserved. Present both arguments and WAIT.**
+**RESUME: `SW` — full suites + `gate-wiring-gate --run-all`, then close `D-PC-SEAM-NO-CONTRACT` and `D-PC-NO-RUST-READ-AUDIT` in the game-tier registry.**

@@ -66,13 +66,16 @@ impl Outcome {
 
 /// What a dry run can honestly report.
 ///
-/// Note what is absent: **who currently drives the actor**. That is the fact an
-/// operator would most like to see, and reading it is a cross-user read of
-/// `actor_control_binding` — a path migration `034` registered as sensitive and
-/// which only the audited write path may take. A preview that answered it would
-/// be an unaudited way to probe who holds whom, which is a worse property than
-/// a preview that is silent about it. The conflict is decided at write time,
-/// inside the transaction, where a CAS has to live anyway.
+/// Note what is absent: **WHO currently drives the actor.** `RA3` settled the
+/// question this struct used to be silent about, and settled it in the middle:
+/// the preview reports whether the slot is TAKEN, and never by whom.
+///
+/// That split is the whole point. "Will my grant be refused?" is the operator's
+/// actual question and a bool answers it; "who holds it?" is a per-user fact
+/// `034` registered as sensitive, and handing it to every `admin:write` holder
+/// would make the dry run a who-holds-what oracle over the one table whose
+/// purpose is that mapping. The audit row is a record after the fact, not a
+/// limit — so the limit is the shape of this struct.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Preview {
     /// The control plane accepted the reality — it exists and takes commands.
@@ -88,6 +91,16 @@ pub struct Preview {
     /// really does vary, and it is the finding that changes what an operator
     /// does next.
     pub actor_exists: bool,
+    /// Is the driver slot already TAKEN? `RA3`.
+    ///
+    /// **A bool, and the type is the access-control decision.** The audited read
+    /// behind it returns a `user_ref_id`; the PO ruled that a preview may report
+    /// whether the slot is free but must not name who holds it, and the way to
+    /// honour that is to make the id unrepresentable here rather than to
+    /// remember not to print it. A future edit that wanted to leak the holder
+    /// would have to change this type, which is a reviewable act; forgetting a
+    /// redaction is not.
+    pub actor_is_driven: bool,
 }
 
 /// Bind the reality through the control plane, or refuse.
@@ -260,7 +273,19 @@ pub async fn preview_grant(
     let reality = bind_reality(meta, &cfg.meta_allowlist, reality_id).await?;
     let pool = open_reality_pool(meta, cfg, &reality).await?;
     let actor_exists = actor_registry::actor_exists(&pool, &reality, actor_id).await?;
-    Ok(Preview { reality_accepts_commands: true, actor_exists })
+    // `RA3` — the audited read, reduced to a bool AT THE BOUNDARY.
+    //
+    // Only asked when the actor exists: an actor with no registry row cannot
+    // have a live binding, so the read would be a guaranteed miss, and a
+    // sensitive read taken for a question already answered is a probe with no
+    // purpose. The audit row would still be written, which is precisely why not
+    // taking it matters.
+    let actor_is_driven = if actor_exists {
+        current_driver(cfg, reality_id, actor_id).await?.is_some()
+    } else {
+        false
+    };
+    Ok(Preview { reality_accepts_commands: true, actor_exists, actor_is_driven })
 }
 
 /// Grant a user control of an actor.

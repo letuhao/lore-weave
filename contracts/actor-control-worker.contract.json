@@ -66,6 +66,7 @@
       "entity_id",
       "reality_accepts_commands",
       "actor_exists",
+      "actor_is_driven",
       "would_grant",
       "would_revoke",
       "would_create_actor",

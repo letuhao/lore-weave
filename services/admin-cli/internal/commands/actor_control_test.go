@@ -249,11 +249,39 @@ func TestGrantDryRunDeclaresTheCheckItDidNotMake(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, want := range []string{"NOT CHECKED HERE", "cross-user", "Nothing was written"} {
+	for _, want := range []string{"NO driver", "would be", "Nothing was written"} {
 		if !strings.Contains(got, want) {
-			t.Fatalf("preview %q is missing %q — the silence must be declared, not implied", got, want)
+			t.Fatalf("preview %q is missing %q", got, want)
 		}
 	}
+}
+
+// RA3 — the slot is reported and the HOLDER is not.
+//
+// The PO ruled the preview may say whether a grant will be refused and must not
+// say by whom. Both halves are asserted, because a summary that reported
+// neither would pass a test for the second alone.
+func TestGrantDryRunReportsTheSlotAndNotTheHolder(t *testing.T) {
+	holder := uuid.MustParse("99999999-9999-4999-8999-999999999999")
+	inv := &stubActorControlInvoker{out: ActorControlOutcome{
+		Mode: "dry-run", RealityAcceptsCommands: true, ActorExists: true,
+		ActorIsDriven: true, WouldGrant: false,
+	}}
+	req := grantReq()
+	req.DryRun = true
+	got, err := RunActorControl(context.Background(), req, ActorControlDeps{Invoker: inv})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(got, "ALREADY HAS A DRIVER") || !strings.Contains(got, "REFUSED") {
+		t.Fatalf("a taken slot must be reported plainly: %q", got)
+	}
+	// NOT asserted here: "the summary does not contain the holder's id". That
+	// check CANNOT FAIL today — `ActorControlOutcome` has no field that could
+	// carry one, because `flow::Preview` has none to send. An assertion that
+	// cannot fail reports coverage it does not have, so the real guard lives
+	// where the property is decidable: TestTheContractDeclaresNoHolderKey.
+	_ = holder
 }
 
 func TestRevokeDryRunDeclaresTheCheckItDidNotMake(t *testing.T) {

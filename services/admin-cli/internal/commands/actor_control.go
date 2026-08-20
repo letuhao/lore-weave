@@ -166,13 +166,19 @@ type ActorControlOutcome struct {
 	// can see the check RAN, and it is deliberately NOT printed with `%t` in the
 	// operator summary: rendering a constant as a measurement invites a reader to
 	// believe the false case is reachable and was ruled out.
-	RealityAcceptsCommands bool   `json:"reality_accepts_commands"`
-	ActorExists            bool   `json:"actor_exists"`
-	WouldGrant             bool   `json:"would_grant"`
-	WouldRevoke            bool   `json:"would_revoke"`
-	WouldCreateActor       bool   `json:"would_create_actor"`
-	EntityIDSource         string `json:"entity_id_source"`
-	Note                   string `json:"note"`
+	RealityAcceptsCommands bool `json:"reality_accepts_commands"`
+	ActorExists            bool `json:"actor_exists"`
+	// ActorIsDriven is RA3: whether the slot is TAKEN. Deliberately NOT who
+	// holds it — the PO ruled a preview may report the slot and not the
+	// person, and the worker CANNOT send the id, because `flow::Preview`
+	// cannot hold one. The limit is a type, not a redaction someone has to
+	// remember.
+	ActorIsDriven    bool   `json:"actor_is_driven"`
+	WouldGrant       bool   `json:"would_grant"`
+	WouldRevoke      bool   `json:"would_revoke"`
+	WouldCreateActor bool   `json:"would_create_actor"`
+	EntityIDSource   string `json:"entity_id_source"`
+	Note             string `json:"note"`
 
 	// Conflict marks a refusal that is a statement about the WORLD (somebody
 	// else drives this actor · the CAS named a user who no longer holds it ·
@@ -305,11 +311,18 @@ func actorControlDryRunSummary(req ActorControlRequest, out ActorControlOutcome)
 					"Nothing was written.",
 				head, req.ActorID)
 		}
+		if out.ActorIsDriven {
+			return fmt.Sprintf(
+				"%s accepts commands. Actor %s exists and ALREADY HAS A DRIVER — the grant "+
+					"would be REFUSED.\n"+
+					"Who holds it is not reported: that is a per-user fact, and a preview is "+
+					"not the place to ask it. Revoke first if you mean to take it.\n"+
+					"Nothing was written.",
+				head, req.ActorID)
+		}
 		return fmt.Sprintf(
-			"%s accepts commands. Actor %s exists; user %s would be granted control.\n"+
-				"NOT CHECKED HERE: whether another user already drives it. That is a cross-user "+
-				"read of actor_control_binding, which only the audited write path may take; a "+
-				"real run refuses with a conflict if so.\nNothing was written.",
+			"%s accepts commands. Actor %s exists and has NO driver; user %s would be "+
+				"granted control.\nNothing was written.",
 			head, req.ActorID, req.UserRefID)
 	}
 }
