@@ -8,6 +8,7 @@ from types import SimpleNamespace
 from loreweave_llm.errors import LLMError
 
 from app.engine import critic
+from app.engine.critic import map_rule_tokens, rule_token
 from app.packer.profile import NEUTRAL, BookProfile
 
 
@@ -193,3 +194,50 @@ async def test_a_dropped_verdict_is_visible_ON_THE_CRITIQUE_not_only_in_a_log():
     assert crit["violations_dropped"] == 2, (
         "a silent drop is indistinguishable from a clean passage — that is the bug"
     )
+
+
+def test_the_dropped_LABELS_reach_the_envelope_not_only_a_log_line():
+    """🔴 QC-5 C10. `violations_dropped` says HOW MANY were unattributable; it cannot say WHY,
+    and the two causes need opposite responses.
+
+    Measured 2026-08-21 on a live run: 2 of 2 dropped with **six** active rules, labels
+    `['QUY UOC XUNG HO', ...]` — the book's six rules are character facts and none is a
+    naming-convention rule, so the judge invented a category and the drop was CORRECT. The
+    other cause (`rules=0`, C3's chapter 12) is a rules-plumbing bug. `dropped=2` alone reads
+    identically for both, and diagnosing it required a container that happened to still be
+    running.
+    """
+    active = [{"rule_id": "real-rule-1", "text": "X is the cousin of Y"}]
+    raw = [
+        {"rule_id": "QUY UOC XUNG HO", "why": "invented category"},
+        {"rule_id": rule_token(0), "why": "a real one, attributable"},
+    ]
+    crit = {"violations": list(raw)}
+    kept = map_rule_tokens(raw, active)
+    assert len(kept) == 1, "fixture: exactly one verdict must be attributable"
+
+    crit["violations"] = kept
+    dropped = len(raw) - len(kept)
+    labels = critic.unattributable_labels(raw, active)
+
+    assert labels == ["QUY UOC XUNG HO"], (
+        f"the unattributable label must reach the caller, got {labels} — without it "
+        "'the judge invented a rule' and 'the mapper is broken' are the same observation")
+    assert dropped == 1
+
+
+def test_a_LABEL_MATCHING_fallback_is_NOT_added_because_it_re_opens_a_fixed_defect():
+    """A guard against the obvious 'fix'. The judge returned a rule label instead of a token,
+    so it is tempting to attribute by label. That would attach a FABRICATED rule to a real one
+    — `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`, fixed 2026-08-12, whose whole finding was a
+    verdict keyed to a rule its `why` did not belong to.
+
+    So this pins the refusal: a label that is not a token and not a real id stays dropped, even
+    when it is a plausible-looking near-miss of a real rule's text.
+    """
+    active = [{"rule_id": "real-rule-1", "text": "Lam Trach is the cousin of Lam Uyen"}]
+    for invented in ("Lam Trach is the cousin of Lam Uyen",   # the rule's own TEXT
+                     "naming convention", "R99", "rule-1"):
+        assert map_rule_tokens([{"rule_id": invented, "why": "x"}], active) == [], (
+            f"{invented!r} was attributed — a verdict the judge could not key to a token must "
+            "stay dropped; guessing re-opens D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE")

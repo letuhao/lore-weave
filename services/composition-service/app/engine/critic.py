@@ -125,18 +125,40 @@ def map_rule_tokens(
     citation. Tolerant of a judge that echoes the real id anyway (some do), because that is
     still an attributable verdict.
     """
-    by_token = {rule_token(i): r.get("rule_id") for i, r in enumerate(active_rules)}
-    known_ids = {str(r.get("rule_id")) for r in active_rules if r.get("rule_id")}
     out: list[dict[str, Any]] = []
     for v in violations:
-        raw = str(v.get("rule_id", "")).strip().strip("[]")
-        mapped = by_token.get(raw.upper())
-        if mapped is None and raw in known_ids:
-            mapped = raw          # the judge echoed the real id — still attributable
+        mapped = _attribute(v, active_rules)
         if mapped is None:
             continue
         out.append({**v, "rule_id": str(mapped)})
     return out
+
+
+def _attribute(v: dict[str, Any], active_rules: list[dict[str, Any]]) -> str | None:
+    """The single attribution decision, shared so the mapper and the drop-reporter cannot
+    drift. Returns the real rule id, or None when the verdict is unattributable."""
+    by_token = {rule_token(i): r.get("rule_id") for i, r in enumerate(active_rules)}
+    known_ids = {str(r.get("rule_id")) for r in active_rules if r.get("rule_id")}
+    raw = str(v.get("rule_id", "")).strip().strip("[]")
+    mapped = by_token.get(raw.upper())
+    if mapped is None and raw in known_ids:
+        mapped = raw              # the judge echoed the real id — still attributable
+    return None if mapped is None else str(mapped)
+
+
+def unattributable_labels(
+    violations: list[dict[str, Any]], active_rules: list[dict[str, Any]], limit: int = 5,
+) -> list[str]:
+    """The labels `map_rule_tokens` could not attribute, for the ENVELOPE.
+
+    Not a set-difference against the mapped output: `map_rule_tokens` REWRITES `rule_id` to the
+    real id, so subtracting kept ids from raw ids flags the attributable ones too. (That bug was
+    written here first and caught by its own test.) It asks the same predicate instead.
+    """
+    return sorted({
+        str(v.get("rule_id", ""))[:48] for v in violations
+        if _attribute(v, active_rules) is None
+    })[:limit]
 
 
 def build_critique_prompt(
@@ -249,8 +271,27 @@ async def judge_prose(
     # 7 dropped, rules=0** while the report showed an empty violations list beside
     # `canon_consistency=1`. The score carried the finding; the channel meant to name it was
     # silently empty. `active_rules` being empty is the CAUSE, this field is the SYMPTOM made
-    # legible — a caller can now see it must fix the rules, not the prose.
+    # silently empty. `active_rules` being empty is ONE cause — and C7 measured a SECOND that
+    # this comment used to deny by saying "the CAUSE". On 2026-08-21 a run with **six** active
+    # rules dropped 2 of 2, and the labels say why:
+    #
+    #     dropped 2 unattributable verdict(s) of 2 (labels=['QUY UOC XUNG HO', ...], rules=6)
+    #
+    # The book's six rules are character facts ("X is the cousin of Y"); none of them is a
+    # naming-convention rule. The judge INVENTED a category and answered about that, so the
+    # drop is CORRECT and the mapper is not the defect. A fallback matching on the label would
+    # have attached a fabricated rule to a real one — `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`,
+    # fixed 2026-08-12. Do not add one. Which cause applies is read off `rules=` in the warning
+    # below, and off `violations_dropped_labels` on the envelope.
     crit["violations_dropped"] = dropped
+    crit["violations_raw_count"] = len(raw_violations)
+    # The LABELS belong on the ENVELOPE, not only in a log line. Diagnosing the above needed a
+    # container that still happened to be running; after a rotation `dropped=2, rules=6` cannot
+    # distinguish "the judge invented a rule" from "the mapper is broken", and those need
+    # opposite responses — a model decision versus a code fix. Bounded so a chatty judge cannot
+    # inflate the envelope.
+    if dropped:
+        crit["violations_dropped_labels"] = unattributable_labels(raw_violations, active_rules)
     crit["violations_raw_count"] = len(raw_violations)
     if dropped:
         logger.warning(

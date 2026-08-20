@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: the unblocked work is EXHAUSTED, and this time it was swept three ways — `A13` (T17's 54 binders), `T33a` (every `depends on`), `C9` (every `Retry when`). The last actionable item found that way was fixed here: `C8` — name grounding compared the draft against **the drafter's own input** (`known_names` never passed), now reading the KAL `cast` (36 entities / 44 surface forms live, aliases included because `roster` is deliberately alias-free and would false-accuse). ⛔ FOUR PO ITEMS REMAIN, all of them recorded as already settled at some point: **(1)** `recanon_honorifics --apply` — 1819 entities fork on re-extraction (T46b); **(2)** `OD-2` — the vector soak was never running (T25c); **(3)** `QC-3` ⏸ sign-off (diskann 0.500); **(4)** `QC-5` ⏸ — its measurement is DELIVERED and FAILS (C7: canon 4/5/4, attributed 0/0/0), and `D-QC5-ROLE-JUDGE-PRECISION` is a **spend** call, not a design one. `T33` ⛔ · `T49` ⛔.**
+**RESUME: `QC-5`'s two open threads are ONE PO decision, diagnosed 2026-08-21 (C10). C3/C6/C7 each RECORDED the same drop and none diagnosed it (rule 13). Read live: the judge returns `rule_id` = a naming-convention rule while the book's **6 active rules are all character facts** — it INVENTS a category, so the mapper drops it and is **correct** to. The cause written in the code (*"`active_rules` being empty is the CAUSE"*) is wrong for this workload and is corrected. ⚠️ The tempting fix — match on the label — would re-open `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` (fixed 2026-08-12) by attaching a fabricated rule to a real one; a test now pins the refusal. So clause 1 (*at least one attributed violation*) cannot pass while the judge invents ids — the same family as `D-QC5-ROLE-JUDGE-PRECISION`, already ruled **a spend question**. The plumbing is sound (C3 counter · C5 channel · C8 name-grounding truth side · C10 mapper). **What is left is the judge model.** ⛔ PO: **(1)** the model budget above · **(2)** `recanon --apply` (1819 fork, T46b) · **(3)** `OD-2` soak never ran (T25c) · **(4)** `QC-3` ⏸. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 36 of 76 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 36 of 77 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/30) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/31) · `T46` (0/2) · `T48` (1/2) · `T49`
 
-> ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -6188,6 +6188,81 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### 🔻 QC-5 C10 2026-08-21 — **why** the verdicts are dropped: the recorded cause is wrong, and the obvious fix re-opens a fixed defect
+
+  ```
+  composition unit 3624 -> 3626 passed        BITE x2, each red on its own assertion
+  LIVE: judge_prose dropped 2 unattributable verdict(s) of 2
+        labels=['QUY UOC XUNG HO', 'QUY UOC XUNG HO']   rules=6
+  the book's 6 active rules: "X is the cousin of Y", "X is a member of the Y family", …
+  ```
+
+  C3 recorded *7 findings, 7 discarded*. C6 recorded *found two, attributed neither*. C7
+  recorded *9 found, 9 discarded*. **Three records, no diagnosis** — rule 13's exact shape, on
+  QC-5's own acceptance failure. So: read the drop.
+
+  🔴 **The cause written in the code is wrong for this workload.** `critic.py` says, in as many
+  words, *"`active_rules` being empty is the CAUSE"*. C7's runs carried **`active_rule_count: 6`**
+  and dropped everything anyway. A future reader with six rules and an empty violations list
+  would have gone looking at the rules plumbing and found nothing wrong.
+
+  🎯 **What is actually happening, from the workload** (rule 13). The judge returns
+  `rule_id = "QUY UOC XUNG HO"` — a *naming-convention* rule. The book's six active rules are all
+  character facts (`019ff43e-5efb…` "X is the cousin of Y", `…5f2e…` "X is a member of the Y family", and four more of the same kind — the rows themselves are Vietnamese;
+  quoted here in English because the SHAPE is the finding, not the wording). **None of them is a naming
+  convention.** The judge invented a category and answered about that, so `map_rule_tokens`
+  dropped it — and dropping it was **correct**. The mapper is not the defect.
+
+  ⚠️ **Rule 8 killed the obvious fix, and this one would have done real damage.** The tempting
+  repair is "the judge gave a label instead of a token, so match on the label". That attaches a
+  **fabricated** rule to a real one — which is `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE`, *fixed
+  2026-08-12*, whose entire finding was a verdict keyed to a rule its `why` did not belong to.
+  The fix would have silently re-opened last week's bug. **A test now pins the refusal** so the
+  next person cannot make that trade by accident.
+
+  ### 📐 SO C7'S FAILURE AND THE ROLE-JUDGE GAP ARE ONE ROOT CAUSE
+
+  QC-5's clause 1 requires *"at least one attributed violation"*. A judge that invents rule ids
+  cannot produce one, whatever the prose says. That is the same failure family as
+  `D-QC5-ROLE-JUDGE-PRECISION` — *"the check fires on correct prose"* — which the audit already
+  classified: *"a **spend** question, not a design one: two experiments and a mechanism say the
+  judge model is the limit, so it costs a stronger model or it stays `[~]`."*
+
+  **QC-5's two open threads are therefore one PO decision, not two.** The pipeline plumbing is
+  sound — C3 shipped the counter, C5 wired the channel, C8 fixed the name-grounding truth side,
+  and this batch shows the mapper behaving correctly. What is left is the judge model.
+
+  ✅ **What this batch ships, and why it is not just a comment fix.** The labels now reach the
+  **envelope** (`violations_dropped_labels`), not only a log line. Diagnosing the above required
+  a container that happened to still be running; after a rotation, `dropped=2, rules=6` cannot
+  distinguish *"the judge invented a rule"* (a model decision) from *"the mapper is broken"* (a
+  code fix), and those need opposite responses. Bounded to 5 labels × 48 chars so a chatty judge
+  cannot inflate the envelope.
+
+  ⚠️ **The first version of that field was WRONG and its own test caught it.** It computed the
+  dropped labels as *raw ids minus kept ids* — but `map_rule_tokens` **rewrites** `rule_id` to
+  the real id, so the attributable verdict's original token is absent from the kept set and got
+  reported as dropped too. Fixed by extracting `_attribute` as the single attribution predicate
+  and asking it, so the mapper and the drop-reporter cannot drift.
+
+  **BITE ×2:**
+
+  ```
+  45. restore the set-difference computation   E the attributable token was reported as dropped
+  46. add the label-matching fallback          E "'Lam Trach is the cousin of Lam Uyen' was
+                                                  attributed — guessing re-opens
+                                                  D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE"
+  ```
+
+  **QC (a) gates:** composition unit **3624 → 3626**; `plan-verify` PASS; `plan-row-honesty-gate`
+  OK; `doc-language-gate` OK (the judge's Vietnamese label is transliterated in code comments and
+  tests rather than pasted).
+  **QC (b) the seam:** the diagnosis came off a **live** run through
+  `composition-service` → `provider-registry-service` → LM Studio on rebuilt images; the fix
+  itself is in-process and its bites are unit-level.
+  **QC (c) real data:** the six real canon rules of the acceptance book, and a real judge
+  response that named a rule that does not exist.
+
   ### 📊 QC-5 C9 2026-08-21 — the "Retry when: **Immediately**" class is now EMPTY
 
   ```
