@@ -291,3 +291,51 @@ def test_it_matches_the_port_signatures():
             f"DualWriteVectorStore.{name} {list(impl_sig.parameters)} != "
             f"port {list(port_sig.parameters)}"
         )
+
+
+@pytest.mark.asyncio
+async def test_a_SUPERSET_shadow_scores_perfect_overlap_and_is_counted_anyway():
+    """🔴 QC-3's `/review-impl` finding: `overlap` is |P ∩ S| / |P|, so a shadow returning a
+    SUPERSET of the primary reads **1.0 — perfect agreement**.
+
+    For a migration that is exactly backwards. After the flip the shadow's answers become the
+    served ones, so a row it returns that the primary does not is a row a reader **starts
+    seeing** — and the one number gating the cutover could not see it.
+    """
+    from app.metrics import vector_shadow_read_extra_total
+
+    primary, secondary = FakeVectorStore(), FakeVectorStore()
+    for sid in ("a", "b"):
+        await primary.upsert(_passage(sid, [1.0, 0.0]))
+        await secondary.upsert(_passage(sid, [1.0, 0.0]))
+    await secondary.upsert(_passage("c", [1.0, 0.0]))          # the SUPERSET row
+
+    store = DualWriteVectorStore(primary, secondary, shadow_read_rate=1.0)
+    before = vector_shadow_read_extra_total._value.get()
+    hits = await store.search(scope="passage", user_id=_USER, embedding=[1.0, 0.0],
+                              dim=2, k=10)
+
+    assert len(hits) == 2, "the primary must still answer; the shadow never serves"
+    assert vector_shadow_read_extra_total._value.get() == before + 1, (
+        "a shadow returning rows the primary did not was NOT counted — and `overlap` reads "
+        "1.0 for it, so nothing sees the disagreement the cutover is about to serve")
+
+
+@pytest.mark.asyncio
+async def test_an_EXACT_match_does_not_trip_the_extra_counter():
+    """The control. A counter that fired on agreement would make the signal noise, and
+    `overlap` already reports agreement perfectly well."""
+    from app.metrics import vector_shadow_read_extra_total
+
+    primary, secondary = FakeVectorStore(), FakeVectorStore()
+    for sid in ("a", "b"):
+        await primary.upsert(_passage(sid, [1.0, 0.0]))
+        await secondary.upsert(_passage(sid, [1.0, 0.0]))
+
+    store = DualWriteVectorStore(primary, secondary, shadow_read_rate=1.0)
+    before = vector_shadow_read_extra_total._value.get()
+    await store.search(scope="passage", user_id=_USER, embedding=[1.0, 0.0], dim=2, k=10)
+
+    assert vector_shadow_read_extra_total._value.get() == before, (
+        "an exact set match tripped the extra counter — the comparison is over record-id "
+        "SETS, so ordering is not disagreement")

@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35`'s operator write — `recanon_honorifics` dry-run → `--apply` (T35f proved the command works; it was broken four ways). That unblocks `T46` and `QC-6`. `A12` re-derived T43's shadow at the full surface: **Kuzu 21/21, `cutover_permitted: True`**; **AGE 11/21, False**, blocked by ten operations downstream of its two write refusals. QC-7's `9/9` was stale and is annotated; its verdict survives. `T33` ⛔ · `T49` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `QC-3`'s ⏸ sign-off — its `/review-impl` half is now DONE (QC-3c: no HIGH, 3 MED; MED-1 fixed — the overlap metric was **blind in the direction the cutover travels**, reading 1.0 for any superset). Still owed by the checkpoint: the real-corpus recall/latency comparison + the restore drill, then present and WAIT. ⚠️ `T35`'s operator write (`recanon_honorifics --apply`, proven working by T35f) unblocks `T46` and `QC-6`. `T33` ⛔ · `T49` ⛔ · `QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 36 of 73 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 37 of 76 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/3) · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3656,6 +3656,105 @@ vectors and validity intervals live in different stores.
   says vectors are durable primary data — **an untested restore is not a backup.**
   ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
   ---
+  ### 🔻 QC-3c 2026-08-14 — the `/review-impl` this row owes: **no HIGH, three MED, one fixed here**
+
+  ```
+  unit 4239 -> 4241 passed      knowledge_vector_shadow_read_extra_total (new)
+  ```
+
+  QC-3's row owes *"`/review-impl` (data migration — deeper than `/aif-review`)"* before its
+  ⏸ sign-off. Run over `dual_write_vector_store.py` · `pg_vector_store.py` ·
+  `vector_store_provider.py` · `neo4j_vector_store.py` plus callers one hop out, weighted for
+  **loss, silent divergence and cutover failure modes** rather than style.
+
+  **Standards gate:** applicable — User Boundaries & Tenancy, Non-Vacuity, Performance. Not
+  applicable with reasons: no provider SDK or model literal (embeddings arrive as
+  `list[float]`), no new external route, no MCP surface, no secrets, `db-safety-gate` exit 0,
+  and the cutover drops **indexes**, never rows.
+
+  ### 🔴 MED-1 — the overlap metric is BLIND IN THE DIRECTION THE CUTOVER TRAVELS *(fixed here)*
+
+  ```python
+  overlap = len(primary_ids & shadow_ids) / len(primary_ids)
+  ```
+
+  `|P ∩ S| / |P|` reads **1.0 for any superset**. After the flip the shadow's answers become
+  the served ones, so a row it returns that the primary does not is a row a reader **starts
+  seeing** — and the single number gating the cutover could not see it.
+
+  ✅ Fixed: `vector_shadow_read_extra_total`, a **counter, not a second ratio** — two ratios on
+  one dashboard get averaged by whoever reads them, and these measure opposite failures.
+  Non-zero means the stores disagree in the direction the cutover is about to make
+  authoritative.
+
+  **BITE ×2, red on DIFFERENT assertions:**
+
+  ```
+  29. remove the counter        E  a shadow returning rows the primary did not was NOT counted
+  30. fire it on every compare  E  an exact set match tripped the extra counter
+  ```
+
+  Bite 30 is the control: a counter that fires on agreement is noise, and `overlap` already
+  reports agreement well. The superset rule also asserts the primary still answers 2 hits —
+  the shadow must never serve.
+
+  ### ⚠️ MED-2 — the entity-vector identity has no tenant, and the conflict handler rewrites the owner
+
+  ```sql
+  entity_id text PRIMARY KEY                      -- pg_vector_store.py:197
+  ON CONFLICT (entity_id) DO UPDATE SET user_id = EXCLUDED.user_id, …   -- :594
+  ```
+
+  The sibling **passage** table is `UNIQUE (user_id, source_type, source_id, chunk_index)` —
+  tenant in the key. The entity table's uniqueness rests entirely on `entity_canonical_id`
+  folding `user_id` into the hash: **the property T35 exists to retire**, asserted nowhere in
+  this table or its tests, and contradicted by its own sibling.
+
+  If two tenants ever mint one id the write does not fail — `DO UPDATE SET user_id =
+  EXCLUDED.user_id` **transfers ownership silently**. Reads are tenant-filtered
+  (`where = ["user_id = $1"]`), so the first tenant's vector simply disappears from their
+  searches. **Not fixed here on purpose**: `PRIMARY KEY (user_id, entity_id)` is a schema
+  change on a live table and rule 7's ledger discipline makes it a migration step, which is a
+  PO call at this checkpoint rather than a review's to take.
+
+  ### ⚠️ MED-3 — post-cutover a Neo4j outage still blocks ingestion pgvector could serve alone
+
+  `ensure_index` deliberately does not swallow the secondary's failure, pinned by
+  `test_ensure_index_reaches_both_and_does_not_swallow`. **Post-cutover the secondary IS
+  Neo4j.** The provider degrades carefully when *pg* is unreachable and has no equivalent for
+  the other direction, so the store the cutover demoted can still fail every ingestion job at
+  its first index call. Accept-and-document or swallow-and-count once
+  `read_primary == "postgres"` — a decision, not a defect.
+
+  ### ⚠️ LOW-4 — the index-lifecycle surface and the read surface diverge post-cutover
+
+  `drop_index`/`list_indexes` follow `_primary` (pg after the flip); **entity reads follow
+  `_primary_read_scopes` and stay on Neo4j.** So the prune-orphans admin path can no longer
+  see or drop the Neo4j entity indexes that are actually serving entity reads.
+
+  ### ✅ WHAT WAS VERIFIED TO PASS, so this is not a rubber stamp
+
+  Primary-failure propagates and is counted · the `not written` short-circuit is coherent
+  because the oracle consults the very store that would be skipped · the shadow read never
+  raises into the request · `include_vectors` is deliberately not forwarded · the provider
+  refuses `read_primary=postgres` without a DSN rather than silently serving Neo4j · an
+  unreachable pg pool degrades and is counted **on the existing soak series**, so the soak gate
+  already watches it · and the entity/passage scope split is pinned by
+  `test_the_provider_keeps_neo4j_as_primary`, which the plan records as having fired on the
+  argument swap before it shipped.
+
+  **QC (a) gates:** unit **4239 → 4241**; `plan-verify` PASS; `db-safety-gate` exit 0.
+  **QC (b) the seam:** N/A for the fix — a metric and its two rules, in-process. The review
+  itself read both sides of the store boundary and one hop of callers.
+  **QC (c) real data:** N/A — a counter produces none until traffic runs. **That is the point
+  of MED-1**: the number it produces is what the ⏸ sign-off should be read against, and it did
+  not exist until now.
+
+  ⛔ **STILL OWED, and it is the checkpoint itself:** the real-corpus recall/latency
+  comparison (`flat_knn_rawsearch` on both backends, ratios not absolutes) and the restore
+  drill, then **present evidence and WAIT**. MED-2 and MED-3 are decisions for that sign-off,
+  not blockers a review may take on its own.
+
   **QC-3a ✅ — the rebuild measurement above the threshold, and the RTO.**
   Full evidence: [`docs/measurements/2026-08-10-diskann-rebuild-scale.md`](../measurements/2026-08-10-diskann-rebuild-scale.md).
 

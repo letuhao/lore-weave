@@ -52,6 +52,7 @@ __all__ = [
     "knowledge_extraction_status_effect_total",
     "correction_emit_failure_total",
     "vector_dual_write_total",
+    "vector_shadow_read_extra_total",
     "vector_shadow_read_overlap",
     "vector_shadow_read_total",
 ]
@@ -755,5 +756,24 @@ vector_shadow_read_overlap = Histogram(
     "knowledge_vector_shadow_read_overlap",
     "Fraction of the primary's top-k that the secondary also returned",
     buckets=(0.0, 0.5, 0.8, 0.9, 0.95, 0.99, 1.0),
+    registry=registry,
+)
+
+# 🔴 OVERLAP IS ASYMMETRIC, AND THE CUTOVER TRAVELS IN THE BLIND DIRECTION.
+#
+# `overlap = |P ∩ S| / |P|` reads **1.0** whenever the shadow returns a SUPERSET of the
+# primary. For a migration that is exactly backwards: after the flip the shadow's answers
+# become the served ones, so rows it returns that the primary does not are the rows a reader
+# starts seeing — and the one number gating the cutover cannot see them.
+#
+# Found by QC-3's `/review-impl` (2026-08-14). Counted rather than folded into the histogram:
+# a second ratio would be averaged with the first by anyone reading a dashboard, and these
+# two measure opposite failures. Non-zero here means the stores disagree in the direction the
+# cutover is about to make authoritative.
+vector_shadow_read_extra_total = Counter(
+    "knowledge_vector_shadow_read_extra_total",
+    "Shadow reads where the SECONDARY returned at least one record the primary did not. "
+    "Invisible to `overlap`, which is 1.0 for any superset — and after the cutover these "
+    "are the rows that become the answer.",
     registry=registry,
 )

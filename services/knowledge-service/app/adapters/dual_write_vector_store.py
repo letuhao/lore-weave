@@ -45,6 +45,7 @@ import random
 
 from app.metrics import (
     vector_dual_write_total,
+    vector_shadow_read_extra_total,
     vector_shadow_read_overlap,
     vector_shadow_read_total,
 )
@@ -160,8 +161,21 @@ class DualWriteVectorStore:
             # An empty primary result has no top-k to overlap with. Recording 1.0 ("they
             # agreed") or 0.0 ("total divergence") would both be inventions.
             return
-        overlap = len(primary_ids & {h.record_id for h in shadow}) / len(primary_ids)
+        shadow_ids = {h.record_id for h in shadow}
+        overlap = len(primary_ids & shadow_ids) / len(primary_ids)
         vector_shadow_read_overlap.observe(overlap)
+        # 🔴 The direction `overlap` cannot see. It is |P ∩ S| / |P|, so a shadow returning a
+        # SUPERSET scores a perfect 1.0 — and after the cutover the shadow's rows become the
+        # served answer, which makes "rows the secondary has and the primary does not" the
+        # single most important disagreement and the one the gating metric was blind to.
+        # (QC-3 `/review-impl`, 2026-08-14.)
+        if shadow_ids - primary_ids:
+            vector_shadow_read_extra_total.inc()
+            logger.warning(
+                "vector shadow read EXTRA: scope=%s dim=%s the secondary returned %d "
+                "record(s) the primary did not — after the cutover these become the answer",
+                kw.get("scope"), kw.get("dim"), len(shadow_ids - primary_ids),
+            )
         if overlap < 1.0:
             logger.warning(
                 "vector shadow read divergence: scope=%s dim=%s k=%s overlap=%.3f "
