@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T33` ⛔ — a stop condition, so read its row before touching it. ⚠️ `T35` is **OWED AN OPERATOR WRITE**: 1826 nodes carry a stale `canonical_name` and fork on re-extraction; `recanon_honorifics` repairs 1820 / refuses 6 / loses 0 anchors and needs a human to run `--apply` against the shared graph. `T32` CLOSED 2026-08-14 — its "six remaining readers" were measured and none was an as-of read; `alive` survives (spec §6.1b).**
+**RESUME: `T40` (lane B) — partition `entity_facts` by `book_id`; it depended on `T39`, which CLOSED 2026-08-14 after its invalidation turned out to be untested (4233 tests stayed green with T39's whole point deleted). ⚠️ `T35` is **OWED AN OPERATOR WRITE** (1826 stale `canonical_name` nodes; `recanon_honorifics --apply` repairs 1820 / refuses 6 / loses 0). `T33` ⛔ and `QC-3`/`QC-5` ⏸ are hand-backs — take lane B and D first.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**50 of 66 rows done · 16 open · 35 of 69 evidence blocks closed inside them.**
+**51 of 66 rows done · 15 open · 34 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7662,9 +7662,77 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **Test:** the recycle-bin and spoiler surfaces still render after the reveal-axis change.
   (depends on T38, T32)
 
-- [~] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
+- [x] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.5. Unfinished, not undecided.
   ---
+  ### ✅ T39a 2026-08-14 — **the invalidation was untested: 4233 tests stayed green without it**
+
+  ```
+  unit 4233 -> 4235 passed
+  ```
+
+  T39 looked finished: B9 wired `invalidate_anchor_cache` into both glossary handlers, the
+  second cache was measured to have no callers and re-scoped, and three unit rules covered the
+  function. **Rule 2 says run it.** So the call was deleted from
+  `handle_glossary_entity_updated` and the whole suite run:
+
+  ```
+  4233 passed  — with T39's entire point removed
+  ```
+
+  🔴 **All three existing rules call `invalidate_anchor_cache` DIRECTLY.** They pin the
+  function — per-project scoping, the absent-project no-op, the UUID→str coercion — and not one
+  of them drives a handler. So the wiring B9 shipped could be deleted, reordered after a failing
+  sync, or quietly commented out, and the anchor automaton would go back to describing the
+  pre-edit entity set for up to 300 seconds **while the code that knew about the change had
+  already run** — with a green suite the whole way.
+
+  This is the third instance of one shape in two days: **T35e**'s collision guard that the
+  loader never fed, **T39's own second cache** that no consumer calls, and now an invalidation
+  no test invokes. A rule that exercises the unit and not the call site cannot tell a wired
+  mechanism from an unwired one, and that is the only question that matters for both.
+
+  ✅ **Two rules that drive the HANDLERS**, one per event, asserting the cache entry is gone
+  afterwards.
+
+  🎯 **The update rule makes the sync RAISE, and that is the load-bearing detail.** B9 decided
+  invalidation happens BEFORE the sync — *"the sync can fail, and a cache still holding the
+  pre-edit dictionary after a failed write is the worse of the two states"* — and a rule with a
+  happy-path sync **cannot tell the two orders apart**. Failing the sync is what makes the
+  ordering observable, so the decision is pinned rather than merely described.
+
+  **BITE ×3:**
+
+  ```
+  13. delete the call from the UPDATE handler, run EVERYTHING
+        4233 passed          <- the measurement that started this batch
+  14. same deletion, against the new rules
+        E  the update handler did not invalidate the anchor cache. The automaton keeps
+           describing the pre-edit entity set for up to the TTL…
+  15. delete the call from the DELETE handler
+        E  the delete handler did not invalidate the anchor cache — the deleted name stays
+           anchorable for the rest of the TTL window.
+  ```
+
+  Bite 13 is the finding and bites 14–15 are the fix proving it fires on each handler
+  independently — a single rule covering "some handler invalidates" would have passed while one
+  of the two was broken.
+
+  **QC (a) gates:** unit **4233 → 4235**; `plan-verify` PASS; `plan-row-honesty-gate` OK.
+  **QC (b) the seam:** N/A — the handlers are in-process consumers of an event already
+  delivered; nothing new crosses a wire. The rules drive the real handler functions with a real
+  `EventData`, which is the seam that was untested.
+  **QC (c) real data:** N/A — an invalidation produces no data. The exposure it removes was
+  measured in B9 (a 300 s window on every entity edit and delete).
+
+  ### ✅ T39 CLOSES
+
+  Both halves are now settled and neither is a promise: the **first cache** is invalidated by
+  event, per-project, before the sync, with the TTL kept as the backstop — **and the wiring is
+  pinned**. The **second cache** was measured to have no callers, so its documented risk was
+  false; §4.5 re-scopes it to follow its consumer when P2's Step D lands, and the module is
+  deliberately kept rather than deleted because that consumer is still intended work.
+
   ### ✅ B9 2026-08-13 — T39's first half: the anchor cache is invalidated by EVENT, not by a guess
 
   **Measured first (rule 8), and the batch split in three:**
