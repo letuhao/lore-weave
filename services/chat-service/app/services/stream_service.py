@@ -2747,6 +2747,27 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None,
         # `_inject_context_ids` already repairs a malformed one by SUBSTITUTING the value it
         # knows. For a non-context id there is nothing to substitute, so the honest move is the
         # one below — drop it and report it missing, which sends the model to look it up.
+        # 🔴 AN ID WITH WHITESPACE IN IT IS A NAME. No identifier this platform issues contains a
+        # space — not a UUID, not a slug, not a code — so this needs no declaration to be certain,
+        # which matters because 277 of 496 `*_id` properties say nothing about their format and are
+        # invisible to the declaration arm below (composition alone accounts for 200).
+        #
+        # MEASURED LIVE 2026-08-14, batch 14: composition_arc_get was called with
+        # node_id="The Hollow Keep" — the arc's TITLE — and again with "arc_1". The tool refused
+        # correctly, but only after a round trip, and node_id's description says merely "The
+        # arc/saga (structure_node) id", so the declaration arm could not see it.
+        #
+        # Context ids are exempt here too, for the reason recorded below: the runtime injects them
+        # and they are not guaranteed to be UUIDs. None of them contains whitespace either, so the
+        # exemption costs nothing.
+        if (
+            name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and value.strip()
+            and any(ch.isspace() for ch in value.strip())
+        ):
+            out.append(name)
+            continue
         if (
             name not in _RUNTIME_CONTEXT_IDS
             and isinstance(value, str)

@@ -2755,5 +2755,13 @@
   "release_surface": 198,
   "concluded_in_release_surface": 40,
   "remaining_in_release_surface": 158
- }
+ },
+ "observations": [
+  {
+   "id": "OBS-COMPLETED-TURN-WITH-NO-PROSE",
+   "occurrences": [
+    "SECOND INDEPENDENT OCCURRENCE, 2026-08-14 batch 14, composition_arc_get, 3 of 3 runs. Both occurrences follow the SAME shape: an argument is dropped at the chokepoint, the tool returns the honest 'missing required argument(s) ... do NOT guess a value' message, and the model then ends the turn with finish_reason=stop and NO user-visible text. outcome is recorded `completed` and is_error is false, so every count that reads outcomes sees a success. The drop itself is correct — node_id='The Hollow Keep' is the arc's TITLE and must not reach the tool — and the store is unchanged. What is NOT correct is the recording: a turn that produces no prose is not a completed turn. TRADE STATED HONESTLY: before the whitespace arm this scenario produced ONE FALSE STATEMENT ('the arc hasn't been planned yet', while the seed assertion proved it exists) and two silences; after it, three silences and no false statement. Silence is the better failure, but neither is shippable, and I cannot claim the arm as a clean win."
+   ]
+  }
+ ]
 }

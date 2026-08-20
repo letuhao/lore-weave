@@ -59,6 +59,41 @@ def test_the_measured_call_is_caught():
         {"name": "Saltmarsh", "world_id": "Ashfall"}, None, WORLD_PROPS) == ["world_id"]
 
 
+class TestAnIdWithWhitespaceIsAName:
+    """🔴 THE DECLARATION ARM COVERS 219 OF 496 `*_id` PROPERTIES. The other 277 say nothing about
+    their format — composition alone accounts for 200 — so they are invisible to it.
+
+    MEASURED LIVE 2026-08-14, batch 14: composition_arc_get was called with
+    node_id="The Hollow Keep", the arc's TITLE, and again with "arc_1". Its description says
+    merely "The arc/saga (structure_node) id", so nothing declared could catch it.
+
+    Whitespace needs no declaration to be certain: no identifier this platform issues contains a
+    space — not a UUID, not a slug, not a code."""
+
+    def test_the_measured_call_is_caught_with_NO_declaration(self):
+        """THE FALSIFIER for this arm — properties deliberately say nothing about UUIDs."""
+        props = {"node_id": {"type": "string", "description": "The arc/saga (structure_node) id."}}
+        assert _invented_supplier_ids({"node_id": "The Hollow Keep"}, None, props) == ["node_id"]
+
+    def test_a_spaceless_placeholder_is_NOT_caught_by_this_arm(self):
+        """Stated so the limit is honest: "arc_1" has no whitespace and no declaration, so this
+        arm does not see it. It is the residual, and the declaration gap is what would close it."""
+        props = {"node_id": {"type": "string", "description": "The arc/saga (structure_node) id."}}
+        assert _invented_supplier_ids({"node_id": "arc_1"}, None, props) == []
+
+    def test_a_real_uuid_has_no_whitespace_and_passes(self):
+        assert _invented_supplier_ids({"node_id": REAL}, None, None) == []
+
+    def test_a_context_id_is_still_exempt(self):
+        """book_id="b1" has no whitespace so this arm never sees it — but the exemption is kept
+        explicit, because a runtime-injected value must not be judged here at all."""
+        assert _invented_supplier_ids({"book_id": "some book"}, None, None) == []
+
+    def test_a_non_id_argument_with_spaces_is_untouched(self):
+        """Scoped to the `*_id` convention — a title or a query is full of spaces by nature."""
+        assert _invented_supplier_ids({"title": "The Hollow Keep"}, None, None) == []
+
+
 def test_a_real_uuid_passes():
     """The existing rule is untouched: a valid UUID is accepted even if it is the WRONG world —
     whether it is the right row remains the tool's question."""

@@ -1,0 +1,245 @@
+{
+ "batch": "batch14-get",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_arc_get",
+   "scenario": "composition-arc-get-v2",
+   "intent": "read",
+   "falsifier": "RE-RUN AFTER THE WHITESPACE ARM (an `*_id` containing a space is a NAME). v1 was called 3/3 with node_id='The Hollow Keep' and node_id='arc_1'; the tool refused correctly but only after a round trip, and one reply told the author the arc 'hasn't been planned yet' while the seed assertion proved it exists. REFUTED IF a NAME again reaches the tool as node_id. EXPECTED: it is dropped and reported missing, so the model lists the arcs and resolves the id.",
+   "answer_expect": {
+    "all_of": [
+     "Hollow Keep"
+    ],
+    "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+   },
+   "falsifier_sha": "8084c01eac5df305",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's arc node refused.",
+    "absent_case": "EXERCISED by the v1 run and it is a GOOD refusal: node_id='The Hollow Keep' was answered 'node_id must be a UUID — received The Hollow Keep. Compare it against the id you meant to send'. The tool names the argument, the value, and the likely cause.",
+    "empty_case": "EXERCISED and it PASSES the distinction that find_references failed: an arc that exists but is empty returns the arc ROW, while a nonexistent node_id is refused with 'not found or not accessible'. Absence and emptiness are distinguishable here."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02118-e497-71f8-9179-09798cb28e28",
+     "session_id": "01a02119-0242-702a-8a99-43c1339ba79a",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_get"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:34.71959+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:34.933758+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:35.101131+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:34.921292+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:34.71959+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:34.933758+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:35.101131+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:34.921292+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02119-34cd-7fa6-8296-534e8cdbe770",
+     "session_id": "01a02119-5ad7-700b-9cfe-cc38e175e421",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_get"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.369683+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.620017+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.788089+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.605627+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.369683+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.620017+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.788089+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:34:55.605627+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02119-92b2-7b61-929e-8901293ea792",
+     "session_id": "01a02119-bddf-7328-9bb7-80b19f56fbdc",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_get"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.408735+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.63864+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.79314+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.631473+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.408735+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.63864+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.79314+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:35:19.631473+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 0
+  }
+ ]
+}
