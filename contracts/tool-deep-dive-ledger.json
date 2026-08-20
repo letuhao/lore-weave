@@ -1973,6 +1973,56 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "Surfaced 0/3, called 0/3 — and the turn answered anyway: 'Yes, your conformance check is effectively stale... the book has moved because you have one unplanned chapter', assembled from composition_diagnostics and package_tree. A fresh book has NEVER run conformance, so there is nothing to be stale. Probed at the boundary the tool answers honestly: {arcs: [], index: {stale_chapter_count: 0}}. BLOCKED on surfacing plus a fabricated verdict — the D-DEGRADED-READ-REPORTED-AS-ABSENCE family pointed the other way: not a false absence, a false PRESENCE."
+  },
+  "glossary_create_chapter_link": {
+   "state": "blocked",
+   "provider": "glossary",
+   "tier": "A",
+   "cycle": "batch-12",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED, surfaced 0/3. The model called book_read and ANSWERED IN PROSE what the tool exists to RECORD — 'Aldric Vane makes his appearance in the very first sentence' — so the author asked to MARK where he shows up and got a description. Nothing written. Declared 'mark where this character shows up' against a prompt saying 'mark where he shows up'."
+  },
+  "glossary_entity_rename": {
+   "state": "blocked",
+   "provider": "glossary",
+   "tier": "A",
+   "cycle": "batch-12",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED, surfaced 0/3. The model used glossary_propose_entity_edit, a sibling, and suspended on its card. Declared 'rename character' against 'rename Aldrik Vayne to Aldric Vane'."
+  },
+  "glossary_create_evidence": {
+   "state": "blocked",
+   "provider": "glossary",
+   "tier": "A",
+   "cycle": "batch-12",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED, surfaced 0/3. The model quoted the passage in prose — 'the text confirms his ascent' — finding the evidence and never attaching it. Declared 'cite where this is stated' against 'cite where it says he climbed'. A second precondition also stands unmeasured: evidence attaches to an attr_value_id and the fixture has no attribute values."
+  },
+  "kg_graph_query": {
+   "state": "blocked",
+   "provider": "kg",
+   "tier": "R",
+   "cycle": "batch-12",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED, surfaced 0/3. The model called kg_project_list and kg_add_nodes and suspended on that card — bootstrapping instead of reading, the third time in this loop (kg_propose_edge batch 5, kg_add_nodes batch 7). Declared 'how are they connected' against 'How are the characters in this story connected'."
+  },
+  "glossary_propose_translation": {
+   "state": "blocked",
+   "provider": "glossary",
+   "tier": "A",
+   "cycle": "batch-12",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED at 1/3 — and it is batch 12's CONTROL. It is the ONLY tool of the five whose declared synonyms appear VERBATIM in the prompt, and the only one surfaced (3/3). On the two runs it was not called it answered with name suggestions in prose rather than minting the proposal. 1/3 is not a distribution."
   }
  },
  "defects": {
@@ -2603,6 +2653,16 @@
    "invariant": "A tool must distinguish 'this does not exist' from 'this exists and is empty'.",
    "finding": "composition_find_references with a well-formed but NONEXISTENT entity_id returns the same payload as a real entity with no references: sources with count 0 across the board, no error, no note. So a mistyped or hallucinated name answers 'appears nowhere' rather than 'no such entity'.",
    "why_it_matters": "Identical to the class already fixed twice today — tool_list's `reason` (T7-D2) and story_search's `degraded` — and to jobs_get's refusal, which deliberately uses ONE string for 'no such job' and 'not yours'. Here the two states are genuinely different to the author and the payload cannot tell them apart, so the model reports a confident negative about an entity that never existed."
+  },
+  {
+   "id": "D-ANSWERABILITY-MISSES-WORD-ORDER — NATURAL EXPERIMENT",
+   "date": "2026-08-14",
+   "state": "OPEN — evidence upgraded from one instance to a controlled comparison",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch12.json (5 tools, K=3 each, one batch)",
+   "finding": "PERFECT CORRELATION between 'a declared synonym appears VERBATIM in the prompt' and 'the tool was surfaced':\n  glossary_propose_translation  surfaced 3/3  — 'vietnamese names for these characters' PRESENT\n  glossary_create_chapter_link  surfaced 0/3  — declared 'mark where this character shows up', prompt 'mark where he shows up'\n  glossary_entity_rename        surfaced 0/3  — declared 'rename character', prompt 'rename Aldrik Vayne to...'\n  glossary_create_evidence      surfaced 0/3  — declared 'cite where this is stated', prompt 'cite where it says he climbed'\n  kg_graph_query                surfaced 0/3  — declared 'how are they connected', prompt 'How are the characters in this story connected'\nEvery miss is a pronoun substitution or an interposed word, not a different meaning.",
+   "the_consequence_is_the_worse_half": "On 4 of the 5, the model ANSWERED IN PROSE what the tool exists to RECORD. 'Mark where he shows up' produced a description of where he shows up. 'Cite where it says he climbed' produced the quotation. The author is told the thing they asked to have recorded, and nothing is recorded. Same shape as propose_edit in batch 9, which offered three rewrites as chat text instead of an Apply card.",
+   "why_this_is_the_architectural_finding": "The RUNBOOK's reason for batching is that five tools failing the same way NAMES THE INVARIANT while one names a symptom. This is that case: R1 answerability is the load-bearing path onto the wire (the lazy tail does not fire), and it matches declared synonyms as CONTIGUOUS phrases. A declaration is therefore only reachable by users who phrase it exactly as written.",
+   "what_a_fix_must_not_do": "_synonym_pattern's word-boundary work exists because 'cat' matched inside 'category'. Relaxing to word SETS trades precision for recall across the whole catalogue, so it must be measured against the live 315-tool set before shipping — not reasoned about. The consent check now depends on answerability too (a read-only turn sets a standing grant aside), so a widening changes CONSENT behaviour as well as surfacing."
   }
  ],
  "progress": {
