@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: two ⏸ rows now have everything but their sign-off. `QC-3`: all three owed items delivered (review · restore drill · **real-corpus recall — diskann 0.500, one query at 0.000**). `QC-5`: the decided rule (§2.1) APPLIED for the first time — **DOES NOT PASS on both clauses**, run C being a 5/5 with zero findings; a FRESH three-run measurement is owed and it re-drafts against a real DB, so it is the PO's to authorise. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6` and is now **REHEARSED**: the documented command could never run (it called the driver GETTER, not the initialiser), and executing it against a read-only clone of the dev graph found the merge branch deleting every non-`RELATES_TO` edge. Both fixed; the run converges at **1819 re-keyed / 1 merged / 6 refused / 0 anchors lost**, second pass `actions=0`. The write itself is still the PO's (rule 6). `T33` ⛔ · `T49` ⛔.**
+**RESUME: `QC-6` — identity live proof, now unblocked. `T35` CLOSED 2026-08-21 (T35h): its acceptance test was BITTEN to prove it can fail (restoring the recomputed-hash MERGE reds exactly `rename` and `re-kind`, nothing else), and the shadow differential was found running at HALF COVERAGE — 8 of its 9 skips were the AGE pairing declining for want of `TEST_AGE_DSN` while `lw-age-t42a` sat up on :7894. Pointed at it: **7 passed/9 skipped → 14 passed/2 skipped**, both remaining skips the correct "no expected divergences", for Kuzu AND AGE. Live graph: 4872 entities, largest duplicate group **1**. ⚠️ `T35`'s old blocker was never T35's: `recanon_honorifics` is §4.1's one-shot backfill under `D-ML-A5-RECANON-BACKFILL`, rehearsed in T35g, operator-owned. Two ⏸ still owe only a sign-off — `QC-3` (diskann 0.500, one query 0.000) and `QC-5` (the decided rule APPLIED: does not pass, both clauses). `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 37 of 81 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 33 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `T35` (4/14) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -5227,7 +5227,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
 <!-- Commit checkpoint: T30–T34 — migration + event contract -->
 
-- [~] **T35** — Opaque identity; KG holds **mentions**; retire `e.id = hash(name, kind)`
+- [x] **T35** — Opaque identity; KG holds **mentions**; retire `e.id = hash(name, kind)`
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.1. Unfinished, not undecided.
   `app/extraction/glossary_sync.py` — `ON MATCH SET` never updates `e.id`, so the 2026-08-02 kind
   backfill left **77 nodes** whose derived id disagrees with their own properties. 48 Cypher sites
@@ -5235,7 +5235,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   **Test:** rename + re-kind → no stale node, no minted duplicate.
   (depends on T34)
   ---
-  ⏸ **DEFERRED with a mechanism (below), not merely unstarted.** Scoped, measured, and the
+  ✅ **CLOSED 2026-08-21 by T35h** — the ⏸ checkpoint is discharged: every claim below was re-run rather than re-read, the acceptance test was bitten to prove it can fail, and the differential was found running at half coverage and repaired. Was: *DEFERRED with a mechanism (below), not merely unstarted.* Scoped, measured, and the
   blast radius frozen by a gate so the next session starts from evidence rather than from the
   plan's 2026-08-02 numbers.
 
@@ -5254,6 +5254,93 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   So ~92 % already carry the stable glossary anchor that opaque identity would key on — the
   migration target mostly exists; what is missing is retiring the derived id and repointing the
   48 join sites.
+
+  ### ✅ T35h 2026-08-21 — **T35 CLOSES.** Verified by RUNNING every claim, and one of them was half-measured
+
+  ```
+  test_t35_identity_rename.py      9 passed      the row's acceptance test, verbatim
+  test_shadow_differential.py     14 passed      was 7 passed / 9 SKIPPED
+  derived-entity-id-gate           PASS at 4     the pinned legitimate set
+  live graph: 4872 nodes, largest (user, project, canonical_name, kind) group = 1
+  ```
+
+  The row's acceptance is one line — *"rename + re-kind → no stale node, no minted duplicate"* —
+  and §4.1 states plainly **what T35 does NOT still owe**: the four remaining
+  `derived-entity-id-gate` callers are a storage-layer mint, a mint fallback, a one-shot backfill
+  and a test double, none of them a migration. T35a/b/c closed the minting half, T35d the event
+  half. So the only question left was whether the claims are TRUE, which is a matter of running
+  them.
+
+  🎯 **The acceptance test is non-vacuous, and that was checked rather than assumed.** Restoring
+  the pre-T35 behaviour — `MERGE (e:Entity {id: $id})` in place of the resolve-first
+  `coalesce(priorId, $id)` — reds **exactly the two criteria the row names**, and nothing else:
+
+  ```
+  36. MERGE on the recomputed hash again
+        E test_rename_then_reextract_does_not_mint_a_duplicate
+        E test_rekind_does_not_mint_a_duplicate            2 failed, 7 passed
+  ```
+
+  ### 🔻 THE DIFFERENTIAL WAS RUNNING AT HALF COVERAGE AND REPORTING GREEN
+
+  T35d's evidence rests on `_EXPECTED_DIVERGENCES` being empty. Re-run as it had been:
+
+  ```
+  7 passed, 9 skipped
+    SKIPPED [8] TEST_AGE_DSN not set — the AGE pairing needs it
+    SKIPPED [1] no expected divergences recorded for kuzu
+  ```
+
+  ⚠️ **Eight of the nine skips were the AGE pairing declining to run**, because nothing had set
+  `TEST_AGE_DSN` — while `lw-age-t42a` has been up the whole time on `:7894` with a database
+  literally named `loreweave_conformance_test`. So *"its own test passes 9/9"* was a count of the
+  half that ran. Pointed at the container that already existed:
+
+  ```
+  14 passed, 2 skipped
+    SKIPPED [1] no expected divergences recorded for age
+    SKIPPED [1] no expected divergences recorded for kuzu
+  ```
+
+  Both remaining skips are the **correct** ones — `test_every_expected_divergence_still_REPRODUCES`
+  has nothing to reproduce when the list is empty — and they now say so for **both** backends.
+  T35d's claim is what it said it was; it had simply only ever been demonstrated against Kuzu.
+  This is the plan's own env-gated-skip class, caught on its own evidence.
+
+  ### 📊 REAL DATA: the acceptance property holds on the live graph, not just in a fixture
+
+  ```
+  MATCH (e:Entity) → group by (user_id, project_id, canonical_name, kind)
+      4872 groups · 4872 nodes · largest group = 1      → ZERO within-project duplicates
+      collision_groups 0   groups_with_an_UNANCHORED_member 0
+  ```
+
+  🎯 **A detector that reports zero is validated before it is believed** (rule 3): the same
+  grouping without the `size > 1` filter returns **4872 groups covering 4872 nodes**, so the query
+  can see the population and the zero is a measurement, not an empty result set. §4.1 recorded
+  **17** such groups on 2026-08-11, all multi-anchored; there are now none.
+
+  ⚠️ **185 groups / 743 nodes share a canonical name and kind ACROSS projects**, and that is
+  correct rather than debt — projects are isolated by design and
+  `test_projects_stay_isolated` pins it. Recorded so the number is not re-discovered later as a
+  finding.
+
+  📐 **The recanon backfill is not T35's and does not hold it open.** §4.1 lists
+  `recanon_honorifics.py` among the legitimate remaining callers — *"a one-shot backfill whose
+  purpose is recomputing ids"*. It carries its own deferral
+  (`D-ML-A5-RECANON-BACKFILL`), it was rehearsed end-to-end in T35g, and its operator write is an
+  A5-honorific concern, not an opaque-identity one. Conflating the two is what kept this row
+  looking blocked.
+
+  **BITE — 36, above.** One bite, red on exactly the row's two acceptance criteria and no others,
+  which is the strongest form the criterion could take: the test is the acceptance sentence and
+  the bite is its negation.
+
+  **QC (a) gates:** `derived-entity-id-gate` PASS at 4 · `plan-verify` PASS ·
+  `plan-row-honesty-gate` OK · `plan-progress-block --check` OK.
+  **QC (b) the seam:** the differential crosses the port→adapter seam against **two** real
+  backends — Neo4j on a throwaway instance and AGE in `lw-age-t42a` — 14 passed.
+  **QC (c) real data:** 4872 real entities on the dev graph, read-only, largest duplicate group 1.
 
   ### 🔻 T35g 2026-08-21 — the operator command **had never run**, and executing it found a data-loss defect
 
