@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: two ⏸ rows now have everything but their sign-off. `QC-3`: all three owed items delivered (review · restore drill · **real-corpus recall — diskann 0.500, one query at 0.000**). `QC-5`: the decided rule (§2.1) APPLIED for the first time — **DOES NOT PASS on both clauses**, run C being a 5/5 with zero findings; a FRESH three-run measurement is owed and it re-drafts against a real DB, so it is the PO's to authorise. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6`. `T33` ⛔ · `T49` ⛔.**
+**RESUME: two ⏸ rows now have everything but their sign-off. `QC-3`: all three owed items delivered (review · restore drill · **real-corpus recall — diskann 0.500, one query at 0.000**). `QC-5`: the decided rule (§2.1) APPLIED for the first time — **DOES NOT PASS on both clauses**, run C being a 5/5 with zero findings; a FRESH three-run measurement is owed and it re-drafts against a real DB, so it is the PO's to authorise. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6` and is now **REHEARSED**: the documented command could never run (it called the driver GETTER, not the initialiser), and executing it against a read-only clone of the dev graph found the merge branch deleting every non-`RELATES_TO` edge. Both fixed; the run converges at **1819 re-keyed / 1 merged / 6 refused / 0 anchors lost**, second pass `actions=0`. The write itself is still the PO's (rule 6). `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 37 of 77 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 37 of 81 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `T35` (4/14) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
-> ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -5254,6 +5254,116 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   So ~92 % already carry the stable glossary anchor that opaque identity would key on — the
   migration target mostly exists; what is missing is retiring the derived id and repointing the
   48 join sites.
+
+  ### 🔻 T35g 2026-08-21 — the operator command **had never run**, and executing it found a data-loss defect
+
+  ```
+  unit 4241 -> 4243   ·   integration/db/test_recanon_apply.py 3 -> 6 passed
+  recanon DRY-RUN : scanned=4866 clean=3040 rekeyed=1819 merged=1 conflicted=6 actions=1820
+  recanon APPLIED : scanned=4866 clean=3040 rekeyed=1819 merged=1 conflicted=6 actions=1820
+  recanon RE-RUN  : scanned=4865 clean=4859 rekeyed=0    merged=0 conflicted=6 actions=0
+  ```
+
+  T35 has been waiting on a PO authorisation to run `python -m app.db.migrations.recanon_honorifics
+  --apply`, quoting **1820 repaired / 6 refused / 0 anchors lost**. Rule 2 says a number that reads
+  as success is guilty until checked, so before asking anyone to authorise it I ran it.
+
+  ### 🔴 IT CRASHES BEFORE READING A SINGLE NODE — and has since the day it was written
+
+  ```
+  app.db.neo4j.Neo4jNotConfiguredError: Neo4j driver not initialised — lifespan startup hook did not run
+  ```
+
+  `_cli_main` called **`get_neo4j_driver()`** — a *getter* that raises unless the FastAPI lifespan
+  hook already ran, which under `python -m` it never does. The documented operator command could
+  not execute, on dry-run **or** on `--apply`. **So the figure T35 is gated on cannot have come
+  from the command T35 documents.** Fixed to `await init_neo4j_driver()` with the driver's
+  lifecycle owned by the CLI, plus a `finally: close`, plus an echo of the target URI — a re-key
+  and a cross-node `MERGE` is a structural mutation of whatever `NEO4J_URI` points at, and it was
+  not saying which graph.
+
+  ### 🎯 HOW IT WAS EXECUTED WITHOUT WRITING TO A REAL DATABASE
+
+  Rule 1 reads DATA from the real stack, rule 6 sends every WRITE to a throwaway. Both, together:
+  the Entity subgraph was exported **READ-ONLY** from `:7688` (APOC streaming, `MATCH`/`RETURN`
+  only) and loaded into a **disposable** `lw-recanon-scratch` container on a different docker
+  network — proven different, `lw-iso_default 172.20.0.24` vs `infra_default 172.21.0.25`, so a
+  script inside it *cannot reach* the dev graph by hostname.
+
+  ```
+                        REAL     CLONE
+  Entity                4872      4872     EntityStatus            35      35
+  RELATES_TO            1143      1143     Entity->EVIDENCED_BY  1275    1275
+  ABOUT                  248       248     anchored              4305    4305
+  ```
+
+  ⚠️ `Event->EVIDENCED_BY` (1183) is **absent** and deliberately so: `:Event` is outside the label
+  set this migration touches. Recorded rather than papered over — the clone is faithful *for the
+  Entity subgraph*, which is the claim it has to support, not "a copy of the graph".
+
+  ### 🔴 THE MERGE BRANCH DELETES EVERY EDGE THAT IS NOT `RELATES_TO`
+
+  The apply re-points `RELATES_TO` outgoing and incoming, then `DETACH DELETE`s the folded node —
+  taking its other edges with it. Measured across the single merge:
+
+  ```
+  Entity->EVIDENCED_BY   1275 -> 1274      one edge destroyed
+  ABOUT                   248 ->  248      survived — that node had no fact attached
+  ```
+
+  🎯 **On today's graph nothing was actually lost, and that is the finding, not a reprieve.** The
+  folded node `七王子殿下` cited exactly one source, `6dff2c24…`, which the survivor `七王子`
+  already held — so the deletion was a de-duplication *by coincidence of the data*. A folded node
+  citing a source the survivor lacks would have that evidence deleted silently, and `ABOUT` held
+  only because this one node had no `:Fact`. The same **safe-by-luck** shape as the `EntityStatus`
+  re-point flagged two branches up in the same function.
+
+  ✅ Fixed: re-point `EVIDENCED_BY` and `ABOUT` before the delete — **and** refuse the delete
+  outright when the node still carries a type the enumeration does not know. The bug *was* an
+  incomplete enumeration, so the enumeration now fails loudly instead of quietly repeating the
+  same deletion under a new label (rule 9 — it raises, naming the type and the spec).
+
+  ### ⚠️ MY FIRST TWO TESTS FOR THIS WERE GREEN BY CONSTRUCTION
+
+  They named the unanchored node "stranded", hung the evidence on it, and asserted it survived.
+  But `plan_recanon` **re-keys the unanchored node and folds the ANCHORED one into it** — and a
+  re-key only rewrites the `id` property, so every edge on it survives whatever the merge branch
+  does. **Both passed against the un-fixed code.** The third test (the refusal guard) failed,
+  which is the only reason I looked.
+
+  Repaired by deriving the doomed node from a dry-run instead of assuming it (`_doomed_and_kept`),
+  which also keeps the tests meaningful if the planner's tie-break ever changes. Rule 3, caught on
+  my own work rather than someone else's.
+
+  **BITE ×5, each red on its own assertion:**
+
+  ```
+  31. get_neo4j_driver() again    E Neo4jNotConfiguredError — the operator error, verbatim
+  32. close outside the finally   E the driver leaked when the backfill raised
+  33. drop EVIDENCED_BY re-point  E source cited only by the folded node is now gone
+  34. drop ABOUT re-point         E the fact survives but is no longer about anybody
+  35. drop the refusal guard      E DID NOT RAISE on an unmoved :MENTIONS edge
+  ```
+
+  📐 **The fix changes NOTHING about the operator's numbers, and that was measured, not assumed.**
+  Re-running `--apply` on a fresh clone with the fixed code gives byte-identical counts to the
+  un-fixed run (`ev_by 1274` both) — because that one edge really was a duplicate. **1819 re-keyed
+  · 1 merged · 6 refused · 0 anchors lost · 4871 nodes with 4871 distinct ids · 0 collisions.**
+  A second dry-run against the migrated clone reports **`actions=0`**: it converges, and the 6
+  refusals stay refused because they mirror *different* glossary entities and need a human.
+
+  ⛔ **STILL OWED — T35 does not close here.** What is proven is that the command *works* and what
+  it *will do*; the write itself lands on the shared dev graph, which rule 6 puts on the PO's side
+  of the line. The difference is that authorising it is now a decision about a rehearsed
+  operation instead of an unexecuted one.
+
+  **QC (a) gates:** unit **4241 → 4243**; `test_recanon_apply.py` **3 → 6** passed against a
+  throwaway Neo4j the fixture's own guard accepted on port 27999 (`_DEV_NEO4J_PORTS` refuses
+  7687/7688/27687/27688, and no escape hatch was set); `plan-verify` PASS; `db-safety-gate` exit 0.
+  **QC (b) the seam:** the migration + a real Neo4j, executed end-to-end against a rebuilt image —
+  the stale image was caught first (250 lines vs 373) and rebuilt before any measurement was taken.
+  **QC (c) real data:** 4872 real entities, 4305 real anchors, 1275 real evidence edges, read from
+  the dev graph without writing to it.
 
   ### ✅ THE MINTING DEFECT IS FIXED — and the plan was counting the wrong thing
 

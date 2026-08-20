@@ -42,6 +42,10 @@ from loreweave_extraction.canonical import (
 
 logger = logging.getLogger(__name__)
 
+#: Relationship types the merge path knows how to move off a stranded entity before
+#: deleting it. Anything else raises rather than being silently detached.
+_MERGE_HANDLED_RELS = frozenset({"RELATES_TO", "EVIDENCED_BY", "ABOUT"})
+
 __all__ = ["EntityRow", "RecanonAction", "RecanonPlan", "plan_recanon", "run_recanon_backfill"]
 
 
@@ -265,15 +269,6 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
                 """,
                 old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
             )
-            # 🔴 `:EntityStatus` carries `entity_id` as a PROPERTY, not as an edge, so the
-            # re-key above STRANDS every status row that pointed at the old id. Proven by
-            # execution (T35f) — the assertion read `0 == 1`: the status survived and resolved
-            # to nothing. A canon read would then report the character as never having died.
-            #
-            # Measured on the dev graph the same day, 0 of 33 resolvable status rows sit on an
-            # entity this backfill re-keys, so the live run was safe BY LUCK. One new status on
-            # a stale entity makes it real, and nothing here was checking.
-            
         else:  # merge
             merged = await merge_entity_at_id(
                 session, user_id=a.user_id, id=a.into_id, project_id=a.project_id,
@@ -318,6 +313,56 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
                 """,
                 old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
             )
+            # 🔴 `RELATES_TO` IS NOT THE ONLY EDGE ON AN ENTITY. Found by EXECUTING the
+            # apply path against a faithful clone of the dev graph (T35g): the Entity
+            # subgraph's `EVIDENCED_BY` count fell 1275 -> 1274 across the single merge,
+            # because the two statements above move `RELATES_TO` and the `DETACH DELETE`
+            # then takes everything else with it.
+            #
+            # On today's graph that one edge was a DUPLICATE -- the stranded node's only
+            # source was one the survivor already held -- so nothing was lost. That is luck,
+            # not design: a stranded node citing a source the survivor lacks would have its
+            # evidence deleted silently, and `ABOUT` (a Fact's link to the entity it is
+            # about) held at 248 only because this particular node had none.
+            await session.run(
+                """
+                MATCH (old:Entity {id: $old_id})-[r:EVIDENCED_BY]->(o)
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (new)-[n:EVIDENCED_BY]->(o)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            await session.run(
+                """
+                MATCH (f)-[r:ABOUT]->(old:Entity {id: $old_id})
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (f)-[n:ABOUT]->(new)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            # An enumerated list of edge types is only safe while it is complete, and the
+            # bug above IS that list being incomplete. So refuse rather than delete: a new
+            # relationship type reaching a merged entity stops the backfill by name instead
+            # of being dropped on the floor the way `EVIDENCED_BY` was.
+            probe = await session.run(
+                """
+                MATCH (old:Entity {id: $old_id})-[r]-() WHERE old.user_id = $user_id
+                RETURN collect(DISTINCT type(r)) AS kinds
+                """,
+                old_id=a.from_id, user_id=a.user_id,
+            )
+            rec = await probe.single()
+            unknown = sorted(set(rec["kinds"] if rec else []) - _MERGE_HANDLED_RELS)
+            if unknown:
+                raise RuntimeError(
+                    f"recanon merge would DELETE unmoved {'/'.join(unknown)} edge(s) on "
+                    f"{a.from_id}; teach the merge path to re-point them "
+                    f"(D-ML-A5-RECANON-BACKFILL, apply path) before re-running",
+                )
             await session.run(
                 """
                 MATCH (old:Entity {id: $old_id}) WHERE old.user_id = $user_id
@@ -332,16 +377,34 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
 async def _cli_main() -> None:  # pragma: no cover (integration-only)
     import argparse
 
-    from app.db.neo4j import get_neo4j_driver, neo4j_session
+    from app.db.neo4j import (
+        close_neo4j_driver,
+        init_neo4j_driver,
+        neo4j_session,
+    )
+    from app.config import settings
 
     ap = argparse.ArgumentParser(description="A5 honorific re-canonicalization backfill")
     ap.add_argument("--apply", action="store_true", help="execute (default: dry-run)")
     args = ap.parse_args()
 
     logging.basicConfig(level=logging.INFO)
-    get_neo4j_driver()
-    async with neo4j_session() as session:
-        plan = await run_recanon_backfill(session, apply=args.apply)
+    # `get_neo4j_driver` is a GETTER: it raises unless the FastAPI lifespan hook
+    # already ran, which it never does under `python -m`. The CLI owns the
+    # driver's whole lifecycle here.
+    await init_neo4j_driver()
+    # A re-key plus a cross-node MERGE is a structural mutation of whatever
+    # NEO4J_URI happens to point at, so say which graph out loud before doing it.
+    logger.info(
+        "recanon %s against uri=%s",
+        "APPLY" if args.apply else "DRY-RUN",
+        settings.neo4j_uri or "<unset>",
+    )
+    try:
+        async with neo4j_session() as session:
+            plan = await run_recanon_backfill(session, apply=args.apply)
+    finally:
+        await close_neo4j_driver()
     logger.info(
         "recanon %s: scanned=%d clean=%d rekeyed=%d merged=%d",
         "APPLIED" if args.apply else "DRY-RUN",

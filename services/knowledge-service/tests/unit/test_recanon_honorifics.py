@@ -207,3 +207,100 @@ def test_the_LOADER_actually_feeds_the_anchor_guard():
     plan = asyncio.run(run_recanon_backfill(_Session(), apply=False))
     assert plan.conflicted == 2, plan
     assert plan.actions == [], "the loader fed the guard but the plan still acted"
+
+
+def test_the_cli_INITIALISES_the_driver_rather_than_merely_getting_it(monkeypatch):
+    """The documented operator command (`python -m …recanon_honorifics`) called
+    `get_neo4j_driver()` — a GETTER that raises unless the FastAPI lifespan hook
+    already ran, which under `python -m` it never does. So the entry point in the
+    module's own docstring could not run at all, on dry-run OR on `--apply`, and
+    the figure T35 is gated on cannot have come from it.
+
+    The apply path is `pragma: no cover (integration-only)`, which is exactly how
+    this survived: nothing executed the four lines that choose the driver. This
+    test drives `_cli_main` against fakes and asserts the ORDER — init before
+    session, close after — so a future edit back to the getter goes red here
+    instead of at 2 a.m. on an operator's terminal.
+    """
+    import asyncio
+
+    from app.db.migrations import recanon_honorifics as mod
+
+    calls: list[str] = []
+
+    class _Session:
+        async def __aenter__(self):
+            calls.append("session")
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    async def _fake_init():
+        calls.append("init")
+
+    async def _fake_close():
+        calls.append("close")
+
+    async def _fake_run(session, *, apply):
+        calls.append(f"run(apply={apply})")
+        return mod.RecanonPlan()
+
+    import app.db.neo4j as neo4j_mod
+    monkeypatch.setattr(neo4j_mod, "init_neo4j_driver", _fake_init)
+    monkeypatch.setattr(neo4j_mod, "close_neo4j_driver", _fake_close)
+    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda **kw: _Session())
+    monkeypatch.setattr(mod, "run_recanon_backfill", _fake_run)
+    monkeypatch.setattr("sys.argv", ["recanon_honorifics"])
+
+    asyncio.run(mod._cli_main())
+
+    assert "init" in calls, (
+        "the CLI never initialised the driver — it is back to calling the getter, "
+        "and the operator command raises Neo4jNotConfiguredError before it reads a node"
+    )
+    assert calls.index("init") < calls.index("session"), (
+        f"the driver must be initialised BEFORE a session is opened, got {calls}")
+    assert calls[-1] == "close", (
+        f"the CLI owns the driver's lifecycle and must close it, got {calls}")
+
+
+def test_the_cli_closes_the_driver_even_when_the_backfill_RAISES(monkeypatch):
+    """The `finally` is the point: a half-applied structural mutation is exactly
+    when the driver must still be released, and a bare `await close()` after the
+    `async with` would be skipped on the raise.
+    """
+    import asyncio
+
+    from app.db.migrations import recanon_honorifics as mod
+
+    calls: list[str] = []
+
+    class _Session:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *a):
+            return False
+
+    async def _boom(session, *, apply):
+        raise RuntimeError("merge exploded halfway")
+
+    import app.db.neo4j as neo4j_mod
+    monkeypatch.setattr(neo4j_mod, "init_neo4j_driver", lambda: _noop(calls, "init"))
+    monkeypatch.setattr(neo4j_mod, "close_neo4j_driver", lambda: _noop(calls, "close"))
+    monkeypatch.setattr(neo4j_mod, "neo4j_session", lambda **kw: _Session())
+    monkeypatch.setattr(mod, "run_recanon_backfill", _boom)
+    monkeypatch.setattr("sys.argv", ["recanon_honorifics"])
+
+    try:
+        asyncio.run(mod._cli_main())
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("the CLI swallowed a failed backfill")
+
+    assert "close" in calls, (
+        "the driver leaked when the backfill raised — the `finally` is gone")
+
+
+async def _noop(sink: list[str], tag: str) -> None:
+    sink.append(tag)

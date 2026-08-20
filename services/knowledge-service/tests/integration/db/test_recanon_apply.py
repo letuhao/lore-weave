@@ -132,3 +132,141 @@ async def test_the_MERGE_path_preserves_a_relation_PREDICATE(neo4j_driver):
             f"the merge re-created the edge WITHOUT its predicate (got {rec['pred']!r}). "
             "A relation's predicate is its meaning — 'betrayed' and 'guards' are the same edge "
             "type and different facts.")
+
+
+async def _doomed_and_kept(session, seeded: list[str]) -> tuple[str, str]:
+    """Return (node the merge DELETES, node that survives), read off a DRY-RUN.
+
+    🔴 **The first version of the three tests below was GREEN BY CONSTRUCTION and this
+    helper is why they no longer are.** They named the unanchored node "stranded", hung the
+    evidence on it, and asserted it survived — but `plan_recanon` RE-KEYS the unanchored node
+    and folds the ANCHORED one into it. A re-key only rewrites the `id` property, so every
+    edge on it survives no matter what the merge branch does: those assertions could not
+    fail, and two of them passed against the UN-fixed code.
+
+    So the doomed node is derived from the plan instead of assumed, which also keeps these
+    tests meaningful if the planner's tie-break ever changes rather than letting them go
+    quietly vacuous again.
+    """
+    plan = await run_recanon_backfill(session, apply=False)
+    merges = [a for a in plan.actions if a.op == "merge"]
+    assert len(merges) == 1, f"fixture did not produce exactly one merge: {plan!r}"
+    doomed = merges[0].from_id
+    kept = next(e for e in seeded if e != doomed)
+    return doomed, kept
+
+
+async def test_the_MERGE_path_carries_the_folded_node_s_EVIDENCE_to_the_survivor(neo4j_driver):
+    """🔴 The merge branch moved `RELATES_TO` and nothing else, then `DETACH DELETE`d the
+    folded node — taking its `EVIDENCED_BY` edges with it.
+
+    Found by EXECUTING `--apply` against a faithful clone of the dev graph (T35g), not by
+    reading it: the Entity subgraph's `EVIDENCED_BY` count fell 1275 → 1274 across the single
+    merge. On that graph the dropped edge happened to be a DUPLICATE the survivor already
+    held, so nothing was actually lost — which is exactly why a test derived from the live
+    data would have proved nothing.
+
+    This seeds the case the dev graph does NOT contain: a folded node citing a source the
+    survivor does **not** already have. That is where the deletion destroys evidence.
+    """
+    uid, pid = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
+    a_id, b_id = (f"n-{uuid.uuid4().hex[:8]}" for _ in range(2))
+    src_shared, src_only_doomed = (f"src-{uuid.uuid4().hex[:8]}" for _ in range(2))
+    async with neo4j_driver.session() as s:
+        try:
+            await _seed(s, uid=uid, pid=pid, eid=a_id, name="精靈大人", cn="精靈大人", anchor="gl-EV")
+            await _seed(s, uid=uid, pid=pid, eid=b_id, name="精靈小姐", cn="精靈小姐", anchor=None)
+            doomed, kept = await _doomed_and_kept(s, [a_id, b_id])
+
+            for sid in (src_shared, src_only_doomed):
+                await s.run("CREATE (x:ExtractionSource {id:$i, user_id:$u})", i=sid, u=uid)
+            # The survivor already cites the shared source, so a bare "the count went down"
+            # check could not tell dedup from loss. The assertion names the source instead.
+            await s.run("MATCH (e:Entity {id:$e}),(x:ExtractionSource {id:$x}) "
+                        "CREATE (e)-[:EVIDENCED_BY]->(x)", e=kept, x=src_shared)
+            for sid in (src_shared, src_only_doomed):
+                await s.run("MATCH (e:Entity {id:$e}),(x:ExtractionSource {id:$x}) "
+                            "CREATE (e)-[:EVIDENCED_BY]->(x)", e=doomed, x=sid)
+
+            plan = await run_recanon_backfill(s, apply=True)
+
+            r = await s.run(
+                "MATCH (e:Entity)-[:EVIDENCED_BY]->(x:ExtractionSource) WHERE e.user_id = $u "
+                "RETURN collect(DISTINCT x.id) AS sources", u=uid)
+            sources = set((await r.single())["sources"] or [])
+            assert plan.merged == 1, f"the fixture stopped producing a merge: {plan!r}"
+            assert src_only_doomed in sources, (
+                f"the merge DELETED the folded node's evidence: source {src_only_doomed} was "
+                f"cited only by that node and is now gone (survivor cites {sorted(sources)}). "
+                "A `DETACH DELETE` after re-pointing only RELATES_TO destroys every other edge.")
+            assert src_shared in sources, "the survivor lost its own pre-existing evidence"
+        finally:
+            await s.run("MATCH (n) WHERE n.user_id = $u DETACH DELETE n", u=uid)
+
+
+async def test_the_MERGE_path_carries_a_FACT_that_was_about_the_folded_node(neo4j_driver):
+    """`ABOUT` runs Fact → Entity, i.e. INTO the node being folded, and the merge path only
+    re-pointed incoming `RELATES_TO`. On the dev-graph clone `ABOUT` held at 248 across the
+    apply — but only because that one folded node had no fact attached, the same
+    safe-by-luck shape as the `EntityStatus` re-point two branches up.
+
+    A fact whose subject loses its link survives as a fact about nobody, so it stops being
+    retrievable for the character it describes.
+    """
+    uid, pid = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
+    a_id, b_id = (f"n-{uuid.uuid4().hex[:8]}" for _ in range(2))
+    fact = f"fact-{uuid.uuid4().hex[:8]}"
+    async with neo4j_driver.session() as s:
+        try:
+            await _seed(s, uid=uid, pid=pid, eid=a_id, name="精靈大人", cn="精靈大人", anchor="gl-AB")
+            await _seed(s, uid=uid, pid=pid, eid=b_id, name="精靈小姐", cn="精靈小姐", anchor=None)
+            doomed, _kept = await _doomed_and_kept(s, [a_id, b_id])
+
+            await s.run("CREATE (f:Fact {id:$i, user_id:$u, content:'she kept the gate'})",
+                        i=fact, u=uid)
+            await s.run("MATCH (f:Fact {id:$f}),(e:Entity {id:$e}) CREATE (f)-[:ABOUT]->(e)",
+                        f=fact, e=doomed)
+
+            plan = await run_recanon_backfill(s, apply=True)
+
+            r = await s.run("MATCH (f:Fact {id:$f})-[:ABOUT]->(e:Entity) "
+                            "RETURN collect(e.id) AS targets", f=fact)
+            targets = (await r.single())["targets"] or []
+            assert plan.merged == 1, f"the fixture stopped producing a merge: {plan!r}"
+            assert targets, (
+                "the merge DELETED the fact's ABOUT edge — the fact survives but is no longer "
+                "about anybody, so it stops being retrievable for that character")
+        finally:
+            await s.run("MATCH (n) WHERE n.user_id = $u DETACH DELETE n", u=uid)
+
+
+async def test_the_MERGE_path_REFUSES_to_delete_a_node_carrying_an_edge_it_cannot_move(neo4j_driver):
+    """The fix above is an ENUMERATION of edge types, and the bug it fixes was that
+    enumeration being incomplete. So it must fail loudly when it is incomplete again, rather
+    than quietly repeating the same deletion under a different label.
+
+    Seeds a relationship type the merge path does not know (`:MENTIONS`) and asserts the
+    backfill raises naming it, and that it raises BEFORE the delete rather than after.
+    """
+    uid, pid = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
+    a_id, b_id = (f"n-{uuid.uuid4().hex[:8]}" for _ in range(2))
+    other = f"psg-{uuid.uuid4().hex[:8]}"
+    async with neo4j_driver.session() as s:
+        try:
+            await _seed(s, uid=uid, pid=pid, eid=a_id, name="精靈大人", cn="精靈大人", anchor="gl-UN")
+            await _seed(s, uid=uid, pid=pid, eid=b_id, name="精靈小姐", cn="精靈小姐", anchor=None)
+            doomed, _kept = await _doomed_and_kept(s, [a_id, b_id])
+
+            await s.run("CREATE (p:Passage {id:$i, user_id:$u})", i=other, u=uid)
+            await s.run("MATCH (e:Entity {id:$e}),(p:Passage {id:$p}) "
+                        "CREATE (e)-[:MENTIONS]->(p)", e=doomed, p=other)
+
+            with pytest.raises(RuntimeError, match="MENTIONS"):
+                await run_recanon_backfill(s, apply=True)
+
+            r = await s.run("MATCH (e:Entity {id:$e}) RETURN count(e) AS n", e=doomed)
+            assert (await r.single())["n"] == 1, (
+                "the backfill raised but had already deleted the node — the guard must run "
+                "BEFORE the delete, not after")
+        finally:
+            await s.run("MATCH (n) WHERE n.user_id = $u DETACH DELETE n", u=uid)
