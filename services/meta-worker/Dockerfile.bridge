@@ -30,6 +30,13 @@ COPY contracts/canon/timeline    /src/contracts/canon/timeline
 COPY contracts/lifecycle         /src/contracts/lifecycle
 COPY contracts/realityreg        /src/contracts/realityreg
 COPY contracts/meta              /src/contracts/meta
+# RA1/RA3 — the cross-user read writes a `meta_read_audit` row through the PII
+# SDK, so the module now needs these three. Their ABSENCE did not fail loudly:
+# `go mod download` exited 1, and `docker compose up -d` then started the OLD
+# image and printed "Started", so the stack ran stale code and said it had not.
+COPY contracts/pii               /src/contracts/pii
+COPY sdks/go/piikms              /src/sdks/go/piikms
+COPY sdks/go/metaoutbox          /src/sdks/go/metaoutbox
 COPY services/meta-worker        /src/services/meta-worker
 
 WORKDIR /src/services/meta-worker

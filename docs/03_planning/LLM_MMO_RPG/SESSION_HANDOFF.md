@@ -130,13 +130,45 @@ its subject arrived. **Intent is not a mechanism.**
 | `D-NO-INPUT-LOG` | 2 | Escalated out of the command round (`R1-11`). Verification replay's stated input **does not exist**: `grep -rn "input_log\|inputs_log" crates/ services/ migrations/` → empty, re-verified 2026-08-06. Recovery replay folds committed events and is fine; verification replay has nothing to re-run. This is why the round's Oracle-versus-two-replays row could never have been closed by argument. | **prose-only** — declared in `deferral-gate.py`. The subject is an **absent artifact**, so nothing in the tree can disagree with a check (`NV-2`, the same shape as `D-S04-1`). Trigger: the first commit that writes an input record, or a verification-replay harness landing. |
 
 | `D-PC-AGENT` | 2 | **Can a controller be an agent, and how is it represented?** Deferred by the PO to the AI feature — it needs an agent runtime and a state machine. The sealed framing in migration `034` says *"a human with a GUI"*; whether an LLM driver is a principal with its own `user_ref_id` or wants a `controller_kind` column is that feature's call. Full reasoning in the [player-control RUN-STATE](../../plans/2026-08-14-player-control-RUN-STATE.md) §4. | **ASSERTED TRIGGER** — `a_non_human_principal_would_wake_pc_agent` in `services/meta-worker/pkg/bridge/actor_control_trigger_test.go` reads the meta migrations and reds the moment `actor_control_binding` gains a column beyond the six it has, which is how a non-human principal would have to announce itself. The row's own text said *"it must not be prose-only… the trigger goes in with `P1`"* — `P1` shipped on 2026-08-14 without one, and the gate never noticed because the id was not in this block. |
-| `D-PC-SEAM-NO-CONTRACT` | 3 | **The `admin-cli` → `actor-control` worker seam is two services, two languages and no machine-checked contract.** argv rendered by `workerArgs` in Go, parsed by `Args::parse` in Rust; the reply is JSON from `emit` unmarshalled into `ActorControlOutcome`. A rename on either side keeps both unit suites green — the shape the Frontend-Tool Contract standard exists for. Mitigated, not unguarded: `RunActorControl` refuses an unnamed outcome and a created actor with no id, and the invoker cross-checks the echoed ids. | **prose-only** — declared in `deferral-gate.py`. TRIGGER: a second consumer of the worker's JSON, or the first field added to it after 2026-08-20. The fix is the `contracts/frontend-tools.contract.json` pattern — one checked-in key list, asserted from both sides. |
-| `D-PC-NO-RUST-READ-AUDIT` | 3 | **No sanctioned way for RUST to take an audited sensitive read.** `034` registers a cross-user read of `actor_control_binding` as sensitive; the only audited reader is Go's `MetaRegistrar.liveBinding`, inside the write path. A Rust caller has no equivalent — it would write a bare `SELECT` and the lint would catch it, which is the lint working and not a path. `P7` made it concrete: `grant-control --dry-run` cannot tell an operator who currently drives an actor. | **prose-only** — declared in `deferral-gate.py`. TRIGGER: the first Rust caller that needs a cross-user read, most likely that preview. The fix is a bridge READ route writing `meta_read_audit` in the same call, mirroring the write side. **BUILDABLE, not blocked** — scoped out only because a probe-who-holds-whom capability is a decision. |
 | `D-PC-METAWRITE-NOOP-EVENT` | 2 | **`MetaWrite` emits the outbox event without checking `RowsAffected`**, so a CAS'd UPDATE matching nothing still announces its domain event. Not introduced by the game tier and shared by every meta table. Outbox delivery is at-least-once by contract, so a duplicate `actor.control.revoked` is inside what a consumer must tolerate — it is still an event for a write that changed nothing. | **prose-only** — declared in `deferral-gate.py`. TRIGGER: any consumer that treats an outbox event as proof a row changed. The fix is a `RowsAffected == 0` guard on the append and belongs to whoever owns `contracts/meta`. |
 | `D-PC-SEATS` | 2 | **One LIVE driver per actor is a database law, and three seats are not drivers.** `actor_control_binding_one_live_driver` is a UNIQUE index on `(reality_id, actor_id) WHERE revoked_at IS NULL`. Unreal's one-to-one is an overridable default; ours is enforced. **Spectating** and **GM override** must therefore each be something other than a second binding. The advisor case is already settled — an LLM that proposes and a human that commits is one driver plus an advisor. | **prose-only** — declared in `deferral-gate.py`. TRIGGER: the first feature that needs a non-driving seat. It cannot be asserted in advance: the subject is a seat concept that does not exist, so there is no file for a check to hold. |
 | `D-PC-SF6-REVERSAL` | 2 | **This tier armed `SF-6`'s reversal trigger and did not discharge it.** `SF-6` refused to type `0021_turn_slot`'s `current_turn_actor` because four spellings of who-is-acting already existed, and named its own reversal: *"a single actor-identity type being adopted repo-wide, at which point the slot should hold it."* The `0022_actors` registry is the first step toward that type. | **prose-only** — declared in `deferral-gate.py`. TRIGGER: the adoption itself — when one actor identity is used by `GoneState`'s `EntityRef`, `pii_sdk` and the meta audit tables, `0021`'s JSONB column must stop being opaque. |
 
 <!-- deferral-registry:end -->
+
+### Discharged 2026-08-21 — `D-PC-SEAM-NO-CONTRACT` · `D-PC-NO-RUST-READ-AUDIT`
+
+Both were opened on 2026-08-20 by the `P7` audit and closed the next day by
+[`2026-08-20-actor-control-debt-RUN-STATE.md`](../../plans/2026-08-20-actor-control-debt-RUN-STATE.md).
+Removed from the block above rather than annotated in it: the marker says ids
+outside it are *"history, not obligations"*, and `deferral-gate.py` fails a
+`PROSE_ONLY` row whose id has left — so a half-done closure cannot pass.
+
+**`D-PC-SEAM-NO-CONTRACT`** — `contracts/actor-control-worker.contract.json`,
+read at runtime by a test in each language. Written from measurement: the two
+sides already agreed (18 keys, 8 flags, 3 ops), so the file froze an agreement
+rather than declaring one. Eleven bites, five Rust and six Go, each watched red.
+The flags half is BEHAVIOURAL — the real binary, a complete argv and an empty
+environment reach the config check, while a rejected argv dies earlier with a
+different message — and the response-keys half is a source scan, said so in the
+test rather than dressed up as behaviour.
+
+**`D-PC-NO-RUST-READ-AUDIT`** — the row asked for a reachable audited path from
+Rust. It got one, and the attempt to PROVE it uncovered that the discipline had
+never produced a single row. `liveBinding`'s audit write was guarded on a field
+no production construction set; the `ReadAuditor` implementation its own comment
+described did not exist; and once written and wired, it failed validation
+because `TagActorBindingCrossUser` was declared as a constant on 2026-08-14 and
+never added to `IsValid`'s switch six lines below. `meta_read_audit` had been
+empty since `014` created it. It is not now: `0 -> 1` on the first corrected
+run, and `2 -> 3` against the dev stack's own container once its Dockerfile
+learned about the new module deps.
+
+The mechanism that would have caught all of it is `contracts/pii/sdk_test.go` —
+the yml and the SDK must agree in both directions. It found a second gap on its
+first run: three registered paths have no Go constant at all, now declared with
+a reason each in `ymlPathsWithNoGoCaller`, and a path that gains a constant must
+leave that list or the test reds.
 
 **CLEARED, and OUT of the block above — 2026-08-06.**
 

@@ -33,6 +33,7 @@
     "EXM": "sub-segment of compound PL_005b acceptance ids (AC-INT-EXM-n) — parent namespace INT is catalogued (backfill 2026-07-27)",
     "INV": "sub-segment of compound PL_007b acceptance ids (AC-INV-1..11) — parent namespace ITM is catalogued (backfill 2026-07-27)",
     "RMBG": "RMBG-1.4 — BriaAI background-removal model name quoted in TMP_009, not a namespace (backfill 2026-07-27)",
-    "EWD": "EWD-123 — Dijkstra manuscript citation in TMP prose, not a namespace (backfill 2026-07-27)"
+    "EWD": "EWD-123 — Dijkstra manuscript citation in TMP prose, not a namespace (backfill 2026-07-27)",
+    "SF": "SEALED FORK — `SF-1`..`SF-6`, an id family owned by the RUN-STATE plans in docs/plans/ (turn-loop, durable-subscribe, player-control), not by this design track. It reaches this tree only as a CITATION: D-PC-SF6-REVERSAL's row names SF-6 because that is the decision it will discharge. Allowlisted rather than registered in the id catalog, because registering it here would claim a namespace this track does not own or number."
   }
 }

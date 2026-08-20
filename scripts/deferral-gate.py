@@ -485,30 +485,6 @@ PROSE_ONLY: dict[str, str] = {
     # counted 30 when it should have counted 36. `D-PC-AGENT` is absent from
     # this table on purpose: it earned an ASSERTED TRIGGER, which is what its
     # own row had promised and not delivered.
-    "D-PC-SEAM-NO-CONTRACT": (
-        "TRIGGER: a second consumer of the `actor-control` worker's stdout JSON, "
-        "or the first field added to it after 2026-08-20. The seam is argv "
-        "rendered by `workerArgs` in Go and parsed by `Args::parse` in Rust, with "
-        "a JSON reply unmarshalled into `ActorControlOutcome` — two lists in two "
-        "languages, and a rename on either side keeps both unit suites green. "
-        "Not unguarded: `RunActorControl` refuses an outcome the worker did not "
-        "name and a created actor with no id, and the invoker cross-checks the "
-        "echoed reality_id/actor_id, so the load-bearing fields fail loudly. "
-        "Those are runtime guards on one path, not a contract. The fix is the "
-        "`contracts/frontend-tools.contract.json` pattern: one checked-in key "
-        "list, asserted from both sides, so a rename reds on the side that did "
-        "not move"),
-    "D-PC-NO-RUST-READ-AUDIT": (
-        "TRIGGER: the first Rust caller that genuinely needs a cross-user read of "
-        "`actor_control_binding` — most likely `grant-control --dry-run`, the "
-        "moment an operator asks why it will not say who currently drives an "
-        "actor. `034` registers that read as sensitive and the only audited "
-        "reader is Go's `MetaRegistrar.liveBinding`, INSIDE the write path; a "
-        "Rust caller has no equivalent and would write a bare SELECT the lint "
-        "then catches, which is the lint working rather than a path existing. "
-        "The fix is a bridge READ route that writes `meta_read_audit` in the same "
-        "call, mirroring the write side. BUILDABLE, not blocked — scoped out only "
-        "because adding a probe-who-holds-whom capability is a decision"),
     "D-PC-METAWRITE-NOOP-EVENT": (
         "TRIGGER: any consumer that treats an outbox event as proof a row "
         "changed. `contracts/meta/metawrite.go` runs the data statement then "

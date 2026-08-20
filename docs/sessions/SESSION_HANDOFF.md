@@ -1,5 +1,57 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ THE DEBT RUN — and the audit table that had never had a row (2026-08-21, branch `feat/game-logic`)
+
+> Closes both rows the `P7` audit opened, one day later.
+> [`2026-08-20-actor-control-debt-RUN-STATE.md`](../plans/2026-08-20-actor-control-debt-RUN-STATE.md)
+>
+> **`D-PC-SEAM-NO-CONTRACT`** — `contracts/actor-control-worker.contract.json`, read at RUNTIME by a
+> test in each language. Written FROM MEASUREMENT: the two sides already agreed (18 keys, 8 flags,
+> 3 ops), so it freezes an agreement rather than declaring one. **Eleven bites**, five Rust and six
+> Go. The flags half is BEHAVIOURAL — the real compiled worker, a complete argv and an empty
+> environment reach the config check while a rejected argv dies earlier with a different message —
+> and the response-keys half is a source scan, stated as such in the test rather than dressed up.
+>
+> **`D-PC-NO-RUST-READ-AUDIT`** — the row asked for a reachable audited path from Rust. Trying to
+> PROVE it is what found the real defect: **`meta_read_audit` had never held a single row.**
+>
+> 1. `liveBinding` writes it `if m.ReadAudit != nil`; **no production construction ever set the
+>    field** — both entry points built `MetaRegistrar{Cfg, Caller, Pool}` and stopped.
+> 2. The `ReadAuditor` implementation its own interface comment described **did not exist**.
+> 3. Written and wired, it failed validation: `TagActorBindingCrossUser` was declared as a constant
+>    on 2026-08-14 and **never added to `IsValid`'s switch six lines below it**.
+> 4. Fixed: **0 → 1**, then **2 → 3** against the dev stack's own container.
+>
+> Four layers of one discipline — the migration that declared it, the yml that registered it, the
+> constant that named it, the interface that guarded it — with an empty table underneath, because
+> nobody had ever CALLED it.
+>
+> **The PO decision at `RA3`:** the preview reports the SLOT and never the PERSON. Enforced by a
+> TYPE — `Preview.actor_is_driven` is a bool, so the worker cannot send the id; a future edit that
+> wanted to leak it would have to change the type, which is reviewable, where forgetting a
+> redaction is not.
+>
+> **The mechanism** that would have caught the whole chain is now `contracts/pii/sdk_test.go`: the
+> yml and the SDK must agree in BOTH directions. It found a second gap on its first run — three
+> registered paths (`audit_query`, `admin_bulk_export`, `bulk_meta_query`) have no Go constant, so
+> `IsValid`'s claim to "mirror the yml" was false three more times.
+>
+> Registry: **36 → 34** tracked deferrals, and the closure is enforced — a `PROSE_ONLY` row whose id
+> has left the block reds the gate (bitten).
+>
+> **Also:** `scripts/goal-prompt.py`, copied from the MVP repo and de-biased so any plan can use it
+> — zero configuration, both row dialects, proven against a foreign repo's plan. It found a defect
+> in ITSELF while generating this run's goal (a table row's span ran to EOF and turned a
+> drift-register row into a hand-back), and the selftest arm for that was VACUOUS on first write.
+>
+> **▶ DO NEXT.** The debt run is closed. The obvious next feature is the player-facing edge — the
+> transport still resolves actors from `LW_CHANNEL_ACTOR_MAP`
+> (`D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT`), so a human still cannot drive an actor without
+> admin-cli. Four `D-PC-*` rows remain, each waiting on something that has not happened.
+
+---
+
+
 ## ▶ GAME BUILD — FEATURE #2: a player is a CONTROL INTERFACE, the subject can no longer be forged, and an OPERATOR can now grant one (2026-08-14, branch `feat/game-logic`)
 
 > ## ▶ THE PLAYER FEATURE — first slice shipped
