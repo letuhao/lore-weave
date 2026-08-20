@@ -137,7 +137,8 @@ Durable `INV-<id>` rules cited **at the enforcement site and in a proving test**
 
 **Knowledge graph (INV-K\*)** — K1 a proposed edge/fact parks to the **triage inbox**, never a direct Neo4j write · K2 `user_id`/`session_id` come from MCP headers only, never LLM args (arg models `extra="forbid"`).
 
-**Knowledge Access Layer** — **INV-KAL** no service reads/writes glossary EAV or Neo4j KG except through the knowledge-gateway (the single versioned typed boundary). Gated by `scripts/knowledge-access-gate.py` + `scripts/knowledge-http-surface-gate.py` (both pre-commit).
+**Knowledge Access Layer** — **INV-KAL** no service reads/writes glossary EAV or Neo4j KG except through the knowledge-gateway (the single versioned typed boundary). Gated by `scripts/knowledge-access-gate.py` + `scripts/knowledge-http-surface-gate.py` + `scripts/authored-catalog-reader-gate.py` (all pre-commit).
+⚠️ **The third gate is not an extra — it covers a hole the first two do not.** Measured 2026-08-11 (T38): `knowledge-access-gate`'s allowlist holds ONE entry, `knowledge-http-surface-gate`'s is EMPTY, and the latter's own comment says *"the authored entities-LIST endpoint is intentionally NOT here"*. So the **authored catalog** — the read every consumer actually uses — was outside INV-KAL's enforcement while the invariant read as fully gated. Listing two gates here made that hole invisible; there are three.
 
 **Facts SSOT** — **INV-FACTS** `entity_facts` is the single source of truth; the EAV projection + prose snapshot are lazy, versioned, **regenerable caches — never truth**.
 

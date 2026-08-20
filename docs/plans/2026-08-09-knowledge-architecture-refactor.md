@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T47` (lane D, §6.4) — the documentation checkpoint; then `T48` `/aif-verify`, then `T49` ⛔. `T46` stays `[~]` on a SEQUENCING fact, not a question: the merge waits on `recanon_honorifics --apply` (T35's 1826 stale nodes), and *port Go → Python* is a category error — both implementations are query-language living with their stores, the KG being the weaker (no pin-awareness), now guarded by `bitemporal-parity-gate`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `T48` — `/aif-verify` against this plan (§6.4), then `T49` ⛔. `T47` closed 2026-08-14: two of its four named artifacts were stale, a THIRD copy of the false *derived layer* claim lived in a file the row does not name, and the gate built to stop it recurring was **hollow until two bites failed**. ⚠️ `T35`/`T46` both wait on `recanon_honorifics --apply`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**55 of 66 rows done · 11 open · 34 of 68 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 34 of 68 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` · `T49`
 
 > ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11845,7 +11845,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
 ### Phase 9 · Closing controls *(the plan's own Settings demand these)*
 
-- [~] **T47** — Documentation checkpoint (**`Docs: yes` in Settings makes this mandatory**)
+- [x] **T47** — Documentation checkpoint (**`Docs: yes` in Settings makes this mandatory**)
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.
   `/aif-docs`. The refactor changes the KAL contract, the command surface, the storage model and two
   standards — none of which is discoverable from code.
@@ -11853,6 +11853,84 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   catalog), `docs/standards/scope-separation.md` (SCOPE-3 rewritten by T44), `AGENTS.md` (the
   two-layer rule and the four service sentences), and `contracts/api/knowledge-gateway/kal.v1.yaml`.
   (depends on T46)
+  ---
+  **CLOSED 2026-08-14.** Two of the four named artifacts were stale, a THIRD copy of the
+  false claim existed in a file the row does not name, and the gate built to stop it
+  coming back was hollow until two bites failed.
+  ### ✅ T47a 2026-08-14 — the false claim was in THREE documents, and the first gate for it was hollow
+
+  ```
+  ssot-claim-gate  --selftest 4/4, bitten 3x     gate-wiring 102 -> 103
+  ```
+
+  T47 names four artifacts. Measured, one at a time:
+
+  | artifact | state |
+  |---|---|
+  | `docs/standards/scope-separation.md` (SCOPE-3) | ✅ already rewritten by **T44a** |
+  | `AGENTS.md` — the two-layer rule + four service sentences | 🔴 **still carried the false claim**, and *linked to* the corrected standard |
+  | `docs/standards/README.md` — INV-KAL scope | 🔴 named **two** enforcing gates; there are **three** |
+  | `contracts/api/knowledge-gateway/kal.v1.yaml` | ✅ current — all five paths the KAL client uses are declared (`/roster`, `/state`, `/facts`, `/facts/close`, `/entities/{id}/facts`) |
+
+  🔴 **AGENTS.md is the entry point every agent reads, and it contradicted the standard it
+  linked to.** A reader following the pointer found a rebuttal. Worse than either being wrong
+  alone — "one home, one name" broken in the direction where the wrong copy is the one people
+  start from.
+
+  🔴 **AND THERE WAS A THIRD COPY** nobody had listed: `docs/ARCHITECTURE.md`'s service table.
+  T47's row names two documents; grep found the claim in three. **Fixing the three named files
+  would still have left it live.**
+
+  📊 **INV-KAL's enforcement was under-reported, and the gap is the interesting part.** The
+  standard listed `knowledge-access-gate` + `knowledge-http-surface-gate`. Measured 2026-08-11
+  by T38: the first's allowlist holds ONE entry, the second's is **empty**, and its own comment
+  says *"the authored entities-LIST endpoint is intentionally NOT here"*. So **the authored
+  catalog — the read every consumer actually uses — sat outside INV-KAL's enforcement while the
+  invariant read as fully gated.** `authored-catalog-reader-gate` covers it and is now named.
+
+  ### 🔴 THE GATE I BUILT FOR THIS WAS HOLLOW, AND TWO BITES PROVED IT
+
+  Fixing three files is not a mechanism, so the claim got `scripts/ssot-claim-gate.py`. Its
+  first cut matched `knowledge[- ]service\\D{0,80}derived\\s+fuzzy` — and **two separate bites
+  failed to make it red**:
+
+  ```
+  22b. reintroduce the claim, phrases 80+ chars apart   -> gate GREEN   (window walked past)
+  24b. reintroduce it with a DIGIT between them          -> gate GREEN   (\\D stops at a digit)
+  ```
+
+  The window was a number nobody had a reason for, and `\\D` excluding digits was accidental.
+  **A gate that cannot catch its own motivating case is green by construction** — the exact
+  failure this plan has catalogued in a detector, a generator and a bite, shipped by me into the
+  gate meant to prevent a different one. Replaced with *both phrases on the same line, in any
+  order*: the property that actually describes the defect, with no tunable to get wrong.
+
+  ⚠️ **A third bite narrowed the exemption.** The retraction marker originally accepted the bare
+  date `until 2026-08-14` — which appears on the very lines that carry the retractions, so a
+  mutation reinstating the claim on one of those lines was exempted. Any line could then have
+  carried the claim forever by keeping a date in it. Markers must now be an explicit **negation**
+  (`NOT a derived`, `not an SSOT/derived`), not evidence that a retraction happened nearby.
+
+  ⚠️ **The exemption is still LINE-scoped, and that is an accepted limit rather than an
+  oversight.** A line that both retracts and asserts is exempt. That is self-contradictory prose
+  a human review catches; the realistic failure — a service description copied from another doc,
+  carrying no retraction — is caught. Stated so nobody reads this gate as stronger than it is.
+
+  **BITE ×3, after two that failed and taught more than a pass would have:**
+
+  ```
+  22b. clean reintroduction in docs/ARCHITECTURE.md    FAIL — docs\\ARCHITECTURE.md:103
+  23b. phrases far apart (the old window's blind spot)  FAIL — docs\\ARCHITECTURE.md:103
+  24b. a digit between them (the old \\D blind spot)     FAIL — docs\\ARCHITECTURE.md:103
+  ```
+
+  **QC (a) gates:** `ssot-claim-gate` OK + `--selftest` 4/4, wired into pre-commit;
+  `gate-wiring-gate` **102 → 103**; `authored-catalog-reader-gate` PASS at 3;
+  `knowledge-access-gate` PASS; `plan-verify` PASS.
+  **QC (b) the seam:** N/A — documentation and one gate; no service code changed. The KAL
+  contract was checked against its client by path, both sides read.
+  **QC (c) real data:** the counts in the corrected prose are the T44a measurements — 1184
+  events, 35 statuses (0 anchored), 567 unanchored entities — re-cited rather than re-invented.
 
 - [~] **T48** — `/aif-verify` against this plan
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.

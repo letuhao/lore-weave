@@ -104,6 +104,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # moves, so a capability cannot vanish into a merge unnoticed.
 "$PY" "$ROOT/scripts/bitemporal-parity-gate.py"
 
+# T44/T47 — the claim "knowledge-service = derived fuzzy/semantic layer" was written in THREE
+# documents and was false in all three: under SCOPE-3's "regenerable with no loss" contract it
+# licenses rebuilding the KG from glossary, destroying 1184 events / 35 statuses / 567
+# unanchored entities. Fixing three files is not a mechanism.
+"$PY" "$ROOT/scripts/ssot-claim-gate.py"
+
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a
 # commit that touches no yaml at all. That is exactly how jobs-service landed 2026-06-15
