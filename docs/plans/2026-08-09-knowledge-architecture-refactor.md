@@ -37,7 +37,7 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 
 **RESUME: two ⏸ rows now have everything but their sign-off. `QC-3`: all three owed items delivered (review · restore drill · **real-corpus recall — diskann 0.500, one query at 0.000**). `QC-5`: the decided rule (§2.1) APPLIED for the first time — **DOES NOT PASS on both clauses**, run C being a 5/5 with zero findings; a FRESH three-run measurement is owed and it re-drafts against a real DB, so it is the PO's to authorise. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6`. `T33` ⛔ · `T49` ⛔.**
 
-⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
+⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
@@ -8597,6 +8597,58 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4228 passed — knowledge-service unit suite
   ```
 
+
+  ### 📊 A13 2026-08-14 — every remaining binder classified: **9 permanently out, 45 gated, 0 available**
+
+  ```
+  port-adoption-gate   ceiling 54   floor 18
+  ```
+
+  A11 left T17 at 54 and the natural next question is *"what is the next cheapest module?"*
+  **Rule 8 answers it differently: there isn't one.** Classified all 54 against the decisions
+  already made:
+
+  ```
+  28  §1.3(d)  needs a NEW port op whose SHAPE T35 decides      gated on T35
+  17  §1.3(b)  passage/vector layer — DELETED by §3.1, not      gated on QC-3 -> T25 ③
+               migrated (14 runtime + 3 benchmark)
+   5  §1.2     engine-specific janitors                          PERMANENTLY OUT
+   4  §1.3(c)  one-shot migration scripts                        PERMANENTLY OUT
+  ```
+
+  🎯 **Nine are out forever and that is correct**, not debt. §1.2 decided the destructive
+  janitors stay engine-specific — *"a promise to delete orphan nodes in any graph engine is a
+  promise about housekeeping we have no reason to keep"* — and §1.3(c) declared one-shot
+  migration scripts out of port scope, because substitutability for code that runs once against
+  a known engine at a known version buys nothing.
+
+  ⚠️ **The other 45 are gated on the two things the PO holds**, which makes T17's ceiling a
+  DERIVED number rather than an independent one: 28 wait on T35's identity repair (their
+  operations' shapes are what T35 settles), and 17 wait on §3.1 finishing the passage move,
+  which waits on QC-3's ⏸ sign-off.
+
+  🔎 **The last candidate I checked, and why it was refused.** `context/modes/full.py` needs one
+  operation — `get_chapter_index_for_source` — whose shape T35 does *not* decide, so it looked
+  like the exception. It is not: the function resolves a chapter's ordinal from its `:Passage`
+  nodes, so it is passage-layer, and §3.1 moves those to Postgres. Building a port operation for
+  it now would be **building something §3.1 obsoletes** — the same motion A10 refused for
+  `find_passages_by_vector` and T39 refused for a cache with no callers.
+
+  📐 **So §1.3's prediction now has its number.** The section says *"`port-adoption-gate`'s
+  ceiling is therefore not going to zero, and that is correct."* Measured: the floor the
+  decisions permit is **9** — the janitors and the migration scripts — and the ceiling can only
+  reach it after T35 and §3.1. **54 is not a backlog; it is 9 permanent plus 45 downstream.**
+
+  **BITE — N/A, and the reason:** no code changed; this batch classifies existing imports
+  against existing decisions. Its own check is that the classes SUM to the gate's number — 28 +
+  17 + 5 + 4 = 54, which is exactly what `port-adoption-gate` reports, so nothing was dropped or
+  double-counted on the way.
+
+  **QC (a) gates:** `port-adoption-gate` PASS at 54/18, unchanged (this batch migrates nothing);
+  `plan-verify` PASS.
+  **QC (b) the seam:** N/A — a measurement over import graphs.
+  **QC (c) real data:** the import graph is the data; 54 modules read from disk by AST, not
+  from a list.
 
   ### ✅ A12 2026-08-14 — the shadow re-derived at 21 operations; QC-7's number was stale, its verdict was not
 

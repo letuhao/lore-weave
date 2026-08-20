@@ -119,6 +119,14 @@ is a known false match.** File count was never the cost; operation count is.
 floor is the number that measures this work; the ceiling measures how much is left that *could*
 move. A gate whose target is zero would be lying about (b) and (c).
 
+📊 **MEASURED 2026-08-14 (A13) — the prediction now has its number.** All 54 remaining binders
+classified: **28** need a port operation whose shape (d) leaves to T35 · **17** are passage/vector
+layer that (b) deletes rather than migrates · **5** are (§1.2) janitors · **4** are (c) one-shot
+scripts. So the floor these decisions permit is **9** — the janitors and the scripts, out
+forever — and the other 45 are downstream of T35's identity repair and §3.1's passage move.
+**54 is not a backlog; it is 9 permanent plus 45 gated**, and nothing in it is available to pick
+up today.
+
 ### 1.4 AGE refuses rather than half-implements — **DECIDED, and this is the standing rule**
 *Replaces `D-AGE-EVENT-WRITE-UNIMPLEMENTED`, `D-AGE-BROWSE-PAGES-IN-PYTHON`, `D-T42-AGE-EVENT-SURFACE`.*
 
