@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import pathlib
 import subprocess
 import sys
@@ -268,8 +269,43 @@ class Throwaway:
         r = self.mcp.call(tool, args)
         self.seeded.append({"tool": tool, "args": args, "result": r})
 
+    _STEP_REF = re.compile(r"\{step:(\d+):([A-Za-z0-9_.]+)\}")
+
+    def _step_value(self, idx: int, path: str):
+        """A value RETURNED by an earlier seed step, addressed as `{step:0:world.world_id}`.
+
+        🔴 A SEED COULD NOT USE WHAT AN EARLIER SEED PRODUCED, AND THAT MADE WHOLE TOOL FAMILIES
+        UNTESTABLE. The world/map tools are the case: `world_map_create` needs the `world_id`
+        that `world_create` just minted, and `world_map_add_marker` needs the `map_id` from
+        that. With only {book_id}/{chapter_id}/{project_id} available, the chain could not be
+        expressed at all — the fixture had to be built by hand outside the scenario, which
+        breaks the per-repeat isolation the whole harness rests on.
+
+        Reads the RESULT the step recorded, so it cannot drift from what actually happened.
+        Raises rather than substituting empty: a silently blank id produces a tool call that
+        fails for a reason the evidence cannot explain.
+        """
+        try:
+            rec = self.seeded[idx]
+        except IndexError:
+            raise ProvisionError(
+                f"seed step {idx} has not run yet — {{step:{idx}:{path}}} can only reference an "
+                f"EARLIER step (this fixture has {len(self.seeded)} so far)") from None
+        cur = rec.get("result")
+        for part in path.split("."):
+            if not isinstance(cur, dict) or part not in cur:
+                raise ProvisionError(
+                    f"seed step {idx} returned no {path!r} — got keys "
+                    f"{sorted(cur) if isinstance(cur, dict) else type(cur).__name__}. The seed "
+                    f"cannot reference a value the tool did not return.")
+            cur = cur[part]
+        return cur
+
     def _substitute(self, obj):
         if isinstance(obj, str):
+            def _ref(m):
+                return str(self._step_value(int(m.group(1)), m.group(2)))
+            obj = self._STEP_REF.sub(_ref, obj)
             return (obj.replace("{book_id}", self.book_id or "")
                        .replace("{chapter_id}", self.chapter_id or "")
                        .replace("{project_id}", self.project_id or ""))
@@ -303,9 +339,40 @@ class Throwaway:
         account. A DELETE in this loop already removed 10 rows where 3 were meant, and the
         difference was exactly this: trusting a remembered scope instead of confirming it.
         """
+        # 🔴 ACCOUNT-SCOPED FIXTURES DO NOT DIE WITH THE BOOK. A seed that creates a WORLD leaves
+        # it on the account: worlds are not book-scoped, so `purge_book` cannot see them and the
+        # next batch inherits an extra, plausible, wrongly-scoped write target — the same shape
+        # as the 16 leaked books, one scope up. Removed FIRST, name-guarded, and only ever the
+        # ones this fixture minted.
+        out = {}
+        try:
+            out["worlds"] = self._purge_worlds()
+        except Exception as e:  # noqa: BLE001 — a world sweep must never mask a book teardown
+            out["worlds_error"] = f"{type(e).__name__}: {e}"
         if not self.book_id:
-            return {"deleted": 0, "reason": "nothing was created"}
-        return purge_book(self.book_id)
+            out.update({"deleted": 0, "reason": "no book was created"})
+            return out
+        out.update(purge_book(self.book_id))
+        return out
+
+    def _purge_worlds(self) -> list[str]:
+        """Delete the TITLE_PREFIX-named worlds this fixture's seed created.
+
+        Guarded the same way `purge_book` is: the name is re-read from the tool's own listing
+        rather than trusted from memory, so this can only ever remove a throwaway.
+        """
+        made = [r["result"] for r in self.seeded
+                if r.get("tool") == "world_create" and isinstance(r.get("result"), dict)]
+        if not made:
+            return []
+        ids = []
+        for r in made:
+            w = r.get("world") if isinstance(r.get("world"), dict) else r
+            wid, name = w.get("world_id") or w.get("id"), str(w.get("name") or "")
+            if wid and name.startswith(TITLE_PREFIX):
+                self.mcp.call("world_delete", {"world_id": str(wid)})
+                ids.append(str(wid))
+        return ids
 
 
 def purge_book(book_id: str) -> dict:
