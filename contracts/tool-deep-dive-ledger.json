@@ -1923,6 +1923,56 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "Called 3/3, store unchanged, and it resolved the NAME 'Aldric Vane' to an entity_id rather than inventing one — the step that has failed three times elsewhere in this loop. Empty case is honest (a freshly proposed entity appears nowhere). 🔴 ABSENT CASE FAILED: a nonexistent entity_id returns the SAME zero-reference payload as a real-but-unused entity, so a mistyped name reads as 'appears nowhere'. Recorded as D-ABSENT-ENTITY-READS-AS-UNUSED. Also called glossary_entity_set_attributes on this READ question — the fourth occurrence of D-READ-TURN-REACHES-FOR-WRITES; gated, store clean."
+  },
+  "glossary_curation_list": {
+   "state": "proven",
+   "provider": "glossary",
+   "tier": "R",
+   "cycle": "batch-11 (re-run)",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 and the COUNT is right: 'one item waiting for your review — Mira Solene', on a book holding THREE entities with exactly one tagged. That fixture exists because batch 2 measured the alternative and could not tell a fabrication from a reading. Empty book returns items []; tenancy refused. THE SEED FAILED FIRST, LOUDLY, AND WAS RIGHT TO: glossary_propose_entities tags EVERY proposed entity 'ai-suggested' itself, so 'tag exactly one' left all three tagged. Inverted to strip the tag from the two that must not be queued."
+  },
+  "glossary_propose_aliases": {
+   "state": "proven",
+   "provider": "glossary",
+   "tier": "A",
+   "cycle": "batch-11",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, card raised 3/3, store unchanged without approval. Absent case is a good shape: a nonexistent entity_id comes back PER ITEM as {status: skipped, reason: 'entity not found in this book'} with written 0 — a batch tool that reported one number would hide which item failed. Tenancy refused."
+  },
+  "web_search": {
+   "state": "proven",
+   "provider": "research",
+   "tier": "R",
+   "cycle": "batch-11",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, store unchanged. 🔴 AND IT RAISED A CONFIRM CARD ON 3/3 DESPITE BEING TIER R — the SPEND consent axis gates it independently of tier, so the paid query I had budgeted was never actually bought. A read-tier tool that costs money is gated on the axis that matters, which is the right design and worth recording as a positive. It is also the tool that displaced glossary_deep_research in batch 9, because it is ALWAYS_ON_CORE."
+  },
+  "composition_motif_book_list": {
+   "state": "proven",
+   "provider": "composition",
+   "tier": "R",
+   "cycle": "batch-11",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, store unchanged, real payload. A FRESH book returns 25 motifs, all carrying book_id: null — the PLATFORM library, which is exactly what 'shared library' means and what the tool's own synonyms say. So the payload is right and 'this book has 25 motifs in its shared library' is defensible. The nuance recorded rather than filed: the summary cannot show which rows are the book's OWN versus shared, because every row here is null, and I could not prove a wrong answer from that."
+  },
+  "composition_conformance_status": {
+   "state": "blocked",
+   "provider": "composition",
+   "tier": "R",
+   "cycle": "batch-11",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Surfaced 0/3, called 0/3 — and the turn answered anyway: 'Yes, your conformance check is effectively stale... the book has moved because you have one unplanned chapter', assembled from composition_diagnostics and package_tree. A fresh book has NEVER run conformance, so there is nothing to be stale. Probed at the boundary the tool answers honestly: {arcs: [], index: {stale_chapter_count: 0}}. BLOCKED on surfacing plus a fabricated verdict — the D-DEGRADED-READ-REPORTED-AS-ABSENCE family pointed the other way: not a false absence, a false PRESENCE."
   }
  },
  "defects": {
