@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: lane **D** (`T44` → `T45` → `T46`, spec §6.3) — lane B is EMPTY: `T39`, `T40` and `T51` all closed 2026-08-14. ⚠️ `T35` is **OWED AN OPERATOR WRITE** (1826 stale `canonical_name` nodes fork on re-extraction; `recanon_honorifics --apply` repairs 1820 / refuses 6 / loses 0). `T33` ⛔ and `QC-3`/`QC-5` ⏸ are hand-backs.**
+**RESUME: `T45` (lane D, §6.3) — valid-time as a scope-dependent axis (`story_ordinal` | `wall_clock`), *the one piece that must be DESIGNED, not ported*; then `T46` merges the stores. `T44` closed 2026-08-14 — SCOPE-3 claimed knowledge was regenerable from glossary *with no loss*, which live data says would destroy 1184 events / 35 statuses / 567 unanchored entities. ⚠️ `T35` still **OWES AN OPERATOR WRITE** (`recanon_honorifics --apply`). `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**53 of 66 rows done · 13 open · 34 of 67 evidence blocks closed inside them.**
+**54 of 66 rows done · 12 open · 34 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11590,11 +11590,87 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
 ### Phase 8 · TruthStore consolidation *(T7 — last, needs identity first)*
 
-- [~] **T44** — Rewrite `D-SUBSTRATE-HOME` and SCOPE-3's two-layer row
+- [x] **T44** — Rewrite `D-SUBSTRATE-HOME` and SCOPE-3's two-layer row
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   They are inputs to a refactor, not blockers — but rewrite them **deliberately**, in the standards,
   not by drift.
   (depends on T43)
+  ---
+  **CLOSED 2026-08-14.** Both rewritten, and the rewrite was not editorial: SCOPE-3 claimed
+  knowledge was *"regenerable with no loss"* from glossary, which measured live would have
+  sanctioned destroying 1184 events, 35 statuses and 567 unanchored entities.
+  ### ✅ T44a 2026-08-14 — **SCOPE-3 licensed data loss, and the code had already refused it**
+
+  ```
+  docs/standards/scope-separation.md · SCOPE-3 + its enforcement row
+  docs/plans/2026-06-30-temporal-knowledge-architecture-impl.md · D-SUBSTRATE-HOME
+  ```
+
+  T44 asks for these two rows to be rewritten *"deliberately, in the standards, not by drift."*
+  **Rule 2 first: is the standard TRUE today?** SCOPE-3 said
+
+  > *"Two-layer glossary↔knowledge: glossary is authored SSOT, knowledge is the derived
+  > fuzzy/semantic layer anchored via `glossary_entity_id` FK."*
+
+  under a rule whose own contract is *"regenerable from it **with no loss**"* and *"derived data
+  is never authored directly."* Measured on the live stack (READ-ONLY):
+
+  ```
+  knowledge (Neo4j)                     glossary (the claimed SSOT)
+    :Event              1184              — no events table at all
+    :EntityStatus         35              entity_facts fact_kind='status'   3
+      ...glossary-anchored  0
+    :Entity unanchored   567
+  ```
+
+  🔴 **`entity_facts.entity_id` is an FK to `glossary_entities`, so an unanchored status is not
+  merely missing from the SSOT — it is UNWRITABLE there.** Knowledge holds truth glossary cannot
+  express. The rule was not aspirational-but-harmless: read literally it sanctions rebuilding the
+  KG from glossary, which would destroy 1184 events, 35 statuses and 567 entities.
+
+  ✅ **Rewritten to what is true: two stores with DISJOINT truth, joined by an anchor.**
+  `glossary_entity_id` is a *join key*, not a derivation. Either side can hold a row the other
+  cannot express — which is exactly why T32's liveness producer had to **emit** from knowledge
+  into glossary rather than glossary reading it back. The destination is still ONE store (O1,
+  sealed; `T46` merges them), and the rewrite says that separately from the current state, so the
+  standard describes neither a permanent split nor a merge that has not happened.
+
+  🎯 **AND THE CODE ALREADY KNEW — which is how this was caught rather than argued.**
+  `jobs/graph_rebuild.py`, the only rebuild-from-Postgres path, says in its own docstring:
+
+  > *"the rebuild reads the glossary and re-projects; it does **not** try to reconstruct
+  > extraction-derived relations, because those have no Postgres original to rebuild from…
+  > a rebuild restores IDENTITY (nodes, anchors), not the full extracted edge set. Claiming
+  > otherwise would make the DR story sound better than it is."*
+
+  **The implementation was honest and the standard had drifted behind it.** That inverts the
+  usual direction, and it is worth naming: the rule that governs was the stale artifact, while
+  the code it governs had already measured the limit and written it down with a deferral id.
+
+  🔒 **What protects the data vs what protects the decision.** `graph_rebuild.py` is what keeps
+  the edges safe — it cannot destroy them because it never attempts them. The *wording* protects
+  something else: a reader concluding from SCOPE-3 that the KG is disposable. Both are needed and
+  only one of them runs, so the standard now cross-references the module rather than restating
+  its claim.
+
+  📐 **`D-SUBSTRATE-HOME` rewritten too**, and precisely: its *placement* was always right — the
+  facts SSOT does live in glossary-service. The words **"the SSOT side"** were the half that was
+  wrong, and they are what drifted into SCOPE-3 as *"knowledge is the derived layer."* Struck,
+  with the measurement, and pointed at `T45`/`T46` for the axis and the merge.
+
+  **BITE — N/A, and the reason is stated rather than skipped.** This batch changes no executable
+  behaviour: there is nothing to mutate that a test could catch. The check that replaces it is
+  that the claim is **reproducible** — the five counts above come from two queries against the
+  live stack and can be re-run — and that the rule now agrees with a module whose own contract is
+  enforced by `D-T41-RELATIONS-NOT-REBUILDABLE`. A gate asserting *"knowledge is not derived"*
+  would be wrong to build: it is a claim about live data whose truth could legitimately change if
+  everything became anchored.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `doc-language-gate` exit 0
+  · `amendment-rot-gate` OK (379 docs) · `gate-wiring-gate` 101, all wired or exempt.
+  **QC (b) the seam:** N/A — documentation; no service code changed.
+  **QC (c) real data:** the whole finding is real data — five counts from Neo4j `:7688` and
+  Postgres `:5555`, both read-only.
 - [~] **T45** — Valid-time as a **scope-dependent axis** (`story_ordinal` | `wall_clock`)
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   The one piece that must be *designed*, not ported: book truth is story-ordinal, memory truth is
