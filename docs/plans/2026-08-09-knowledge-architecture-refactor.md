@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T46` — port the bitemporal machinery Go → Python and merge the stores; `T35` closing unblocked it. `QC-6`'s IDENTITY half is done and proven on a live stack (QC-6a): two HTTP write paths against rebuilt images, and it **found a real defect** — a rename followed by a re-extraction minted a duplicate, because the anchor sync stores the `'global'` project sentinel while extraction passes NULL and `merge_entity`'s resolve-first could not see across them. Fixed additively (0 of 4872 live rows carry a null/sentinel project, so nothing in production changes). ⚠️ QC-6's own *"id must equal a recomputed hash"* criterion was the NEGATION of §4.1 — a bite implementing it moves the id three times and fails the proof; corrected in §4.3. QC-6 stays `[~]`: §4.3 also routes `T33`'s causal coverage through it and `T33` is ⛔. `QC-3` ⏸ and `QC-5` ⏸ owe only a sign-off. `T49` ⛔.**
+**RESUME: 🔴 `recanon_honorifics --apply` is now the whole critical path, and T46b reclassified it from sequencing to a LIVE DEFECT. 1826 of 4866 live entities carry a stale `canonical_name`; **1819 fork on re-extraction** — reproduced on lw-iso through the real `persist-pass2`: two nodes, one character. It has NOT fired yet (live graph groups 4872 nodes into 4872 groups, largest 1), so it is armed, not fired, and fires when extraction re-runs on those books. The repair is rehearsed end-to-end (T35g: 1819 re-keyed / 1 merged / 6 refused / 0 anchors lost, `actions=0` on a second pass) — what is missing is the WRITE, which lands on the shared dev graph and is the PO's under rule 6. It unblocks `T46`'s merge. `T35` CLOSED · `QC-6` identity half proven live (and it found a duplicate-minting defect, fixed) · `QC-3` ⏸ and `QC-5` ⏸ owe only a sign-off · `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 34 of 70 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 34 of 71 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (11/27) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -12658,6 +12658,81 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (b) the seam:** N/A — a gate reading two source files; no service code changed.
   **QC (c) real data:** N/A — this batch produces none. The capability comparison is a
   measurement of the two implementations themselves, which is the data in question.
+
+  ### 🔴 T46b 2026-08-21 — the merge's precondition is **a live defect, armed and not yet fired**
+
+  ```
+  live entities (not archived)   : 4866
+  canonical_name STALE           : 1826  (37.5 %)   of which anchored 1825
+    -> a sibling absorbs it      :    7
+    -> re-extraction WOULD MINT  : 1819   == recanon's own rekeyed=1819
+  LIVE PROBE (lw-iso, real persist-pass2): FORKED
+  ```
+
+  T46a left the merge waiting on `recanon_honorifics --apply` and called that *"a sequencing fact
+  rather than an open question"*, on the grounds that **37 % of the graph forks on re-extraction**.
+  That figure was arithmetic over the graph, and rule 2 says arithmetic is not a run.
+
+  🎯 **Run.** One node seeded on lw-iso in the shape the 1826 actually have — a `canonical_name`
+  the pre-A5 canonicaliser produced, and an id that disagrees with a recompute — then the **real**
+  extraction persist path (`/internal/extraction/persist-pass2`) driven with the candidate today's
+  extractor produces:
+
+  ```
+  e8b6a653… | canonical=田中060077様 | name=田中060077様    the stale node
+  ef22a40c… | canonical=田中060077   | name=田中060077様    minted by the re-extraction
+  ```
+
+  **Two nodes, one character.** `merge_entity`'s resolve-first matches on
+  `(user_id, project_id, canonical_name, kind)`; the extractor supplies the NEW canonical form,
+  the stored node carries the OLD one, no prior is found, and it mints.
+
+  ⚠️ **THE FIRST VERSION OF THIS PROBE DID NOT FORK, and it was my fixture that was wrong.** It
+  seeded the node at the id the re-extraction recomputes, so the `MERGE` landed on it by id alone
+  and the resolve-first path was never exercised. The tell was in the output — the surviving node
+  still carried the **stale** canonical form, which is only possible if nothing matched on
+  canonical_name. Re-seeded with a genuinely pre-A5 id, and asserted `stale_id != fresh_id` so the
+  fixture cannot quietly go vacuous again. (A second guard had already fired earlier: the first
+  name put the tag *after* the honorific, so nothing was stripped and the two canonical forms were
+  equal — the probe refused to run rather than reporting a pass.)
+
+  ### 📐 THIS RECLASSIFIES THE BLOCKER, and the number is the same 1819 either way
+
+  T46a described the wait as sequencing. It is not: **any re-extraction of a chapter mentioning
+  one of those 1819 entities forks it, today, with no merge involved.** The store merge is a
+  victim of the defect, not its only exposure.
+
+  ✅ **But it has not fired yet, and that is measurable rather than hopeful.** QC-6a grouped the
+  live graph by `(user_id, project_id, canonical_name, kind)` and found **4872 groups over 4872
+  nodes, largest group 1** — no fork has actually happened. Nothing has re-extracted an affected
+  chapter since the canonicaliser changed. The defect is **armed, not fired**, and the window
+  closes the moment anyone re-runs extraction on the affected books.
+
+  🎯 **The repair already exists and is rehearsed.** `recanon_honorifics --apply` re-keys exactly
+  these rows — its `rekeyed=1819` is the same population this probe counts, arrived at
+  independently — and T35g executed it end-to-end against a faithful clone: **1819 re-keyed / 1
+  merged / 6 refused / 0 anchors lost**, converging to `actions=0` on a second pass. What is
+  missing is not code, design, or confidence. It is the write, which lands on the shared dev graph
+  and is the PO's under rule 6.
+
+  ⛔ **T46 stays `[~]`.** Its remaining half is the merge, and merging while 1819 rows fork on
+  re-extraction would carry broken identity into the destination — T46a's reasoning, now with a
+  live fork behind it instead of a projection.
+
+  **BITE — N/A, and what stands in for it:** no code changed; this batch runs the existing write
+  path against a seeded row. Its non-vacuity is carried by **two guards that fired on my own
+  fixture before it produced a result** — the equal-canonical-forms refusal and the
+  `stale_id != fresh_id` assertion — plus the fact that the corrected probe produces a *different*
+  answer from the incorrect one, which is the only thing that distinguishes a measurement from a
+  formality.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `bitemporal-parity-gate` OK
+  (unchanged — this batch touches neither side).
+  **QC (b) the seam:** the probe crosses the HTTP seam into a **rebuilt, re-created**
+  `lw-iso-knowledge-service`, and the fork was read out of the graph, not out of a response body.
+  **QC (c) real data:** 4866 live entities measured read-only for the 1826/1819 split; the fork
+  itself was reproduced on lw-iso rather than on the dev graph, because reproducing it there
+  would have been the write.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

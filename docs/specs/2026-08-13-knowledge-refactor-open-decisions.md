@@ -566,6 +566,20 @@ relies on; `T44` rewrites the substrate rows those two settle.
    fork on re-extraction. Merging while 37 % of the graph forks would carry broken identity into
    the destination — which is what §4.1's precondition means in practice.
 
+🔴 **The precondition is a LIVE DEFECT, not sequencing (2026-08-21, T46b).** §6.3 gates the merge
+on `recanon_honorifics --apply` because a stale `canonical_name` forks the node on re-extraction.
+Measured and then **run**: 1826 of 4866 live entities carry a stale canonical form, 1819 of them
+with nothing sitting at the recomputed form — the same population `recanon`'s own `rekeyed=1819`
+reports, arrived at independently. Driving the real `persist-pass2` path against a seeded row of
+that shape on lw-iso produces **two nodes for one character**.
+
+So any re-extraction of an affected chapter forks it *today*, with no merge involved. It has not
+happened yet — the live graph groups 4872 nodes into 4872 `(user, project, canonical_name, kind)`
+groups, largest 1 — so the defect is **armed and not fired**, and it fires the moment extraction
+re-runs on those books. The repair is `recanon_honorifics --apply`, rehearsed end-to-end in T35g
+against a faithful clone (1819 re-keyed / 1 merged / 6 refused / 0 anchors lost, `actions=0` on a
+second pass). What is missing is the write, not the code.
+
 ### 6.4 Phase 9 closes the plan: `T47 → T48 → T49` — **DECIDED**
 Docs (mandatory under the plan's own `Docs: yes`), then `/aif-verify`, then handoff and
 archive. **This is how the plan ends**, and it may not begin until every other row is `[x]` or
