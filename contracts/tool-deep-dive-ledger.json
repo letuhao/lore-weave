@@ -1823,6 +1823,56 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "v1 called 3/3 with world_id='Ashfall' — the world's NAME — minting a Tier-A card for a call the service can only reject. FIXED (D-DECLARED-UUID-IN-PROSE-ONLY, 1e942280f) and RE-RUN LIVE, and the honest outcome is that it is still unusable: with the bad id dropped and reported missing, the model retried 15/14/7 times per turn, called world_list ZERO times, and was stopped by the blank-args cap. Final replies are truthful ('I need the specific ID... I can't use the name directly'). The trade: a card for an impossible write, exchanged for a bounded retry ending in an honest refusal. BLOCKED on the model not doing the lookup it is told to do."
+  },
+  "composition_create_work": {
+   "state": "proven",
+   "provider": "composition",
+   "tier": "A",
+   "cycle": "batch-9",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, card raised 3/3, store unchanged without approval. IDEMPOTENCY is the headline and it holds: called twice at the boundary on a fixture that already had one work row, the count stayed at 1 and both calls returned the SAME project_id — 'create (or get, idempotently)' is what it does. Tenancy refused."
+  },
+  "jobs_summary": {
+   "state": "proven",
+   "provider": "jobs",
+   "tier": "R",
+   "cycle": "batch-9",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, store unchanged, and the counts are real: active 31, completed 1079, failed 53, cancelled 17. 🔴 THIS TOOL'S ANSWER IS WHAT EXPOSED D-PAGE-READ-AS-A-TOTAL — batch 7's jobs_list reply had claimed '10 background jobs running' off a 10-item page, and 31 vs 10 is what sent me to the boundary. Cross-checking two tools' answers against each other is the control that found it."
+  },
+  "glossary_deep_research": {
+   "state": "blocked",
+   "provider": "glossary",
+   "tier": "W",
+   "cycle": "batch-9",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Surfaced 0/3, called 0/3 — never on the wire. The model called web_search on every run: a different PAID tool that searches the open web without attaching sourced evidence to the entity, which is this tool's whole point. web_search is in ALWAYS_ON_CORE and therefore always present, so the generic always-available tool displaced the domain-specific one the request described ('find sources for HIM'). Boundary sound: tenancy refused."
+  },
+  "plan_run_pass": {
+   "state": "blocked",
+   "provider": "plan",
+   "tier": "A",
+   "cycle": "batch-9",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Surfaced 0/3, called 0/3. The model called plan_compile instead and said 'there isn't an active plan to compile' — while the seed HAD landed a spec artifact (the 900s wait passed, seed_assert confirmed exactly one). The turn asserted an absence the store contradicts, which is the D-DEGRADED-READ-REPORTED-AS-ABSENCE family again. Tenancy refused."
+  },
+  "propose_edit": {
+   "state": "blocked",
+   "provider": "chat-local",
+   "tier": "R",
+   "cycle": "batch-9",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Surfaced 3/3 — it IS on the wire as a frontend tool on the editor surface — and called 0/3. Asked to make the opening line darker AND to show the change before it goes in, the model read the chapter and offered three rewrites as prose in chat. The author gets text to copy instead of an Apply button, which is the entire value of the tool. It declares NO synonyms at all, so answerability cannot reach it and only the frontend advertisement puts it in play. The store was unchanged 3/3 — safe, but for the wrong reason."
   }
  },
  "defects": {
@@ -2426,6 +2476,15 @@
    "finding": "Told explicitly — 'obtain it from the tool that LISTS or SEARCHES those records and pass back the id it returns' — the model called world_list ZERO times on 3 of 3 runs. It retried world_map_create with the argument omitted 15, 14 and 7 times respectively until the blank-args cap stopped it, then explained the problem to the user accurately.",
    "why_it_matters": "The refusal is already the C-12 shape: it names the missing argument and the KIND of tool that supplies it. What it does not do is name the tool. This is the same family as D-LAZY-TAIL-UNUSED — the model works from what is in front of it and does not go looking — and it is the residual cost of the declared-UUID fix: correctness improved, completion did not.",
    "candidate_fix": "Derive the lister mechanically (`<domain>_list` exists for world, book, glossary, kg, jobs) and NAME it in the missing-argument message. Deliberately NOT shipped here: it is a prose change, and three prose interventions were measured and refuted on 2026-08-14. It must be A/B'd like the consent fix was."
+  },
+  {
+   "id": "OBS-COMPLETED-TURN-WITH-NO-PROSE",
+   "date": "2026-08-14",
+   "state": "OPEN — correlation, NOT causation",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch9-jobslist.json (K=3, after 40e331288)",
+   "finding": "On the jobs_list re-run, 2 of 3 turns produced ZERO assistant content — finish_reason 'stop', outcome 'completed', is_error false, 2 tool calls, and an empty message. The user would see nothing at all. The one turn that did answer no longer states a false count ('You have several background jobs currently running'), which is the fix working.",
+   "honesty": "I CANNOT attribute the empty turns to my change without an A/B. Batch 7's run of the same scenario produced prose on 3/3 with ONE tool call each; this run made two calls and produced none twice. That is a correlation with the added guidance line and nothing more — the consumer is stochastic and this is three samples. Recorded as unproven rather than claimed either way.",
+   "why_it_matters_regardless": "`outcome: completed` over an empty answer is its own defect, whatever caused it: a turn that produces no user-visible text is not a completed turn, and recording it as one hides it from every count that reads outcomes."
   }
  ],
  "progress": {
