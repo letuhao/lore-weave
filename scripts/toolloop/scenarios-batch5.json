@@ -26,7 +26,7 @@
             "db": "loreweave_composition",
             "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
             "expect": "1",
-            "timeout": 180,
+            "timeout": 420,
             "poll": 3,
             "why": "plan_compile requires a SPEC artifact, which plan_propose_spec produces on a job. Without this wait the seed asserts only that the run exists — true immediately — and the tool then fails 'no spec to compile' 3/3, which reads as a tool defect and is a fixture that was not ready."
           }

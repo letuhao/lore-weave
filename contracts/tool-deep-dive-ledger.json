@@ -1518,15 +1518,14 @@
    "note": "D-DECLARE-THE-USERS-WORD found and fixed here. It declared 'add a kind' (the column name) and the author said 'category'; surfaced 0/3, and the model ran glossary_adopt_standards instead — adopting a whole genre pack (kinds 4->5, attributes 29->36, genres 1->3, kind_genres 4->13) from a request to add ONE category. After declaring 'category'/'new category'/'start tracking': surfaced 3/3, called 1/3, wrote book_kinds 3/3. Tenancy refused (0 rows written). Empty-case scaffolding recorded."
   },
   "plan_compile": {
-   "cycle": "batch-2",
-   "date": "2026-08-14",
+   "state": "proven",
+   "provider": "plan",
+   "tier": "A",
+   "cycle": "batch-5",
+   "group": "B",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
-   "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
-   "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "REOPENED — not evidence-backed",
-   "state": "in_cycle",
-   "note": "🔴 CONCLUSION WITHDRAWN 2026-08-14. Marked `proven` and `gate-backed`, but its own evidence file records called=0/3 in the main batch AND 0/3 in the empty-case run. The tool was never invoked on any run, so nothing in that batch is evidence about THIS tool. It passed only because the gate's LIVE bars asked about the TURN (enough repeats, real path, no transport error) and never about the tool. The missing bar is now in the gate. PRIOR NOTE, kept because the work happened: Surfaced 3/3, 0 errors, plan_run written 3/3. Called 0/3 — the model reaches plan_propose_spec, which produces the run this tool would compile; that is sequencing, not a miss, and it is recorded rather than waived. Absent case is clean: no arc, no spec, called 0/3, store UNCHANGED 3/3 — nothing fabricated, nothing written. Tenancy refused."
+   "note": "RE-EARNED after the 2026-08-14 withdrawal. Called 3/3 from 'Compile the plan I already proposed for this book into a planning package', reached via the model's own chain composition_package_tree -> plan_compile (run_id read from the store, never typed). DATA: the approved run wrote outline_node x3 — matching the seeded THREE-chapter spec exactly — plus structure_node, plan_run and generation_job, and the prose said 'three chapters' truthfully. SHIP: gate exercised both ways (card standing 3/3 with nothing written, then approved and written); empty case exercised — before the fixture waited for the async spec job the tool refused 3/3 with 'no spec to compile', naming exactly what was missing; tenancy refused. The withdrawal itself was the finding: the old gate's LIVE bars asked only about the TURN."
   },
   "glossary_list_system_standards": {
    "cycle": "batch-2",
@@ -1634,6 +1633,46 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "BLOCKED on a NAMED fixture gap, and the model was RIGHT 3/3. It called composition_diagnostics, found the chapter UNPLANNED, and said it cannot run a drift check without an arc, offering to propose a plan — correct behaviour with a route out. Conformance compares prose against a BOUND arc; the throwaway book has prose and no arc. Needs composition_arc_create + composition_arc_assign_chapters in the seed before the tool can be exercised at all."
+  },
+  "translation_coverage": {
+   "state": "proven",
+   "provider": "translation",
+   "tier": "R",
+   "cycle": "batch-5",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, store unchanged 3/3, and the ANSWER matched the fixture exactly: two chapters seeded, zero translations, and the reply said 'there is no translation for this book — both of the existing chapters are still untranslated'. SHIP: tenancy refused; empty case exercised on a book with its chapters removed, returning empty coverage AND an empty untranslated list, which is structurally distinguishable from the populated case. 🔴 THE SAME TURN ALSO CALLED TWO WRITE TOOLS THE USER DID NOT ASK FOR — translation_start_job and translation_retranslate_dirty, both ok=true/done — and claimed to have started work, including a re-translation of 'a changed segment' that cannot exist over zero translations. That is D-READ-TURN-REACHES-FOR-WRITES, a TURN-level defect with its own row; this tool's own bars all pass."
+  },
+  "memory_remember": {
+   "state": "proven",
+   "provider": "memory",
+   "tier": "A",
+   "cycle": "batch-5",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 from 'Remember that the Obsidian Trench is only navigable at low tide.' DATA read from NEO4J, not from a count: the approved run wrote 3/3 with the diff naming neo4j.Fact.total AND neo4j.Fact.project — the fact lands and carries its project, so D-MEMORY-FACT-STORED-UNSCOPED holds under approval. SHIP: gate exercised both ways; idempotency exercised — the same sentence twice returned the IDENTICAL fact_id, so merge_fact merges rather than duplicates, which is also why a node count can never settle this tool; tenancy refused against another account's project with the nonexistent-project control run."
+  },
+  "jobs_get": {
+   "state": "blocked",
+   "provider": "jobs",
+   "tier": "R",
+   "cycle": "batch-5",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED on a SURFACING defect, not on the tool. Surfaced 0/3, called 0/3: its synonyms are contiguous phrases ('job detail', 'job status') and the request said 'the full detail of my most recent job — status, cost', which contains those words separated and reordered, so answerable_tools matched none. The model reached for tool_list on all three runs — the signature of a missing surface. Its own boundary is sound: a nonexistent job_id returns 'not found or not accessible', one string for both 'no such job' and 'not yours'. See D-ANSWERABILITY-MISSES-WORD-ORDER."
+  },
+  "kg_propose_edge": {
+   "state": "blocked",
+   "provider": "kg",
+   "tier": "A",
+   "cycle": "batch-5",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED on a NAMED fixture gap. Surfaced 3/3, called 0/3: asked to record that two named characters know each other, the model called kg_project_create 3/3 and suspended on THAT card — it bootstrapped the graph instead of proposing the edge, which is not obviously wrong given the KG side was un-bootstrapped. Boundary probes are good: two unknown entity ids are refused with an actionable message naming both endpoints and the projection step needed; tenancy refused. The seed must create the KG project and project both entities as graph nodes so the edge is the only outstanding action."
   }
  },
  "defects": {
@@ -2168,6 +2207,39 @@
    "finding": "`conclude --tool X` re-ran the WHOLE-batch gate, so one tool that legitimately could not be concluded froze every tool beside it. Measured: memory_recall_entity passed all nine of its own bars while the batch stayed refused because two OTHER tools were never called. The gate's own failure message said 'conclude the tool blocked and say why' while offering no way to do it.",
    "fix": "`conclude` is now scoped to the tool it names; `check` stays whole-batch and strict. A `blocked` conclusion excuses exactly the two bars that DESCRIBE not being exercised (LIVE called, SHIP exercised), still requires the TURN bars, and REQUIRES a blocked_reason of substance in the batch file — falsifier verified: stripping the reason is refused.",
    "state": "FIXED"
+  },
+  {
+   "id": "D-READ-TURN-REACHES-FOR-WRITES",
+   "date": "2026-08-14",
+   "state": "OPEN — a CLASS now, not an incident",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch4-rest.json + batch5.json",
+   "invariant": "A turn whose request is a QUESTION must not propose or run writes the user did not ask for, and must never narrate them as done.",
+   "occurrences": [
+    "batch4-rest, 'Who is Mira Solene?' — attempted a Tier-A WRITE on 3 of 3 runs (glossary_entity_set_attributes x2, kg_project_create x1). All gated into cards; store unchanged.",
+    "batch5, 'How far along is the translation for this book?' — called translation_start_job AND translation_retranslate_dirty on 3 of 3 runs. Both returned ok=true, call_outcome=done (NOT gated proposals, which record ok=false)."
+   ],
+   "the_prose_is_the_worse_half": "The translation reply said 'I've started the translation for your two chapters' and 'I've prepared a re-translation for a changed segment in your first chapter'. The second is provably false: the same turn's own translation_coverage call reported ZERO translations, so nothing can be dirty. The turn answered a read question correctly and then reported two pieces of work the author never requested, one of which cannot exist.",
+   "what_is_NOT_established": "Whether translation jobs were actually created. The harness store diff was empty and translation_jobs holds no rows for the window, but the throwaway books were torn down and teardown deletes by book_id — so absence here is not evidence. A kept fixture is needed to settle it, and until then the claim is about the CALLS and the PROSE, both of which are recorded verbatim.",
+   "why_it_matters": "The harness clears standing approvals, which is why the batch-4 case surfaced as a card. On an account holding standing allows — the dogfood account has 46 — the same turn runs the write. That is the cycle-11 shape exactly: a read-only TOOL does not make a read-only TURN."
+  },
+  {
+   "id": "D-ANSWERABILITY-MISSES-WORD-ORDER",
+   "date": "2026-08-14",
+   "state": "OPEN",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch5.json (jobs_get)",
+   "finding": "jobs_get was surfaced 0/3 and called 0/3 on 'Show me the full detail of my most recent job — status, cost, and whether anything failed.' It declares synonyms ['job detail', 'job status', 'get job', 'show job']. The request contains 'Show me ... my most recent job' and 'detail' and 'status' — but not the literal strings 'job detail' or 'show job', because the words are SEPARATED and REORDERED. answerable_tools matches a synonym as a contiguous phrase, so every one missed.",
+   "corroboration": "On all three runs the model reached for tool_list — the discovery behaviour of a model whose surface lacks the tool, which is what the surfacing miss predicts.",
+   "why_it_matters": "R1 answerability is the load-bearing path onto the wire (the lazy tail does not fire on ordinary turns). A matcher that requires the user's words to be contiguous and in the declared order makes declaration far weaker than the R2 pass assumed: 'the detail of my job' does not reach a tool declaring 'job detail'.",
+   "not_yet_a_fix": "The obvious repair — match on word SETS rather than phrases — trades precision for recall, and _synonym_pattern's word-boundary work exists because 'cat' matched inside 'category'. This needs measuring against the live catalogue before it is shipped, exactly as the supersession union was."
+  },
+  {
+   "id": "OBS-KG-PROPOSE-EDGE-BOOTSTRAPS-INSTEAD",
+   "date": "2026-08-14",
+   "state": "OPEN",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch5.json",
+   "finding": "kg_propose_edge surfaced 3/3, called 0/3. On 'Record that Aldric Vane and Mira Solene know each other' the model called kg_project_create (3/3), plus kg_project_list and kg_schema_read, and suspended on the kg_project_create card. It went to bootstrap the KG project rather than propose the edge.",
+   "reading": "Not obviously wrong — the throwaway has a knowledge project but the KG side is un-bootstrapped, and an edge needs a graph to live in. But it means the tool cannot be exercised until the fixture seeds the KG, and the turn ends on a card for a DIFFERENT tool than the one asked about.",
+   "what_a_valid_fixture_needs": "kg_project_create + kg_add_nodes for the two named entities in the seed, so the only outstanding action is the edge itself."
   }
  ],
  "progress": {
