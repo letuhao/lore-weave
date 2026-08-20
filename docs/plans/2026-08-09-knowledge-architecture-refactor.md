@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T51` (lane B) — the frontend surfaces; it needed `T38` (done) and `T32` (CLOSED today). ⚠️ `T35` is **OWED AN OPERATOR WRITE** (1826 stale `canonical_name` nodes; `recanon_honorifics --apply` repairs 1820 / refuses 6 / loses 0). `T33` ⛔ and `QC-3`/`QC-5` ⏸ are hand-backs. `T40` closed on a TRIGGER: partitioning buys nothing at 48k rows and would re-cut the natural key — the gate reopens it at 500k.**
+**RESUME: lane **D** (`T44` → `T45` → `T46`, spec §6.3) — lane B is EMPTY: `T39`, `T40` and `T51` all closed 2026-08-14. ⚠️ `T35` is **OWED AN OPERATOR WRITE** (1826 stale `canonical_name` nodes fork on re-extraction; `recanon_honorifics --apply` repairs 1820 / refuses 6 / loses 0). `T33` ⛔ and `QC-3`/`QC-5` ⏸ are hand-backs.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**52 of 66 rows done · 14 open · 34 of 67 evidence blocks closed inside them.**
+**53 of 66 rows done · 13 open · 34 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7649,7 +7649,7 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   | **To unblock** | Answer: **does the KAL grow a detail-carrying catalog read (kind, aliases, short_description), or does the authored catalog stay a direct read and INV-KAL's scope stop where it is?** T47 already records the consequence — *"INV-KAL scope now covers writes + the authored catalog"* — as though this were settled. It is not. |
   | **Mechanism** | `authored-catalog-reader-gate`'s pinned set is the checklist and can only shrink; it cannot shrink at all until this is answered, so a frozen list is the visible signal. |
   | **Retry when** | ~~The KAL scope question is answered.~~ ✅ **DECIDED BY THE PO 2026-08-13: the KAL GROWS a detail-carrying catalog read** (kind, aliases, short_description), and all ten readers move behind it. T47's recorded consequence — *"INV-KAL scope now covers writes + the authored catalog"* — is therefore correct as written and needs no edit. **This deferral is now WORK, not a question.** |
-- [~] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
+- [x] **T51** — Migrate the **frontend** surfaces *(added by `/aif-improve +check`)*
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.5. Unfinished, not undecided.
   31 files across nine feature folders consume these contracts — `glossary`, `trash`,
   `knowledge`, `knowledge-temporal`, `studio`, `composition`, `chat`, `wiki`, `world`.
@@ -7661,6 +7661,62 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   *right after deleting*.
   **Test:** the recycle-bin and spoiler surfaces still render after the reveal-axis change.
   (depends on T38, T32)
+  ---
+  **CLOSED 2026-08-14 — measured, not built.** T32 kept the legacy query flags on
+  purpose, so no FE surface reads a contract that stopped existing. The compatibility
+  is pinned by six tests (bitten), the FE typechecks clean and 6396 of its tests pass.
+  ### 📊 T51a 2026-08-14 — **nothing to migrate: the backend kept the contract on purpose**
+
+  ```
+  frontend  tsc --noEmit clean · 851 files / 6396 tests passed
+  backend   6 tests red under the bite that removes the legacy mapping
+  ```
+
+  T51's premise: *"T7 changes the cast read and T32 moves the spoiler window onto a reveal
+  position — **both change contracts the FE renders against.** Shipping the backend alone leaves
+  those surfaces reading a contract that no longer exists."*
+
+  **Measured, and it is false on every concrete claim the row makes** — because T32 decided the
+  opposite, and said so in its own evidence: *"Legacy flags are mapped, not removed… The FE ships
+  against the old names today, and a hard cut would break a live surface to prove a point about
+  naming."*
+
+  | the row's concrete claim | measured |
+  |---|---|
+  | the reveal axis breaks the FE | `list_entity_facts` still takes `before_chapter_id` **and** `curation`, documented *"still accepted and mapped onto the reveal position; `reveal_at` wins when both are given"*. The FE sends exactly those two. Verified on BOTH sides, not inferred. |
+  | `knowledge-temporal/api.ts:82` calls KAL `roster` directly | **zero call sites in `frontend/src`** — already reviewed under T53 and left as-is, with the reason written in the file. |
+  | 31 files across nine folders consume these contracts | `tsc --noEmit` clean and **6396 tests pass** across all of them. |
+
+  🔴 **AND THE COMPATIBILITY IS LOAD-BEARING, not incidental — which is the only part that
+  needed proving.** A backwards-compatible shim nobody tests is one commit from being tidied
+  away, and the surface that breaks is the reader's spoiler window. So it was bitten:
+
+  ```
+  18. drop the `before_chapter_id` → ("chapter", id) mapping from parse_reveal_at
+        6 failed, 4229 passed
+        incl. test_before_chapter_id_maps_onto_a_chapter_position (test_reveal_axis.py)
+             test_before_chapter_id_unresolvable_fails_closed  (test_raw_search_api.py)
+  ```
+
+  The legacy contract the FE depends on is pinned by six rules across two files. **That is what
+  makes T51 a no-op rather than an oversight.**
+
+  **QC (a) gates:** frontend typecheck clean, 6396 tests; knowledge unit **4235** with the bite
+  restored; `plan-verify` PASS.
+  **QC (b) the seam:** the FE↔knowledge-service seam is exactly what this row is about, and it
+  was verified **by reading both ends of it** — the query string the FE builds
+  (`getEntityFacts`) against the `Query(...)` parameters the router declares — plus a bite
+  proving the server half is tested. **No browser render was run, and that is a real gap**: the
+  row's Test says *"still render"*, and typecheck plus mocked-fetch tests cannot prove a render
+  against a live server. It is not papered over — what is claimed is contract identity, which is
+  the reason a render could not have regressed.
+  **QC (c) real data:** N/A — no code changed in this batch, so there is nothing to produce.
+
+  ⚠️ **One behavioural change today DOES reach this seam and is worth naming:** T32a makes
+  `known-entities` drop an entity whose `life_status` is `gone` at the requested position. The
+  FE consumes that endpoint as a list, so the change is *fewer rows*, which every list consumer
+  handles by construction — and on real data it is **3 entities on 1 book**. Stated rather than
+  discovered later.
 
 - [x] **T39** — Invalidate the two uninvalidatable caches by digest, not TTL
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.5. Unfinished, not undecided.
