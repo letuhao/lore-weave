@@ -70,7 +70,7 @@ VALIDATION_MARKERS = ("validating", "must be a uuid", "is required", "required:"
                       # reading "0 LEAK(S)". A marker list that misses a phrasing turns a call
                       # that never reached the ownership check into a pass — the fifth time this
                       # family of false pass has been found in this instrument.
-                      "invalid arguments for", "input should be", "is not a valid",
+                      "invalid arguments for", "invalid arguments:", "value error", "input should be", "is not a valid",
                       "value is not a valid", "does not match",
                       # Business-level argument checks that still run BEFORE ownership. A tool
                       # that refuses an empty list has not yet looked at whose book it is, so
@@ -183,6 +183,33 @@ def make_other_users_project(book_id: str) -> str:
     return pid
 
 
+def make_other_users_map(book_db_owner: str = OTHER_USER) -> tuple[str, str]:
+    """A world + map owned by the OTHER account, inserted directly for the same reason the book is.
+
+    Worlds live in the BOOK database (`worlds`, `world_maps`), both carrying owner_user_id, so the
+    map tools resolve ownership from these rows.
+    """
+    wid, mid = str(uuid.uuid4()), str(uuid.uuid4())
+    oracle.db_query(
+        BOOK_DB,
+        "INSERT INTO worlds (id, owner_user_id, name) "
+        f"VALUES ('{wid}', '{book_db_owner}', '{TITLE_PREFIX}tenancy-world')")
+    oracle.db_query(
+        BOOK_DB,
+        "INSERT INTO world_maps (id, owner_user_id, world_id, name) "
+        f"VALUES ('{mid}', '{book_db_owner}', '{wid}', '{TITLE_PREFIX}tenancy-map')")
+    return wid, mid
+
+
+def drop_map(world_id: str, map_id: str) -> None:
+    """Name-guarded, like every other teardown here."""
+    for tbl, col, ident in (("world_maps", "name", map_id), ("worlds", "name", world_id)):
+        q = ident.replace("'", "''")
+        rows = oracle.db_query(BOOK_DB, f"SELECT {col} FROM {tbl} WHERE id='{q}'")
+        if rows and rows[0] and str(rows[0][0]).startswith(TITLE_PREFIX):
+            oracle.db_query(BOOK_DB, f"DELETE FROM {tbl} WHERE id='{q}'")
+
+
 def drop_project(project_id: str) -> None:
     """Name-guarded like drop_book: only ever removes a row this probe created."""
     q = project_id.replace("'", "''")
@@ -192,7 +219,8 @@ def drop_project(project_id: str) -> None:
         oracle.db_query(KNOWLEDGE_DB, f"DELETE FROM knowledge_projects WHERE project_id='{q}'")
 
 
-def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None) -> dict:
+def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
+          map_id: str | None = None) -> dict:
     """Call `tool` as the harness user against another user's book OR project. Refusal is the pass.
 
     The scope is chosen from what the tool DECLARES, never guessed: a tool naming `book_id` is
@@ -210,9 +238,27 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None) -> 
             spec = (schema.get("properties") or {}).get(r) or {}
             args[r] = _placeholder(spec)
         return _call_and_judge(tool, args)
+    if "book_id" not in props and "map_id" in props and map_id:
+        # 🔴 A THIRD SCOPE, AND WITHOUT IT THE MAP TOOLS READ AS `n/a`. world_map_add_marker and
+        # world_map_add_region carry neither book_id nor project_id: their tenancy boundary is the
+        # MAP. Reported as "no tenancy argument", they were counted alongside real refusals in a
+        # line saying 0 LEAKS, which is the same false pass this file has now been corrected for
+        # four times at four different scopes.
+        args = {"map_id": map_id}
+        for r in required:
+            if r == "map_id":
+                continue
+            args[r] = _placeholder((schema.get("properties") or {}).get(r) or {})
+        # A region needs a real polygon or it dies in the shape check before ownership runs.
+        if "polygon" in required:
+            args["polygon"] = [[0.1, 0.1], [0.2, 0.1], [0.2, 0.2]]
+        for r in ("x", "y"):
+            if r in required:
+                args[r] = 0.1
+        return _call_and_judge(tool, args)
     if "book_id" not in props:
         return {"tool": tool, "verdict": "n/a",
-                "why": "declares neither book_id nor project_id — it carries no tenancy argument"}
+                "why": "declares neither book_id, project_id nor map_id — no tenancy argument"}
     args = {"book_id": book_id}
     # Fill any other required scalar with a placeholder so the call reaches the ownership check
     # rather than dying in validation — a validation error is not a refusal and must not be
@@ -258,15 +304,18 @@ def main() -> int:
     cat = catalog.load()
     book = make_other_users_book()
     project = make_other_users_project(book)
+    world, omap = make_other_users_map()
     print(f"other user's book: {book} (owner {OTHER_USER})")
     print(f"other user's project: {project}")
+    print(f"other user's map: {omap}")
     out = []
     try:
         for t in [x.strip() for x in a.tenancy.split(",") if x.strip()]:
-            r = probe(t, book, cat, project)
+            r = probe(t, book, cat, project, omap)
             out.append(r)
             print(f"  {r['verdict']:<14} {t}  {r.get('response', '')[:110]}")
     finally:
+        drop_map(world, omap)
         drop_project(project)
         drop_book(book)
     leaks = [r for r in out if r["verdict"] == "LEAK"]

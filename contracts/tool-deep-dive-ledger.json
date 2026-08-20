@@ -1723,6 +1723,56 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "BLOCKED on DQ-T31, a surfacing defect measured in two passes. The VAGUE prompt left the intent gate open (0 withheld) and the model correctly asked which kinds, because `ops` must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT the gate: 4 tools withheld at stage=intent_gate including this one. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind. Its own boundary is sound: empty `ops` is refused with a message naming the missing input."
+  },
+  "jobs_list": {
+   "state": "proven",
+   "provider": "jobs",
+   "tier": "R",
+   "cycle": "batch-7",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 from 'What background jobs do I have running right now?', store unchanged, and the reply named this account's real jobs by id (10 composition jobs, grouped by stage). Tenancy is covered by construction and said so: it takes no book/project/map argument, its boundary is the caller identity. Empty case stated as unrun rather than asserted — the account has jobs."
+  },
+  "world_map_add_region": {
+   "state": "proven",
+   "provider": "world",
+   "tier": "A",
+   "cycle": "batch-7",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 and gated 3/3, store unchanged without approval. SHIP is the strong part: another account's REAL map (world+map rows inserted under that owner) is refused with 'map not found', one string that does not leak existence; a nonexistent map gives the same; and a single-point polygon is refused with 'polygon needs at least 3 [x,y] points' — it will not accept a region that could enclose nothing. 🔴 ITS RUN ALSO FOUND D-NIL-UUID-MINTS-A-CARD: all three calls carried map_id=00000000-…-0000, an invented placeholder that PARSES, so a Tier-A card was minted for a call that answers 'map not found'. Fixed at the arg chokepoint (deabb4e47)."
+  },
+  "world_map_add_marker": {
+   "state": "blocked",
+   "provider": "world",
+   "tier": "A",
+   "cycle": "batch-7",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 1/3, and the distribution is the finding. Rep 0 called tool_load and THEN the tool — the first measured use of the lazy tail in this loop, against D-LAZY-TAIL-UNUSED. Reps 1-2 called world_map_list and then world_map_add_REGION, the wrong tool of the pair for a request that says 'put a pin'. Its boundary is sound (tenancy and absent-map both refused). 1/3 does not meet the LIVE bar as a distribution, so it is blocked rather than concluded on one good run."
+  },
+  "story_search": {
+   "state": "blocked",
+   "provider": "knowledge",
+   "tier": "R",
+   "cycle": "batch-7",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 and the TOOL was exemplary: 0 hits with degraded.semantic='not_indexed' and a note naming the fix. The TURN was not: the model reported that as 'I couldn't find any mention ... it's possible it hasn't been written yet', while the seeded chapter literally contains the phrase. A degraded read became a false statement about the author's manuscript with the honest sentence sitting in the payload. BLOCKED on the fixture (story_search needs an INDEXED project, which a fresh book has not got) and on D-DEGRADED-READ-REPORTED-AS-ABSENCE."
+  },
+  "kg_add_nodes": {
+   "state": "blocked",
+   "provider": "kg",
+   "tier": "A",
+   "cycle": "batch-7",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 0/3. The model called kg_project_create — already run by the SEED — and suspended on ITS card, bootstrapping instead of acting, on all three runs. Same shape as kg_propose_edge in batch 5, and seeding the project did not prevent it: kg_project_create is create-or-get, so the model reaches for it defensively to obtain a project_id it does not believe it has. Tenancy UNPROBED and recorded as such — `mode` is required but name/kind are conditionally required BY mode, so a schema-driven probe cannot build a call that survives the validator."
   }
  },
  "defects": {
@@ -2307,6 +2357,16 @@
    "finding": "infra-chat-service-1 serves traffic normally (a POST /v1/chat/sessions returns 201 and the row lands) while emitting NO application log lines to docker logs — only its own 127.0.0.1 health-check access lines. The last logged chat POST is from a much earlier session than the turns that have run since, and there is an 'Application startup failed. Exiting.' in the history.",
    "why_it_matters": "Every guard this loop has shipped names itself in a log so the next occurrence is one grep instead of a code read — DQ-T30, the rail reclaim, the consent set-aside. With stdout dark, all of that instrumentation is unreadable, and I spent a measurement cycle drawing a WRONG conclusion from a missing line before catching it.",
    "how_it_was_caught": "A cheap control: an authenticated POST that provably succeeded (201 + a session id) produced no log line at all."
+  },
+  {
+   "id": "D-DEGRADED-READ-REPORTED-AS-ABSENCE",
+   "date": "2026-08-14",
+   "state": "OPEN",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch7.json (story_search, K=3)",
+   "invariant": "A tool result carrying `degraded` must not be summarised as a definitive negative about the user's data.",
+   "finding": "story_search returned {hits: [], degraded: {semantic: 'not_indexed'}, note: 'no matches, and semantic search did not run: this project has no indexed passages... To enable meaning-based search, index the project first'}. The model answered: 'I couldn't find any mention of the Obsidian Trench in the manuscript. It's possible it hasn't been written yet.' The seeded Chapter II reads 'The Obsidian Trench lay bare at low tide'.",
+   "why_it_matters": "The runtime did everything right — it named the degradation, named the cause and named the fix, in machine-readable form (`degraded`) as well as prose. The model discarded all of it and asserted the opposite about the author's own manuscript. This is the same class as the withheld-tool stamp: the honest signal exists and is not used. It is also the exact shape the DATA bar was built for — the store was untouched, no error was raised, every machine check is green, and the ANSWER is false.",
+   "candidate_fix": "`degraded` is machine-readable, so a turn-level guard like DQ-T30's is possible: if the answering tool returned `degraded` and the reply asserts absence, re-drive once with the degradation named. NOT built here — three prose interventions were refuted on 2026-08-14 and this one must be MEASURED before it ships."
   }
  ],
  "progress": {
