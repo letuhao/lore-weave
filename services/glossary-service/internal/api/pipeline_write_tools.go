@@ -35,7 +35,7 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		// 30 live runs and tool_load never, so the answerability pre-filter is the only
 		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
 		// are phrasings a PERSON types, not the feature's name.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"this character appears in this chapter", "link an entity to a chapter", "mark where this character shows up"}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"this character appears in this chapter", "link an entity to a chapter", "mark where this character shows up", "mark where", "appears in this chapter", "shows up in this chapter", "link to this chapter", "note that he appears", "note that she appears"}),
 	}, s.toolCreateChapterLink)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -54,7 +54,7 @@ func (s *Server) RegisterPipelineWriteTools(srv *mcp.Server) {
 		// 30 live runs and tool_load never, so the answerability pre-filter is the only
 		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
 		// are phrasings a PERSON types, not the feature's name.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add a quote supporting this", "attach evidence", "cite where this is stated", "back this up with a passage"}),
+		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{"add a quote supporting this", "attach evidence", "cite where this is stated", "back this up with a passage", "cite where", "back up", "quote the passage", "attach a quote", "source this from the text"}),
 	}, s.toolCreateEvidence)
 }
 

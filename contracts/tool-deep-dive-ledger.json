@@ -1982,17 +1982,17 @@
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "BLOCKED, surfaced 0/3. The model called book_read and ANSWERED IN PROSE what the tool exists to RECORD — 'Aldric Vane makes his appearance in the very first sentence' — so the author asked to MARK where he shows up and got a description. Nothing written. Declared 'mark where this character shows up' against a prompt saying 'mark where he shows up'."
+   "note": "STILL BLOCKED, but for a DIFFERENT and better reason. Surfacing SOLVED: 0/3 -> 3/3 after the declaration fix. Called 0/3 — the model called glossary_propose_entities, re-proposing an entity that already exists, instead of linking it. A precondition-chain block that the surfacing failure had been masking. PRIOR: BLOCKED, surfaced 0/3. The model called book_read and ANSWERED IN PROSE what the tool exists to RECORD — 'Aldric Vane makes his appearance in the very first sentence' — so the author asked to MARK where he shows up and got a description. Nothing written. Declared 'mark where this character shows up' against a prompt saying 'mark where he shows up'."
   },
   "glossary_entity_rename": {
-   "state": "blocked",
+   "state": "proven",
    "provider": "glossary",
    "tier": "A",
-   "cycle": "batch-12",
+   "cycle": "batch-12 (A/B)",
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "BLOCKED, surfaced 0/3. The model used glossary_propose_entity_edit, a sibling, and suspended on its card. Declared 'rename character' against 'rename Aldrik Vayne to Aldric Vane'."
+   "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 with 'rename Aldrik Vayne to Aldric Vane' — every declared phrase paired 'rename' with a NOUN. B-arm, prompt UNCHANGED, declaration widened with the bare verb and the misspelling framing: surfaced 3/3, CALLED 3/3, card raised, store unchanged (entity count 1, cached_name still the misspelling). It resolved the WRONG spelling to the right row rather than creating a new entity — the create-instead-of-edit shape did not occur. Renaming a nonexistent entity is refused; tenancy refused."
   },
   "glossary_create_evidence": {
    "state": "blocked",
@@ -2002,17 +2002,17 @@
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "BLOCKED, surfaced 0/3. The model quoted the passage in prose — 'the text confirms his ascent' — finding the evidence and never attaching it. Declared 'cite where this is stated' against 'cite where it says he climbed'. A second precondition also stands unmeasured: evidence attaches to an attr_value_id and the fixture has no attribute values."
+   "note": "STILL BLOCKED, surfacing SOLVED (0/3 -> 3/3). Called 0/3, and what it DID call names the reason: glossary_entity_set_attributes — it was working toward the real precondition, since evidence attaches to an attr_value_id and the fixture has none. The model identified the chain correctly and ran out of turn. PRIOR: BLOCKED, surfaced 0/3. The model quoted the passage in prose — 'the text confirms his ascent' — finding the evidence and never attaching it. Declared 'cite where this is stated' against 'cite where it says he climbed'. A second precondition also stands unmeasured: evidence attaches to an attr_value_id and the fixture has no attribute values."
   },
   "kg_graph_query": {
-   "state": "blocked",
+   "state": "proven",
    "provider": "kg",
    "tier": "R",
-   "cycle": "batch-12",
+   "cycle": "batch-12 (A/B)",
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "BLOCKED, surfaced 0/3. The model called kg_project_list and kg_add_nodes and suspended on that card — bootstrapping instead of reading, the third time in this loop (kg_propose_edge batch 5, kg_add_nodes batch 7). Declared 'how are they connected' against 'How are the characters in this story connected'."
+   "note": "PROVEN after the declaration fix. A-arm: surfaced 0/3 — declared 'how are they connected' against 'How are the CHARACTERS in this story connected', a pronoun apart. B-arm, prompt UNCHANGED: surfaced 3/3, CALLED 3/3, store unchanged. And the EMPTY answer is exemplary — 'I don't see any characters or relationships recorded in the connection map for this project yet' — the exact opposite of batch 11's conformance_status, which invented 'effectively stale' for a book that had never run conformance. Tenancy refused."
   },
   "glossary_propose_translation": {
    "state": "blocked",
@@ -2022,7 +2022,7 @@
    "group": "C",
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "BLOCKED at 1/3 — and it is batch 12's CONTROL. It is the ONLY tool of the five whose declared synonyms appear VERBATIM in the prompt, and the only one surfaced (3/3). On the two runs it was not called it answered with name suggestions in prose rather than minting the proposal. 1/3 is not a distribution."
+   "note": "STILL BLOCKED. It was batch 12's control (surfaced 3/3 both arms, the only tool whose synonym appeared verbatim) and it went 1/3 -> 0/3 called: it answered with Vietnamese name suggestions in PROSE instead of minting the proposal. With surfacing fixed everywhere, this is the residual class — describe-instead-of-record. PRIOR: BLOCKED at 1/3 — and it is batch 12's CONTROL. It is the ONLY tool of the five whose declared synonyms appear VERBATIM in the prompt, and the only one surfaced (3/3). On the two runs it was not called it answered with name suggestions in prose rather than minting the proposal. 1/3 is not a distribution."
   }
  },
  "defects": {
@@ -2285,6 +2285,12 @@
    "evidence": "MEASURED 2026-08-14, two prompts for the same tool, K=3 each.\n  v1 'Set up several kinds and attributes at once for this book's ONTOLOGY — I want to do it in one batch': intent_gate withheld 0 tools. Gate OPEN.\n  v2 'Set these up together in one batch for this book: a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin': intent_gate withheld 4 — glossary_propose_batch, glossary_plan, glossary_propose_kinds, glossary_book_sync_apply. Gate SHUT.\nThe CONCRETE request — the one that names the exact kinds to create, and is world-setup by definition — is the one denied the tools. The vague one, which the model could not act on (it correctly asked WHICH kinds), got them.\nCONSEQUENCE, not inferred: with the batch tool invisible, the model reached for glossary_adopt_standards on 3/3 and suspended on ITS card — adopting SYSTEM standards, which would not create Faction or Artifact at all. It substituted a different tool with different semantics rather than saying it could not do what was asked.",
    "why_the_DQ_T3_stamp_did_not_help": "The stamp is emitted by tool_list/tool_load and the model called NEITHER on any run. This is the D-LAZY-TAIL-UNUSED interaction in full: a tool is withheld, the notice that would explain it lives behind a discovery call the model does not make, and the model substitutes. It is also the first NON-VOID instance of the DQ-T3 condition — three earlier attempts all found the gate open.",
    "status": "OPEN — product decision, recorded per the RUNBOOK rather than answered."
+  },
+  "DQ-T32": {
+   "question": "Should answerability match a declared synonym as a CONTIGUOUS phrase, or should the matcher tolerate pronoun substitution and interposed words? Options: (a) leave it contiguous and keep fixing declarations, which is measured to work but scales with every phrasing a user might invent; (b) relax to an in-order word subsequence with a bounded gap; (c) weight by word RARITY across the catalogue, so a distinctive word carries the match.",
+   "evidence": "Batch 12's natural experiment: perfect correlation between 'a declared synonym appears verbatim' and 'the tool was surfaced', 1/5 -> 5/5 once the declarations were widened. Every original miss was a pronoun substitution or an interposed word, never a different meaning.",
+   "why_it_is_a_decision": "_synonym_pattern's word-boundary work exists because 'cat' matched inside 'category' and cost a live run. Relaxing the matcher trades precision for recall across all 315 tools, and the CONSENT check now depends on answerability too — a read-only turn sets a standing write grant aside — so a widening changes consent behaviour, not just surfacing. Option (a) is shipped and working; (b) and (c) need measuring against the live catalogue.",
+   "status": "OPEN — recorded per the RUNBOOK rather than answered."
   }
  },
  "carried_observations": [
@@ -2663,6 +2669,14 @@
    "the_consequence_is_the_worse_half": "On 4 of the 5, the model ANSWERED IN PROSE what the tool exists to RECORD. 'Mark where he shows up' produced a description of where he shows up. 'Cite where it says he climbed' produced the quotation. The author is told the thing they asked to have recorded, and nothing is recorded. Same shape as propose_edit in batch 9, which offered three rewrites as chat text instead of an Apply card.",
    "why_this_is_the_architectural_finding": "The RUNBOOK's reason for batching is that five tools failing the same way NAMES THE INVARIANT while one names a symptom. This is that case: R1 answerability is the load-bearing path onto the wire (the lazy tail does not fire), and it matches declared synonyms as CONTIGUOUS phrases. A declaration is therefore only reachable by users who phrase it exactly as written.",
    "what_a_fix_must_not_do": "_synonym_pattern's word-boundary work exists because 'cat' matched inside 'category'. Relaxing to word SETS trades precision for recall across the whole catalogue, so it must be measured against the live 315-tool set before shipping — not reasoned about. The consent check now depends on answerability too (a read-only turn sets a standing grant aside), so a widening changes CONSENT behaviour as well as surfacing."
+  },
+  {
+   "id": "D-ANSWERABILITY-MISSES-WORD-ORDER — REMEDY MEASURED",
+   "date": "2026-08-14",
+   "state": "SURFACING HALF FIXED by declaration; the matcher question stays OPEN as DQ-T32",
+   "ab": "A/B with PROMPTS UNCHANGED — only the declarations moved, which is what makes it an A/B rather than a new scenario.\n  SURFACED, before -> after:\n    glossary_create_chapter_link  0/3 -> 3/3\n    glossary_entity_rename        0/3 -> 3/3   (and CALLED 3/3)\n    glossary_create_evidence      0/3 -> 3/3\n    kg_graph_query                0/3 -> 3/3   (and CALLED 3/3)\n    glossary_propose_translation  3/3 -> 3/3   (control, already verbatim)\n  Surfacing: 1 of 5 -> 5 of 5. Calling: 1 tool -> 2 tools.",
+   "what_it_proves": "Declaring the words a person types is the working lever for this class — the same one D-DECLARE-THE-USERS-WORD established, now with a controlled before/after on five tools. It does NOT require touching _synonym_pattern, so nothing about precision across the other 310 tools changed, and the consent path that now depends on answerability is untouched.",
+   "what_it_leaves": "Three tools are surfaced and still not called, and that residual is now VISIBLE because the surfacing failure stopped masking it: two are precondition chains (chapter_link re-proposes the entity; evidence needs an attr_value_id) and one is describe-instead-of-record. Those are separate defects, correctly separated only after this fix."
   }
  ],
  "progress": {

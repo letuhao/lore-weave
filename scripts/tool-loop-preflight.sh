@@ -61,7 +61,7 @@ done
 echo "--- PART 2: compiled services (binary literal from HEAD) ---"
 # svc|container|binary|source-glob-root|literal-introduced-by-the-service's-most-recent-commit
 probes=(
-  "glossary-service|infra-glossary-service-1|/glossary-service|services/glossary-service|KEEPS ITS CODE reserved"
+  "glossary-service|infra-glossary-service-1|/glossary-service|services/glossary-service|spelled it wrong"
   "book-service|infra-book-service-1|/book-service|services/book-service|FROM worlds old"
   "catalog-service|infra-catalog-service-1|/catalog-service|services/catalog-service|titleMatchesQuery"
   "agent-registry-service|infra-agent-registry-service-1|/agent-registry-service|services/agent-registry-service|surfaces where this workflow is advertised"

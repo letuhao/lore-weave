@@ -148,6 +148,10 @@ func (s *Server) RegisterEntityAttributeEditTools(srv *mcp.Server) {
 		Meta: lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, []string{
 			"rename entity", "change entity name", "fix entity name typo", "correct an entity's name",
 			"rename character", "rename place", "give an entity a new name",
+			// Added 2026-08-14 (batch 12): the declared phrases all pair "rename" with a NOUN, and a
+			// real user names the ENTITY instead — "rename Aldrik Vayne to Aldric Vane" surfaced this
+			// tool 0/3. The bare verb and the misspelling framing are what people actually type.
+			"rename", "i spelled", "spelled it wrong", "wrong spelling", "change the name",
 		}),
 	}, s.toolEntityRename)
 }

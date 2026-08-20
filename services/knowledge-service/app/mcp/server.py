@@ -847,6 +847,14 @@ async def kg_project_set_embedding_model(
             "who knows who",
             "connections in this story",
             "entity relationships",
+            # Added 2026-08-14 (batch 12). "how are they connected" missed "How are the CHARACTERS
+            # in this story connected" — the pronoun is the only difference, and answerability
+            # matches a synonym as a CONTIGUOUS phrase. Declare the shapes a person types.
+            "how are the characters connected",
+            "how are these connected",
+            "show me the relationships",
+            "who is connected to who",
+            "connected to each other",
         ],
         tool_name="kg_graph_query",
     ),
