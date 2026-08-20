@@ -1,0 +1,29 @@
+[
+  {
+    "tool": "glossary_propose_batch",
+    "args": {
+      "book_id": "e400e688-eb4f-4ab6-88c6-a12fe4da8b77",
+      "ops": []
+    },
+    "verdict": "refused_other",
+    "response": "MCP glossary_propose_batch error: ops must not be empty \u2014 pass the operations to batch"
+  },
+  {
+    "tool": "memory_search",
+    "args": {
+      "project_id": "93cbef15-c6cd-4264-9161-e6a2e92923b1",
+      "query": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP memory_search error: Error executing tool memory_search: {\"message\": \"project not found\"}"
+  },
+  {
+    "tool": "translation_start_extraction",
+    "args": {
+      "book_id": "e400e688-eb4f-4ab6-88c6-a12fe4da8b77",
+      "chapter_ids": []
+    },
+    "verdict": "refused",
+    "response": "MCP translation_start_extraction error: Error executing tool translation_start_extraction: not found or not accessible"
+  }
+]

@@ -71,7 +71,11 @@ VALIDATION_MARKERS = ("validating", "must be a uuid", "is required", "required:"
                       # that never reached the ownership check into a pass — the fifth time this
                       # family of false pass has been found in this instrument.
                       "invalid arguments for", "input should be", "is not a valid",
-                      "value is not a valid", "does not match")
+                      "value is not a valid", "does not match",
+                      # Business-level argument checks that still run BEFORE ownership. A tool
+                      # that refuses an empty list has not yet looked at whose book it is, so
+                      # scoring it `refused` would be the same false pass one layer up.
+                      "must not be empty", "cannot be empty", "at least one")
 
 
 def _placeholder(spec: dict):
@@ -87,8 +91,31 @@ def _placeholder(spec: dict):
     if isinstance(enum, list) and enum:
         return enum[0]
     t = spec.get("type")
+    # 🔴 `type` CAN BE A UNION LIST, AND A BARE `t == "array"` MISSES IT. glossary_propose_batch
+    # declares `ops` as `type: ["null", "array"]`; the probe compared against the LIST, fell
+    # through to "x", died in validation and was reported UNPROBED. Take the first non-null
+    # member — the same trap already recorded for an under-counting trigger that retired a real
+    # catalogue member.
+    if isinstance(t, list):
+        t = next((x for x in t if x != "null"), None)
+    # 🔴 `type` IS OFTEN ABSENT WHERE THE SHAPE IS OBVIOUS, AND THE FALLBACK WAS "x".
+    # glossary_propose_batch declares `ops` with `items` and NO `type`, so the probe sent the
+    # string "x", died in validation, and was reported UNPROBED — the third time this instrument
+    # has turned a call that never reached the ownership check into something that reads like a
+    # result. Infer from the KEYS the schema does carry, in the order JSON Schema itself implies.
+    if t is None:
+        if "items" in spec:
+            t = "array"
+        elif "properties" in spec:
+            t = "object"
+        elif isinstance(spec.get("anyOf"), list):
+            for alt in spec["anyOf"]:
+                if isinstance(alt, dict) and alt.get("type") not in (None, "null"):
+                    return _placeholder(alt)
     if t == "array":
         return []
+    if t == "object":
+        return {}
     if t in ("integer", "number"):
         return 1
     if t == "boolean":

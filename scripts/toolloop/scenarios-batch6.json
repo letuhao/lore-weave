@@ -1,0 +1,170 @@
+{
+  "_note": "Batch 6, derived from the ledger in RUNBOOK order. Prompts come from each tool's OWN _meta.synonyms and are then GROUNDED in the fixture so a real answer is distinguishable from a plausible one. glossary_propose_batch is one of the five INTENT-GATED setup tools, so this batch also carries the first non-void test of the DQ-T3 stamp: either the setup wording opens the gate (and the tool is provable) or it does not (and the stamp is readable).",
+  "scenarios": [
+    {
+      "id": "memory-search",
+      "tool_under_test": "memory_search",
+      "expect_tool": "memory_search",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What has been established about the Obsidian Trench so far?",
+      "prompt_source": "_meta.synonyms['what has been established'] — its own phrase, and deliberately NOT 'who is', which belongs to memory_recall_entity and cost batch 4 a scenario.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — Low Tide",
+            "body": "The Obsidian Trench was walkable only at low tide, and the Keep could not pretend to be an island once the water drew back. Aldric Vane counted the hours by the waterline."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}' AND title LIKE '%Low Tide%'",
+          "expect": "1",
+          "why": "The searchable substrate must exist. memory_search reads the project's stored knowledge INCLUDING chapter text, so the seeded chapter is the only place the low-tide fact can come from — which is what makes a correct answer attributable."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["low tide"],
+        "why": "The seeded chapter is the ONLY source for this. A reply carrying it read something; a reply about the Trench WITHOUT it is either unsourced or invented."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply asserts anything about the Trench beyond the seeded sentence (there is nothing else stored), OR memory_search is not called and the answer comes from the chapter being in context anyway — that last case is NOT a pass, it is the tool being unnecessary on this fixture, and must be recorded as such.",
+      "ship_audit": {
+        "empty_case": "OWED — a project with nothing about the topic must say so, not reach for the nearest entity.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "translation-start-extraction",
+      "tool_under_test": "translation_start_extraction",
+      "expect_tool": "translation_start_extraction",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Scan my chapters for entities and pull the characters and places into the glossary.",
+      "prompt_source": "_meta.synonyms['scan chapters for entities'] + ['extract characters'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {"genres": ["universal"], "kinds": ["character", "location"]}
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "ZERO entities before the run, so anything the extraction produces is attributable to THIS turn. With entities pre-seeded, a tool that wrote nothing and a tool that worked would leave the same store."
+        }
+      ],
+      "falsifier": "REFUTED IF: a cost-gated extraction spends LLM tokens with no confirm card, OR it reports entities extracted while glossary_entities gains no ai-suggested rows. EXPECTED LIVE OUTCOME is a CONFIRM CARD (ok=false, error=null, input_required) — a gated proposal, not a failure, per dump-calls.sql. Store unchanged WITHOUT approval is therefore the correct reading, not a miss.",
+      "ship_audit": {
+        "gate": "The card IS the audit — extraction spends tokens, so an ungated run would be the defect.",
+        "empty_case": "OWED — a book with no chapters must refuse rather than start an extraction over nothing.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-propose-batch",
+      "tool_under_test": "glossary_propose_batch",
+      "expect_tool": "glossary_propose_batch",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Set up several kinds and attributes at once for this book's ontology — I want to do it in one batch, not one at a time.",
+      "prompt_source": "_meta.synonyms['several kinds and attributes at once'] + ['batch of glossary changes'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the tool applies ontology changes WITHOUT a confirm card (its own description says MANY changes on ONE confirm), OR it invents `ops` the user never described. 🔴 CONTROL FIRST, BEFORE ANY CONCLUSION: this is one of the five INTENT-GATED setup tools. Read chat_messages.withheld_tools for stage='intent_gate'. If the count is >0 the tool was WITHHELD and the run measures the DQ-T3 stamp instead of the tool — a different finding, recorded as such. If it is 0 the setup wording opened the gate and the tool is genuinely under test.",
+      "ship_audit": {
+        "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "translation-job-status",
+      "tool_under_test": "translation_job_status",
+      "expect_tool": "translation_job_status",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Is my translation done yet? Check the job.",
+      "prompt_source": "_meta.synonyms['is my translation done'] + ['translation job'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "translation_start_job",
+          "args": {"book_id": "{book_id}", "chapter_ids": ["{chapter_id}"], "target_language": "vi"}
+        },
+        {
+          "wait": {
+            "db": "loreweave_translation",
+            "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+            "expect": "1",
+            "timeout": 180,
+            "poll": 2,
+            "why": "The job row must EXIST before the turn runs — translation_job_status takes a job_id and there is nothing to ask about otherwise. It need not FINISH; a running job is the honest thing to report on."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "Exactly one job, so 'the job' is unambiguous and a status reported for the wrong one would be visible."
+        }
+      ],
+      "falsifier": "REFUTED IF: the reply states a job status without translation_job_status being called on the turn — jobs_list carries a summary, and answering from it while claiming the job's detail is the registry-vs-live shape already filed as D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY. CONTROL: the tool REQUIRES job_id, which the model must obtain from a listing, so a correct turn is a two-call chain.",
+      "ship_audit": {
+        "absent_case": "OWED — a job_id that does not exist must be refused with one string that does not distinguish 'not yours' from 'no such job'.",
+        "tenancy": "OWED — another account's job_id must be refused."
+      },
+      "defects": []
+    },
+    {
+      "id": "world-list",
+      "tool_under_test": "world_list",
+      "expect_tool": "world_list",
+      "intent": "read",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What worlds do I have set up?",
+      "prompt_source": "_meta.synonyms['my worlds'] + ['worlds'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply lists worlds that do not exist on this account, OR it answers 'you have no worlds' while world_list returns rows (and the reverse). NOTE: world_list is account-scoped, so the throwaway book is irrelevant to its answer — the fixture exists only to keep the turn safe, and the DATA bar is read against the account's real world rows, which this turn must not modify.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no worlds must say so plainly.",
+        "tenancy": "OWED — it lists the worlds you OWN; another account's worlds must never appear."
+      },
+      "defects": []
+    }
+  ]
+}
