@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T48` — `/aif-verify` against this plan (§6.4), then `T49` ⛔. `T47` closed 2026-08-14: two of its four named artifacts were stale, a THIRD copy of the false *derived layer* claim lived in a file the row does not name, and the gate built to stop it recurring was **hollow until two bites failed**. ⚠️ `T35`/`T46` both wait on `recanon_honorifics --apply`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: lane D is at its end — `T49` ⛔ is a stop condition and `T48` cannot close while ten rows are open (its first criterion is *every task fully implemented*). T48's own point now STANDS as a gate: `plan-qc-evidence-gate` enforces pasted evidence on every commit, and its first cut produced **three false positives** because it looked only for fenced blocks. ⚠️ `T35`/`T46` wait on `recanon_honorifics --apply`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 34 of 68 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 35 of 70 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11937,6 +11937,82 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   Every task fully implemented, nothing silently dropped, tests green, **and every QC task's evidence
   actually pasted** — the evidence gate is the point, not the checkbox.
   (depends on T47)
+  ---
+  ⛔ **STILL OWED: T48 cannot close while any row is open.** Its first criterion is *every
+  task fully implemented*, and **ten rows remain**. The figures quoted below are QC-1's
+  evidence and this gate's own selftest — they are examples of the property being
+  enforced, **not** a claim that T48's audit has passed. What is done is the MECHANISM;
+  what is owed is the re-run, once the last row closes.
+
+  ### ✅ T48a 2026-08-14 — the evidence gate T48 was the promise to look for
+
+  ```
+  plan-qc-evidence-gate  --selftest 8/8, bitten     gate-wiring 103 -> 104
+  5 closed QC rows, every one carrying pasted evidence
+  ```
+
+  T48 states its own point: *"…**and every QC task's evidence actually pasted** — the evidence
+  gate is the point, not the checkbox."* **There was no such gate.** T48 was the promise to look
+  once, by hand, at the end — which is the shape that gets skipped when the end is busy.
+
+  A QC row is where the plan certifies something about the **system** rather than about a file:
+  a live smoke, a recall measurement, a contract review. Those are the cheapest claims to assert
+  and the most expensive to be wrong about, and a checkbox costs one character.
+
+  ### 🔴 THE FIRST VERSION OF THE CHECK PRODUCED THREE FALSE POSITIVES
+
+  It looked for fenced code blocks and reported **QC-0, QC-1 and QC-2 as evidence-free**. Rule 2
+  says run it, so I read QC-1 before writing that down:
+
+  ```
+  - [x] **QC-1** — Contract review + consumer live smoke — **`passed=9 failed=0`**
+    …
+    | leg | result |
+  ```
+
+  **The evidence was there in two forms the detector could not see** — a measured figure in the
+  row's own title and a results table underneath. Had I trusted the first run, T48 would have
+  opened three defects that do not exist, against rows that did the work properly.
+
+  **This plan pastes evidence three ways, and a detector fitted to one of them is green by
+  construction against the other two** — the exact failure the plan catalogues. All three count:
+
+  ```
+  fenced block     ```…```             command output
+  results table    | leg | result |    a smoke's legs, a comparison's arms
+  measured figure  4239 passed · passed=9 · p50 · exit 0 · 3/3 · 1826 rows
+  ```
+
+  ⚠️ **And a date is not a measurement.** `FIGURE_RE` deliberately does not match "any digit":
+  a row saying *"reviewed on 2026-08-14 per §6.4, decision 3 of 4"* is prose, and counting it
+  would make this gate pass on exactly the rows it exists to catch. A selftest case pins that.
+
+  **BITE + `--selftest` ×8:**
+
+  ```
+  25. strip QC-1's title figure and results table, leaving prose
+        FAIL — QC row(s) ticked with NO pasted evidence: QC-1
+  selftest: each of the three forms counts on its own (three separate cases — the
+            false-positive class, asserted rather than assumed); a date/§ number does NOT;
+            an OPEN QC row is not yet required to have evidence; a non-QC row is out of scope.
+  ```
+
+  **QC (a) gates:** `plan-qc-evidence-gate` OK + `--selftest` 8/8, wired into pre-commit;
+  `gate-wiring-gate` **103 → 104**; `plan-verify` PASS; `plan-progress-block --check` OK.
+  **QC (b) the seam:** N/A — a plan gate; no service code.
+  **QC (c) real data:** the plan itself is the data — 5 closed QC rows measured, and the
+  three-false-positive result is what set the rule.
+
+  ### ⛔ WHY T48 STAYS `[~]`
+
+  Its first criterion is *"every task fully implemented"* and **ten rows are open**. Ticking it
+  now would be the precise thing it exists to prevent — a QC row certifying work that is not
+  done. `plan-final-verification.py` already refuses that (*"no QC task certifies open work"*),
+  so the row could not be closed dishonestly even by accident.
+
+  What T48 owns is now **standing** rather than pending: the evidence property is enforced on
+  every commit instead of inspected once at the end. When the last row closes, T48's remaining
+  work is a re-run, not a re-audit.
 
 - [~] **T49** — Update `SESSION_HANDOFF.md` and archive the plan
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.4. Unfinished, not undecided.

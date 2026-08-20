@@ -110,6 +110,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # unanchored entities. Fixing three files is not a mechanism.
 "$PY" "$ROOT/scripts/ssot-claim-gate.py"
 
+# T48 — a ticked QC row must carry PASTED EVIDENCE, not a claim. QC rows certify things about
+# the SYSTEM (a live smoke, a recall measurement, a contract review): the cheapest claims to
+# assert and the most expensive to be wrong about. Counts fenced output, a results table OR a
+# measured figure -- a fenced-only check reported three false positives on its first run.
+"$PY" "$ROOT/scripts/plan-qc-evidence-gate.py"
+
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a
 # commit that touches no yaml at all. That is exactly how jobs-service landed 2026-06-15
