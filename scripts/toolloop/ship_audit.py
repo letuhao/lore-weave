@@ -220,7 +220,7 @@ def drop_project(project_id: str) -> None:
 
 
 def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
-          map_id: str | None = None) -> dict:
+          map_id: str | None = None, world_id: str | None = None) -> dict:
     """Call `tool` as the harness user against another user's book OR project. Refusal is the pass.
 
     The scope is chosen from what the tool DECLARES, never guessed: a tool naming `book_id` is
@@ -237,6 +237,16 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
                 continue
             spec = (schema.get("properties") or {}).get(r) or {}
             args[r] = _placeholder(spec)
+        return _call_and_judge(tool, args)
+    if "book_id" not in props and "world_id" in props and world_id:
+        # The FOURTH scope. world_map_create carries only world_id, so it read as `n/a` while the
+        # probe was already creating a world owned by the other account for the map arm below —
+        # the fixture existed and simply was not handed over.
+        args = {"world_id": world_id}
+        for r in required:
+            if r == "world_id":
+                continue
+            args[r] = _placeholder((schema.get("properties") or {}).get(r) or {})
         return _call_and_judge(tool, args)
     if "book_id" not in props and "map_id" in props and map_id:
         # 🔴 A THIRD SCOPE, AND WITHOUT IT THE MAP TOOLS READ AS `n/a`. world_map_add_marker and
@@ -258,7 +268,7 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
         return _call_and_judge(tool, args)
     if "book_id" not in props:
         return {"tool": tool, "verdict": "n/a",
-                "why": "declares neither book_id, project_id nor map_id — no tenancy argument"}
+                "why": "declares no book_id, project_id, map_id or world_id — no tenancy argument"}
     args = {"book_id": book_id}
     # Fill any other required scalar with a placeholder so the call reaches the ownership check
     # rather than dying in validation — a validation error is not a refusal and must not be
@@ -311,7 +321,7 @@ def main() -> int:
     out = []
     try:
         for t in [x.strip() for x in a.tenancy.split(",") if x.strip()]:
-            r = probe(t, book, cat, project, omap)
+            r = probe(t, book, cat, project, omap, world)
             out.append(r)
             print(f"  {r['verdict']:<14} {t}  {r.get('response', '')[:110]}")
     finally:

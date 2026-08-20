@@ -1,0 +1,39 @@
+[
+  {
+    "tool": "glossary_plan",
+    "args": {
+      "book_id": "aaae331b-abec-46ab-b04b-30069bc133d8",
+      "goal": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_plan error: book not accessible"
+  },
+  {
+    "tool": "world_map_create",
+    "verdict": "n/a",
+    "why": "declares neither book_id, project_id nor map_id \u2014 no tenancy argument"
+  },
+  {
+    "tool": "book_steering_list",
+    "args": {
+      "book_id": "aaae331b-abec-46ab-b04b-30069bc133d8"
+    },
+    "verdict": "refused",
+    "response": "MCP book_steering_list error: book not accessible"
+  },
+  {
+    "tool": "settings_list_models",
+    "verdict": "n/a",
+    "why": "declares neither book_id, project_id nor map_id \u2014 no tenancy argument"
+  },
+  {
+    "tool": "kg_propose_fact",
+    "args": {
+      "project_id": "1b8bc94f-6c03-485b-abbf-e93c083e73ea",
+      "fact_text": "x",
+      "fact_type": "decision"
+    },
+    "verdict": "refused",
+    "response": "MCP kg_propose_fact error: Error executing tool kg_propose_fact: {\"message\": \"project not found\"}"
+  }
+]
