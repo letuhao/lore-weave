@@ -1,0 +1,20 @@
+[
+  {
+    "tool": "settings_model_delete",
+    "args": {
+      "user_model_id": "fc78c236-d69e-4d8e-acf4-bc23c5f1e8e1"
+    },
+    "verdict": "refused",
+    "response": "MCP settings_model_delete error: not accessible"
+  },
+  {
+    "tool": "composition_error_block_edit",
+    "args": {
+      "project_id": "94ddedc1-58e1-4df4-9f89-1f308a295bc4",
+      "op": "list"
+    },
+    "verdict": "UNPROBED (validation)",
+    "why": "died in argument validation, so the tenancy check never ran \u2014 fix the args from the schema and probe again",
+    "response": "MCP composition_error_block_edit error: Error executing tool composition_error_block_edit: op=list requires chapter_id"
+  }
+]

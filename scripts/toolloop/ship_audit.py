@@ -75,7 +75,7 @@ VALIDATION_MARKERS = ("validating", "must be a uuid", "is required", "required:"
                       # Business-level argument checks that still run BEFORE ownership. A tool
                       # that refuses an empty list has not yet looked at whose book it is, so
                       # scoring it `refused` would be the same false pass one layer up.
-                      "must not be empty", "cannot be empty", "at least one")
+                      "must not be empty", "cannot be empty", "at least one", "requires ", "require one of")
 
 
 def _placeholder(spec: dict):
@@ -209,6 +209,36 @@ def make_other_users_map(book_db_owner: str = OTHER_USER) -> tuple[str, str]:
     return wid, mid
 
 
+REGISTRY_DB = "loreweave_provider_registry"
+
+
+def make_other_users_model() -> str:
+    """A registered model owned by the OTHER account, for the DESTRUCTIVE settings_model_delete."""
+    mid = str(uuid.uuid4())
+    # provider_credential_id is NOT NULL, and which credential it points at is irrelevant to this
+    # probe: the tenancy check reads owner_user_id on the MODEL row. Borrow any existing id rather
+    # than minting a second throwaway in a table full of the account's real credentials.
+    cred = oracle.db_query(REGISTRY_DB, "SELECT provider_credential_id FROM user_models LIMIT 1")
+    cred_id = cred[0][0] if cred and cred[0] else None
+    if not cred_id:
+        return ""
+    oracle.db_query(
+        REGISTRY_DB,
+        "INSERT INTO user_models (user_model_id, owner_user_id, provider_credential_id, "
+        "provider_kind, provider_model_name, alias, context_length) VALUES "
+        f"('{mid}', '{OTHER_USER}', '{cred_id}', 'lm_studio', 'loop-tenancy-probe', "
+        f"'{TITLE_PREFIX}tenancy-model', 4096)")
+    return mid
+
+
+def drop_model(user_model_id: str) -> None:
+    """Name AND owner guarded — this table holds the account's real registrations."""
+    q = user_model_id.replace("'", "''")
+    rows = oracle.db_query(REGISTRY_DB, f"SELECT alias FROM user_models WHERE user_model_id='{q}'")
+    if rows and rows[0] and str(rows[0][0]).startswith(TITLE_PREFIX):
+        oracle.db_query(REGISTRY_DB, f"DELETE FROM user_models WHERE user_model_id='{q}'")
+
+
 def drop_map(world_id: str, map_id: str) -> None:
     """Name-guarded, like every other teardown here."""
     for tbl, col, ident in (("world_maps", "name", map_id), ("worlds", "name", world_id)):
@@ -228,7 +258,8 @@ def drop_project(project_id: str) -> None:
 
 
 def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
-          map_id: str | None = None, world_id: str | None = None) -> dict:
+          map_id: str | None = None, world_id: str | None = None,
+          user_model_id: str | None = None) -> dict:
     """Call `tool` as the harness user against another user's book OR project. Refusal is the pass.
 
     The scope is chosen from what the tool DECLARES, never guessed: a tool naming `book_id` is
@@ -245,6 +276,18 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
                 continue
             spec = (schema.get("properties") or {}).get(r) or {}
             args[r] = _placeholder(spec)
+        return _call_and_judge(tool, args)
+    if "book_id" not in props and "user_model_id" in props and user_model_id:
+        # 🔴 THE FIFTH SCOPE, AND THE ONE THAT MATTERS MOST: settings_model_delete is
+        # ACCOUNT-SCOPED AND DESTRUCTIVE. Its tenancy argument is a user_model_id, so the
+        # book/project/map/world arms all miss it and it reported `n/a` — an unprobed DELETE
+        # boundary sitting inside a summary line reading "0 LEAK(S)". A tool that accepted
+        # another account's model id would destroy their registration.
+        args = {"user_model_id": user_model_id}
+        for r in required:
+            if r == "user_model_id":
+                continue
+            args[r] = _placeholder((schema.get("properties") or {}).get(r) or {})
         return _call_and_judge(tool, args)
     if "book_id" not in props and "world_id" in props and world_id:
         # The FOURTH scope. world_map_create carries only world_id, so it read as `n/a` while the
@@ -276,7 +319,7 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
         return _call_and_judge(tool, args)
     if "book_id" not in props:
         return {"tool": tool, "verdict": "n/a",
-                "why": "declares no book_id, project_id, map_id or world_id — no tenancy argument"}
+                "why": "declares no book/project/map/world/user_model id — no tenancy argument"}
     args = {"book_id": book_id}
     # Fill any other required scalar with a placeholder so the call reaches the ownership check
     # rather than dying in validation — a validation error is not a refusal and must not be
@@ -323,16 +366,19 @@ def main() -> int:
     book = make_other_users_book()
     project = make_other_users_project(book)
     world, omap = make_other_users_map()
+    omodel = make_other_users_model()
     print(f"other user's book: {book} (owner {OTHER_USER})")
     print(f"other user's project: {project}")
     print(f"other user's map: {omap}")
+    print(f"other user's model: {omodel}")
     out = []
     try:
         for t in [x.strip() for x in a.tenancy.split(",") if x.strip()]:
-            r = probe(t, book, cat, project, omap, world)
+            r = probe(t, book, cat, project, omap, world, omodel)
             out.append(r)
             print(f"  {r['verdict']:<14} {t}  {r.get('response', '')[:110]}")
     finally:
+        drop_model(omodel)
         drop_map(world, omap)
         drop_project(project)
         drop_book(book)
