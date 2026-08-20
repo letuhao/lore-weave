@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35` — the operator write is the last unblocked thing, and **it now WORKS**: T35f executed the apply path against a throwaway and found it BROKEN in four ways (a null-node MERGE that crashes mid-run, dropped relation predicates, incoming edges never re-pointed, `:EntityStatus` stranded by the re-key). All fixed and pinned by 3 integration rules. Run `recanon_honorifics` dry-run, review the 5 conflict groups, then `--apply` — that unblocks `T46` and `QC-6`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `T35`'s operator write — the last unblocked thing, and T35f proved the command WORKS (it was broken four ways). Run `recanon_honorifics` dry-run → `--apply`; that unblocks `T46` and `QC-6`. `A11` moved T17's ceiling **56 → 54** opportunistically (two benchmark modules onto `VectorStore`, no port growth; nine tests went red because they patched what the migration removed — A4's rule working). `T33` ⛔ · `T49` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 35 of 71 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 36 of 73 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -8359,6 +8359,88 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4228 passed — knowledge-service unit suite
   ```
 
+
+  ### ✅ A11 2026-08-14 — two benchmark modules onto `VectorStore`, and the tests had to move with them
+
+  ```
+  port-adoption-gate   ceiling 56 -> 54   port adopters 9 -> 11   floor 18 (unchanged)
+  unit 4239 passed
+  ```
+
+  🔧 **Rule 8, and the board is now what A10 predicted.** Both three-module clusters are
+  decided out, not undone:
+
+  ```
+  maintenance                3 modules  -> §1.2: destructive janitors stay ENGINE-SPECIFIC
+  find_passages_by_vector    3 modules  -> 2 of them pass `oversample_factor` and MEASURE the
+                                           backend; the port refuses to expose it (§1.3(b))
+  ...then 1 module per NEW port operation, for the rest
+  ```
+
+  ✅ **So A11 took the only modules that need no port growth at all**: `mode3_query_runner`
+  onto `VectorStore.search`, `fixture_loader` onto `VectorStore.upsert`.
+
+  🎯 **Why these two and not their siblings, stated because the split looks arbitrary and is
+  not.** `mode3_query_runner` measures **retrieval quality** — MRR over a golden set — which is
+  a property of the corpus and the embedding, so it must keep working when §3.1 finishes moving
+  passages to Postgres. `flat_knn_rawsearch` and `vector_backend_bench._from_neo4j` measure the
+  **backend**: ANN recall against exact cosine, and a per-engine corpus dump. A benchmark whose
+  subject is one engine is legitimately bound to it, and both need `oversample_factor` — an
+  artefact of Neo4j's inability to filter by tenant, which the port will not put in a contract.
+
+  ⚠️ **A BRACKET, not `.get`** — the A9 rule, applied again. The runner reads
+  `h.attributes["source_id"]`. `PgVectorStore` omits a key when it genuinely has no value, so a
+  consumer that needs one must RAISE rather than score every hit against a missing id. Verified
+  present in `_PASSAGE_ATTRS` on the pg adapter, in the Neo4j arm and in the fake before relying
+  on it.
+
+  ### 🔴 AND THE TESTS PATCHED THE THING THE MIGRATION REMOVED — which is A4's rule working
+
+  Nine tests went red the moment the imports moved:
+
+  ```
+  AttributeError: 'module' object at app.benchmark.mode3_query_runner
+                  has no attribute 'find_passages_by_vector'
+  ```
+
+  They monkeypatched the **repo function on the module**. A4 states the rule this proves:
+  *"tests that patched `neo4j_repos` are repointed at the port — a migration whose tests stay
+  green never moved the binding."* Nine failures are the evidence the binding moved.
+
+  Repointed at the **provider** (`get_vector_store`), which is the seam a real deployment has,
+  and the stubs now produce **real `VectorHit` objects** rather than the repo's
+  `PassageSearchHit`. That matters: a stub shaped like the old return would let these tests pass
+  against a runner that could not read a real adapter's output — the mocked-client-hides-the-
+  contract failure this repo has recorded before.
+
+  📐 **Two assertions moved to the port's vocabulary rather than being deleted**, which is where
+  a migration usually loses its coverage:
+
+  ```
+  kwargs["embedding_model"]  ->  kwargs["filter"].embedding_model   (a FILTER field: it
+  kwargs["project_id"]       ->  kwargs["filter"].project_id         narrows scope BEFORE
+  kwargs["limit"]            ->  kwargs["k"]                         similarity)
+  + kwargs["scope"] == "passage"
+  ```
+
+  And `fixture_loader`'s asserts read the **record** now, not a kwargs bag — the port's own
+  argument for a typed union: an `upsert(id, embedding, dim, model)` intersection would have
+  silently dropped `canon`, `source_lang` and `content_hash`.
+
+  **BITE:**
+
+  ```
+  28. put `from app.db.neo4j_repos.passages import upsert_passage` back into fixture_loader
+        -> [port-adoption-gate] direct binding GREW; "import a port instead, or lower the
+           ceiling in the same commit that justifies raising it"
+  ```
+
+  **QC (a) gates:** `port-adoption-gate` **56 → 54**, moved in this commit (rule 5), `--selftest`
+  PASS; unit **4239**; `plan-verify` PASS.
+  **QC (b) the seam:** N/A — two in-process modules moved onto a port they already had; no wire
+  contract. The provider's default adapter is the same Neo4j implementation the repo call
+  reached, so a migrated harness runs the same query through one extra method call.
+  **QC (c) real data:** N/A — a binding migration produces none.
 
   ### ✅ A10 2026-08-14 — spec §1.2 ships, and the differential finds **two more real bugs**
 

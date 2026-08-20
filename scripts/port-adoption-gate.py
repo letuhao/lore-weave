@@ -85,7 +85,12 @@ EXEMPT_DIRS = (
 # **56** (2026-08-14, A10) — `jobs/stats_updater.py` reconciles the project stats card
 # through `GraphStore.project_graph_stats` instead of `maintenance.count_nodes_by_label`,
 # and the two label vocabularies moved to `app/domain/graph_labels.py` (spec §1.2).
-MAX_CONCRETE_IMPORTERS = 56
+# **54** (2026-08-14, A11) — the two benchmark modules whose calls `VectorStore` already
+# covers: `mode3_query_runner` (retrieval-quality MRR) onto `search`, `fixture_loader` onto
+# `upsert`. NO port growth. Their two siblings stay on the repo deliberately — they measure the
+# BACKEND (ANN recall, a per-engine corpus dump) and need `oversample_factor`, which the port
+# refuses to expose because it is one engine's weakness rather than a domain concept.
+MAX_CONCRETE_IMPORTERS = 54
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.

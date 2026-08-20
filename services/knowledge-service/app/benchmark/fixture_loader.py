@@ -38,7 +38,7 @@ from uuid import UUID
 
 from app.clients.embedding_client import EmbeddingClient, EmbeddingError
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.passages import upsert_passage
+from app.ports.vector_store import PassageVectorRecord
 
 from .core import GoldenSet
 
@@ -93,7 +93,15 @@ async def load_golden_set_as_passages(
     NOT raise) per-entity embedding failures — a flaky provider
     shouldn't abort the whole fixture load, the harness will catch
     low-coverage at score time anyway.
+
+    T17 A11 — writes through `VectorStore`, not `neo4j_repos.passages`. A fixture loader that
+    could only write to one store would stop loading fixtures the day §3.1 finishes moving
+    passages to Postgres, and the benchmarks it feeds measure retrieval quality — a property
+    of the corpus, not of the engine holding it.
     """
+    from app.adapters.vector_store_provider import get_vector_store
+
+    vectors = await get_vector_store(session)
     count = 0
     for entity in golden.entities:
         entity_id = entity["id"]
@@ -128,8 +136,11 @@ async def load_golden_set_as_passages(
             )
             continue
 
-        await upsert_passage(
-            session,
+        # T17 A11 — through `VectorStore`. The record carries every field the repo call took,
+        # which is the point of the union type: a single `upsert(id, embedding, dim, model)`
+        # would have dropped `canon`, `source_lang` and the rest, and the adapter would need
+        # them back as kwargs on day one.
+        await vectors.upsert(PassageVectorRecord(
             user_id=user_id,
             project_id=project_id,
             source_type=BENCHMARK_SOURCE_TYPE,
@@ -141,7 +152,7 @@ async def load_golden_set_as_passages(
             embedding_model=embedding_model,
             is_hub=False,
             chapter_index=None,
-        )
+        ))
         count += 1
 
     logger.info(
