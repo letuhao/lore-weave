@@ -888,6 +888,17 @@ async def translation_start_extraction(
     caller_level = await _grant_resolver(bid, tc.user_id)
     effort, _capped = clamp_effort_to_grant(requested_effort, caller_level)
     cids = [_uuid(c) for c in chapter_ids]
+    # 🔴 A CONFIRM CARD MUST REPRESENT WORK. Measured 2026-08-14 on a book whose chapters had
+    # been removed: `chapter_ids=[]` minted a confirm_token whose own estimate read
+    # chapters_count 0, llm_calls 0, estimated_total_tokens 0 — a card asking the author to
+    # approve an extraction that would do nothing, and spend the one gate they get on a no-op.
+    # The sibling batch tool already refuses the equivalent ("ops must not be empty — pass the
+    # operations to batch"); this is that rule, applied to the input this tool actually needs.
+    # Named here rather than left to the worker, which would plan 0 batches and report success.
+    if not cids:
+        raise ToolError(
+            "chapter_ids must not be empty — name the chapters to extract from. Nothing was "
+            "proposed and nothing was charged. Use book_list_chapters to pick them.")
     profile = extraction_profile or {}
     # Estimate for the confirm card — a deterministic token projection over
     # (chapter count × the profile's kinds/attrs). The confirm effect re-runs the
@@ -905,6 +916,24 @@ async def translation_start_extraction(
             for k in kinds_metadata
             if k.get("auto_selected", True) and k.get("attributes")
         }
+    # 🔴 THE SAME INVARIANT, ONE LAYER DEEPER — AND THE FIRST GUARD DID NOT REACH IT.
+    # With chapters present but NO kinds adopted, `kinds_metadata` is empty, the default profile
+    # above builds to {}, and the estimate comes back chapters_count 1 / batches_per_chapter 0 /
+    # llm_calls 0 — a card for a run that will extract nothing. Measured on a fresh throwaway
+    # immediately after fixing the empty-chapter_ids case, which is why it is fixed here rather
+    # than filed: the first guard was the instance, this is the rule.
+    #
+    # The handler already knows this shape — the comment above the default-profile block says
+    # "without this the worker plans 0 batches -> 0 entities" — and then proceeds anyway when the
+    # book has nothing to build a profile FROM. Naming the real cause is what makes it actionable:
+    # the book needs an ontology before entities can be extracted into it.
+    if not profile:
+        raise ToolError(
+            "this book has no glossary kinds adopted yet, so an extraction would find nowhere "
+            "to put anything and would return no entities. "
+            "Nothing was proposed and nothing was charged. "
+            "Adopt standards first — glossary_list_system_standards to see them, "
+            "glossary_adopt_standards to adopt.")
     # #36 — real per-chapter sizes (best-effort) so the windowing planner isn't blind to
     # chapter length (the flat 8000 placeholder undercounted LLM calls on large chapters).
     from ..book_client import build_chapters_meta

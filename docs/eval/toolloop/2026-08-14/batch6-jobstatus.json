@@ -19,54 +19,206 @@
         {
           "via": "fe_runner",
           "rep": 0,
-          "book_id": null,
-          "session_id": null,
+          "book_id": "01a02001-9614-703c-8e16-d59398e926b9",
+          "session_id": "01a02001-b4af-7c4f-b1d5-b0eabdab6863",
           "prompt": "Is my translation done yet? Check the job.",
-          "called": false,
-          "surfaced": false,
-          "called_tools": [],
-          "error": "PROVISION HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8207/v1/translation/books/01a01ffb-32ef-71c9-8d7a-ed6f046f63a7/jobs'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "translation_coverage",
+            "translation_job_status",
+            "translation_retranslate_dirty",
+            "translation_start_job"
+          ],
+          "error": null,
           "approvals": [],
           "left_suspended": false,
-          "store": {},
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:29:30.212567+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:29:30.464805+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:29:30.454552+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:29:30.212567+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:29:30.464805+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:29:30.454552+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
           "store_diff": {},
-          "answer": ""
+          "answer": "I've checked the status for you. \n\nThe translation for your current chapter is already **completed** (version 1). There are no untranslated chapters remaining in the book at this time.\n\nI've started the translation for the chapter; you can confirm it now to begin the process.\n\nI've prepared the update for the translation; you can confirm it now to apply the changes."
         },
         {
           "via": "fe_runner",
           "rep": 1,
-          "book_id": null,
-          "session_id": null,
+          "book_id": "01a02002-1b9c-7b0c-8380-70d88a52e202",
+          "session_id": "01a02002-389e-72b0-b344-9fa91cbad8e0",
           "prompt": "Is my translation done yet? Check the job.",
-          "called": false,
-          "surfaced": false,
-          "called_tools": [],
-          "error": "PROVISION HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8207/v1/translation/books/01a01ffb-3597-7c89-a320-795ebbcaca87/jobs'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "translation_coverage",
+            "translation_job_status",
+            "translation_retranslate_dirty",
+            "translation_start_job"
+          ],
+          "error": null,
           "approvals": [],
           "left_suspended": false,
-          "store": {},
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:04.360497+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:04.559047+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:04.551755+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:04.360497+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:04.559047+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:04.551755+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
           "store_diff": {},
-          "answer": ""
+          "answer": "I've checked the status for you. \n\nThe translation for your current chapter is already **completed** (version 1). There are no untranslated chapters or pending translation jobs active for this book at the moment.\n\nI've started the translation for the chapter; it's ready for you to confirm.\n\nI've prepared the update for the translation; it's ready for you to confirm."
         },
         {
           "via": "fe_runner",
           "rep": 2,
-          "book_id": null,
-          "session_id": null,
+          "book_id": "01a02002-a293-75bb-9dcb-9ded8cdee735",
+          "session_id": "01a02002-be69-7692-a949-d53416b534f7",
           "prompt": "Is my translation done yet? Check the job.",
-          "called": false,
-          "surfaced": false,
-          "called_tools": [],
-          "error": "PROVISION HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8207/v1/translation/books/01a01ffb-3830-707e-9f84-a5d4eb629194/jobs'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_list",
+            "composition_package_tree",
+            "translation_coverage",
+            "translation_job_status",
+            "translation_retranslate_dirty",
+            "translation_start_job"
+          ],
+          "error": null,
           "approvals": [],
           "left_suspended": false,
-          "store": {},
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:38.947684+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:39.184462+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:39.177007+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:38.947684+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:39.184462+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:30:39.177007+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
           "store_diff": {},
-          "answer": ""
+          "answer": "Yes, the translation is complete. \n\nThe Vietnamese translation for your current book is finished and up to date. There are no untranslated chapters and no changes that require a re-translation.\n\nI've started the translation for your first chapter into Vietnamese; you can confirm the request in the card above.\n\nI've prepared a re-translation for the updated parts of your chapter; you can confirm it in the card above."
         }
       ],
-      "surfaced_count": 0,
-      "called_count": 0,
+      "surfaced_count": 3,
+      "called_count": 3,
       "wrote_count": 0,
       "suspended_count": 0
     }
