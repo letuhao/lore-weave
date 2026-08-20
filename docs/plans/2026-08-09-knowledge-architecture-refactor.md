@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T32` — the canon-at-chapter reader now conjoins liveness (T32a); **six `alive` readers left**, each the same `alive AND NOT gone-at-P` shape with its own surface's *absent means* answered by the reveal-axis table. ⚠️ `T35` is ⛔ **OWED AN OPERATOR WRITE**: 1826 nodes carry a stale `canonical_name` and fork on re-extraction; `recanon_honorifics` repairs 1820 / refuses 6 / loses 0 anchors, and needs a human to run `--apply` against the shared graph. Then `T33` ⛔.**
+**RESUME: `T33` ⛔ — a stop condition, so read its row before touching it. ⚠️ `T35` is **OWED AN OPERATOR WRITE**: 1826 nodes carry a stale `canonical_name` and fork on re-extraction; `recanon_honorifics` repairs 1820 / refuses 6 / loses 0 anchors and needs a human to run `--apply` against the shared graph. `T32` CLOSED 2026-08-14 — its "six remaining readers" were measured and none was an as-of read; `alive` survives (spec §6.1b).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**49 of 66 rows done · 17 open · 38 of 73 evidence blocks closed inside them.**
+**50 of 66 rows done · 16 open · 35 of 69 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (3/4) · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -4347,7 +4347,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   demotion has something to derive FROM when it happens. Stated in the migration file itself,
   where the next person to touch this will be standing.
 
-- [~] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
+- [x] **T32** — Widen `entity_facts_kind_chk`; add the **reveal axis** as a first-class read
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.1. Unfinished, not undecided.
   parameter; migrate the spoiler window onto *"read at reveal position P"* (decision Q8).
   Also: `invalidated_reason='episode_superseded'` for chapter revisions (decision Q6).
@@ -4362,10 +4362,15 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   ---
   **✅ Widened · ✅ Q6 · ✅ `alive` deprecated + pinned · ✅ the reveal axis (`D-T32-REVEAL-AXIS`
   is struck below; `app/spoiler_window.py`, 29 tests) · ✅ the producer · ✅ T32a migrates the
-  canon-at-chapter reader — ⬜ **one PO decision: does `alive` survive?** T32b measured the
-  "six remaining readers" and **none is an as-of read** (2 writes, a sort key, a query
-  param, a bulk enumeration, the schema). Exactly one site was ever migratable and it is
-  done; the gate now states a floor of 6 instead of implying 0.**
+  canon-at-chapter reader · ✅ `alive`'s disposition **stated** — it SURVIVES, spec §6.1b.**
+
+  **CLOSED 2026-08-14.** The row's last requirement was its own: *"drop the column **or
+  document why it survives**"*. T32b measured the "six remaining readers" and **none is an
+  as-of read** — two are the WRITES that set the column, one a sort key with no position, one
+  a caller's query param, one a bulk enumeration that must not be windowed, one the schema.
+  Exactly one site was ever migratable and T32a migrated it. `alive` and `life_status` answer
+  two different questions (*does the author want this hidden* vs *is this character dead at
+  P*), so the column survives and the gate states a floor of **6** instead of implying 0.
   ⚠️ *This line read "⬜ the reveal axis and the reader migration are deferred" until
   2026-08-14, while the reveal axis had shipped and its deferral was already struck through
   twenty lines down. Seventh row this week whose header outlived its own evidence.*

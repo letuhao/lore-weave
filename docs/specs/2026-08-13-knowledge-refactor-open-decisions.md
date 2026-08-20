@@ -464,6 +464,37 @@ roles next because the acceptance case turns on them; the producer after the sha
 the two axis tasks after the identity they hang on; QC-6 last because it is the live proof of
 all of it.
 
+### 6.1b `glossary_entities.alive` SURVIVES — **DECIDED (T32b, 2026-08-14)**
+
+T32's row required the column's disposition stated explicitly: *"drop the column **or document
+why it survives**"*. It survives, and the reason is that the two signals were never the same
+truth.
+
+* **`alive` answers "does the AUTHOR want this hidden?"** — an editable toggle on a curated
+  entity, the explicit-hide control.
+* **`life_status` answers "is this character dead in the STORY at position P?"** — extracted,
+  positioned, and half-open on the story axis.
+
+They are orthogonal. A living character an author has retired from the codex is `alive=false`
+with no `gone` fact; a character killed in chapter 20 is `alive=true` with one. The design's
+*"two sources of truth"* diagnosis was right about the SYMPTOM — seven sites filtering on a
+flag nobody sets — and wrong about the cause: the flag is not a broken liveness signal, it is
+a different signal that had no data because the feature is unused, not because it is wrong.
+
+**So the reader migration was never "seven sites", it was one.** T32b measured all seven: two
+are the WRITES that set the column, one is a SORT key with no position to rank at, one is a
+caller-supplied query PARAM, one is a bulk ENUMERATION that must not be story-windowed (an
+indexing pass that skipped dead characters would be a data loss dressed as a spoiler fix), and
+one is the schema. The single as-of READ is migrated (T32a), by CONJUNCTION —
+`alive = true AND NOT gone-at-P` — so both questions are asked and neither is answered by the
+other.
+
+⚠️ **What would change this decision:** evidence that authors *want* story-death to hide an
+entity from the editor view as well. That is a product observation, not a refactor finding, and
+`alive` is where it would land. `scripts/alive-column-deprecation-gate.py` keeps the census with
+`MIGRATABLE_FLOOR = 6` asserted, so the column cannot quietly grow a NEW reader without a
+decision.
+
 ### 6.2 Phase 7's engine order is `T42b → T42c → T42 → T42d → T43 → T41` — **DECIDED**
 Image, then bootstrap, then the adapter, then the gate that guards it, then the shadow that
 measures it, then the swap. **T43's floor may re-block a cutover after new port operations
