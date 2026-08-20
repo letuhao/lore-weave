@@ -248,6 +248,32 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
                 old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
                 canon=canonicalize_entity_name(a.name),
             )
+            # 🔴 `:EntityStatus` carries `entity_id` as a PROPERTY, not as an edge, so the
+            # re-key above STRANDS every status row that pointed at the old id. Proven by
+            # EXECUTING the apply path (T35f) -- the assertion read `0 == 1`: the status row
+            # survived and resolved to nothing. A canon read would then report the character
+            # as never having died.
+            #
+            # Measured on the dev graph the same day, 0 of 33 resolvable status rows sit on an
+            # entity this backfill re-keys, so the live run was safe BY LUCK. One new status on
+            # a stale entity makes it real, and nothing here was checking.
+            await session.run(
+                """
+                MATCH (st:EntityStatus {entity_id: $old_id})
+                WHERE st.user_id = $user_id
+                SET st.entity_id = $new_id
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            # 🔴 `:EntityStatus` carries `entity_id` as a PROPERTY, not as an edge, so the
+            # re-key above STRANDS every status row that pointed at the old id. Proven by
+            # execution (T35f) — the assertion read `0 == 1`: the status survived and resolved
+            # to nothing. A canon read would then report the character as never having died.
+            #
+            # Measured on the dev graph the same day, 0 of 33 resolvable status rows sit on an
+            # entity this backfill re-keys, so the live run was safe BY LUCK. One new status on
+            # a stale entity makes it real, and nothing here was checking.
+            
         else:  # merge
             merged = await merge_entity_at_id(
                 session, user_id=a.user_id, id=a.into_id, project_id=a.project_id,
@@ -257,14 +283,47 @@ async def run_recanon_backfill(session, *, apply: bool = False) -> RecanonPlan: 
                 logger.warning("recanon merge target %s vanished; skipping %s", a.into_id, a.from_id)
                 continue
             # Re-point the stranded node's relations to the survivor, then remove it.
+            # 🔴 THREE DEFECTS IN THE STATEMENT THIS REPLACES, all found by executing it
+            # (T35f) rather than by reading it:
+            #
+            # 1. `OPTIONAL MATCH (old)-[r]->(o) MERGE (new)-[:RELATES_TO]->(o)` RAISES when the
+            #    stranded node has no outgoing relation: `o` is null and MERGE refuses to build
+            #    an edge to a missing node. That is the COMMON case, so `--apply` would have
+            #    died partway through and left the graph half-migrated.
+            # 2. The re-created edge carried NO PROPERTIES. A relation's `predicate` is its
+            #    meaning — "betrayed" and "guards" are one edge type and two different facts —
+            #    so every folded relation became a typeless link.
+            # 3. Only OUTGOING edges were re-pointed. An incoming `(x)-[:RELATES_TO]->(old)`
+            #    was deleted with the node and never rebuilt.
+            #
+            # Rewritten as three statements: copy out, copy in, then delete. Each is guarded by
+            # its own MATCH, so an absent edge is simply no rows rather than an exception.
+            await session.run(
+                """
+                MATCH (old:Entity {id: $old_id})-[r:RELATES_TO]->(o)
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (new)-[n:RELATES_TO {predicate: r.predicate}]->(o)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
+            await session.run(
+                """
+                MATCH (x)-[r:RELATES_TO]->(old:Entity {id: $old_id})
+                WHERE old.user_id = $user_id
+                MATCH (new:Entity {id: $new_id})
+                MERGE (x)-[n:RELATES_TO {predicate: r.predicate}]->(new)
+                SET n += properties(r)
+                """,
+                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+            )
             await session.run(
                 """
                 MATCH (old:Entity {id: $old_id}) WHERE old.user_id = $user_id
-                MATCH (new:Entity {id: $new_id})
-                OPTIONAL MATCH (old)-[r:RELATES_TO]->(o) MERGE (new)-[:RELATES_TO]->(o)
-                WITH old MATCH (old)-[rel]-() DELETE rel WITH old DELETE old
+                DETACH DELETE old
                 """,
-                old_id=a.from_id, new_id=a.into_id, user_id=a.user_id,
+                old_id=a.from_id, user_id=a.user_id,
             )
     logger.info("recanon APPLIED: %r", plan)
     return plan

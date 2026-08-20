@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: lane D is at its end — `T49` ⛔ is a stop condition and `T48` cannot close while ten rows are open (its first criterion is *every task fully implemented*). T48's own point now STANDS as a gate: `plan-qc-evidence-gate` enforces pasted evidence on every commit, and its first cut produced **three false positives** because it looked only for fenced blocks. ⚠️ `T35`/`T46` wait on `recanon_honorifics --apply`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `T35` — the operator write is the last unblocked thing, and **it now WORKS**: T35f executed the apply path against a throwaway and found it BROKEN in four ways (a null-node MERGE that crashes mid-run, dropped relation predicates, incoming edges never re-pointed, `:EntityStatus` stranded by the re-key). All fixed and pinned by 3 integration rules. Run `recanon_honorifics` dry-run, review the 5 conflict groups, then `--apply` — that unblocks `T46` and `QC-6`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 35 of 70 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 35 of 71 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -8546,6 +8546,70 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4229 passed — knowledge-service unit suite
   ```
 
+
+  ### 🔴 T35f 2026-08-14 — **the operator command was BROKEN, and only executing it showed that**
+
+  ```
+  recanon apply-path   3 new integration rules vs a REAL Neo4j (throwaway :7995)
+  unit 4239 passed · recanon unit 11 passed
+  ```
+
+  T35e handed the PO a command to run against the shared graph — `recanon_honorifics --apply`,
+  1819 re-keys and 1 merge — on the strength of a planner with eleven unit rules. **The planner
+  is a pure function. `run_recanon_backfill` is marked `# pragma: no cover (real I/O)` and had
+  never been executed by anything.**
+
+  That is the third time in two days: T35e's collision guard the loader never fed, T39's
+  invalidation no test invoked, and now a write path proven only by the plan it produces. **A
+  planner is not an apply path.**
+
+  Executed against a throwaway seeded with the live shapes. **Three defects, none visible by
+  reading:**
+
+  | | defect | consequence |
+  |---|---|---|
+  | 1 | `OPTIONAL MATCH (old)-[r]->(o) MERGE (new)-[:RELATES_TO]->(o)` **raises** when `o` is null | the stranded node having no outgoing relation is the COMMON case, so **`--apply` dies partway and leaves the graph half-migrated** |
+  | 2 | the re-created edge carried **no properties** | a relation's `predicate` is its meaning — *"betrayed"* and *"guards"* are one edge type and two facts. Every folded relation became a typeless link |
+  | 3 | only **outgoing** edges were re-pointed | an incoming `(x)-[:RELATES_TO]->(old)` was deleted with the node and never rebuilt |
+
+  🔴 **AND THE RE-KEY STRANDS `:EntityStatus`.** It carries `entity_id` as a **property**, not as
+  an edge, so changing `Entity.id` leaves every status row pointing at an id that no longer
+  exists. The rule read `assert 0 == 1`: the status survived and resolved to nothing.
+
+  **Measured the same day: 0 of 33 resolvable status rows sit on an entity this backfill
+  re-keys — so the live run was safe BY LUCK, not by design.** One new status on a stale entity
+  makes it real, and a stranded status means a canon read reports a character as never having
+  died. Now re-pointed in the same transaction, and pinned.
+
+  ⚠️ **A fixture failure taught something the code did not say.** The first attempt seeded two
+  entities sharing one `glossary_entity_id` — *"two stale spellings of one glossary entity"*, the
+  case the merge branch exists for. Neo4j refused it: `:Entity(user_id, project_id,
+  glossary_entity_id)` is **UNIQUE**. So that case **cannot occur**; a merge only arises when at
+  least one side is UNANCHORED, which is exactly what the single surviving merge on the real
+  graph looks like. The fixture now says so.
+
+  **BITE ×2, one per fix:**
+
+  ```
+  26. remove the :EntityStatus re-point
+        E  the re-key STRANDED an :EntityStatus row — its entity_id still points at the old id
+  27. restore the original OPTIONAL MATCH … MERGE
+        E  Failed to create relationship, node `o` is missing
+           ^^ the operator's own command, reproduced as a crash
+  ```
+
+  **QC (a) gates:** unit **4239**; recanon unit **11**; the three new integration rules green
+  against a real Neo4j; `plan-verify` PASS.
+  **QC (b) the seam:** the migration IS the seam — it writes the graph directly. Exercised
+  end-to-end through `run_recanon_backfill(session, apply=True)` against a real database rather
+  than a mock, which is the only way the three Cypher defects could surface.
+  **QC (c) real data:** the fixtures are the live shapes (`規則之力` / `规則之力`, the partial
+  simplified conversion on 1826 nodes), and the `0 of 33` status-coupling figure is read from
+  the dev graph, READ-ONLY.
+
+  ⚠️ **Writes went to a THROWAWAY** (`bolt://localhost:7995`, disposable container). The dev
+  graph was read only. **The operator command still needs the PO to run it** — what changed is
+  that it now works.
 
   ### 🔴 T35e 2026-08-14 — **T35 does NOT close: the defect is live on 1826 nodes, and the fix would have destroyed six anchors**
 
