@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 36 of 75 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 36 of 76 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/29) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/30) · `T46` (0/2) · `T48` (1/2) · `T49`
 
-> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -2271,7 +2271,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   | **Evidence** | `maintenance.project_graph_stats` ×2; `delete_orphan_extraction_sources`, `invalidate_stale_quarantined_facts`, `reconcile_evidence_count_for_label`, `count_nodes_by_label`, `clear_embedding_model_tag`, `delete_project_nodes_by_label` ×1 each; plus constants `COUNTABLE_LABELS` and `PROJECT_GRAPH_LABELS` ×1 each. Eight modules import the package. |
   | **Mechanism** | `port-adoption-gate` still counts all eight as bound, so the debt stays on the board at its true size and cannot be mistaken for done. |
   | **To unblock** | Decide the CLASS: (a) the two constants move to the domain — cheap, A4/A6 shape, and frees nothing on its own; (b) `project_graph_stats` / `count_nodes_by_label` are arguably domain reads and could join the port; (c) the destructive janitors are engine housekeeping and probably belong to an admin surface that is deliberately NOT swappable. Three answers, not one. |
-  | **Retry when** | The PO decides whether a swappable graph port owns janitorial work at all. It is a scope question, not effort. |
+  | **Retry when** | ~~The PO decides whether a swappable graph port owns janitorial work at all. It is a scope question, not effort.~~ ✅ **ANSWERED — §1.2, `DECIDED · ✅ BUILT (A10, 2026-08-14)`, which names this deferral: *"Replaces `D-MAINTENANCE-IS-NINE-JANITORS`"*.** The nine split three ways: `project_graph_stats` joined the port (and only that one — `count_nodes_by_label`'s sole caller was replaced by it, and the port *grows by demand, not by inventory*); the two constants moved to `app/domain/`; and the **five destructive janitors stay engine-specific and out**, because *"a promise to delete orphan nodes in any graph engine is a promise about housekeeping we have no reason to keep"*. ⚠️ **This row had been advertising an owed PO decision for a week after it was made** — found by the 2026-08-21 all-deferrals sweep (QC-5 C9's method, applied to CLOSED rows too). Consistent with `A13`, which counts those five as permanently out. |
 
   ### 🔴 A5 2026-08-13 — **"sweep the remaining 61 in batches of ~8" cannot happen. Measured.**
 
@@ -6219,6 +6219,33 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   📐 **So the sweep closes rather than opens.** Between `A13` (T17's 54 binders), `T33a` (every
   `depends on`) and this (every `Retry when`), the three ways a blocker can hide in this plan
   have each been walked once. What remains is the two rule-6 writes and the sign-offs.
+
+  ### 🔴 WIDENED — and the fourth way was the one that still had something in it
+
+  The sweep above reads OPEN rows. **A CLOSED row can carry an open deferral**, so it was re-run
+  across all **35** deferral headings in the plan. Four lack a resolution marker; three are
+  genuinely parked (`D-QC5-ROLE-JUDGE-PRECISION` = spend · `D-NO-CI-BUILDS-ANY-SERVICE-IMAGE` =
+  *"out of this plan's scope"* · `D-QC5-FULL-FLOW-CAPTURE` = struck through and run 2026-08-11).
+  The fourth was not parked at all:
+
+  ⚠️ **`D-MAINTENANCE-IS-NINE-JANITORS` had been advertising an owed PO decision for a week
+  after that decision was made.** Its retry line read *"The PO decides whether a swappable graph
+  port owns janitorial work at all"*, while §1.2 — titled **"The port does not own janitorial
+  work — DECIDED · ✅ BUILT (A10, 2026-08-14)"** — opens by naming it: *"Replaces
+  `D-MAINTENANCE-IS-NINE-JANITORS`."*
+
+  🎯 **The near-miss worth recording is that a DIFFERENT PO ruling looked like it answered this
+  one.** T17 carries *"✅ DECIDED BY THE PO 2026-08-13: **the port owns EVERYTHING**"*, which
+  reads as settling janitors too. It does not: its own `To unblock` names the question it
+  answered — *"does `GraphStore` own paginated browse queries and correction writes?"* — and
+  destructive housekeeping is a third class §1.2 rules out separately. **Two rulings, adjacent
+  wording, different scopes**; reading the first as covering the second would have re-opened
+  five modules `A13` counts as permanently closed. Diagnosed from the two `To unblock` lines
+  rather than from the headline (rule 13).
+
+  📐 **No gate number moves with this**, and that is checked rather than assumed:
+  `deferral-gate` reports **23 tracked before and after** — this deferral is not in its
+  registry, which is itself the reason it could sit stale without anything going red.
 
   **BITE — N/A, and its control:** no code changed; this is a parse of the plan against itself.
   It earns belief the same way `T33a` did — by producing a **negative** on most of what it
