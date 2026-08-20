@@ -80,6 +80,15 @@ command -v python >/dev/null 2>&1 || PY=python3
 # EXEMPT this surface (it is the authored source, not the bi-temporal substrate), so before
 # this gate existed T38 had no check that could fail — see D-T38-MECHANISM-IS-VACUOUS.
 "$PY" "$ROOT/scripts/authored-catalog-reader-gate.py"
+# T25 -- the soak's OFFLINE selftest. Wired because the thing it guards is the plan's own
+# named worst case, realised: T25a warned that "a gate that reads zero because nothing is
+# wired looks exactly like a gate that reads zero because nothing failed", and on 2026-08-21
+# BOTH stacks were in that state -- the dev service had the metric family absent entirely
+# (KNOWLEDGE_VECTOR_DB_URL unset since a 08-14 container recreate) while D-T25B-SOAK recorded
+# the soak as running since 08-12, and lw-iso had the family present with zero writes. The
+# live check needs a running stack, so only the selftest runs here; what it pins is that
+# DISARMED and ARMED_IDLE never collapse into SOAKING.
+"$PY" "$ROOT/scripts/soak-armed-gate.py" --selftest
 # B1's SUBSTITUTABILITY half, which graph-port-gate does not cover: that gate enforces
 # Cypher-in-adapters, this one enforces that call sites go through the PORT. A module can
 # call neo4j_repos with no Cypher of its own, pass that gate, and still break on an engine

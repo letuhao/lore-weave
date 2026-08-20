@@ -263,6 +263,26 @@ QC-3, not deferred.
 
 ---
 
+🔴 **The dual-write soak was never running, and the record said it was (2026-08-21, T25c).**
+`D-T25B-SOAK` marked its first half DONE on 2026-08-12 and its second half *"wall-clock and
+cannot be worked, only waited"*. Measured: `KNOWLEDGE_VECTOR_DB_URL` is unset on the dev stack,
+the `knowledge_vector_dual_write_total` family is **absent** from `/metrics` (the store is never
+constructed, so nothing registers), and the secondary holds **0 rows in all four vector tables**
+against 1051 live passages. `infra/docker-compose.yml:1234` passes the variable through from the
+invoking shell, and the container was recreated 2026-08-14.
+
+**A wait is a claim in the present tense and gets checked like any other number.** Nine days
+elapsed against a switch that was off, and `secondary_failed = 0` read the same throughout.
+`scripts/soak-armed-gate.py` now separates the states that were indistinguishable — **DISARMED**
+(family absent), **ARMED_IDLE** (present, no writes), **SOAKING**, **FAILING** — so the only
+passing state requires writes to have actually landed. Its bite is the design: a probe that
+counts `prometheus_client`'s registration-time `_created` gauges reads an unwired service as 1.78
+billion successful writes.
+
+⚠️ Restarting the soak writes real vectors to a real Postgres on a shared stack — `OD-2`'s
+operational half, re-opened, and a rule-6 write. The ask is narrower than before: the variable
+must **outlive a container recreate**, or this recurs.
+
 ### 3.3 The vector cutover is PER SCOPE — **DECIDED (T25, 2026-08-13)**
 
 Found by building it: `test_the_provider_keeps_neo4j_as_primary`, a tripwire T25b wrote for

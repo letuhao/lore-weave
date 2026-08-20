@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: 🔴 `recanon_honorifics --apply` is now the whole critical path, and T46b reclassified it from sequencing to a LIVE DEFECT. 1826 of 4866 live entities carry a stale `canonical_name`; **1819 fork on re-extraction** — reproduced on lw-iso through the real `persist-pass2`: two nodes, one character. It has NOT fired yet (live graph groups 4872 nodes into 4872 groups, largest 1), so it is armed, not fired, and fires when extraction re-runs on those books. The repair is rehearsed end-to-end (T35g: 1819 re-keyed / 1 merged / 6 refused / 0 anchors lost, `actions=0` on a second pass) — what is missing is the WRITE, which lands on the shared dev graph and is the PO's under rule 6. It unblocks `T46`'s merge. `T35` CLOSED · `QC-6` identity half proven live (and it found a duplicate-minting defect, fixed) · `QC-3` ⏸ and `QC-5` ⏸ owe only a sign-off · `T33` ⛔ · `T49` ⛔.**
+**RESUME: two PO actions now gate everything, and BOTH were recorded as already done. 🔴 `OD-2` RE-OPENED (T25c): the dual-write soak **was never running** — `KNOWLEDGE_VECTOR_DB_URL` unset on the dev stack, the metric family ABSENT from `/metrics`, **0 rows in all four vector tables** against 1051 live passages; compose reads it from the invoking shell and the 2026-08-14 recreate dropped it. Nine days of "wall-clock" against a switch that was off. Set it **so it outlives a recreate**. 🔴 `recanon_honorifics --apply` (T46b): 1819 live entities fork on re-extraction, reproduced live; armed, not yet fired; repair rehearsed end-to-end in T35g. Both are writes to non-throwaway databases (rule 6). `scripts/soak-armed-gate.py` now makes DISARMED / ARMED_IDLE / SOAKING distinguishable so a zero cannot be read as a pass again. `T35` CLOSED · `QC-6` identity half proven live · `QC-3` ⏸ and `QC-5` ⏸ owe only a sign-off · `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 34 of 71 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 35 of 73 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (11/27) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (11/27) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -704,7 +704,7 @@ answered and are kept for the record (X1, X2, and T25b's two — all implemented
 | # | decision | who | what is blocked | cost of not deciding |
 |---|---|---|---|---|
 | **OD-1** ✅ **ANSWERED AND DELIVERED 2026-08-12** (PO: do the real adoption) — T30 is closed; `D-GLOSSARY-EVENTS-NO-SOT` discharged. | **T30's registry half.** Registering the nine `glossary.*` events the `canon.*` way adds a **sixth** parallel list rather than removing the five that exist. Genuine adoption = glossary-service imports `contracts/events` (a Go module dependency + a rewrite of every emit site), which `canon.go` itself records as a separate sub-program. **Scope call.** | PO | T30 stays `[~]`. Nothing downstream. | Low — the property RT-10 wanted (a producer rename cannot land silently) already ships and is gated. |
-| **OD-2** ✅ **ANSWERED AND DISCHARGED 2026-08-12** (PO: set it) — done, evidence in the run-state block; the soak's remaining half is wall-clock. | **Set `KNOWLEDGE_VECTOR_DB_URL` on the shared dev stack** and let the secondary soak. Operational, about a shared environment. | whoever owns the dev stack | `D-T25B-SOAK` → the three vector read sites → the rest of the T25b cutover. | Medium — the cutover cannot be *argued for* at all, and the failure counter reads zero for the wrong reason. |
+| **OD-2** 🔴 **RE-OPENED 2026-08-21 (T25c) — the discharge did not survive a container recreate.** It was answered on 2026-08-12 and the secondary's schema proves it was genuinely enabled, but `infra/docker-compose.yml:1234` reads the variable from the invoking shell (`${KNOWLEDGE_VECTOR_DB_URL:-}`), so the 2026-08-14 recreate dropped it. Measured today: family ABSENT on `:8216`, **0 rows in all four vector tables**. The ask is now narrower — set it **so that it outlives a recreate** (compose default, `.env`, or a documented operator step), because setting it in a shell reproduces exactly this. Was: *✅ ANSWERED AND DISCHARGED 2026-08-12 (PO: set it) — done, evidence in the run-state block; the soak's remaining half is wall-clock.* | **Set `KNOWLEDGE_VECTOR_DB_URL` on the shared dev stack** and let the secondary soak. Operational, about a shared environment. | whoever owns the dev stack | `D-T25B-SOAK` → the three vector read sites → the rest of the T25b cutover. | Medium — the cutover cannot be *argued for* at all, and the failure counter reads zero for the wrong reason. |
 | **OD-3** — still open, still owed by me first. | **QC-3's POST-REVIEW sign-off** (⏸). Evidence is gathered; `/review-impl` and the real-corpus recall comparison are owed by me first. | me, then PO | The vector cutover only — which OD-2 independently blocks. | Low today, because OD-2 blocks the same gate. |
 
 **Not open, though the prose reads as if it were:** RT-2 (dissolved by §9 **O7** at sealing) ·
@@ -1096,7 +1096,7 @@ argument order changed … close D-T25B-PG-ANCHOR-SCORE first".)* 4149 unit test
 | **Evidence** | `app/adapters/vector_store_provider.py` returns a plain `Neo4jVectorStore` when the env var is unset (T25a, asserted by test). Consequently `vector_dual_write_total{outcome="secondary_failed"}` reads **0** — and as T25a's own docstring puts it, *a gate that reads zero because nothing is wired looks exactly like a gate that reads zero because nothing failed*. The counter is not evidence of health here; it is evidence of absence. |
 | **To unblock** | Someone with authority over the dev stack sets `KNOWLEDGE_VECTOR_DB_URL`, and the secondary then takes real traffic for long enough that a zero on the failure counter means something. **This is an operational decision about a shared environment, not a code change** — which is exactly why it is not mine to make unilaterally. |
 | **Mechanism** | `tests/unit/test_vector_primary_owns_anchor_score.py::test_the_provider_keeps_neo4j_as_primary` asserts on the **constructed** store that Neo4j is primary and that `DualWriteVectorStore(primary, secondary)` keeps that argument order. Any attempt to begin the read cutover reds it with a message naming this deferral. A note in a file nobody is editing would not have done that; T27 already proved that failure mode here, shipping handlers that could never run. |
-| **Retry when** | ⚠️ **First half DONE 2026-08-12** (variable set, dual-write live, writes proven to reach the secondary). The second half is wall-clock and cannot be worked, only waited: `KNOWLEDGE_VECTOR_DB_URL` is set on the dev stack **and** the soak has produced a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Both halves are required; the second without the first is the trap above. |
+| **Retry when** | 🔴 **THE FIRST HALF IS NOT DONE — MEASURED 2026-08-21 (T25c).** `KNOWLEDGE_VECTOR_DB_URL` is UNSET on the dev stack and the `knowledge_vector_dual_write_total` family is ABSENT from its `/metrics` entirely; the secondary holds **0 rows in all four vector tables** against 1051 passages in the graph. `infra/docker-compose.yml:1234` passes the variable through from the invoking shell (`${KNOWLEDGE_VECTOR_DB_URL:-}`), and the container was recreated 2026-08-14 — two days after this row recorded the variable as set. So the second half was never wall-clock: **nothing was running to wait for.** `scripts/soak-armed-gate.py` now makes the two zeros distinguishable (DISARMED vs ARMED_IDLE vs SOAKING). Was: *First half DONE 2026-08-12 (variable set, dual-write live, writes proven to reach the secondary)*. The second half is wall-clock and cannot be worked, only waited: `KNOWLEDGE_VECTOR_DB_URL` is set on the dev stack **and** the soak has produced a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Both halves are required; the second without the first is the trap above. |
 
 **PO decisions (both ANSWERED, kept for the record):**
 
@@ -3577,7 +3577,104 @@ vectors and validity intervals live in different stores.
   measurement, not its verdict.** It was right when written — nothing held a `VectorStore`,
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
-  needs is not code: the soak, and QC-3's rebuild measurement above 65 536 vectors.
+  needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ### 🔴 T25c 2026-08-21 — **the soak was never running**, and the plan spent nine days waiting for it
+
+  ```
+  soak-armed-gate --selftest        7/7, bitten          gate-wiring 104 -> 105
+  dev  :8216  DISARMED   the knowledge_vector_dual_write_total family is ABSENT
+  iso  :28216 ARMED_IDLE the family is present and 0 writes have reached it
+  secondary loreweave_knowledge_vectors: passage_1024 0 · entity_1024 0 · 384 0 · 1536 0
+  dev graph: 1051 passages
+  ```
+
+  T25 ③ owes *"the soak, and QC-3's rebuild measurement above 65 536 vectors"*, and
+  `D-T25B-SOAK` says its second half *"is wall-clock and cannot be worked, only waited"*, with the
+  **first half DONE 2026-08-12** — *variable set, dual-write live, writes proven to reach the
+  secondary*. A wait is a claim about the present tense, so rule 2 applies to it: **read the
+  stack.**
+
+  🔴 **`KNOWLEDGE_VECTOR_DB_URL` is unset on the dev stack, and the metric family is absent
+  entirely.** Not zero — *absent*. `prometheus_client` registers the counter when the store is
+  constructed, and with the variable unset the factory returns a plain `Neo4jVectorStore`
+  (T25a), so nothing registers. 621 other `knowledge_` metric lines are exported; this family
+  has none.
+
+  🎯 **Diagnosed, not inferred** (rule 13):
+
+  ```
+  infra/docker-compose.yml:1234   KNOWLEDGE_VECTOR_DB_URL: ${KNOWLEDGE_VECTOR_DB_URL:-}
+  infra-knowledge-service-1 created  2026-08-14T09:50:05Z
+  D-T25B-SOAK "variable set"          2026-08-12
+  ```
+
+  Compose **passes the variable through from whoever's shell ran `up`, defaulting to empty**. The
+  2026-08-12 setting lived in a shell session; the container was recreated two days later without
+  it and the soak stopped without a sound.
+
+  📊 **And it wrote nothing even while it was on.** The secondary database exists with the full
+  schema — so it genuinely *was* enabled once, exactly as recorded — and holds **0 rows in all
+  four vector tables**, against 1051 passages in the graph. `D-T25B-SOAK`'s own second-half
+  criterion is *"a non-trivial write count with `secondary_failed` observed at zero **while writes
+  were demonstrably flowing**"*. The write count is zero, so the clause fails at its first term,
+  and `secondary_failed = 0` was never evidence of anything.
+
+  ⚠️ **lw-iso is in the second version of the same state**: the family is present (the variable is
+  set there) but `knowledge-pg` **does not resolve** on the iso network, and every counter is 0.
+  Two stacks, two different reasons, one indistinguishable "0 failures".
+
+  ### ✅ THE GATE THAT MAKES THE TWO ZEROS UNCONFUSABLE
+
+  This is T25a's own warning, realised: *"a gate that reads zero because nothing is wired looks
+  exactly like a gate that reads zero because nothing failed. That is the most dangerous shape in
+  this whole phase and it must not be read as a pass."* Nobody could act on it, because the
+  distinction was a paragraph rather than a check. **`scripts/soak-armed-gate.py`** makes it a
+  verdict:
+
+  ```
+  DISARMED    family ABSENT      -> the store was never constructed. Not running.
+  ARMED_IDLE  family present, 0  -> wired, but `secondary_failed = 0` is vacuous.
+  SOAKING     writes landed, 0 failures   <- the only passing state
+  FAILING     secondary_failed > 0
+  ```
+
+  **BITE 40 + `--selftest` ×7:**
+
+  ```
+  40. let the family probe count the `_created` gauges
+        FAIL  only the _created gauges …: expected DISARMED, got SOAKING
+  ```
+
+  🎯 **That bite is the whole design in one line.** `prometheus_client` emits a `_created` gauge
+  for every counter *at registration*, carrying a unix timestamp — so a probe that accepts them
+  reads an unwired service as **1.78 billion successful writes**. The regex therefore matches a
+  real sample line only, and a selftest case pins it. A seventh case asserts the thing no counter
+  can assert alone: **`DISARMED` and `ARMED_IDLE` must never be the same verdict.**
+
+  ⚠️ **Offline in the hook, deliberately.** The live check needs a running stack, and a gate that
+  only runs with a server up is a gate that does not run — so pre-commit runs `--selftest` and the
+  live verdict is a cycle's QC control, the same split the cast-prompt eval uses.
+
+  📐 **The other half of ③'s blocker was already discharged and the row did not know.** T25 says
+  *"QC-3 owes a rebuild measurement above 65 536 vectors; until then there is no defensible RTO"*.
+  **QC-3a delivered it on 2026-08-10** — `docs/measurements/2026-08-10-diskann-rebuild-scale.md`,
+  marked *Complete*, eight points across the threshold at two memory settings, including 70 000
+  rows at 502.9 s / 252.9 s. Corrected in the row; the finding there was that
+  `maintenance_work_mem` binds four times earlier than the parallel-build threshold.
+
+  ⛔ **STILL OWED, and it is not mine to take.** Restarting the soak means setting
+  `KNOWLEDGE_VECTOR_DB_URL` on the **shared dev stack** and letting real vectors accumulate in a
+  real Postgres — which is `OD-2`'s operational half by name, and a write to a non-throwaway
+  database under rule 6. What this batch changes is that the request is now specific: **the
+  variable must outlive a container recreate**, or the next nine days go the same way.
+
+  **QC (a) gates:** `soak-armed-gate --selftest` 7/7 + bite 40; `gate-wiring-gate` **104 → 105**,
+  all wired or exempt; `plan-verify` PASS; `plan-row-honesty-gate` OK.
+  **QC (b) the seam:** the verdict was taken against **two live stacks** — dev `:8216` and iso
+  `:28216` — plus the secondary Postgres read directly, which is the only witness to the row count.
+  **QC (c) real data:** 0 rows in four live vector tables against 1051 live passages, and the
+  dev service's own `/metrics` exposition.
 
   **① The backup path ✅** — [`scripts/vector-backup-drill.sh`](../../scripts/vector-backup-drill.sh),
   evidence in [`docs/measurements/2026-08-10-vector-restore-drill.md`](../measurements/2026-08-10-vector-restore-drill.md).
