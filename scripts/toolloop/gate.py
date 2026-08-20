@@ -79,6 +79,28 @@ class Gate:
         errs = [r for r in runs if r.get("error")]
         self._check(not errs, f"[{t['tool']}] LIVE clean",
                     f"{len(errs)} run(s) errored; a transport failure is not a model result")
+        # 🔴 THE GATE COULD NOT TELL "THE TOOL RAN" FROM "THE TURN RAN".
+        #
+        # Until 2026-08-14 the LIVE bars were: enough repeats, the real path, no transport error.
+        # Every one of those is a property of the TURN. None asks whether the tool under test was
+        # ever invoked, so a batch in which the model used a different tool entirely passed LIVE
+        # outright — and the batch that exposed it is this file's own predecessor:
+        # `settings_provider_inventory` called 0/3 (the model answered from settings_list_models)
+        # and `composition_conformance_run` called 0/3, both scoring three green LIVE checks.
+        #
+        # That is the loop's own headline defect pointed at its own instrument: a check that
+        # reports success without looking at the thing it claims to verify. It matters more here
+        # than anywhere else, because this gate is the authority a conclusion rests on.
+        #
+        # Deliberately >= 1 rather than all K: the consumer is stochastic and a 1-of-3 call is a
+        # real finding worth concluding on, so the COUNT is put in the message either way. What
+        # cannot stand is 0 — a tool never invoked has not been exercised, whatever the turn did.
+        # A gated proposal (a confirm card) counts: the tool ran and its gate held.
+        called = int(t.get("called_count") or 0)
+        self._check(
+            called >= 1, f"[{t['tool']}] LIVE called ({called}/{len(runs)})",
+            "the tool under test was never invoked on any run — the model answered by another "
+            "route, so nothing here is evidence about THIS tool")
 
     def data(self, t: dict) -> None:
         """The store bar, checked on EVERY run rather than on one aggregate pair.

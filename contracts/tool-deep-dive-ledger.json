@@ -1524,9 +1524,9 @@
    "evidence": "docs/eval/toolloop/2026-08-14/batch2.json (+ batch2-empty.json)",
    "via": "fe_runner, K=3, throwaway book per repeat, seed_assert verified, approvals=none",
    "gate": "scripts/toolloop/gate.py check -> 45 passed, 0 failed",
-   "evidence_class": "gate-backed",
-   "state": "proven",
-   "note": "Surfaced 3/3, 0 errors, plan_run written 3/3. Called 0/3 — the model reaches plan_propose_spec, which produces the run this tool would compile; that is sequencing, not a miss, and it is recorded rather than waived. Absent case is clean: no arc, no spec, called 0/3, store UNCHANGED 3/3 — nothing fabricated, nothing written. Tenancy refused."
+   "evidence_class": "REOPENED — not evidence-backed",
+   "state": "in_cycle",
+   "note": "🔴 CONCLUSION WITHDRAWN 2026-08-14. Marked `proven` and `gate-backed`, but its own evidence file records called=0/3 in the main batch AND 0/3 in the empty-case run. The tool was never invoked on any run, so nothing in that batch is evidence about THIS tool. It passed only because the gate's LIVE bars asked about the TURN (enough repeats, real path, no transport error) and never about the tool. The missing bar is now in the gate. PRIOR NOTE, kept because the work happened: Surfaced 3/3, 0 errors, plan_run written 3/3. Called 0/3 — the model reaches plan_propose_spec, which produces the run this tool would compile; that is sequencing, not a miss, and it is recorded rather than waived. Absent case is clean: no arc, no spec, called 0/3, store UNCHANGED 3/3 — nothing fabricated, nothing written. Tenancy refused."
   },
   "glossary_list_system_standards": {
    "cycle": "batch-2",
@@ -1606,14 +1606,14 @@
    "note": "BLOCKED, not proven. Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read instead of loading the schema. Plausible and NOT sourced from the contract this tool exists to expose. The LIVE bar is not met: the tool was never exercised by the model. Cause recorded as D-TOOL-LOAD-NOT-USED-FOR-SCHEMA and it is NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. Store unchanged and tenancy not-applicable (it loads schemas, identical for every caller)."
   },
   "memory_recall_entity": {
-   "state": "proven",
+   "state": "in_cycle",
    "provider": "knowledge",
    "tier": "R",
    "cycle": "batch4-rest",
    "group": "C",
    "evidence_class": "gate_backed",
    "counts_toward_release": true,
-   "note": "CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase ('who is'). Store unchanged 3/3. THE v1 MISS WAS MY SCENARIO, NOT THE PRODUCT: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. ANSWER UNVERIFIED, stated rather than glossed: all three runs left the turn SUSPENDED on a Tier-A card, so no final prose was produced and the seeded-fact check ('cartographer') could not be evaluated. See OBS-READ-TURN-REACHES-FOR-WRITES."
+   "note": "LIVE PASSED, NOT YET CONCLUDED — the gate refused the batch and the gate is the authority. Called 3/3 from 'Who is Mira Solene?' (its OWN declared phrase), store unchanged 3/3, and every LIVE/DATA check passed. It FAILS `SHIP exercised`: I wrote empty_case and tenancy as OWED, and a ship_audit records what was EXERCISED, not what is intended. I marked this proven ahead of the gate; that was the error the gate exists to catch. CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase ('who is'). Store unchanged 3/3. THE v1 MISS WAS MY SCENARIO, NOT THE PRODUCT: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. ANSWER UNVERIFIED, stated rather than glossed: all three runs left the turn SUSPENDED on a Tier-A card, so no final prose was produced and the seeded-fact check ('cartographer') could not be evaluated. See OBS-READ-TURN-REACHES-FOR-WRITES."
   }
  },
  "defects": {
@@ -2128,6 +2128,17 @@
    "why_it_matters": "That is CORRECT behaviour with a route out, not a miss — the tool's precondition genuinely was not met. Scoring it as a failure would repeat the v1 error of measuring a fixture gap as a product defect. The tool remains unconcluded because the fixture cannot yet satisfy it.",
    "what_a_valid_fixture_needs": "A chapter bound to an ARC (composition_arc_create + arc_assign_chapters) with prose, so a drift check has both a plan and a realization to compare.",
    "state": "OPEN — composition_conformance_run NOT concluded, fixture gap named."
+  },
+  {
+   "id": "D-GATE-COULD-NOT-TELL-THE-TOOL-RAN-FROM-THE-TURN-RAN",
+   "date": "2026-08-14",
+   "service": "scripts/toolloop/gate.py",
+   "invariant": "A conclusion about a TOOL must rest on evidence that the tool was invoked. The gate's LIVE bars were all properties of the TURN.",
+   "finding": "The gate checked repeats >= 3, via == fe_runner, and no transport error — and nothing else. A batch where the model answered by a completely different route scored three green LIVE checks. Found by running the batch-4 remainder, where settings_provider_inventory and composition_conformance_run were each called 0/3 and the gate objected only to the SHIP audit.",
+   "blast_radius_measured": "Re-gated all seven prior evidence files. ONE banked conclusion was not evidence-backed: plan_compile, `proven` + `gate-backed`, called 0/3 in its main batch — now REOPENED. plan_propose_spec (3/3), glossary_entity_set_attributes (3/3) and glossary_ontology_upsert (1/3) survive on their own numbers.",
+   "second_order": "Every empty-case file shows the tool called 0/3 (batch1-empty, batch2-empty). So the SHIP empty_case claims rest on runs where the tool was never invoked — the empty case was asserted, not exercised. Weaker than the above but the same shape.",
+   "bar": "LIVE called (>= 1 of K, count always printed). >= 1 rather than all K because the consumer is stochastic and a 1-of-3 call is a real finding; 0 is not.",
+   "state": "FIXED in the gate; plan_compile reopened; the empty-case weakness OPEN."
   }
  ],
  "progress": {
