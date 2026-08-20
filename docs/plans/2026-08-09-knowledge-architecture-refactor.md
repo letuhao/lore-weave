@@ -4362,7 +4362,10 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   ---
   **✅ Widened · ✅ Q6 · ✅ `alive` deprecated + pinned · ✅ the reveal axis (`D-T32-REVEAL-AXIS`
   is struck below; `app/spoiler_window.py`, 29 tests) · ✅ the producer · ✅ T32a migrates the
-  canon-at-chapter reader — ⬜ the remaining SIX `alive` readers.**
+  canon-at-chapter reader — ⬜ **one PO decision: does `alive` survive?** T32b measured the
+  "six remaining readers" and **none is an as-of read** (2 writes, a sort key, a query
+  param, a bulk enumeration, the schema). Exactly one site was ever migratable and it is
+  done; the gate now states a floor of 6 instead of implying 0.**
   ⚠️ *This line read "⬜ the reveal axis and the reader migration are deferred" until
   2026-08-14, while the reveal axis had shipped and its deferral was already struck through
   twenty lines down. Seventh row this week whose header outlived its own evidence.*
@@ -4397,6 +4400,74 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   wrong reason — it broke parameter typing and errored before reaching the assertion, which
   would have "passed" as a bite while proving nothing. Redone so the predicate is dropped with
   the parameter still typed.
+
+  ### 📊 T32b 2026-08-14 — **"six readers left" was wrong: none of the six is an as-of read**
+
+  ```
+  alive-deprecation-gate  7 / 7, floor 6 (was: an implied floor of 0)
+  ```
+
+  T32a left *"the remaining six `alive` readers, each the same conjunction"*. **Rule 8 says
+  measure the batch first, and it killed this one too.** The conjunction needs a story position
+  `P` to evaluate `gone at P` against. Measured site by site:
+
+  | pinned site | what it ACTUALLY is | position params |
+  |---|---|---|
+  | `canon_at_chapter_handler` | **as-of read** — migrated by T32a | yes |
+  | `entity_handler` | **WRITE** — the PATCH body field | 3 (unrelated) |
+  | `entity_revisions_handler` | **WRITE** — revision restore re-applies the flag | 3 (unrelated) |
+  | `entity_search` | **SORT key** (`ORDER BY e.alive DESC`) | **0** |
+  | `extraction_handler` | **QUERY PARAM** — `?alive=` is the caller's filter choice | 14 (chapter, not liveness) |
+  | `entities_by_ids` | **bulk ENUMERATION** for index/sync | **0** |
+  | `migrate.go` | schema definition | — |
+
+  🎯 **Exactly one of the seven was ever migratable, and it is done.** Two are the writes that
+  *set* the column — they are its reason to exist, not consumers of it. One ranks by it with no
+  position to rank at. One is a caller-supplied parameter, which is a filter choice rather than
+  a reading of the column's truth. And one **must not** be story-windowed at all: its own
+  docstring says *"enumerates EVERY alive entity — the primitive for index/sync all of it"*, and
+  a windowed indexing pass would silently stop indexing dead characters, which is the same
+  silent-cap failure that comment already records for a different endpoint.
+
+  🔴 **So the gate's contract was wrong, and in the direction that makes gates get ignored.**
+  It said *"the list IS the migration checklist"* and *"the baseline can only shrink"* — with no
+  floor. It can only shrink to **six**, and nothing said so. A checklist whose target is
+  unreachable teaches people the number does not mean anything, which is exactly what §1.3
+  records for T17's ceiling: *"a gate whose target is zero would be lying."*
+
+  ✅ **Every entry now carries its CLASS**, and `MIGRATABLE_FLOOR = 6` is **asserted, not
+  printed** — because the cheap way to make this number fall is to delete a non-migratable
+  entry, and a gate that permits its own metric to be gamed is worse than none.
+
+  **BITE ×2, and they red through DIFFERENT mechanisms, which is the point:**
+
+  ```
+  11. drop `migrate.go` from the baseline (fake progress: 7 -> 6)
+        -> FAIL: the file still reads `alive`, so it reappears as an UNPINNED reader
+  12. raise the floor above the real count
+        -> FAIL: the baseline holds 7 entries, below the floor of 8
+  ```
+
+  Bite 11 is the realistic attack and the added-reader check is what stops it; bite 12 proves
+  the floor assert can fire at all. Neither alone would have covered the other.
+
+  **QC (a) gates:** `alive-deprecation-gate` PASS at 7 with the floor asserted; the glossary
+  `internal/api` suite green against the throwaway.
+  **QC (b) the seam:** N/A — a gate's baseline annotation and one assert; no service code moved
+  in this batch (T32a moved the only reader that had somewhere to move to).
+  **QC (c) real data:** the classification IS the measurement — seven files read for what they
+  do with the column rather than for the fact that they mention it.
+
+  ### ⬜ WHAT T32 STILL OWES, restated honestly
+
+  Not "six migrations". **One decision, and it is not this row's**: does `alive` — an
+  author-editable toggle **no author has ever set** (7523 true / 0 false) — survive as the
+  explicit-hide control, or get retired? If it survives, the six are correct as they stand and
+  T32 is done. If it is retired, that is a column drop plus a UI decision about how an author
+  hides an entity, which is a different task from *"add the reveal axis"*.
+
+  Recorded rather than improvised, because retiring a user-facing control on the grounds that
+  nobody has used it yet is a product call.
 
   ### ✅ T32a 2026-08-14 — the liveness reader migrates, and the deferral's dichotomy was a false one
 

@@ -50,16 +50,43 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SCAN_ROOT = os.path.join(ROOT, "services", "glossary-service", "internal")
 
 # The reader set as of T32, with what each one is doing. Every entry is a file that must
-# eventually move onto the as-of liveness fact; the list IS the migration checklist.
+# eventually move onto the as-of liveness fact -- MEASURED FALSE 2026-08-14: only the
+# as-of READ could. See the classification on BASELINE.
+#: 🔴 CLASSIFIED 2026-08-14 (T32a), because "the baseline IS the migration checklist" was
+#: only ever true of ONE entry. Measured site by site: of the seven, exactly one was an
+#: **as-of read** — the only shape the liveness fact can replace. The rest are author WRITES
+#: (the column's reason to exist), a SORT key, a caller-supplied query PARAM, a bulk
+#: ENUMERATION that must NOT be story-windowed, and the schema itself.
+#:
+#: So this list can shrink to **MIGRATABLE_FLOOR, not to zero**, and a checklist whose target
+#: is unreachable is one people stop believing — the same shape §1.3 records for T17's
+#: ceiling. Each entry now carries its CLASS, and the floor is asserted below.
 BASELINE = {
-    os.path.join("api", "entity_handler.go"):            "CRUD + list filters",
-    os.path.join("api", "extraction_handler.go"):        "extraction writeback",
-    os.path.join("api", "entity_search.go"):             "search filter",
-    os.path.join("api", "entity_revisions_handler.go"):  "revision history",
-    os.path.join("api", "entities_by_ids_handler.go"):   "bulk read",
-    os.path.join("api", "canon_at_chapter_handler.go"):  "T52 rewrites this one — canon as-of chapter N",
-    os.path.join("migrate", "migrate.go"):               "schema definition + backfill (not a runtime read)",
+    # ── as-of READS: migratable, and the only class that ever was ────────────────────
+    os.path.join("api", "canon_at_chapter_handler.go"):
+        "as-of read — MIGRATED by T32a: `alive AND NOT gone-at-P` (conjoined, not swapped)",
+    # ── author WRITES: this is HOW `alive` gets set. Nothing to migrate; they go when the
+    #    column goes, and not before ─────────────────────────────────────────────────
+    os.path.join("api", "entity_handler.go"):
+        "WRITE — PATCH body field, the author's explicit hide",
+    os.path.join("api", "entity_revisions_handler.go"):
+        "WRITE — revision restore re-applies the stored flag",
+    # ── neither a read nor a write of LIVENESS-AT-A-POSITION ────────────────────────
+    os.path.join("api", "entity_search.go"):
+        "SORT key (`ORDER BY e.alive DESC`) — 0 position params; ranking by liveness-at-P is "
+        "meaningless without a P",
+    os.path.join("api", "extraction_handler.go"):
+        "QUERY PARAM — `?alive=` is a caller's filter choice, not a read of the column's truth",
+    os.path.join("migrate", "migrate.go"):
+        "schema definition + backfill (not a runtime read)",
+    os.path.join("api", "entities_by_ids_handler.go"):
+        "bulk ENUMERATION for index/sync — must NOT be story-windowed, or an indexing pass "
+        "silently stops indexing dead characters",
 }
+
+#: What the baseline can honestly reach. Every entry above except the as-of read: six sites
+#: that are not migrations. Stated so the gate stops implying a target it cannot hit.
+MIGRATABLE_FLOOR = 6
 
 # `alive` as a WORD, not as a substring: `aliveness`, `keepalive` and a comment saying "alive"
 # are all different things. Matched on the identifier boundary so the gate reports column
@@ -116,6 +143,17 @@ def main() -> int:
             if ALIVE_RE.search(strip_comments(raw)):
                 found.add(os.path.relpath(path, SCAN_ROOT))
 
+    # The floor is ASSERTED, not merely printed. If someone removes a non-migratable entry
+    # from the baseline to make the number fall, the gate reports a migration that did not
+    # happen — which is exactly the half-move T32a refused to pay itself with.
+    if len(BASELINE) < MIGRATABLE_FLOOR:
+        print(f"[alive-deprecation-gate] FAIL — the baseline holds {len(BASELINE)} entries, "
+              f"below the floor of {MIGRATABLE_FLOOR}. {MIGRATABLE_FLOOR} of these sites "
+              "are NOT migrations (writes, a sort key, a query param, a bulk enumeration, "
+              "the schema); dropping one of those claims a move that cannot have occurred. "
+              "Retire the column instead, and lower the floor in the same commit.")
+        return 1
+
     baseline = set(BASELINE)
     added = sorted(found - baseline)
     gone = sorted(baseline - found)
@@ -143,7 +181,9 @@ def main() -> int:
 
     if not failed:
         print(f"[alive-deprecation-gate] PASS — {len(found)} file(s) read the deprecated "
-              f"`alive` column, exactly the pinned set; the baseline can only shrink")
+              f"`alive` column, exactly the pinned set; the baseline can only shrink "
+              f"(floor {MIGRATABLE_FLOOR} — the non-migratable classes: writes, a sort key, a "
+              f"query param, a bulk enumeration, and the schema)")
     return 1 if failed else 0
 
 
