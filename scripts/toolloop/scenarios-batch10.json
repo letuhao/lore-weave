@@ -45,6 +45,12 @@
       "approve": null,
       "seed": [
         {
+          "sql": {
+            "db": "loreweave_provider_registry",
+            "statement": "DELETE FROM user_models WHERE alias = 'LOOP-THROWAWAY-scratch' AND owner_user_id = '019d5e3c-7cc5-7e6a-8b27-1344e148bf7c'"
+          }
+        },
+        {
           "tool": "settings_model_register",
           "args": {
             "provider_credential_id": "019eeb08-3727-7777-a7dd-856f7fbe42d0",
@@ -67,7 +73,7 @@
           "db": "loreweave_provider_registry",
           "query": "SELECT count(*)::text FROM user_models WHERE alias='LOOP-THROWAWAY-scratch'",
           "expect": "1",
-          "why": "The throwaway model must EXIST before the turn, or the request names nothing and a refusal would be correct behaviour scored as a miss. It is also the row the store check watches: it must still be there afterwards, because the card is never approved."
+          "why": "Exactly ONE throwaway model must exist before the turn. 🔴 THE FIRST VERSION HAD NO CLEANUP STEP AND FAILED ON REPEATS 2 AND 3: a registered model is ACCOUNT-scoped, so it outlives the book teardown, the alias is not unique, and three repeats left three identical rows. The fixture now deletes its own alias first — name AND owner guarded — so each repeat starts from one row rather than from whatever the previous one left."
         }
       ]
     },
