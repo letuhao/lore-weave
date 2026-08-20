@@ -24,12 +24,16 @@ read off the plan on every invocation. **A row that gets ticked leaves the queue
 ## Run
 
 ```bash
-python scripts/goal-prompt.py
+python scripts/goal-prompt.py --check && python scripts/goal-prompt.py
 ```
 
-Then give the user the output in a single fenced block, on its own, with no commentary inside
-it — they are going to select and paste it. Say in one line above the block that it is ready
-to paste after `/goal`, and mention the character count against the 4000 budget.
+`--check` first: it verifies the budget, that every hand-back row the plan declares actually
+reached the output, and that no open row is missing from the queue. Then print the prompt.
+
+Give the user the output in a single fenced block, on its own, with no commentary inside it —
+they select and paste it whole. **The output already begins with `/goal `**, so it is one paste
+and not a paste plus a typed command. Say in one line above the block what the character count
+is against the 4000 budget, and repeat any `WARN` line `--check` produced.
 
 **Do not edit the output before showing it.** If it needs different content, the change belongs
 in `scripts/goal-prompt.py` (the rules, the queue) or in the plan's `RESUME:` line (what comes
