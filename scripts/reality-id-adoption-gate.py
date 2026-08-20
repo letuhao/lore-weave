@@ -298,14 +298,35 @@ INPUT_BOUNDARY: dict[str, str] = {
         "that call now takes `dp::RealityId`."
     ),
     "services/world-service/src/server/handlers/actor_control": (
-        "the HTTP INPUT the bind consumes. The five sites are wire DTO fields "
-        "— `GrantRequest`/`RevokeRequest`/`CreateActorRequest` and the two "
+        "the HTTP INPUT the bind consumes. The sites are wire DTO fields — "
+        "`GrantRequest`/`RevokeRequest`/`CreateActorRequest` and the two "
         "responses — carrying a uuid decoded from a request body before any "
-        "control-plane call exists. `actor_control::bind` is what turns it into "
-        "a verified `dp::RealityId`, and it runs BEFORE every registry touch, so "
-        "granting control in a frozen or archived reality is refused rather than "
-        "recorded. Everything downstream of that call takes `dp::RealityId`: "
-        "`actor_registry`'s four functions and `reality_pool` all do."
+        "control-plane call exists. The handler is now a thin adapter: it "
+        "decodes and hands the uuid straight to `actor_control_flow`, which "
+        "binds. See that entry for where the verified type takes over."
+    ),
+    "services/world-service/src/actor_control_flow": (
+        "the module that MINTS the verified id, so its entry points cannot "
+        "already hold one. `bind_reality(reality_id: Uuid)` is the boundary "
+        "itself — `dp::RealityId` has no public constructor, and this is the "
+        "call that produces one. `create_actor`, `preview_grant` and `grant` "
+        "each take the raw uuid BECAUSE their first statement binds it, and "
+        "everything downstream of that call takes `&dp::RealityId`: "
+        "`open_reality_pool` and `actor_registry`'s four functions all do. "
+        "`revoke` is the one that takes a raw uuid and never binds, and that "
+        "is DELIBERATE and documented on the function: refusing to revoke a "
+        "driver in a frozen world would strand a player as the driver of a "
+        "reality under maintenance. Revoke is the safe direction, so it stays "
+        "available where grant is refused — which means it has no bind to "
+        "obtain a verified id from."
+    ),
+    "services/world-service/src/bin/actor_control": (
+        "the CLI INPUT the bind consumes, exactly as `spine_args` below. "
+        "`Args::reality_id` is parsed from argv before any connection exists, "
+        "and `actor_control_flow::bind_reality` is what turns it into a "
+        "verified `dp::RealityId` — so the field cannot already hold one. The "
+        "worker holds no other reality reference: every operation it performs "
+        "goes through the flow module."
     ),
     "services/commit-service/src/spine_args": (
         "the CLI INPUT the bind consumes. `Args::reality` is parsed from argv "

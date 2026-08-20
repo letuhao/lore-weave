@@ -1,6 +1,6 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
-## ▶ GAME BUILD — FEATURE #2: a player is a CONTROL INTERFACE, and the subject can no longer be forged (2026-08-14, branch `feat/game-logic`)
+## ▶ GAME BUILD — FEATURE #2: a player is a CONTROL INTERFACE, the subject can no longer be forged, and an OPERATOR can now grant one (2026-08-14, branch `feat/game-logic`)
 
 > ## ▶ THE PLAYER FEATURE — first slice shipped
 >
@@ -39,6 +39,7 @@
 > | the WRITER | two scoped ops on the Rust→Go meta bridge (`I8` audit in the same TX) + `world-service` routes + a frozen contract. A grant REFUSES an actor the registry does not have |
 > | the RESOLVER | `commit_service::subject` — two hops, meta binding (live rows only) → per-reality `actors` → `EntityId`, with three distinguishable refusals and a CHECKED `i64→u64` |
 > | the WIRE | `pub actor: u64` is GONE. `user_ref_id` replaces it; the transport sends the user |
+> | the CALLER | `admin reality create-actor` / `grant-control` / `revoke-control` — because the writer's routes are `require_internal` and no operator could reach them. **The same orphan shape one tier up**, and the reason `035` deleted a table |
 >
 > ### Evidence
 >
@@ -67,15 +68,86 @@
 > game-server **70 pass / 0 fail**. Removing the field rather than ignoring it is what made the
 > compiler find all **19** call sites.
 >
-> **▶ DO NEXT — three tracked rows, none of them started, each with its trigger** in
-> [`2026-08-14-player-control-RUN-STATE.md`](../plans/2026-08-14-player-control-RUN-STATE.md) §4:
-> `PC-AGENT` (can a controller be an LLM? deferred by the PO to the AI feature — it needs an agent
-> runtime and a state machine) · `PC-SF6-REVERSAL` (this round ARMS `SF-6`'s reversal trigger and
-> does not discharge it; `0021`'s `current_turn_actor JSONB` should eventually hold a typed actor
-> identity) · `PC-SEATS` (the PK makes one-driver-per-actor a database LAW where Unreal's is an
+> ### `P7` — the caller, and the fork it turned out to be
+>
+> The grant path shipped with **no invoker**. Three facts ruled out the obvious fixes: `admin-cli`
+> has no HTTP client at all (every command is a subprocess or a direct `pgxpool`);
+> `contracts/service_acl/matrix.yaml` sanctions admin-cli against **meta-worker**, not
+> world-service; and the sanctioned path — straight to the Go bridge — has neither safety check and
+> **cannot** have the second, because `actors` lives in the per-reality database meta-worker does
+> not hold. Resolved on the shape `reality provision` already proved: a **worker binary**, flags in,
+> secrets by env, one JSON object out, exit code as verdict. The checks moved into
+> `actor_control_flow` so the HTTP route and the CLI run the SAME rules rather than two sets that
+> drift.
+>
+> **Live, end to end — twelve steps, two databases, the real bridge, no mocks:** create-actor →
+> grant → idempotent re-grant → a second user REFUSED → a ghost actor REFUSED → a stale CAS refused
+> *with the driver surviving* → revoke → **handoff**, which `034`'s PK made impossible until `041`.
+> The `I8` audit rows carry the operator's reason and `binding_id` as `row_pk`, so `041`'s new key
+> is proven on the real path.
+>
+> **The live run found a defect the entire unit suite agreed with.** `bind_reality` mapped every
+> bind failure to `RealityClosed`, so a missing table reached the operator as *"REFUSED — reload and
+> decide"* with `conflict: true`: an outage wearing the costume of a normal answer. The split
+> already existed upstream (`RealityMismatch` vs `ControlPlaneUnavailable`) and I had not looked —
+> the exact distinction `ActorAlreadyDriven` exists to preserve, collapsed one layer up. Fixed,
+> bitten, and re-proved live in both directions.
+>
+> **Two deliberate asymmetries, recorded so nobody "tidies" them:** grant binds the reality and
+> revoke does not (refusing to revoke a driver in a frozen world would strand a player in a world
+> under maintenance — revoke is the safe direction); and **the dry run does not report who currently
+> drives the actor**, because that is a cross-user read of `actor_control_binding` and a preview
+> that answered it would be an unaudited way to probe who holds whom.
+>
+> `revoke-control` is tier-1: the framework REFUSED the registry file until `double_approval` was
+> true, and reaching the CAS took four independent guards (`admin:destructive`, a second-actor
+> token, typed confirmation, then the feature's own CAS). The first draft said `false`; accepting
+> the tier's second half was the right answer, not downgrading the tier to escape it.
+>
+> **Two dev-stack facts nothing checks:** `039`/`040`/`041` were committed and **never applied** to
+> `loreweave_meta`, and the bridge container was a 37-hour-old image that 404'd on the grant route.
+> Both invisible to every unit suite. Fixed by applying and rebuilding; the GAP has no mechanism
+> (`PD-15`).
+>
+> ### The RUN-STATE audit (2026-08-20) — six deferrals that were never tracked
+>
+> Asked to check the run-state for staleness before planning further, and it was worse than stale.
+> **The six `PC-*` rows in its §4 were invisible to `deferral-gate.py` twice over:** they lived in
+> `docs/plans/`, which the gate does not scan (it globs `docs/**/SESSION_HANDOFF.md` +
+> `docs/deferred/*.md`), under a prefix its `D-[A-Z]…` id pattern cannot match. `D-PC-AGENT`'s own
+> text promised *"it must not be prose-only… the trigger goes in with `P1`"* — `P1` shipped six days
+> earlier with none, and nothing said a word.
+>
+> **And `PC-*` was already owned.** `00_foundation/06_id_catalog.md` assigns it to *Player Character
+> semantics* (`PC-A1..A3`…`PC-E1..E3`) and `I15` says those ids are forever. `PC-D2` is a locked
+> decision about consent-gated PvP. Phase 0's question 1 asked of a NAME instead of a concept.
+>
+> Fixed: renamed `D-PC-*`, moved into the game-tier registry block (**30 → 36** tracked), five
+> `PROSE_ONLY` rows with real wake-ups, and `D-PC-AGENT` got the asserted trigger it was owed —
+> `services/meta-worker/pkg/bridge/actor_control_trigger_test.go`, which reds when
+> `actor_control_binding` gains a seventh column. Bitten with `controller_kind`: red for the right
+> reason, restored green.
+>
+> Three measured-false claims went with it (`PD-19`): `D-PC-SEATS` said *"the PK makes
+> one-driver-per-actor a database law"* when `P1a` — in the same document — had replaced that PK
+> with `binding_id` (the law is `actor_control_binding_one_live_driver`, a partial unique index);
+> the header said `files 8` against a measured **52**; and `P6`'s `799/0 across 72` covered a subset
+> of a workspace that has **193** suites. `D-PC-ACTOR-IDENTITY` was still listed as BLOCKING `P2`
+> six days after `P2` shipped (`PD-18`).
+>
+> **▶ DO NEXT — the open rows, now tracked where the gate can see them**
+> ([registry block](../03_planning/LLM_MMO_RPG/SESSION_HANDOFF.md); reasoning in
+> [`2026-08-14-player-control-RUN-STATE.md`](../plans/2026-08-14-player-control-RUN-STATE.md) §4):
+> `D-PC-AGENT` (can a controller be an LLM? deferred by the PO to the AI feature — **now the only
+> one of the six with an asserted trigger**) · `D-PC-SF6-REVERSAL` (`0021`'s
+> `current_turn_actor JSONB` should eventually hold a typed actor identity) · `D-PC-SEATS`
+> (one LIVE driver per actor is enforced by a partial unique index where Unreal's one-to-one is an
 > overridable default, so **spectating** and **GM override** must each be something other than a
-> second binding). Plus `PC-METAWRITE-NOOP-EVENT` — `MetaWrite` emits the outbox event without
-> checking `RowsAffected`, which is shared by every meta table and not this feature's to fix.
+> second binding) · `D-PC-METAWRITE-NOOP-EVENT` (`MetaWrite` emits the outbox event without checking
+> `RowsAffected` — shared by every meta table, not this feature's to fix) · `D-PC-SEAM-NO-CONTRACT`
+> (the admin-cli↔worker argv/JSON seam has no machine-checked contract) · `D-PC-NO-RUST-READ-AUDIT`
+> (no sanctioned audited cross-user read from Rust — the reason `grant-control --dry-run` will not
+> say who drives an actor).
 
 ---
 

@@ -478,6 +478,67 @@ PROSE_ONLY: dict[str, str] = {
         "TRIGGER: the S04 provisioner track resuming. Nothing in this repo can "
         "red on it — the subject is an unbuilt service, so there is no file for a "
         "check to hold. Genuinely prose-only until S04 has code"),
+    # ── SEALED-BINDING (feature #2). Six ids arrived 2026-08-20 during a
+    # RUN-STATE audit. They had existed since 2026-08-14 as `PC-*` in
+    # `docs/plans/`, which this gate does not scan, under a prefix its `ID`
+    # pattern cannot match — so they were invisible twice over and the gate
+    # counted 30 when it should have counted 36. `D-PC-AGENT` is absent from
+    # this table on purpose: it earned an ASSERTED TRIGGER, which is what its
+    # own row had promised and not delivered.
+    "D-PC-SEAM-NO-CONTRACT": (
+        "TRIGGER: a second consumer of the `actor-control` worker's stdout JSON, "
+        "or the first field added to it after 2026-08-20. The seam is argv "
+        "rendered by `workerArgs` in Go and parsed by `Args::parse` in Rust, with "
+        "a JSON reply unmarshalled into `ActorControlOutcome` — two lists in two "
+        "languages, and a rename on either side keeps both unit suites green. "
+        "Not unguarded: `RunActorControl` refuses an outcome the worker did not "
+        "name and a created actor with no id, and the invoker cross-checks the "
+        "echoed reality_id/actor_id, so the load-bearing fields fail loudly. "
+        "Those are runtime guards on one path, not a contract. The fix is the "
+        "`contracts/frontend-tools.contract.json` pattern: one checked-in key "
+        "list, asserted from both sides, so a rename reds on the side that did "
+        "not move"),
+    "D-PC-NO-RUST-READ-AUDIT": (
+        "TRIGGER: the first Rust caller that genuinely needs a cross-user read of "
+        "`actor_control_binding` — most likely `grant-control --dry-run`, the "
+        "moment an operator asks why it will not say who currently drives an "
+        "actor. `034` registers that read as sensitive and the only audited "
+        "reader is Go's `MetaRegistrar.liveBinding`, INSIDE the write path; a "
+        "Rust caller has no equivalent and would write a bare SELECT the lint "
+        "then catches, which is the lint working rather than a path existing. "
+        "The fix is a bridge READ route that writes `meta_read_audit` in the same "
+        "call, mirroring the write side. BUILDABLE, not blocked — scoped out only "
+        "because adding a probe-who-holds-whom capability is a decision"),
+    "D-PC-METAWRITE-NOOP-EVENT": (
+        "TRIGGER: any consumer that treats an outbox event as proof a row "
+        "changed. `contracts/meta/metawrite.go` runs the data statement then "
+        "appends the audit row and the outbox event unconditionally, so a CAS'd "
+        "UPDATE matching nothing still announces its domain event. Shared by "
+        "every meta table, not introduced by the game tier. At-least-once "
+        "delivery means a duplicate `actor.control.revoked` is inside what a "
+        "consumer must tolerate — it is still an event for a write that changed "
+        "nothing. The fix is a `RowsAffected == 0` guard on the append and "
+        "belongs to whoever owns `contracts/meta`"),
+    "D-PC-SEATS": (
+        "TRIGGER: the first feature that needs a NON-DRIVING seat — spectating or "
+        "GM override. One live driver per actor is enforced by "
+        "`actor_control_binding_one_live_driver`, a UNIQUE index on "
+        "(reality_id, actor_id) WHERE revoked_at IS NULL, so a second seat cannot "
+        "be a second binding. Unreal's one-to-one is an overridable default; ours "
+        "is not. The advisor case is already settled — an LLM that proposes and a "
+        "human that commits is one driver plus an advisor, and the advisor never "
+        "becomes the subject. Genuinely prose-only: the subject is a seat concept "
+        "that does not exist, so there is no file for a check to hold"),
+    "D-PC-SF6-REVERSAL": (
+        "TRIGGER: the adoption itself. `SF-6` refused to type `0021_turn_slot`'s "
+        "`current_turn_actor` because four spellings of who-is-acting already "
+        "existed, and named its own reversal — a single actor-identity type "
+        "adopted repo-wide, at which point the slot should hold it. `0022_actors` "
+        "is the first step toward that type, not the type. When one identity is "
+        "used by `GoneState`'s `EntityRef`, `pii_sdk` and the meta audit tables, "
+        "`0021`'s JSONB column must stop being opaque. Cannot be asserted now: "
+        "the trigger is a type that does not exist yet, and a test naming it "
+        "would not compile"),
     "D-DEFERRAL-GATE-PLATFORM-SCOPE": (
         "TRIGGER: the platform handoff gaining a `deferral-registry:begin` marker. "
         "This gate governs the game tier only; ~360 ids in docs/sessions/ and "

@@ -80,4 +80,25 @@ pub enum ProvisionerError {
     /// migration) failed.
     #[error("provisioner: shard effect failed: {0}")]
     ShardEffect(String),
+
+    /// `SEALED-BINDING` — the control plane refused to BIND the reality: it is
+    /// frozen, archived, dropped, soft-deleted, provisioning, or absent.
+    ///
+    /// Its own variant because it is a statement about the WORLD, not a fault
+    /// of ours, and the caller can act on it. Before this existed the bind
+    /// refusal was an ad-hoc string that only the HTTP handler knew to render
+    /// as a `400`; a second caller would have reported a closed world as an
+    /// outage and paged someone for a reality doing exactly what it was told.
+    #[error("reality {0} does not accept commands: {1}")]
+    RealityClosed(String, String),
+
+    /// `SEALED-BINDING` — the actor has no durable identity in this reality.
+    ///
+    /// The grant precondition. `034` could not express it as a foreign key
+    /// because `actors` lives in the per-reality database, so the check lives
+    /// in `actor_control_flow` — and a binding created without it is the
+    /// dangling pointer `S-9` describes, discovered at turn time by a resolver
+    /// instead of at the write edge by the writer.
+    #[error("actor {0} does not exist in reality {1}")]
+    UnknownActor(String, String),
 }
