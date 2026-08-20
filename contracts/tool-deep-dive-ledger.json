@@ -1773,6 +1773,56 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "Called 0/3. The model called kg_project_create — already run by the SEED — and suspended on ITS card, bootstrapping instead of acting, on all three runs. Same shape as kg_propose_edge in batch 5, and seeding the project did not prevent it: kg_project_create is create-or-get, so the model reaches for it defensively to obtain a project_id it does not believe it has. Tenancy UNPROBED and recorded as such — `mode` is required but name/kind are conditionally required BY mode, so a schema-driven probe cannot build a call that survives the validator."
+  },
+  "glossary_plan": {
+   "state": "proven",
+   "provider": "glossary",
+   "tier": "W",
+   "cycle": "batch-8",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 from 'Plan my ontology for this book...', card raised 3/3, store unchanged — it plans and does not write. CONTROL read BEFORE concluding: intent_gate withheld 0 tools, so the 'ontology' wording opened the gate (DQ-T31) and this measures the TOOL rather than the DQ-T3 stamp. Empty goal refused with 'goal is required'; tenancy refused."
+  },
+  "book_steering_list": {
+   "state": "proven",
+   "provider": "book",
+   "tier": "R",
+   "cycle": "batch-8",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, store unchanged, and the answer is exactly right: 'You have two writing rules' naming BOTH seeded rules with their bodies. The two-rule fixture exists because the measured failure for this shape is a COUNT (DQ-T30's original evidence was 'one rule' over two) — that under-count did NOT occur. Empty book returns {rules: [], total: 0}; tenancy refused."
+  },
+  "settings_list_models": {
+   "state": "proven",
+   "provider": "settings",
+   "tier": "R",
+   "cycle": "batch-8",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, store unchanged, and the framing is correct: 'You have several models REGISTERED'. Kept deliberately apart from settings_provider_inventory, whose live-inventory question this tool answers wrongly (D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY) — from THIS side the tool does not over-claim. Tenancy is the one honest n/a: its boundary is the caller identity."
+  },
+  "kg_propose_fact": {
+   "state": "proven",
+   "provider": "kg",
+   "tier": "A",
+   "cycle": "batch-8",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, card raised 3/3, store unchanged — its contract is 'proposes into the review inbox, never writes' and it held. An invalid fact_type is refused with the full enum AND the value sent back; tenancy refused. The prose twin memory_remember was NOT called instead, so the declaration overlap the falsifier warned about did not bite."
+  },
+  "world_map_create": {
+   "state": "blocked",
+   "provider": "world",
+   "tier": "A",
+   "cycle": "batch-8",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "v1 called 3/3 with world_id='Ashfall' — the world's NAME — minting a Tier-A card for a call the service can only reject. FIXED (D-DECLARED-UUID-IN-PROSE-ONLY, 1e942280f) and RE-RUN LIVE, and the honest outcome is that it is still unusable: with the bad id dropped and reported missing, the model retried 15/14/7 times per turn, called world_list ZERO times, and was stopped by the blank-args cap. Final replies are truthful ('I need the specific ID... I can't use the name directly'). The trade: a card for an impossible write, exchanged for a bounded retry ending in an honest refusal. BLOCKED on the model not doing the lookup it is told to do."
   }
  },
  "defects": {
@@ -2367,6 +2417,15 @@
    "finding": "story_search returned {hits: [], degraded: {semantic: 'not_indexed'}, note: 'no matches, and semantic search did not run: this project has no indexed passages... To enable meaning-based search, index the project first'}. The model answered: 'I couldn't find any mention of the Obsidian Trench in the manuscript. It's possible it hasn't been written yet.' The seeded Chapter II reads 'The Obsidian Trench lay bare at low tide'.",
    "why_it_matters": "The runtime did everything right — it named the degradation, named the cause and named the fix, in machine-readable form (`degraded`) as well as prose. The model discarded all of it and asserted the opposite about the author's own manuscript. This is the same class as the withheld-tool stamp: the honest signal exists and is not used. It is also the exact shape the DATA bar was built for — the store was untouched, no error was raised, every machine check is green, and the ANSWER is false.",
    "candidate_fix": "`degraded` is machine-readable, so a turn-level guard like DQ-T30's is possible: if the answering tool returned `degraded` and the reply asserts absence, re-drive once with the degradation named. NOT built here — three prose interventions were refuted on 2026-08-14 and this one must be MEASURED before it ships."
+  },
+  {
+   "id": "OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID",
+   "date": "2026-08-14",
+   "state": "OPEN",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch8-mapcreate.json (K=3, after 1e942280f)",
+   "finding": "Told explicitly — 'obtain it from the tool that LISTS or SEARCHES those records and pass back the id it returns' — the model called world_list ZERO times on 3 of 3 runs. It retried world_map_create with the argument omitted 15, 14 and 7 times respectively until the blank-args cap stopped it, then explained the problem to the user accurately.",
+   "why_it_matters": "The refusal is already the C-12 shape: it names the missing argument and the KIND of tool that supplies it. What it does not do is name the tool. This is the same family as D-LAZY-TAIL-UNUSED — the model works from what is in front of it and does not go looking — and it is the residual cost of the declared-UUID fix: correctness improved, completion did not.",
+   "candidate_fix": "Derive the lister mechanically (`<domain>_list` exists for world, book, glossary, kg, jobs) and NAME it in the missing-argument message. Deliberately NOT shipped here: it is a prose change, and three prose interventions were measured and refuted on 2026-08-14. It must be A/B'd like the consent fix was."
   }
  ],
  "progress": {

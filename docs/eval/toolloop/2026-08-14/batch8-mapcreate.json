@@ -1,0 +1,216 @@
+{
+  "batch": "batch8-map",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "world_map_create",
+      "scenario": "world-map-create-v2",
+      "intent": "write",
+      "falsifier": "RE-RUN AFTER D-DECLARED-UUID-IN-PROSE-ONLY (1e942280f). v1 was called 3/3 with world_id='Ashfall' — the world's NAME — and a Tier-A card was minted for a call the service can only reject. REFUTED IF: a card is again minted carrying a non-UUID world_id. EXPECTED: the argument is dropped and reported missing, so the model looks the world up (world_list) and calls again with the real id.",
+      "answer_expect": null,
+      "falsifier_sha": "ffa21f6d62a2b822",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a world_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's world must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02069-ad95-752b-871b-b803c662e6db",
+          "session_id": "01a02069-cc27-7640-bec8-ade216ab8501",
+          "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:23:11.99414+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:23:12.238221+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:23:12.227044+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:23:11.99414+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:23:12.238221+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:23:12.227044+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I'm sorry, but I couldn't create the map. It seems I don't have the correct ID for your \"Ashfall\" world to link the map to it.\n\nIf you can provide the name or a description of the world, I can try to find the correct ID and create the \"Saltmarsh\" map for you."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0206c-c41a-7fb9-8f70-3184f47bd6db",
+          "session_id": "01a0206c-e0ff-7e07-9cfb-7b15305f0dee",
+          "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:26:34.333539+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:26:34.582345+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:26:34.572561+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:26:34.333539+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:26:34.582345+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:26:34.572561+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't create the map because I need the specific ID for your \"Ashfall\" world to know exactly where to place it. \n\nCould you please provide the name of the book or the world ID, or simply tell me which book \"Ashfall\" belongs to? Once I have that, I'll set up the Saltmarsh map for you immediately."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0206e-d642-70e1-b2c2-837a81102325",
+          "session_id": "01a0206e-f0ce-738c-92a2-a93110a0ba1b",
+          "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:28:50.050042+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:28:50.280856+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:28:50.269914+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:28:50.050042+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:28:50.280856+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:28:50.269914+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I couldn't create the map because I need the unique ID for your \"Ashfall\" world to link it. I can't use the name \"Ashfall\" directly for that purpose.\n\nCould you please provide the ID for the Ashfall world, or let me know if you'd like me to list your worlds so you can find it?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}
