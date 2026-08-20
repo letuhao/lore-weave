@@ -35,20 +35,78 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T17` (13/20) — A10 shipped spec §1.2; ceiling 57 → 56, floor 17 → 18. ⚠️ Read A10's set-cover before picking A11: **128 distinct names remain and every addition past the second frees exactly ONE module**, so the ceiling is priced and the FLOOR is the number worth moving. ⚠️ A10 left one finding for **T35**, recorded in `_EXPECTED_DIVERGENCES` and asserted to still reproduce: **an Event's id is derived from its TITLE**, so a rename makes Neo4j and Kuzu disagree about identity — the same defect T35 fixed for entities, on the node type that batch missed.**
+**RESUME: `T35` — opaque identity (spec §4.1), and it is the row §6.1 has named all along: *Phase 5's model order is `T35 → T36 → T37 → T32/T33 → QC-6`*. T36 and T37 are closed; T35 is the gate on T32/T33, on QC-6, and on Phase 8 (§6.3). It also owns A10's open finding — **an Event's id is DERIVED FROM ITS TITLE**, so a rename makes Neo4j re-attach and Kuzu split; reproduced and held by `_EXPECTED_DIVERGENCES`, which fails if it stops reproducing.**
+
+⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**49 of 66 rows done · 17 open · 45 of 81 evidence blocks closed inside them.**
+**49 of 66 rows done · 17 open · 35 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (16/24) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (3/6) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (0/1) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+
+> ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
 > Two things this makes visible that the checkbox cannot. **A row you just finished appearing here at all** means its box is still `[~]` — an absence from a done-list is invisible, a presence in an open-list is not. And **a row moving from 12/20 to 13/20** is a day's work the binary box could not register; that it registered nothing is why ticking stopped on 08-11.
 <!-- /generated:progress -->
+### 🔻 RUN-STATE AUDIT 2026-08-14 — **the progress block was crediting work to the wrong rows**
+
+The block above calls itself *"the only block that answers what next"*, and *"which row is
+largest"* is exactly the query it was being used for. It was answering that query wrongly.
+
+**A row owned every evidence block between its checkbox and the next one.** The plan does not
+store blocks that way — after 08-13 it is a chronological journal, and the last checkbox before
+that journal is `T39`. So `T39` owned everything written since. Measured:
+
+```
+blocks inside T39's reported span, by ACTUAL owner
+   T37   10        T17    5        T35    3
+   T39    2   <-   T24    2        T25    1        gate 1
+```
+
+| | reported | true |
+|---|---|---|
+| **T39** | 16/24 | **0/1** — barely started, not nearly finished |
+| **T17** | 12/20 | **17/28** — three batches of its own work were invisible to it |
+| **QC-5** | 12/30 | 11/27 |
+
+**Two things follow, and the second is the expensive one.** T39 was being read as almost done
+when it has one block; and T17 was picked as *"the largest genuinely-open row"* — the RESUME
+for ten consecutive batches — from a number that was five blocks short, on a row whose own spec
+section says its ceiling **should not** reach zero (§1.3). The accounting recommended the one
+task the design had already decided to leave unfinished.
+
+🔴 **And the RESUME line was hand-maintaining a count six lines above the generated block that
+exists to stop exactly that.** It read `T17 (13/20)` while the block read `12/20`. The block's
+own comment says *"Do NOT hand-edit — a hand-maintained copy of this is what drifted for two
+days."* The fix is not a corrected number: **the RESUME line no longer carries a count at all.**
+
+✅ **Attribution is now READ, not inferred.** A block names its own row (`A8`, `T35a`,
+`T37b-studio`, `QC-5`) — `A*`/`B*` resolve through the plan's own workstream declarations
+(*"Workstream A — T17"*, *"Workstream B — T38"*), longest-id-first so `T42a` beats `T42` and
+`T24b-a` resolves to `T24`. A sub-heading that names nothing inherits the block above it, which
+is where a finding written under the batch that found it belongs. Ownership resets at every
+checkbox so it cannot leak across a boundary.
+
+**Only a block that names nothing AND follows nothing falls back to position, and the rendered
+block now REPORTS how many did** — currently 10. A silent fallback is how this defect grew; a
+counted one shrinks as headings get named.
+
+**Five new `--selftest` cases**, each of which fails against the old rule: a block credited to
+the row it names · the neighbour not absorbing it · a sub-heading inheriting · inheriting *not*
+counted as a fallback · a true fallback counted · ownership not leaking across a row boundary.
+
+**BITE:** the three attribution cases were written expecting `T2 == (2, 2)` and went red at
+`(2, 3)` — **the code was right and the test was wrong**, because the unnamed sub-heading had
+correctly inherited `T2b` rather than falling to the row above. The expectation was corrected,
+not the behaviour. The same run surfaced a second, real defect: `orphans` was counting inherited
+blocks alongside positional ones, which would have reported ~40 instead of 10 and made the
+number noise — and a number that is noise is one nobody reads.
+
 🔻 **THE PLAN WAS UNDER-REPORTING BY THREE TASKS (2026-08-14).** The previous RESUME said *"T42b — put AGE in the image"*; T42b shipped **2026-08-12** with a 9/9 smoke. T42c and T42d had shipped the same day. All three were `[~]`, and `plan-row-honesty-gate` — the gate that exists for exactly this — ran **clean** the whole time, because it recognised one dialect of "done" and these blocks used another (`✅ DONE <date>` unbolded, `passed=9` rather than `9 passed`). Gate widened, bitten, and the flagged count went **0 → 5 of 23**; three were real and ticked after being **re-run**, two were genuine false positives resolved by reading the block, exactly as the gate's contract says.
 🔻 **T37 CLOSED 2026-08-14.** Two producers write roles; the plan retracts its own and **only** its own; the prompt change is MEASURED (`NO-SHIFT`, p = 1.0 / 0.4286 / 1.0, sabotage arm red at p = 0.0286); and the revision is proved LIVE — where it immediately found that **the close had never worked once**: it closed at the same ordinal it opened at, glossary 422'd every attempt, and the pipeline swallowed it while six unit tests stayed green. Fixed, bitten, re-proved on real rows with 48 611 unmarked legacy facts untouched.
 🔴 **THERE IS NO "BLOCKED" AND NO "DEFERRED" IN THIS PROJECT (PO, 2026-08-13).** The deferral register is retired into [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) — thirty rows, every one now a DECISION. A task may be **unfinished**; it may not be **undecided**, and `plan-final-verification.py` fails any `[~]` row that cites no spec section (currently **27 of 27 cite one, 0 do not**). Describing a problem is no longer a way to keep it open. Nothing waits on me for an answer; what remains is typing, in the order the spec sets. Session gates: reader **10 → 3 call sites**, port **64 → 59 / 14 → 17**, conformance **40 → 82**, and the critic now attributes violations to real rule ids.

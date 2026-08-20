@@ -69,8 +69,48 @@ SLICE_RE = re.compile(r"^\s*#{3,4}\s*(✅|🔴|🔻|📏|🎯|⏸)\s*(?!~~)")
 SLICE_DONE_RE = re.compile(r"^\s*#{3,4}\s*✅")
 
 
-def tally(text: str) -> tuple[int, int, list[tuple[str, int, int]]]:
-    """(done, total, open rows in plan order as `(name, closed_blocks, total_blocks)`).
+#: The two named WORKSTREAMS, whose blocks are numbered rather than row-prefixed. Declared in
+#: the plan itself — *"Workstream A — T17: the port owns everything"*, *"Workstream B — T38:
+#: the KAL grows a detail read"* — so this is a lookup, not a guess.
+WORKSTREAM = {"A": "T17", "B": "T38"}
+_SERIES_RE = re.compile(r"\b([AB])(\d+)\b")
+
+
+def owner_of(heading: str, known: list[str], inherited, positional: str):
+    """Which ROW an evidence block evidences, and whether it said so itself.
+
+    🔴 **THIS REPLACES POSITIONAL ATTRIBUTION, WHICH WAS MEASURABLY WRONG.** A row used to own
+    every block between its checkbox and the next one, and the plan does not store blocks that
+    way — it is a chronological journal. Measured 2026-08-14, the 24 blocks credited to `T39`
+    broke down as:
+
+        T37 10 · T17 5 · T35 3 · **T39 2** · T24 2 · T25 1 · gate 1
+
+    So `T39` read **16/24** while owning two blocks, and `T17` read **12/20** while owning
+    fifteen. This block calls itself *"the only block that answers what next"*, and *"which row
+    is largest"* is precisely the query it was being used for — a session picked T17 as "the
+    largest genuinely-open row" from a number that was five blocks short, on a row whose own
+    spec section says its ceiling should NOT reach zero.
+
+    A block names its own row (`A8`, `T35a`, `T37b-studio`, `QC-5`), so ownership is READ, not
+    inferred from where the text happens to sit. Sub-headings that name nothing — a finding
+    written under the batch that found it — inherit the last named block, which is where they
+    belong. Only a block that names nothing AND follows nothing falls back to position, and
+    `render` reports how many did, so the fallback cannot grow unnoticed.
+    """
+    m = _SERIES_RE.search(heading)
+    if m and WORKSTREAM[m.group(1)] in known:
+        return WORKSTREAM[m.group(1)], True
+    # Longest first: `T42a` must win over `T42`, and `T24b-a` resolves to `T24` — `T24b` is a
+    # slice of that row, not a row of its own.
+    for rid in sorted(known, key=len, reverse=True):
+        if re.search(r"\b" + re.escape(rid), heading):
+            return rid, True
+    return (inherited or positional), False
+
+
+def tally(text: str):
+    """(done, total, open rows in plan order as `(name, closed, total)`, orphan count).
 
     Plan order is the queue order, so the open list doubles as "what may be started" — the
     question the run-state block exists to answer.
@@ -78,20 +118,40 @@ def tally(text: str) -> tuple[int, int, list[tuple[str, int, int]]]:
     lines = text.split("\n")
     rows = [(n, m) for n, m in ((n, ROW_RE.match(l)) for n, l in enumerate(lines)) if m]
     done = sum(1 for _, m in rows if m.group(1) == "x")
-    open_rows: list[tuple[str, int, int]] = []
-    for i, (n, m) in enumerate(rows):
-        if m.group(1) != "~":
+    known = [m.group(2) for _, m in rows]
+
+    tot: dict = {}
+    cls: dict = {}
+    orphans = 0
+    positional, inherited = None, None
+    at = {n: m.group(2) for n, m in rows}
+    for n, line in enumerate(lines):
+        if n in at:
+            positional = at[n]
+            inherited = None          # a new row starts a new chain; ownership must not leak
             continue
-        end = rows[i + 1][0] if i + 1 < len(rows) else len(lines)
-        blk = lines[n:end]
-        total = sum(1 for l in blk if SLICE_RE.match(l))
-        closed = sum(1 for l in blk if SLICE_DONE_RE.match(l))
-        open_rows.append((m.group(2), closed, total))
-    return done, len(rows), open_rows
+        if positional is None or not SLICE_RE.match(line):
+            continue
+        who, named = owner_of(line, known, inherited, positional)
+        if not named and inherited is None:
+            # A TRUE fallback: named nothing and followed nothing, so position is all there is.
+            # Inheriting is the intended path for a sub-heading and is NOT counted here —
+            # lumping the two together would make the reported number noise, and a number that
+            # is noise is one nobody reads.
+            orphans += 1
+        if named:
+            inherited = who
+        tot[who] = tot.get(who, 0) + 1
+        if SLICE_DONE_RE.match(line):
+            cls[who] = cls.get(who, 0) + 1
+
+    open_rows = [(m.group(2), cls.get(m.group(2), 0), tot.get(m.group(2), 0))
+                 for _, m in rows if m.group(1) == "~"]
+    return done, len(rows), open_rows, orphans
 
 
 def render(text: str) -> str:
-    done, total, open_rows = tally(text)
+    done, total, open_rows, orphans = tally(text)
     parts = [f"`{n}`" + (f" ({c}/{t})" if t else "") for n, c, t in open_rows]
     listed = " · ".join(parts) or "*none — every row is closed.*"
     blocks = sum(t for _, _, t in open_rows)
@@ -107,6 +167,10 @@ def render(text: str) -> str:
         "",
         f"**OPEN:** {listed}",
         "",
+        *([f"> ⚠️ **{orphans} evidence block(s) name no row** and were attributed by POSITION — "
+           "the rule that made `T39` read 16/24 while owning 2. Name the row in the heading "
+           "(`A11`, `T35d`, `QC-5`) and this number falls to zero.", ""]
+          if orphans else []),
         "> `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row "
         "has accumulated and how many are ✅. It is a progress signal, not a contract: the row "
         "is done when its own criteria are met, not at `m/m`.",
@@ -153,7 +217,7 @@ def selftest() -> int:
               "  ### 🔴 A3 — this one is not done\n"
               "- [x] **T3** — done\n"
               "- [~] **T4** — open\n")
-    done, total, open_rows = tally(sample)
+    done, total, open_rows, orphans = tally(sample)
     check("counts the checkboxes", (done, total) == (2, 4), f"{done}/{total}")
     check("lists the OPEN rows, in plan order",
           [r[0] for r in open_rows] == ["T2", "T4"], str(open_rows))
@@ -168,6 +232,40 @@ def selftest() -> int:
     check("closing ONE slice moves the block, with no checkbox change",
           render(moved) != render(sample) and "(3/3)" in render(moved))
 
+    # 🔴 ATTRIBUTION — the defect this file shipped with, reproduced in miniature. `T4`'s row
+    # header is the last checkbox in the document, so under the old positional rule it owned
+    # every block written after it regardless of whose work they evidenced. In the real plan
+    # that made `T39` report 16/24 while owning 2, and `T17` report 12/20 while owning 15.
+    journal = ("**RESUME:** something\n"
+               "- [~] **T2** — open\n"
+               "  ### ✅ T2a — genuinely T2's\n"
+               "- [~] **T4** — open, and the last checkbox in the file\n"
+               "  ### ✅ T4a — genuinely T4's\n"
+               "  ### ✅ T2b — T2's work, written later in the journal\n"
+               "  ### 🔴 a finding with no row in its name\n")
+    _, _, jrows, jorph = tally(journal)
+    by = dict((n, (c, t)) for n, c, t in jrows)
+    check("a block is credited to the row it NAMES, not to the one above it",
+          by["T2"] == (2, 3), str(by))
+    check("the neighbouring row does not absorb it", by["T4"] == (1, 1), str(by))
+    # The sub-heading names nothing. It belongs to `T2b`, the block it was written under —
+    # which is how a finding recorded beneath the batch that found it stays with that batch.
+    check("an unnamed sub-heading INHERITS the last named block",
+          by["T2"][1] == 3 and by["T4"][1] == 1, str(by))
+    # It inherited, so it is NOT an orphan: nothing in this journal had to guess from position.
+    check("inheriting is not counted as a fallback", jorph == 0, str(jorph))
+
+    # And the fallback must still work when nothing has been named yet, or the first block of
+    # a row would land on whichever row was named last — leaking across the boundary.
+    lead = ("**RESUME:** x\n"
+            "- [~] **T2** — open\n"
+            "  ### ✅ T2a — named\n"
+            "- [~] **T4** — open\n"
+            "  ### ✅ an unnamed block, first in its row\n")
+    _, _, lrows, lorph = tally(lead)
+    check("ownership does not LEAK across a row boundary",
+          dict((n, t) for n, c, t in lrows) == {"T2": 1, "T4": 1}, str(lrows))
+    check("a true positional fallback IS counted", lorph == 1, str(lorph))
     out = replace(sample)
     check("installs under the RESUME line", out.index(BEGIN) > out.index("**RESUME:**"))
     check("names the open rows in the rendered block", "`T2`" in out and "`T4`" in out)
@@ -205,7 +303,7 @@ def main() -> int:
             print("[plan-progress-block] already current")
         return 0
     if fresh != text:
-        done, total, open_rows = tally(text)
+        done, total, open_rows, orphans = tally(text)
         print("[plan-progress-block] STALE — the run-state progress block disagrees with the "
               "checkboxes.")
         print(f"    the checkboxes say: {done} of {total} done, {len(open_rows)} open")
