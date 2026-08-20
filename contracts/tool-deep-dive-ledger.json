@@ -1606,14 +1606,34 @@
    "note": "BLOCKED, not proven. Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read instead of loading the schema. Plausible and NOT sourced from the contract this tool exists to expose. The LIVE bar is not met: the tool was never exercised by the model. Cause recorded as D-TOOL-LOAD-NOT-USED-FOR-SCHEMA and it is NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. Store unchanged and tenancy not-applicable (it loads schemas, identical for every caller)."
   },
   "memory_recall_entity": {
-   "state": "in_cycle",
+   "state": "proven",
    "provider": "knowledge",
    "tier": "R",
    "cycle": "batch4-rest",
    "group": "C",
-   "evidence_class": "gate_backed",
+   "evidence_class": "gate-backed",
    "counts_toward_release": true,
-   "note": "LIVE PASSED, NOT YET CONCLUDED — the gate refused the batch and the gate is the authority. Called 3/3 from 'Who is Mira Solene?' (its OWN declared phrase), store unchanged 3/3, and every LIVE/DATA check passed. It FAILS `SHIP exercised`: I wrote empty_case and tenancy as OWED, and a ship_audit records what was EXERCISED, not what is intended. I marked this proven ahead of the gate; that was the error the gate exists to catch. CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase ('who is'). Store unchanged 3/3. THE v1 MISS WAS MY SCENARIO, NOT THE PRODUCT: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. ANSWER UNVERIFIED, stated rather than glossed: all three runs left the turn SUSPENDED on a Tier-A card, so no final prose was produced and the seeded-fact check ('cartographer') could not be evaluated. See OBS-READ-TURN-REACHES-FOR-WRITES."
+   "note": "PROVEN, gate-passed 2026-08-14 (batch4-rest). CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase — store unchanged 3/3. THE v1 MISS WAS MY SCENARIO: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. SHIP: tenancy EXERCISED — a knowledge_projects row owned by the other account, verified present at call time, was refused; the control is that a harness-owned project returns {found:false} while a nonexistent one returns the SAME 'project not found', so ownership is the discriminator and the message does not leak existence. Empty case EXERCISED: an entity with no stored facts returns found:false, no invented biography. ANSWER UNVERIFIED in the LIVE runs (all three suspended on a Tier-A card, so no final prose) — see OBS-READ-TURN-REACHES-FOR-WRITES."
+  },
+  "settings_provider_inventory": {
+   "state": "blocked",
+   "provider": "settings",
+   "tier": "R",
+   "cycle": "batch4-rest",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED on a DEFECT, not a fixture gap. Surfaced 3/3, called 0/3: the model answered from settings_list_models and presented REGISTERED rows as 'what your providers currently offer'. Registry and live inventory are different sets — a model retired upstream still sits in the registry — so the answer is confidently wrong in exactly the case the question was asked to detect. The tool requires provider_credential_id, which only settings_list_providers supplies, so a correct turn is a two-call chain. See D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY."
+  },
+  "composition_conformance_run": {
+   "state": "blocked",
+   "provider": "composition",
+   "tier": "W",
+   "cycle": "batch4-rest",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED on a NAMED fixture gap, and the model was RIGHT 3/3. It called composition_diagnostics, found the chapter UNPLANNED, and said it cannot run a drift check without an arc, offering to propose a plan — correct behaviour with a route out. Conformance compares prose against a BOUND arc; the throwaway book has prose and no arc. Needs composition_arc_create + composition_arc_assign_chapters in the seed before the tool can be exercised at all."
   }
  },
  "defects": {
@@ -2139,6 +2159,15 @@
    "second_order": "Every empty-case file shows the tool called 0/3 (batch1-empty, batch2-empty). So the SHIP empty_case claims rest on runs where the tool was never invoked — the empty case was asserted, not exercised. Weaker than the above but the same shape.",
    "bar": "LIVE called (>= 1 of K, count always printed). >= 1 rather than all K because the consumer is stochastic and a 1-of-3 call is a real finding; 0 is not.",
    "state": "FIXED in the gate; plan_compile reopened; the empty-case weakness OPEN."
+  },
+  {
+   "id": "D-GATE-CONCLUDE-WAS-WHOLE-BATCH-ATOMIC",
+   "date": "2026-08-14",
+   "service": "scripts/toolloop/gate.py",
+   "invariant": "Concluding tool X must rest on X's evidence, not on tool Y's.",
+   "finding": "`conclude --tool X` re-ran the WHOLE-batch gate, so one tool that legitimately could not be concluded froze every tool beside it. Measured: memory_recall_entity passed all nine of its own bars while the batch stayed refused because two OTHER tools were never called. The gate's own failure message said 'conclude the tool blocked and say why' while offering no way to do it.",
+   "fix": "`conclude` is now scoped to the tool it names; `check` stays whole-batch and strict. A `blocked` conclusion excuses exactly the two bars that DESCRIBE not being exercised (LIVE called, SHIP exercised), still requires the TURN bars, and REQUIRES a blocked_reason of substance in the batch file — falsifier verified: stripping the reason is refused.",
+   "state": "FIXED"
   }
  ],
  "progress": {

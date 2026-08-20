@@ -1,0 +1,29 @@
+[
+  {
+    "tool": "memory_recall_entity",
+    "args": {
+      "project_id": "57a98789-440a-4b22-91dc-0ef84a845eee",
+      "entity_name": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP memory_recall_entity error: Error executing tool memory_recall_entity: {\"message\": \"project not found\"}"
+  },
+  {
+    "tool": "memory_search",
+    "args": {
+      "project_id": "57a98789-440a-4b22-91dc-0ef84a845eee",
+      "query": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP memory_search error: Error executing tool memory_search: {\"message\": \"project not found\"}"
+  },
+  {
+    "tool": "story_search",
+    "args": {
+      "project_id": "57a98789-440a-4b22-91dc-0ef84a845eee",
+      "query": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP story_search error: Error executing tool story_search: {\"message\": \"project not found\"}"
+  }
+]

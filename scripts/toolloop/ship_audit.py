@@ -90,14 +90,73 @@ def drop_book(book_id: str) -> None:
         oracle.db_query(BOOK_DB, f"DELETE FROM books WHERE id='{q}'")
 
 
-def probe(tool: str, book_id: str, cat: dict) -> dict:
-    """Call `tool` as the harness user against another user's book. Refusal is the pass."""
+KNOWLEDGE_DB = "loreweave_knowledge"
+
+
+def make_other_users_project(book_id: str) -> str:
+    """A real knowledge project owned by the OTHER account, on their book.
+
+    🔴 WRITTEN WHERE THE TOOL ACTUALLY READS, AND THE FIRST VERSION WAS NOT. That version
+    inserted into `loreweave_composition.composition_work`, and all three project-scoped tools
+    came back `refused` with "project not found" — reported as 0 LEAKS. The control killed it:
+    the SAME message comes back for a project id that does not exist anywhere
+    (00000000-0000-4000-8000-000000000000), while a project the harness user owns returns
+    `{"found": false}`. knowledge-service resolves ownership from its OWN `knowledge_projects`
+    table, so the row was invisible to it and the boundary was never exercised. A probe that
+    dies before the check reads exactly like a check that passed — the same failure the
+    UNPROBED verdict was added for, one layer further down.
+
+    🔴 A BOOK-ONLY PROBE CANNOT REACH A PROJECT-SCOPED TOOL, AND IT REPORTED THAT AS `n/a`.
+    Measured 2026-08-14: `memory_recall_entity` declares `project_id` and no `book_id`, so the
+    probe answered "its tenancy boundary is not the book" and moved on — truthful about the book
+    and silent about the boundary the tool actually has. An unprobed boundary reported as `n/a`
+    reads, in a batch summary of "0 LEAKS", exactly like a boundary that held.
+
+    Roughly a fifth of the release surface is project-scoped (the memory and kg families,
+    story_search), so this is the difference between auditing them and skipping them.
+
+    Inserted directly for the same reason as the book: the harness holds no credential for that
+    account, and the row is what ownership resolves from.
+    """
+    pid = str(uuid.uuid4())
+    oracle.db_query(
+        KNOWLEDGE_DB,
+        "INSERT INTO knowledge_projects (project_id, user_id, name, project_type, book_id) "
+        f"VALUES ('{pid}', '{OTHER_USER}', '{TITLE_PREFIX}tenancy', 'book', '{book_id}')")
+    return pid
+
+
+def drop_project(project_id: str) -> None:
+    """Name-guarded like drop_book: only ever removes a row this probe created."""
+    q = project_id.replace("'", "''")
+    rows = oracle.db_query(KNOWLEDGE_DB,
+                           f"SELECT name FROM knowledge_projects WHERE project_id='{q}'")
+    if rows and rows[0] and str(rows[0][0]).startswith(TITLE_PREFIX):
+        oracle.db_query(KNOWLEDGE_DB, f"DELETE FROM knowledge_projects WHERE project_id='{q}'")
+
+
+def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None) -> dict:
+    """Call `tool` as the harness user against another user's book OR project. Refusal is the pass.
+
+    The scope is chosen from what the tool DECLARES, never guessed: a tool naming `book_id` is
+    probed at the book, one naming only `project_id` is probed at the project. A tool naming
+    neither has no tenancy argument at all and is the only honest `n/a`.
+    """
     schema = (cat.get(tool) or {}).get("inputSchema") or {}
     props = set((schema.get("properties") or {}).keys())
     required = list(schema.get("required") or [])
+    if "book_id" not in props and "project_id" in props and project_id:
+        args = {"project_id": project_id}
+        for r in required:
+            if r == "project_id":
+                continue
+            spec = (schema.get("properties") or {}).get(r) or {}
+            t = spec.get("type")
+            args[r] = "x" if t in (None, "string") else 1
+        return _call_and_judge(tool, args)
     if "book_id" not in props:
         return {"tool": tool, "verdict": "n/a",
-                "why": "declares no book_id — its tenancy boundary is not the book"}
+                "why": "declares neither book_id nor project_id — it carries no tenancy argument"}
     args = {"book_id": book_id}
     # Fill any other required scalar with a placeholder so the call reaches the ownership check
     # rather than dying in validation — a validation error is not a refusal and must not be
@@ -108,6 +167,11 @@ def probe(tool: str, book_id: str, cat: dict) -> dict:
         spec = (schema.get("properties") or {}).get(r) or {}
         t = spec.get("type")
         args[r] = "en" if r == "original_language" else ("x" if t in (None, "string") else 1)
+    return _call_and_judge(tool, args)
+
+
+def _call_and_judge(tool: str, args: dict) -> dict:
+    """One verdict rule for both scopes — two copies would drift and one would quietly pass."""
     try:
         res = MCPDirect().call(tool, args)
         text = json.dumps(res).lower()
@@ -138,17 +202,27 @@ def main() -> int:
 
     cat = catalog.load()
     book = make_other_users_book()
+    project = make_other_users_project(book)
     print(f"other user's book: {book} (owner {OTHER_USER})")
+    print(f"other user's project: {project}")
     out = []
     try:
         for t in [x.strip() for x in a.tenancy.split(",") if x.strip()]:
-            r = probe(t, book, cat)
+            r = probe(t, book, cat, project)
             out.append(r)
             print(f"  {r['verdict']:<14} {t}  {r.get('response', '')[:110]}")
     finally:
+        drop_project(project)
         drop_book(book)
     leaks = [r for r in out if r["verdict"] == "LEAK"]
     unprobed = [r for r in out if str(r["verdict"]).startswith("UNPROBED")]
+    na = [r for r in out if r["verdict"] == "n/a"]
+    if na:
+        # `n/a` used to absorb every project-scoped tool and read like a pass in the summary line.
+        print("\n   n/a is NOT a pass either — these declare no tenancy argument this probe "
+              "can drive:")
+        for r in na:
+            print(f"     {r['tool']}: {r.get('why', '')}")
     if unprobed:
         print("\n   UNPROBED is NOT a pass — these died in validation before the ownership "
               "check ran:")

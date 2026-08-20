@@ -293,20 +293,48 @@ def cmd_conclude(a) -> int:
         return 2
     path = pathlib.Path(a.batch)
     batch = json.loads(path.read_text(encoding="utf-8"))
+    row = next((t for t in batch.get("tools", []) if t.get("tool") == a.tool), None)
+    if row is None:
+        print(f"{a.tool} is not in this batch")
+        return 4
     g = Gate(batch, path)
-    if not g.run():
-        print("REFUSED — the evidence for this batch is incomplete:")
-        for line in g.fail:
+    g.run()
+    # 🔴 CONCLUDING TOOL X MUST NOT REQUIRE TOOL Y'S EVIDENCE. This used to gate on the WHOLE
+    # batch, so one tool that legitimately cannot be concluded froze every tool beside it —
+    # measured 2026-08-14: memory_recall_entity passed all nine of its bars while the batch stayed
+    # refused because two OTHER tools were never called. `check` remains whole-batch and strict;
+    # only this per-tool decision is scoped to the tool it names.
+    mine = [line for line in g.fail if line.startswith(f"[{a.tool}]")]
+    if a.state == "blocked":
+        # A blocked tool is one the evidence says could NOT be exercised, so demanding the very
+        # bars that describe being exercised is circular. What it must never be is a quiet exit:
+        # the reason is required, in the batch file, where the gate can read it.
+        reason = str(row.get("blocked_reason") or "").strip()
+        if len(reason) < 40:
+            print("REFUSED — `blocked` needs a `blocked_reason` in the batch entry saying what "
+                  "stopped the tool being exercised, in enough words to be checkable later. "
+                  "'blocked' with no reason is the progress report this loop forbids.")
+            return 1
+        excused = ("LIVE called", "SHIP exercised")
+        hard = [line for line in mine if not any(e in line for e in excused)]
+        if hard:
+            print(f"REFUSED — {a.tool} cannot be concluded `blocked` while the TURN itself is "
+                  "unproven; these are not excused by being blocked:")
+            for line in hard:
+                print(f"  FAIL  {line}")
+            return 1
+        print(f"gate PASSED for {a.tool} → may be recorded blocked")
+        print(f"  reason on file: {reason[:160]}")
+        print("  (a blocked tool is NOT progress — it is a tool this platform cannot ship yet)")
+        return 0
+    if mine:
+        print(f"REFUSED — the evidence for {a.tool} is incomplete:")
+        for line in mine:
             print(f"  FAIL  {line}")
         return 1
     if not LEDGER.exists():
         print(f"ledger missing: {LEDGER}")
         return 3
-    ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
-    row = next((t for t in batch["tools"] if t["tool"] == a.tool), None)
-    if row is None:
-        print(f"{a.tool} is not in this batch")
-        return 4
     print(f"gate PASSED for {a.tool} → may be recorded {a.state}")
     print("  (the gate proves the EVIDENCE exists; it does not prove the root cause is right)")
     return 0
