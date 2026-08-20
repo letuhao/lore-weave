@@ -184,7 +184,14 @@ def stop_markers(plan: str) -> dict[str, str]:
                     inherited = owner
             if owner != row:
                 continue
-            if "⏸" in line:
+            # ⚠️ `⏸` IS OVERLOADED and the plan says which meaning is which. Line 1209:
+            # *"QC-3, QC-5, QC-7 — the three ⏸ POST-REVIEW checkpoints"*. T35 also carries a
+            # ⏸, and it means *"DEFERRED with a mechanism"* — a historical parking note, not a
+            # hand-back. The first cut matched the glyph alone and made **T35 a checkpoint**,
+            # which would have stopped a long run on the RESUME row for nothing. Over-stopping
+            # is the failure the run policy exists to prevent, so the marker must carry the
+            # plan's own phrase.
+            if "⏸" in line and "POST-REVIEW" in line.upper():
                 marks.add("⏸")
             if "stop condition" in line.lower():
                 marks.add("⛔")
@@ -381,6 +388,20 @@ def selftest() -> int:
     ])
     lk = stop_markers(leak)
     check("another row's ⏸ does not leak into the row above it", "T39" not in lk, str(lk))
+
+    # `⏸` IS OVERLOADED. The plan uses it for POST-REVIEW checkpoints AND for 'deferred with
+    # a mechanism'. Matching the glyph alone made T35 — the RESUME row — a checkpoint, which
+    # would stop a long run immediately for nothing.
+    overload = chr(10).join([
+        "**RESUME: x**",
+        "- [~] **QC-3** — open",
+        "  ### 🔴 QC-3a — ⏸ POST-REVIEW checkpoint, present evidence and WAIT",
+        "- [~] **T35** — open",
+        "  ### 🔴 T35z — ⏸ DEFERRED with a mechanism, not merely unstarted",
+    ])
+    ov = stop_markers(overload)
+    check("a ⏸ POST-REVIEW line IS a hand-back", ov.get("QC-3") == "⏸", str(ov))
+    check("a ⏸ DEFERRED line is NOT", "T35" not in ov, str(ov))
 
     # ⑤ AN OPEN ROW IN NO LANE IS AN ERROR. QC-5 was exactly this, and nothing said so.
     stray = chr(10).join([
