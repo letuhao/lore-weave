@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35`'s operator write — the last unblocked thing, and T35f proved the command WORKS (it was broken four ways). Run `recanon_honorifics` dry-run → `--apply`; that unblocks `T46` and `QC-6`. `A11` moved T17's ceiling **56 → 54** opportunistically (two benchmark modules onto `VectorStore`, no port growth; nine tests went red because they patched what the migration removed — A4's rule working). `T33` ⛔ · `T49` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `T35`'s operator write — `recanon_honorifics` dry-run → `--apply` (T35f proved the command works; it was broken four ways). That unblocks `T46` and `QC-6`. `A12` re-derived T43's shadow at the full surface: **Kuzu 21/21, `cutover_permitted: True`**; **AGE 11/21, False**, blocked by ten operations downstream of its two write refusals. QC-7's `9/9` was stale and is annotated; its verdict survives. `T33` ⛔ · `T49` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -448,6 +448,13 @@ edges to *archived* peers were being returned. The same bug was in `FakeGraphSto
 419 integration (both engines live) · 4184 unit
 9/9 compared · blocked_by: [] · cutover_permitted: True   (re-taken AFTER the fix)
 ```
+⚠️ **`9/9` is STALE — re-derived by A12 (2026-08-14) at `21/21`, and the verdict SURVIVES.**
+`OPERATIONS` held nine when this was taken and holds twenty-one now, so the ratio described a
+surface 2.3× smaller than today's. Re-run against both candidates: **Neo4j↔Kuzu 21/21,
+`blocked_by: []`, `cutover_permitted: True`** — the same conclusion reached against the full
+port. **Neo4j↔AGE 11/21, `False`**, blocked by ten operations all downstream of its
+`merge_event`/`merge_fact` refusals. The number is corrected here rather than rewritten above:
+the original was true when written, and what it measured is what changed.
 
 **What is NOT claimed:** 5 seeds × 25 operations is a differential *suite*, not a production
 soak. It is a far stronger claim than one scripted pass — the archived-peer bug proves the
@@ -8359,6 +8366,64 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4228 passed — knowledge-service unit suite
   ```
 
+
+  ### ✅ A12 2026-08-14 — the shadow re-derived at 21 operations; QC-7's number was stale, its verdict was not
+
+  ```
+  Neo4j <-> Kuzu    21/21 compared   blocked_by []                      cutover_permitted TRUE
+  Neo4j <-> AGE     11/21 compared   blocked_by [10 ops]                cutover_permitted FALSE
+  ```
+
+  A12's row carries its own warning: *"**A12 can UNDO QC-7's evidence** — a new operation starts
+  at zero observations, so the floor legitimately re-blocks until the shadow sees it. That is the
+  floor working, not a regression."* A10 added `project_graph_stats` to the port, so the warning
+  was due.
+
+  📊 **QC-7's pasted evidence reads `9/9 compared · blocked_by: [] · cutover_permitted: True`.**
+  That was taken when `OPERATIONS` held **nine**. It holds **twenty-one**. The number is stale by
+  more than double, and a closed QC row asserting a coverage ratio against a surface that has
+  since grown is precisely the "green suite proves the working tree" class — the evidence was
+  true when written and stopped describing the system.
+
+  ✅ **Re-derived, and the verdict SURVIVES.** Neo4j↔Kuzu compares **21 of 21** including the
+  operation A10 added, `blocked_by` is empty, and `cutover_permitted` is still `True`. So QC-7's
+  conclusion holds at the full surface — which is worth more than the original, because it was
+  reached against a surface 2.3× larger.
+
+  🎯 **And `project_graph_stats` is in AGE's `blocked_by`, which is the mechanism working.** A10
+  widened `_DEPENDS_ON` for it from one write to three, on the reasoning that *"a read that
+  AGGREGATES over several writes depends on ALL of them: one refusal makes the whole count
+  incomparable, not partially comparable."* AGE refuses `merge_event` and `merge_fact`, so the
+  stats read is correctly uncoverable there rather than being scored as an agreement over two
+  empty label counts.
+
+  ```
+  AGE blocked_by: archive_event · events_in_window · events_page · facts_for · get_event
+                  merge_event · merge_fact · project_graph_stats · status_at_order
+                  update_event_fields
+  ```
+
+  **Ten operations, all downstream of two refusals.** That is the engine fact this suite exists
+  to produce: **a secondary that refuses a write makes the coverage floor unmeetable for every
+  read beneath it, however much traffic runs.** AGE cannot clear the floor by waiting; Kuzu
+  refuses nothing and clears it.
+
+  ⚠️ **Nothing acts on this.** The sealed decision is *"Keep BOTH, behind the port. No cutover…
+  `cutover_permitted: True` stays as data; nothing acts on it."* A12 re-derives the datum; it does
+  not propose a swap.
+
+  **BITE — N/A, and the reason rather than the omission:** this batch runs an existing mechanism
+  and reads its output; no code changed, so there is nothing to mutate. The mechanism's own bites
+  are recorded where it was built — `test_the_seed_corpus_reaches_every_operation` (which went red
+  three times while A10 widened it) and `test_every_expected_divergence_still_REPRODUCES`
+  (bitten twice in T35d). What A12 adds is the *number*, taken against both candidates.
+
+  **QC (a) gates:** the differential's own guards ran as part of the corpus sweep — every seed
+  drove all 21 operations through `_drive_every_operation`; `plan-verify` PASS.
+  **QC (b) the seam:** the shadow IS a seam — two adapters answering the same calls. Exercised
+  against a real Neo4j (throwaway `:7994`), a real AGE container and a real embedded Kuzu, five
+  seeds each.
+  **QC (c) real data:** the coverage report is the data, re-derived rather than re-cited.
 
   ### ✅ A11 2026-08-14 — two benchmark modules onto `VectorStore`, and the tests had to move with them
 
