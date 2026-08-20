@@ -22,7 +22,7 @@ from datetime import datetime
 
 from app.db.neo4j_helpers import CypherSession
 from app.db.neo4j_repos.facts import Fact, list_facts_for_entity, recall_facts
-from app.ports.truth_store import TruthFact, TruthScope
+from app.ports.truth_store import check_axis, TruthFact, TruthScope
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +58,9 @@ class MemoryTruthAdapter:
                 f"MemoryTruthAdapter serves {_SUPPORTED_SCOPES}, not {scope!r} — "
                 "book-scoped truth belongs to GlossaryTruthAdapter"
             )
-        if isinstance(as_of, int):
-            # A story ordinal in a wall-clock store. Raising beats coercing: the comparison
-            # would "work" (ints and datetimes both order) and return a confidently wrong
-            # set of facts, which is the failure this port exists to prevent.
-            raise TypeError(
-                "memory truth is positioned on WALL CLOCK; as_of must be a datetime, "
-                f"got the ordinal {as_of!r}. See T45 — the two axes are not interchangeable."
-            )
+        # T45 — one declaration, read here. `_SUPPORTED_SCOPES` above still says WHICH scopes
+        # this adapter serves; the port says which AXIS each of them is positioned on.
+        check_axis(scope, as_of)
 
     async def facts_for_subject(
         self,

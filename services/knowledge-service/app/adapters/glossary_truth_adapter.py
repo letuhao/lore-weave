@@ -28,7 +28,7 @@ from datetime import datetime
 
 import httpx
 
-from app.ports.truth_store import TruthFact, TruthScope
+from app.ports.truth_store import check_axis, TruthFact, TruthScope
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +50,10 @@ class GlossaryTruthAdapter:
                 f"GlossaryTruthAdapter serves book scope, not {scope!r} — "
                 "project and global truth belong to MemoryTruthAdapter"
             )
-        if isinstance(as_of, datetime):
-            raise TypeError(
-                "book truth is positioned on STORY ORDINALS; as_of must be an int chapter "
-                f"position, got the datetime {as_of!r}. See T45."
-            )
+        # T45 — the axis is the PORT's declaration, not this adapter's opinion. It had its own
+        # isinstance check before; it agreed with the memory adapter's and with the router's
+        # dispatch, and nothing made the three agree.
+        check_axis(scope, as_of)
 
     async def facts_for_subject(
         self,

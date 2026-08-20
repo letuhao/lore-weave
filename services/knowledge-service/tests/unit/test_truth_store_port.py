@@ -207,3 +207,72 @@ def test_implementations_match_the_port_signatures(impl):
                 f"{impl.__name__}.{name}({pname}) defaults to {iparam.default!r}, "
                 f"port says {pparam.default!r}"
             )
+
+
+# ── T45: valid-time is a scope-dependent AXIS, declared once ──────────────────
+
+def test_every_scope_declares_an_axis():
+    """🔴 The design rule T45 exists to make un-forgettable.
+
+    `TruthScope` and `AXIS_FOR_SCOPE` are two lists that must agree, and before T45 the
+    agreement lived nowhere: the routing knew `book` vs the rest, the glossary adapter knew
+    book was ordinal, the memory adapter knew the rest were clock, and **nothing checked that
+    the three matched**. Adding a fourth scope meant editing three files and hoping.
+
+    So this reads the `Literal`'s own members. A new scope is now impossible to add without
+    deciding its axis — which is the question, not an implementation detail: a scope with no
+    axis cannot be positioned, and guessing one is how an ordinal ends up compared to a clock.
+    """
+    from typing import get_args
+
+    from app.ports.truth_store import AXIS_FOR_SCOPE, TruthScope
+
+    declared = set(get_args(TruthScope))
+    mapped = set(AXIS_FOR_SCOPE)
+    assert declared == mapped, (
+        f"TruthScope and AXIS_FOR_SCOPE disagree: only in TruthScope {declared - mapped}, "
+        f"only in AXIS_FOR_SCOPE {mapped - declared}. Every scope must declare its axis."
+    )
+
+
+def test_the_ROUTER_and_the_ADAPTERS_agree_about_every_scope():
+    """The three copies are now one, and this is what proves it stayed one.
+
+    For each declared scope: the store the router picks must be the store that ACCEPTS that
+    scope. Before T45 these were independent decisions, so a scope could be routed to an
+    adapter that refuses it — an outage reachable only for that one scope, and invisible to
+    any test that exercised the other two.
+    """
+    from typing import get_args
+
+    from app.ports.truth_store import TruthScope
+
+    glossary = GlossaryTruthAdapter("http://glossary", None)
+    memory = MemoryTruthAdapter(None)
+    router = ScopedTruthStore(book_store=glossary, memory_store=memory)
+
+    for scope in get_args(TruthScope):
+        picked = router._route(scope)
+        picked._check(scope, None)          # must not raise: the picked store serves it
+
+
+def test_an_UNDECLARED_scope_raises_rather_than_defaulting():
+    """A default axis would pick one for a scope nobody thought about, and the wrong choice is
+    SILENT — `as_of` would be accepted and the comparison would simply answer wrongly."""
+    import pytest as _pytest
+
+    from app.ports.truth_store import axis_for
+
+    with _pytest.raises(ValueError, match="no valid-time axis declared"):
+        axis_for("saga")
+
+
+def test_a_BOOLEAN_as_of_is_refused_on_the_ordinal_axis():
+    """⚠️ `bool` is an `int` in Python, so a stray `True` would otherwise be accepted as a
+    story ordinal and compared as 1 — chapter one. Neither axis should take it."""
+    import pytest as _pytest
+
+    from app.ports.truth_store import check_axis
+
+    with _pytest.raises(TypeError):
+        check_axis("project", True)          # wall clock: not a datetime

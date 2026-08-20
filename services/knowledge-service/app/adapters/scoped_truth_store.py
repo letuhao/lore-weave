@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from app.ports.truth_store import TruthFact, TruthScope
+from app.ports.truth_store import axis_for, TruthFact, TruthScope
 
 logger = logging.getLogger(__name__)
 
@@ -29,11 +29,15 @@ class ScopedTruthStore:
         self._memory = memory_store
 
     def _route(self, scope: TruthScope):
-        if scope == "book":
-            return self._book
-        if scope in ("project", "global"):
-            return self._memory
-        raise ValueError(f"unknown truth scope {scope!r}")
+        """Which store answers this scope — derived from the AXIS, not from a second list.
+
+        T45: this method used to carry its own `book` / `("project", "global")` split, which
+        was the third independent copy of one mapping (the two adapters held the others). It
+        now routes on `axis_for(scope)`, so a scope added to `AXIS_FOR_SCOPE` is routed the
+        moment it is declared, and a scope that moves axis moves stores with it. An unknown
+        scope still raises — `axis_for` does it, once, for everyone.
+        """
+        return self._book if axis_for(scope) == "story_ordinal" else self._memory
 
     async def facts_for_subject(
         self,

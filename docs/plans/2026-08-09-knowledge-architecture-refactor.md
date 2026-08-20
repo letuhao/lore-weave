@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T45` (lane D, §6.3) — valid-time as a scope-dependent axis (`story_ordinal` | `wall_clock`), *the one piece that must be DESIGNED, not ported*; then `T46` merges the stores. `T44` closed 2026-08-14 — SCOPE-3 claimed knowledge was regenerable from glossary *with no loss*, which live data says would destroy 1184 events / 35 statuses / 567 unanchored entities. ⚠️ `T35` still **OWES AN OPERATOR WRITE** (`recanon_honorifics --apply`). `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `T46` (lane D, §6.3) — port the bitemporal machinery Go → Python and MERGE the stores. `T45` closed 2026-08-14: the axis is one declaration (`AXIS_FOR_SCOPE`) that the router and both adapters read, and a new scope cannot be added without deciding its axis — T46 inherits that rather than three copies. ⚠️ `T35` still **OWES AN OPERATOR WRITE** (`recanon_honorifics --apply`). `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**54 of 66 rows done · 12 open · 34 of 67 evidence blocks closed inside them.**
+**55 of 66 rows done · 11 open · 34 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -11671,11 +11671,84 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (b) the seam:** N/A — documentation; no service code changed.
   **QC (c) real data:** the whole finding is real data — five counts from Neo4j `:7688` and
   Postgres `:5555`, both read-only.
-- [~] **T45** — Valid-time as a **scope-dependent axis** (`story_ordinal` | `wall_clock`)
+- [x] **T45** — Valid-time as a **scope-dependent axis** (`story_ordinal` | `wall_clock`)
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   The one piece that must be *designed*, not ported: book truth is story-ordinal, memory truth is
   wall-clock.
   (depends on T44)
+  ---
+  **CLOSED 2026-08-14.** The distinction was already implemented and tested — three times, in
+  three files, agreeing by luck. It is one declaration now, and a new scope cannot be added
+  without deciding its axis.
+  ### ✅ T45a 2026-08-14 — the axis is DECLARED once; it had been encoded in three files and named in none
+
+  ```
+  unit 4235 -> 4239 passed
+  ```
+
+  T45 is *"the one piece that must be **designed**, not ported: book truth is story-ordinal,
+  memory truth is wall-clock."* **Rule 8: what exists already?** More than the row implies — and
+  the gap is not where it looks.
+
+  ```
+  ports/truth_store.py        as_of: int | datetime | None   (a union, no declaration)
+  glossary_truth_adapter      rejects a datetime             ⇒ book is ordinal
+  memory_truth_adapter        rejects an int                 ⇒ project/global are clock
+  test_the_adapters_reject_the_wrong_time_axis                both refusals already pinned
+  ```
+
+  So the distinction was **implemented and tested**. What was missing is that it was
+  implemented **three times**:
+
+  ```
+  scoped_truth_store._route   if scope == "book": glossary   elif in ("project","global"): memory
+  glossary._check             isinstance(as_of, datetime) -> raise
+  memory._check               _SUPPORTED_SCOPES + isinstance(as_of, int) -> raise
+  ```
+
+  🔴 **Three files independently encoding one mapping, with nothing asserting they agree.** The
+  same duplicated-constant drift this repo has already recorded for a CSS var and for the three
+  FastMCP schema sources. Add a fourth scope and three files must be edited in step; **move a
+  scope between axes and two of them keep the old answer while the router sends traffic on the
+  new one** — an outage reachable only for that one scope.
+
+  ✅ **`AXIS_FOR_SCOPE` + `axis_for()` + `check_axis()` in the port, read by all three.** The
+  router no longer carries a scope list at all — it dispatches on `axis_for(scope) ==
+  "story_ordinal"`, so a scope is routed the moment it is declared and moves stores with its
+  axis. Both adapters' isinstance checks are gone; one implementation refuses for everyone.
+
+  🎯 **`test_every_scope_declares_an_axis` reads the `Literal`'s own members**, so a new
+  `TruthScope` is impossible to add without deciding its axis — which is the *design* question
+  T45 owns, not an implementation detail. A scope with no axis cannot be positioned, and
+  guessing one is exactly how an ordinal ends up compared against a clock.
+
+  ⚠️ **`bool` is an `int` in Python**, so a stray `True` would have been accepted as a story
+  ordinal and compared as chapter one. `check_axis` rejects it on both axes and a rule pins it —
+  found while consolidating, not by a caller.
+
+  **BITE ×2, and the second is the one that could not have existed before:**
+
+  ```
+  19. add "saga" to TruthScope, declare no axis
+        E  TruthScope and AXIS_FOR_SCOPE disagree: only in TruthScope {'saga'}
+  20. flip "project" onto the ordinal axis
+        E  GlossaryTruthAdapter serves book scope, not 'project'
+        ^^ the ROUTER now sends project to the book store because the axis moved. That
+           cross-file disagreement was undetectable while the mapping lived in three places —
+           each file was individually self-consistent.
+  ```
+
+  **QC (a) gates:** unit **4235 → 4239**; `plan-verify` PASS; `plan-row-honesty-gate` OK.
+  **QC (b) the seam:** N/A — a port declaration and its three in-process readers; the glossary
+  adapter's HTTP surface is unchanged (it still sends `as_of` as an int, refused identically).
+  **QC (c) real data:** N/A — no data produced. The axes themselves were measured against the
+  live stores in T44a: `entity_facts.valid_from_ordinal` is a chapter position, memory's
+  `valid_from`/`valid_until` are datetimes.
+
+  📐 **What T45 does NOT do, stated so T46 does not inherit a surprise:** it does not merge the
+  axes or introduce a conversion between them, because there is none — a chapter ordinal has no
+  wall-clock meaning and vice versa. `T46` merges the STORES; the merged store will hold both
+  axes and `AXIS_FOR_SCOPE` is what tells it which one a row is on.
 - [~] **T46** — Port the mature bitemporal machinery Go → Python and merge the stores
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.3. Unfinished, not undecided.
   `maintain_chain` (pin-aware supersession), the content-addressed natural key, half-open interval
