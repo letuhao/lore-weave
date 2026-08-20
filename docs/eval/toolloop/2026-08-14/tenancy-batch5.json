@@ -1,0 +1,41 @@
+[
+  {
+    "tool": "memory_remember",
+    "args": {
+      "project_id": "0285d3fc-44c2-4b8b-a684-abcfd6e35837",
+      "fact_text": "x",
+      "fact_type": "decision"
+    },
+    "verdict": "refused",
+    "response": "MCP memory_remember error: Error executing tool memory_remember: {\"message\": \"project not found\"}"
+  },
+  {
+    "tool": "plan_compile",
+    "args": {
+      "book_id": "49103f88-7650-44ed-b1b8-cc3bb031fad1",
+      "run_id": "x",
+      "arc_id": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP plan_compile error: Error executing tool plan_compile: not found or not accessible"
+  },
+  {
+    "tool": "translation_coverage",
+    "args": {
+      "book_id": "49103f88-7650-44ed-b1b8-cc3bb031fad1"
+    },
+    "verdict": "refused",
+    "response": "MCP translation_coverage error: Error executing tool translation_coverage: not found or not accessible"
+  },
+  {
+    "tool": "kg_propose_edge",
+    "args": {
+      "project_id": "0285d3fc-44c2-4b8b-a684-abcfd6e35837",
+      "source_entity_id": "x",
+      "target_entity_id": "x",
+      "edge_type": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP kg_propose_edge error: Error executing tool kg_propose_edge: {\"message\": \"project not found\"}"
+  }
+]

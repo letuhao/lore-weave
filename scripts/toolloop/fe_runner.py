@@ -284,7 +284,7 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
                 client, auth, "POST",
                 f"{BASE}/v1/chat/sessions/{session_id}/tool-results",
                 {"run_id": resume_run_id, "tool_call_id": card["tool_call_id"],
-                 "outcome": approve},
+                 "outcome": _resume_outcome(card.get("kind"), approve)},
                 out, timeout)
             if not ok:
                 break
@@ -293,6 +293,30 @@ async def send_turn(client, auth, session_id, content, *, book_id=None, chapter_
             break
     out["pending_approval"] = pending_approval(out)
     return out
+
+
+def _resume_outcome(kind: str | None, approve: bool) -> str:
+    """The outcome STRING this card kind expects — never a bool.
+
+    🔴 THE HARNESS WAS POSTING `outcome: true` AND EVERY APPROVAL 422'd. `ToolResultRequest`
+    declares `outcome: str | None`, so a boolean is rejected outright — measured on batch 5,
+    where memory_remember was called 3/3, suspended 3/3, and wrote nothing on any run. Read as
+    a product result that would have been "the tool reports success and stores nothing", which
+    is a defect class this loop has filed before; it was the harness.
+
+    The 422 is the LUCKY failure. `stream_service` resolves the decision with
+    `outcome if outcome in ("approved_once", "approved_always", "denied", "denied_always")
+    else "denied"` — so any unrecognised string is silently a DENIAL. A harness that sent
+    "approve" or "yes" would have denied every card while reporting that it approved them, and
+    the store diff would have been empty for a reason nothing in the evidence could show.
+
+    The two card families take different vocabularies, so the kind decides:
+      tool_approval (Tier A/W gate) -> approved_once | denied
+      frontend-tool cards (propose_edit, glossary_propose_entity_edit) -> applied | dismissed
+    """
+    if kind == "tool_approval":
+        return "approved_once" if approve else "denied"
+    return "applied" if approve else "dismissed"
 
 
 async def run_scenario(client, auth, sc, idx, fx):

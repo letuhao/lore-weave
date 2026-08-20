@@ -205,6 +205,33 @@ class Throwaway:
         mints a confirm_token and writes nothing at call time, so a fixture that used it would
         report "no entities were created — unknown kind: character" and look like a glossary bug.
         """
+        if "wait" in step:
+            # 🔴 A SEED STEP CAN BE ASYNC, AND A FIXTURE THAT DOES NOT WAIT SATISFIES ITS OWN
+            # ASSERTION WHILE THE PRECONDITION IS STILL MISSING. Measured 2026-08-14:
+            # `plan_propose_spec` creates the plan_run synchronously and produces the SPEC
+            # artifact on a job. The seed asserted the run existed — true immediately — and
+            # `plan_compile` then failed 3/3 with "no spec to compile". The tool was reached and
+            # behaved correctly; the fixture was not ready, and nothing said so.
+            #
+            # Polls a SQL predicate until it returns the expected value or the timeout expires,
+            # and RAISES on timeout. A wait that gives up quietly is the same defect one layer
+            # further out.
+            spec = self._substitute(step["wait"])
+            deadline = time.monotonic() + float(spec.get("timeout", 90))
+            want = str(spec.get("expect", "1")).strip()
+            last = None
+            while time.monotonic() < deadline:
+                rows = oracle.db_query(spec["db"], spec["query"])
+                last = str(rows[0][0]).strip() if rows and rows[0] else ""
+                if last == want:
+                    self.seeded.append({"wait": spec["query"][:80], "settled": last})
+                    return
+                time.sleep(float(spec.get("poll", 2)))
+            raise ProvisionError(
+                f"SEED WAIT TIMED OUT after {spec.get('timeout', 90)}s: {spec.get('why', spec['query'])}\n"
+                f"    expected {want!r}, store still says {last!r}\n"
+                f"    The async half of this fixture never landed, so the scenario would measure "
+                f"a tool refusing a precondition that was never met.")
         if "sql" in step:
             # A third setup kind, for substrate NO tool can create. `glossary_list_ai_suggestions`
             # reads entities tagged 'ai-suggested' — a tag the extractor writes and no MCP tool

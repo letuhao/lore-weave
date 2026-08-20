@@ -1,0 +1,208 @@
+{
+  "_note": "Batch 5, derived from the ledger in RUNBOOK order (group A -> B -> C, concluded skipped, deprecated never drawn). plan_compile leads because its earlier `proven` was WITHDRAWN 2026-08-14: its evidence file records called 0/3 and the gate's old LIVE bars only asked about the turn. Prompts are generated from each tool's OWN _meta.synonyms and then GROUNDED in the fixture — the generator's bare phrasings ('Please add a relationship') cannot discriminate a real answer from a plausible one.",
+  "scenarios": [
+    {
+      "id": "plan-compile-v2",
+      "tool_under_test": "plan_compile",
+      "expect_tool": "plan_compile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Compile the plan I already proposed for this book into a planning package.",
+      "prompt_source": "_meta.synonyms['compile plan'] + ['planning package'], grounded on the seeded spec so 'the plan I already proposed' refers to something that exists.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "source_markdown": "# The Ember Codex\n\n## Arc 1 — The Hollow Keep\n- Chapter 1: Aldric reaches the Hollow Keep and is given the Codex.\n- Chapter 2: Mira Solene warns him the Codex is read by more than one reader.\n- Chapter 3: The Pale Regent's envoy arrives at the gate."
+          }
+        },
+        {
+          "wait": {
+            "db": "loreweave_composition",
+            "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
+            "expect": "1",
+            "timeout": 180,
+            "poll": 3,
+            "why": "plan_compile requires a SPEC artifact, which plan_propose_spec produces on a job. Without this wait the seed asserts only that the run exists — true immediately — and the tool then fails 'no spec to compile' 3/3, which reads as a tool defect and is a fixture that was not ready."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
+          "expect": "1",
+          "why": "THE PRECONDITION IS THE SPEC, NOT THE RUN. The first version asserted a plan_run existed and passed while plan_compile failed 3/3 with 'no spec to compile'. An assertion that cannot fail in the way the scenario fails is not an assertion."
+        }
+      ],
+      "falsifier": "REFUTED IF: plan_compile is not called on any run (the withdrawn v1 outcome), OR it is called with a run_id/arc_id the operator supplied rather than one the model read from the store, OR it reports a compiled package while plan_artifact gained no row. CONTROL: the seed creates the run, so a turn that cannot find it is a DISCOVERY failure (the model must reach composition_package_tree for runs.recent[].id) and not a failure of plan_compile itself — record which.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no proposed spec must refuse clearly, naming what is missing, not compile an empty package.",
+        "gate": "OWED — Tier A: the confirm/approval path must be exercised, not assumed.",
+        "tenancy": "OWED — book-scoped; another account's book must be refused."
+      },
+      "defects": []
+    },
+    {
+      "id": "translation-coverage",
+      "tool_under_test": "translation_coverage",
+      "expect_tool": "translation_coverage",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "How far along is the translation for this book — what's the coverage so far?",
+      "prompt_source": "_meta.synonyms['translation progress'] + ['coverage'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "book_chapter_create",
+          "args": {
+            "book_id": "{book_id}",
+            "original_language": "en",
+            "title": "Chapter II — The Envoy at the Gate",
+            "body": "The envoy came at low tide, when the Trench was walkable and the Keep could not pretend to be an island."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO chapters, so 'how much is translated' has a real denominator: the honest answer is 0 of 2. With one chapter, 'none' and 'not much' are the same sentence and a fabrication is indistinguishable from a reading."
+        },
+        {
+          "db": "loreweave_translation",
+          "query": "SELECT count(*)::text FROM chapter_translations WHERE book_id='{book_id}'",
+          "expect": "0",
+          "why": "ZERO translations, verified rather than assumed. This is the discriminator: any reported progress above zero is fabricated, and asserting it here means a leaked translation from an earlier run cannot silently make the reading true."
+        }
+      ],
+      "answer_expect": {
+        "none_of": [
+          "100%",
+          "fully translated",
+          "translation is complete"
+        ],
+        "why": "The fixture has two chapters and zero translations. A reply claiming completion or a non-zero share is reporting a coverage matrix it did not read."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply states any translated count above zero, OR translation_coverage is never called and the answer is produced from the chapter list instead — that last one is the D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY shape and must be recorded as such, not as a miss.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no chapters at all must say so rather than return an empty matrix as if it were 0% of something.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "memory-remember-v2",
+      "tool_under_test": "memory_remember",
+      "expect_tool": "memory_remember",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Remember that the Obsidian Trench is only navigable at low tide.",
+      "prompt_source": "_meta.synonyms['remember that'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the tool reports `remembered: true` while no Fact node appears in Neo4j, OR the Fact is stored with project_id NULL. THE COUNT CANNOT SETTLE THIS: merge_fact merges by content, so a re-remember is idempotent and a node count cannot separate 'merged into an existing node' from 'wrote nothing'. The property to check is the PROJECT on the node — the exact reading that produced D-MEMORY-FACT-STORED-UNSCOPED, where the fact was genuinely stored and genuinely unscoped.",
+      "ship_audit": {
+        "idempotency": "OWED — remembering the same sentence twice must merge, not duplicate.",
+        "gate": "OWED — Tier A; memory_remember_confirm is a per-project setting and both settings must be exercised.",
+        "tenancy": "OWED — project-scoped; proven for the memory family on 2026-08-14 via knowledge_projects, re-check for the WRITE path."
+      },
+      "defects": []
+    },
+    {
+      "id": "jobs-get",
+      "tool_under_test": "jobs_get",
+      "expect_tool": "jobs_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the full detail of my most recent job — status, cost, and whether anything failed.",
+      "prompt_source": "_meta.synonyms['job detail'] + ['job status'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the reply reports a job's status, cost or error WITHOUT jobs_get being called on the turn — jobs_list carries a summary, so an answer assembled from the list while claiming full detail is the registry-vs-live shape again. CONTROL: jobs_get REQUIRES service + job_id, and only jobs_list supplies them, so a correct turn is a two-call chain; a turn calling only jobs_list has not reached the tool under test. If the account has no jobs at all the run is VOID, not a pass — check before concluding.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must say so, not invent one.",
+        "absent_case": "OWED — a job_id that does not exist must return 'not found or not accessible', and that string must not distinguish another user's job from a nonexistent one.",
+        "tenancy": "OWED — user-scoped; another account's job_id must be refused."
+      },
+      "defects": []
+    },
+    {
+      "id": "kg-propose-edge",
+      "tool_under_test": "kg_propose_edge",
+      "expect_tool": "kg_propose_edge",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Record that Aldric Vane and Mira Solene know each other.",
+      "prompt_source": "_meta.synonyms['record that they know each other'] + ['link two characters'], grounded on the two seeded entities so the model has real names to resolve.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              }
+            ]
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO named entities, because the hard step is resolving NAMES to entity ids. With one entity the model cannot get the pair wrong and the scenario proves nothing about resolution."
+        }
+      ],
+      "falsifier": "REFUTED IF: the edge is written to the graph rather than parked in the triage inbox (the tool's own contract says it is NEVER written directly), OR the model invents entity ids instead of resolving the seeded names, OR source and target are the same id. NOTE: kg entities live in NEO4J, so there is no SQL seed_assert for the graph side — the glossary assert above pins the NAMES the model must resolve, and the store snapshot covers the Neo4j side.",
+      "ship_audit": {
+        "gate": "OWED — Tier A: the proposal must mint a review item, never a direct write.",
+        "absent_case": "OWED — an entity name that does not exist must be refused, not silently resolved to the nearest match.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": []
+    }
+  ]
+}

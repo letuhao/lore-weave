@@ -1,0 +1,63 @@
+{
+  "_note": "The two Tier-A tools from batch 5, re-run with the confirm card APPROVED. The first pass left both suspended, which proves the GATE but leaves the DATA bar unmet: nothing is written until a human clicks, so a store diff of {} is the card working, not the tool failing. Approval is the only way to read what the tool actually writes.",
+  "scenarios": [
+    {
+      "id": "plan-compile-v2-approved",
+      "tool_under_test": "plan_compile",
+      "expect_tool": "plan_compile",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Compile the plan I already proposed for this book into a planning package.",
+      "prompt_source": "_meta.synonyms['compile plan'] + ['planning package'], grounded on the seeded spec so 'the plan I already proposed' refers to something that exists.",
+      "needs_target": false,
+      "approve": true,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "source_markdown": "# The Ember Codex\n\n## Arc 1 — The Hollow Keep\n- Chapter 1: Aldric reaches the Hollow Keep and is given the Codex.\n- Chapter 2: Mira Solene warns him the Codex is read by more than one reader.\n- Chapter 3: The Pale Regent's envoy arrives at the gate."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_run WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "plan_compile requires run_id AND arc_id, which only exist once a spec has been proposed. Without the run the tool CANNOT be called and its refusal would be correct behaviour scored as a miss — which is exactly what the withdrawn v1 conclusion measured."
+        }
+      ],
+      "falsifier": "REFUTED IF: plan_compile is not called on any run (the withdrawn v1 outcome), OR it is called with a run_id/arc_id the operator supplied rather than one the model read from the store, OR it reports a compiled package while plan_artifact gained no row. CONTROL: the seed creates the run, so a turn that cannot find it is a DISCOVERY failure (the model must reach composition_package_tree for runs.recent[].id) and not a failure of plan_compile itself — record which.",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no proposed spec must refuse clearly, naming what is missing, not compile an empty package.",
+        "gate": "OWED — Tier A: the confirm/approval path must be exercised, not assumed.",
+        "tenancy": "OWED — book-scoped; another account's book must be refused."
+      },
+      "defects": []
+    },
+    {
+      "id": "memory-remember-v2-approved",
+      "tool_under_test": "memory_remember",
+      "expect_tool": "memory_remember",
+      "intent": "write",
+      "tier": "A",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Remember that the Obsidian Trench is only navigable at low tide.",
+      "prompt_source": "_meta.synonyms['remember that'].",
+      "needs_target": false,
+      "approve": true,
+      "seed": [],
+      "falsifier": "REFUTED IF: the tool reports `remembered: true` while no Fact node appears in Neo4j, OR the Fact is stored with project_id NULL. THE COUNT CANNOT SETTLE THIS: merge_fact merges by content, so a re-remember is idempotent and a node count cannot separate 'merged into an existing node' from 'wrote nothing'. The property to check is the PROJECT on the node — the exact reading that produced D-MEMORY-FACT-STORED-UNSCOPED, where the fact was genuinely stored and genuinely unscoped.",
+      "ship_audit": {
+        "idempotency": "OWED — remembering the same sentence twice must merge, not duplicate.",
+        "gate": "OWED — Tier A; memory_remember_confirm is a per-project setting and both settings must be exercised.",
+        "tenancy": "OWED — project-scoped; proven for the memory family on 2026-08-14 via knowledge_projects, re-check for the WRITE path."
+      },
+      "defects": []
+    }
+  ]
+}

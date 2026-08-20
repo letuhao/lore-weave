@@ -63,7 +63,37 @@ REFUSAL_MARKERS = ("not accessible", "not found", "forbidden", "denied", "no acc
 #: schema and probe again — every one of them, once given valid arguments, refused on ownership
 #: with the store verified unchanged.
 VALIDATION_MARKERS = ("validating", "must be a uuid", "is required", "required:", "invalid input",
-                      "unexpected additional properties", "field required")
+                      "unexpected additional properties", "field required",
+                      # Added 2026-08-14: memory_remember died on `fact_type`: "invalid arguments
+                      # for memory_remember — `fact_type`: Input should be 'decision', …" and was
+                      # scored `refused_other`, which is summarised alongside refusals in a line
+                      # reading "0 LEAK(S)". A marker list that misses a phrasing turns a call
+                      # that never reached the ownership check into a pass — the fifth time this
+                      # family of false pass has been found in this instrument.
+                      "invalid arguments for", "input should be", "is not a valid",
+                      "value is not a valid", "does not match")
+
+
+def _placeholder(spec: dict):
+    """A value the SCHEMA will accept, so the call reaches the ownership check.
+
+    🔴 A BARE "x" DIES IN VALIDATION ON ANY ENUM, AND THAT READ AS A PASS. memory_remember
+    requires `fact_type`, a closed enum; the probe sent "x", the call was rejected before
+    ownership ran, and the verdict came back `refused_other` — indistinguishable, in the summary
+    line, from a boundary that held. Read the enum the tool declares rather than guessing a
+    string; the schema is right there.
+    """
+    enum = spec.get("enum")
+    if isinstance(enum, list) and enum:
+        return enum[0]
+    t = spec.get("type")
+    if t == "array":
+        return []
+    if t in ("integer", "number"):
+        return 1
+    if t == "boolean":
+        return False
+    return "x"
 
 
 def make_other_users_book() -> str:
@@ -151,8 +181,7 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None) -> 
             if r == "project_id":
                 continue
             spec = (schema.get("properties") or {}).get(r) or {}
-            t = spec.get("type")
-            args[r] = "x" if t in (None, "string") else 1
+            args[r] = _placeholder(spec)
         return _call_and_judge(tool, args)
     if "book_id" not in props:
         return {"tool": tool, "verdict": "n/a",
@@ -165,8 +194,7 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None) -> 
         if r == "book_id":
             continue
         spec = (schema.get("properties") or {}).get(r) or {}
-        t = spec.get("type")
-        args[r] = "en" if r == "original_language" else ("x" if t in (None, "string") else 1)
+        args[r] = "en" if r == "original_language" else _placeholder(spec)
     return _call_and_judge(tool, args)
 
 
