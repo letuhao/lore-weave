@@ -1,0 +1,916 @@
+{
+  "batch": "batch4-rest",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "memory_recall_entity",
+      "scenario": "memory-recall-entity-v2",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents biography beyond the single seeded fact, OR memory_recall_entity is not called on the turn. CONTROL: if memory_search is called instead and returns the same fact, this is a DECLARATION overlap finding, not a failure of this tool — record it as such rather than as a miss.",
+      "answer_expect": {
+        "all_of": [
+          "cartographer"
+        ],
+        "why": "The seeded fact is the ONLY stored detail about her. A reply that does not carry it either did not read memory or read and dropped it; a reply carrying anything else about her is fabricated."
+      },
+      "falsifier_sha": "0d57140fcbc46eef",
+      "ship_audit": {
+        "empty_case": "OWED — an entity with no stored facts must say so, not invent.",
+        "tenancy": "OWED — project-scoped; a second account must not recall these facts."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a000a6-84fb-7f0b-8f2b-35bdf79b5bac",
+          "session_id": "01a000a6-9f24-7bb6-ba0b-3946f90e4d27",
+          "prompt": "Who is Mira Solene?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_set_attributes",
+            "glossary_search",
+            "memory_recall_entity"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.301533+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.509611+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 14:21:48.631005+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.631005+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 14:21:48.631005+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-14 14:21:48.766881+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.498758+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 345,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.301533+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.509611+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 14:21:48.631005+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.631005+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 14:21:48.631005+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-14 14:21:48.766881+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:21:48.498758+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 345,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a000a6-f5bd-77f8-81f2-f5eeadf30b3e",
+          "session_id": "01a000a7-11d6-70d0-bbcf-896a0d440d3e",
+          "prompt": "Who is Mira Solene?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_entity_set_attributes",
+            "glossary_search",
+            "memory_recall_entity"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.220433+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.436451+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 14:22:17.51387+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.51387+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 14:22:17.51387+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-14 14:22:17.662316+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.427389+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 346,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.220433+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.436451+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 14:22:17.51387+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.51387+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 14:22:17.51387+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-14 14:22:17.662316+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:17.427389+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 346,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a000a7-6460-7f15-9cb1-5ca876add0ef",
+          "session_id": "01a000a7-7fbf-7e03-ba03-79b995abfa56",
+          "prompt": "Who is Mira Solene?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_read",
+            "glossary_book_ontology_read",
+            "glossary_search",
+            "kg_project_create",
+            "memory_recall_entity"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.498061+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.732446+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 14:22:45.803976+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.803976+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 14:22:45.803976+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-14 14:22:45.949455+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.722283+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.498061+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.732446+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 29,
+                "latest": "2026-08-14 14:22:45.803976+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.803976+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 4,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 4,
+                "latest": "2026-08-14 14:22:45.803976+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 2,
+                "latest": "2026-08-14 14:22:45.949455+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:22:45.722283+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 1,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I don't have any specific details in my current memory or the book's text about **Mira Solene**. \n\nWhile I can see that she is registered as a character in your story bible, her profile (description, role, or personality) hasn't been filled out yet. If you'd like to define her, you can tell me a bit about her, and I can help you build her profile!"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "settings_provider_inventory",
+      "scenario": "settings-provider-inventory-v2",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the reply lists REGISTERED models (settings_list_models' answer) while claiming to have read the provider's live inventory — those are different sets and conflating them is the defect. CONTROL: this tool REQUIRES provider_credential_id, which only settings_list_providers supplies, so a correct turn is a two-call chain; a turn that calls only settings_list_providers has not reached the tool under test.",
+      "answer_expect": {
+        "any_of": [
+          "gemma",
+          "qwen",
+          "llama",
+          "gpt"
+        ],
+        "why": "A live inventory must name at least one real upstream model. A reply that describes the capability without naming a model did not read the inventory."
+      },
+      "falsifier_sha": "0b577dde674409df",
+      "ship_audit": {
+        "empty_case": "OWED — a provider that is down must say so, not return an empty list as if it offered nothing.",
+        "tenancy": "OWED — user-scoped; another account's credential must not be readable."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a000a7-e352-75d0-a4b7-ebee06283981",
+          "session_id": "01a000a7-fb15-77a5-aa66-858ef37bb50f",
+          "prompt": "Check the live inventory of my configured provider — which models does it actually offer right now?",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:18.025333+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:18.260338+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:18.245111+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:18.025333+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:18.260338+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:18.245111+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Your configured providers currently offer the following models:\n\n### **LM Studio (Local/Hosted)**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active, Tool Calling)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active, Tool Calling)\n*   **Qwen3.6 35B-A3B (120K)** (Active, Tool Calling)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Qwen2.5 7B Instruct** (Active)\n*   **Nemotron-3 Nano (260K)** (Active, Tool Calling)\n*   **bge-m3 (local)** (Active, Embedding)\n*   **text-embedding-bge-m3** (Active, Embedding)\n\n### **OpenAI**\n*   **GPT-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active, Tool Calling)\n*   **Kokoro (local)** (Active, TTS)\n\n### **Web Search**\n*   **searxng** (Active)\n*   **searxng-default** (Active)\n\n### **Other**\n*   **Local bge-reranker-v2-m3** (Active, Rerank)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a000a8-3cf1-71ab-8892-7e37db2e0a7b",
+          "session_id": "01a000a8-566f-7661-b506-569d18b51058",
+          "prompt": "Check the live inventory of my configured provider — which models does it actually offer right now?",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:40.970452+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:41.213918+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:41.197811+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:40.970452+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:41.213918+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:23:41.197811+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Your configured providers currently offer the following models:\n\n### **LM Studio (Local/Self-Hosted)**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active, Tool Calling)\n*   **Gemma-4 26B FD4-067** (Active)\n*   **gemma-26b** (Active, Tool Calling)\n*   **Qwen3.6 35B-A3B (120K)** (Active, Tool Calling)\n*   **Qwen3 35B (E2E)** (Active)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Qwen2.5 7B Instruct** (Active)\n*   **Nemotron-3 Nano (260K)** (Active, Tool Calling)\n*   **bge-m3 (local)** (Active, Embedding)\n*   **text-embedding-bge-m3** (Active, Embedding)\n\n### **OpenAI**\n*   **GPT-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active, Tool Calling)\n*   **Kokoro (local)** (Active, TTS)\n\n### **Web Search**\n*   **SearxNG** (Active)\n*   **searxng-default** (Active)\n\n### **Reranker (Local)**\n*   **Local bge-reranker-v2-m3** (Active)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a000a8-96db-72de-a4b8-6b3c8cff850c",
+          "session_id": "01a000a8-b22d-792f-b584-aaa6788a3a87",
+          "prompt": "Check the live inventory of my configured provider — which models does it actually offer right now?",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:04.00838+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:04.263965+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:04.248217+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:04.00838+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:04.263965+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:04.248217+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "Your configured providers currently offer the following models:\n\n### **LM Studio (Local/Self-Hosted)**\n*   **Gemma-4 26B-A4B QAT (200K)** (Active, Tool Calling)\n*   **Gemma-4 26B FD4-067** (Active, Chat)\n*   **gemma-26b** (Active, Tool Calling)\n*   **Qwen3.6 35B-A3B (120K)** (Active, Tool Calling)\n*   **Qwen3 35B (E2E)** (Active, Chat)\n*   **Qwen3 Coder 30B (C6 tools)** (Active)\n*   **Qwen3.5 9B critic** (Active)\n*   **Qwen3.5 9B (tooltest)** (Active)\n*   **Qwen2.5 7B Instruct** (Active, Fast/Non-reasoning)\n*   **Nemotron-3 Nano (260K)** (Active, Tool Calling)\n*   **bge-m3 (local)** (Active, Embedding)\n*   **bge-m3** (Active, Embedding)\n*   **Local bge-reranker-v2-m3** (Active, Rerank)\n\n### **OpenAI**\n*   **GPT-4o (probe)** (Active)\n*   **GPT-4o mini (OpenAI)** (Active, Tool Calling)\n*   **Kokoro (local)** (Active, TTS)\n\n### **Web Search**\n*   **SearxNG** (Active)\n*   **SearxNG (default)** (Active)"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "composition_conformance_run",
+      "scenario": "composition-conformance-run-v2",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool runs and reports conformance without any prose or arc actually existing (a check that cannot fail is not a check), OR a cost-gated tool spends LLM tokens without minting a confirm card. NOTE: this is Tier W and cost-gated, so the expected LIVE outcome is a CONFIRM CARD (ok=false, error=null, status=input_required), NOT a completed run — per dump-calls.sql that is a gated proposal, not a failure.",
+      "answer_expect": null,
+      "falsifier_sha": "3f4e541a797ceb99",
+      "ship_audit": {
+        "gate": "The confirm card IS the audit here — an arc-scope run re-extracts and spends tokens, so an ungated run would be the defect.",
+        "empty_case": "OWED — a chapter with no bound motifs/arc must refuse clearly rather than report vacuous conformance."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a000a8-eefc-71d2-a53a-7fc5e4fe270f",
+          "session_id": "01a000a9-0d7b-7f4a-bfea-819f8878536e",
+          "prompt": "Run a drift check on this chapter — did the prose actually deliver the beats it was supposed to?",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_diagnostics"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.544326+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.78451+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-14 14:24:26.867442+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.867442+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-14 14:24:26.867442+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.776402+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.544326+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.78451+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-14 14:24:26.867442+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.867442+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-14 14:24:26.867442+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:26.776402+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the diagnostics for this book. It looks like **Chapter I — The Ember Codex** is currently flagged as an **unplanned chapter**.\n\nBecause there isn't a formal plan (an arc or scene structure) linked to this chapter in the system yet, I can't run a conformance check to see if it hit specific beats. To do a drift check, the chapter needs to be part of a planned arc.\n\nWould you like to **propose a plan** for this chapter first? If you describe the story beats you intended for this chapter, I can build the structure so we can track your progress and run conformance checks moving forward.\n\nI did not re-read the chapter or the outline before answering your previous question, so my assessment that the chapter is \"unplanned\" is based on the diagnostics report and not a direct reading of the prose. My answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a000a9-4988-756b-a14c-4818a3326eb6",
+          "session_id": "01a000a9-6463-76e9-a17e-68314d6d4586",
+          "prompt": "Run a drift check on this chapter — did the prose actually deliver the beats it was supposed to?",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_diagnostics"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:49.734456+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:49.977241+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-14 14:24:50.054232+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:50.054232+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-14 14:24:50.054232+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:49.959133+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:49.734456+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:49.977241+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-14 14:24:50.054232+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:50.054232+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-14 14:24:50.054232+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:24:49.959133+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've run a diagnostics check on your book, and it looks like I can't perform a conformance run on that chapter just yet.\n\nThe system is flagging **\"Chapter I — The Ember Codex\"** as an **unplanned chapter**. This means that while the prose has been written, there isn't a corresponding plan (an arc or a set of beats) in the outline for me to compare it against.\n\nTo run a drift check, we first need to establish what the chapter was *supposed* to do. Would you like to:\n\n1.  **Create a plan for this chapter?** (I can help you outline the beats you intended for this chapter so we have a baseline).\n2.  **Draft a plan for the whole first arc?** (This would set the structure for the chapters to follow).\n\nOnce there is a plan in the outline, I can run the conformance check to see if the prose actually delivered the beats you intended.\n\nI did not re-read the chapter or the outline before answering your previous question, so my assessment that the chapter is \"unplanned\" is based on the diagnostics report and not a fresh reading of the prose or the plan. My answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a000a9-a0f7-7aa4-935d-de16f964d316",
+          "session_id": "01a000a9-bb41-7bff-b0a7-6f5195307d66",
+          "prompt": "Run a drift check on this chapter — did the prose actually deliver the beats it was supposed to?",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_diagnostics"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.11887+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.379274+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-14 14:25:12.457718+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.457718+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-14 14:25:12.457718+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.370068+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.11887+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.379274+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-14 14:25:12.457718+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.457718+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-14 14:25:12.457718+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:25:12.370068+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 347,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the diagnostics for this book, and it looks like I can't run a conformance check on this chapter just yet.\n\nThe system shows that **\"Chapter I — The Ember Codex\" is currently marked as an unplanned chapter**. \n\nA drift check (conformance run) compares the prose against a specific set of story beats or motifs. Since this chapter hasn't been linked to a plan or an arc in the outline, there are no \"beats\" for me to measure it against.\n\n**To fix this, we have two options:**\n1. **If you have a plan in mind:** Tell me the story beats you intended for this chapter, and I can help you build the outline so we can run the check.\n2. **If you want me to \"reverse-engineer\" the plan:** I can read the chapter and propose a plan based on what you've actually written. This will create the structure needed to run conformance checks on future chapters.\n\nHow would you like to proceed?\n\nI did not re-read the chapter or the outline before answering your previous question, so my assessment that the chapter is \"unplanned\" is based on the diagnostics report and not a direct reading of the prose. My answer may be stale."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

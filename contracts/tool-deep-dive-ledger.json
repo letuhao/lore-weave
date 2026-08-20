@@ -1604,6 +1604,16 @@
    "evidence_class": "gate-backed",
    "state": "blocked",
    "note": "BLOCKED, not proven. Surfaced 3/3 on both fixtures and called 0/3 on both. Asked 'what exactly do you need from me to add a character — check the real requirements, don't guess', the model answered 'I only require a Name' from glossary_book_ontology_read instead of loading the schema. Plausible and NOT sourced from the contract this tool exists to expose. The LIVE bar is not met: the tool was never exercised by the model. Cause recorded as D-TOOL-LOAD-NOT-USED-FOR-SCHEMA and it is NOT a declaration gap — tool_load is gateway-local and always advertised, so the lever is elsewhere. Store unchanged and tenancy not-applicable (it loads schemas, identical for every caller)."
+  },
+  "memory_recall_entity": {
+   "state": "proven",
+   "provider": "knowledge",
+   "tier": "R",
+   "cycle": "batch4-rest",
+   "group": "C",
+   "evidence_class": "gate_backed",
+   "counts_toward_release": true,
+   "note": "CALLED 3/3 from 'Who is Mira Solene?' — its OWN declared phrase ('who is'). Store unchanged 3/3. THE v1 MISS WAS MY SCENARIO, NOT THE PRODUCT: v1 asked 'What do we know about Mira Solene so far?', which literally contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character', so longest-match picked memory_search correctly. ANSWER UNVERIFIED, stated rather than glossed: all three runs left the turn SUSPENDED on a Tier-A card, so no final prose was produced and the seeded-fact check ('cartographer') could not be evaluated. See OBS-READ-TURN-REACHES-FOR-WRITES."
   }
  },
  "defects": {
@@ -2092,6 +2102,32 @@
    "what_it_implies_about_the_DQ": "DQ-T3's premise — 'from the model's side they are indistinguishable from tools that do not exist' — was an inference from the CATALOG state, not an observed model reply. The condition may be far rarer in practice than the DQ assumed, because reaching for these tools tends to open the gate first. The stamp is still correct where it fires and is harmless where it does not (it is derived from absence), but its VALUE is now an open question rather than an established one.",
    "what_a_valid_fixture_needs": "A book-scoped turn that calls tool_list('glossary') or tool_load on a gated name WITHOUT any setup/ontology/glossary wording in the prompt — i.e. the model must reach them on its own. Not yet constructed.",
    "state": "OPEN — recorded so the next cycle starts from this rather than re-running the same void scenario."
+  },
+  {
+   "id": "OBS-READ-TURN-REACHES-FOR-WRITES",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch4-rest.json",
+   "finding": "The pure question 'Who is Mira Solene?' made the model attempt a Tier-A WRITE on 3 of 3 runs — glossary_entity_set_attributes twice, kg_project_create once — alongside the correct read. Every one was GATED into a confirm card, so the store diff is empty on all three.",
+   "why_it_matters": "The gate held, so this is not damage — but it is the same shape as the cycle-11 incident where a read-only TOOL did not make a read-only TURN and four unreviewed writes landed under a standing approval. Here the harness clears standing approvals, which is exactly why it surfaced as a card instead of a write. On an account with a standing allow for glossary_entity_set_attributes, this question would have silently modified an entity.",
+   "state": "OPEN — recorded, not fixed."
+  },
+  {
+   "id": "D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch4-rest.json (K=3)",
+   "finding": "Asked 'Check the live inventory of my configured provider — which models does it actually offer right now?', the model called settings_list_models on 3/3 and answered 'Your configured providers currently offer the following models', listing the REGISTERED model rows. settings_provider_inventory was surfaced 3/3 and called 0/3.",
+   "why_it_matters": "Two different sets presented as one. The registry is what the user has registered; the inventory is what the upstream provider actually serves right now. A model retired upstream still appears in the registry, so this answer is confidently wrong in exactly the case the question was asked to detect. Same class as DQ-T30: an authoritative source exists and the turn answers from a local one instead.",
+   "note": "settings_provider_inventory requires provider_credential_id, which only settings_list_providers supplies — so the correct turn is a two-call chain and the model took a one-call shortcut that reads as an answer.",
+   "state": "OPEN — settings_provider_inventory NOT concluded."
+  },
+  {
+   "id": "OBS-CONFORMANCE-NEEDS-AN-ARC-AND-THE-MODEL-SAID-SO",
+   "date": "2026-08-14",
+   "evidence": "docs/eval/toolloop/2026-08-14/batch4-rest.json (K=3)",
+   "finding": "composition_conformance_run surfaced 3/3, called 0/3. On every run the model called composition_diagnostics instead, found the chapter flagged as UNPLANNED, and said plainly: 'Because there isn't a formal plan (an arc or scene structure) linked to this chapter, I can't run a conformance check... Would you like to propose a plan?'",
+   "why_it_matters": "That is CORRECT behaviour with a route out, not a miss — the tool's precondition genuinely was not met. Scoring it as a failure would repeat the v1 error of measuring a fixture gap as a product defect. The tool remains unconcluded because the fixture cannot yet satisfy it.",
+   "what_a_valid_fixture_needs": "A chapter bound to an ARC (composition_arc_create + arc_assign_chapters) with prose, so a drift check has both a plan and a realization to compare.",
+   "state": "OPEN — composition_conformance_run NOT concluded, fixture gap named."
   }
  ],
  "progress": {

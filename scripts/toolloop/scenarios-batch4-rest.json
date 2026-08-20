@@ -1,0 +1,155 @@
+{
+  "_note": "Batch 4's three unconcluded tools, re-derived. Two of the three failures were MY scenario's fault, not the product's — the prompt was drawn from a synonym the prompt never actually contained, or named a job a sibling tool owns. The RUNBOOK's rule is that the prompt comes from the tool's OWN declared vocabulary; these do.",
+  "scenarios": [
+    {
+      "id": "memory-recall-entity-v2",
+      "tool_under_test": "memory_recall_entity",
+      "expect_tool": "memory_recall_entity",
+      "intent": "read",
+      "tier": "R",
+      "scope": "project",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Who is Mira Solene?",
+      "prompt_source": "_meta.synonyms['who is'] — its OWN phrase. The v1 prompt was 'What do we know about Mira Solene so far?', which contains memory_search's declared phrase 'what do we know about' and NOT this tool's longer 'what do we know about this character'. Longest-match therefore picked memory_search, correctly. That was a scenario defect, not a product one.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              }
+            ]
+          }
+        },
+        {
+          "tool": "memory_remember",
+          "args": {
+            "project_id": "{project_id}",
+            "fact_type": "statement",
+            "fact_text": "Mira Solene is the last cartographer of the Obsidian Trench."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "2",
+          "why": "TWO characters, so an answer naming the right one is distinguishable from an answer that just echoes the only name present."
+        }
+      ],
+      "answer_expect": {
+        "all_of": [
+          "cartographer"
+        ],
+        "why": "The seeded fact is the ONLY stored detail about her. A reply that does not carry it either did not read memory or read and dropped it; a reply carrying anything else about her is fabricated."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply invents biography beyond the single seeded fact, OR memory_recall_entity is not called on the turn. CONTROL: if memory_search is called instead and returns the same fact, this is a DECLARATION overlap finding, not a failure of this tool — record it as such rather than as a miss.",
+      "ship_audit": {
+        "empty_case": "OWED — an entity with no stored facts must say so, not invent.",
+        "tenancy": "OWED — project-scoped; a second account must not recall these facts."
+      },
+      "defects": []
+    },
+    {
+      "id": "settings-provider-inventory-v2",
+      "tool_under_test": "settings_provider_inventory",
+      "expect_tool": "settings_provider_inventory",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Check the live inventory of my configured provider — which models does it actually offer right now?",
+      "prompt_source": "_meta.synonyms['inventory'] + ['models this provider offers']. The v1 prompt was 'What models can I use?', which is settings_list_models' job ('models', 'my models', 'list models') — the model was RIGHT to use it, so the v1 expect_tool was wrong.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "answer_expect": {
+        "any_of": [
+          "gemma",
+          "qwen",
+          "llama",
+          "gpt"
+        ],
+        "why": "A live inventory must name at least one real upstream model. A reply that describes the capability without naming a model did not read the inventory."
+      },
+      "falsifier": "REFUTED IF: the reply lists REGISTERED models (settings_list_models' answer) while claiming to have read the provider's live inventory — those are different sets and conflating them is the defect. CONTROL: this tool REQUIRES provider_credential_id, which only settings_list_providers supplies, so a correct turn is a two-call chain; a turn that calls only settings_list_providers has not reached the tool under test.",
+      "ship_audit": {
+        "empty_case": "OWED — a provider that is down must say so, not return an empty list as if it offered nothing.",
+        "tenancy": "OWED — user-scoped; another account's credential must not be readable."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-conformance-run-v2",
+      "tool_under_test": "composition_conformance_run",
+      "expect_tool": "composition_conformance_run",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Run a drift check on this chapter — did the prose actually deliver the beats it was supposed to?",
+      "prompt_source": "_meta.synonyms['drift check'] + ['beat realized']. The v1 prompt used 'check conformance', also declared, but the fixture carried no arc and no prose, so the tool had nothing to check.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character"
+              ]
+            }
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_book",
+          "query": "SELECT count(*)::text FROM chapters WHERE book_id='{book_id}' AND coalesce(word_count,0) > 0",
+          "expect": "1",
+          "why": "Conformance checks PROSE against a plan. Chapter bodies live in object storage (storage_key), so word_count is the column-level proxy for 'this chapter has prose'. With no prose the tool has nothing to run on and a refusal would be correct behaviour scored as a miss — which is what v1 measured."
+        }
+      ],
+      "falsifier": "REFUTED IF: the tool runs and reports conformance without any prose or arc actually existing (a check that cannot fail is not a check), OR a cost-gated tool spends LLM tokens without minting a confirm card. NOTE: this is Tier W and cost-gated, so the expected LIVE outcome is a CONFIRM CARD (ok=false, error=null, status=input_required), NOT a completed run — per dump-calls.sql that is a gated proposal, not a failure.",
+      "ship_audit": {
+        "gate": "The confirm card IS the audit here — an arc-scope run re-extracts and spends tokens, so an ungated run would be the defect.",
+        "empty_case": "OWED — a chapter with no bound motifs/arc must refuse clearly rather than report vacuous conformance."
+      },
+      "defects": []
+    }
+  ]
+}
