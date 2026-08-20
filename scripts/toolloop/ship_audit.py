@@ -75,7 +75,8 @@ VALIDATION_MARKERS = ("validating", "must be a uuid", "is required", "required:"
                       # Business-level argument checks that still run BEFORE ownership. A tool
                       # that refuses an empty list has not yet looked at whose book it is, so
                       # scoring it `refused` would be the same false pass one layer up.
-                      "must not be empty", "cannot be empty", "at least one", "requires ", "require one of")
+                      "must not be empty", "cannot be empty", "at least one", "requires ", "require one of",
+                      "unsupported ", "want one of", "must be one of")
 
 
 def _placeholder(spec: dict):

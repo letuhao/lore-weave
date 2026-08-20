@@ -821,6 +821,23 @@ async def translation_retranslate_dirty(
         chapter_ids=[cid], scope=SCOPE_DIRTY, chapter_id=cid,
         target_language=target_language,
     )
+    # 🔴 THE SAME INVARIANT AS D-EXTRACTION-CONFIRMS-A-NO-OP, IN THIS SERVICE'S OTHER TOOL, AND
+    # FOUND BY PROBING THE SIBLING AFTER FIXING THE FIRST. Measured 2026-08-14 on a chapter with
+    # NO translation at all: this minted a confirm_token whose own title read "Re-translate 0
+    # changed segment(s)". The author is asked to approve — and pay for — a re-translation of
+    # nothing, on a chapter that was never translated in the first place.
+    #
+    # A confirm gate exists to obtain consent for WORK. Zero segments is not work. Refused on the
+    # ESTIMATE rather than on "is there a translation", because the estimate is what the card
+    # would have charged for and it covers both shapes: never translated, and translated with
+    # nothing changed since.
+    if not est.segment_count:
+        raise ToolError(
+            "there are no changed segments to re-translate for this chapter and language — "
+            "either it has never been translated, or nothing has changed since it was. "
+            "Nothing was proposed and nothing was charged. "
+            "Use translation_segment_status to see the per-segment state, or "
+            "translation_start_job to translate it for the first time.")
     payload = {
         "action": "retranslate_dirty",
         "title": f"Re-translate {est.segment_count} changed segment(s)",

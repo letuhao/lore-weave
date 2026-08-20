@@ -30,6 +30,42 @@ SRC = (pathlib.Path(__file__).resolve().parents[1]
        / "app" / "mcp" / "server.py").read_text(encoding="utf-8")
 
 
+def _retranslate() -> str:
+    """The SIBLING tool, probed after the first fix and carrying the same hole."""
+    i = SRC.index("async def translation_retranslate_dirty(")
+    return SRC[i:i + 3000]
+
+
+def test_the_sibling_refuses_a_zero_segment_retranslation():
+    """🔴 FOUND BY PROBING THE SIBLING AFTER FIXING THE FIRST — which is what "prove the invariant
+    against EVERY past incident of the class" means in practice.
+
+    MEASURED 2026-08-14 on a chapter with NO translation at all:
+
+        translation_retranslate_dirty(book, chapter, "vi")
+          -> {"needs_confirm": true, "confirm_token": "..."}
+
+    and the payload's own title read "Re-translate 0 changed segment(s)". The author is asked to
+    approve — and pay for — a re-translation of nothing, on a chapter never translated."""
+    h = _retranslate()
+    assert "if not est.segment_count:" in h
+    assert "no changed segments to re-translate" in h
+
+
+def test_the_sibling_refuses_BEFORE_minting_the_token():
+    h = _retranslate()
+    assert h.index("if not est.segment_count:") < h.index("token = mint_confirm_token(")
+
+
+def test_the_sibling_names_both_causes_and_the_way_forward():
+    """Zero segments has TWO causes — never translated, or nothing changed — and they need
+    different next steps. A refusal naming one would send half the callers the wrong way."""
+    h = _retranslate()
+    assert "never been translated" in h and "nothing has changed" in h
+    assert "translation_segment_status" in h and "translation_start_job" in h
+    assert "nothing was charged" in h
+
+
 def _handler() -> str:
     i = SRC.index("async def translation_start_extraction(")
     return SRC[i:i + 6600]
