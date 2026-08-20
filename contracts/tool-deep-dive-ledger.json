@@ -1725,14 +1725,14 @@
    "note": "BLOCKED on DQ-T31, a surfacing defect measured in two passes. The VAGUE prompt left the intent gate open (0 withheld) and the model correctly asked which kinds, because `ops` must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT the gate: 4 tools withheld at stage=intent_gate including this one. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind. Its own boundary is sound: empty `ops` is refused with a message naming the missing input."
   },
   "jobs_list": {
-   "state": "proven",
+   "state": "in_cycle",
    "provider": "jobs",
    "tier": "R",
    "cycle": "batch-7",
    "group": "C",
-   "evidence_class": "gate-backed",
+   "evidence_class": "REOPENED — the answer bar was not actually checked",
    "counts_toward_release": true,
-   "note": "Called 3/3 from 'What background jobs do I have running right now?', store unchanged, and the reply named this account's real jobs by id (10 composition jobs, grouped by stage). Tenancy is covered by construction and said so: it takes no book/project/map argument, its boundary is the caller identity. Empty case stated as unrun rather than asserted — the account has jobs."
+   "note": "🔴 CONCLUSION WITHDRAWN 2026-08-14, by a cross-check between two tools' answers. Batch 7 recorded it proven on 'the reply named this account's real jobs by id' — and the reply said 'You currently have 10 background jobs running'. Batch 9's jobs_summary answered '31 active', and the boundary settles it: jobs_list returns 10 ITEMS plus a next_cursor and NO total, so 10 is the page size. The model reported a PAGE as the COUNT and my falsifier did not look — it said 'the answer naming OTHER jobs is not a defect', and never checked the number. PRIOR NOTE kept because the work happened: Called 3/3 from 'What background jobs do I have running right now?', store unchanged, and the reply named this account's real jobs by id (10 composition jobs, grouped by stage). Tenancy is covered by construction and said so: it takes no book/project/map argument, its boundary is the caller identity. Empty case stated as unrun rather than asserted — the account has jobs."
   },
   "world_map_add_region": {
    "state": "proven",

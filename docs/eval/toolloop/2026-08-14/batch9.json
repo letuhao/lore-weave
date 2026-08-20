@@ -1,0 +1,1245 @@
+{
+  "batch": "batch9",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_create_work",
+      "scenario": "composition-create-work",
+      "intent": "write",
+      "falsifier": "REFUTED IF: it is NOT idempotent — its own description says 'create (or get, idempotently)', and the harness fixture already mints a composition Work during provisioning, so this turn must resolve to the SAME work rather than a second one. Read composition_work for this book: more than one row is the defect. CONTROL: the fixture creates the work at build time, so a turn reporting 'created' is not automatically wrong — the row count is what settles it.",
+      "answer_expect": null,
+      "falsifier_sha": "14d53f76fad6b57e",
+      "ship_audit": {
+        "idempotency": "OWED — the headline property: calling twice must return one work, not two.",
+        "gate": "OWED — Tier A.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02076-b76b-79fa-a6af-d837bbf61930",
+          "session_id": "01a02076-e8ba-7d15-b03b-3c8d5b1693a0",
+          "prompt": "Start composing this book — set up the authoring workspace for it.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_create_work"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:26.42728+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:26.64214+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:26.631215+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:26.42728+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:26.64214+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:26.631215+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02077-2544-72c8-9d1f-37e5e674107c",
+          "session_id": "01a02077-4225-7c8e-86ec-90215c2226b8",
+          "prompt": "Start composing this book — set up the authoring workspace for it.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_create_work"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:54.561574+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:54.810545+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:54.792161+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:54.561574+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:54.810545+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:37:54.792161+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02077-7139-7327-b74f-f2f79ef26351",
+          "session_id": "01a02077-8a22-782c-b00b-78659d97dd22",
+          "prompt": "Start composing this book — set up the authoring workspace for it.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "composition_create_work"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:13.970837+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:14.168181+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:14.1613+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:13.970837+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:14.168181+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:14.1613+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "glossary_deep_research",
+      "scenario": "glossary-deep-research",
+      "intent": "write",
+      "falsifier": "REFUTED IF: it spends web-search money with NO confirm card — this is a PAID tool and the gate is the whole audit. EXPECTED LIVE OUTCOME is a card, left unapproved, store unchanged. 🔴 THE CARD IS NEVER APPROVED IN THIS SCENARIO: approving it buys real web searches, and the LIVE bar is satisfied by reaching the tool, not by paying. Also REFUTED IF the model invents an entity_id rather than resolving 'Aldric Vane' — that is the D-DECLARED-UUID class again and must be recorded as a new instance.",
+      "answer_expect": null,
+      "falsifier_sha": "c5e8c006558ecfd8",
+      "ship_audit": {
+        "gate": "The card IS the audit — a paid web call with no gate would be the defect.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused before anything is bought.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02077-b8f5-73ec-904b-41ea3a632528",
+          "session_id": "01a02077-d535-7d4c-abdc-3f5fd8ae69dd",
+          "prompt": "Research Aldric Vane on the web and find sources for him.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "web_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.343848+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.570668+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-20 18:38:32.752575+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.752575+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-20 18:38:32.752575+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.884511+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.564255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.343848+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.570668+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-20 18:38:32.752575+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.752575+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-20 18:38:32.752575+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.884511+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:32.564255+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02078-078d-732f-a350-2c97f4d42edb",
+          "session_id": "01a02078-22f7-7617-b1eb-59976e85ba2a",
+          "prompt": "Research Aldric Vane on the web and find sources for him.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "web_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.463155+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.687558+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-20 18:38:52.745384+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.745384+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-20 18:38:52.745384+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.866039+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.677163+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.463155+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.687558+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-20 18:38:52.745384+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.745384+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-20 18:38:52.745384+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.866039+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:38:52.677163+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02078-51fb-7644-b417-3b877a05df30",
+          "session_id": "01a02078-6d7b-7cbc-a525-48669eaf7124",
+          "prompt": "Research Aldric Vane on the web and find sources for him.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "web_search"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.537422+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.729266+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-20 18:39:11.789496+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.789496+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-20 18:39:11.789496+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.89116+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.722752+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.537422+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.729266+00"
+              },
+              "loreweave_glossary.book_active_genres": {
+                "rows": 1,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_attributes": {
+                "rows": 16,
+                "latest": "2026-08-20 18:39:11.789496+00"
+              },
+              "loreweave_glossary.book_genres": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.789496+00"
+              },
+              "loreweave_glossary.book_kind_genres": {
+                "rows": 2,
+                "latest": "-"
+              },
+              "loreweave_glossary.book_kinds": {
+                "rows": 2,
+                "latest": "2026-08-20 18:39:11.789496+00"
+              },
+              "loreweave_glossary.glossary_entities": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.89116+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:11.722752+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "jobs_summary",
+      "scenario": "jobs-summary",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply states counts without jobs_summary being called — jobs_list carries the rows and a count assembled from a truncated listing is the registry-vs-live shape again. CONTROL: batch 7 measured jobs_list returning 10 running jobs for this account, so a summary reporting ZERO active would contradict a known reading and is a finding either way.",
+      "answer_expect": null,
+      "falsifier_sha": "02f92d26e5bbae8e",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must report zeros, not an absence of the answer.",
+        "tenancy": "OWED — user-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02078-9e0c-72e0-8e13-a85d34e5932b",
+          "session_id": "01a02078-b8f0-7de5-9861-e339f6386e5a",
+          "prompt": "How many jobs do I have — give me the counts by status.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:30.986025+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:31.195484+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:31.188186+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:30.986025+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:31.195484+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:31.188186+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have 31 active jobs. Here is the full breakdown by status:\n\n* **Active:** 31\n* **Completed:** 1,076\n* **Failed:** 53\n* **Cancelled:** 17"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02078-f17b-704c-b44e-0381cabb697a",
+          "session_id": "01a02079-0b22-7ab3-b3b2-725d63423a6f",
+          "prompt": "How many jobs do I have — give me the counts by status.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:52.349098+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:52.562736+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:52.554117+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:52.349098+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:52.562736+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:39:52.554117+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have 31 active jobs. Here is the full breakdown by status:\n\n* **Active:** 31\n* **Completed:** 1,076\n* **Failed:** 53\n* **Cancelled:** 17"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02079-3fd5-7c80-ad93-ba0aeb50ada1",
+          "session_id": "01a02079-5dc9-72c1-be3a-350286bf5942",
+          "prompt": "How many jobs do I have — give me the counts by status.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "jobs_summary"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:12.414755+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:12.629775+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:12.620033+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:12.414755+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:12.629775+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:12.620033+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have 31 active jobs. Here is the full breakdown by status:\n\n* **Active:** 31\n* **Completed:** 1,076\n* **Failed:** 53\n* **Cancelled:** 17"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "plan_run_pass",
+      "scenario": "plan-run-pass",
+      "intent": "write",
+      "falsifier": "REFUTED IF: it runs a pass out of dependency order (the description says the seven passes run in order — motifs, cast, world, beats, chapters, …), OR it reports a pass complete while plan_artifact gains no row for it. CONTROL: the model must obtain run_id from the store (composition_package_tree), which is the chain plan_compile used in batch 5 — a turn that invents one is the D-DECLARED-UUID class.",
+      "answer_expect": null,
+      "falsifier_sha": "f6c4e5dd7dc8709d",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an unknown pass_id must be refused with the closed set, not defaulted.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02079-90e0-7823-ab27-3c3df2eac58e",
+          "session_id": "01a0207a-1039-7222-9974-a36e75892e8f",
+          "prompt": "Run the next compiler pass on my plan — do the cast pass.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "plan_compile"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:33.157546+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:33.354515+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:58.120953+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:58.155931+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:33.347303+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:33.157546+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:33.354515+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:58.120953+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:58.155931+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:40:33.347303+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I can't run the compiler pass yet because there isn't an active plan to compile. \n\nTo get started, I first need to propose a story plan based on your ideas. Once we've refined and approved a plan, I'll be able to run the compiler passes (like the cast pass) to turn that plan into your actual chapter and scene structure.\n\nWould you like to start by sharing your story idea or notes so I can propose a plan for you?"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0207a-46bc-79d5-ac8a-d5ffd55637f0",
+          "session_id": "01a0207a-ea1d-7ee0-ae0f-31400814ab74",
+          "prompt": "Run the next compiler pass on my plan — do the cast pass.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_package_tree",
+            "plan_compile"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:19.738194+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:19.957988+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:54.701259+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:54.732629+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:19.951284+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:19.738194+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:19.957988+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:54.701259+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:54.732629+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:41:19.951284+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0207b-263f-7e40-99a5-58ccea275619",
+          "session_id": "01a0207b-a291-726c-a04d-d5c3cbda9131",
+          "prompt": "Run the next compiler pass on my plan — do the cast pass.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_package_tree",
+            "plan_compile"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:16.932582+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:17.130457+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:41.842832+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:41.870316+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:17.123414+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:16.932582+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:17.130457+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:41.842832+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:41.870316+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:42:17.123414+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've checked the current state of your book. It looks like there is a plan currently in the **proposed** stage (ID: `01a0207b-2825-7c3a-bae3-944a0f546195`), but it hasn't been compiled into a formal structure yet.\n\nBecause the plan is still a proposal and hasn't been \"materialized\" into the actual chapter/scene structure, I can't run the cast pass on it just yet.\n\n**To move forward, we need to do one of two things:**\n\n1.  **Approve the current plan:** If you are happy with the plan I proposed, let me know and I will compile it. This will turn that proposal into the actual foundation of your book.\n2.  **Refine the plan:** If you want to change anything in the story beats or arcs first, tell me what you'd like to adjust, and we can update the proposal.\n\nOnce the plan is compiled, I'll be able to run the cast pass immediately!"
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 1
+    },
+    {
+      "tool": "propose_edit",
+      "scenario": "propose-edit",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the chapter body CHANGES — propose_edit shows an Apply button and must never write by itself; the store diff is the whole test. Also REFUTED IF the turn ends claiming the edit was made rather than proposed (the D-NARRATED-WRITE shape, which this tool is uniquely able to produce). CONTROL: it declares no synonyms, so if it is NOT surfaced the finding is about the frontend-tool advertisement path, not about answerability.",
+      "answer_expect": null,
+      "falsifier_sha": "158a85ca8daa5112",
+      "ship_audit": {
+        "gate": "The Apply button IS the gate — the proposal must reach the user unapplied.",
+        "empty_case": "OWED — a proposal identical to the current text should be refused or reported as a no-op, not shown as an edit.",
+        "tenancy": "n/a by construction — it edits the chapter open in the caller's own editor."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0207b-e154-7fbc-b006-15ee5576f2e4",
+          "session_id": "01a0207b-fa7e-7a8d-831e-d6b465571fe6",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:04.829984+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:05.052591+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:05.045494+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:04.829984+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:05.052591+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:05.045494+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've read the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nTo make this darker, I've focused on the weight of the climb and the violence of the storm. Here are three options ranging from \"moody\" to \"visceral\":\n\n**Option 1: Atmospheric & Oppressive**\n> \"Aldric Vane ascended the lightless throat of Hollow Keep, the storm above screaming like a wounded thing as it broke.\"\n\n**Option 2: Visceral & Gritty**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane whole, even as the storm tore at the sky with a jagged, electric fury.\"\n\n**Option 3: Fatalistic & Cold**\n> \"As the storm broke in a violent deluge, Aldric Vane began the long climb up the black stairs of Hollow Keep, feeling less like a man ascending and more like a ghost returning to its grave.\"\n\n**Which of these feels right to you? Or should I try a different direction?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0207c-371e-71e4-94db-cdf46b03a02f",
+          "session_id": "01a0207c-50c3-7d54-92f1-91db9e7e254e",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:26.778882+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:26.963292+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:26.956008+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:26.778882+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:26.963292+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:26.956008+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've prepared a few options for a darker opening line, depending on exactly what kind of \"dark\" you're looking for:\n\n**Option 1: Oppressive & Heavy (Focus on the atmosphere)**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane whole as the storm broke, the wind howling like something dying.\"\n\n**Option 2: Visceral & Grim (Focus on the physical sensation)**\n> \"Aldric Vane clawed his way up the black stairs of Hollow Keep, the first heavy drops of the storm tasting of ash and iron.\"\n\n**Option 3: Ominous & Predatory (Focus on the sense of dread)**\n> \"As the storm broke, the black stairs of Hollow Keep felt less like stone and more like a throat, waiting for Aldric Vane to descend.\"\n\n**Which of these feels right to you? Or should we try a different direction?**"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0207c-8aa5-7943-83b1-1be83d5c1eec",
+          "session_id": "01a0207c-a555-7580-90ec-735bf1ac4b75",
+          "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "book_read"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:48.161174+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:48.362031+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:48.353442+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:48.161174+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:48.362031+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:43:48.353442+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "I've looked at the opening line: *\"Aldric Vane climbed the black stair of Hollow Keep as the storm broke.\"*\n\nTo make it darker, I've focused on the weight of the climb and the violence of the storm. Here are two ways we could go:\n\n**Option 1: Visceral & Oppressive**\n> \"Aldric Vane clawed his way up the obsidian teeth of Hollow Keep’s stair, just as the storm began to scream.\"\n\n**Option 2: Cold & Fatalistic**\n> \"The black stairs of Hollow Keep seemed to swallow Aldric Vane whole, even before the storm broke its fury against the stone.\"\n\nWhich of these feels closer to the tone you're looking for, or should I try a different direction?"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

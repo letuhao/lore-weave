@@ -254,11 +254,35 @@ async def jobs_list(
     projected, _ = apply_response_contract(
         [_with_caps(j) for j in items], ref_fields=_JOB_REF_FIELDS, detail=detail,
     )
-    return {
+    # 🔴 A PAGE READ AS A TOTAL. MEASURED LIVE 2026-08-14 (batch 7, K=3): asked "What background
+    # jobs do I have running right now?", the model called this tool, received 10 items plus a
+    # next_cursor, and answered "You currently have 10 background jobs running". jobs_summary on
+    # the same account reports 31 active. The payload carried the page signal (`next_cursor`) and
+    # nothing that says the ITEM COUNT is not the total, so the model reported the page size.
+    #
+    # world_list is the control and it is already built this way — it returns
+    # `page: {total, returned, has_more, next_offset}` plus a one-line guidance, and its live
+    # answer on the same day was correct ("You have 28 worlds in total"). Same class as
+    # `always_available` on tool_list and `degraded` on story_search: a response that omits must
+    # SAY it omits, in a field a caller cannot skim past.
+    #
+    # A `total` is deliberately NOT computed here — it would be a second query on every list, and
+    # jobs_summary exists precisely to answer "how many". So the guidance NAMES that tool rather
+    # than guessing a number.
+    out: dict = {
         "items": projected,
+        "returned": len(projected),
         "next_cursor": next_cursor,
         "detail": detail,
     }
+    if next_cursor:
+        out["page"] = {"returned": len(projected), "has_more": True}
+        out["guidance"] = (
+            f"This is ONE PAGE of {len(projected)} job(s), NOT the total — more exist. "
+            "Do not report this number as how many jobs there are. "
+            "Pass `next_cursor` to continue, or call jobs_summary for the counts by status."
+        )
+    return out
 
 
 @mcp_server.tool(
