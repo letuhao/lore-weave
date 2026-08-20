@@ -378,6 +378,87 @@ pub async fn current_driver(
     bridge(cfg).read_actor_control(reality_id, actor_id).await
 }
 
+/// What a user drives, both spellings of it.
+///
+/// Two ids because the two tiers name an actor differently and the caller needs
+/// the island's one. `actor_id` rides along because this is the caller's OWN
+/// binding — no cross-user disclosure — and it is the durable id an operator
+/// greps for when someone reports the wrong character. Returning only
+/// `entity_id` would make that question answerable only by a CROSS-USER read,
+/// which is the expensive, audited one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Subject {
+    /// The PLATFORM identity — what `actor_control_binding.actor_id` holds.
+    pub actor_id: Uuid,
+    /// The ISLAND identity — what the simulation acts on.
+    pub entity_id: i64,
+}
+
+/// `E1` — which actor does THIS user drive in THIS reality? `None` = nobody.
+///
+/// The OWNER-SCOPED half of the pair. [`current_driver`] asks *"who drives this
+/// actor"* — cross-user, audited, through the Go bridge. This asks *"which
+/// actor do I drive"*, which is a question about yourself: unaudited by the
+/// same reasoning the GDPR erasure cascade's owner-scoped read is, and the
+/// sensitive-path contract says so in the `!=` of its own description.
+///
+/// # The order of the three checks is the design
+///
+/// **1 · Is the reality registered?** Before anything else, and for the reason
+/// `revoke` learned the hard way: without it a typo'd `reality_id` finds no
+/// binding and comes back as *"you drive nobody"* — a confident answer about a
+/// world that does not exist. Same mistake, same shape, caught here before it
+/// could ship twice.
+///
+/// **2 · Is there a live binding?** If not, `Ok(None)` and we stop. Nobody
+/// drives anybody, and there is nothing in the per-reality database to ask
+/// about — so a spectator costs one meta read and never opens a second pool.
+///
+/// **3 · Only then, the reality.** Hop 2 needs `actors`, which lives in the
+/// per-reality database, and reaching it needs a [`dp::RealityId`] — which has
+/// no public constructor and can only come from a passing `bind_reality`. That
+/// is not a formality to route around: **a driver in a FROZEN reality gets
+/// `RealityClosed`, not their entity id.** The alternative was a bypass
+/// constructor, and the guarantee `dp::RealityId` carries — *"if you are
+/// holding one, the control plane approved this"* — is worth more than a nicer
+/// answer during maintenance. Telling a player which entity they drive in a
+/// world that refuses commands is a promise the next call breaks anyway.
+pub async fn resolve_subject(
+    meta: &PgPool,
+    cfg: &EffectsConfig,
+    reality_id: Uuid,
+    user_ref_id: Uuid,
+) -> Result<Option<Subject>, ProvisionerError> {
+    if existing_registration(meta, reality_id).await?.is_none() {
+        return Err(ProvisionerError::NotFound(reality_id.to_string()));
+    }
+
+    // Hop 1 — META, through the ONE sanctioned Rust reader. The predicates that
+    // make it owner-scoped are asserted on the executed string in `meta-rs`;
+    // see `meta_rs::actor_binding::OWNER_SCOPED_SQL`.
+    let Some(actor_id) =
+        meta_rs::actor_binding::live_binding_actor(meta, reality_id, user_ref_id).await?
+    else {
+        return Ok(None);
+    };
+
+    // Hop 2 — PER-REALITY. `S-9`'s conversion site.
+    let reality = bind_reality(meta, &cfg.meta_allowlist, reality_id).await?;
+    let pool = open_reality_pool(meta, cfg, &reality).await?;
+    let Some(entity_id) = actor_registry::entity_id_for(&pool, &reality, actor_id).await? else {
+        // NOT `Ok(None)`. A live binding naming an actor the registry does not
+        // have is the dangling pointer `S-9` describes, and reporting it as
+        // "you drive nobody" would render a data defect as an ordinary
+        // spectator — the player silently demoted, nobody paged.
+        return Err(ProvisionerError::UnknownActor(actor_id.to_string(), reality_id.to_string()));
+    };
+    // The same rule the write edge applies, from the same function — a row
+    // that predates `adopt_actor`'s guard must not reach the transport as a
+    // valid subject. See `actor_registry::checked_island_id`.
+    let entity_id = actor_registry::checked_island_id(reality_id, entity_id)?;
+    Ok(Some(Subject { actor_id, entity_id }))
+}
+
 fn bridge(cfg: &EffectsConfig) -> BridgeClient {
     BridgeClient::new(cfg.bridge_url.clone(), cfg.bridge_token.clone())
 }

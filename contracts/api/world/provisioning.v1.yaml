@@ -264,6 +264,59 @@ paths:
           $ref: "#/components/responses/Problem"
         "401": { $ref: "#/components/responses/Unauthorized" }
 
+  /internal/v1/actor-control/subject:
+    post:
+      tags: [actor-control]
+      summary: Which actor does this user drive in this reality?
+      description: |
+        The OWNER-SCOPED read — the answer to "which actor do I drive", never
+        "who drives this actor". Those are different tiers:
+        `contracts/meta/meta-sensitive-read-paths.yml` registers the cross-user
+        direction as `actor_binding_cross_user` and describes it, verbatim, as
+        `WHERE user_ref_id != $caller_user`. This route is the `=` side, so it
+        writes no `meta_read_audit` row.
+
+        Its caller is `game-server`, which has no Postgres client and must not
+        grow one (`I3`: TypeScript is gateway/realtime). Before this existed the
+        transport mapped users to entities from `LW_CHANNEL_ACTOR_MAP`, an env
+        var — so a human could only drive an actor if an operator edited the
+        environment and restarted the process.
+
+        Internal-gated like the writers, and for a sharper reason: the request
+        NAMES the user it asks about, so on a public edge `user_ref_id` would be
+        an oracle. The client never names its own subject (`SEALED-SUBJECT`);
+        the transport takes it from the redeemed WS ticket.
+      security:
+        - internalToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SubjectRequest" }
+      responses:
+        "200":
+          description: |
+            The question has an answer — INCLUDING "nobody". `self: null` is the
+            ordinary state for a spectator and for the instant after a revoke,
+            so it is a 200 with a null rather than a 404: the resource being
+            described is the binding relation, and "there is no live binding"
+            is a fact about it, not its absence.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SubjectResponse" }
+        "400":
+          description: |
+            Reserved for the three cases where `self: null` would be a LIE:
+            the reality is not registered (a typo — answering "you drive
+            nobody" about a world that does not exist is the bug the revoke
+            path shipped once); the reality does not accept commands (frozen,
+            archived, provisioning — hop 2 needs a `dp::RealityId`, which only
+            a passing control-plane bind produces); or the live binding names
+            an actor this reality's registry has no row for, which is the
+            dangling pointer `S-9` describes and must not read as spectating.
+          $ref: "#/components/responses/Problem"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
 components:
   securitySchemes:
     internalToken:
@@ -350,6 +403,49 @@ components:
             still holds the binding; otherwise 409.
         reason:
           type: string
+    SubjectRequest:
+      type: object
+      additionalProperties: false
+      required: [reality_id, user_ref_id]
+      properties:
+        reality_id:
+          type: string
+          format: uuid
+        user_ref_id:
+          type: string
+          format: uuid
+          description: |
+            WHOSE binding to resolve. The transport takes this from the redeemed
+            WS ticket, never from anything the client sent.
+    SubjectResponse:
+      type: object
+      required: [reality_id, user_ref_id, self]
+      properties:
+        reality_id: { type: string, format: uuid }
+        user_ref_id: { type: string, format: uuid }
+        self:
+          type: [object, "null"]
+          required: [actor_id, entity_id]
+          description: |
+            `null` when this user drives nobody here. Present and non-null is
+            the only shape that authorises acting.
+          properties:
+            actor_id:
+              type: string
+              format: uuid
+              description: |
+                The PLATFORM identity. Returned because this is the caller's own
+                binding — no cross-user disclosure — and it is the durable id an
+                operator greps when someone reports the wrong character.
+            entity_id:
+              type: integer
+              format: int64
+              minimum: 0
+              description: |
+                The ISLAND identity — what the simulation acts on, and what the
+                transport needs. Non-negative: `sim_core::EntityId` is a `u64`,
+                and a negative BIGINT cast into one names an entity that does
+                not exist. Refused at both edges rather than cast.
     ControlResponse:
       type: object
       required: [outcome, reality_id, actor_id]

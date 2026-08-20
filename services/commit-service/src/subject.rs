@@ -88,20 +88,22 @@ pub async fn resolve_subject(
     reality: &RealityId,
     user_ref_id: Uuid,
 ) -> Result<u64, SubjectError> {
-    // Hop 1 — META. `revoked_at IS NULL` is not an optimisation: a revoked
-    // binding is history, and treating it as authority is precisely the hole
-    // the revoke exists to close.
-    let binding = sqlx::query(
-        "SELECT actor_id FROM actor_control_binding \
-          WHERE reality_id = $1 AND user_ref_id = $2 AND revoked_at IS NULL",
-    )
-    .bind(reality.as_uuid())
-    .bind(user_ref_id)
-    .fetch_optional(meta)
-    .await
-    .map_err(|e| SubjectError::Db(e.to_string()))?
-    .ok_or(SubjectError::NoLiveBinding { user: user_ref_id })?;
-    let actor_id: Uuid = binding.get("actor_id");
+    // Hop 1 — META, through the Meta Access Library rather than a SELECT of
+    // our own.
+    //
+    // The query used to be right here, and `revoked_at IS NULL` was defended
+    // in a comment: a revoked binding is history, and treating it as authority
+    // is precisely the hole the revoke exists to close. That defence is now
+    // `meta_rs::actor_binding::OWNER_SCOPED_SQL` plus a test that asserts each
+    // of its three predicates on the executed string — because when `E1` gave
+    // world-service the same question to answer, the choice was one shared
+    // reader or two copies drifting apart. `meta-sensitive-read-bypass-lint.sh`
+    // excused this file BY NAME for want of a Rust-side sanctioned reader;
+    // there is one now, and the excuse went with the SELECT.
+    let actor_id = meta_rs::actor_binding::live_binding_actor(meta, reality.as_uuid(), user_ref_id)
+        .await
+        .map_err(|e| SubjectError::Db(e.to_string()))?
+        .ok_or(SubjectError::NoLiveBinding { user: user_ref_id })?;
 
     // Hop 2 — PER-REALITY. The conversion site itself.
     let row = sqlx::query("SELECT entity_id FROM actors WHERE reality_id = $1 AND actor_id = $2")

@@ -170,6 +170,67 @@ pub async fn revoke_control(
     ))
 }
 
+/// `POST /internal/v1/actor-control/subject`.
+///
+/// **The request names the user it is asking ABOUT, and that is the whole
+/// reason this route is internal-gated.** It is owner-scoped with respect to
+/// the SUBJECT — it answers only "which actor does user U drive", never "who
+/// drives actor A" — but the caller is a service (`game-server`), not the human
+/// in question, so the scoping is a property of the QUERY, not of an
+/// authenticated session. A public edge would make `user_ref_id` an oracle.
+#[derive(Debug, Clone, Deserialize)]
+pub struct SubjectRequest {
+    pub reality_id: Uuid,
+    /// WHOSE binding to resolve. The transport takes this from the redeemed WS
+    /// ticket, never from anything the client sent — `SEALED-SUBJECT`.
+    pub user_ref_id: Uuid,
+}
+
+/// What the caller drives, or `null`.
+#[derive(Debug, Clone, Serialize)]
+pub struct SubjectResponse {
+    pub reality_id: Uuid,
+    pub user_ref_id: Uuid,
+    /// `None` = this user drives nobody in this reality. A normal answer for a
+    /// spectator and for the instant after a revoke, which is why it is a
+    /// `200` with a null and not a `404`.
+    #[serde(rename = "self")]
+    pub self_: Option<SubjectBody>,
+}
+
+/// The two spellings of the actor, as [`crate::actor_control_flow::Subject`].
+#[derive(Debug, Clone, Copy, Serialize)]
+pub struct SubjectBody {
+    pub actor_id: Uuid,
+    pub entity_id: i64,
+}
+
+/// Resolve the caller's own subject.
+///
+/// Always `200` when the question has an answer, including "nobody" — the
+/// distinction the transport needs is `self: null` versus a body, not a status
+/// code. `400` is reserved for the three cases where the ANSWER WOULD BE A
+/// LIE: an unregistered reality, a closed one, and a binding pointing at an
+/// actor the registry lost.
+pub async fn resolve_subject(
+    State(state): State<AppState>,
+    body: Result<Json<SubjectRequest>, JsonRejection>,
+) -> Result<(StatusCode, Json<SubjectResponse>), ProblemDetails> {
+    let Json(req) = body.map_err(invalid_body)?;
+    let found = flow::resolve_subject(&state.meta, &state.effects, req.reality_id, req.user_ref_id)
+        .await
+        .map_err(to_problem)?;
+    Ok((
+        StatusCode::OK,
+        Json(SubjectResponse {
+            reality_id: req.reality_id,
+            user_ref_id: req.user_ref_id,
+            self_: found
+                .map(|s| SubjectBody { actor_id: s.actor_id, entity_id: s.entity_id }),
+        }),
+    ))
+}
+
 fn invalid_body(e: JsonRejection) -> ProblemDetails {
     ProblemDetails::new(e.status(), "invalid-body", "Invalid request body", e.body_text())
 }
@@ -217,6 +278,40 @@ fn to_problem(err: ProvisionerError) -> ProblemDetails {
 mod tests {
     use super::*;
 
+    /// The wire word is `self`, and nothing in Rust enforces that.
+    ///
+    /// The field must be `self_` because `self` is a keyword, so the JSON name
+    /// exists only as a `#[serde(rename)]` attribute. Drop it and the response
+    /// carries `self_` — the transport's `body.self` is then `undefined`, which
+    /// reads as "this user drives nobody". **A silent no-op that fails OPEN
+    /// into the wrong answer**: every player becomes a spectator and nothing
+    /// logs an error, which is the shape `panel_id` had no enum for.
+    ///
+    /// `null` is asserted too. `#[serde(skip_serializing_if)]` added later
+    /// would OMIT the key, and an absent key and a null one are the same in
+    /// JavaScript but not in a schema that declares `self` required.
+    #[test]
+    fn the_response_spells_the_subject_key_self_and_keeps_it_when_null() {
+        let id = Uuid::from_u128(1);
+        let none = serde_json::to_string(&SubjectResponse {
+            reality_id: id,
+            user_ref_id: id,
+            self_: None,
+        })
+        .expect("serialise");
+        assert!(none.contains("\"self\":null"), "spectator response is wrong on the wire: {none}");
+        assert!(!none.contains("self_"), "the Rust field name leaked to the wire: {none}");
+
+        let some = serde_json::to_string(&SubjectResponse {
+            reality_id: id,
+            user_ref_id: id,
+            self_: Some(SubjectBody { actor_id: id, entity_id: 7 }),
+        })
+        .expect("serialise");
+        assert!(some.contains("\"self\":{"), "driver response is wrong on the wire: {some}");
+        assert!(some.contains("\"entity_id\":7"), "the island id must reach the transport: {some}");
+    }
+
     /// Non-vacuity, both directions. A test that only asserted the four
     /// client-actionable faults would pass just as well if EVERY variant
     /// mapped away from 500 — which would turn a bridge outage into
@@ -253,6 +348,11 @@ mod tests {
             ProvisionerError::Bridge("the bridge is down".into()),
             ProvisionerError::NoShardCapacity,
             ProvisionerError::ShardEffect("disk".into()),
+            // `E1` — a registry row holding a negative `entity_id` is OUR data
+            // being wrong, not the caller's request. It belongs on the 500 side
+            // of this split, and it is listed here so that moving it to a 4xx
+            // has to be a deliberate edit to a test that says why.
+            ProvisionerError::CorruptEntityId("r".into(), -1),
         ] {
             let p = to_problem(other);
             assert_eq!(

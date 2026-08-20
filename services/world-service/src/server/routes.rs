@@ -67,6 +67,10 @@ pub const ROUTES: &[RouteSpec] = &[
     RouteSpec { method: "post", path: "/internal/v1/actors", gate: Gate::Internal },
     RouteSpec { method: "post", path: "/internal/v1/actor-control/grant", gate: Gate::Internal },
     RouteSpec { method: "post", path: "/internal/v1/actor-control/revoke", gate: Gate::Internal },
+    // `E1` — the OWNER-SCOPED read the transport needs to stop reading an env
+    // map. Internal for the same reason the writers are: the request names the
+    // user it asks about, so on a public edge `user_ref_id` would be an oracle.
+    RouteSpec { method: "post", path: "/internal/v1/actor-control/subject", gate: Gate::Internal },
 ];
 
 /// Assemble the service router.
@@ -78,6 +82,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/internal/v1/actors", post(actor_control::create_actor))
         .route("/internal/v1/actor-control/grant", post(actor_control::grant_control))
         .route("/internal/v1/actor-control/revoke", post(actor_control::revoke_control))
+        .route("/internal/v1/actor-control/subject", post(actor_control::resolve_subject))
         .layer(from_fn_with_state(state.clone(), require_internal::<AppState>));
 
     Router::new()

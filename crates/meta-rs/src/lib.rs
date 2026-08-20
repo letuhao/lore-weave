@@ -41,6 +41,11 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs, rust_2018_idioms)]
 
+/// `E1` — the OWNER-SCOPED read of `actor_control_binding`, and the only
+/// sanctioned one in Rust. It is here rather than in the two services that
+/// need it because `meta-sensitive-read-bypass-lint.sh` excuses callers BY
+/// NAME, and a list that grows by one per caller stops being a gate.
+pub mod actor_binding;
 pub mod allowlist;
 pub mod audit;
 pub mod cache;

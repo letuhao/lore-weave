@@ -99,7 +99,7 @@ bare_selects() {
     | grep -vE '/contracts/meta/' \
     | grep -vE '_test\.go|_test\.rs' \
     | grep -vE 'services/meta-worker/pkg/user_erased_writer/' \
-    | grep -vE 'services/commit-service/src/subject\.rs' \
+    | grep -vE 'crates/meta-rs/src/actor_binding\.rs' \
     | grep -vE 'services/meta-worker/pkg/bridge/actor_control\.go' || true
   # ^ The GDPR erasure cascade (P2/071) reads actor_control_binding OWNER-scoped
   #   (WHERE user_ref_id = $1) to find which realities to scrub for the subject
@@ -107,18 +107,31 @@ bare_selects() {
   #   The erasure is audited end-to-end (each per-reality scrub writes a
   #   meta_write_audit row); a separate read-audit would be redundant. Tracked.
   #
-  # ^ commit-service/src/subject.rs — SEALED-SUBJECT's resolver. Two reasons,
-  #   and the second is a gap in the discipline rather than in the caller:
-  #     1. It is OWNER-SCOPED — `WHERE reality_id = $1 AND user_ref_id = $2`,
-  #        resolving the SUBMITTER'S OWN binding. Exactly the class the erasure
-  #        exclusion above is written for; the yml's own description of this
-  #        path is the `!=` case.
-  #     2. There is NO RUST-SIDE SANCTIONED READER. The audit wrapper this lint
-  #        points callers at is `contracts/meta`, which is Go, and the read
-  #        audit writer is `sdks/go/piikms`. A Rust service therefore cannot
-  #        comply by any route — the only compliant Rust read is one that does
-  #        not happen. Recorded as PC-NO-RUST-READ-AUDIT rather than left as an
-  #        exclusion that looks like a preference.
+  # ^ crates/meta-rs/src/actor_binding.rs — THE RUST-SIDE SANCTIONED READER,
+  #   excluded on the same footing as `/contracts/meta/` above: it is the
+  #   library, not a caller with an excuse.
+  #
+  #   THIS LINE REPLACED `services/commit-service/src/subject.rs`, and the swap
+  #   is the point. That exclusion carried two reasons, the second of which was
+  #   a gap in the discipline rather than in the caller: the read was
+  #   OWNER-SCOPED (`WHERE reality_id = $1 AND user_ref_id = $2` — the yml's own
+  #   description of this path is the `!=` case), and there was NO RUST-SIDE
+  #   SANCTIONED READER to route it through, because the audit wrapper this lint
+  #   points callers at is Go. A Rust service could not comply by any route.
+  #
+  #   `E1` needed the same read from world-service, which would have made this
+  #   list grow by one name per service — `NV-3`'s default-uncovered shape,
+  #   where the next author appends a line and the gate keeps printing PASS. So
+  #   the query moved into the Meta Access Library and BOTH services call it.
+  #   `subject.rs` no longer contains a SELECT, so its exclusion is gone rather
+  #   than kept "just in case": an exclusion for a file with nothing to exclude
+  #   is a licence nobody is using, waiting for someone to use it.
+  #
+  #   What guards the library itself is not this lint but
+  #   `actor_binding::OWNER_SCOPED_SQL`'s test, which asserts each predicate on
+  #   the executed string — including that `user_ref_id = $2` is still there.
+  #   Dropping it would turn the one excluded module into an unaudited
+  #   cross-user read, which is the only way this swap could go wrong.
   #
   # ^ meta-worker/pkg/bridge/actor_control.go — genuinely CROSS-USER (keyed by
   #   actor, no user predicate: "who drives this actor"), and it now WRITES the
