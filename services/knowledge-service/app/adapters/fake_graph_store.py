@@ -28,6 +28,7 @@ from loreweave_extraction.canonical import canonicalize_entity_name, entity_cano
 from app.db.neo4j_repos.entities import Entity, EntityDetail
 from app.db.neo4j_repos.events import Event
 from app.db.neo4j_repos.relations import Relation
+from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.ports.graph_store import EventAxis, RelationDirection
 
@@ -382,7 +383,12 @@ class FakeGraphStore:
             fact.confidence = max(fact.confidence, confidence)
             if source_type and source_type not in fact.source_types:
                 fact.source_types.append(source_type)
-            if valid_from_ordinal is not None:
+            # BACKFILL, never overwrite — `coalesce(f.valid_from_ordinal, $vfo)` in the
+            # Neo4j repo. The fake had the SAME bug Kuzu did and nothing caught either,
+            # because no rule re-mentioned one content at a later ordinal. A fake that
+            # moved a fact's story birth forward would make the defect agree with itself
+            # across ~561 unit tests.
+            if valid_from_ordinal is not None and fact.valid_from_ordinal is None:
                 fact.valid_from_ordinal = valid_from_ordinal
             fact.updated_at = _now()
 
@@ -672,6 +678,29 @@ class FakeGraphStore:
             if applicable:
                 out[eid] = max(applicable, key=lambda t: t[0])[1]
         return out
+
+    # ── the project as a whole ───────────────────────────────────────
+
+    async def project_graph_stats(
+        self, *, user_id: str, project_id: str,
+    ) -> dict[str, int]:
+        buckets = {
+            "Entity": self._entities.values(),
+            "Fact": self._facts,
+            "Event": self._events,
+        }
+        # ARCHIVED ROWS COUNT. The Cypher this mirrors is a bare label match with a tenant
+        # filter and no archive predicate, so a fake that quietly excluded them would make
+        # `find_entities_by_name`'s default-hide rule leak into a place it does not apply —
+        # and the conformance rule that pins this would then pass on the fake and fail on
+        # both real adapters. A stats card counts what is in the graph.
+        return {
+            f"{label.lower()}_count": sum(
+                1 for row in buckets[label]
+                if row.user_id == user_id and row.project_id == project_id
+            )
+            for label in COUNTABLE_LABELS
+        }
 
     # ── events ───────────────────────────────────────────────────────
 

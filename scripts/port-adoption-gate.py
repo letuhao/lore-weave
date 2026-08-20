@@ -82,7 +82,10 @@ EXEMPT_DIRS = (
 # moved this number by ZERO — all eleven importers keep other repo names — which is what
 # the A6 note predicted and why class (a) is not a batch on its own. A module falls off
 # only when its LAST repo import goes.
-MAX_CONCRETE_IMPORTERS = 57
+# **56** (2026-08-14, A10) — `jobs/stats_updater.py` reconciles the project stats card
+# through `GraphStore.project_graph_stats` instead of `maintenance.count_nodes_by_label`,
+# and the two label vocabularies moved to `app/domain/graph_labels.py` (spec §1.2).
+MAX_CONCRETE_IMPORTERS = 56
 
 # ── THE NUMBER THAT MATTERS ─────────────────────────────────────────────────────────────
 # A FLOOR, not a ceiling: `GraphStore` adopters may only increase.
@@ -123,7 +126,8 @@ MAX_CONCRETE_IMPORTERS = 57
 # live in the concrete layer — `ports/graph_store.py` is itself counted for exactly
 # that reason. Moving the models is a separate slice; the number stays honest until
 # then rather than being redefined to look better.
-MIN_GRAPHSTORE_ADOPTERS = 17
+# **18** — T17 A10: `jobs/stats_updater.py`.
+MIN_GRAPHSTORE_ADOPTERS = 18
 
 _CONCRETE = "neo4j_repos"
 _PORTS = "ports"
@@ -257,7 +261,7 @@ def main() -> int:
               f"but the floor still says {MIN_GRAPHSTORE_ADOPTERS}.\n")
         print("  Raise it — adoption is the progress this floor exists to record. (The older")
         print("  message here said T43 was blocked at zero observations; that was true when")
-        print("  this gate was written and is not now — T43 compares 9/9 operations.)")
+        print("  this gate was written and is not now — T43 compares 21/21 operations.)")
         return 1
 
     if MIN_GRAPHSTORE_ADOPTERS == 0:

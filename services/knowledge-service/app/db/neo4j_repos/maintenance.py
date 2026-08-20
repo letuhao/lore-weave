@@ -22,6 +22,12 @@ import logging
 
 from app.db.neo4j_helpers import CypherSession, assert_user_id_param, run_write
 
+# T17 A10 / spec §1.2 — the two label vocabularies are facts about the CORPUS, so they live
+# in `app/domain/` and are re-exported here. One definition; every existing importer keeps
+# working. The interpolation guards below still validate against them: moving a closed set
+# out of the engine package does not make it decorative.
+from app.domain.graph_labels import COUNTABLE_LABELS, PROJECT_GRAPH_LABELS
+
 logger = logging.getLogger(__name__)
 
 __all__ = [
@@ -142,9 +148,9 @@ async def invalidate_stale_quarantined_facts(
 
 # ── node counts for the project stats reconciler (K16.14) ────────────
 
-# Closed set. The label is INTERPOLATED because Cypher cannot parameterise one, so this
-# tuple is the injection barrier — a label must never arrive from a caller.
-COUNTABLE_LABELS: tuple[str, ...] = ("Entity", "Fact", "Event")
+# Closed set, defined in `app/domain/graph_labels.py` and imported above. The label is
+# INTERPOLATED because Cypher cannot parameterise one, so this tuple is the injection
+# barrier — a label must never arrive from a caller.
 
 _COUNT_BY_LABEL_CYPHER = (
     "MATCH (n:{label}) "
@@ -267,7 +273,6 @@ async def clear_embedding_model_tag(
 # silent zero-recall. Both change-model paths DOCUMENTED themselves as already doing this
 # and neither did; proven live on 2026-07-23, when a `:Passage` node was the only survivor
 # of this exact loop.
-PROJECT_GRAPH_LABELS: tuple[str, ...] = ("Entity", "Event", "Fact", "ExtractionSource")
 
 _DELETE_BY_LABEL_CYPHER = (
     "MATCH (n:{label}) "

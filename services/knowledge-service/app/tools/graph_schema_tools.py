@@ -2043,8 +2043,8 @@ async def _handle_kg_project_entities_to_nodes(
         try:
             from app.jobs.stats_updater import reconcile_project_stats
 
-            await reconcile_project_stats(
-                ctx.projects_repo._pool, session, owner, ctx.project_id
+            await reconcile_project_stats(  # T17 A10 — through the port
+                ctx.projects_repo._pool, get_graph_store(session), owner, ctx.project_id
             )
         except Exception:  # pragma: no cover - advisory cache, never blocks the projection
             logger.warning(

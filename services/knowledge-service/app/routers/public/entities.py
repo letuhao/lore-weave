@@ -954,7 +954,8 @@ async def project_entities_from_glossary(
         # the projection itself is the contract, so a recount hiccup never fails it.
         try:
             from app.jobs.stats_updater import reconcile_project_stats
-            await reconcile_project_stats(projects_repo._pool, session, owner, project_id)
+            await reconcile_project_stats(  # T17 A10 — through the port
+                projects_repo._pool, get_graph_store(session), owner, project_id)
         except Exception:  # pragma: no cover — advisory cache, never blocks the projection
             logger.warning("from-glossary: stat recount failed (project=%s)", project_id, exc_info=True)
     return dataclasses.asdict(result)

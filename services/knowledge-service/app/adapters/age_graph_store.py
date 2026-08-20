@@ -62,6 +62,7 @@ from loreweave_extraction.canonical import canonicalize_entity_name
 
 from app.db.neo4j_repos.entities import Entity, EntityDetail
 from app.db.neo4j_repos.events import Event
+from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.db.neo4j_repos.relations import Relation
 from app.ports.graph_store import EventAxis, RelationDirection
@@ -956,3 +957,30 @@ class AgeGraphStore:
             e.title or "",
         ))
         return events[:limit]
+
+    # ── the project as a whole ───────────────────────────────────────
+
+    async def project_graph_stats(
+        self, *, user_id: str, project_id: str,
+    ) -> dict[str, int]:
+        """One count per label in `COUNTABLE_LABELS`.
+
+        **Three round trips, not one `UNION ALL`.** Neo4j runs this as a single call-subquery
+        so a stats card is one hop; AGE's `UNION ALL` inside `cypher()` has to agree with the
+        column list declared in the SQL wrapper, and a four-arm union of differently-shaped
+        rows is exactly the construct this migration keeps finding a difference in. Three
+        boring counts cannot be wrong in a way the shadow would have to catch. A stats card
+        is not on a hot path.
+
+        The label is INTERPOLATED because Cypher cannot parameterise one — `COUNTABLE_LABELS`
+        is the injection barrier and it is iterated, never taken from a caller.
+        """
+        out: dict[str, int] = {}
+        for label in COUNTABLE_LABELS:
+            rows = await self._run(
+                f"MATCH (n:{label}) WHERE n.user_id = {_lit(user_id)} "
+                f"AND n.project_id = {_lit(project_id)} RETURN count(n)",
+                columns="c agtype",
+            )
+            out[f"{label.lower()}_count"] = int(rows[0]["c"]) if rows else 0
+        return out

@@ -46,6 +46,7 @@ from typing import Any
 
 from loreweave_extraction.canonical import canonicalize_entity_name
 
+from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Entity, EntityDetail, Relation
 
 __all__ = ["KuzuGraphStore"]
@@ -708,7 +709,18 @@ class KuzuGraphStore:
                         "ELSE $conf END"]
                 p2: dict[str, Any] = {"id": fid, "st": [source_type], "conf": float(confidence)}
                 if vfo is not None:
-                    sets.append("n.valid_from_ordinal = $vfo")
+                    # 🔴 BACKFILL, NEVER OVERWRITE — and this line was the seventh real
+                    # Kuzu bug, found by T43's differential rather than by conformance.
+                    # It read `n.valid_from_ordinal = $vfo`, so a re-mention of the same
+                    # content in a LATER chapter moved the fact's birth forward. Neo4j
+                    # coalesces (`facts.py`: *"never overwrite an existing one"*), and the
+                    # difference is silent and directional: an as-of read at the ORIGINAL
+                    # chapter stops returning a fact that was already established there —
+                    # established canon vanishing from a reader's past, which is the same
+                    # failure `merge_event` keeping the EARLIEST reading position exists
+                    # to prevent, on the other node type.
+                    sets.append(
+                        "n.valid_from_ordinal = coalesce(n.valid_from_ordinal, $vfo)")
                     p2["vfo"] = vfo
                 await self._run(f"MATCH (n:Fact) WHERE n.id = $id SET {', '.join(sets)}", p2)
             if maintain_chain and subject_id:
@@ -933,3 +945,28 @@ class KuzuGraphStore:
         # Every requested id appears; the default is 'active'. This line is the contract.
         return {eid: latest.get(eid, "active") for eid in entity_ids}
 
+    # ── the project as a whole ────────────────────────────────────────────────────────────
+
+    async def project_graph_stats(
+        self, *, user_id: str, project_id: str,
+    ) -> dict[str, int]:
+        """One count per label in `COUNTABLE_LABELS`.
+
+        Kuzu is schema-full, so the label is a TABLE name and cannot be parameterised any
+        more than a Cypher label can — `COUNTABLE_LABELS` is the injection barrier here for
+        the same reason it is in the other two adapters, and it is iterated rather than
+        accepted from a caller.
+
+        ⚠️ **The graph has no `Passage` table at all**, which is why the port's shape omits
+        `passage_count` rather than making this adapter answer `0` for a store it does not
+        hold. See the port docstring.
+        """
+        out: dict[str, int] = {}
+        for label in COUNTABLE_LABELS:
+            rows = await self._run(
+                f"MATCH (n:{label}) WHERE n.user_id = $u AND n.project_id = $p "
+                "RETURN count(n) AS c",
+                {"u": user_id, "p": project_id},
+            )
+            out[f"{label.lower()}_count"] = int(rows[0]["c"]) if rows else 0
+        return out

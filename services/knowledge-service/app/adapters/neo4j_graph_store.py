@@ -34,11 +34,13 @@ from app.db.neo4j_repos.entities import (
     restore_entity,
 )
 from app.db.neo4j_repos.entity_status import status_at_order
+from app.db.neo4j_repos import maintenance as _maintenance
 from app.db.neo4j_repos.events import Event, list_events_filtered, list_events_in_order
 from app.db.neo4j_repos import facts as _facts_repo
 from app.db.neo4j_repos import events as _event_repo
 from app.db.neo4j_repos import relations as _rel_repo
 from app.db.neo4j_repos.relations import Relation, create_relation, find_relations_for_entity
+from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.ports.graph_store import EventAxis, RelationDirection
 
@@ -354,6 +356,23 @@ class Neo4jGraphStore:
             user_id=user_id, project_id=project_id, entity_ids=entity_ids,
             at_order=at_order, min_evidence=min_evidence,
         )
+
+    # ── the project as a whole ───────────────────────────────────────
+
+    async def project_graph_stats(
+        self, *, user_id: str, project_id: str,
+    ) -> dict[str, int]:
+        # Delegates rather than issuing its own three counts, for the reason this whole file
+        # exists: the repo holds the tenancy filter, and a second copy is how the two drift.
+        # The repo's fourth key, `passage_count`, is DROPPED here — same shape as
+        # `events_in_window` dropping `list_events_filtered`'s total. See the port's
+        # docstring: a passage is the vector layer's row, and a graph adapter answering for
+        # it would be answering for a store it does not hold.
+        stats = await _maintenance.project_graph_stats(
+            self._session, user_id=user_id, project_id=project_id,
+        )
+        return {f"{label.lower()}_count": int(stats.get(f"{label.lower()}_count", 0))
+                for label in COUNTABLE_LABELS}
 
     # ── events ───────────────────────────────────────────────────────
 

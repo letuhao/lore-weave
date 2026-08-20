@@ -69,7 +69,7 @@ read even though its `merge_fact` raises: rule 9 says an adapter raises what it 
 honour, and a half-open `WHERE` is not `maintain_chain`. The consequence is stated where it
 bites — no rule can seed AGE *through the port*, so the two as-of rules seed raw Cypher and
 read back through the port, rather than let `AgeGraphStore.facts_for` ship unreachable.
-### 1.2 The port does **not** own janitorial work — **DECIDED**
+### 1.2 The port does **not** own janitorial work — **DECIDED · ✅ BUILT (A10, 2026-08-14)**
 *Replaces `D-MAINTENANCE-IS-NINE-JANITORS`.*
 
 `maintenance` measured out as nine things across eight consumers. They split three ways, and
@@ -77,6 +77,16 @@ only one class joins the port:
 
 * **Domain reads → the port.** `project_graph_stats`, `count_nodes_by_label`. A second engine
   must answer these, and callers ask them as questions about the book.
+  ⚠️ **Narrowed on build (A10): only `project_graph_stats` shipped.** `count_nodes_by_label`'s
+  sole caller was the per-label loop in `jobs/stats_updater.py`, which the new operation
+  replaces outright — so once the card is answered in one call there is no demand left, and
+  the port's own law is *grows by demand, not by inventory*. Adding it anyway would cost four
+  adapters + conformance + the shadow for a method nothing calls. The intent above — *a second
+  engine must answer these* — is met by the one operation; the other stays in `neo4j_repos` as
+  the Neo4j-internal helper the adapter is free to use.
+  ⚠️ **`passage_count` does NOT cross the boundary.** The repo function counts four labels;
+  a passage is the vector layer's row (§3.1 moves it to Postgres) and neither the AGE nor the
+  Kuzu graph has a passage table. The port answers for the three labels the graph owns.
 * **Constants → `app/domain/`.** `COUNTABLE_LABELS`, `PROJECT_GRAPH_LABELS`. Same class as
   `EVENT_ORDER_CHAPTER_STRIDE` and `SUPPORTED_PASSAGE_DIMS`: facts about the corpus, not the
   engine, and leaving them in `neo4j_repos` makes their importers look bound when they are not.

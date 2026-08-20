@@ -488,6 +488,33 @@ class GraphStore(Protocol):
         """
         ...
 
+    # ── the project as a whole ───────────────────────────────────────
+
+    async def project_graph_stats(
+        self, *, user_id: str, project_id: str,
+    ) -> dict[str, int]:
+        """Node counts for one project, keyed `{label.lower()}_count` over
+        `COUNTABLE_LABELS` — `entity_count`, `fact_count`, `event_count`.
+
+        Zeros for an empty graph, which is a legitimate state (extraction enabled, nothing
+        run yet) and not an error: the caller renders "Ready", not a failure.
+
+        ⚠️ **`passage_count` is NOT here, and that is the port doing its job.** The repo
+        function this replaces counts four labels, the fourth being `:Passage` — but a
+        passage is the VECTOR layer's row, not the graph's. `VectorStore` owns it, §3.1
+        moves it to Postgres, and neither the AGE nor the Kuzu adapter has a passage table
+        at all. Keeping the field would force every future graph adapter to answer a
+        question about a store it does not hold, and the only honest answers available to it
+        are `0` (a lie that reads as "no passages") or a refusal (which would make a stats
+        card unrenderable on a working engine). The caller that needs both counts asks both
+        stores — which is what having two stores means.
+
+        Spec §1.2 put this on the port over the janitors beside it because a second engine
+        genuinely must answer it: it is a question about the BOOK ("how much is in here"),
+        asked by a dashboard, not housekeeping.
+        """
+        ...
+
     # ── events ───────────────────────────────────────────────────────
 
     async def events_in_window(

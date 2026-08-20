@@ -35,15 +35,15 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T17` (12/20) — the port migration, now the largest genuinely-open row. ⚠️ `T39`'s remaining half was measured and re-scoped rather than built: its second cache has NO CALLERS (P2's Step D never landed), so the documented staleness risk is false and invalidating it would be motion. Read T39's re-scope note before reopening it.**
+**RESUME: `T17` (13/20) — A10 shipped spec §1.2; ceiling 57 → 56, floor 17 → 18. ⚠️ Read A10's set-cover before picking A11: **128 distinct names remain and every addition past the second frees exactly ONE module**, so the ceiling is priced and the FLOOR is the number worth moving. ⚠️ A10 left one finding for **T35**, recorded in `_EXPECTED_DIVERGENCES` and asserted to still reproduce: **an Event's id is derived from its TITLE**, so a rename makes Neo4j and Kuzu disagree about identity — the same defect T35 fixed for entities, on the node type that batch missed.**
 
 <!-- generated:progress -->
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**49 of 66 rows done · 17 open · 44 of 78 evidence blocks closed inside them.**
+**49 of 66 rows done · 17 open · 45 of 81 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (15/21) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (12/20) · `T25` · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (2/3) · `QC-6` · `QC-5` (12/30) · `T51` · `T39` (16/24) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -775,6 +775,15 @@ each one again. That price was accepted deliberately.
   covers is a known FALSE match. A6+ takes **class (a) only** — constants out of the engine
   layer, the A4/A5 shape, ~12 modules — and the real port growth waits on **T35**.
   **Done when:** each batch pastes both gate numbers before and after.
+- **A10** — ✅ **spec §1.2: `project_graph_stats` + the two label vocabularies** (2026-08-14).
+  Ceiling **57 → 56**, floor **17 → 18**. The batch was chosen by measurement and the biggest
+  candidate was *refused*: three benchmark modules that look one import from clean are
+  measuring a backend, not using one. Two real bugs fell out of the differential in the same
+  hour, and a third is recorded as owned by T35.
+- **A11** — the next 1-module-per-operation instalment, or T35 first: A10's set-cover says
+  **128 distinct names remain and every addition past the second frees exactly one module**,
+  so the tail is priced now. `D-T17-CEILING-ZERO-IS-THE-WRONG-TARGET` holds and the FLOOR is
+  the number to move.
 - **A12** — Re-run T43's shadow with the new operations. **Done when:** the coverage report names
   every new method and `cutover_permitted` is re-derived. **A12 can UNDO QC-7's evidence** — a new
   operation starts at zero observations, so the floor legitimately re-blocks until the shadow sees
@@ -7992,6 +8001,183 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   ```
   4228 passed — knowledge-service unit suite
+  ```
+
+
+  ### ✅ A10 2026-08-14 — spec §1.2 ships, and the differential finds **two more real bugs**
+
+  ```
+  port-adoption-gate   ceiling 57 -> 56   floor 17 -> 18      unit 4229 passed
+  conformance          128 -> 134 passed (4 adapters, 2 of them real databases)
+  differential         15 passed / 1 skipped   (Neo4j<->AGE and Neo4j<->Kuzu)
+  ```
+
+  🔧 **Rule 8 picked the batch, and the measurement is worth keeping.** An AST sweep of all
+  57 binders, crossed against the port's surface, asked *which single addition frees the most
+  MODULES* (A9's lesson: a module falls off only when its LAST repo import goes):
+
+  ```
+  maintenance                     4   jobs/{orphan_extraction_source_cleanup,quarantine_cleanup,
+                                        reconcile_evidence_count,stats_updater}
+  find_passages_by_vector         3   benchmark/{flat_knn_rawsearch,mode3_query_runner,vector_backend_bench}
+  ...then 1 module per addition, for 15 more
+  ```
+
+  The greedy set-cover over the whole board: **128 distinct uncovered names, and after the
+  first two steps every addition frees exactly one module.** That is the long tail
+  `D-T17-CEILING-ZERO-IS-THE-WRONG-TARGET` describes, now with a number on it.
+
+  ⚠️ **The three-module vector batch was measured and REFUSED.** `find_passages_by_vector`
+  looked free — `VectorStore.search` covers it — and two of the three callers pass
+  `oversample_factor=1`, which the port **deliberately does not expose** (*"an artefact of ONE
+  backend … exposing it would bake the current backend's weakness into the contract"*).
+  Both are also *measuring the backend itself*: `flat_knn_rawsearch` scores Neo4j's ANN recall
+  against exact cosine, and `vector_backend_bench._from_neo4j` **is** the Neo4j arm of a
+  bake-off. A benchmark whose subject is one engine is legitimately bound to it. Spec §1.3(b)
+  says the same thing from the other end — the vector readers are *deleted* by §3.1, not
+  migrated. Three modules, zero migratable, and that is the correct answer rather than a
+  smaller one.
+
+  ✅ **So A10 took §1.2**, which was decided and unbuilt: `project_graph_stats` onto the port
+  and all four adapters, `COUNTABLE_LABELS`/`PROJECT_GRAPH_LABELS` into
+  `app/domain/graph_labels.py` (re-exported, one definition), and `jobs/stats_updater.py`
+  migrated off `neo4j_repos`.
+
+  🔴 **`count_nodes_by_label` was NOT added, and §1.2 named it.** Measured: its only caller
+  is the loop this batch deletes, and once `project_graph_stats` answers the whole card there
+  is no demand left. The port's own law is *"grows by demand, not by inventory"*, and adding a
+  second operation to satisfy a sentence would have cost four adapters plus conformance plus
+  the shadow, for nothing. §1.2's *intent* — a second engine must answer the stats question —
+  is fully honoured by the one operation. It stays in the repo as the Neo4j-internal helper.
+
+  🎯 **`passage_count` is dropped at the port boundary, and this is the interesting half.**
+  The repo function counts FOUR labels; a passage is the vector layer's row, §3.1 moves it to
+  Postgres, and **neither the AGE nor the Kuzu graph has a passage table at all**. Keeping the
+  key would force every future adapter to answer for a store it does not hold, and its only
+  honest options are a lie (`0`) or a refusal that makes a stats card unrenderable. Pinned by
+  `test_an_EMPTY_project_answers_zeros_rather_than_an_empty_dict`.
+
+  ### 🔴 …AND THE DIFFERENTIAL FOUND TWO REAL BUGS THE MOMENT THE STREAM MOVED
+
+  Adding an operation to the generator reshuffles every random draw after it, so seeds 7/42
+  reached sequences no run had reached before. Both findings are in code A10 did not touch.
+
+  | | Bug | Why it is silent |
+  |---|---|---|
+  | **7th Kuzu bug** | `merge_fact` **overwrote** `valid_from_ordinal` on re-mention; Neo4j coalesces (*"never overwrite an existing one"*). A re-mention in a later chapter moved the fact's story BIRTH forward. | An as-of read at the ORIGINAL chapter stops returning canon it already established, while the codex at HEAD looks perfect. Same failure `merge_event` keeping the EARLIEST reading position exists to prevent, on the other node type. |
+  | **the FAKE had it too** | Identical overwrite in `FakeGraphStore.merge_fact`. | ~561 unit tests lean on this fake. Two of four adapters agreed on the bug, so nothing could disagree with it. |
+
+  Both fixed, and **conformance grew the rule that would have caught them** —
+  `test_a_re_mention_does_not_MOVE_a_facts_story_birth`, plus its other half
+  (`..._is_BACKFILLED_by_a_later_positioned_mention`), because an adapter that hardened
+  "never move it" into "never write it" passes the first and strands every positionless fact
+  outside every timed read forever.
+
+  ### 🔻 AND ONE THAT IS **NOT MINE TO FIX**: `_EXPECTED_DIVERGENCES`
+
+  Seed 42, Neo4j<->Kuzu, on `merge_event`:
+
+  ```
+  trace: mergeevent(1) … updateevent() … mergeevent(28)
+  primary=('t7','ch-2','1',…)      secondary=('e6','ch-2','28',…)
+  ```
+
+  **Neo4j derives an event's id from its TITLE** — `eid = event_id(user, project, chapter,
+  title)`, then `MERGE (e:Event {id: $id})`. So a rename via `update_event_fields` leaves the
+  id derived from the ORIGINAL title, and a later re-mention of the old title re-attaches to
+  the renamed node. Kuzu matches on the node's CURRENT `canonical_title`, so the same
+  re-mention creates a second event.
+
+  **Kuzu is the one behaving as T35 decided** — *"`merge_entity` resolves by what the node
+  currently says it is"* — and events were simply not in that batch. Neo4j makes an author's
+  rename invisible to extraction; Kuzu splits one event in two. Choosing is **T35's identity
+  question**, so neither adapter was quietly bent to make a suite green. Recorded in
+  `_EXPECTED_DIVERGENCES` with its cause and its owning row, and
+  `test_every_expected_divergence_still_REPRODUCES` **fails if a listed divergence stops
+  happening** — an exemption list nobody re-checks is a mute button.
+
+  ### 🔧 The differential's coverage was FITTED TO ITS OWN CHECK, and now it is not
+
+  `test_the_seed_corpus_reaches_every_operation` went red three times in ten minutes, each
+  time on a *different* operation:
+
+  ```
+  add project_graph_stats (weight 1)  ->  never drawn at all        -> red
+  reweight stats to 3                 ->  status_at_order drops out -> red
+  reweight status to 3                ->  add_evidence drops out    -> red
+  ```
+
+  Every weight-1 operation falls out of the corpus whenever the stream shifts, and tuning
+  weights until the guard passes is **fitting the generator to its own check** — the same
+  green-by-construction shape this plan has now caught in a detector, a gate and a bite. So
+  coverage became STRUCTURAL: `_drive_every_operation` runs all 21 once, deterministically,
+  consuming zero `rng` draws (every existing seed replays exactly as before), and the random
+  tail goes back to what it is actually good at — finding divergences in orderings nobody
+  wrote down. It found two within the hour.
+
+  The guard is **not** vacuous afterwards: it still reds when an operation is compared but
+  never mapped, when a refusal makes one unreachable, and when a new operation joins
+  `OPERATIONS` without being driven — which is the failure it was written for.
+
+  🔴 **`_DEPENDS_ON` was ALSO answered too narrowly, and the differential caught that in one
+  run.** The first cut declared `project_graph_stats -> ("resolve_or_merge_entity",)`:
+
+  ```
+  primary=[('entity_count','3'), ('event_count','2'), ('fact_count','1')]
+  secondary=[('entity_count','3'), ('event_count','0'), ('fact_count','0')]
+  ```
+
+  AGE **refuses** `merge_event` and `merge_fact`, so its zeros were exactly right and the
+  shadow was scoring a divergence it created itself — the very artifact that table exists to
+  prevent. **A read that AGGREGATES over several writes depends on ALL of them**: one refusal
+  makes the whole count incomparable, not partially comparable. Now declared as all three,
+  which also means `project_graph_stats` joins the operations AGE can never cover — one more
+  reason its `cutover_permitted` stays False, asserted by the suite rather than claimed.
+
+  **BITE x5, each red for the right reason:**
+
+  ```
+  1. fake: drop the project filter from the count
+       E  assert 2 == 1                                    (conformance + the unit rule)
+  2. fake: count "Entity" for every label
+       E  fact_count is wrong: {'entity_count': 2, 'fact_count': 2, 'event_count': 2}
+       ^^ EXACTLY the bug the old mocked test could not see — it answered 10 to every query
+          and asserted all three columns were 10.
+  3. neo4j: return the repo dict unprojected (leak passage_count)
+       E  an empty project must answer every count at zero and nothing else:
+          {'entity_count': 0, …, 'passage_count': 0}       (against a REAL Neo4j)
+  4. empty `_EXPECTED_DIVERGENCES`
+       E  seed=42 diverged on ['merge_event']              (the exemption is load-bearing)
+  5. add a registry entry nothing reproduces
+       E  ['find_entities_by_name'] is listed as an EXPECTED divergence for kuzu and no seed
+          reproduced it.                                   (the registry cannot go stale)
+  ```
+
+  **QC (a) gates:** `port-adoption-gate` **57->56 / 17->18**, both moved in this commit (rule
+  5), `--selftest` PASS. `db-safety-gate` exit 0. `graph-port-gate` PASS. `plan-verify` PASS,
+  `plan-row-honesty-gate` OK, `plan-progress-block --check` OK, `plan-acceptance --floor` OK.
+  **QC (b) the seam:** N/A — `reconcile_project_stats` is in-process; its two callers (the
+  from-glossary router and the `kg_project_entities_to_nodes` MCP tool) now pass
+  `get_graph_store(session)` instead of the session, and the provider's default adapter is a
+  passthrough to the same repo. No wire contract, no new service call. The live proof is 134
+  conformance tests against a real Neo4j **and** a real AGE container, plus 15 differential
+  runs across both pairings.
+  **QC (c) real data:** the port and the repo were run side by side against the **DEV graph
+  (`:7688`, READ-ONLY — a count is a read)** on the three largest projects:
+
+  ```
+  project 019f0867…   port {'entity_count': 3172, 'fact_count': 0,  'event_count': 0}
+                      repo {…same…, 'passage_count': 0}
+  project 019effe4…   port {'entity_count': 279,  'fact_count': 1,  'event_count': 152}
+  project 019f37f0…   port {'entity_count': 187,  'fact_count': 23, 'event_count': 418}
+                      repo {…same…, 'passage_count': 77}     <- dropped at the boundary
+  ```
+
+  Identical on every graph label on real books; the one key the port removes is the one the
+  graph does not own.
+
+  ```
+  4229 passed — knowledge-service unit suite
   ```
 
 

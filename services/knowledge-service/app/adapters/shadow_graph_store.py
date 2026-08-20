@@ -83,6 +83,7 @@ OPERATIONS = (
     "add_evidence",
     "status_at_order",
     "events_in_window",
+    "project_graph_stats",
 )
 
 
@@ -107,6 +108,20 @@ _DEPENDS_ON: dict[str, tuple[str, ...]] = {
     "facts_for": ("merge_fact",),
     "status_at_order": ("merge_fact",),
     "add_evidence": ("resolve_or_merge_entity",),
+    # 🔴 EVERY write whose label it counts, and the first cut declared only the entity one.
+    # The differential caught it on its first run against AGE:
+    #     primary=[('entity_count','3'), ('event_count','2'), ('fact_count','1')]
+    #     secondary=[('entity_count','3'), ('event_count','0'), ('fact_count','0')]
+    # AGE REFUSES `merge_event` and `merge_fact`, so its zeros are exactly right and the
+    # shadow was scoring a divergence it created itself — the same artifact this table exists
+    # to prevent, reproduced by answering its question too narrowly. A read that AGGREGATES
+    # over several writes depends on ALL of them: one refusal makes the whole count
+    # incomparable, not partially comparable.
+    #
+    # A count over an empty graph also agrees trivially — both stores answer zero — so the
+    # entity dependency does double duty: it is only after the secondary has accepted a node
+    # that "3 == 3" is evidence rather than an artifact of emptiness.
+    "project_graph_stats": ("resolve_or_merge_entity", "merge_event", "merge_fact"),
 }
 
 
@@ -496,3 +511,9 @@ class ShadowGraphStore:
             "add_evidence", out, kw.get("target_id"),
             lambda s, sid: s.add_evidence(**{**kw, "target_id": sid}))
 
+    async def project_graph_stats(self, **kw):
+        # NATURAL-keyed: the project id is the caller's own, not a node id the secondary
+        # would have minted separately, so this replays directly with no mapping.
+        out = await self._primary.project_graph_stats(**kw)
+        return await self._shadow(
+            "project_graph_stats", out, lambda s: s.project_graph_stats(**kw))

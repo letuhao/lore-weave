@@ -972,3 +972,163 @@ async def test_facts_for_EXCLUDES_a_positionless_fact_from_a_TIMED_read(store):
                                    as_of=10_000)}
     assert timed == {"positioned"}, (
         "a positionless fact leaked into a timed read — untimed data in a timed answer")
+
+
+# ── the project as a whole (T17 A10, spec §1.2) ──────────────────────────────
+
+@pytest.mark.asyncio
+async def test_project_graph_stats_counts_EACH_LABEL_SEPARATELY(store):
+    """🔴 The one bug worth catching here, and the reason the fixture is lopsided.
+
+    The unit test this replaces handed the reconciler a mocked session that answered `10` to
+    every query and asserted all three columns were `10` — green for a store that wrote the
+    entity count into all three, and green for one that ignored the label entirely. So the
+    counts here are DISTINCT by construction: 2 entities, 3 facts, 1 event. Equal fixtures
+    make a label mix-up invisible, which is the same green-by-construction shape the plan has
+    now hit in a detector, a gate and a bite.
+    """
+    u, p, _ = _ids()
+    for name in ("Kai", "Mira"):
+        await store.resolve_or_merge_entity(
+            user_id=u, project_id=p, name=name, kind="character", source_type="chapter")
+
+    subject = await _a_subject(store, u, p, name="Kai")
+    if _which(store) in _FACT_WRITE_REFUSERS_READ_OK:
+        for i in range(3):
+            await _seed_age_fact(store, u, p, subject, fid=f"f-stat-{i}-{subject}",
+                                 type="attribute", content=f"fact {i}")
+    else:
+        for i in range(3):
+            await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                                   content=f"fact {i}", subject_id=subject)
+
+    expect_events = 0
+    if _which(store) not in _EVENT_WRITE_REFUSERS:
+        await _an_event(store, u, p, title="The Duel")
+        expect_events = 1
+
+    stats = await store.project_graph_stats(user_id=u, project_id=p)
+    assert stats["entity_count"] == 2, f"entity_count is wrong: {stats}"
+    assert stats["fact_count"] == 3, f"fact_count is wrong: {stats}"
+    assert stats["event_count"] == expect_events, f"event_count is wrong: {stats}"
+
+
+@pytest.mark.asyncio
+async def test_project_graph_stats_counts_ONLY_this_tenant_and_this_project(store):
+    """A stats card that counted the neighbouring book reads as a working recount and is
+    wrong on every dashboard tile — silent, which is why it is a conformance rule and not a
+    docstring. Both axes are checked: another USER's node and another PROJECT of the SAME
+    user, because a store that scoped by user alone would pass the first half."""
+    u, p, other_user = _ids()
+    _, other_project, _ = _ids()
+
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    await store.resolve_or_merge_entity(
+        user_id=u, project_id=other_project, name="Mira", kind="character",
+        source_type="chapter")
+    await store.resolve_or_merge_entity(
+        user_id=other_user, project_id=p, name="Nell", kind="character",
+        source_type="chapter")
+
+    assert (await store.project_graph_stats(user_id=u, project_id=p))["entity_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_an_EMPTY_project_answers_zeros_rather_than_an_empty_dict(store):
+    """An empty graph is a legitimate state — extraction enabled, nothing run yet — and the
+    caller renders "Ready" from it. A store returning `{}` makes every consumer do
+    `stats.get(k, 0)`, and the day one adapter starts omitting a key that lookup turns a
+    missing count into a real zero. Every key in `COUNTABLE_LABELS` is present, always.
+
+    ⚠️ **`passage_count` must be ABSENT**, and this is where that shape is pinned. The repo
+    function behind the Neo4j adapter counts four labels; a passage is the VECTOR layer's
+    row, §3.1 moves it to Postgres, and neither AGE nor Kuzu has a passage table at all. An
+    adapter that leaked the fourth key would be answering for a store it does not hold — and
+    the two honest answers available to it are a lie (`0`) or a refusal that makes a stats
+    card unrenderable.
+    """
+    u, p, _ = _ids()
+    stats = await store.project_graph_stats(user_id=u, project_id=p)
+    assert stats == {"entity_count": 0, "fact_count": 0, "event_count": 0}, (
+        f"an empty project must answer every count at zero and nothing else: {stats}")
+
+
+@pytest.mark.asyncio
+async def test_an_ARCHIVED_entity_still_COUNTS(store):
+    """The one place `find_entities_by_name`'s default-hide rule must NOT apply. The Cypher
+    behind this is a bare label match with a tenant filter and no archive predicate, so an
+    adapter that reused the resolver's visibility rule would disagree with the engine it is
+    replacing — and the disagreement would only ever show up as a dashboard tile drifting
+    down after an author archives something. A stats card counts what is in the graph."""
+    u, p, _ = _ids()
+    e = await store.resolve_or_merge_entity(
+        user_id=u, project_id=p, name="Kai", kind="character", source_type="chapter")
+    await store.archive_entity(user_id=u, canonical_id=e.id, reason="merged away")
+    assert await store.find_entities_by_name(user_id=u, project_id=p, name="Kai") == [], (
+        "precondition: the archive did not take, so this rule proves nothing")
+    stats = await store.project_graph_stats(user_id=u, project_id=p)
+    assert stats["entity_count"] == 1, (
+        "an archived entity vanished from the stats card — the resolver's visibility rule "
+        f"leaked into a raw count: {stats}")
+
+
+@pytest.mark.asyncio
+async def test_a_re_mention_does_not_MOVE_a_facts_story_birth(store):
+    """🔴 **The seventh real Kuzu bug, and conformance had no rule for it.** T43's differential
+    found it: Neo4j coalesces `valid_from_ordinal` on MATCH (*"never overwrite an existing
+    one"* — `facts.py`), Kuzu assigned it, so re-mentioning the same content in a later
+    chapter moved the fact's birth forward.
+
+    The consequence is silent and directional. `merge_fact` is CONTENT-keyed, so the second
+    call lands on the same node; an as-of read at the ORIGINAL chapter then stops returning a
+    fact that was already established there — established canon disappearing from a reader's
+    past, while the codex at HEAD looks perfect. It is the same failure
+    `test_merge_event_is_idempotent_and_keeps_the_EARLIEST_reading_position` pins for events,
+    on the other node type, and it went unpinned for both real adapters.
+
+    ⚠️ The LATER mention must come SECOND. Mentioning 40 000 first cannot discriminate —
+    backfill-wins and overwrite-wins both end at 12 000, which is the vacuity that made the
+    event rule's first cut green under its own mutation.
+    """
+    if _which(store) in _FACT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_fact_write")
+    u, p, _ = _ids()
+    subject = await _a_subject(store, u, p)
+    first = await store.merge_fact(
+        user_id=u, project_id=p, type="attribute", content="an outer disciple",
+        subject_id=subject, valid_from_ordinal=12_000)
+    again = await store.merge_fact(
+        user_id=u, project_id=p, type="attribute", content="an outer disciple",
+        subject_id=subject, valid_from_ordinal=40_000)
+    assert again.id == first.id, "content-keyed merge minted a SECOND fact for one content"
+    assert again.valid_from_ordinal == 12_000, (
+        "a re-mention moved the fact's story birth forward — an as-of read at chapter 12 "
+        f"now misses canon it already established (got {again.valid_from_ordinal})")
+
+    # And the read agrees, because the field on a returned object is not what a caller sees.
+    at_first = await store.facts_for(user_id=u, subject_id=subject, type="attribute",
+                                     as_of=12_000)
+    assert [f.content for f in at_first] == ["an outer disciple"], (
+        "the fact vanished from an as-of read at the chapter that established it")
+
+
+@pytest.mark.asyncio
+async def test_a_POSITIONLESS_fact_is_BACKFILLED_by_a_later_positioned_mention(store):
+    """The other half of the same coalesce, and the half that makes it a backfill rather than
+    a freeze. A fact first seen through a positionless source (a chat tool, legacy data) has
+    NULL — and the next positioned mention must FILL it, or the fact stays invisible to every
+    timed read forever. An adapter that hardened the first rule into "never write it" passes
+    the rule above and fails every author here."""
+    if _which(store) in _FACT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_fact_write")
+    u, p, _ = _ids()
+    subject = await _a_subject(store, u, p)
+    await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                           content="a sworn blade", subject_id=subject)
+    filled = await store.merge_fact(user_id=u, project_id=p, type="attribute",
+                                    content="a sworn blade", subject_id=subject,
+                                    valid_from_ordinal=12_000)
+    assert filled.valid_from_ordinal == 12_000, (
+        "a positioned re-mention did not backfill the story position — the fact stays "
+        "invisible to every timed read")

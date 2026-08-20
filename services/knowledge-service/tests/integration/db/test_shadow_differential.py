@@ -112,9 +112,126 @@ async def shadow(request, neo4j_driver):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _secondary_of(shadow) -> str:
+    """Which CANDIDATE this pairing is, by class — the same trick the conformance suite uses
+    rather than a marker attribute a fixture must remember to set."""
+    return {"AgeGraphStore": "age", "KuzuGraphStore": "kuzu"}[type(shadow._secondary).__name__]
+
+
+#: Divergences that are REAL, UNDERSTOOD, and owned by another row — recorded rather than
+#: muted. Keyed `(secondary, operation) -> why`.
+#:
+#: 🔴 `("kuzu", "merge_event")` — **the derived-id scheme, on the Event node type.** Neo4j
+#: computes `eid = event_id(user, project, chapter, TITLE)` and MERGEs on that id, so an event
+#: renamed by `update_event_fields` keeps an id derived from its ORIGINAL title, and a later
+#: re-mention of the old title re-attaches to the renamed node. Kuzu matches on the node's
+#: CURRENT `canonical_title`, so the same re-mention creates a separate event.
+#:
+#: Found by seed 42, whose trace is `mergeevent(1) … updateevent() … mergeevent(28)`:
+#:     primary=('t7', 'ch-2', '1', …)      secondary=('e6', 'ch-2', '28', …)
+#:
+#: **Kuzu is the one behaving as T35 decided.** T35 fixed exactly this for entities —
+#: *"`merge_entity` resolves by what the node currently says it is"* — and events were not in
+#: that batch. Neo4j's behaviour makes an author's rename invisible to extraction; Kuzu's
+#: splits one event into two. Choosing between them is T35's identity question, not a T17
+#: migration's, so neither adapter is quietly bent here to make a suite green.
+#: **Owned by T35. Delete this entry when T35 closes it — the test below makes that mandatory.**
+_EXPECTED_DIVERGENCES: dict[tuple[str, str], str] = {
+    ("kuzu", "merge_event"):
+        "T35: the Event id is DERIVED FROM THE TITLE (`event_id(...)`, neo4j_repos/events.py), "
+        "so a rename does not move Neo4j's identity and does move Kuzu's",
+}
+
+
+async def _drive_every_operation(store, user_id: str, project_id: str) -> list[str]:
+    """Every port operation, once, DETERMINISTICALLY — before the randomised tail runs.
+
+    🔴 **Why this exists, measured rather than argued.** Coverage used to depend entirely on
+    the weighted draw, and adding ONE operation reshuffles every draw after it. Adding
+    `project_graph_stats` (T17 A10) knocked `status_at_order` out of the whole five-seed
+    corpus; reweighting `status` to put it back knocked out `add_evidence`. Two reweights,
+    two different operations silently untested — and the only thing standing between that and
+    a green suite was a guard that had to be re-satisfied by hand every time.
+
+    Weight-tuning to reach a fixed set is fitting the generator to its own check. So coverage
+    is now STRUCTURAL and the random sequence is what it was always good at: finding
+    divergences in ORDERINGS nobody thought to write down. It consumes no `rng` draws, so
+    every existing seed replays exactly as before.
+
+    The guard below does NOT become vacuous. It still fails when an operation is compared but
+    never MAPPED, when a refusal makes one unreachable, and when a new operation is added to
+    `OPERATIONS` without being driven here — which is the failure it was written for.
+    """
+    trace: list[str] = []
+    a = await store.resolve_or_merge_entity(
+        user_id=user_id, project_id=project_id, name="Kai", kind="character",
+        source_type="chapter")
+    b = await store.resolve_or_merge_entity(
+        user_id=user_id, project_id=project_id, name="Mira", kind="character",
+        source_type="chapter")
+    trace += ["merge(Kai)", "merge(Mira)"]
+    if a is None or b is None:                     # a refusing secondary: the tail still runs
+        return trace
+
+    await store.find_entities_by_name(user_id=user_id, project_id=project_id, name="Kai")
+    await store.neighborhood(
+        user_id=user_id, glossary_entity_id=a.id, project_id=project_id)
+    await store.add_evidence(
+        user_id=user_id, target_label="Entity", target_id=a.id, source_id="src-prelude",
+        extraction_model="m", confidence=0.5, job_id="job-prelude")
+    trace += ["find()", "neighborhood()", "evidence()"]
+
+    rel = await store.upsert_relation(
+        user_id=user_id, subject_id=a.id, object_id=b.id,
+        predicate="ally_of", confidence=0.7, valid_from_ordinal=1_000)
+    trace.append("relate()")
+    if rel is not None:
+        await store.get_relation(user_id=user_id, relation_id=rel.id)
+        await store.relations_for(user_id=user_id, entity_id=a.id, project_id=project_id,
+                                  direction="both")
+        await store.invalidate_relation(user_id=user_id, relation_id=rel.id)
+        await store.recreate_relation(
+            user_id=user_id, subject_id=a.id, object_id=b.id,
+            predicate="ally_of", valid_from_ordinal=1_000)
+        trace += ["getrel()", "relations()", "invalidate()", "recreate()"]
+
+    ev = await store.merge_event(
+        user_id=user_id, project_id=project_id, title="Prelude", chapter_id="ch-prelude",
+        source_type="chapter", event_order=2_000, participants=[a.id])
+    trace.append("mergeevent()")
+    if ev is not None:
+        await store.get_event(user_id=user_id, event_id=ev.id)
+        await store.update_event_fields(
+            user_id=user_id, event_id=ev.id, title=None,
+            summary="from the prelude", time_cue=None, event_date_iso=None,
+            expected_version=ev.version)
+        await store.archive_event(user_id=user_id, event_id=ev.id)
+        trace += ["getevent()", "updateevent()", "archiveevent()"]
+    await store.events_page(user_id=user_id, project_id=project_id, limit=5)
+    await store.events_in_window(user_id=user_id, project_id=project_id)
+    trace += ["eventspage()", "events()"]
+
+    f = await store.merge_fact(
+        user_id=user_id, project_id=project_id, type="statement", content="alive",
+        subject_id=a.id, valid_from_ordinal=3_000, maintain_chain=True)
+    trace.append("mergefact()")
+    if f is not None:
+        await store.facts_for(user_id=user_id, subject_id=a.id, as_of=3_000)
+        trace.append("factsfor()")
+    await store.status_at_order(
+        user_id=user_id, project_id=project_id, entity_ids=[a.id], at_order=3_000)
+    await store.project_graph_stats(user_id=user_id, project_id=project_id)
+    trace += ["status()", "stats()"]
+
+    await store.archive_entity(user_id=user_id, canonical_id=b.id, reason="prelude")
+    await store.restore_entity(user_id=user_id, canonical_id=b.id)
+    trace += ["archive()", "restore()"]
+    return trace
+
+
 async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str) -> list[str]:
     """Drive a randomised operation sequence. Returns the trace, for the failure message."""
-    trace: list[str] = []
+    trace: list[str] = await _drive_every_operation(store, user_id, project_id)
     known: list[str] = []          # primary entity ids the sequence has created
     ordinal = 0
 
@@ -133,11 +250,25 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
              "status", "events", "neighborhood",
              "getrel", "invalidate", "recreate",
              "mergeevent", "getevent", "updateevent", "archiveevent", "eventspage",
-             "mergefact", "factsfor", "evidence"],
-            weights=[8, 2, 4, 3, 1, 1, 1, 1, 1,
+             "mergefact", "factsfor", "evidence",
+             # T17 A10. Added with the operation, in the same commit — the guard below is
+             # what caught its absence, and it caught it because the LIST and the GENERATOR
+             # are widened separately. That is the whole point of keeping both.
+             "stats"],
+            # `status` is 3, not 1, for the reason `stats` is: every weight-1 operation falls
+            # out of the corpus the moment the random STREAM shifts (adding an operation
+            # reshuffles every draw after it), and `status_at_order` went missing the run
+            # after `stats` was added. The guard below is what makes that visible instead of
+            # quietly untested.
+            weights=[8, 2, 4, 3, 1, 1, 3, 1, 1,
                      2, 1, 2,
                      4, 2, 1, 1, 1,
-                     3, 2, 1],
+                     3, 2, 1,
+                     # Weight 3, not 1. At 1 the corpus drew it ZERO times across four of the
+                     # five seeds and `test_the_seed_corpus_reaches_every_operation` went red —
+                     # which is the guard doing its job, and the reason the list and the
+                     # generator are widened as two separate edits rather than one.
+                     3],
         )[0]
 
         # ⚠️ A guarded op that cannot run must FALL BACK, not vanish. The first version let
@@ -155,6 +286,11 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
         elif op in ("getevent", "updateevent", "archiveevent") and not events:
             op = "mergeevent"
         elif op == "relate" and len(known) < 2:
+            op = "merge"
+        elif op == "stats" and not known:
+            # A count over an empty project agrees trivially — both stores answer zero. The
+            # comparison only means something once the secondary has accepted a node, which
+            # is what `_DEPENDS_ON` declares and what this fallback enforces in the driver.
             op = "merge"
 
         if op == "merge":
@@ -268,6 +404,10 @@ async def _run_sequence(store, rng: random.Random, user_id: str, project_id: str
                 confidence=round(rng.uniform(0.0, 1.0), 2), job_id=f"job-{rng.randint(1, 3)}")
             trace.append("evidence()")
 
+        elif op == "stats":
+            await store.project_graph_stats(user_id=user_id, project_id=project_id)
+            trace.append("stats()")
+
         elif op == "relations":
             await store.relations_for(
                 user_id=user_id, entity_id=rng.choice(known), project_id=project_id,
@@ -318,8 +458,13 @@ async def test_the_engines_agree_under_randomised_sequences(shadow, seed):
     report = shadow.coverage_report()
 
     diverged = {op: r for op, r in report["operations"].items() if r["diverged"]}
-    assert not diverged, (
-        f"seed={seed} diverged on {sorted(diverged)}\n"
+    # An EXPECTED divergence is subtracted, never hidden: each is listed above with its
+    # cause and its owning row, and `test_every_expected_divergence_still_REPRODUCES`
+    # fails if one stops happening — so the registry cannot outlive the defect it names.
+    unexpected = {op: r for op, r in diverged.items()
+                  if (_secondary_of(shadow), op) not in _EXPECTED_DIVERGENCES}
+    assert not unexpected, (
+        f"seed={seed} diverged on {sorted(unexpected)}\n"
         f"samples: {report['samples']}\n"
         f"trace: {' '.join(trace)}"
     )
@@ -404,4 +549,34 @@ async def test_REPRODUCER_relations_for_after_a_recreate(shadow):
     assert not rep["operations"]["relations_for"]["diverged"], (
         f"reproduced: relations_for diverges after a recreate. primary returned {len(out)} "
         f"edge(s). samples={rep['samples']}"
+    )
+
+
+async def test_every_expected_divergence_still_REPRODUCES(shadow):
+    """🔴 The half that stops `_EXPECTED_DIVERGENCES` from becoming a mute button.
+
+    An exemption list nobody re-checks is how a suite reports green over a defect that was
+    fixed years ago AND over one that quietly got worse. So each entry must still happen: run
+    the whole seed corpus and fail if a listed divergence never occurs, naming the entry to
+    delete. That is the same pairing rule the conformance suite applies to AGE's refusals —
+    every skip carries a proof that the thing being skipped is real.
+    """
+    which = _secondary_of(shadow)
+    listed = {op for (sec, op) in _EXPECTED_DIVERGENCES if sec == which}
+    if not listed:
+        pytest.skip(f"no expected divergences recorded for {which}")
+
+    seen: set[str] = set()
+    for seed in SEEDS:
+        rng = random.Random(seed)
+        u, p = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
+        await _run_sequence(shadow, rng, u, p)
+        rep = shadow.coverage_report()
+        seen |= {op for op in OPERATIONS if rep["operations"][op]["diverged"]}
+
+    stale = listed - seen
+    assert not stale, (
+        f"{sorted(stale)} is listed as an EXPECTED divergence for {which} and no seed "
+        f"reproduced it. Either it was fixed — delete the entry — or the corpus stopped "
+        f"reaching it, which means the exemption is now hiding whatever comes next."
     )
