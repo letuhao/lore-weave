@@ -1132,3 +1132,62 @@ async def test_a_POSITIONLESS_fact_is_BACKFILLED_by_a_later_positioned_mention(s
     assert filled.valid_from_ordinal == 12_000, (
         "a positioned re-mention did not backfill the story position — the fact stays "
         "invisible to every timed read")
+
+
+@pytest.mark.asyncio
+async def test_an_AUTHOR_RENAME_does_not_fork_the_event_on_re_extraction(store):
+    """🔴 **T35d — the identity rule for events, and the differential's `merge_event`
+    divergence is this rule missing.**
+
+    An event's title comes from the PROSE: `pass2_writer` passes the extractor's `name_clean`,
+    which is read out of the chapter. So when an author renames an event in the studio,
+    re-extracting that chapter still produces the **original** title — and must land on the
+    same node. `neo4j_repos/events.py` says so in as many words, as a deliberate design:
+
+        "the node id (a hash of the original title) is IMMUTABLE — a title edit updates the
+         display title + canonical_title but the id is stable, so a future extraction with the
+         OLD title still dedupes onto this node (rename has no downstream consequence beyond
+         display)."
+
+    An adapter that keys on the CURRENT canonical title inverts that: every re-extraction after
+    any author rename mints a duplicate event. Silent, cumulative, and it grows with exactly the
+    thing an engaged author does most — tidying titles.
+
+    ⚠️ The re-mention must use the ORIGINAL title, because that is what the extractor produces.
+    Re-mentioning with the NEW title cannot discriminate: both designs match it.
+    """
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_event_writes")
+    u, p, _ = _ids()
+    first = await _an_event(store, u, p, title="Kai duels Zhao", event_order=12_000)
+    renamed = await store.update_event_fields(
+        user_id=u, event_id=first.id, title="The Duel at Dawn", summary=None,
+        time_cue=None, event_date_iso=None, expected_version=first.version)
+    assert renamed is not None, "precondition: the rename did not apply"
+
+    again = await _an_event(store, u, p, title="Kai duels Zhao", event_order=12_000)
+    assert again.id == first.id, (
+        "re-extracting the chapter after an author rename FORKED the event — the adapter keys "
+        "identity on the mutable title, so every later pass mints another duplicate")
+
+    page, total = await store.events_page(user_id=u, project_id=p, limit=50)
+    mine = [e for e in page if e.id == first.id]
+    assert len(mine) == 1 and total == 1, (
+        f"one authored event, {total} nodes in the browse — the fork is visible to the reader")
+
+
+@pytest.mark.asyncio
+async def test_the_rename_still_CHANGES_what_the_reader_sees(store):
+    """The other half, and the one an over-eager "make identity stable" fix breaks: the author's
+    new title must actually win on read. An adapter that pinned the title to keep the id stable
+    would pass the rule above and silently discard every rename."""
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_event_writes")
+    u, p, _ = _ids()
+    ev = await _an_event(store, u, p, title="Kai duels Zhao", event_order=12_000)
+    await store.update_event_fields(
+        user_id=u, event_id=ev.id, title="The Duel at Dawn", summary=None,
+        time_cue=None, event_date_iso=None, expected_version=ev.version)
+    after = await _an_event(store, u, p, title="Kai duels Zhao", event_order=12_000)
+    assert after.title == "The Duel at Dawn", (
+        f"the author's rename was overwritten by a re-extraction: {after.title!r}")

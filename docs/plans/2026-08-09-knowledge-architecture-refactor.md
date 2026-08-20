@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**49 of 66 rows done · 17 open · 35 of 67 evidence blocks closed inside them.**
+**49 of 66 rows done · 17 open · 37 of 69 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (3/6) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (0/1) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (4/7) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -8146,13 +8146,23 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   the renamed node. Kuzu matches on the node's CURRENT `canonical_title`, so the same
   re-mention creates a second event.
 
-  **Kuzu is the one behaving as T35 decided** — *"`merge_entity` resolves by what the node
-  currently says it is"* — and events were simply not in that batch. Neo4j makes an author's
-  rename invisible to extraction; Kuzu splits one event in two. Choosing is **T35's identity
-  question**, so neither adapter was quietly bent to make a suite green. Recorded in
-  `_EXPECTED_DIVERGENCES` with its cause and its owning row, and
-  `test_every_expected_divergence_still_REPRODUCES` **fails if a listed divergence stops
-  happening** — an exemption list nobody re-checks is a mute button.
+  ~~**Kuzu is the one behaving as T35 decided**~~ — 🔴 **THIS WAS BACKWARDS, and T35d
+  (below) corrected it the same day.** The paragraph reasoned by analogy from `merge_entity`
+  and never asked where an event's title comes from. It comes from the **PROSE**:
+  `pass2_writer` passes the extractor's `name_clean`, read out of the chapter. So a
+  re-extraction after an author rename still arrives with the **ORIGINAL** title — which
+  Neo4j's immutable id matches and Kuzu's mutable key does not. **Neo4j was right; Kuzu was
+  forking the event on every later pass**, and the fake had the identical defect.
+
+  Left standing, the entry would have sent the next session to change Neo4j's identity
+  semantics — 48 join sites — to institutionalise a Kuzu bug. **Recording a divergence
+  honestly is not the same as diagnosing it correctly**, and the registry's own warning now
+  says so: a wrong entry does not merely tolerate a bug, it aims the next session at the
+  wrong adapter.
+
+  What the mechanism DID do is work. `test_every_expected_divergence_still_REPRODUCES` went
+  red with *"no seed reproduced it … delete the entry"* the moment T35d landed, so the
+  exemption could not outlive the defect by even one commit.
 
   ### 🔧 The differential's coverage was FITTED TO ITS OWN CHECK, and now it is not
 
@@ -8238,6 +8248,90 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   4229 passed — knowledge-service unit suite
   ```
 
+
+  ### ✅ T35d 2026-08-14 — identity on the EVENT node type, and **A10's diagnosis was inverted**
+
+  ```
+  conformance   134 -> 140 passed (4 adapters, 2 real databases)
+  integration   566 passed / 333 skipped          unit 4229 passed
+  differential  14 passed / 2 skipped   _EXPECTED_DIVERGENCES back to EMPTY
+  ```
+
+  A10 recorded a Neo4j↔Kuzu `merge_event` divergence, parked it in `_EXPECTED_DIVERGENCES` as
+  **T35's**, and wrote that *"Kuzu is the one behaving as T35 decided"*. The parking was right.
+  **The diagnosis was backwards**, and one question settled it — *where does an event's title
+  come from?*
+
+  ```
+  pass2_writer.py:850   merge_event(..., title=name_clean, ...)   <- the EXTRACTOR's output
+  ```
+
+  It comes from the **prose**. So an author renaming an event in the studio changes what the
+  reader sees and changes nothing the extractor produces: re-extracting that chapter arrives
+  with the **original** title, forever. `neo4j_repos/events.py` says exactly this, as a
+  deliberate design rather than an accident:
+
+  > *"the node id (a hash of the original title) is IMMUTABLE — a title edit updates the display
+  > title + canonical_title but the id is stable, so a future extraction with the OLD title
+  > still dedupes onto this node (rename has no downstream consequence beyond display)."*
+
+  🔴 **So Neo4j was correct and Kuzu was forking the event — once per extraction pass, forever,
+  for every event an author ever renamed.** Silent, cumulative, and worst for the authors who
+  tidy titles most. **The fake had the identical defect**, which is the second time in two
+  batches that the double and a real adapter agreed on a bug (`merge_fact`'s ordinal was the
+  first) — an agreement no unit test can disturb.
+
+  ⚠️ **The cost of getting this wrong was not "a bug lives another day".** Left standing, the
+  registry entry would have sent the next session to change **Neo4j's** identity semantics — 48
+  join sites — to institutionalise Kuzu's bug. Recording a divergence honestly is not the same
+  as diagnosing it correctly, and the registry now carries that warning above its (empty) body.
+
+  ✅ **The fix mirrors Neo4j without minting a derived id.** Kuzu's `Event` table grew
+  `origin_title` — the canonical title AT CREATION — and `merge_event` matches on it;
+  `canonical_title` stays free to follow renames. Neo4j encodes the same rule by hashing the
+  original title into an immutable id, so the two now agree by construction rather than by
+  luck. The fake keeps the same key in `_event_origin`, beside the list, the shape
+  `_fact_subject` already uses. **T35's direction is preserved**: identity is stable and the id
+  stays opaque; nothing new is derived from a mutable property.
+
+  🎯 **TWO rules, because the obvious fix breaks the other half.** An adapter that pinned the
+  title to keep identity stable passes *"a rename must not fork the event"* and **silently
+  discards every rename** — so `test_the_rename_still_CHANGES_what_the_reader_sees` asserts the
+  author's new title survives a later re-extraction. Bite 2 is exactly that adapter.
+
+  ⚠️ The re-mention in both rules uses the **ORIGINAL** title deliberately. Re-mentioning with
+  the new one cannot discriminate: both designs match it, and the rule would be green by
+  construction — the failure mode this plan has now catalogued in a detector, a gate, a bite
+  and a generator.
+
+  **BITE ×2, each red for the right reason:**
+
+  ```
+  1. kuzu: key on `canonical_title` again
+       E  re-extracting the chapter after an author rename FORKED the event — the adapter
+          keys identity on the mutable title, so every later pass mints another duplicate
+       E  the author's rename was overwritten by a re-extraction: 'Kai duels Zhao'
+  2. fake: let extraction clobber the rename (the over-eager "stable identity" fix)
+       E  the author's rename was overwritten by a re-extraction: 'Kai duels Zhao'
+          ^^ rule 1 stays GREEN under this mutation. That is why there are two.
+  ```
+
+  **QC (a) gates:** conformance **134 → 140** across four adapters; `derived-entity-id-gate`
+  PASS at 4 (unchanged — this batch retires no derivation, it stops one adapter keying on a
+  mutable property); `plan-verify` PASS; `plan-row-honesty-gate` OK; `plan-progress-block
+  --check` OK; `plan-acceptance --floor` OK.
+  **QC (b) the seam:** N/A — an adapter identity key and a test double; no wire contract and no
+  service call crosses. The live proof is 140 conformance rules against a real Neo4j and a real
+  AGE container plus 14 differential runs over both pairings, and `566 passed` for the whole
+  `integration/db` suite.
+  **QC (c) real data:** N/A — this batch produces no data. The defect it fixes is unobservable
+  in the dev graph because **Kuzu holds none of it**: Kuzu is a T43 *candidate*, so the fork
+  would have appeared at cutover, on a corpus with years of author renames in it. Catching it
+  in the differential rather than after the swap is what the shadow is for.
+
+  ```
+  4229 passed — knowledge-service unit suite
+  ```
 
   ### 🔴 T35a 2026-08-14 — **the minting defect was still live on the enrichment path, and there it STOLE the anchor**
 

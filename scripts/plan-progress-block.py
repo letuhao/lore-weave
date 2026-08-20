@@ -98,14 +98,22 @@ def owner_of(heading: str, known: list[str], inherited, positional: str):
     belong. Only a block that names nothing AND follows nothing falls back to position, and
     `render` reports how many did, so the fallback cannot grow unnoticed.
     """
-    m = _SERIES_RE.search(heading)
-    if m and WORKSTREAM[m.group(1)] in known:
-        return WORKSTREAM[m.group(1)], True
+    # 🔴 EXPLICIT ROW ID FIRST, and the order is not cosmetic. This function shipped with the
+    # series check on top, and the very next block written under it — `### ✅ T35d … A10's
+    # diagnosis was inverted` — was credited to **T17**, because `A10` matched the workstream
+    # pattern before `T35d` was ever looked for. A heading that MENTIONS another block is
+    # ordinary prose; a heading that NAMES a row is a declaration, and a declaration outranks
+    # a mention. Found by using it, one commit after writing it.
+    #
     # Longest first: `T42a` must win over `T42`, and `T24b-a` resolves to `T24` — `T24b` is a
     # slice of that row, not a row of its own.
     for rid in sorted(known, key=len, reverse=True):
         if re.search(r"\b" + re.escape(rid), heading):
             return rid, True
+    # Then the numbered workstreams, whose blocks name no row at all (`A8`, `B3`).
+    m = _SERIES_RE.search(heading)
+    if m and WORKSTREAM[m.group(1)] in known:
+        return WORKSTREAM[m.group(1)], True
     return (inherited or positional), False
 
 
@@ -266,6 +274,21 @@ def selftest() -> int:
     check("ownership does not LEAK across a row boundary",
           dict((n, t) for n, c, t in lrows) == {"T2": 1, "T4": 1}, str(lrows))
     check("a true positional fallback IS counted", lorph == 1, str(lorph))
+
+    # 🔴 A NAMED ROW BEATS A MENTIONED SERIES. This shipped the other way round for one commit,
+    # and the very next block written — `### ✅ T35d … A10's diagnosis was inverted` — landed on
+    # T17, because `A10` matched the workstream pattern before `T35d` was looked for. A heading
+    # that MENTIONS another block is prose; one that NAMES a row is a declaration.
+    mention = ("**RESUME:** x\n"
+               "- [~] **T17** — the A-workstream's row\n"
+               "- [~] **T35** — open\n"
+               "  ### ✅ T35d — identity on events, and **A10's diagnosis was inverted**\n"
+               "  ### ✅ A11 — a plain workstream block, naming no row\n")
+    _, _, mrows, _ = tally(mention)
+    mby = dict((n, t) for n, c, t in mrows)
+    check("a NAMED row outranks a MENTIONED workstream id", mby["T35"] == 1, str(mby))
+    check("a block naming no row still resolves through its workstream",
+          mby["T17"] == 1, str(mby))
     out = replace(sample)
     check("installs under the RESUME line", out.index(BEGIN) > out.index("**RESUME:**"))
     check("names the open rows in the rendered block", "`T2`" in out and "`T4`" in out)

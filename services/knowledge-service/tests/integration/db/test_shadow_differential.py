@@ -121,26 +121,25 @@ def _secondary_of(shadow) -> str:
 #: Divergences that are REAL, UNDERSTOOD, and owned by another row — recorded rather than
 #: muted. Keyed `(secondary, operation) -> why`.
 #:
-#: 🔴 `("kuzu", "merge_event")` — **the derived-id scheme, on the Event node type.** Neo4j
-#: computes `eid = event_id(user, project, chapter, TITLE)` and MERGEs on that id, so an event
-#: renamed by `update_event_fields` keeps an id derived from its ORIGINAL title, and a later
-#: re-mention of the old title re-attaches to the renamed node. Kuzu matches on the node's
-#: CURRENT `canonical_title`, so the same re-mention creates a separate event.
+#: **Currently EMPTY, and it was emptied by the test below rather than by anyone remembering.**
+#: Its one entry — `("kuzu", "merge_event")` — was recorded 2026-08-14 and discharged the same
+#: day by T35d. `test_every_expected_divergence_still_REPRODUCES` went red with *"no seed
+#: reproduced it … delete the entry"*, which is the whole point: an exemption list that outlives
+#: its defect is a mute button, and this one cannot.
 #:
-#: Found by seed 42, whose trace is `mergeevent(1) … updateevent() … mergeevent(28)`:
-#:     primary=('t7', 'ch-2', '1', …)      secondary=('e6', 'ch-2', '28', …)
-#:
-#: **Kuzu is the one behaving as T35 decided.** T35 fixed exactly this for entities —
-#: *"`merge_entity` resolves by what the node currently says it is"* — and events were not in
-#: that batch. Neo4j's behaviour makes an author's rename invisible to extraction; Kuzu's
-#: splits one event into two. Choosing between them is T35's identity question, not a T17
-#: migration's, so neither adapter is quietly bent here to make a suite green.
-#: **Owned by T35. Delete this entry when T35 closes it — the test below makes that mandatory.**
-_EXPECTED_DIVERGENCES: dict[tuple[str, str], str] = {
-    ("kuzu", "merge_event"):
-        "T35: the Event id is DERIVED FROM THE TITLE (`event_id(...)`, neo4j_repos/events.py), "
-        "so a rename does not move Neo4j's identity and does move Kuzu's",
-}
+#: ⚠️ Before adding an entry, be sure the divergence really is another row's. The entry above
+#: was written claiming **Kuzu** had the right semantics and Neo4j the legacy defect. Measured a
+#: day later, that was backwards — an event title comes out of the PROSE, so a re-extraction
+#: after an author rename still arrives with the ORIGINAL title, and Neo4j's immutable id is
+#: what makes it land on the same node. Kuzu was forking the event. A wrong entry here does not
+#: merely tolerate a bug; it points the next session at the wrong adapter.
+_EXPECTED_DIVERGENCES: dict[tuple[str, str], str] = {}
+
+
+def _secondary_of(shadow) -> str:
+    """Which CANDIDATE this pairing is, by class — the same trick the conformance suite uses
+    rather than a marker attribute a fixture must remember to set."""
+    return {"AgeGraphStore": "age", "KuzuGraphStore": "kuzu"}[type(shadow._secondary).__name__]
 
 
 async def _drive_every_operation(store, user_id: str, project_id: str) -> list[str]:

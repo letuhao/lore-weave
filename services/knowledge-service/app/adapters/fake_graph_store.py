@@ -52,6 +52,9 @@ class FakeGraphStore:
         # ABOUT edge — so the chain family key lives beside the list, not on the model.
         self._fact_subject: dict[str, str | None] = {}
         self._events: list[Event] = []
+        # `Event` carries no origin title — the real store encodes it in the id — so the
+        # identity key lives beside the list, the same shape `_fact_subject` uses.
+        self._event_origin: dict[str, str] = {}
         # (user, project, entity_id) -> [(from_order, status)], newest-wins at a position.
         self._statuses: dict[tuple[str, str | None, str], list[tuple[int, str, int]]] = {}
 
@@ -59,6 +62,7 @@ class FakeGraphStore:
 
     def add_event(self, event: Event) -> None:
         self._events.append(event)
+        self._event_origin[event.id] = event.canonical_title
 
     def set_status(
         self, *, user_id: str, project_id: str | None, entity_id: str,
@@ -474,7 +478,13 @@ class FakeGraphStore:
         canonical = canonicalize_entity_name(title)
         key = (user_id, project_id, chapter_id, canonical)
         for e in self._events:
-            if (e.user_id, e.project_id, e.chapter_id, e.canonical_title) == key:
+            # 🔴 `_origin_title`, NOT `e.canonical_title` (T35d). The fake matched the mutable
+            # one and forked the event on every re-extraction after an author rename — the
+            # SAME defect Kuzu had, in the double ~561 unit tests lean on, so nothing in the
+            # unit suite could disagree with it. A title comes out of the PROSE, so a later
+            # pass arrives with the ORIGINAL and must land on the same node.
+            origin = self._event_origin.get(e.id, e.canonical_title)
+            if (e.user_id, e.project_id, e.chapter_id, origin) == key:
                 if source_type and source_type not in e.source_types:
                     e.source_types.append(source_type)
                 e.confidence = max(e.confidence, confidence)
@@ -511,6 +521,7 @@ class FakeGraphStore:
             version=1, created_at=_now(), updated_at=_now(),
         )
         self._events.append(event)
+        self._event_origin[event.id] = canonical
         return event
 
     async def update_event_fields(

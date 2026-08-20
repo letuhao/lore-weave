@@ -451,7 +451,11 @@ class KuzuGraphStore:
 
         canonical = canonicalize_entity_name(title)
         key = {"u": user_id, "p": project_id, "c": canonical, "ch": chapter_id}
-        where = ("n.user_id = $u AND n.canonical_title = $c "
+        # 🔴 `origin_title`, NOT `canonical_title` (T35d). The first cut matched the mutable
+        # one and forked the event on every re-extraction that followed an author rename:
+        # a title comes out of the PROSE, so a later pass still arrives with the ORIGINAL.
+        # Found by the shadow differential, not by conformance — which had no rule for it.
+        where = ("n.user_id = $u AND n.origin_title = $c "
                  "AND ((n.project_id IS NULL AND $p IS NULL) OR n.project_id = $p) "
                  "AND ((n.chapter_id IS NULL AND $ch IS NULL) OR n.chapter_id = $ch)")
         async with self._identity_lock:
@@ -459,7 +463,7 @@ class KuzuGraphStore:
             if not found:
                 await self._run(
                     "CREATE (n:Event {id: $id, user_id: $u, project_id: $p, title: $t, "
-                    "canonical_title: $c, summary: $sum, chapter_id: $ch, "
+                    "canonical_title: $c, origin_title: $c, summary: $sum, chapter_id: $ch, "
                     "event_order: $eo, chronological_order: $co, event_date_iso: $edi, "
                     "time_cue: $tc, participants: $parts, source_types: $st, "
                     "confidence: $conf, evidence_count: 0, mention_count: 0, version: 1, "

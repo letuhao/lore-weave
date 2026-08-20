@@ -99,9 +99,17 @@ KUZU_NODE_TABLES: dict[str, str] = {
         created_at TIMESTAMP, updated_at TIMESTAMP,
         PRIMARY KEY(id)
     """,
+    # ⚠️ `origin_title` (T35d) is the canonical title AT CREATION, and it is the identity key.
+    # `canonical_title` follows the author's renames and therefore cannot be one: an extractor
+    # reads a title out of the PROSE, so a re-extraction after a rename still arrives with the
+    # ORIGINAL title and must land on the same node. Keying on the mutable one forks the event
+    # on every later pass — silent, cumulative, and worst for the authors who tidy titles most.
+    # Neo4j encodes the same rule by hashing the original title into an immutable id; storing it
+    # plainly does the same job without minting a derived id, which is where T35 is taking
+    # identity.
     "Event": """
         id STRING, user_id STRING, project_id STRING,
-        title STRING, canonical_title STRING, summary STRING,
+        title STRING, canonical_title STRING, summary STRING, origin_title STRING,
         chapter_id STRING, chapter_title STRING,
         event_order INT64, chronological_order INT64,
         event_date_iso STRING, time_cue STRING,
