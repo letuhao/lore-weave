@@ -8945,7 +8945,12 @@ async def _emit_chat_turn(
         _reads_only_block = kind == "mutation" and _turn_reads_only
         if _mood_ok and not _reads_only_block:
             return _decision
-        logger.info(
+        # WARNING, not info: setting aside a consent the author explicitly granted is a
+        # security-relevant event, and its absence from the log is what made this fix
+        # unverifiable for a whole measurement cycle — INFO was not being emitted, so "no line"
+        # meant nothing. An operator must be able to see WHY a card appeared for a tool they
+        # had allowed.
+        logger.warning(
             "standing %s grant for %s set aside — this turn asked to LOOK, not to change "
             "(mood=%s, answerable-are-all-reads=%s: %s) — the Tier-A gate will raise a card",
             kind, tool_name, _turn_mood, _turn_reads_only, sorted(_turn_answerable) or "—",

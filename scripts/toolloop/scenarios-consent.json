@@ -46,14 +46,6 @@
               }
             ]
           }
-        },
-        {
-          "tool": "memory_remember",
-          "args": {
-            "project_id": "{project_id}",
-            "fact_type": "statement",
-            "fact_text": "Mira Solene is the last cartographer of the Obsidian Trench."
-          }
         }
       ],
       "seed_assert": [
