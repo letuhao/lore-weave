@@ -1420,8 +1420,14 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     ],
     # A checker nothing calls is decoration, and the placeholder would reach the tool anyway.
     "test_the_CALL_SITE_drops_the_fabricated_value_before_dispatch": [
-        (f"{CS}/app/services/stream_service.py", "                        _invented_ids = _invented_supplier_ids(args_obj, _inv_block)",
-         "                        _invented_ids = []"),
+        # 🔴 ANCHOR UPDATED 2026-08-14: the call gained a third argument (the tool's declared
+        # properties, for D-DECLARED-UUID-IN-PROSE-ONLY) and wrapped onto several lines, so the
+        # single-line anchor vanished. Anchored on the call's OPENING now — that survives further
+        # arguments — and the injected drift is unchanged: neutralise the result so the
+        # fabricated value reaches dispatch.
+        (f"{CS}/app/services/stream_service.py",
+         "                        _invented_ids = _invented_supplier_ids(",
+         "                        _invented_ids = [] or _neutralised("),
     ],
     # A checker with nothing DECLARED to check is the same decoration, one layer out.
     "test_the_CONTRACT_declares_the_ids_the_live_run_fabricated": [

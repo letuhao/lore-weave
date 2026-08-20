@@ -2651,7 +2651,32 @@ def _is_nil_uuid(value: str) -> bool:
         return False
 
 
-def _invented_supplier_ids(args_obj: dict, contract: dict | None) -> list[str]:
+#: The ids the RUNTIME fills from the turn. Excluded from the declared-UUID check below because
+#: `_inject_context_ids` owns them: it supplies a missing one and SUBSTITUTES a malformed one for
+#: the value the server already knows. A non-context id has no such fallback.
+_RUNTIME_CONTEXT_IDS = frozenset({"book_id", "chapter_id", "project_id"})
+
+
+def _declares_uuid(props: dict | None, name: str) -> bool:
+    """Does the tool's OWN declaration for this argument say it is a UUID?
+
+    Read from the description because that is where the platform states it — measured across the
+    live catalogue, 219 `*_id` properties say UUID in prose and none declares `format: uuid`.
+    Until that is fixed at the providers, the description is the only declaration there is, and
+    reading it beats inferring from the argument's name.
+    """
+    if not isinstance(props, dict):
+        return False
+    spec = props.get(name)
+    if not isinstance(spec, dict):
+        return False
+    if spec.get("format") == "uuid":
+        return True
+    return "uuid" in str(spec.get("description") or "").lower()
+
+
+def _invented_supplier_ids(args_obj: dict, contract: dict | None,
+                           tool_def_props: dict | None = None) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
 
     🔴 MEASURED LIVE 2026-08-12, journey `autonomous-drafting` (book 019ff497). The model called
@@ -2703,6 +2728,31 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None) -> list[str]:
         # gives the model the honest sentence — this argument is required and you have not
         # supplied it — which is the one that makes it go and look the id up.
         if isinstance(value, str) and _is_nil_uuid(value):
+            out.append(name)
+            continue
+        # 🔴 THE REQUIREMENT IS DECLARED IN PROSE NO VALIDATOR READS. Measured 2026-08-14 across
+        # the live catalogue: 219 `*_id` properties over 8 providers say "UUID" in their
+        # DESCRIPTION and exactly ZERO declare `format: uuid`. So "Ashfall" is a schema-valid
+        # `world_id`, and batch 8 measured precisely that — world_map_create called 3/3 with
+        # world_id="Ashfall", the world's NAME, and a Tier-A confirm card minted for a call the
+        # service can only reject.
+        #
+        # The description IS declared data, so reading it is the same move as reading `tier` or
+        # `synonyms` rather than inferring from a name.
+        #
+        # SCOPED AWAY FROM THE CASE THIS FUNCTION ALREADY LEARNED ABOUT. The comment above records
+        # that including `context` deleted `book_id="b1"` — a value the RUNTIME injects, which is
+        # not guaranteed to be a UUID — and turned 5 tests red. That reasoning holds and is why
+        # the three context ids are excluded here by name: the server fills those itself and
+        # `_inject_context_ids` already repairs a malformed one by SUBSTITUTING the value it
+        # knows. For a non-context id there is nothing to substitute, so the honest move is the
+        # one below — drop it and report it missing, which sends the model to look it up.
+        if (
+            name not in _RUNTIME_CONTEXT_IDS
+            and isinstance(value, str)
+            and _declares_uuid(tool_def_props, name)
+            and not _is_uuid(value)
+        ):
             out.append(name)
             continue
         if not contract:
@@ -5897,7 +5947,11 @@ async def _stream_with_tools(
                     try:
                         from app.agentruntime.toolcontract import resolve_contract as _rc
                         _inv_block, _ = _rc(_tool_def_for_args, _tool_contract_registry())
-                        _invented_ids = _invented_supplier_ids(args_obj, _inv_block)
+                        _invented_ids = _invented_supplier_ids(
+                            args_obj, _inv_block,
+                            ((_tool_def_for_args or {}).get("function", {})
+                             .get("parameters", {}) or {}).get("properties"),
+                        )
                     except Exception:
                         _invented_ids = []
                     if _invented_ids:

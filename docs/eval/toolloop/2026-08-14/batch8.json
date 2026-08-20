@@ -1,0 +1,1083 @@
+{
+  "batch": "batch8",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "glossary_plan",
+      "scenario": "glossary-plan",
+      "intent": "write",
+      "falsifier": "REFUTED IF: it applies ontology changes with no confirm card (it PLANS, it must not write), OR the plan it returns names no kinds at all for a goal that describes a genre. CONTROL FIRST: read chat_messages.withheld_tools for stage='intent_gate'. A non-zero count means this run measures the DQ-T3 stamp, not the tool — DQ-T31 recorded that the gate turns on vocabulary, so this must be read rather than assumed.",
+      "answer_expect": null,
+      "falsifier_sha": "a491043aa0ddead9",
+      "ship_audit": {
+        "gate": "OWED — it is a planner; a plan that writes is the defect.",
+        "empty_case": "OWED — a goal it cannot plan for must say so, not return an empty plan.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02050-1b8c-7e2f-bf26-7fd5eede8ea3",
+          "session_id": "01a02050-362f-7fee-aa44-489e78dbde99",
+          "prompt": "Plan my ontology for this book — how should I structure the world so the categories fit a seafaring gothic story?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "glossary_plan"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:16.176662+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:16.388634+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:16.379492+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:16.176662+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:16.388634+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:16.379492+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02050-791c-7550-abce-0ade08c716f7",
+          "session_id": "01a02050-9211-79e7-ae66-499728e8b1cf",
+          "prompt": "Plan my ontology for this book — how should I structure the world so the categories fit a seafaring gothic story?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "glossary_plan"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:40.104312+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:40.322821+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:40.31539+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:40.104312+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:40.322821+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:55:40.31539+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02050-d719-7d2b-96e0-9245d1ce7236",
+          "session_id": "01a02050-f50c-7f13-b994-3d47e16938a7",
+          "prompt": "Plan my ontology for this book — how should I structure the world so the categories fit a seafaring gothic story?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "glossary_list_system_standards",
+            "glossary_plan"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:04.166271+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:04.361869+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:04.349541+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:04.166271+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:04.361869+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:04.349541+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "world_map_create",
+      "scenario": "world-map-create",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool reports a map created while world_maps gains no row, OR it is called with an invented world_id — the nil-UUID case is now refused at the arg chokepoint (deabb4e47), so a DIFFERENT fabricated-but-valid UUID appearing here is a NEW instance of that class and must be recorded, not waved through. CONTROL: the model must find the world_id itself via world_list; a turn that never lists is a discovery failure, not a failure of this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "0cabfb879bda33e3",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — a world_id that does not exist must be refused.",
+        "tenancy": "OWED — another account's world must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02051-399b-7f56-8cf0-96403589a265",
+          "session_id": "01a02051-5528-76e8-897d-9a30ae2c5600",
+          "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:29.410982+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:29.632134+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:29.624672+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:29.410982+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:29.632134+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:29.624672+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02051-83ae-76d8-95fe-4fc6a328d758",
+          "session_id": "01a02051-9d9b-7d3d-9aa4-1335e1e70bfe",
+          "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:48.34845+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:48.55893+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:48.552269+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:48.34845+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:48.55893+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:56:48.552269+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02051-cab4-7433-9694-ba9f5b927099",
+          "session_id": "01a02051-e4eb-7273-9bd8-755a5261ed4a",
+          "prompt": "Make a new map called Saltmarsh in my Ashfall world.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "world_map_create"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:06.558153+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:06.804333+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:06.787028+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:06.558153+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:06.804333+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:06.787028+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    },
+    {
+      "tool": "book_steering_list",
+      "scenario": "book-steering-list",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply reports a rule count that is not 2, OR it paraphrases a rule that was never stored.",
+      "answer_expect": {
+        "all_of": [
+          "adverb",
+          "tide"
+        ],
+        "why": "Both seeded rules must appear. Naming one is the under-count this fixture exists to expose; naming a rule that is not there is fabrication."
+      },
+      "falsifier_sha": "1f26752d1b984b48",
+      "ship_audit": {
+        "empty_case": "OWED — a book with no rules must say so rather than describe the platform defaults as if the author had set them.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02052-15cd-7667-9bde-5f95abaa514f",
+          "session_id": "01a02052-3269-7158-bd2f-011f1477e5c0",
+          "prompt": "What writing rules do I have set for this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_steering_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.book_steering": {
+                "rows": 2,
+                "latest": "2026-08-20 17:57:26.383734+00"
+              },
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:25.785431+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:26.032689+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:26.016111+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.book_steering": {
+                "rows": 2,
+                "latest": "2026-08-20 17:57:26.383734+00"
+              },
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:25.785431+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:26.032689+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:26.016111+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have two writing rules set for this book:\n\n*   **no-adverbs**: Never use adverbs ending in *-ly* in narration.\n*   **tide-continuity**: The Obsidian Trench is only crossable at low tide; never write it otherwise."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02052-64fc-716a-aad8-9c06ba8b27c4",
+          "session_id": "01a02052-8083-71b4-b46c-ad2458e6ea3c",
+          "prompt": "What writing rules do I have set for this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_steering_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.book_steering": {
+                "rows": 2,
+                "latest": "2026-08-20 17:57:46.598696+00"
+              },
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:46.037708+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:46.266147+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:46.253675+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.book_steering": {
+                "rows": 2,
+                "latest": "2026-08-20 17:57:46.598696+00"
+              },
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:46.037708+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:46.266147+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:57:46.253675+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have two active writing rules for this book:\n\n*   **no-adverbs**: Never use adverbs ending in *-ly* in narration.\n*   **tide-continuity**: The Obsidian Trench is only crossable at low tide; never write it otherwise."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02052-b0a4-75c5-819e-9f47dd69d6c3",
+          "session_id": "01a02052-cb55-7ac7-bb57-2b4318a46ff6",
+          "prompt": "What writing rules do I have set for this book?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "book_steering_list"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.book_steering": {
+                "rows": 2,
+                "latest": "2026-08-20 17:58:05.977583+00"
+              },
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:05.421977+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:05.667542+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:05.651515+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.book_steering": {
+                "rows": 2,
+                "latest": "2026-08-20 17:58:05.977583+00"
+              },
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:05.421977+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:05.667542+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:05.651515+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have two active writing rules for this book:\n\n*   **no-adverbs**: Never use adverbs ending in *-ly* in narration.\n*   **tide-continuity**: The Obsidian Trench is only crossable at low tide; never write it otherwise."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "settings_list_models",
+      "scenario": "settings-list-models",
+      "intent": "read",
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply presents the registry as the provider's LIVE inventory — that conflation is D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY, and seeing it from THIS side (the registry tool over-claiming) would be the same defect pointed the other way.",
+      "answer_expect": null,
+      "falsifier_sha": "8fa5c4f2e5a1ac70",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no registered models must say so.",
+        "tenancy": "OWED — user-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02052-f916-7ff7-a18f-35245c1834a5",
+          "session_id": "01a02053-11b9-71c6-b4a7-baee4c03f972",
+          "prompt": "Which models do I have registered?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:23.923136+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:24.09943+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:24.092948+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:23.923136+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:24.09943+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:24.092948+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models registered across different providers. Here is a summary of your current lineup:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 Series:**\n    *   `Gemma-4 26B-A4B QAT (200K)` (Active, 200K context)\n    *   `gemma-26b` (Active, 40K context)\n    *   `Gemma-4 26B FD4-067` (Active, 120K context)\n*   **Qwen Series:**\n    *   `Qwen3.6 35B-A3B (120K)` (Active, 120K context)\n    *   `Qwen3 35B (E2E)` (Active, 120K context)\n    *   `Qwen3 Coder 30B (C6 tools)` (Active, 32K context)\n    *   `Qwen3.5 9B critic` (Active, 32K context)\n    *   `Qwen3.5 9B (tooltest)` (Active, 32K context)\n    *   `Qwen2.5 7B Instruct (fast, non-reasoning)` (Active, 32K context)\n*   **OpenAI Models:**\n    *   `gpt-4o (probe)` (Active, 128K context)\n    *   `GPT-4o mini (OpenAI)` (Active, 128K context)\n*   **NVIDIA:**\n    *   `Nemotron-3 Nano (260K, Q3_K_L)` (Active, 260K context)\n\n### **Specialized Models**\n*   **Search:** `searxng` and `searxng-default` (Web search capabilities)\n*   **Embedding & Reranking:**\n    *   `bge-m3` and `bge-m3 (local)` (Embedding)\n    *   `Local bge-reranker-v2-m3` (Reranking)\n*   **Audio:** `Kokoro (local)` (Text-to-Speech)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02053-53ac-79e1-a06e-6e8e4edb0c93",
+          "session_id": "01a02053-6e16-7709-92d7-f9d0833082af",
+          "prompt": "Which models do I have registered?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:47.15055+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:47.380086+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:47.371072+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:47.15055+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:47.380086+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:58:47.371072+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models registered across different providers. Here is a summary of your current lineup:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 Series:**\n    *   `Gemma-4 26B-A4B QAT (200K)` (Active, 200K context)\n    *   `gemma-26b` (Active, 40K context)\n    *   `Gemma-4 26B FD4-067` (Active, 120K context)\n*   **Qwen Series:**\n    *   `Qwen3.6 35B-A3B (120K)` (Active, 120K context)\n    *   `Qwen3 35B (E2E)` (Active, 120K context)\n    *   `Qwen3 Coder 30B (C6 tools)` (Active)\n    *   `Qwen3.5 9B critic` (Active)\n    *   `Qwen3.5 9B (tooltest)` (Active)\n    *   `Qwen2.5 7B Instruct (fast, non-reasoning)` (Active)\n*   **OpenAI Models:**\n    *   `gpt-4o (probe)` (Active, 128K context)\n    *   `GPT-4o mini (OpenAI)` (Active, 128K context)\n*   **NVIDIA:**\n    *   `Nemotron-3 Nano (260K, Q3_K_L)` (Active, 260K context)\n\n### **Specialized Models**\n*   **Search:** `searxng` and `searxng-default` (Web search capabilities)\n*   **Embeddings & Reranking:**\n    *   `bge-m3` and `bge-m3 (local)` (Embedding)\n    *   `Local bge-reranker-v2-m3` (Reranking)\n*   **Audio:** `Kokoro (local)` (Text-to-Speech)"
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02053-afc4-7092-b831-653dcb0ef051",
+          "session_id": "01a02053-c79c-7ef4-8d04-923ea50f1748",
+          "prompt": "Which models do I have registered?",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "settings_list_models"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:10.701222+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:10.901192+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:10.893041+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:10.701222+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:10.901192+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:10.893041+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have several models registered across different providers. Here is a summary of your current lineup:\n\n### **Chat & Reasoning Models**\n*   **Gemma-4 Series:**\n    *   `Gemma-4 26B-A4B QAT (200K)` (Active, 200K context)\n    *   `gemma-26b` (Active, 40K context)\n    *   `Gemma-4 26B FD4-067` (Active, 120K context)\n*   **Qwen Series:**\n    *   `Qwen3.6 35B-A3B (120K)` (Active, 120K context)\n    *   `Qwen3 35B (E2E)` (Active, 120K context)\n    *   `Qwen3 Coder 30B (C6 tools)` (Active, 32K context)\n    *   `Qwen3.5 9B critic` (Active, 32K context)\n    *   `Qwen3.5 9B (tooltest)` (Active, 32K context)\n    *   `Qwen2.5 7B Instruct (fast, non-reasoning)` (Active, 32K context)\n*   **OpenAI Models:**\n    *   `gpt-4o (probe)` (Active, 128K context)\n    *   `GPT-4o mini (OpenAI)` (Active, 128K context)\n*   **NVIDIA:**\n    *   `Nemotron-3 Nano (260K, Q3_K_L)` (Active, 260K context)\n\n### **Specialized Models**\n*   **Search:** `searxng` and `searxng-default` (Web search capabilities)\n*   **Embeddings & Reranking:**\n    *   `bge-m3` and `bge-m3 (local)` (Embedding)\n    *   `Local bge-reranker-v2-m3` (Reranking)\n*   **Audio:**\n    *   `Kokoro (local)` (Text-to-Speech)"
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    },
+    {
+      "tool": "kg_propose_fact",
+      "scenario": "kg-propose-fact",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the fact is written to the graph rather than parked in the review inbox — the tool's own description says it is a DRAFT awaiting confirmation and does NOT write. THE COUNT CANNOT SETTLE THIS ALONE: read the inbox row, not the Fact total. CONTROL: kg_propose_fact and memory_remember are near-twins in prose ('remember this happened' vs 'remember that'); if memory_remember is called instead, that is a DECLARATION overlap finding, not a failure of this tool.",
+      "answer_expect": null,
+      "falsifier_sha": "e43e57ebedc38099",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and its whole contract is 'proposes, never writes'.",
+        "absent_case": "OWED — an invalid fact_type must be refused with the enum, not defaulted.",
+        "tenancy": "OWED — project-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02054-093f-7913-891e-975d86a5a990",
+          "session_id": "01a02054-22cd-70c3-9c09-3bb6121a72a2",
+          "prompt": "Note a story fact for this book: the Pale Regent's envoy arrived at the Keep during the last low tide.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_propose_fact"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:33.628186+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:33.849056+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:33.840645+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:33.628186+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:33.849056+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:33.840645+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02054-4d3c-790f-9cb9-cbb9d6743a0c",
+          "session_id": "01a02054-663b-73d0-a7cf-28dcf161b1d7",
+          "prompt": "Note a story fact for this book: the Pale Regent's envoy arrived at the Keep during the last low tide.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_propose_fact"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:51.027836+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:51.236627+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:51.229621+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:51.027836+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:51.236627+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 17:59:51.229621+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02054-9144-73c1-b149-5187379caab6",
+          "session_id": "01a02054-a942-7e0a-b561-0d7947063497",
+          "prompt": "Note a story fact for this book: the Pale Regent's envoy arrived at the Keep during the last low tide.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "kg_propose_fact"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:00:08.448673+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:00:08.665439+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:00:08.659035+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 18:00:08.448673+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 18:00:08.665439+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 18:00:08.659035+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 3
+    }
+  ]
+}
