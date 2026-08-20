@@ -232,6 +232,42 @@ def make_other_users_model() -> str:
     return mid
 
 
+COMPOSITION_DB = "loreweave_composition"
+
+
+def make_other_users_node(book_id: str) -> str:
+    """An ARC node owned by the OTHER account, on their book — the arc family's tenancy scope."""
+    # 🔴 COPY A VALID ROW RATHER THAN GUESSING ITS CONSTRAINTS ONE AT A TIME. structure_node
+    # carries several CHECK constraints (source, status, …) and my first two attempts guessed
+    # 'manual' then hit the next one — reading the producer beats a sequence of guesses. An
+    # INSERT..SELECT from an existing arc satisfies every constraint by construction; only the
+    # identity columns are overridden.
+    nid = str(uuid.uuid4())
+    src = oracle.db_query(COMPOSITION_DB,
+                          "SELECT id FROM structure_node WHERE kind='arc' LIMIT 1")
+    if not (src and src[0] and src[0][0]):
+        return ""
+    template_id = str(src[0][0]).replace("'", "''")
+    # Identity columns overridden IN the select list — `SELECT *` collides on the primary key.
+    # Column order is read from information_schema, not remembered.
+    oracle.db_query(
+        COMPOSITION_DB,
+        f"INSERT INTO structure_node SELECT '{nid}'::uuid, '{book_id}'::uuid, NULL, kind, depth, "
+        f"rank, '{TITLE_PREFIX}tenancy-arc', summary, goal, status, tracks, roster, "
+        f"roster_bindings, arc_template_id, template_version, version, is_archived, created_at, "
+        f"updated_at, '{OTHER_USER}'::uuid, source, plan_run_id, plan_arc_id, book_lifecycle "
+        f"FROM structure_node WHERE id='{template_id}'")
+    return nid
+
+
+def drop_node(node_id: str) -> None:
+    """Title-guarded, like every other teardown here."""
+    q = node_id.replace("'", "''")
+    rows = oracle.db_query(COMPOSITION_DB, f"SELECT title FROM structure_node WHERE id='{q}'")
+    if rows and rows[0] and str(rows[0][0]).startswith(TITLE_PREFIX):
+        oracle.db_query(COMPOSITION_DB, f"DELETE FROM structure_node WHERE id='{q}'")
+
+
 def drop_model(user_model_id: str) -> None:
     """Name AND owner guarded — this table holds the account's real registrations."""
     q = user_model_id.replace("'", "''")
@@ -260,7 +296,7 @@ def drop_project(project_id: str) -> None:
 
 def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
           map_id: str | None = None, world_id: str | None = None,
-          user_model_id: str | None = None) -> dict:
+          user_model_id: str | None = None, node_id: str | None = None) -> dict:
     """Call `tool` as the harness user against another user's book OR project. Refusal is the pass.
 
     The scope is chosen from what the tool DECLARES, never guessed: a tool naming `book_id` is
@@ -277,6 +313,17 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
                 continue
             spec = (schema.get("properties") or {}).get(r) or {}
             args[r] = _placeholder(spec)
+        return _call_and_judge(tool, args)
+    if "book_id" not in props and "node_id" in props and node_id:
+        # 🔴 THE SIXTH SCOPE. The ARC family (arc_get, arc_extract_template, arc_update, arc_move,
+        # arc_delete, arc_restore …) carries only `node_id`, so every one of them reported `n/a`
+        # inside a "0 LEAK(S)" summary — including the DELETE and RESTORE ops. Added once here
+        # rather than as another per-tool exception, because the family is large.
+        args = {"node_id": node_id}
+        for r in required:
+            if r == "node_id":
+                continue
+            args[r] = _placeholder((schema.get("properties") or {}).get(r) or {})
         return _call_and_judge(tool, args)
     if "book_id" not in props and "user_model_id" in props and user_model_id:
         # 🔴 THE FIFTH SCOPE, AND THE ONE THAT MATTERS MOST: settings_model_delete is
@@ -320,7 +367,7 @@ def probe(tool: str, book_id: str, cat: dict, project_id: str | None = None,
         return _call_and_judge(tool, args)
     if "book_id" not in props:
         return {"tool": tool, "verdict": "n/a",
-                "why": "declares no book/project/map/world/user_model id — no tenancy argument"}
+                "why": "declares no book/project/map/world/user_model/node id — no tenancy argument"}
     args = {"book_id": book_id}
     # Fill any other required scalar with a placeholder so the call reaches the ownership check
     # rather than dying in validation — a validation error is not a refusal and must not be
@@ -368,17 +415,20 @@ def main() -> int:
     project = make_other_users_project(book)
     world, omap = make_other_users_map()
     omodel = make_other_users_model()
+    onode = make_other_users_node(book)
     print(f"other user's book: {book} (owner {OTHER_USER})")
     print(f"other user's project: {project}")
     print(f"other user's map: {omap}")
     print(f"other user's model: {omodel}")
+    print(f"other user's arc node: {onode}")
     out = []
     try:
         for t in [x.strip() for x in a.tenancy.split(",") if x.strip()]:
-            r = probe(t, book, cat, project, omap, world, omodel)
+            r = probe(t, book, cat, project, omap, world, omodel, onode)
             out.append(r)
             print(f"  {r['verdict']:<14} {t}  {r.get('response', '')[:110]}")
     finally:
+        drop_node(onode)
         drop_model(omodel)
         drop_map(world, omap)
         drop_project(project)

@@ -1,0 +1,157 @@
+{
+  "_note": "Batch 14: the ARC family. This is the fixture gap that blocked composition_conformance_run back in batch 4 — an arc could not be seeded, so the tool refused correctly and looked like a miss. composition_arc_create writes immediately via MCP (no card), so the arc is seedable and the whole family becomes testable. Prompts use declared synonyms VERBATIM, per batch 13: a paraphrase tests DQ-T32 (the matcher), not the tool.",
+  "scenarios": [
+    {
+      "id": "composition-arc-edit",
+      "tool_under_test": "composition_arc_edit",
+      "expect_tool": "composition_arc_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Create arc — I want to author an arc called The Drowned Court for this book.",
+      "prompt_source": "_meta.synonyms['create arc'] + ['author an arc'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "0",
+          "why": "ZERO arcs before, so any arc is attributable to this turn — and, since the card is never approved, the count must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: an arc lands with NO confirm card (Tier A), OR the op chosen is not `create` when the user said create — its op enum spans create|edit|delete|archive|restore|move|reorder, and a destructive op on a create request would be the worst outcome. Store check: structure_node arc count stays 0.",
+      "ship_audit": {
+        "gate": "OWED — Tier A, and its op enum includes DELETE, so the gate matters more than usual.",
+        "absent_case": "OWED — an op naming a node that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-arc-get",
+      "tool_under_test": "composition_arc_get",
+      "expect_tool": "composition_arc_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+      "prompt_source": "_meta.synonyms['read arc'] + ['arc detail'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {"book_id": "{book_id}", "title": "Arc I — The Hollow Keep"}
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc' AND title LIKE '%Hollow Keep%'",
+          "expect": "1",
+          "why": "THE ARC MUST EXIST — this is the fixture that batch 4 could not build, which is why composition_conformance_run refused correctly and was scored as a miss. The tool takes a node_id, so the model must resolve the arc's NAME to it."
+        }
+      ],
+      "answer_expect": {
+        "all_of": ["Hollow Keep"],
+        "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+      },
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model invents a node_id rather than resolving 'The Hollow Keep' (the D-DECLARED-UUID class, now guarded — a fabricated-but-valid UUID here is a NEW instance), OR the reply describes arc content the seeded arc does not have (it has a title and nothing else, so any beats/tracks are fabricated).",
+      "ship_audit": {
+        "absent_case": "OWED — a node_id that does not exist must be refused, and must be distinguishable from an arc that exists but is empty (D-ABSENT-ENTITY-READS-AS-UNUSED).",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-arc-extract-template",
+      "tool_under_test": "composition_arc_extract_template",
+      "expect_tool": "composition_arc_extract_template",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Save arc as template — turn The Hollow Keep into a reusable arc template.",
+      "prompt_source": "_meta.synonyms['save arc as template'] + ['make arc template'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "composition_arc_create",
+          "args": {"book_id": "{book_id}", "title": "Arc I — The Hollow Keep"}
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "1",
+          "why": "One arc to extract from; the tool needs its node_id plus a code and a name it must derive from the request."
+        }
+      ],
+      "falsifier": "REFUTED IF: a template is created with NO confirm card, OR the model invents a node_id, OR it fabricates a `code` that collides with an existing template rather than deriving a fresh one. NOTE the account already holds arc templates (arc_template_list returns several), so a collision is reachable and its refusal is worth seeing.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — extracting from a node that does not exist must be refused.",
+        "idempotency": "OWED — a duplicate `code` must be refused, not silently overwrite an existing template.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-arc-apply",
+      "tool_under_test": "composition_arc_apply",
+      "expect_tool": "composition_arc_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Apply arc template — use one of my library arc templates on this book.",
+      "prompt_source": "_meta.synonyms['apply arc template'] + ['apply library arc'], verbatim.",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM structure_node WHERE book_id='{book_id}' AND kind='arc'",
+          "expect": "0",
+          "why": "ZERO arcs before, so an applied template is attributable — and, the card never being approved, the count must still be 0 afterwards."
+        }
+      ],
+      "falsifier": "REFUTED IF: an arc is materialised with NO confirm card, OR the model invents an arc_template_id rather than listing the library first (composition_arc_template_list is the supplier). CONTROL: the account genuinely holds arc templates, so 'there are none' would contradict a known reading and is a finding either way.",
+      "ship_audit": {
+        "gate": "OWED — Tier A; applying a template materialises structure.",
+        "absent_case": "OWED — an arc_template_id that does not exist must be refused.",
+        "tenancy": "OWED — book-scoped, and the template library is account-scoped: another account's template must not apply."
+      },
+      "defects": []
+    },
+    {
+      "id": "composition-arc-import-analyze",
+      "tool_under_test": "composition_arc_import_analyze",
+      "expect_tool": "composition_arc_import_analyze",
+      "intent": "write",
+      "tier": "W",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Reverse-engineer arc — analyze a work I imported and deconstruct its structure.",
+      "prompt_source": "_meta.synonyms['reverse-engineer arc'] + ['analyze a work'] + ['deconstruct'], verbatim.",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: it spends LLM tokens with no confirm card (Tier W and it analyses a whole work), OR it proceeds with an invented import_source_id. CONTROL, stated up front: the fixture has NO import source, so the honest outcome is a refusal naming what is missing — and a turn that cannot proceed is a PRECONDITION finding, not a tool defect. If it mints a card over a nonexistent source that is D-EXTRACTION-CONFIRMS-A-NO-OP again, in a third tool of the same family.",
+      "ship_audit": {
+        "gate": "OWED — Tier W and it spends.",
+        "absent_case": "This scenario IS the absent case — there is no import source, so the refusal is the evidence.",
+        "tenancy": "OWED — user-scoped; another account's import source must be refused."
+      },
+      "defects": []
+    }
+  ]
+}
