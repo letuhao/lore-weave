@@ -237,6 +237,24 @@ suites:
         kind: postgres
         schema: per_reality
 
+  - id: world-actor-subject
+    package: world-service
+    target: actor_subject_live
+    dedicated_ci_leg: false
+    no_leg_reason: >-
+      Shipped 2026-08-21 with E5. Two databases and no binary, so the
+      registry-driven leg runs it exactly like commit-subject; a step of its own
+      would add nothing. It exists because E1's only live evidence was a
+      scratchpad script against data an earlier slice happened to leave in the
+      dev stack — unrepeatable, which is EO-2.
+    needs:
+      - env: SUBJECT_ROUTE_META_TEST_DATABASE_URL
+        kind: postgres
+        schema: meta
+      - env: SUBJECT_ROUTE_CHANNEL_TEST_DATABASE_URL
+        kind: postgres
+        schema: per_reality
+
   - id: commit-spine-drain-once
     package: commit-service
     target: spine_drain_once_live

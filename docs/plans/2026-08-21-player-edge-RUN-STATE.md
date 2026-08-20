@@ -66,7 +66,7 @@ the actor the binding names.
 | `E2` the ACL edge — game-server → world-service, declared | `[x]` | `world-service-rpcs.ResolveActorSubject`, `allowed_callers: [game-server]`, `principal_mode: requires_user`. **4 bites** — remove the caller, flip the mode, rename the RPC, widen the list — each RED for its own reason. `contracts/service_acl` go test green |
 | `E3` the transport reads it, and FAILS CLOSED when it cannot | `[x]` | `ws/subject.ts` + `onJoin` now async. **Four answers, not two** — driving · nobody · realityClosed (`4004`) · unavailable (refuse the join). **6 bites**, each RED for the right reason; game-server `81 pass / 0 fail` (was 68). No new dependency: Node's global `fetch`. |
 | `E4` ⏸ **POST-REVIEW checkpoint** — retire `LW_CHANNEL_ACTOR_MAP`, or keep it as a declared dev override? | `[x]` | **PO: DELETE IT ENTIRELY.** `actorFromDevMap` gone; `resolveSubject` has no branch left to get wrong. **2 bites** — reintroduce the map, reintroduce `?? '1'` — and the second reds THREE tests. game-server `82 pass / 0 fail` |
-| `E5` live — a session drives the actor the binding names, with no env map set | `[ ]` | |
+| `E5` live — a session drives the actor the binding names, with no env map set | `[x]` | **Two durable proofs, both bitten.** `world-actor-subject` registered in `contracts/testing/live-suites.yaml` — router-driven, two real databases, `1 passed`, **3 live bites** each RED through the runner. `scripts/smoke/player-edge-live.mjs` — the TRANSPORT's own resolver against a running world-service, **5/5**, driver → `entity_id 1`, revoked → nobody; bitten by swapping the two users (3 arms red, rc=1). `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT` **discharged**; registry 34 → 33 |
 | `E6` suite + sweep green | `[ ]` | |
 
 ### `E4` — RULED 2026-08-21: **delete it entirely**
@@ -179,7 +179,7 @@ binding. **This is the checkpoint's to confirm or reverse.**
 
 | row | what | mechanism |
 |---|---|---|
-| `EO-2` | **`E1`'s live proof is not repeatable.** The 5-arm smoke ran from a scratchpad script against data `P7` left in the dev stack; `live-suite-registry-gate` reports 22 registered suites and the actor-control routes are none of them. The route is therefore covered by unit tests and by one run nobody can re-do. | `E5` owns it: it needs a durable live test anyway, and a route-level suite is the same fixture. If `E5` lands without registering one, this row is the thing that says so. |
+| ~~`EO-2`~~ | **CLEARED at `E5`.** `world-actor-subject` is in the live-suite registry, so the route runs under the registry-driven CI leg like every other suite, and three bites prove it can go red there. The transport half is `scripts/smoke/player-edge-live.mjs`, which is a script rather than a registered suite because the registry is cargo-shaped — same position as `D-EPOCH-SMOKE-NOT-IN-CI` and its two siblings, and it waits on the same stack-up CI job they do. Original text: **`E1`'s live proof is not repeatable.** The 5-arm smoke ran from a scratchpad script against data `P7` left in the dev stack; `live-suite-registry-gate` reports 22 registered suites and the actor-control routes are none of them. The route is therefore covered by unit tests and by one run nobody can re-do. | `E5` owns it: it needs a durable live test anyway, and a route-level suite is the same fixture. If `E5` lands without registering one, this row is the thing that says so. |
 | `EO-1` | `actors.entity_id` has **no `CHECK (entity_id >= 0)`**. `checked_island_id` closes it at both code edges, but the column stays permissive, so a future writer that skips the helper is unguarded. Not fixed here because `0022` is applied **per reality at provision time**, so a new migration only reaches worlds provisioned after it — this needs the migrate-existing-realities path, not a new file. | `checked_island_id`'s test is the code-side guard (bitten). The column-side row is declared here rather than left as a comment. |
 
 ## §5 DRIFT — append as it happens; an empty log is dishonest, not clean
@@ -188,6 +188,9 @@ binding. **This is the checkpoint's to confirm or reverse.**
 |---|---|
 | `ED-D1` | **Two bite anchors matched nothing, and the run reported them as aborts only because the harness counts occurrences.** The files are CRLF; my anchors used `\n`. Without the `count(anchor) != 1` assertion this would have been two mutations that silently did not happen, each followed by a green run — indistinguishable from a passing bite. Same family as `PD-4` (heredoc backslash mangling): **the encoding of the file is part of the anchor.** |
 | `ED-D2` | **B3's first mutant did not COMPILE, and it still went red.** `ProblemDetails::bad_request("bite".into())` is ambiguous across four `From<&str>` impls. `rc != 0` plus a "RED" label looked exactly like a bite; only reading the output showed `error[E0283]`. A broken build is not evidence about a guard. The harness now fails any mutant whose output contains `could not compile` or `error[E0` — because the summary line is identical either way, and I would not have caught the second one. |
+| `ED-D7` | **The live suite passed before it could run, and the number said `1 passed`.** `cargo test --test actor_subject_live` with no env prints exactly what a real pass prints — the skip is a `return Ok(())`. I nearly took that as `E5` done. Registering it and running it through `live-suites.py` turned the same test RED three times in a row (a `db_host` CHECK, then a relative allowlist path, then nothing) before it was actually green. **The gap between "the test compiles and returns Ok" and "the test ran" is invisible in the output**, which is why the three live bites exist and not just the run. |
+| `ED-D8` | **`meta_allowlist` defaults to a RELATIVE path, so the bind works from a shell and 500s from `cargo test`.** `cargo` runs from the package directory, the binary runs from the repo root, and the failure surfaces as a generic `500 actor-control write failed` because `to_problem`'s wildcard arm hides the detail. Two things worth keeping: the test now derives the path from `CARGO_MANIFEST_DIR`, and **the generic 500 cost more time than the bug did** — the wildcard is correct for a client-facing body, but it means an operator debugging this gets nothing without server logs. |
+| `ED-D9` | **The live smoke printed PASS and exited 127.** Node aborted on Windows with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` inside `process.exit()`, after every arm had passed — `fetch`'s keep-alive pool torn down mid-close. Fail-safe rather than fail-open, so it would have shown as a false RED, but an exit code that does not mean what it says is a smoke nobody can put in CI. Fixed with `process.exitCode` and letting the loop drain. **I caught it only because I echoed `$?` instead of reading the PASS line** — the same discipline that caught a wrapper's exit code standing in for the harness's last run. |
 | `ED-D4` | **I deleted a deferral's only mechanism while editing a test, and the gate caught it in seconds.** `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT`'s mechanism was an assertion MESSAGE in `ChannelRoom.test.ts` naming the id; rewriting that test for `E3` removed the sentence, and `deferral-gate.py` immediately reported *"deferral(s) with NO mechanism and no declared reason"*. Worth logging as a gate WORKING rather than as a defect — but the near-miss is real: had the mechanism been a comment instead of a string literal, the stripper would have ignored it either way and I would have learned nothing. |
 | `ED-D5` | **I nearly closed that row here, on stubbed `fetch`.** The transport reads the binding now, so the row's literal text is false — the tempting move is to strike it. But every test of that path stubs `fetch`, and a read that has never reached a real service is exactly the state `meta_read_audit` was in for four months: four layers, each correct-looking, empty table underneath. The row stays open until `E5` runs it live. **The rule this cost me: a row closes on the evidence its subject demands, not on the evidence I happen to have.** |
 | `ED-D6` | **Two of six `E3` bites did not bite on the first attempt, and only one was a bad mutation.** `D2`'s mutant left a variable unused and failed to TYPECHECK — the harness's compile check (added after `ED-D2`) caught it, which is the second time that guard has paid for itself in one run. `D4` genuinely reddened the right test but on a *different assertion* than I predicted, because the strong claim (`no request was made`) sat after the weak one. Fixed by reordering the test, not the expectation: **an unpredicted red is not a verified one**, and the reorder makes the test state its own priority. |
@@ -226,4 +229,30 @@ user drives; it may not decide it. `GrantActorControl`, `RevokeActorControl` and
 have an arm proving game-server cannot reach them, so adding one later is an argument someone has to
 make in a test rather than a line someone can append to a list.
 
-**RESUME: `E5` — the live run, and the row that closes on it. A human drives the actor their binding names with no `LW_CHANNEL_ACTOR_MAP` anywhere (it no longer exists). Note world-service is NOT in `infra/docker-compose.yml` — the `E1` smoke ran it from source, and `E5` will have to as well or add it. `EO-2` says the durable suite lands here; `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT` closes here and nowhere earlier.**
+### `E5` — why the row did not close at `E3`
+
+The transport read the binding as of `E3`, so the row's literal text was already false. Closing it
+there would have been closing it on **ten unit tests that all stub `globalThis.fetch`** — the right
+way to test the room's branching, and worth nothing as evidence that the HTTP call works. A wrong
+path, a wrong header name, a wrong request shape or a mis-read response all pass a stubbed test and
+fail on the wire. That is the state `meta_read_audit` was in for four months.
+
+So `E5` built two proofs that can be re-run by someone else:
+
+* **`world-actor-subject`** in `contracts/testing/live-suites.yaml` — driven through the ROUTER, so
+  the handler, the token gate, the status codes and the `self` wire key are all inside it. Two real
+  databases in two tiers, and `dp::RealityId` minted through the real `MetaControlPlane`. Three
+  bites, each RED through the runner: drop `revoked_at IS NULL`, stub hop 2's conversion, skip the
+  registration check.
+* **`scripts/smoke/player-edge-live.mjs`** — the transport's OWN `HttpSubjectResolver` against a
+  running world-service. This is the only place the two sides meet. Bitten by swapping the driver
+  and the revoked user, which reds three arms and exits 1 — and incidentally proves the fixture's
+  two users are distinguished by the SERVER rather than by the assertions.
+
+**The row's first proposal was wrong and the PO said so at the time**, and both turned out to be
+true of different things. `SEALED-SUBJECT` moved the AUTHORITATIVE resolution into commit-service: a
+proposal carries the user, the server resolves the actor, and a subject the caller cannot assert
+cannot be forged. What this phase added is a **display** read — which entity to render as *"you"* —
+and that is a different question from who may act. The client still never names its own subject.
+
+**RESUME: `E6` — the full sweep. Every suite plus `gate-wiring-gate --run-all`, and the number goes in the board row rather than a claim that it was green.**

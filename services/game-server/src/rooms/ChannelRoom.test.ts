@@ -260,13 +260,12 @@ test('with NOTHING configured the join is refused, not seated as a spectator', a
 
   assert.ok(
     threw,
-    'an unconfigured room must REFUSE the join, not answer from anywhere else. This ' +
-      'assertion holds the safe state for D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT: ' +
-      'E3 made the transport ASK (world-service /internal/v1/actor-control/subject) ' +
-      'and E4 deleted the env map, but every test of that path stubs `fetch`, and a ' +
-      'read that has never reached a real service is the shape meta_read_audit was in ' +
-      'for four months — four layers each correct-looking, with an empty table ' +
-      'underneath. The row closes at E5, on a live run, not here.',
+    'an unconfigured room must REFUSE the join, not answer from anywhere else. ' +
+      'D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT was discharged at E5 and this assertion ' +
+      'is what keeps its fix from quietly reverting: the transport reads the durable ' +
+      'binding or it serves nobody. Note that every OTHER test on this path stubs ' +
+      '`fetch` — the live evidence is `world-actor-subject` in the live-suite registry ' +
+      'and scripts/smoke/player-edge-live.mjs, not this file.',
   );
   assert.equal(room.actorOf.has('s1'), false, 'and it must bind nobody');
   assert.equal(
