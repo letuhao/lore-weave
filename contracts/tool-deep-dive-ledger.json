@@ -1673,6 +1673,56 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "BLOCKED on a NAMED fixture gap. Surfaced 3/3, called 0/3: asked to record that two named characters know each other, the model called kg_project_create 3/3 and suspended on THAT card — it bootstrapped the graph instead of proposing the edge, which is not obviously wrong given the KG side was un-bootstrapped. Boundary probes are good: two unknown entity ids are refused with an actionable message naming both endpoints and the projection step needed; tenancy refused. The seed must create the KG project and project both entities as graph nodes so the edge is the only outstanding action."
+  },
+  "memory_search": {
+   "state": "proven",
+   "provider": "memory",
+   "tier": "R",
+   "cycle": "batch-6",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 from 'What has been established about the Obsidian Trench so far?' — its OWN declared phrase, deliberately not 'who is', which belongs to memory_recall_entity and cost batch 4 a scenario. Store unchanged 3/3, and the answer carried the seeded chapter's fact ('only walkable during low tide') which is its ONLY source. SHIP: tenancy refused; empty case returns hits [] WITH a note saying why ('this project has no indexed memory yet') rather than a blank presented as an answer."
+  },
+  "translation_start_extraction": {
+   "state": "proven",
+   "provider": "translation",
+   "tier": "W",
+   "cycle": "batch-6",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3, gated 3/3 ('Please confirm the extraction to save them'), store unchanged without approval — the correct outcome for a cost-gated Tier-W tool. ITS AUDIT FOUND A DEFECT AND IT IS FIXED: the empty case minted a confirm card over a zero estimate, and re-probing found the same shape one layer deeper (chapters present, no kinds adopted, llm_calls still 0). Both refuse now — D-EXTRACTION-CONFIRMS-A-NO-OP, a8bfa2047, re-verified live in all three states."
+  },
+  "world_list": {
+   "state": "proven",
+   "provider": "world",
+   "tier": "R",
+   "cycle": "batch-6",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 from 'What worlds do I have set up?', store unchanged, and the reply named this account's real worlds with counts (28 total, paginated with explicit guidance to stop unless more are needed). Tenancy is covered by construction rather than by a probe and that is stated: it takes no book/project argument, its boundary is the caller identity, and the read returned only this account's worlds."
+  },
+  "translation_job_status": {
+   "state": "proven",
+   "provider": "translation",
+   "tier": "R",
+   "cycle": "batch-6",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "Called 3/3 once the fixture could seed a job at all — the first attempt failed because DOMAIN_BASE pointed the 'translation' domain at catalog-service (8207), which answers /health with 200. Store unchanged. SHIP: an unknown job_id returns 'not found or not accessible', one string for both 'no such job' and 'not yours'; a FRESH job reports status 'running' with the per-chapter row also running, rather than presenting undone work as a result."
+  },
+  "glossary_propose_batch": {
+   "state": "blocked",
+   "provider": "glossary",
+   "tier": "W",
+   "cycle": "batch-6",
+   "group": "C",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true,
+   "note": "BLOCKED on DQ-T31, a surfacing defect measured in two passes. The VAGUE prompt left the intent gate open (0 withheld) and the model correctly asked which kinds, because `ops` must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT the gate: 4 tools withheld at stage=intent_gate including this one. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind. Its own boundary is sound: empty `ops` is refused with a message naming the missing input."
   }
  },
  "defects": {
