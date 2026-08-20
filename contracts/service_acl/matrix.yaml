@@ -400,6 +400,55 @@ services:
           - roleplay-service
         principal_mode: requires_user
 
+  # ── `E2` (2026-08-21) — world-service's RPC surface, and game-server's FIRST
+  # outbound edge.
+  #
+  # Phase 0 measured it: `game-server` appears in this file exactly once, in a
+  # comment about security groups. It has been a callee-of-nobody and a
+  # caller-of-nobody — a transport that only received. This row is the first
+  # time it is declared to CALL something, and that is worth saying out loud
+  # rather than slipping in, because it is the shape `I1` is sensitive to.
+  #
+  # It does NOT amend I1. `PRR-20` already makes game-server a sanctioned public
+  # entry point alongside api-gateway-bff; I1 governs PUBLIC ingress, and this
+  # is internal service-to-service egress from a service that is already inside
+  # the boundary. Routing this lookup back out through the gateway was
+  # considered and refused: game-server IS an edge, so the extra hop and auth
+  # translation would buy no isolation.
+  #
+  # `requires_user`, and the mode is load-bearing rather than decorative.
+  # `ResolveActorSubject` answers "which actor does THIS user drive", so a call
+  # with no user names nobody and has no answer — `RpcRule::check_principal_allowed`
+  # turns `system_only` into `DenyPrincipalMismatch` the moment a user arrives,
+  # which is the opposite of this RPC's contract. The handler agrees by
+  # construction: `SubjectRequest.user_ref_id` is a `Uuid`, not an `Option<Uuid>`.
+  #
+  # The user identity is the one game-server redeemed from the WS ticket, never
+  # anything the client sent (`SEALED-SUBJECT`). The client cannot name its own
+  # subject, which is why this is a lookup and not an assertion the server
+  # verifies — that second shape is the class `P3` killed.
+  #
+  # ONE RPC, not a surface. The grant/revoke/create writers on the same service
+  # are deliberately absent: game-server has no business creating actors or
+  # deciding who drives them, and an ACL row is the cheapest place to say so.
+  - name: world-service-rpcs
+    svid_spiffe_id: spiffe://loreweave.dev/sa/world-service
+    notes: |
+      `E2`. Transport is HTTP/JSON over the internal token gate
+      (`POST /internal/v1/actor-control/subject`, documented in
+      contracts/api/world/provisioning.v1.yaml and checked against the router
+      by tests/route_conformance.rs).
+
+      Separate from the cycle-7 `world-service` entry above, which declares
+      TABLE grants: `LoadMatrix` rejects duplicate names, and the two shapes
+      answer different questions — what this service may touch in the database
+      versus who may invoke it. Same SVID, because it is the same service.
+    rpcs:
+      ResolveActorSubject:
+        allowed_callers:
+          - game-server
+        principal_mode: requires_user
+
   # ── Cycle 11 (L2.K) — retention-worker (SEPARATE binary from archive-worker)
   - name: retention-worker
     svid_spiffe_id: spiffe://loreweave.dev/sa/retention-worker

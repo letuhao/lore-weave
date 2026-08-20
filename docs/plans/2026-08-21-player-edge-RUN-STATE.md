@@ -63,7 +63,7 @@ the actor the binding names.
 | slice | state | evidence |
 |---|---|---|
 | `E1` the owner-scoped route — "which actor does THIS user drive here" | `[x]` | `POST /internal/v1/actor-control/subject`. **7 bites, each watched RED for the right reason** (5 unit + the serde `self` rename + one LIVE). **Live smoke, read-only, 5/5**: driver → `entity_id 1`; the REVOKED user on the SAME actor → `self: null`; unregistered reality → 400; wrong token → 401. Suites `459 passed / 0 failed` (meta-rs 101 · world-service 220 · commit-service 138) |
-| `E2` the ACL edge — game-server → world-service, declared | `[ ]` | |
+| `E2` the ACL edge — game-server → world-service, declared | `[x]` | `world-service-rpcs.ResolveActorSubject`, `allowed_callers: [game-server]`, `principal_mode: requires_user`. **4 bites** — remove the caller, flip the mode, rename the RPC, widen the list — each RED for its own reason. `contracts/service_acl` go test green |
 | `E3` the transport reads it, and FAILS CLOSED when it cannot | `[ ]` | |
 | `E4` ⏸ **POST-REVIEW checkpoint** — retire `LW_CHANNEL_ACTOR_MAP`, or keep it as a declared dev override? | `[ ]` | |
 | `E5` live — a session drives the actor the binding names, with no env map set | `[ ]` | |
@@ -130,6 +130,7 @@ from one function (`actor_registry::checked_island_id`) so the two cannot half-c
 
 | row | what | mechanism |
 |---|---|---|
+| `EO-2` | **`E1`'s live proof is not repeatable.** The 5-arm smoke ran from a scratchpad script against data `P7` left in the dev stack; `live-suite-registry-gate` reports 22 registered suites and the actor-control routes are none of them. The route is therefore covered by unit tests and by one run nobody can re-do. | `E5` owns it: it needs a durable live test anyway, and a route-level suite is the same fixture. If `E5` lands without registering one, this row is the thing that says so. |
 | `EO-1` | `actors.entity_id` has **no `CHECK (entity_id >= 0)`**. `checked_island_id` closes it at both code edges, but the column stays permissive, so a future writer that skips the helper is unguarded. Not fixed here because `0022` is applied **per reality at provision time**, so a new migration only reaches worlds provisioned after it — this needs the migrate-existing-realities path, not a new file. | `checked_island_id`'s test is the code-side guard (bitten). The column-side row is declared here rather than left as a comment. |
 
 ## §5 DRIFT — append as it happens; an empty log is dishonest, not clean
@@ -151,4 +152,26 @@ stop: |
   the transport would gain a database client, or the client would name its own subject
 ```
 
-**RESUME: `E2` — the ACL edge. `contracts/service_acl/matrix.yaml` has no game-server CALLER entry at all (Phase 0 measured one mention, in a comment about security groups), so this declares the first outbound edge from a service that until now only received. The route it names exists and is live-proven: `POST /internal/v1/actor-control/subject`.**
+### `E2` — the row, and why it needed a test to exist at all
+
+**Nothing in this repo loads `matrix.yaml` and asks it a question about a new edge.** The
+`service-acl-matrix-lint` requires an entry only for services that WRITE META — game-server writes
+none, so the lint would never have asked for this row, and once written it would never have checked
+it. A YAML row that no code reads is prose with a schema.
+
+What makes it load-bearing is `TestCheckedInMatrix_AllowsGameServerToResolveASubject`, which loads
+the shipped file and puts the real `CheckRPCAllowed` to it — following the precedent of
+`TestLoadMatrix_FromCheckedInMatrixYAML`, which already does this for `publisher → MetaWrite`. Four
+mutations, four reds: delete the caller, flip the mode, rename the RPC, widen the list.
+
+`requires_user` is not decoration. `RpcRule::check_principal_allowed` turns `system_only` into
+`DenyPrincipalMismatch` the moment a call carries a user — and every real call to this RPC carries
+one, because *"which actor does THIS user drive"* has no meaning without a user. The handler agrees
+by construction: `SubjectRequest.user_ref_id` is a `Uuid`, not an `Option<Uuid>`.
+
+**The writers are absent on purpose, and the test asserts their absence.** game-server may ask who a
+user drives; it may not decide it. `GrantActorControl`, `RevokeActorControl` and `CreateActor` each
+have an arm proving game-server cannot reach them, so adding one later is an argument someone has to
+make in a test rather than a line someone can append to a list.
+
+**RESUME: `E3` — the transport reads the route instead of the env map, and FAILS CLOSED when it cannot. Note `onJoin` is SYNCHRONOUS today (`onJoin(client: Client): void`) while an HTTP lookup is not, and the ticket's `userId` is a string where `user_ref_id` is a UUID — both are E3's to resolve, and neither may be resolved by letting the client supply anything.**
