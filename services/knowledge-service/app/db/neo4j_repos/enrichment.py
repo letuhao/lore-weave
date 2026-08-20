@@ -33,6 +33,8 @@ clearing it, and it can never remove canon because it filters on this proposal's
 
 from __future__ import annotations
 
+from app.db.neo4j_repos.entities import GLOBAL_PROJECT_SENTINEL
+
 from loreweave_extraction.canonical import entity_canonical_id
 
 from app.db.neo4j_helpers import CypherSession
@@ -209,8 +211,10 @@ async def upsert_enriched_anchor(
     # storage detail of this layer; a router that computes it has to know that `Entity.id`
     # is `hash(name, kind)`, which is the coupling T35 exists to remove. The caller now
     # passes what it actually knows — the glossary anchor and the entity's properties.
-    canon_id = entity_canonical_id(user_id, None if project_id == "global" else project_id,
-                                   name, kind)
+    canon_id = entity_canonical_id(
+        user_id,
+        None if project_id == GLOBAL_PROJECT_SENTINEL else project_id,
+        name, kind)
     res = await session.run(
         _RESOLVE_ANCHOR_CYPHER,
         user_id=user_id, glossary_entity_id=glossary_entity_id, canon_id=canon_id,

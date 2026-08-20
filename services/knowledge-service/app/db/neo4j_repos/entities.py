@@ -200,6 +200,14 @@ def _node_to_entity(node: Any) -> Entity:
 # write (default `$auto_created = false`) clears the flag — so
 # a real extractor hit on a previously-auto-created entity promotes
 # it (cycle 73e M1 fold).
+#: What a project-less entity stores in `project_id`. Cypher refuses to MERGE on a null
+#: property, and a NULL component would opt the row out of the
+#: `(user_id, project_id, glossary_entity_id)` UNIQUE constraint that keeps one anchor to one
+#: node — so the sentinel is load-bearing, not a convenience. It lives here, once, because
+#: two writers and one lookup all have to agree on it (QC-6).
+GLOBAL_PROJECT_SENTINEL = "global"
+
+
 _MERGE_ENTITY_CYPHER = """
 // T35 — resolve an EXISTING node before minting one.
 //
@@ -232,7 +240,19 @@ _MERGE_ENTITY_CYPHER = """
 OPTIONAL MATCH (prior:Entity {user_id: $user_id})
 WHERE prior.canonical_name = $canonical_name
   AND prior.kind = $kind
-  AND (($project_id IS NULL AND prior.project_id IS NULL)
+  // 🔴 `GLOBAL_PROJECT_SENTINEL` HAS TO BE HONOURED HERE OR THE TWO WRITERS CANNOT SEE EACH
+  // OTHER. `sync_glossary_entity_to_neo4j` stores the sentinel for a project-less entity
+  // (Cypher will not MERGE on a null property, and a NULL component silently opts the row
+  // out of the `(user_id, project_id, glossary_entity_id)` UNIQUE constraint), while
+  // extraction passes NULL straight through. Found by QC-6's live proof: an author rename
+  // followed by a re-extraction minted a SECOND node, because this lookup asked for
+  // `prior.project_id IS NULL` and the anchored node was sitting under 'global'.
+  //
+  // Additive by construction: it can only match MORE priors, and only when $project_id is
+  // NULL. Measured on the dev graph the same day — 0 of 4872 rows carry a null or sentinel
+  // project — so no production row changes behaviour.
+  AND (($project_id IS NULL AND (prior.project_id IS NULL
+                                 OR prior.project_id = $global_project_sentinel))
        OR prior.project_id = $project_id)
 WITH prior ORDER BY (prior.id = $id) DESC, prior.created_at ASC
 WITH collect(prior.id)[0] AS priorId
@@ -346,6 +366,7 @@ async def merge_entity(
         user_id=user_id,
         id=canonical_id,
         project_id=project_id,
+        global_project_sentinel=GLOBAL_PROJECT_SENTINEL,
         name=name,
         canonical_name=canonical_name,
         kind=kind,
@@ -468,7 +489,8 @@ OPTIONAL MATCH (byAnchor:Entity {user_id: $user_id, project_id: $project_id,
 RETURN coalesce(byId.id, byAnchor.id, $canonical_id) AS eid
 """
 
-_UPSERT_ANCHOR_CYPHER = """
+_UPSERT_ANCHOR_CYPHER = """
+
 MERGE (e:Entity {id: $id})
 ON CREATE SET
   e.__was_created = true,
@@ -3503,7 +3525,9 @@ async def sync_glossary_entity_node(
     # join that stored it. Pinned by
     # `test_glossary_sync_rename_keeps_ONE_node_and_a_STABLE_id`.
     canonical_id = entity_canonical_id(
-        user_id, None if project_id == "global" else project_id, name, kind)
+        user_id,
+        None if project_id == GLOBAL_PROJECT_SENTINEL else project_id,
+        name, kind)
     result = await session.run(
         _GLOSSARY_ANCHOR_SYNC_CYPHER,
         user_id=user_id, project_id=project_id,

@@ -95,45 +95,6 @@ async def test_a_RE_KEY_does_not_orphan_an_EntityStatus_that_points_at_the_old_i
         await s.run("MATCH (n {user_id:$u}) DETACH DELETE n", u=uid)
 
 
-async def test_the_MERGE_path_preserves_a_relation_PREDICATE(neo4j_driver):
-    """🔴 The merge branch re-creates edges with a bare `MERGE (new)-[:RELATES_TO]->(o)` — no
-    properties carried. A relation's PREDICATE is its meaning: "betrayed" and "guards" are the
-    same edge type and different facts. If the re-point drops it, the merge silently converts
-    every relation on the folded node into a typeless link.
-
-    Only ONE merge survives the anchor guard on the real graph, so this affects one node — but
-    an operator running `--apply` deserves to know whether that node's edges keep their meaning.
-    """
-    uid, pid = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
-    survivor, stranded, other = (f"{k}-{uuid.uuid4().hex[:8]}" for k in ("surv", "strand", "oth"))
-    async with neo4j_driver.session() as s:
-        # ⚠️ `:Entity(user_id, project_id, glossary_entity_id)` is UNIQUE, so two nodes CANNOT
-        # share an anchor — the first fixture tried and Neo4j refused it. That is worth
-        # recording: the "two stale spellings of one glossary entity" case the planner's merge
-        # branch handles can only arise when at least one side is UNANCHORED, which is exactly
-        # what the one surviving merge on the real graph looks like.
-        await _seed(s, uid=uid, pid=pid, eid=survivor, name="精靈大人", cn="精靈大人", anchor="gl-A")
-        await _seed(s, uid=uid, pid=pid, eid=stranded, name="精靈小姐", cn="精靈小姐", anchor=None)
-        await _seed(s, uid=uid, pid=pid, eid=other, name="Kai", cn="kai", anchor="gl-B")
-        await s.run(
-            "MATCH (a:Entity {id:$s}),(b:Entity {id:$o}) "
-            "CREATE (a)-[:RELATES_TO {id:'r1', predicate:'betrayed', confidence:0.9, "
-            "user_id:$u}]->(b)", s=stranded, o=other, u=uid)
-
-        plan = await run_recanon_backfill(s, apply=True)
-
-        r = await s.run(
-            "MATCH ()-[rel:RELATES_TO]->() WHERE rel.user_id = $u OR rel.predicate IS NOT NULL "
-            "RETURN count(rel) AS edges, collect(rel.predicate)[0] AS pred", u=uid)
-        rec = await r.single()
-        await s.run("MATCH (n {user_id:$u}) DETACH DELETE n", u=uid)
-        assert rec["edges"] >= 1, f"the merge destroyed the relation entirely: {plan!r}"
-        assert rec["pred"] == "betrayed", (
-            f"the merge re-created the edge WITHOUT its predicate (got {rec['pred']!r}). "
-            "A relation's predicate is its meaning — 'betrayed' and 'guards' are the same edge "
-            "type and different facts.")
-
-
 async def _doomed_and_kept(session, seeded: list[str]) -> tuple[str, str]:
     """Return (node the merge DELETES, node that survives), read off a DRY-RUN.
 
@@ -154,6 +115,56 @@ async def _doomed_and_kept(session, seeded: list[str]) -> tuple[str, str]:
     doomed = merges[0].from_id
     kept = next(e for e in seeded if e != doomed)
     return doomed, kept
+
+
+async def test_the_MERGE_path_preserves_a_relation_PREDICATE(neo4j_driver):
+    """🔴 The merge branch re-creates edges with a bare `MERGE (new)-[:RELATES_TO]->(o)` — no
+    properties carried. A relation's PREDICATE is its meaning: "betrayed" and "guards" are the
+    same edge type and different facts. If the re-point drops it, the merge silently converts
+    every relation on the folded node into a typeless link.
+
+    Only ONE merge survives the anchor guard on the real graph, so this affects one node — but
+    an operator running `--apply` deserves to know whether that node's edges keep their meaning.
+    """
+    uid, pid = f"u-{uuid.uuid4().hex[:10]}", f"p-{uuid.uuid4().hex[:10]}"
+    survivor, stranded, other = (f"{k}-{uuid.uuid4().hex[:8]}" for k in ("surv", "strand", "oth"))
+    async with neo4j_driver.session() as s:
+        # ⚠️ `:Entity(user_id, project_id, glossary_entity_id)` is UNIQUE, so two nodes CANNOT
+        # share an anchor — the first fixture tried and Neo4j refused it. That is worth
+        # recording: the "two stale spellings of one glossary entity" case the planner's merge
+        # branch handles can only arise when at least one side is UNANCHORED, which is exactly
+        # what the one surviving merge on the real graph looks like.
+        await _seed(s, uid=uid, pid=pid, eid=survivor, name="精靈大人", cn="精靈大人", anchor="gl-A")
+        await _seed(s, uid=uid, pid=pid, eid=stranded, name="精靈小姐", cn="精靈小姐", anchor=None)
+        await _seed(s, uid=uid, pid=pid, eid=other, name="Kai", cn="kai", anchor="gl-B")
+        # ⚠️ The edge MUST hang on the node the merge DELETES. This test used to attach it to
+        # `stranded` — which the planner RE-KEYS, and a re-key preserves every edge whatever
+        # the merge branch does. Bite 39 (drop the property carry) left it green, which is how
+        # the vacuity surfaced. Same trap as the three EVIDENCED_BY/ABOUT tests below.
+        doomed, _kept = await _doomed_and_kept(s, [survivor, stranded])
+        await s.run(
+            "MATCH (a:Entity {id:$s}),(b:Entity {id:$o}) "
+            "CREATE (a)-[:RELATES_TO {id:'r1', predicate:'betrayed', confidence:0.9, "
+            "user_id:$u}]->(b)", s=doomed, o=other, u=uid)
+
+        plan = await run_recanon_backfill(s, apply=True)
+
+        # ⚠️ Scoped to THIS test's user. It used to read
+        #   `WHERE rel.user_id = $u OR rel.predicate IS NOT NULL`
+        # and that `OR` matches every predicated relation in the database, so
+        # `collect(...)[0]` returned whichever edge the store handed back first — from any
+        # other suite sharing the throwaway. It could pass on another test's data as easily
+        # as fail on it; caught when it picked up an unrelated 'ally_of'.
+        r = await s.run(
+            "MATCH ()-[rel:RELATES_TO]->() WHERE rel.user_id = $u "
+            "RETURN count(rel) AS edges, collect(rel.predicate)[0] AS pred", u=uid)
+        rec = await r.single()
+        await s.run("MATCH (n {user_id:$u}) DETACH DELETE n", u=uid)
+        assert rec["edges"] >= 1, f"the merge destroyed the relation entirely: {plan!r}"
+        assert rec["pred"] == "betrayed", (
+            f"the merge re-created the edge WITHOUT its predicate (got {rec['pred']!r}). "
+            "A relation's predicate is its meaning — 'betrayed' and 'guards' are the same edge "
+            "type and different facts.")
 
 
 async def test_the_MERGE_path_carries_the_folded_node_s_EVIDENCE_to_the_survivor(neo4j_driver):

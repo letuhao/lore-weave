@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-6` — identity live proof, now unblocked. `T35` CLOSED 2026-08-21 (T35h): its acceptance test was BITTEN to prove it can fail (restoring the recomputed-hash MERGE reds exactly `rename` and `re-kind`, nothing else), and the shadow differential was found running at HALF COVERAGE — 8 of its 9 skips were the AGE pairing declining for want of `TEST_AGE_DSN` while `lw-age-t42a` sat up on :7894. Pointed at it: **7 passed/9 skipped → 14 passed/2 skipped**, both remaining skips the correct "no expected divergences", for Kuzu AND AGE. Live graph: 4872 entities, largest duplicate group **1**. ⚠️ `T35`'s old blocker was never T35's: `recanon_honorifics` is §4.1's one-shot backfill under `D-ML-A5-RECANON-BACKFILL`, rehearsed in T35g, operator-owned. Two ⏸ still owe only a sign-off — `QC-3` (diskann 0.500, one query 0.000) and `QC-5` (the decided rule APPLIED: does not pass, both clauses). `T33` ⛔ · `T49` ⛔.**
+**RESUME: `T46` — port the bitemporal machinery Go → Python and merge the stores; `T35` closing unblocked it. `QC-6`'s IDENTITY half is done and proven on a live stack (QC-6a): two HTTP write paths against rebuilt images, and it **found a real defect** — a rename followed by a re-extraction minted a duplicate, because the anchor sync stores the `'global'` project sentinel while extraction passes NULL and `merge_entity`'s resolve-first could not see across them. Fixed additively (0 of 4872 live rows carry a null/sentinel project, so nothing in production changes). ⚠️ QC-6's own *"id must equal a recomputed hash"* criterion was the NEGATION of §4.1 — a bite implementing it moves the id three times and fails the proof; corrected in §4.3. QC-6 stays `[~]`: §4.3 also routes `T33`'s causal coverage through it and `T33` is ⛔. `QC-3` ⏸ and `QC-5` ⏸ owe only a sign-off. `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 33 of 67 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 34 of 70 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -5857,8 +5857,148 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `/review-impl`. On a **live** stack: rename an entity, then re-kind it, then re-run extraction on a
   chapter that mentions it. Assert **no stale node**, **no minted duplicate**, and that the 77
   known-stale nodes from the 2026-08-02 backfill are reconciled.
-  **Data:** a Cypher count of nodes whose `e.id` disagrees with a recomputed hash — **must be 0**.
+  ~~**Data:** a Cypher count of nodes whose `e.id` disagrees with a recomputed hash — **must be 0**.~~ **CORRECTED 2026-08-21 (QC-6a, §4.3)** — that criterion is the negation of §4.1 and a bite implementing it fails the live proof. Replaced by: **zero duplicate `(user_id, project_id, canonical_name, kind)` groups**, every anchor resolving to exactly one node, and `e.id` unmoved across rename/re-kind. The old count survives as a health indicator (1847/4872), not a gate.
   ---
+  ### 🔻 QC-6a 2026-08-21 — the live proof RAN, minted a duplicate, and the row's own criterion is the negation of §4.1
+
+  ```
+  unit 4243 passed · identity 9 -> 10 passed · recanon 6 passed · differential 14 passed
+  QC-6 LIVE PROOF (anchor sync writer)  : PASS
+  QC-6 LIVE PROOF (extraction writer)   : PASS   (FAILED first — see below)
+  live graph: 1847 / 4872 ids disagree with a recompute (1846 anchored, 1 unanchored)
+  ```
+
+  ### ⛔ FIRST: THE ROW'S DATA CRITERION CANNOT BE SATISFIED WITHOUT UNDOING T35
+
+  QC-6 says *"a Cypher count of nodes whose `e.id` disagrees with a recomputed hash — **must be
+  0**"*. §4.1 says the opposite, in as many words:
+
+  > *"`ON MATCH SET` **not** rewriting `e.id` is correct, not the defect: an opaque id that
+  > changed on rename would break every join that stored it."*
+
+  🔴 **Proven by execution rather than by argument.** Bite 37 *implements QC-6's criterion* — adds
+  `e.id = $canonical_id` to the anchor sync's `ON MATCH SET`, so the id tracks the name — rebuilds
+  the image, and re-runs the live proof:
+
+  ```
+  seed        -> id=00d1c07781b7063b20a3a0a4d853b1dd
+  RENAME      -> id=24c39ad7230d52323b736c60fb9c0460
+  RE-KIND     -> id=10b3d89d2f18af46c2d035fed25f0832
+  OPAQUE   FAIL the id MOVED across rename/re-kind
+  ```
+
+  **Satisfying the old criterion breaks opaque identity on a live stack.** It is a pre-T35
+  criterion that survived the decision that retired it. Corrected in
+  §4.3; the replacement asserts the property the row's *prose* always asked for — no stale node,
+  no minted duplicate — which is measurable and, unlike "must be 0", can be satisfied.
+
+  📊 **The number itself, re-measured today** (2026-08-11 recorded 2819/6297): **1847 of 4872**,
+  of which **1846 anchored / 1 unanchored** — the same causal signature at a smaller graph, and
+  3025 matches as the positive control. Under opaque identity this counts *entities renamed since
+  minting*, which is health, not debt.
+
+  ### 🔴 THE LIVE PROOF MINTED A DUPLICATE — on the extraction writer, not the anchor sync
+
+  Half one drives `/internal/extraction/glossary-sync-entity` (rename → re-kind). Half two drives
+  **`/internal/extraction/persist-pass2`** — the path a real chapter extraction takes — with the
+  candidate a re-extraction *would* produce after the rename: the new name and the **new** derived
+  `canonical_id`. That second half failed:
+
+  ```
+  nodes with canonical_name 'aurelia blackwood …' : 2   (want 1)
+  nodes minted at the new hash                    : 1   (want 0)
+  ```
+
+  🎯 **Diagnosed from the workload, not by analogy** (rule 13). Dumping both nodes named the cause
+  in one line:
+
+  ```
+  8fb1087c… | project=global  | anchor=87c783f0…   <- written by the anchor sync
+  abe54656… | project=<null>  | anchor=<none>      <- minted by persist-pass2
+  ```
+
+  `sync_glossary_entity_to_neo4j` stores the sentinel `'global'` for a project-less entity;
+  extraction passes `NULL` through. `merge_entity`'s resolve-first lookup asked for
+  `prior.project_id IS NULL`, could not see the anchored node under the sentinel, found no prior,
+  and minted. **The cross-service normalization class: a value compared across a boundary in two
+  representations.**
+
+  ⚠️ **The sentinel is load-bearing, so the writer is right and the COMPARISON was wrong.** Cypher
+  will not `MERGE` on a null property, and a NULL component silently opts the row out of the
+  `:Entity(user_id, project_id, glossary_entity_id)` UNIQUE constraint that keeps one anchor on
+  one node. Fixed by teaching the lookup the sentinel, with the value hoisted to a single
+  `GLOBAL_PROJECT_SENTINEL` — the literal was already hand-written in four places, which is how
+  two writers came to disagree.
+
+  📐 **Footprint measured before fixing** (rule 8): **0 of 4872** rows on the dev graph carry a
+  null or sentinel project — every one has a real UUID. So the defect is *reachable, not active*,
+  and the fix is additive by construction: it can only match more priors, and only when
+  `project_id` is NULL. **No production row changes behaviour**, which is why it was safe to take.
+
+  ### ⚠️ TWO PROOFS THAT SCORED THEMSELVES GREEN, ONE OF THEM PRE-EXISTING
+
+  🔴 **My first live proof passed vacuously.** It read the id from the HTTP *response*; the
+  endpoint returns none, so all four steps were `None`, `len(set) == 1`, and it printed
+  `OPAQUE OK`. Repaired to read the graph after every step — and the 422 guard added at the same
+  time is what later stopped the "want 1 / want 0" assertions passing while `persist-pass2` was
+  rejecting the payload outright.
+
+  🔴 **`test_the_MERGE_path_preserves_a_relation_PREDICATE` was vacuous too, and is not mine.**
+  Bite 39 removed the property carry and the test stayed **green**. Two defects in one:
+
+  ```
+  WHERE rel.user_id = $u OR rel.predicate IS NOT NULL   <- the OR matches EVERY predicated
+                                                           edge in the database
+  ```
+
+  It read another suite's leftover `'ally_of'` out of the shared throwaway, so it could pass on
+  someone else's data as easily as fail on it. And it hung the edge on the node the planner
+  **re-keys** rather than the one it **folds** — a re-key preserves every edge whatever the merge
+  branch does. Scoped to its own user and moved onto the doomed node; bite 39 now reds it.
+
+  **BITE ×4:**
+
+  ```
+  36. MERGE on the recomputed hash        E exactly `rename` + `re-kind`, nothing else
+  37. id tracks the name (the OLD criterion, rebuilt + live)
+                                          E OPAQUE FAIL — the id moved three times
+  38. drop the sentinel from the lookup   E "the re-extraction minted a duplicate: 2 nodes"
+  39. drop the edge property carry        E "the merge destroyed the relation entirely"
+                                            (green before the vacuity above was fixed)
+  ```
+
+  ### ✅ `/review-impl` — the row owes one, run over the identity write path
+
+  **Standards gate:** applicable — **User Boundaries & Tenancy**, Non-Vacuity. Not applicable with
+  reasons: no provider SDK or model literal, no new external route (`/internal/*` behind
+  `X-Internal-Token`), no secret, no schema migration, `db-safety-gate` exit 0.
+
+  🎯 **Tenancy, checked rather than asserted:** the widened lookup still matches inside
+  `(prior:Entity {user_id: $user_id})`, so it cannot reach another tenant; and the new branch is
+  guarded by `$project_id IS NULL`, so when a real project id is supplied — 100 % of production
+  rows — the clause is byte-for-byte the old one. The sentinel can never match a real project.
+
+  ⚠️ **MED — the `"global"` literal is hand-written in four more places**
+  (`entity_status.py` cache key, `backfill_entity_alias_map.py`, and the two id computations).
+  This bug *is* that duplication. The two on the identity path now use the constant; the other two
+  are a cache key and a one-shot backfill, recorded rather than changed.
+
+  ✅ **The third minting writer is immune, and that was verified.** `upsert_enriched_anchor`
+  resolves through `coalesce(byId.id, byAnchor.id, $canonical_id)` — **by anchor**, which carries
+  no project component — so the sentinel mismatch cannot strand it.
+
+  ⛔ **STILL OWED, and QC-6 stays `[~]`:** §4.3 routes **T33's causal-coverage measurement**
+  through this row as well (*"Replaces `D-T33-CAUSAL-COVERAGE-UNMEASURED`,
+  `D-QC6-IDENTITY-LIVE-PROOF`"*), and `T33` is a ⛔ stop condition. **The identity half is complete
+  and proven live; the causal half is behind T33 and is not startable here.**
+
+  **QC (a) gates:** unit 4243 · identity **9 → 10** · recanon 6 · differential 14 ·
+  `derived-entity-id-gate` PASS at 4 · `plan-verify` PASS · `db-safety-gate` exit 0.
+  **QC (b) the seam:** two HTTP write paths against **rebuilt, re-created** lw-iso images —
+  the image was rebuilt for every one of the four states measured (fix, bite 37, restore, refactor).
+  **QC (c) real data:** 4872 live entities read read-only for the mismatch count, the causal
+  split, and the 0-row footprint that made the fix safe.
+
   🔴 **THE DATA HALF IS RUN, AND THE PLAN'S NUMBER IS STALE BY 36x.**
 
   Every `:Entity` with an id was pulled from the live graph and its id recomputed with the real

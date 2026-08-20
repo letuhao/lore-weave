@@ -29,6 +29,7 @@ import pytest
 import pytest_asyncio
 
 from app.db.neo4j_repos.entities import (
+    GLOBAL_PROJECT_SENTINEL,
     link_to_glossary,
     merge_entity,
     sync_glossary_entity_node,
@@ -418,3 +419,81 @@ async def test_the_anchor_PRELOADER_does_not_mint_a_duplicate_on_rename(
             u=test_user, g=G)
         rec = await res.single()
         assert rec["n"] == 1, f"{rec['n']} nodes claim the glossary anchor"
+
+
+async def test_a_reextraction_finds_the_node_the_anchor_sync_stored_under_the_SENTINEL(
+    neo4j_driver, test_user
+):
+    """🔴 QC-6, found on the LIVE stack: rename an entity, re-extract, get TWO nodes.
+
+    `sync_glossary_entity_to_neo4j` stores `GLOBAL_PROJECT_SENTINEL` in `project_id` for a
+    project-less entity — Cypher will not MERGE on a null property, and a NULL component
+    silently opts the row out of the `(user_id, project_id, glossary_entity_id)` UNIQUE
+    constraint that keeps one anchor on one node. Extraction passes `project_id=None`
+    straight through. So `merge_entity`'s resolve-first lookup asked for
+    `prior.project_id IS NULL`, could not see the anchored node sitting under the sentinel,
+    found no prior, and minted a second node at the recomputed hash.
+
+    Measured on the dev graph the same day: **0 of 4872** rows carry a null or sentinel
+    project, so this has no production footprint today — it is reachable, not active. The
+    fix is additive for exactly that reason: it can only match MORE priors, and only when
+    `project_id` is NULL.
+
+    The two ids MUST differ for this test to mean anything (a rename changes the hash), so
+    that is asserted rather than assumed — otherwise the merge would land on the same id by
+    arithmetic and the test would pass against the un-fixed code.
+    """
+    uid = test_user
+    anchor = str(uuid.uuid4())
+    tag = uuid.uuid4().hex[:8]
+    old_name, new_name = f"Vance {tag}", f"Blackwood {tag}"
+    kind = "character"
+
+    async with neo4j_driver.session() as s:
+        try:
+            # the anchor sync's write: project_id is the SENTINEL, never NULL
+            await sync_glossary_entity_node(
+                s, user_id=uid, project_id=GLOBAL_PROJECT_SENTINEL,
+                glossary_entity_id=anchor, name=old_name,
+                canonical_name=old_name.lower(), kind=kind, aliases=[],
+                short_description="")
+            # the author renames -- same anchor, new name, id deliberately unchanged
+            await sync_glossary_entity_node(
+                s, user_id=uid, project_id=GLOBAL_PROJECT_SENTINEL,
+                glossary_entity_id=anchor, name=new_name,
+                canonical_name=new_name.lower(), kind=kind, aliases=[],
+                short_description="")
+
+            r = await s.run("MATCH (e:Entity {glossary_entity_id:$a}) RETURN e.id AS id",
+                            a=anchor)
+            anchored_id = (await r.single())["id"]
+
+            # what a re-extraction computes for the NEW name, with project_id=None
+            fresh_hash = entity_canonical_id(uid, None, new_name, kind)
+            assert fresh_hash != anchored_id, (
+                "the recomputed hash equals the stored id, so no duplicate could be minted "
+                "whatever the code did — this test would be green by construction")
+
+            # merge_entity derives the id itself from (user, project, name, kind) --
+            # exactly what a re-extraction does, which is the whole point.
+            await merge_entity(
+                s, user_id=uid, project_id=None,
+                name=new_name, kind=kind, source_type="chapter", confidence=0.9,
+                provenance="human_authored")
+
+            r = await s.run(
+                "MATCH (e:Entity {user_id:$u}) WHERE e.canonical_name = $cn "
+                "RETURN count(e) AS n", u=uid, cn=new_name.lower())
+            n = (await r.single())["n"]
+            r = await s.run("MATCH (e:Entity {id:$i}) RETURN count(e) AS n", i=fresh_hash)
+            minted = (await r.single())["n"]
+
+            assert n == 1, (
+                f"the re-extraction minted a duplicate: {n} nodes now carry "
+                f"{new_name.lower()!r}. `merge_entity` could not see the node the anchor "
+                f"sync stored under project_id={GLOBAL_PROJECT_SENTINEL!r}.")
+            assert minted == 0, (
+                f"a node was minted at the recomputed hash {fresh_hash} instead of resolving "
+                "to the anchored node")
+        finally:
+            await s.run("MATCH (n) WHERE n.user_id = $u DETACH DELETE n", u=uid)

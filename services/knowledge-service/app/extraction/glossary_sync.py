@@ -32,7 +32,7 @@ from typing import Any
 from uuid import UUID
 
 from app.db.neo4j_helpers import CypherSession
-from app.db.neo4j_repos.entities import sync_glossary_entity_node
+from app.db.neo4j_repos.entities import GLOBAL_PROJECT_SENTINEL, sync_glossary_entity_node
 from loreweave_extraction.canonical import canonicalize_entity_name
 
 __all__ = ["sync_glossary_entity_to_neo4j"]
@@ -73,8 +73,10 @@ async def sync_glossary_entity_to_neo4j(
         session,
         user_id=user_id,
         # Coalesced here, not in the repo: Cypher rejects a MERGE pattern with a null
-        # property, so "global" is this caller's sentinel choice, not a storage default.
-        project_id=project_id or "global",
+        # property. The VALUE comes from the repo (QC-6) because `merge_entity`'s
+        # resolve-first lookup has to recognise it — when the two disagreed, an author
+        # rename followed by a re-extraction minted a duplicate on the live stack.
+        project_id=project_id or GLOBAL_PROJECT_SENTINEL,
         glossary_entity_id=glossary_entity_id,
         name=name,
         canonical_name=canonical_name,

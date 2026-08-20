@@ -430,6 +430,32 @@ planforge half is a prompt-and-eval batch, not a client call.
 *Replaces `D-T33-CAUSAL-COVERAGE-UNMEASURED`, `D-QC6-IDENTITY-LIVE-PROOF`.* Both are live
 proofs on real data, and QC-6 is where the plan runs them.
 
+**QC-6's DATA criterion is corrected (2026-08-21, QC-6a) — it was the negation of §4.1.** The row
+asked for *"a count of nodes whose `e.id` disagrees with a recomputed hash — must be 0"*, which
+can only be reached by rewriting `e.id` whenever a name changes. §4.1 retired exactly that:
+*"an opaque id that changed on rename would break every join that stored it."* Not an argument —
+**measured**: a bite that implements the old criterion, rebuilt into the image and re-run against
+the live stack, moves the id three times across rename + re-kind and fails the live proof.
+
+The replacement asserts what the row's prose always asked for, and unlike "must be 0" it is
+satisfiable:
+
+| | assertion | measured 2026-08-21 |
+|---|---|---|
+| **no minted duplicate** | zero `(user_id, project_id, canonical_name, kind)` groups with >1 node | 4872 groups / 4872 nodes, largest **1** |
+| **no stale node** | every glossary anchor resolves to exactly one node, and no touched node is left unanchored | 4305 anchors / 4305 anchored nodes |
+| **opaque identity** | `e.id` does NOT move across rename or re-kind | proven live, both write paths |
+
+The old count is retained as a **health indicator, not a gate**: under opaque identity it counts
+entities renamed since minting (**1847 / 4872**, of which 1846 anchored — the population the
+rename path touches). A zero there would mean the derivation had come back.
+
+⚠️ **The "77 known-stale nodes from the 2026-08-02 backfill are reconciled" clause goes with it.**
+It described what *that* backfill left behind under derived identity; there is nothing to
+reconcile once the id is opaque, and the honorific backfill that *does* re-key nodes is
+`D-ML-A5-RECANON-BACKFILL`, a separate operator concern (§4.1 lists it among the legitimate
+remaining callers).
+
 ### 4.4 T41's relations are not rebuildable from the glossary — **DECIDED, accepted**
 *Replaces `D-T41-RELATIONS-NOT-REBUILDABLE`.* The glossary is the SSOT for entities, not edges:
 relations and events are extraction-derived. A rebuild restores the entity layer and **must say
