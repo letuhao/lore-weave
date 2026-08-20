@@ -165,6 +165,20 @@ limit honestly: these are the same three runs this section cites as its reason, 
 evaluation scores a rule against its own motivating examples and cannot validate the RULE. It
 validates the PIPELINE, and only because the rule fitted to these runs still fails on them. A
 fresh three-run measurement on a chapter that did not set the rule is what QC-5 now owes.
+✅ **DELIVERED 2026-08-21 (QC-5 C7) — chapter 5, and the verdict is still DOES NOT PASS.** Three
+runs, same models, same chapter, on lw-iso against local models for $0.18: canon **4 / 5 / 4**,
+raw findings **3 / 5 / 1**, attributed **0 / 0 / 0**. Clause 1 scores **0 of 3**; clause 2 holds,
+because run B's 5 came with five findings rather than none.
+
+**Both halves are now separable, and they say different things.** The RULE is validated — clause 2
+could have fired on run B's 5 and correctly did not, so it discriminates instead of punishing any
+high score. The PIPELINE fails worse than on chapter 11: 0 of 3 runs attribute against 1 of 3
+there, and **9 findings are discarded across the three runs**. With C3's 7-of-7 that is three
+independent chapters showing one shape — the flow detects violations and cannot say whom they are
+about.
+
+⚠️ `voice_match` collapsed to 1–2 on all three runs and tripped `critic_severe` twice. It is
+outside this rule, and is recorded rather than folded into the verdict.
 
 **Each run re-drafts**, so this measures the pipeline, not the judge alone. That is deliberate:
 QC-5's claim is about the flow a user runs, and a fixed-draft experiment would measure a

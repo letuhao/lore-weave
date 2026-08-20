@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: two PO actions now gate everything, and BOTH were recorded as already done. 🔴 `OD-2` RE-OPENED (T25c): the dual-write soak **was never running** — `KNOWLEDGE_VECTOR_DB_URL` unset on the dev stack, the metric family ABSENT from `/metrics`, **0 rows in all four vector tables** against 1051 live passages; compose reads it from the invoking shell and the 2026-08-14 recreate dropped it. Nine days of "wall-clock" against a switch that was off. Set it **so it outlives a recreate**. 🔴 `recanon_honorifics --apply` (T46b): 1819 live entities fork on re-extraction, reproduced live; armed, not yet fired; repair rehearsed end-to-end in T35g. Both are writes to non-throwaway databases (rule 6). `scripts/soak-armed-gate.py` now makes DISARMED / ARMED_IDLE / SOAKING distinguishable so a zero cannot be read as a pass again. `T35` CLOSED · `QC-6` identity half proven live · `QC-3` ⏸ and `QC-5` ⏸ owe only a sign-off · `T33` ⛔ · `T49` ⛔.**
+**RESUME: three PO decisions, and every one of them was recorded as already settled. ⛔ `QC-5`'s FRESH three-run measurement is DELIVERED (C7) and **DOES NOT PASS**: chapter 5, same models, canon **4/5/4**, raw findings **3/5/1**, attributed **0/0/0** — clause 1 scores 0 of 3. Unlike C6 this validates the RULE too (clause 2 could have fired on run B's 5 and correctly did not). Nine findings, nine discarded; with C3's 7-of-7 that is three chapters showing one shape. Ran on lw-iso against local models for $0.18, so neither "real DB" nor "real spend" was ever the blocker — and the hold's own retry condition had been met since 2026-08-13. 🔴 `recanon_honorifics --apply` (T46b): 1819 entities fork on re-extraction, armed. 🔴 `OD-2` (T25c): the vector soak was never running. Both are rule-6 writes. `T35` CLOSED · `QC-6` identity half proven live · `QC-3` ⏸ owes only a sign-off · `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -6188,6 +6188,88 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### ⛔ QC-5 C7 2026-08-21 — the FRESH three-run measurement: **DOES NOT PASS**, and this time the rule is validated too
+
+  ```
+  chapter 5 (019fc608-b74c…, published) · acceptance book 019f9f2d-… · lw-iso · 3 runs · $0.18 total
+  same plan_run, 1 distinct param set, 1 distinct scope  ->  "same chapter, same models" holds
+  drafter 019ebb72-… (gemma-4-26b-a4b-qat) · critic 51ea9fd7-… (gemma-4-26b-a4b)
+  ```
+
+  §2.1 said what QC-5 still owed: *"A fresh three-run measurement on a chapter that did not set
+  the rule."* C6 could not supply it — it scored the rule against its own motivating examples.
+  This does.
+
+  | run | canon | coherence | voice | pacing | raw findings | **attributed** |
+  |---|---|---|---|---|---|---|
+  | **A** | 4 | 5 | 2 | 4 | 3 | **0** |
+  | **B** | **5** | 5 | 1 | 4 | 5 | **0** |
+  | **C** | 4 | 5 | 1 | 4 | 1 | **0** |
+
+  ```
+  clause 1  >=2 runs with canon<=3 AND an attributed violation : 0/3   -> FAIL
+  clause 2  NO run is 5/5 with zero raw findings               : B is 5/5 but found 5 -> holds
+  VERDICT: DOES NOT PASS
+  ```
+
+  🎯 **Unlike C6, this evaluation validates the RULE as well as the pipeline.** C6 had to record
+  that it was scoring a detector against the three runs §2.1 cites as its reason — rule 3's
+  green-by-construction shape. Chapter 5 set nothing. So both halves are now available, and they
+  say different things:
+
+  * **The rule survives.** Clause 2 exists to catch *"`canon_consistency` scoring 5/5 on a
+    misattributed betrayal"*, and on this chapter it correctly **does not fire**: run B scores 5
+    but the critic did find 5 violations, so the clause discriminates rather than firing on any
+    high score. A criterion that fired here would have been over-broad.
+  * **The pipeline fails, and worse than on chapter 11.** There, 1 run of 3 attributed a
+    violation. Here **0 of 3** do, while the critic finds **9 across the three runs and discards
+    all 9**.
+
+  🔴 **The attribution defect is systematic, not a flake.** Three independent measurements now
+  show the same shape — C3 (chapters 11–13): *7 findings, 7 discarded*; C6 run B: *found two,
+  attributed neither*; C7: **9 found, 9 discarded**. The flow can say *"something is wrong"* and
+  still not say **what** or **about whom**, which is the half of QC-5's assertion that C4 flagged
+  as unevaluable and C5 wired the channel for. **The channel works** — `violations_dropped` is
+  what makes these three runs legible at all, and without C3 shipping it every row above would
+  read `violations: []` and be indistinguishable from a clean chapter.
+
+  ⚠️ **`voice_match` collapsed to 1–2 on every run** and tripped `critic_severe` on B and C
+  (*"continuity score critically low; coherence=5 voice_match=1"*). Recorded because it is
+  **outside QC-5's rule** and must not be smuggled into the verdict — the rule scores
+  `canon_consistency` and attribution, and this row fails on those. Whether a voice score of 1 on
+  a re-draft of published prose is its own defect is a separate question this batch does not
+  answer.
+
+  📐 **Run on lw-iso against local models, so neither objection that made this look PO-only
+  survived contact.** The earlier reading was *"it re-drafts through the real flow, so it writes
+  to a real database and spends real provider calls"*. It re-drafts on the **isolated** stack
+  (rule 1: run CODE on lw-iso) against LM Studio's `gemma-4-26b-a4b-qat`, for **$0.18** of BYOK
+  budget. The dev databases were not touched.
+
+  ⚠️ **And the hold's own retry condition had already been met.** `D-QC5-PIPELINE-NOT-REPRODUCIBLE`
+  says *"Retry when: the rule source is decided (a PO/design call, not effort) **and** the
+  nondeterminism is bounded by repeated runs."* §2.1 decided the rule on 2026-08-13 and bounded it
+  at three runs. Both conditions were satisfied eight days before this run — the same
+  stale-blocker shape as T35's *"depends on T32"*, T25's rebuild measurement and `D-T25B-SOAK`.
+
+  **BITE — N/A, and what stands in for it:** no code changed; this batch runs the shipped flow
+  three times and applies a decided rule. Its non-vacuity is that **the rule could have passed and
+  did not**, on data that did not shape it — and that clause 2, which *could* have fired on run
+  B's 5, correctly did not. A rule that fired on every high score would have "passed" this batch
+  for the wrong reason.
+
+  ⛔ **QC-5 stays `[~]` and the ⏸ is now a real decision rather than a missing measurement.** What
+  it owed is delivered; what remains is a PO call on a row whose acceptance test **fails**: ship
+  with a critic that finds violations and attributes none, fix attribution first, or amend the
+  criterion. That choice is not a review's to take.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-qc-evidence-gate` OK.
+  **QC (b) the seam:** three full authoring runs across `composition-service` →
+  `provider-registry-service` → LM Studio and back, on the **live** iso stack, driven through
+  `POST /v1/composition/authoring-runs` with a real user JWT and the E0 book grant.
+  **QC (c) real data:** this batch **is** real-run data — three re-drafts of a published chapter,
+  9 critic findings, `spent_usd` 0.0600 × 3 recorded per run by the service itself.
+
   ### ⛔ QC-5 C6 2026-08-14 — the decided rule applied: **DOES NOT PASS, on both clauses**
 
   `D-QC5-PIPELINE-NOT-REPRODUCIBLE`'s *Retry when* reads **"The measurement rule is chosen"** —
