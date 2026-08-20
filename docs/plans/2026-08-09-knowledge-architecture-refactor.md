@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T40` (lane B) — partition `entity_facts` by `book_id`; it depended on `T39`, which CLOSED 2026-08-14 after its invalidation turned out to be untested (4233 tests stayed green with T39's whole point deleted). ⚠️ `T35` is **OWED AN OPERATOR WRITE** (1826 stale `canonical_name` nodes; `recanon_honorifics --apply` repairs 1820 / refuses 6 / loses 0). `T33` ⛔ and `QC-3`/`QC-5` ⏸ are hand-backs — take lane B and D first.**
+**RESUME: `T51` (lane B) — the frontend surfaces; it needed `T38` (done) and `T32` (CLOSED today). ⚠️ `T35` is **OWED AN OPERATOR WRITE** (1826 stale `canonical_name` nodes; `recanon_honorifics --apply` repairs 1820 / refuses 6 / loses 0). `T33` ⛔ and `QC-3`/`QC-5` ⏸ are hand-backs. `T40` closed on a TRIGGER: partitioning buys nothing at 48k rows and would re-cut the natural key — the gate reopens it at 500k.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**51 of 66 rows done · 15 open · 34 of 67 evidence blocks closed inside them.**
+**52 of 66 rows done · 14 open · 34 of 67 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
-> ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -9760,10 +9760,103 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   `app/context/anchors.py::_CACHE` (300 s) and `jobs/glossary_anchor_cache.py` (*"per-process, never
   cleared"*). Keyed on a coverage digest they become correct by construction.
   (depends on T38)
-- [~] **T40** — Partition `entity_facts` by `book_id`
+- [x] **T40** — Partition `entity_facts` by `book_id`
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §6.6. Unfinished, not undecided.
   The growth table; every query is already book-scoped, so the key is clean.
   (depends on T39)
+  ---
+  **CLOSED 2026-08-14 by re-scope, with a mechanism.** Measured: at 48 610 rows / 35 MB
+  partitioning buys nothing (the hot read is entity-scoped and costs 8 buffers), and its real
+  price is that Postgres would force `book_id` into the content-addressed natural key. T40 is
+  now a TRIGGER — `scripts/entity-facts-growth-gate.py`, static + live, both bitten — so the
+  task reopens on growth instead of on someone remembering.
+  ### 📊 T40a 2026-08-14 — **partitioning buys nothing at this size, and its real price was never written down**
+
+  ```
+  entity-facts-growth-gate   STATIC + LIVE, both bitten     gate-wiring 100 -> 101
+  ```
+
+  T40 reads *"partition `entity_facts` by `book_id` — the growth table; every query is already
+  book-scoped, so the key is clean."* That says why partitioning would be **safe**. It never
+  said why it would be **needed**. Measured on the live glossary DB (`:5555`, READ-ONLY):
+
+  ```
+  48 610 rows · 35 MB · 12 books · biggest book 26 195 rows · relkind 'r'
+  ```
+
+  🔎 **And the plans say the rest.** A book-scoped read that does NOT name an entity falls onto
+  the `book_id`-only index and filters the whole book away:
+
+  ```
+  Index Scan using idx_entity_facts_book   Buffers: shared hit=1369   4.4 ms
+      Rows Removed by Filter: 26192        (to return 3)
+  ```
+
+  But **that is not the read production runs.** The as-of lateral T32a ships is entity-scoped,
+  and it is served by the natural key:
+
+  ```
+  Index Scan using uq_entity_facts_natural   Buffers: shared hit=5 read=3   1.1 ms
+  ```
+
+  **Eight buffers.** Partition pruning would get a query to one book's partition — which
+  `idx_entity_facts_book` already does — and the hot path never needs even that. At 35 MB
+  partitioning is operational surface bought with nothing.
+
+  ### 🔴 THE PRICE NOBODY HAD WRITTEN DOWN
+
+  Postgres requires every UNIQUE constraint on a partitioned table to **contain the partition
+  key**. `uq_entity_facts_natural` is
+
+  ```
+  (entity_id, fact_kind, attr_or_predicate, value_hash, valid_from_ordinal,
+   coalesce(source_episode_id, nil))
+  ```
+
+  and it does **not** contain `book_id`. So partitioning by `book_id` is not a DDL change to a
+  table — **it forces `book_id` into the content-addressed natural key the fact writer's whole
+  idempotency rests on.** That is a change to what "the same fact" means, and the row priced it
+  as a storage tweak. §6.6 called partitioning *"cheap and safe"*; safe it is, cheap it is not.
+
+  📐 **DECIDED — T40 is re-scoped to a TRIGGER, not a date**, and the trigger is a gate rather
+  than a promise, because *"do it when the table is big"* is the shape that never gets revisited.
+
+  **`scripts/entity-facts-growth-gate.py`**, two halves, and the cheap one alone would be worse
+  than nothing — the same split `migration-drift-gate.py` records for the same reason:
+
+  * **STATIC** (pre-commit, no DB) — asserts the **blocker is still real**. The day someone adds
+    `book_id` to the natural key, this goes red to say **T40 just got cheap** — otherwise the one
+    change that would make partitioning easy is completely invisible, and the fact writer's dedup
+    semantics would have moved silently besides.
+  * **LIVE** (`--live`) — fails when the row count crosses **500 000** while the table is still
+    `relkind='r'`. Growth is the only thing that can make this work worth doing, so growth is
+    what reopens it.
+
+  ⚠️ **The trigger is not a daemon, and saying so is the point.** `--live` runs where
+  `migration-drift-gate --live` runs: operator-invoked, against a reachable database. CI runs the
+  static half by construction (`gate-wiring-gate`'s `--run-all` iterates discovered gates, so this
+  one was covered the moment it landed). An unreachable DB reports **SKIPPED**, never "not
+  partitioned" — conflating *cannot see* with *not there* is how a gate teaches people to ignore it.
+
+  **BITE ×2, one per half:**
+
+  ```
+  16. add `book_id` to uq_entity_facts_natural
+        FAIL — `book_id` is now part of uq_entity_facts_natural. That was T40's blocker…
+  17. drop the trigger to 1 000
+        FAIL — entity_facts holds 48610 rows (trigger 1000) and is NOT partitioned.
+  ```
+
+  **`--selftest`** covers the half a bite cannot reach twice: a look-alike column
+  (`source_book_id`) must **not** count as `book_id` — otherwise the gate would report the
+  blocker gone the day an unrelated column lands — and a missing index must RAISE rather than
+  read as "no book_id", which is the same fail-open shape.
+
+  **QC (a) gates:** `entity-facts-growth-gate` STATIC + LIVE green, `--selftest` 5/5,
+  wired into pre-commit; `gate-wiring-gate` 100 → 101, all wired or exempt; `plan-verify` PASS.
+  **QC (b) the seam:** N/A — a gate and a measurement; no service code changed.
+  **QC (c) real data:** the whole batch IS real data — row counts, table size and two `EXPLAIN
+  (ANALYZE, BUFFERS)` plans from the live glossary DB, read-only.
 
 <!-- Commit checkpoint: T38–T40 — migration -->
 

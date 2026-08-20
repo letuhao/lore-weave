@@ -92,6 +92,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # which is the incident this gate is named for — needs `--live` and a reachable DB.
 "$PY" "$ROOT/scripts/migration-drift-gate.py"
 
+# T40 — partition `entity_facts` WHEN it is worth it. STATIC half here: it asserts the
+# BLOCKER is still real (uq_entity_facts_natural still omits book_id), so the day someone
+# adds that column the gate says the price of T40 just dropped. The LIVE half — the row
+# count that reopens the task — needs `--live` and a reachable DB, same split as above.
+"$PY" "$ROOT/scripts/entity-facts-growth-gate.py"
+
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a
 # commit that touches no yaml at all. That is exactly how jobs-service landed 2026-06-15

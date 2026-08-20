@@ -515,9 +515,24 @@ The FE renders against the cast read and the spoiler window; migrating it before
 would ship surfaces reading a contract that is still moving. T38 is complete (§5.2); T32 is
 sequenced in §6.1.
 
-### 6.6 T40 (`entity_facts` partitioning) follows T39 — **DECIDED**
-Partitioning is cheap and safe once the caches that read across books are correct by
-construction (§4.5); doing it first would move the data under a cache that is still guessing.
+### 6.6 T40 (`entity_facts` partitioning) follows T39 — **DECIDED · RE-SCOPED TO A TRIGGER (T40a, 2026-08-14)**
+~~Partitioning is cheap and safe once the caches that read across books are correct by
+construction (§4.5); doing it first would move the data under a cache that is still guessing.~~
+
+**Safe, yes. Cheap, no — and it is not needed yet.** Measured on the live glossary DB:
+48 610 rows / 35 MB / 12 books, and the production as-of read is entity-scoped and costs
+**8 buffers** on `uq_entity_facts_natural`. Partition pruning reaches one book's partition,
+which `idx_entity_facts_book` already does, and the hot path needs neither.
+
+⚠️ **The price:** Postgres requires a partitioned table's UNIQUE keys to CONTAIN the partition
+key, and `uq_entity_facts_natural` omits `book_id`. Partitioning therefore re-cuts the
+content-addressed natural key the fact writer's idempotency rests on — a change to what *"the
+same fact"* means, not a storage tweak.
+
+**So T40 closes on a MECHANISM rather than on a build**: `scripts/entity-facts-growth-gate.py`
+fails when the table crosses 500 000 rows unpartitioned (`--live`), and fails the day `book_id`
+joins the natural key (static, pre-commit) — because that is the one change that would make
+partitioning cheap, and it is otherwise invisible.
 
 ## How this file is kept honest
 
