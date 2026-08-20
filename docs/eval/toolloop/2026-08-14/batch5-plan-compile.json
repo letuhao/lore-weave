@@ -20,137 +20,8 @@
         {
           "via": "fe_runner",
           "rep": 0,
-          "book_id": "01a01fa2-634a-7c75-8d06-eac38df630be",
-          "session_id": "01a01fa3-2197-7a03-b825-544baead134d",
-          "prompt": "Compile the plan I already proposed for this book into a planning package.",
-          "called": true,
-          "surfaced": true,
-          "called_tools": [
-            "composition_package_tree",
-            "plan_compile"
-          ],
-          "error": null,
-          "approvals": [
-            {
-              "tool": "plan_compile",
-              "outcome": true,
-              "kind": "tool_approval"
-            }
-          ],
-          "left_suspended": false,
-          "store": {
-            "before": {
-              "loreweave_book.chapters": {
-                "rows": 1,
-                "latest": "2026-08-20 14:45:31.291418+00"
-              },
-              "loreweave_composition.composition_work": {
-                "rows": 1,
-                "latest": "2026-08-20 14:45:31.537602+00"
-              },
-              "loreweave_composition.generation_job": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:10.730056+00"
-              },
-              "loreweave_composition.plan_run": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:10.765675+00"
-              },
-              "loreweave_knowledge.knowledge_projects": {
-                "rows": 1,
-                "latest": "2026-08-20 14:45:31.527487+00"
-              },
-              "neo4j.Fact.total": {
-                "rows": 350,
-                "latest": "-"
-              },
-              "neo4j.Fact.project": {
-                "rows": 0,
-                "latest": "-"
-              }
-            },
-            "after": {
-              "loreweave_book.chapters": {
-                "rows": 1,
-                "latest": "2026-08-20 14:45:31.291418+00"
-              },
-              "loreweave_composition.composition_work": {
-                "rows": 1,
-                "latest": "2026-08-20 14:45:31.537602+00"
-              },
-              "loreweave_composition.generation_job": {
-                "rows": 2,
-                "latest": "2026-08-20 14:46:25.789261+00"
-              },
-              "loreweave_composition.outline_node": {
-                "rows": 3,
-                "latest": "2026-08-20 14:46:25.75454+00"
-              },
-              "loreweave_composition.plan_run": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:25.788539+00"
-              },
-              "loreweave_composition.structure_node": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:25.75454+00"
-              },
-              "loreweave_knowledge.knowledge_projects": {
-                "rows": 1,
-                "latest": "2026-08-20 14:45:31.527487+00"
-              },
-              "neo4j.Fact.total": {
-                "rows": 350,
-                "latest": "-"
-              },
-              "neo4j.Fact.project": {
-                "rows": 0,
-                "latest": "-"
-              }
-            }
-          },
-          "store_diff": {
-            "loreweave_composition.generation_job": {
-              "before": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:10.730056+00"
-              },
-              "after": {
-                "rows": 2,
-                "latest": "2026-08-20 14:46:25.789261+00"
-              }
-            },
-            "loreweave_composition.outline_node": {
-              "before": null,
-              "after": {
-                "rows": 3,
-                "latest": "2026-08-20 14:46:25.75454+00"
-              }
-            },
-            "loreweave_composition.plan_run": {
-              "before": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:10.765675+00"
-              },
-              "after": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:25.788539+00"
-              }
-            },
-            "loreweave_composition.structure_node": {
-              "before": null,
-              "after": {
-                "rows": 1,
-                "latest": "2026-08-20 14:46:25.75454+00"
-              }
-            }
-          },
-          "answer": "I have compiled your plan for \"The Hollow Keep\" into a full planning package. \n\nThe story is now structured into three chapters following a Web Novel Arc:\n\n*   **Chapter 1:** Aldric reaches the Hollow Keep and is given the Codex.\n*   **Chapter 2:** Mira Solene warns him the Codex is read by more than one reader.\n*   **Chapter 3:** The Pale Regent's envoy arrives at the gate.\n\nThe planning process is now running to finalize the details. Your world and story structure are ready—would you like me to start drafting the first chapter?"
-        },
-        {
-          "via": "fe_runner",
-          "rep": 1,
-          "book_id": "01a01fa3-7365-7f63-b2f9-083112986937",
-          "session_id": "01a01fa5-7e32-7cf4-8b39-90d72c9a2767",
+          "book_id": "01a01fae-0d5a-7ea5-a532-f04d81ecd082",
+          "session_id": "01a01fae-91a1-7b56-a8b3-9dee9f33ba4f",
           "prompt": "Compile the plan I already proposed for this book into a planning package.",
           "called": false,
           "surfaced": true,
@@ -164,23 +35,23 @@
             "before": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-08-20 14:46:40.918204+00"
+                "latest": "2026-08-20 14:58:15.716679+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-08-20 14:46:41.139265+00"
+                "latest": "2026-08-20 14:58:15.939054+00"
               },
               "loreweave_composition.generation_job": {
                 "rows": 1,
-                "latest": "2026-08-20 14:48:44.977762+00"
+                "latest": "2026-08-20 14:58:40.104299+00"
               },
               "loreweave_composition.plan_run": {
                 "rows": 1,
-                "latest": "2026-08-20 14:48:45.007756+00"
+                "latest": "2026-08-20 14:58:40.125539+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-08-20 14:46:41.131137+00"
+                "latest": "2026-08-20 14:58:15.928149+00"
               },
               "neo4j.Fact.total": {
                 "rows": 350,
@@ -194,23 +65,102 @@
             "after": {
               "loreweave_book.chapters": {
                 "rows": 1,
-                "latest": "2026-08-20 14:46:40.918204+00"
+                "latest": "2026-08-20 14:58:15.716679+00"
               },
               "loreweave_composition.composition_work": {
                 "rows": 1,
-                "latest": "2026-08-20 14:46:41.139265+00"
+                "latest": "2026-08-20 14:58:15.939054+00"
               },
               "loreweave_composition.generation_job": {
                 "rows": 1,
-                "latest": "2026-08-20 14:48:44.977762+00"
+                "latest": "2026-08-20 14:58:40.104299+00"
               },
               "loreweave_composition.plan_run": {
                 "rows": 1,
-                "latest": "2026-08-20 14:48:45.007756+00"
+                "latest": "2026-08-20 14:58:40.125539+00"
               },
               "loreweave_knowledge.knowledge_projects": {
                 "rows": 1,
-                "latest": "2026-08-20 14:46:41.131137+00"
+                "latest": "2026-08-20 14:58:15.928149+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 350,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a01fae-c681-7dc5-bc9e-060c80c3789f",
+          "session_id": "01a01faf-45e8-7a65-8cc3-d45c4e6b3bb7",
+          "prompt": "Compile the plan I already proposed for this book into a planning package.",
+          "called": false,
+          "surfaced": true,
+          "called_tools": [
+            "composition_package_tree"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:03.084351+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:03.291294+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:28.201041+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:28.228659+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:03.283178+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 350,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:03.084351+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:03.291294+00"
+              },
+              "loreweave_composition.generation_job": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:28.201041+00"
+              },
+              "loreweave_composition.plan_run": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:28.228659+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 14:59:03.283178+00"
               },
               "neo4j.Fact.total": {
                 "rows": 350,
@@ -234,7 +184,7 @@
           "called": false,
           "surfaced": false,
           "called_tools": [],
-          "error": "PROVISION ProvisionError: SEED WAIT TIMED OUT after 420s: plan_compile requires a SPEC artifact, which plan_propose_spec produces on a job. Without this wait the seed asserts only that the run exists — true immediately — and the tool then fails 'no spec to compile' 3/3, which reads as a tool defect and is a fixture that was not ready.\n    expected '1', store still says '0'\n    The async half of this fixture never landed, so the scenario would measure a tool refusing a precondition that was never met.",
+          "error": "PROVISION ProvisionError: SEED WAIT TIMED OUT after 900s: plan_compile requires a SPEC artifact, which plan_propose_spec produces on a job. Without this wait the seed asserts only that the run exists — true immediately — and the tool then fails 'no spec to compile' 3/3, which reads as a tool defect and is a fixture that was not ready.\n    expected '1', store still says '0'\n    The async half of this fixture never landed, so the scenario would measure a tool refusing a precondition that was never met.",
           "approvals": [],
           "left_suspended": false,
           "store": {},
@@ -243,8 +193,8 @@
         }
       ],
       "surfaced_count": 2,
-      "called_count": 1,
-      "wrote_count": 1,
+      "called_count": 0,
+      "wrote_count": 0,
       "suspended_count": 0
     }
   ]

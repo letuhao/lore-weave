@@ -8891,6 +8891,35 @@ async def _emit_chat_turn(
     # exactly as before.
     _turn_mood = request_mood(user_message_content)
 
+    # 🔴 `unknown` MOOD LET A WEEKS-OLD WRITE GRANT APPLY TO A PLAIN QUESTION — THE MATCHER'S
+    # FAIL-OPEN DEFAULT. R5 above is right and it works when it fires: "How far along is the
+    # translation for this book?" is read `inspect` and the standing grant is set aside. But
+    # `request_mood` is a literal matcher over phrasings, and two measured questions fell through
+    # it to `unknown`, which lets the grant stand:
+    #
+    #     "Who is Mira Solene?"                          -> unknown -> grant APPLIES
+    #     "What canon rules have I declared for this book?" -> unknown -> grant APPLIES
+    #
+    # Both were measured reaching for Tier-A WRITES on 3 of 3 runs (glossary_entity_set_attributes,
+    # kg_project_create). The harness clears standing approvals, which is the only reason those
+    # surfaced as cards instead of writes; the dogfood account holds 46 of them.
+    #
+    # Widening the phrase list would fix those two sentences and leave the class — the next
+    # unrecognised question is the next incident. So the second signal is the platform's OWN
+    # DECLARATION, the same one R1 already trusts to decide the surface: if every tool whose
+    # declared vocabulary matches this request is a READ, the request's own words say it is a
+    # question, whatever the mood matcher made of the phrasing. It is not a guess and there is no
+    # list here to rot.
+    #
+    # Narrow by construction: EMPTY matches nothing (chitchat is unchanged), and a single matched
+    # WRITE stands the whole thing down — "Add a chapter called X" matches the CREATE tools and
+    # keeps its grant exactly as before.
+    _cat_by_name = _catalog_index(list(discovery_catalog or []))
+    _turn_answerable = answerable_tools(user_message_content, list(discovery_catalog or []))
+    _turn_reads_only = bool(_turn_answerable) and all(
+        n in _cat_by_name and tool_tier(_cat_by_name[n]) == "R" for n in _turn_answerable
+    )
+
     async def _decision_check(tool_name: str, kind: str = "mutation") -> str | None:
         """The standing decision, moderated by what this turn actually asked for.
 
@@ -8906,13 +8935,22 @@ async def _emit_chat_turn(
         set aside — a standing refusal must hold in every mood.
         """
         _decision = await get_tool_decision(pool, user_id, tool_name, kind)
-        if _decision == "allow" and not standing_grant_applies(_turn_mood, kind=kind):
-            logger.info(
-                "standing %s grant for %s set aside — this turn asked to LOOK, not to change "
-                "(the Tier-A gate will raise a card)", kind, tool_name,
-            )
-            return None
-        return _decision
+        if _decision != "allow":
+            # A DENY is never set aside — a standing refusal must hold in every mood.
+            return _decision
+        _mood_ok = standing_grant_applies(_turn_mood, kind=kind)
+        # The declaration arm covers what the phrasing matcher missed, and only for MUTATION:
+        # `spend` already fails closed, and widening a second axis on this evidence would be
+        # asserting more than was measured.
+        _reads_only_block = kind == "mutation" and _turn_reads_only
+        if _mood_ok and not _reads_only_block:
+            return _decision
+        logger.info(
+            "standing %s grant for %s set aside — this turn asked to LOOK, not to change "
+            "(mood=%s, answerable-are-all-reads=%s: %s) — the Tier-A gate will raise a card",
+            kind, tool_name, _turn_mood, _turn_reads_only, sorted(_turn_answerable) or "—",
+        )
+        return None
 
     # P4 REG-P4-03 — resolve the user's declarative hooks once per turn (degrade-safe
     # []). pre_turn inject_text hooks are folded into the system prompt now (steering

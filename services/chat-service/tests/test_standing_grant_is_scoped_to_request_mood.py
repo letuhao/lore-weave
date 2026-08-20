@@ -117,4 +117,17 @@ class TestItIsActuallyWiredToTheGate:
         import pathlib
         src = (pathlib.Path(__file__).resolve().parents[1]
                / "app" / "services" / "stream_service.py").read_text(encoding="utf-8")
-        assert 'if _decision == "allow" and not standing_grant_applies(' in src
+        # AMENDED 2026-08-14 (D-READ-TURN-REACHES-FOR-WRITES). This asserted the ONE source line
+        # that then existed — the instance. A second signal now joins the mood (a request whose
+        # matched declarations are ALL reads also sets a grant aside), so the check was restructured
+        # and this string vanished while the property it names held throughout. Pinned as the
+        # property instead: a non-allow decision returns BEFORE any set-aside logic can run.
+        i = src.index("async def _decision_check(")
+        block = src[i:i + 2200]
+        deny_returns = block.index('if _decision != "allow":')
+        first_set_aside = min(block.index("standing_grant_applies("), block.index("return None"))
+        assert deny_returns < first_set_aside, (
+            "a standing DENY must short-circuit before anything can moderate it — re-asking for "
+            "something the user refused forever is the defect this table was built to close"
+        )
+        assert "standing_grant_applies(" in block, "the mood arm must still be consulted"
