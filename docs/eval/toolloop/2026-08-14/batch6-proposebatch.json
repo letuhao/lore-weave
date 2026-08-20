@@ -1,0 +1,219 @@
+{
+  "batch": "batch6-proposebatch",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "glossary_propose_batch",
+      "scenario": "glossary-propose-batch-v2",
+      "intent": "write",
+      "falsifier": "REFUTED IF: the tool applies ontology changes WITHOUT a confirm card (its own description says MANY changes on ONE confirm), OR the minted card carries ops the user never named, OR fewer than the two kinds asked for. CONTROL: read chat_messages.withheld_tools for stage='intent_gate' — a non-zero count means the tool was WITHHELD and the run measures the DQ-T3 stamp instead. v1 measured 0, i.e. the setup wording opened the gate.",
+      "answer_expect": null,
+      "falsifier_sha": "0bbba6f94f39dce0",
+      "ship_audit": {
+        "gate": "OWED — the whole point of this tool is ONE confirm for MANY changes.",
+        "empty_case": "OWED — an empty `ops` must be refused, not minted as an empty confirm.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a02011-94c6-788c-b52e-11f4ebac2dd3",
+          "session_id": "01a02011-b273-7f9f-9d6e-806a2758fe0f",
+          "prompt": "Set these up together in one batch for this book: a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:46:58.419942+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:46:58.634627+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:46:58.626773+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:46:58.419942+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:46:58.634627+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:46:58.626773+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a02011-ec8f-70a9-a359-452cccfce537",
+          "session_id": "01a02012-0ffe-7f31-92ff-45c122d1062d",
+          "prompt": "Set these up together in one batch for this book: a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:20.921322+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:21.212596+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:21.193114+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:20.921322+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:21.212596+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:21.193114+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a02012-4a85-7373-956b-388a53583057",
+          "session_id": "01a02012-68f3-76dd-8d0c-79d39fa33246",
+          "prompt": "Set these up together in one batch for this book: a kind called Faction with an attribute Allegiance, and a kind called Artifact with an attribute Origin.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "glossary_adopt_standards",
+            "glossary_list_system_standards"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": true,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:44.945921+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:45.166903+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:45.158189+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:44.945921+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:45.166903+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-20 16:47:45.158189+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 354,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 3
+    }
+  ]
+}
