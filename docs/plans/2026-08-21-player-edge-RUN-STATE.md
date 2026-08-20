@@ -65,11 +65,32 @@ the actor the binding names.
 | `E1` the owner-scoped route — "which actor does THIS user drive here" | `[x]` | `POST /internal/v1/actor-control/subject`. **7 bites, each watched RED for the right reason** (5 unit + the serde `self` rename + one LIVE). **Live smoke, read-only, 5/5**: driver → `entity_id 1`; the REVOKED user on the SAME actor → `self: null`; unregistered reality → 400; wrong token → 401. Suites `459 passed / 0 failed` (meta-rs 101 · world-service 220 · commit-service 138) |
 | `E2` the ACL edge — game-server → world-service, declared | `[x]` | `world-service-rpcs.ResolveActorSubject`, `allowed_callers: [game-server]`, `principal_mode: requires_user`. **4 bites** — remove the caller, flip the mode, rename the RPC, widen the list — each RED for its own reason. `contracts/service_acl` go test green |
 | `E3` the transport reads it, and FAILS CLOSED when it cannot | `[x]` | `ws/subject.ts` + `onJoin` now async. **Four answers, not two** — driving · nobody · realityClosed (`4004`) · unavailable (refuse the join). **6 bites**, each RED for the right reason; game-server `81 pass / 0 fail` (was 68). No new dependency: Node's global `fetch`. |
-| `E4` ⏸ **POST-REVIEW checkpoint** — retire `LW_CHANNEL_ACTOR_MAP`, or keep it as a declared dev override? | `[ ]` | |
+| `E4` ⏸ **POST-REVIEW checkpoint** — retire `LW_CHANNEL_ACTOR_MAP`, or keep it as a declared dev override? | `[x]` | **PO: DELETE IT ENTIRELY.** `actorFromDevMap` gone; `resolveSubject` has no branch left to get wrong. **2 bites** — reintroduce the map, reintroduce `?? '1'` — and the second reds THREE tests. game-server `82 pass / 0 fail` |
 | `E5` live — a session drives the actor the binding names, with no env map set | `[ ]` | |
 | `E6` suite + sweep green | `[ ]` | |
 
-### Why `E4` is a checkpoint
+### `E4` — RULED 2026-08-21: **delete it entirely**
+
+The PO took the strict option over the recommended one. What was presented: the map was already
+demoted by `E3` (gated behind `LW_WS_DEV_ALLOW_STATIC=1`, warn-logged, never a fallback), and that
+flag had come to gate two affordances. Three options — keep as-is, delete, or keep with a split
+flag. **Deleted.**
+
+The argument that wins: every option short of deletion leaves the second source *in the code*, one
+edit away from being consulted. A gate is a decision someone can revisit; an absence is not. The
+cost was accepted out loud rather than discovered later — **a local session now needs
+`admin reality provision` → `create-actor` → `grant-control` before anything can be driven**, which
+is a real tax on every local run including the PO's own.
+
+The flag-overloading question dissolved with it: with no dev map, `LW_WS_DEV_ALLOW_STATIC` means
+only what it always meant. One name, one concept, by subtraction.
+
+**Deleting the code is a fact about today; the test is what makes it a fact about tomorrow.**
+`E4 — the env map is GONE, and setting it changes nothing` sets `LW_CHANNEL_ACTOR_MAP` AND
+`LW_CHANNEL_DEFAULT_ACTOR` to values that *would* bind if anything still read them, then asserts
+nobody is bound. Reintroducing the map reds it; reintroducing `?? '1'` reds three tests.
+
+### Why `E4` was a checkpoint
 
 Retiring the env map is the difference between *"a developer sets one variable"* and *"a developer
 must provision a reality, mint an actor and grant it"* before a local session can drive anything.
@@ -205,4 +226,4 @@ user drives; it may not decide it. `GrantActorControl`, `RevokeActorControl` and
 have an arm proving game-server cannot reach them, so adding one later is an argument someone has to
 make in a test rather than a line someone can append to a list.
 
-**RESUME: `E4` — ⏸ POST-REVIEW CHECKPOINT. Present both arguments on `LW_CHANNEL_ACTOR_MAP` and WAIT. Two things changed since this row was written and both belong in the presentation: the map is already behind `LW_WS_DEV_ALLOW_STATIC=1` rather than being the default source, and that flag now gates two affordances (dev auth + dev binding) — coupled deliberately, since `dev:abcd` is not a `user_ref_id` and so cannot resolve through the real route at all.**
+**RESUME: `E5` — the live run, and the row that closes on it. A human drives the actor their binding names with no `LW_CHANNEL_ACTOR_MAP` anywhere (it no longer exists). Note world-service is NOT in `infra/docker-compose.yml` — the `E1` smoke ran it from source, and `E5` will have to as well or add it. `EO-2` says the durable suite lands here; `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT` closes here and nowhere earlier.**

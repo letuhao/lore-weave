@@ -410,72 +410,46 @@ export class ChannelRoom extends Room {
    * four-language `§12AB.9` set, to say something this transport can already say.
    *
    * The durable source is `actor_control_binding` (migration 034 — which human
-   * drives which actor, in which reality), and as of `E3` this reads it:
-   * `subjectResolverFromEnv()` calls world-service's owner-scoped route. The
-   * env map survives ONLY as a declared dev binding behind
-   * `LW_WS_DEV_ALLOW_STATIC=1`, and it is never a fallback — see
-   * [`resolveSubject`]. Env form: `user:entity,user:entity`.
+   * drives which actor, in which reality), and as of `E3` this reads it. `E4`
+   * then deleted the env map outright, so there is now exactly ONE source and
+   * the function that read `LW_CHANNEL_ACTOR_MAP` is gone.
    */
-  private actorFromDevMap(userId: string): string | undefined {
-    const raw = process.env.LW_CHANNEL_ACTOR_MAP ?? '';
-    for (const pair of raw.split(',')) {
-      const [u, e] = pair.split(':').map((x) => x.trim());
-      if (u && e && u === userId) return e;
-    }
-    return undefined;
-  }
 
   /**
-   * `E3` — resolve the joining user's subject, and FAIL CLOSED when we cannot.
+   * `E3`/`E4` — resolve the joining user's subject, and FAIL CLOSED otherwise.
    *
-   * # The one shape that is refused
+   * # There is one source, and no second one to fall back to
    *
-   * **Try the route, fall back to the env map when it fails.** That is a silent
-   * fallback however it is described: it would make an outage look like a dev
-   * convenience, and it is the `?? '1'` default this function's ancestor was
-   * opened about, wearing a new costume. So the two sources are chosen ONCE, at
-   * startup, by configuration — never by which one happened to answer.
+   * **The PO deleted `LW_CHANNEL_ACTOR_MAP` at the `E4` checkpoint** rather
+   * than keeping it as a declared dev binding. The argument that won: a
+   * fallback that answers when the real lookup is absent is the `?? '1'`
+   * default this function's ancestor was opened about, wearing a new costume —
+   * and every gate short of deletion still leaves the second source in the
+   * code, one edit away from being consulted. The cost is real and was accepted
+   * out loud: a local session must now provision a reality, mint an actor and
+   * grant control before anything can be driven.
+   *
+   * So there is no branch here to get wrong. Either the control plane answers,
+   * or nobody acts.
    *
    * # Unconfigured is not permission
    *
-   * With no `LW_WORLD_SERVICE_URL` the room serves NO subject at all, unless
-   * `LW_WS_DEV_ALLOW_STATIC=1` says a developer meant the env map. That is the
-   * rule `onAuth` already applies to the ticket store six lines away, and for
-   * the same reason: a production deployment that forgets a variable must fail
-   * closed rather than quietly answer from somewhere else.
-   *
-   * # Reusing `LW_WS_DEV_ALLOW_STATIC` is deliberate, and E4 should look at it
-   *
-   * That flag's existing meaning is "allow the dev static AUTH token", so this
-   * overloads one name for two affordances — normally the smell
-   * `settings-and-config` warns about. It is coupled on purpose: dev auth mints
-   * `dev:abcd` as the userId, which is not a `user_ref_id`, so the real route
-   * CANNOT resolve a dev-authenticated session and the env map is the only
-   * thing that can. The two are one affordance — "this is a dev box" — and
-   * splitting them would let someone run real auth with a dev binding, or a dev
-   * identity with no binding at all. Coupled, neither half is reachable without
-   * the other.
+   * With no `LW_WORLD_SERVICE_URL` the room serves NO subject at all — the
+   * caller refuses the join. That is the rule `onAuth` already applies to the
+   * ticket store a few lines away, and for the same reason: a deployment that
+   * forgets a variable must fail closed rather than quietly answer from
+   * somewhere else. There is no longer a "somewhere else".
    */
   private async resolveSubject(userId: string): Promise<SubjectLookup> {
     const resolver = subjectResolverFromEnv();
-    if (resolver) {
-      return resolver.resolve(this.opts.realityId, userId);
+    if (!resolver) {
+      return {
+        kind: 'unavailable',
+        detail:
+          'no subject resolver configured: set LW_WORLD_SERVICE_URL and LOREWEAVE_INTERNAL_TOKEN',
+      };
     }
-    if (process.env.LW_WS_DEV_ALLOW_STATIC === '1') {
-      const actor = this.actorFromDevMap(userId);
-      // Loud, every join. A dev binding that is indistinguishable from the real
-      // one in the logs is how a dev binding reaches production unnoticed.
-      log.warn('subject resolved from LW_CHANNEL_ACTOR_MAP (dev binding)', {
-        reality_id: this.opts.realityId,
-        bound: actor !== undefined,
-      });
-      return actor === undefined ? { kind: 'nobody' } : { kind: 'driving', entityId: actor, actorId: '' };
-    }
-    return {
-      kind: 'unavailable',
-      detail:
-        'no subject resolver configured: set LW_WORLD_SERVICE_URL, or LW_WS_DEV_ALLOW_STATIC=1 to use the dev map',
-    };
+    return resolver.resolve(this.opts.realityId, userId);
   }
 
   /**
@@ -607,7 +581,7 @@ export class ChannelRoom extends Room {
     });
     // W1 — first frame, folded from the replayed log (D2).
     //
-    // `self` is null when this user drives nobody here (see `actorForUser`).
+    // `self` is null when this user drives nobody here (see `resolveSubject`).
     // Null and not a default entity: the frame is what the client renders as
     // "you", and inventing one is the same confused-deputy claim one layer up
     // from the submit path — it would show a stranger's actor as the reader's.

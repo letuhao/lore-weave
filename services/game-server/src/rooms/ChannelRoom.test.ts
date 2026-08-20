@@ -122,35 +122,102 @@ test('turn.submit over the cap closes the socket and reaches NEITHER the bus nor
 //
 // Nothing tested it, which is why it survived a security review that NAMED it.
 
-// `E3` re-pointed this at the durable binding, which is what the assertion
-// below asked for in its own message: *"Re-point it at the binding when that
-// lookup lands, and close the row."* The confused-deputy arms survive
-// unchanged — they are what the row was protecting — and three arms are added
-// for the source that replaced the map.
+// `E3` re-pointed this at the durable binding — which is what the assertion
+// asked for in its own message: *"Re-point it at the binding when that lookup
+// lands."* `E4` then DELETED the env map at the PO's checkpoint, so the subject
+// of the original test no longer exists.
+//
+// The PROPERTY it guarded does. It moved here, stated against the source that
+// replaced the map, plus one arm that the deleted affordance stays deleted —
+// because "we removed it" is a fact about today, and a test is what makes it a
+// fact about tomorrow.
 
-test('an unmapped authenticated user is bound to NOBODY, not to a default actor', () => {
-  const prevMap = process.env.LW_CHANNEL_ACTOR_MAP;
-  const prevDefault = process.env.LW_CHANNEL_DEFAULT_ACTOR;
-  // The default is set on purpose: if the fallback ever comes back, this env
-  // var is what it would read, so the test would go green again without it.
-  process.env.LW_CHANNEL_DEFAULT_ACTOR = '1';
-  process.env.LW_CHANNEL_ACTOR_MAP = 'alice:7';
+/** Point the room at a stubbed control plane and run one join. */
+async function joinWith(
+  userId: string,
+  reply: (userRefId: string) => unknown,
+): Promise<{ actorOf: Map<string, string>; sent: Array<[string, unknown]>; threw: unknown }> {
+  const prev = {
+    url: process.env.LW_WORLD_SERVICE_URL,
+    tok: process.env.LOREWEAVE_INTERNAL_TOKEN,
+    fetch: globalThis.fetch,
+  };
+  process.env.LW_WORLD_SERVICE_URL = 'http://world:7120';
+  process.env.LOREWEAVE_INTERNAL_TOKEN = 'tok';
+  globalThis.fetch = (async (_u: string, init: RequestInit) => {
+    const body = JSON.parse(String(init.body)) as { user_ref_id: string };
+    return new Response(JSON.stringify(reply(body.user_ref_id)), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
 
   const room = new ChannelRoom() as unknown as {
-    actorFromDevMap(u: string): string | undefined;
+    actorOf: Map<string, string>;
+    opts: unknown;
+    onJoin(c: unknown): Promise<void>;
   };
+  room.opts = { realityId: 'r1', channelId: 'c1' };
+  const sent: Array<[string, unknown]> = [];
+  let threw: unknown;
+  await room
+    .onJoin({
+      sessionId: 's1',
+      auth: { userId },
+      send: (t: string, p: unknown) => sent.push([t, p]),
+      leave: () => {},
+    })
+    .catch((e) => {
+      threw = e;
+    });
 
-  assert.equal(room.actorFromDevMap('alice'), '7', 'an explicit mapping still resolves');
+  globalThis.fetch = prev.fetch;
+  if (prev.url === undefined) delete process.env.LW_WORLD_SERVICE_URL;
+  else process.env.LW_WORLD_SERVICE_URL = prev.url;
+  if (prev.tok === undefined) delete process.env.LOREWEAVE_INTERNAL_TOKEN;
+  else process.env.LOREWEAVE_INTERNAL_TOKEN = prev.tok;
+  return { actorOf: room.actorOf, sent, threw };
+}
+
+const ALICE = 'aaaaaaaa-1111-4111-8111-aaaaaaaaaaaa';
+const MALLORY = 'mmmmmmmm-1111-4111-8111-mmmmmmmmmmmm'.replace(/m/g, 'c');
+
+test('a user with no binding is bound to NOBODY, not to a default actor', async () => {
+  const bound = (u: string) => (u === ALICE ? { self: { actor_id: 'a-1', entity_id: 7 } } : { self: null });
+
+  const alice = await joinWith(ALICE, bound);
+  assert.equal(alice.actorOf.get('s1'), '7', 'a real binding still resolves');
+
+  const mallory = await joinWith(MALLORY, bound);
   assert.equal(
-    room.actorFromDevMap('mallory'),
-    undefined,
-    'an authenticated user with no binding must drive nobody — a default here is ' +
-      'the server itself asserting that a stranger is entity 1.',
+    mallory.actorOf.has('s1'),
+    false,
+    'an authenticated user the control plane says drives nobody must drive nobody — ' +
+      'a default here is the server itself asserting that a stranger is entity 1',
   );
   assert.notEqual(
-    room.actorFromDevMap('mallory'),
-    room.actorFromDevMap('alice'),
+    mallory.actorOf.get('s1'),
+    alice.actorOf.get('s1'),
     'two users must never resolve to one subject',
+  );
+});
+
+test('E4 — the env map is GONE, and setting it changes nothing', async () => {
+  const prevMap = process.env.LW_CHANNEL_ACTOR_MAP;
+  const prevDefault = process.env.LW_CHANNEL_DEFAULT_ACTOR;
+  // Both set to values that WOULD bind if anything still read them. That is the
+  // whole test: if the map is ever reintroduced — as a fallback, a dev
+  // affordance, or an "escape hatch" — mallory resolves to 7 here and this
+  // reddens. Deleting code is not a guarantee; this is.
+  process.env.LW_CHANNEL_ACTOR_MAP = `${MALLORY}:7,mallory:7`;
+  process.env.LW_CHANNEL_DEFAULT_ACTOR = '1';
+
+  const r = await joinWith(MALLORY, () => ({ self: null }));
+  assert.equal(
+    r.actorOf.has('s1'),
+    false,
+    'LW_CHANNEL_ACTOR_MAP was deleted at the E4 checkpoint — a binding that ' +
+      'appears from an env var means a second source of truth came back',
   );
 
   if (prevMap === undefined) delete process.env.LW_CHANNEL_ACTOR_MAP;
@@ -165,11 +232,11 @@ test('with NOTHING configured the join is refused, not seated as a spectator', a
   const prevMap = process.env.LW_CHANNEL_ACTOR_MAP;
   const prevDev = process.env.LW_WS_DEV_ALLOW_STATIC;
   const prevUrl = process.env.LW_WORLD_SERVICE_URL;
-  // The map is POPULATED and would answer — that is the point. If it is ever
-  // consulted without the dev flag, this user resolves to entity 7 and the
-  // assertion below goes green for the wrong reason.
+  // The map is POPULATED and the dev flag is ON — both on purpose. After `E4`
+  // neither is a source, so if either is ever consulted again this user
+  // resolves to entity 7 and the refusal below stops happening.
   process.env.LW_CHANNEL_ACTOR_MAP = 'alice:7';
-  delete process.env.LW_WS_DEV_ALLOW_STATIC;
+  process.env.LW_WS_DEV_ALLOW_STATIC = '1';
   delete process.env.LW_WORLD_SERVICE_URL;
 
   const room = new ChannelRoom() as unknown as {
@@ -193,13 +260,13 @@ test('with NOTHING configured the join is refused, not seated as a spectator', a
 
   assert.ok(
     threw,
-    'an unconfigured room must REFUSE the join, not answer from the env map. This ' +
+    'an unconfigured room must REFUSE the join, not answer from anywhere else. This ' +
       'assertion holds the safe state for D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT: ' +
-      'E3 made the transport ASK (world-service /internal/v1/actor-control/subject), ' +
-      'but every test of that path stubs `fetch`, and a read that has never reached a ' +
-      'real service is the shape meta_read_audit was in for four months — four layers ' +
-      'each correct-looking, with an empty table underneath. The row closes at E5, on ' +
-      'a live run, not here.',
+      'E3 made the transport ASK (world-service /internal/v1/actor-control/subject) ' +
+      'and E4 deleted the env map, but every test of that path stubs `fetch`, and a ' +
+      'read that has never reached a real service is the shape meta_read_audit was in ' +
+      'for four months — four layers each correct-looking, with an empty table ' +
+      'underneath. The row closes at E5, on a live run, not here.',
   );
   assert.equal(room.actorOf.has('s1'), false, 'and it must bind nobody');
   assert.equal(
@@ -211,42 +278,22 @@ test('with NOTHING configured the join is refused, not seated as a spectator', a
 
   if (prevMap === undefined) delete process.env.LW_CHANNEL_ACTOR_MAP;
   else process.env.LW_CHANNEL_ACTOR_MAP = prevMap;
-  if (prevDev !== undefined) process.env.LW_WS_DEV_ALLOW_STATIC = prevDev;
+  if (prevDev === undefined) delete process.env.LW_WS_DEV_ALLOW_STATIC;
+  else process.env.LW_WS_DEV_ALLOW_STATIC = prevDev;
   if (prevUrl !== undefined) process.env.LW_WORLD_SERVICE_URL = prevUrl;
 });
 
 test('onJoin binds no session entry when the user drives nobody', async () => {
-  const prevMap = process.env.LW_CHANNEL_ACTOR_MAP;
-  const prevDev = process.env.LW_WS_DEV_ALLOW_STATIC;
-  process.env.LW_CHANNEL_ACTOR_MAP = 'alice:7';
-  // `E3` — the dev map is now a DECLARED binding, not the default one. The
-  // spectator case this test is about is unchanged; reaching it just has to be
-  // asked for now.
-  process.env.LW_WS_DEV_ALLOW_STATIC = '1';
+  // `self: null` from the control plane — a spectator, which is a NORMAL answer
+  // and the one case that is seated rather than refused.
+  const r = await joinWith(MALLORY, () => ({ self: null }));
 
-  const room = new ChannelRoom() as unknown as {
-    actorOf: Map<string, string>;
-    opts: unknown;
-    onJoin(c: unknown): Promise<void>;
-  };
-  // `opts` is normally set by onCreate; onJoin reads realityId/channelId for the
-  // bind ack. Stubbed rather than booting a room, because the subject here is
-  // the BINDING, not the handshake.
-  room.opts = { realityId: 'r1', channelId: 'c1' };
-  const sent: Array<[string, unknown]> = [];
-  const client = {
-    sessionId: 's1',
-    auth: { userId: 'mallory' },
-    send: (t: string, p: unknown) => sent.push([t, p]),
-    leave: () => {},
-  };
-  await room.onJoin(client);
+  // The ABSENCE is what makes `handleSubmit`'s `no_actor_bound` reachable. An
+  // entry here — any entry — is the hole, because submit reads exactly this.
+  assert.equal(r.actorOf.has('s1'), false, 'no actor entry for an unbound user');
+  assert.equal(r.threw, undefined, 'a spectator is admitted; only an outage is refused');
 
-  // The MAP is what makes `handleSubmit`'s `no_actor_bound` reachable. An entry
-  // here — any entry — is the hole, because submit reads exactly this.
-  assert.equal(room.actorOf.has('s1'), false, 'no actor entry for an unbound user');
-
-  const frame = sent.find(([t]) => t === 'w1.frame');
+  const frame = r.sent.find(([t]) => t === 'w1.frame');
   assert.ok(frame, 'the room still sends a frame — the user may watch');
   assert.equal(
     (frame![1] as { self: unknown }).self,
@@ -254,9 +301,4 @@ test('onJoin binds no session entry when the user drives nobody', async () => {
     '`self` must be null, not a fabricated entity: the frame is what the client ' +
       'renders as "you"',
   );
-
-  if (prevMap === undefined) delete process.env.LW_CHANNEL_ACTOR_MAP;
-  else process.env.LW_CHANNEL_ACTOR_MAP = prevMap;
-  if (prevDev === undefined) delete process.env.LW_WS_DEV_ALLOW_STATIC;
-  else process.env.LW_WS_DEV_ALLOW_STATIC = prevDev;
 });
