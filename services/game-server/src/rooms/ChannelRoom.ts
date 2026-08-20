@@ -19,6 +19,7 @@ import {
 import { MessageRateLimiter, rateLimitsFromEnv } from '../ws/rate-limit.js';
 import { GlobalRateLimiter, globalRateLimitFromEnv } from '../ws/global-rate-limit.js';
 import { PRODUCER_NAME, producerKeyFromEnv, signProposal } from '../ws/producer-sign.js';
+import { subjectResolverFromEnv, type SubjectLookup } from '../ws/subject.js';
 import { log } from '../log.js';
 
 // ChannelRoom — the GDA-A7 projection: one Colyseus room per DP-A16 channel
@@ -409,20 +410,72 @@ export class ChannelRoom extends Room {
    * four-language `§12AB.9` set, to say something this transport can already say.
    *
    * The durable source is `actor_control_binding` (migration 034 — which human
-   * drives which actor, in which reality). game-server has no Postgres client
-   * and must not grow one (I3: TypeScript is gateway/realtime), so reaching it
-   * needs a control-plane lookup that does not exist yet — tracked as
-   * `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT`. The env map stays as the dev-time
-   * binding and is NOT the bug: it is explicit and per-user, and it never lets
-   * the CLIENT choose. Env form: `user:entity,user:entity`.
+   * drives which actor, in which reality), and as of `E3` this reads it:
+   * `subjectResolverFromEnv()` calls world-service's owner-scoped route. The
+   * env map survives ONLY as a declared dev binding behind
+   * `LW_WS_DEV_ALLOW_STATIC=1`, and it is never a fallback — see
+   * [`resolveSubject`]. Env form: `user:entity,user:entity`.
    */
-  private actorForUser(userId: string): string | undefined {
+  private actorFromDevMap(userId: string): string | undefined {
     const raw = process.env.LW_CHANNEL_ACTOR_MAP ?? '';
     for (const pair of raw.split(',')) {
       const [u, e] = pair.split(':').map((x) => x.trim());
       if (u && e && u === userId) return e;
     }
     return undefined;
+  }
+
+  /**
+   * `E3` — resolve the joining user's subject, and FAIL CLOSED when we cannot.
+   *
+   * # The one shape that is refused
+   *
+   * **Try the route, fall back to the env map when it fails.** That is a silent
+   * fallback however it is described: it would make an outage look like a dev
+   * convenience, and it is the `?? '1'` default this function's ancestor was
+   * opened about, wearing a new costume. So the two sources are chosen ONCE, at
+   * startup, by configuration — never by which one happened to answer.
+   *
+   * # Unconfigured is not permission
+   *
+   * With no `LW_WORLD_SERVICE_URL` the room serves NO subject at all, unless
+   * `LW_WS_DEV_ALLOW_STATIC=1` says a developer meant the env map. That is the
+   * rule `onAuth` already applies to the ticket store six lines away, and for
+   * the same reason: a production deployment that forgets a variable must fail
+   * closed rather than quietly answer from somewhere else.
+   *
+   * # Reusing `LW_WS_DEV_ALLOW_STATIC` is deliberate, and E4 should look at it
+   *
+   * That flag's existing meaning is "allow the dev static AUTH token", so this
+   * overloads one name for two affordances — normally the smell
+   * `settings-and-config` warns about. It is coupled on purpose: dev auth mints
+   * `dev:abcd` as the userId, which is not a `user_ref_id`, so the real route
+   * CANNOT resolve a dev-authenticated session and the env map is the only
+   * thing that can. The two are one affordance — "this is a dev box" — and
+   * splitting them would let someone run real auth with a dev binding, or a dev
+   * identity with no binding at all. Coupled, neither half is reachable without
+   * the other.
+   */
+  private async resolveSubject(userId: string): Promise<SubjectLookup> {
+    const resolver = subjectResolverFromEnv();
+    if (resolver) {
+      return resolver.resolve(this.opts.realityId, userId);
+    }
+    if (process.env.LW_WS_DEV_ALLOW_STATIC === '1') {
+      const actor = this.actorFromDevMap(userId);
+      // Loud, every join. A dev binding that is indistinguishable from the real
+      // one in the logs is how a dev binding reaches production unnoticed.
+      log.warn('subject resolved from LW_CHANNEL_ACTOR_MAP (dev binding)', {
+        reality_id: this.opts.realityId,
+        bound: actor !== undefined,
+      });
+      return actor === undefined ? { kind: 'nobody' } : { kind: 'driving', entityId: actor, actorId: '' };
+    }
+    return {
+      kind: 'unavailable',
+      detail:
+        'no subject resolver configured: set LW_WORLD_SERVICE_URL, or LW_WS_DEV_ALLOW_STATIC=1 to use the dev map',
+    };
   }
 
   /**
@@ -471,7 +524,7 @@ export class ChannelRoom extends Room {
     }
   }
 
-  onJoin(client: Client): void {
+  async onJoin(client: Client): Promise<void> {
     // D3 — identity comes from the AUTHENTICATED session, never from join
     // options. Taking `actorEntityId` off the wire (as this did while it was
     // a PoC) lets any client claim any actor and act as another player; the
@@ -483,10 +536,43 @@ export class ChannelRoom extends Room {
       client.leave(4001);
       return;
     }
-    const actor = this.actorForUser(userId);
-    // Only bind when there IS a binding. An unmapped user gets no entry, which
-    // is what makes `handleSubmit`'s `no_actor_bound` reachable — see
-    // `actorForUser`. Storing a default here was the confused-deputy hole.
+    // `E3` — ASK. The answer is one of four things and only two of them let
+    // the join proceed; see `resolveSubject`.
+    const found = await this.resolveSubject(userId);
+    if (found.kind === 'realityClosed') {
+      // 4004 `CloseRealityArchived` — "S10 reality state archived/dropped" —
+      // is the enumerated code named for precisely this, so no code is being
+      // invented. Refusing the join is the honest move: a room whose reality
+      // refuses commands cannot host a player who came to act.
+      log.warn('join refused — the reality does not accept commands', {
+        reality_id: this.opts.realityId,
+        detail: found.detail,
+      });
+      throw new ServerError(4004, 'this reality does not accept commands');
+    }
+    if (found.kind === 'unavailable') {
+      // FAIL CLOSED, and refuse rather than seat them.
+      //
+      // Admitting them with `self: null` was the tempting cheap option and it
+      // is a LIE: it says "you drive nobody" when the truth is "we could not
+      // find out". Every player would silently become a spectator during an
+      // outage, and the frame the client renders as "you" would be empty with
+      // nothing in the log tying it to the cause.
+      //
+      // There is no truthful close code — the `§12AB.9` set has ten and none
+      // of them means "the control plane did not answer" — and the contract
+      // refuses any code outside that set. So this refuses the JOIN, which
+      // needs no close code and which a client can retry.
+      log.error('join refused — could not resolve the subject', {
+        reality_id: this.opts.realityId,
+        detail: found.detail,
+      });
+      throw new ServerError(4001, 'could not resolve your actor; retry');
+    }
+    const actor = found.kind === 'driving' ? found.entityId : undefined;
+    // Only bind when there IS a binding. A user who drives nobody gets no
+    // entry, which is what makes `handleSubmit`'s `no_actor_bound` reachable.
+    // Storing a default here was the confused-deputy hole.
     if (actor !== undefined) {
       this.actorOf.set(client.sessionId, actor);
     }

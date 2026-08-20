@@ -64,7 +64,7 @@ the actor the binding names.
 |---|---|---|
 | `E1` the owner-scoped route — "which actor does THIS user drive here" | `[x]` | `POST /internal/v1/actor-control/subject`. **7 bites, each watched RED for the right reason** (5 unit + the serde `self` rename + one LIVE). **Live smoke, read-only, 5/5**: driver → `entity_id 1`; the REVOKED user on the SAME actor → `self: null`; unregistered reality → 400; wrong token → 401. Suites `459 passed / 0 failed` (meta-rs 101 · world-service 220 · commit-service 138) |
 | `E2` the ACL edge — game-server → world-service, declared | `[x]` | `world-service-rpcs.ResolveActorSubject`, `allowed_callers: [game-server]`, `principal_mode: requires_user`. **4 bites** — remove the caller, flip the mode, rename the RPC, widen the list — each RED for its own reason. `contracts/service_acl` go test green |
-| `E3` the transport reads it, and FAILS CLOSED when it cannot | `[ ]` | |
+| `E3` the transport reads it, and FAILS CLOSED when it cannot | `[x]` | `ws/subject.ts` + `onJoin` now async. **Four answers, not two** — driving · nobody · realityClosed (`4004`) · unavailable (refuse the join). **6 bites**, each RED for the right reason; game-server `81 pass / 0 fail` (was 68). No new dependency: Node's global `fetch`. |
 | `E4` ⏸ **POST-REVIEW checkpoint** — retire `LW_CHANNEL_ACTOR_MAP`, or keep it as a declared dev override? | `[ ]` | |
 | `E5` live — a session drives the actor the binding names, with no env map set | `[ ]` | |
 | `E6` suite + sweep green | `[ ]` | |
@@ -126,6 +126,34 @@ from one function (`actor_registry::checked_island_id`) so the two cannot half-c
 | `ED-3` | **A dangling binding is a 400, never `self: null`.** A live binding naming an actor the registry lost is `S-9`'s dangling pointer; rendering it as spectating would demote a player silently and page nobody. |
 | `ED-4` | **`actor_id` rides in the response beside `entity_id`.** It is the caller's OWN binding, so neither field is a cross-user disclosure, and it is the durable id an operator greps when someone reports the wrong character — a question that would otherwise need the CROSS-USER read, which is the audited, expensive one. |
 
+### `E3` — four answers, and the one shape that stays refused
+
+**The transport asks now.** `subjectResolverFromEnv()` → `POST /internal/v1/actor-control/subject`,
+over Node's global `fetch` (no new dependency, and no Postgres client — `I3` holds).
+
+**The refused shape is "try the route, fall back to the env map".** That is a silent fallback however
+it is described: it makes an outage look like a dev convenience, and it is the `?? '1'` default this
+function's ancestor was opened about wearing a new costume. So the source is chosen ONCE, at startup,
+by configuration — never by which one happened to answer.
+
+**Unconfigured is not permission.** With no `LW_WORLD_SERVICE_URL` the room serves no subject at all
+unless `LW_WS_DEV_ALLOW_STATIC=1`. That is the rule `onAuth` already applies to the ticket store six
+lines away, in the same file, for the same reason.
+
+**Four answers, because collapsing them is the recurring bug on this seam.** *"You drive nobody"*,
+*"this world is closed"* and *"we could not ask"* are three different facts and only the first is
+normal. An outage reported as `nobody` would silently demote every player to a spectator with
+nothing in the log — the same mistake `classify_bind_failure` prevents one tier down. `realityClosed`
+refuses the join with **`4004 CloseRealityArchived`**, which is already in the `§12AB.9` set and
+means exactly this; `unavailable` refuses the join *without* a close code, because none of the ten
+means "the control plane did not answer" and the contract forbids inventing one.
+
+**A decision worth E4's attention:** `LW_WS_DEV_ALLOW_STATIC` now gates two affordances, which is
+normally the overloading `settings-and-config` warns about. Coupled on purpose — dev auth mints
+`dev:abcd`, which is not a `user_ref_id`, so the real route *cannot* resolve a dev-authenticated
+session and the map is the only thing that can. Splitting them would permit real auth with a dev
+binding. **This is the checkpoint's to confirm or reverse.**
+
 ## §4 OPEN
 
 | row | what | mechanism |
@@ -139,6 +167,9 @@ from one function (`actor_registry::checked_island_id`) so the two cannot half-c
 |---|---|
 | `ED-D1` | **Two bite anchors matched nothing, and the run reported them as aborts only because the harness counts occurrences.** The files are CRLF; my anchors used `\n`. Without the `count(anchor) != 1` assertion this would have been two mutations that silently did not happen, each followed by a green run — indistinguishable from a passing bite. Same family as `PD-4` (heredoc backslash mangling): **the encoding of the file is part of the anchor.** |
 | `ED-D2` | **B3's first mutant did not COMPILE, and it still went red.** `ProblemDetails::bad_request("bite".into())` is ambiguous across four `From<&str>` impls. `rc != 0` plus a "RED" label looked exactly like a bite; only reading the output showed `error[E0283]`. A broken build is not evidence about a guard. The harness now fails any mutant whose output contains `could not compile` or `error[E0` — because the summary line is identical either way, and I would not have caught the second one. |
+| `ED-D4` | **I deleted a deferral's only mechanism while editing a test, and the gate caught it in seconds.** `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT`'s mechanism was an assertion MESSAGE in `ChannelRoom.test.ts` naming the id; rewriting that test for `E3` removed the sentence, and `deferral-gate.py` immediately reported *"deferral(s) with NO mechanism and no declared reason"*. Worth logging as a gate WORKING rather than as a defect — but the near-miss is real: had the mechanism been a comment instead of a string literal, the stripper would have ignored it either way and I would have learned nothing. |
+| `ED-D5` | **I nearly closed that row here, on stubbed `fetch`.** The transport reads the binding now, so the row's literal text is false — the tempting move is to strike it. But every test of that path stubs `fetch`, and a read that has never reached a real service is exactly the state `meta_read_audit` was in for four months: four layers, each correct-looking, empty table underneath. The row stays open until `E5` runs it live. **The rule this cost me: a row closes on the evidence its subject demands, not on the evidence I happen to have.** |
+| `ED-D6` | **Two of six `E3` bites did not bite on the first attempt, and only one was a bad mutation.** `D2`'s mutant left a variable unused and failed to TYPECHECK — the harness's compile check (added after `ED-D2`) caught it, which is the second time that guard has paid for itself in one run. `D4` genuinely reddened the right test but on a *different assertion* than I predicted, because the strong claim (`no request was made`) sat after the weak one. Fixed by reordering the test, not the expectation: **an unpredicted red is not a verified one**, and the reorder makes the test state its own priority. |
 | `ED-D3` | **I nearly took a green `commit-service` suite as proof the hop-1 repoint worked.** `subject_live` skips loudly when its two DSNs are absent, and in a plain `cargo test -p commit-service` it contributes `0 passed` — a line that scrolls past looking like every other empty bin. The repoint is on exactly that test's path. Running it through `live-suites.py` and then BITING it (drop `revoked_at IS NULL` → the live arm fails) is what turned "the suite is green" into "the query I wrote is the one Postgres executes". |
 
 ---
@@ -174,4 +205,4 @@ user drives; it may not decide it. `GrantActorControl`, `RevokeActorControl` and
 have an arm proving game-server cannot reach them, so adding one later is an argument someone has to
 make in a test rather than a line someone can append to a list.
 
-**RESUME: `E3` — the transport reads the route instead of the env map, and FAILS CLOSED when it cannot. Note `onJoin` is SYNCHRONOUS today (`onJoin(client: Client): void`) while an HTTP lookup is not, and the ticket's `userId` is a string where `user_ref_id` is a UUID — both are E3's to resolve, and neither may be resolved by letting the client supply anything.**
+**RESUME: `E4` — ⏸ POST-REVIEW CHECKPOINT. Present both arguments on `LW_CHANNEL_ACTOR_MAP` and WAIT. Two things changed since this row was written and both belong in the presentation: the map is already behind `LW_WS_DEV_ALLOW_STATIC=1` rather than being the default source, and that flag now gates two affordances (dev auth + dev binding) — coupled deliberately, since `dev:abcd` is not a `user_ref_id` and so cannot resolve through the real route at all.**
