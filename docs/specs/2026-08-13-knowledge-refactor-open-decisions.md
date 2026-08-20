@@ -500,10 +500,30 @@ Image, then bootstrap, then the adapter, then the gate that guards it, then the 
 measures it, then the swap. **T43's floor may re-block a cutover after new port operations
 land, and that is the floor working** — a new operation starts at zero observations.
 
-### 6.3 Phase 8 is `T44 → T45 → T46`, after identity — **DECIDED**
+### 6.3 Phase 8 is `T44 → T45 → T46`, after identity — **DECIDED · AMENDED (T46a, 2026-08-14)**
 `T46` merges the stores and cannot be done before the id is opaque (§4.1). `T45`'s
 scope-dependent valid-time axis (`story_ordinal` | `wall_clock`) is the axis distinction §1.1
 relies on; `T44` rewrites the substrate rows those two settle.
+
+**Three amendments from building T44/T45 and measuring T46:**
+
+1. ⚠️ **"Port the machinery Go → Python" is a category error.** Neither implementation is in a
+   general-purpose language: Postgres has a stored procedure (`maintain_chain(p_entity, p_attr)`,
+   SQL inside a Go migration string) and the KG has Cypher in a Python constant. Each lives with
+   the store it maintains, which is where SCOPE-1/SCOPE-2 require it. **The task is choosing the
+   merged store's SUBSTRATE and moving both onto it**, not translating a language.
+
+2. 🔴 **The KG is the weaker side, on the capability the row names.** Postgres `maintain_chain`
+   is **pin-aware** (`valid_to_pinned = false` — never recompute an author's explicit close); the
+   KG has no pin concept at all. Both agree on the strictly-greater bound and on skipping
+   invalidated rows. `scripts/bitemporal-parity-gate.py` records this and fails when either side
+   moves, **including when they converge** — convergence is the event T46 is waiting for and it
+   must not arrive unannounced.
+
+3. ⛔ **The merge waits on `recanon_honorifics --apply`, not on more design.** Identity is
+   structurally opaque, but T35e measured **1826 live nodes with a stale `canonical_name`** that
+   fork on re-extraction. Merging while 37 % of the graph forks would carry broken identity into
+   the destination — which is what §4.1's precondition means in practice.
 
 ### 6.4 Phase 9 closes the plan: `T47 → T48 → T49` — **DECIDED**
 Docs (mandatory under the plan's own `Docs: yes`), then `/aif-verify`, then handoff and

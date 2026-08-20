@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T46` (lane D, §6.3) — port the bitemporal machinery Go → Python and MERGE the stores. `T45` closed 2026-08-14: the axis is one declaration (`AXIS_FOR_SCOPE`) that the router and both adapters read, and a new scope cannot be added without deciding its axis — T46 inherits that rather than three copies. ⚠️ `T35` still **OWES AN OPERATOR WRITE** (`recanon_honorifics --apply`). `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
+**RESUME: `T47` (lane D, §6.4) — the documentation checkpoint; then `T48` `/aif-verify`, then `T49` ⛔. `T46` stays `[~]` on a SEQUENCING fact, not a question: the merge waits on `recanon_honorifics --apply` (T35's 1826 stale nodes), and *port Go → Python* is a category error — both implementations are query-language living with their stores, the KG being the weaker (no pin-awareness), now guarded by `bitemporal-parity-gate`. `T33` ⛔ · `QC-3`/`QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**55 of 66 rows done · 11 open · 34 of 67 evidence blocks closed inside them.**
+**55 of 66 rows done · 11 open · 34 of 68 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T47` · `T48` · `T49`
 
-> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -11755,6 +11755,91 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   invariants, `anchor+delta` fold with `folds_since_reground`. **Move it working — do not rewrite
   from the weaker side.**
   (depends on T45)
+  ---
+  ### 📊 T46a 2026-08-14 — **"port Go → Python" is a category error, and the KG is the weaker side**
+
+  ```
+  bitemporal-parity-gate  3 capability rows, 1 known asymmetry, bitten
+  gate-wiring 101 -> 102       unit 4239 passed
+  ```
+
+  T46: *"Port the mature bitemporal machinery Go → Python and merge the stores… **Move it
+  working — do not rewrite from the weaker side.**"* **Rule 8 before building — and the framing
+  does not survive measurement.**
+
+  🔎 **The "Go" implementation is not Go.**
+
+  ```
+  Postgres   CREATE OR REPLACE FUNCTION maintain_chain(p_entity, p_attr)   -- a stored proc,
+             SQL inside a Go migration string (internal/migrate/fact_close_pin.go);
+             Go's whole contribution is `SELECT maintain_chain($1, $2)` — four lines.
+  Neo4j      MAINTAIN_FACT_CHAIN_CYPHER / MAINTAIN_RELATION_CHAIN_CYPHER
+             Cypher inside a Python constant (db/neo4j_repos/temporal.py)
+  ```
+
+  **There is nothing to port to Python.** Both are query-language, and each lives with the store
+  it maintains — where SCOPE-1/SCOPE-2 require it to live. Moving the SQL into knowledge-service
+  would mean either reaching into glossary's Postgres (SCOPE-2) or standing up a second
+  implementation (SCOPE-4), and T44a just rewrote the standard that governs both. The real task
+  is **choosing the merged store's substrate and moving both onto it**.
+
+  ### 🔴 AND THE ROW'S OWN WARNING HAD NOTHING BEHIND IT
+
+  *"Do not rewrite from the weaker side"* is unenforceable while nobody has written down **which
+  side is weaker, in which respect**. Measured:
+
+  | capability | Postgres | Neo4j |
+  |---|---|---|
+  | strictly-greater next bound (equal ordinals must not close each other) | ✅ | ✅ — the Cypher says it *"mirrors the Postgres maintain_chain core"* |
+  | skips invalidated rows | ✅ | ✅ |
+  | **pin-aware supersession** (`valid_to_pinned = false`) | ✅ | ❌ **no pin concept exists in the KG at all** |
+
+  **The KG is the weaker side, on the exact capability T46's row names.** An author's explicit
+  close survives re-derivation in glossary and would be overwritten in the graph. It is **not a
+  live defect** — nothing pins in the KG, so there is no pin to lose today — but a merge that
+  adopts the Cypher semantics silently drops a capability, and afterwards nobody can see that it
+  was ever there.
+
+  ✅ **`scripts/bitemporal-parity-gate.py`** records the asymmetry and **fails when either side
+  moves** — the `_EXPECTED_DIVERGENCES` shape that worked for T35d. Not to freeze it: to make
+  its disappearance a decision rather than a diff nobody read. It reports the gap on every run
+  rather than only on failure, because an asymmetry nobody is reminded of is one that gets
+  merged away.
+
+  ⚠️ **Source-level, and the reason is stated:** the two run on different substrates, so a
+  behavioural comparison needs both databases live — and a gate that only runs with two servers
+  up is a gate that does not run.
+
+  **BITE + `--selftest`, covering both directions:**
+
+  ```
+  21. Postgres loses its pin guard   (`valid_to_pinned = false` -> `true`)
+        FAIL — postgres pin-aware supersession: recorded True, measured False
+  selftest: the KG GAINING pins is reported
+        ^^ the direction that matters more. A gate firing only on a capability being LOST
+           would let the two sides converge silently, and convergence is the event T46 waits
+           for. Also: every recorded-present probe must actually match its source, or a row
+           reports a fake asymmetry forever.
+  ```
+
+  **QC (a) gates:** `bitemporal-parity-gate` OK + `--selftest` 4/4, wired into pre-commit;
+  `gate-wiring-gate` **101 → 102**, all wired or exempt; unit **4239**; `plan-verify` PASS.
+  **QC (b) the seam:** N/A — a gate reading two source files; no service code changed.
+  **QC (c) real data:** N/A — this batch produces none. The capability comparison is a
+  measurement of the two implementations themselves, which is the data in question.
+
+  ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
+
+  The merge is the row's other half and it has a **stated precondition** (§6.3: *"T46 merges the
+  stores and cannot be done before the id is opaque"*). Identity is structurally opaque — T35a/b/c
+  closed the minting and `derived-entity-id-gate` sits at 4 — but **T35e measured 1826 live nodes
+  whose `canonical_name` is stale**, and merging stores while 37 % of the graph forks on
+  re-extraction merges broken identity into the destination. The operator write T35 owes is
+  therefore T46's gate too, and that is a sequencing fact rather than an open question.
+
+  📐 **Recorded in §6.3** so the next session does not re-derive it: the port direction is
+  substrate choice, not language; the parity gate is what protects the union; and the merge
+  waits on `recanon_honorifics --apply`, not on more design.
 
 <!-- Commit checkpoint: T44–T46 -->
 

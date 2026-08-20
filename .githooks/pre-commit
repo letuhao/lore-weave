@@ -98,6 +98,12 @@ command -v python >/dev/null 2>&1 || PY=python3
 # count that reopens the task — needs `--live` and a reachable DB, same split as above.
 "$PY" "$ROOT/scripts/entity-facts-growth-gate.py"
 
+# T46 — two `maintain_chain` implementations exist (a Postgres stored proc, a Cypher
+# constant) and the merge must keep the UNION of their capabilities. Records the one known
+# asymmetry — Postgres is pin-aware, the KG has no pin concept — and fails when either side
+# moves, so a capability cannot vanish into a merge unnoticed.
+"$PY" "$ROOT/scripts/bitemporal-parity-gate.py"
+
 # I3 language rule (added 2026-07-26). Repo-wide, NOT staged-scoped, on purpose: PRR-21
 # completeness is a property of the tree, since a service can be added with no row by a
 # commit that touches no yaml at all. That is exactly how jobs-service landed 2026-06-15
