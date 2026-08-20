@@ -169,8 +169,10 @@ never names its own subject.
 
 **Found on the way, and both are recorded in the plan rather than here:** the
 per-reality `actors` table accepted a negative `entity_id`, making an actor that
-could be created, granted, and never act (`EO-1` for the column-side `CHECK`);
-and `meta-sensitive-read-bypass-lint.sh`'s exclusion list was growing by one
+could be created, granted, and never act — refused now at both edges, with the
+column-side `CHECK` left open in that plan's OPEN register because `0022` is
+applied per reality at provision time and so needs the migrate-existing-realities
+path; and `meta-sensitive-read-bypass-lint.sh`'s exclusion list was growing by one
 caller per service, which is why the shared reader exists at all.
 
 ### Discharged 2026-08-21 — `D-PC-SEAM-NO-CONTRACT` · `D-PC-NO-RUST-READ-AUDIT`

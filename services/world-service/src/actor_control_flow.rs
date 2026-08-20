@@ -455,7 +455,7 @@ pub async fn resolve_subject(
     // The same rule the write edge applies, from the same function — a row
     // that predates `adopt_actor`'s guard must not reach the transport as a
     // valid subject. See `actor_registry::checked_island_id`.
-    let entity_id = actor_registry::checked_island_id(reality_id, entity_id)?;
+    let entity_id = actor_registry::checked_island_id(&reality, entity_id)?;
     Ok(Some(Subject { actor_id, entity_id }))
 }
 

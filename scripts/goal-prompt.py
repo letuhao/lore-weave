@@ -309,7 +309,25 @@ def queue(plan: str, states: dict[str, str], decl: dict[str, object]) -> list[st
     excluded = set(decl.get("excluded", []) or [])
     lanes = decl.get("lanes")
     stops = stop_markers(plan, states)
-    order = [r for r in _row_order(plan) if states.get(r) != "x" and r not in excluded]
+    # `r in states` is the BOARD test, and leaving it out was a real defect.
+    #
+    # `_row_order` walks every table row in the file, and a plan's drift
+    # register, sealed-decision table and OPEN register all put a backticked id
+    # in the first cell. Those rows carry no state marker, so `row_states` never
+    # records them — and `states.get(r) != "x"` is True for a row it has never
+    # heard of, so all of them entered the queue. Measured on the plan that was
+    # generating its own goal: 1 real open row, 16 queued, with a drift-log
+    # entry and a sealed decision presented to a long autonomous run as work.
+    #
+    # `stop_markers` had this right (`if row not in states: continue`) under a
+    # comment stating the rule in as many words. **The discipline was known,
+    # written down, and applied to one of the two functions that needed it** —
+    # which is `NV-3` at the level of a rule rather than a check: correct in the
+    # place someone was looking, default-uncovered in the place they were not.
+    order = [
+        r for r in _row_order(plan)
+        if r in states and states[r] != "x" and r not in excluded
+    ]
 
     if not lanes:
         return [f"{r}{stops.get(r, '')}" for r in order]
@@ -536,6 +554,32 @@ def selftest() -> int:
     check("open rows stay", "T2" in q and "T3" in q, q.strip())
     check("the RESUME line is quoted from the plan", "do the next thing" in out)
     check("markdown is stripped from it", "`T2`" not in out.split("RESUME:")[-1])
+
+    # ②b A REGISTER row is not a slice. Drift logs, sealed-decision tables and
+    # OPEN registers all put a backticked id in the first cell and carry NO
+    # state marker — and `states.get(r) != "x"` was True for every one of them,
+    # so a plan with a filled-in drift log queued its own drift log. Measured
+    # live: 1 open row, 16 queued.
+    #
+    # The board row here is LAST on purpose. With it first, a bug that queued
+    # everything after it would still put `B1` at the head and the arm would
+    # pass on the right answer for the wrong reason.
+    registers = (
+        "**RESUME: `B1` — the only real row.**\n"
+        "## §3 BOARD\n"
+        "| `B0` shipped | `[x]` | evidence |\n"
+        "| `B1` open | `[ ]` | |\n"
+        "## §4 OPEN\n"
+        "| `EO-1` | a debt row with no tick box | its mechanism |\n"
+        "## §5 DRIFT\n"
+        "| `ED-D1` | a near-miss worth recording |\n"
+        "| `ED-1` | a sealed decision |\n"
+    )
+    rq = build(registers, "p.md").split("QUEUE")[1].split("CYCLE")[0]
+    check("a drift-register row is not queued", "ED-D1" not in rq, rq.strip())
+    check("a sealed-decision row is not queued", "ED-1" not in rq, rq.strip())
+    check("an OPEN-register row is not queued", "EO-1" not in rq, rq.strip())
+    check("...and the real board row still is", "B1" in rq, rq.strip())
 
     # ③ An absent RESUME is STATED, not invented.
     noresume = build("- [~] **T9** — open\n", "p.md")

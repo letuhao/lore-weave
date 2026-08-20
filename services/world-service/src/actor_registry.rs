@@ -73,7 +73,7 @@ pub async fn adopt_actor(
     // REFUSE AN ID THE ISLAND CANNOT HOLD, at the edge that can still say no —
     // see [`checked_island_id`] for what "cannot hold" means and why it was
     // reachable at all.
-    let entity_id = checked_island_id(reality.as_uuid(), entity_id)?;
+    let entity_id = checked_island_id(reality, entity_id)?;
 
     let actor_id = Uuid::new_v4();
     sqlx::query("INSERT INTO actors (reality_id, actor_id, entity_id) VALUES ($1, $2, $3)")
@@ -138,11 +138,28 @@ pub async fn adopt_actor(
 /// here: `0022` is applied per reality at provision time, so a new migration
 /// only reaches worlds provisioned after it. That is the migrate-existing-
 /// realities job, not this one — recorded, not skipped.
-pub fn checked_island_id(reality_id: Uuid, entity_id: i64) -> Result<i64, ProvisionerError> {
-    match u64::try_from(entity_id) {
-        Ok(_) => Ok(entity_id),
-        Err(_) => Err(ProvisionerError::CorruptEntityId(reality_id.to_string(), entity_id)),
+pub fn checked_island_id(reality: &RealityId, entity_id: i64) -> Result<i64, ProvisionerError> {
+    if is_island_id(entity_id) {
+        Ok(entity_id)
+    } else {
+        Err(ProvisionerError::CorruptEntityId(reality.as_uuid().to_string(), entity_id))
     }
+}
+
+/// The RULE itself, with no reality attached.
+///
+/// Split out from [`checked_island_id`] for two reasons that point the same
+/// way. `reality-id-adoption-gate` is the first: a function on a bindable path
+/// taking a bare `Uuid` is adoptable debt, and the fix is to take
+/// [`RealityId`] — which has no public constructor, so a unit test cannot make
+/// one. Rather than exempt the gate or drop the test, the predicate that
+/// actually needs testing moved somewhere a test can reach it.
+///
+/// The second is that it is the honest decomposition anyway: whether a number
+/// is an island id has nothing to do with which reality it is in. Only the
+/// ERROR needs the reality, and only to name it.
+pub fn is_island_id(entity_id: i64) -> bool {
+    u64::try_from(entity_id).is_ok()
 }
 
 /// Does this actor exist in this reality?
@@ -194,17 +211,15 @@ mod tests {
     /// spine's own `EntityId(1)`, the case adoption exists for, unadoptable.
     #[test]
     fn a_negative_island_id_is_refused_and_a_real_one_is_not() {
-        let r = Uuid::from_u128(7);
-        assert_eq!(checked_island_id(r, 1).unwrap(), 1, "the spine's EntityId(1) must adopt");
-        assert_eq!(checked_island_id(r, 0).unwrap(), 0);
-        assert_eq!(checked_island_id(r, i64::MAX).unwrap(), i64::MAX);
+        assert!(is_island_id(1), "the spine's EntityId(1) must adopt");
+        assert!(is_island_id(0));
+        assert!(is_island_id(i64::MAX));
 
+        // Non-vacuity in both directions. A predicate that answered `false` for
+        // everything would satisfy the negatives below and make the spine's own
+        // actors unadoptable — the case adoption exists for.
         for bad in [-1_i64, i64::MIN] {
-            let e = checked_island_id(r, bad).expect_err("a negative is not an island id");
-            assert!(
-                matches!(e, ProvisionerError::CorruptEntityId(_, got) if got == bad),
-                "wrong variant for {bad}: {e}"
-            );
+            assert!(!is_island_id(bad), "a negative is not an island id: {bad}");
         }
     }
 

@@ -1,5 +1,53 @@
 # ▶▶ NEXT SESSION STARTS HERE
 
+## ▶ THE PLAYER-FACING EDGE — a human drives without an operator (2026-08-21, branch `feat/game-logic`)
+
+> [`2026-08-21-player-edge-RUN-STATE.md`](../plans/2026-08-21-player-edge-RUN-STATE.md) — `E1`–`E6`,
+> six slices, one PO checkpoint. **`D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT` is discharged**, open
+> since 2026-08-06; registry **34 → 33**.
+>
+> **The transport ASKS now.** `POST /internal/v1/actor-control/subject` on world-service resolves
+> `(reality_id, user_ref_id)` to the island `entity_id`, and `ChannelRoom` reads it instead of an
+> environment variable. A human can drive an actor because somebody granted them one, not because
+> an operator edited the environment and restarted the process.
+>
+> **Phase 0 shrank the work before it started.** The read is OWNER-SCOPED — the sensitive-path
+> contract describes its audited sibling, verbatim, as `WHERE user_ref_id != $caller_user`, so none
+> of `RA1`'s audit machinery applies. *"Which actor do I drive"* is a question about yourself.
+>
+> **The shape came from a LINT, not from taste.** `meta-sensitive-read-bypass-lint.sh` excuses
+> callers BY NAME, and carried `commit-service/src/subject.rs` under a comment saying the quiet part
+> out loud: *"There is NO RUST-SIDE SANCTIONED READER… the only compliant Rust read is one that does
+> not happen."* A second caller would have grown that list by one per service — `NV-3`'s
+> default-uncovered shape. So hop 1 moved into **`meta-rs`** and both services call it; `subject.rs`
+> left the exclusion list because it no longer contains a SELECT.
+>
+> **⏸ `E4`, the PO checkpoint: DELETE `LW_CHANNEL_ACTOR_MAP` entirely.** The strict option over the
+> recommended one. Every alternative leaves the second source *in the code*, one edit away from
+> being consulted; a gate is a decision someone can revisit, an absence is not. The cost was
+> accepted out loud: **a local session now needs `admin reality provision` → `create-actor` →
+> `grant-control` before anything can be driven.**
+>
+> **Two defects found on the way, neither of them the feature's:**
+> 1. `actors.entity_id` accepted a NEGATIVE value — `0022` has no `CHECK` and `adopt_actor` passed
+>    an operator's `--entity-id` straight through. `-1 as u64` is `u64::MAX`, so the actor could be
+>    created, granted, and never act, with nothing on the path saying so. Refused at both edges now.
+> 2. `meta_allowlist` defaults to a RELATIVE path, so the same code binds from a shell and 500s
+>    under `cargo test`, reported as a generic *"actor-control write failed"*.
+>
+> **Evidence: 26 bites**, every one watched RED for the right reason and restored byte-exact —
+> 7 (`E1`) + 4 (`E2`) + 6 (`E3`) + 2 (`E4`) + 3 live (`E5`) + 4 re-bitten after refactors. Rust
+> workspace **2568 passed / 0 failed**, game-server **82 / 0**, all Go contract suites green, and
+> **23 of 23 live suites** including the new `world-actor-subject`.
+>
+> **▶ DO NEXT.** The edge is built and proven; nobody has driven a turn through it end to end. The
+> honest next step is a WS-level run — a real ticket, a real join, a real submit — which needs
+> world-service in `infra/docker-compose.yml` (it is not there; both live proofs run it from
+> source). Four `D-PC-*` rows remain. `D-DEFERRAL-GATE-PLATFORM-SCOPE` still leaves ~360 ids
+> ungoverned outside the game tier.
+
+---
+
 ## ▶ THE DEBT RUN — and the audit table that had never had a row (2026-08-21, branch `feat/game-logic`)
 
 > Closes both rows the `P7` audit opened, one day later.

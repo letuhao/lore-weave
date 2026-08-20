@@ -67,7 +67,7 @@ the actor the binding names.
 | `E3` the transport reads it, and FAILS CLOSED when it cannot | `[x]` | `ws/subject.ts` + `onJoin` now async. **Four answers, not two** — driving · nobody · realityClosed (`4004`) · unavailable (refuse the join). **6 bites**, each RED for the right reason; game-server `81 pass / 0 fail` (was 68). No new dependency: Node's global `fetch`. |
 | `E4` ⏸ **POST-REVIEW checkpoint** — retire `LW_CHANNEL_ACTOR_MAP`, or keep it as a declared dev override? | `[x]` | **PO: DELETE IT ENTIRELY.** `actorFromDevMap` gone; `resolveSubject` has no branch left to get wrong. **2 bites** — reintroduce the map, reintroduce `?? '1'` — and the second reds THREE tests. game-server `82 pass / 0 fail` |
 | `E5` live — a session drives the actor the binding names, with no env map set | `[x]` | **Two durable proofs, both bitten.** `world-actor-subject` registered in `contracts/testing/live-suites.yaml` — router-driven, two real databases, `1 passed`, **3 live bites** each RED through the runner. `scripts/smoke/player-edge-live.mjs` — the TRANSPORT's own resolver against a running world-service, **5/5**, driver → `entity_id 1`, revoked → nobody; bitten by swapping the two users (3 arms red, rc=1). `D-ACTOR-BINDING-NOT-READ-BY-TRANSPORT` **discharged**; registry 34 → 33 |
-| `E6` suite + sweep green | `[ ]` | |
+| `E6` suite + sweep green | `[x]` | **`SWEEP_RC=0` — 91 GREEN / 0 RED / 8 SKIP.** Rust workspace **2568 passed / 0 failed** / 14 ignored · **23 of 23** live suites · game-server **82 / 0** · `service_acl`+`pii`+`meta` green. The first sweep found **2 RED, both mine and neither a code defect** — fixed, not baselined-away; see below |
 
 ### `E4` — RULED 2026-08-21: **delete it entirely**
 
@@ -182,12 +182,49 @@ binding. **This is the checkpoint's to confirm or reverse.**
 | ~~`EO-2`~~ | **CLEARED at `E5`.** `world-actor-subject` is in the live-suite registry, so the route runs under the registry-driven CI leg like every other suite, and three bites prove it can go red there. The transport half is `scripts/smoke/player-edge-live.mjs`, which is a script rather than a registered suite because the registry is cargo-shaped — same position as `D-EPOCH-SMOKE-NOT-IN-CI` and its two siblings, and it waits on the same stack-up CI job they do. Original text: **`E1`'s live proof is not repeatable.** The 5-arm smoke ran from a scratchpad script against data `P7` left in the dev stack; `live-suite-registry-gate` reports 22 registered suites and the actor-control routes are none of them. The route is therefore covered by unit tests and by one run nobody can re-do. | `E5` owns it: it needs a durable live test anyway, and a route-level suite is the same fixture. If `E5` lands without registering one, this row is the thing that says so. |
 | `EO-1` | `actors.entity_id` has **no `CHECK (entity_id >= 0)`**. `checked_island_id` closes it at both code edges, but the column stays permissive, so a future writer that skips the helper is unguarded. Not fixed here because `0022` is applied **per reality at provision time**, so a new migration only reaches worlds provisioned after it — this needs the migrate-existing-realities path, not a new file. | `checked_island_id`'s test is the code-side guard (bitten). The column-side row is declared here rather than left as a comment. |
 
+### `E6` — two RED, and neither was baselined away
+
+**`reality-id-adoption-gate`: `world-service` went 0 → 1 ADOPTABLE.** `checked_island_id` took a
+bare `Uuid` on a path that can bind, and the gate is right that such a path should carry
+`dp::RealityId`. The obvious repair — take the newtype — would have deleted the unit test with it,
+because `RealityId` has no public constructor. So the function split: `is_island_id` is the pure
+rule a test can reach, and `checked_island_id` takes `&RealityId` and only uses it to NAME the
+reality in the error. That is the honest decomposition anyway — whether a number is an island id has
+nothing to do with which reality it is in. Adoptable back to **0**; the input-boundary ratchet moved
+**16 → 19** in the same commit, because the three new sites (`SubjectRequest.reality_id`,
+`SubjectResponse.reality_id`, `resolve_subject`'s parameter) are the same shape as the
+`GrantRequest.reality_id` already counted — raw wire input a bind consumes.
+
+**`design-lint`: prefix `EO` unregistered.** The discharge note in the game-tier handoff cited
+`EO-1`, a row id that lives in this plan and means nothing in that tree. Reworded to describe the
+debt and name where it is tracked, rather than widening an allowlist — a reader of the game tier
+could not have resolved the id, so the lint was pointing at a real defect and not a nuisance.
+
+### `/goal-prompt` queued its own drift log — found by running it on this plan
+
+`_row_order` walks every table row in a file, and a plan's drift register, sealed-decision table and
+OPEN register all put a backticked id in the first cell. Those rows carry no state marker, so
+`row_states` never records them — and the filter was `states.get(r) != "x"`, which is True for a row
+it has never heard of. **1 real open row; 16 queued**, with a sealed decision and a drift entry
+offered to a long autonomous run as work.
+
+The tell is that the tool already knew: `stop_markers` filters with `if row not in states: continue`
+under a comment stating the rule in as many words — *"a drift register or an open-row table also
+puts a backticked id in its first cell, and those are not slices."* **The discipline was known,
+written down, and applied to one of the two functions that needed it.** `NV-3` at the level of a
+rule rather than a check: correct where someone was looking, default-uncovered where they were not.
+
+Four selftest arms added, and the board row in the fixture is deliberately LAST — with it first, a
+bug that queued everything after it would still put the real row at the head and the arm would pass
+on the right answer for the wrong reason. Bitten: restoring the old filter reds three of them.
+
 ## §5 DRIFT — append as it happens; an empty log is dishonest, not clean
 
 | id | what |
 |---|---|
 | `ED-D1` | **Two bite anchors matched nothing, and the run reported them as aborts only because the harness counts occurrences.** The files are CRLF; my anchors used `\n`. Without the `count(anchor) != 1` assertion this would have been two mutations that silently did not happen, each followed by a green run — indistinguishable from a passing bite. Same family as `PD-4` (heredoc backslash mangling): **the encoding of the file is part of the anchor.** |
 | `ED-D2` | **B3's first mutant did not COMPILE, and it still went red.** `ProblemDetails::bad_request("bite".into())` is ambiguous across four `From<&str>` impls. `rc != 0` plus a "RED" label looked exactly like a bite; only reading the output showed `error[E0283]`. A broken build is not evidence about a guard. The harness now fails any mutant whose output contains `could not compile` or `error[E0` — because the summary line is identical either way, and I would not have caught the second one. |
+| `ED-D10` | **A refactor at `E6` invalidated a bite from `E1`, and nothing would have told me.** `reality-id-adoption-gate` made me split `checked_island_id`, so the line `B2` had mutated no longer exists — the bite output in `E1`'s commit message describes code that is gone. Re-bitten against the new `is_island_id` (RED, `a negative is not an island id: -1`, restored). **Bite evidence is a claim about a specific line, and a refactor silently expires it.** The board row is what carries the claim forward, so the board row has to be re-earned when the line moves. |
 | `ED-D7` | **The live suite passed before it could run, and the number said `1 passed`.** `cargo test --test actor_subject_live` with no env prints exactly what a real pass prints — the skip is a `return Ok(())`. I nearly took that as `E5` done. Registering it and running it through `live-suites.py` turned the same test RED three times in a row (a `db_host` CHECK, then a relative allowlist path, then nothing) before it was actually green. **The gap between "the test compiles and returns Ok" and "the test ran" is invisible in the output**, which is why the three live bites exist and not just the run. |
 | `ED-D8` | **`meta_allowlist` defaults to a RELATIVE path, so the bind works from a shell and 500s from `cargo test`.** `cargo` runs from the package directory, the binary runs from the repo root, and the failure surfaces as a generic `500 actor-control write failed` because `to_problem`'s wildcard arm hides the detail. Two things worth keeping: the test now derives the path from `CARGO_MANIFEST_DIR`, and **the generic 500 cost more time than the bug did** — the wildcard is correct for a client-facing body, but it means an operator debugging this gets nothing without server logs. |
 | `ED-D9` | **The live smoke printed PASS and exited 127.** Node aborted on Windows with `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)` inside `process.exit()`, after every arm had passed — `fetch`'s keep-alive pool torn down mid-close. Fail-safe rather than fail-open, so it would have shown as a false RED, but an exit code that does not mean what it says is a smoke nobody can put in CI. Fixed with `process.exitCode` and letting the loop drain. **I caught it only because I echoed `$?` instead of reading the PASS line** — the same discipline that caught a wrapper's exit code standing in for the harness's last run. |
@@ -255,4 +292,4 @@ proposal carries the user, the server resolves the actor, and a subject the call
 cannot be forged. What this phase added is a **display** read — which entity to render as *"you"* —
 and that is a different question from who may act. The client still never names its own subject.
 
-**RESUME: `E6` — the full sweep. Every suite plus `gate-wiring-gate --run-all`, and the number goes in the board row rather than a claim that it was green.**
+**RESUME: the board is CLOSED — 6 of 6, `EO-1` the only row left open (it needs the migrate-existing-realities path). Nothing in this plan is next. The honest next step is a WS-level run: a real ticket, a real join, a real submit — nobody has driven a turn through this edge end to end, and it needs world-service in `infra/docker-compose.yml`, which it is not.**
