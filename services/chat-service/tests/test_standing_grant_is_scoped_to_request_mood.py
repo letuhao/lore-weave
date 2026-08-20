@@ -123,7 +123,10 @@ class TestItIsActuallyWiredToTheGate:
         # and this string vanished while the property it names held throughout. Pinned as the
         # property instead: a non-allow decision returns BEFORE any set-aside logic can run.
         i = src.index("async def _decision_check(")
-        block = src[i:i + 2200]
+        # Windowed to the function's own end rather than a byte count: a fixed 2200 was already
+        # outgrown once, when a comment explaining the WARNING pushed the closing `return None`
+        # out of view and this failed for the window rather than for the code.
+        block = src[i:src.index("    # P4 REG-P4-03", i)]
         deny_returns = block.index('if _decision != "allow":')
         first_set_aside = min(block.index("standing_grant_applies("), block.index("return None"))
         assert deny_returns < first_set_aside, (

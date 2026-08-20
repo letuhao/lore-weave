@@ -2641,6 +2641,16 @@ def _tools_named_in_refusal(error_text: str, catalog: dict, already_active) -> l
     return sorted(found[:_RECOVERY_ARM_CAP])
 
 
+#: The reserved all-zero UUID. Never a row in any table here, so an `*_id` argument carrying it is
+#: an invention that happens to parse. Compared through UUID() rather than by string so the
+#: braced/urn/uppercase spellings cannot slip past a literal match.
+def _is_nil_uuid(value: str) -> bool:
+    try:
+        return UUID(value).int == 0
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 def _invented_supplier_ids(args_obj: dict, contract: dict | None) -> list[str]:
     """`*_id` args the CONTRACT says the runtime owes, which the model filled in with a non-UUID.
 
@@ -2669,11 +2679,33 @@ def _invented_supplier_ids(args_obj: dict, contract: dict | None) -> list[str]:
     """
     from app.agentruntime.toolcontract import declared_supplier
 
-    if not isinstance(args_obj, dict) or not contract:
+    if not isinstance(args_obj, dict):
         return []
     out: list[str] = []
     for name, value in args_obj.items():
         if not name.endswith("_id"):
+            continue
+        # 🔴 THE NIL UUID PARSES, SO THE FORMAT TEST BELOW ACCEPTS IT — AND IT IS NEVER A ROW.
+        # This function's rule is deliberately "a valid UUID is accepted even if it is wrong,
+        # because whether it is the right row is the tool's question". The all-zero UUID is the
+        # one value that rule should not cover: it is reserved, no table ever holds it, so it is
+        # knowably invented rather than merely possibly-wrong.
+        #
+        # MEASURED LIVE 2026-08-14, batch 7: asked to draw a region on a map, the model called
+        # world_map_add_region 3/3 with map_id="00000000-0000-0000-0000-000000000000" — the
+        # polygon was right, the map was never looked up. Because it parses, nothing here fired,
+        # and a Tier-A CONFIRM CARD was minted for a call that cannot succeed: the tool answers
+        # "map not found" (verified at the boundary). The author is asked to approve a write
+        # whose target does not exist.
+        #
+        # Applies whatever the contract says, and whether or not there IS one, because the value
+        # is wrong for every supplier. Feeding it into the existing drop-then-report-missing path
+        # gives the model the honest sentence — this argument is required and you have not
+        # supplied it — which is the one that makes it go and look the id up.
+        if isinstance(value, str) and _is_nil_uuid(value):
+            out.append(name)
+            continue
+        if not contract:
             continue
         if declared_supplier(contract, name) != "plan":
             continue

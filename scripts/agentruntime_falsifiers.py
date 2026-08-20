@@ -1392,10 +1392,17 @@ FALSIFIERS: dict[str, list[tuple[str, str, str]]] = {
     # D-FJ-2's rule: with no declaration the runtime knows nothing and must not guess.
     # 🔴 Two edits: the early `not contract` return ALSO protects this case, so treating an
     # undeclared supplier as `plan` alone left the guard green.
+    # 🔴 ANCHOR MOVED 2026-08-14, and the reason is worth keeping: the drift this falsifier used
+    # to INJECT — dropping `or not contract` from the early return — became the real code. The
+    # nil-UUID arm (D-NIL-UUID-MINTS-A-CARD) must run whether or not a contract exists, because
+    # the all-zero UUID is wrong for every supplier, so the early return had to move INTO the
+    # loop as `if not contract: continue`. The protected behaviour is unchanged and its test
+    # stayed green throughout; only the line carrying it moved, which is exactly what
+    # `stale_anchors()` exists to catch — and did, in one second, without running a suite.
     "test_an_UNDECLARED_id_is_left_alone": [
         (f"{CS}/app/services/stream_service.py",
-         "    if not isinstance(args_obj, dict) or not contract:",
-         "    if not isinstance(args_obj, dict):"),
+         "        if not contract:",
+         "        if False:"),
         (f"{CS}/app/services/stream_service.py", '        if declared_supplier(contract, name) != "plan":',
          '        if (declared_supplier(contract, name) or "plan") != "plan":'),
     ],
