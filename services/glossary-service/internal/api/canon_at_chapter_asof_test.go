@@ -140,3 +140,73 @@ func TestKnownEntities_WholeBookReadUsesCurrentValues(t *testing.T) {
 		}
 	}
 }
+
+// TestKnownEntities_AnEntityKilledInTheStoryLeavesTheCanonPanelAfterItsDeath is T32's
+// reader migration, and the case D-T32-ALIVE-NO-FACTS said could not be validated.
+//
+// That deferral posed a dichotomy — a migrated reader must fail CLOSED (every entity reads
+// not-alive: a total outage) or fail OPEN (identical to alive=true: proves nothing) — and both
+// arms assume the reader REPLACES the column. Conjoining is the third path: `alive` still
+// gates the author's explicit hide, and a `life_status='gone'` fact covering the requested
+// position removes the entity on top of it. Strictly narrowing, so it cannot regress.
+//
+// Both directions are asserted. The before-death read is not a nicety: a handler that dropped
+// the entity everywhere would satisfy the after-death half and be far worse than the bug.
+func TestKnownEntities_AnEntityKilledInTheStoryLeavesTheCanonPanelAfterItsDeath(t *testing.T) {
+	pool := openTestDB(t)
+	ctx := context.Background()
+	f := newVersionFixture(t, pool)
+
+	// Killed at ordinal 20. Open interval: once gone, gone.
+	seedFact(t, pool, f.bookID, f.entityID, "status", "life_status", "gone", 20, nil)
+	for _, idx := range []int{1, 2} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO chapter_entity_links (entity_id, chapter_id, chapter_index, relevance)
+			VALUES ($1, gen_random_uuid(), $2, 'primary')`,
+			f.entityID, idx); err != nil {
+			t.Fatalf("seed chapter link: %v", err)
+		}
+	}
+
+	present := func(q string) bool {
+		t.Helper()
+		req := httptest.NewRequest(http.MethodGet,
+			"/v1/glossary/books/"+f.bookID.String()+"/known-entities?min_frequency=1&"+q, nil)
+		req.Header.Set("Authorization", "Bearer "+f.token)
+		w := httptest.NewRecorder()
+		f.srv.Router().ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("known-entities %s: want 200, got %d (%s)", q, w.Code, w.Body.String())
+		}
+		var out []map[string]any
+		if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil {
+			t.Fatalf("decode: %v (%s)", err, w.Body.String())
+		}
+		for _, r := range out {
+			if r["entity_id"] == f.entityID.String() {
+				return true
+			}
+		}
+		return false
+	}
+
+	if present("before_chapter_index=40") {
+		t.Fatalf("read at chapter 40 still lists an entity the story killed at 20.\n" +
+			"  A canon panel dated after a character's death that still shows them alive is " +
+			"the same spoiler class as showing their later name early — well-formed, " +
+			"plausible, and wrong.")
+	}
+	if !present("before_chapter_index=10") {
+		t.Fatalf("read at chapter 10 — BEFORE the death at 20 — dropped the entity.\n" +
+			"  This is the control. Without it a handler that hides the entity at every " +
+			"position passes the assertion above while destroying the panel.")
+	}
+	// And the UNTIMED read: no position means the liveness question is unanswerable, so the
+	// filter must be inert rather than guessing. An editor view that silently lost every dead
+	// character would be a regression wearing a spoiler fix's clothes.
+	if !present("") {
+		t.Fatalf("the untimed (editor) read dropped a dead entity.\n" +
+			"  With no position there is nothing to evaluate `gone at P` against; the filter " +
+			"must not fire at all.")
+	}
+}

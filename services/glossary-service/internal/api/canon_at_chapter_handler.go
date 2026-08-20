@@ -101,7 +101,7 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 		asOfArg = int64(beforeIdx)
 	}
 	args = append(args, asOfArg)
-	fellBackName, fellBackAlias := 0, 0
+	fellBackName, fellBackAlias, fellBackLife := 0, 0, 0
 
 	query := `
 		SELECT
@@ -119,6 +119,7 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 			COALESCE(NULLIF(alias_asof.value, ''), alias_av.original_value, '') AS aliases_raw,
 			(name_asof.value IS NULL)  AS name_fell_back,
 			(alias_asof.value IS NULL) AS alias_fell_back,
+			(life_asof.value IS NULL)  AS life_fell_back,
 			COUNT(DISTINCT cl.chapter_id)         AS frequency,
 			MIN(cl.chapter_index)                 AS first_chapter_index,
 			MAX(cl.chapter_index)                 AS last_chapter_index,
@@ -170,10 +171,39 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 			 ORDER BY f.valid_from_ordinal DESC
 			 LIMIT 1
 		) alias_asof ON TRUE
+		-- -- liveness AS OF the position (T32) ----------------------------------------
+		-- The third as-of source, and the one D-T32-ALIVE-NO-FACTS said could not be
+		-- built yet. It could not be SWAPPED for the alive column; that deferral's
+		-- dichotomy -- fail closed (every entity reads not-alive: a total outage) or fail
+		-- open (identical to alive=true: proving nothing) -- assumed replacement.
+		-- CONJOINING is the third path: alive still gates the author's explicit hide, and
+		-- a gone fact covering this position removes the entity on top of that.
+		--
+		-- Strictly NARROWING, so it cannot regress: an entity with no status fact is
+		-- unaffected (every entity but three today), and alive is 7523 true / 0 false, so
+		-- nothing that reads today stops reading. What changes is that a character the
+		-- story has killed stops appearing in a canon panel dated AFTER their death --
+		-- the spoiler class this whole handler exists to remove.
+		LEFT JOIN LATERAL (
+			SELECT f.value
+			  FROM entity_facts f
+			 WHERE f.entity_id = e.entity_id AND f.book_id = e.book_id
+			   AND f.attr_or_predicate = 'life_status'
+			   AND f.invalidated_at IS NULL
+			   AND ` + asOfParam + `::bigint IS NOT NULL
+			   AND f.valid_from_ordinal <= ` + asOfParam + `::bigint
+			   AND ` + asOfParam + `::bigint < f.valid_to_eff
+			 ORDER BY f.valid_from_ordinal DESC
+			 LIMIT 1
+		) life_asof ON TRUE
 		JOIN chapter_entity_links cl ON ` + linkWhere + `
 		WHERE e.book_id = $1 AND e.alive = true AND e.deleted_at IS NULL
+		  -- NULL means "no fact covers this position", never "gone". An UNTIMED read has
+		  -- no position to answer at, so the lateral yields NULL and this filter is inert
+		  -- -- which is what the editor view must keep doing.
+		  AND (life_asof.value IS NULL OR life_asof.value <> 'gone')
 		GROUP BY e.entity_id, k.code, name_av.original_value, alias_av.original_value,
-		         name_asof.value, alias_asof.value
+		         name_asof.value, alias_asof.value, life_asof.value
 		HAVING COUNT(DISTINCT cl.chapter_id) >= ` + minFreqParam + `
 		ORDER BY COUNT(DISTINCT cl.chapter_id) DESC, e.entity_id
 		LIMIT ` + limitParam
@@ -193,10 +223,10 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var rr row
 		var aliasesRaw string
-		var nameFellBack, aliasFellBack bool
+		var nameFellBack, aliasFellBack, lifeFellBack bool
 		if err := rows.Scan(
 			&rr.out.EntityID, &rr.out.KindCode, &rr.out.Name, &aliasesRaw,
-			&nameFellBack, &aliasFellBack,
+			&nameFellBack, &aliasFellBack, &lifeFellBack,
 			&rr.out.Frequency, &rr.out.FirstChapterIndex, &rr.out.LastChapterIndex,
 			&rr.distinctChapters,
 		); err != nil {
@@ -221,6 +251,9 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 			if aliasFellBack {
 				fellBackAlias++
 			}
+			if lifeFellBack {
+				fellBackLife++
+			}
 		}
 		collected = append(collected, rr)
 	}
@@ -234,9 +267,11 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 	// exists to fix and it is otherwise invisible: a current name in a canon-at-chapter panel
 	// is well-formed, plausible, and wrong — a spoiler that looks like data.
 	//
-	// Liveness is reported as a permanent fallback while D-T32-ALIVE-NO-FACTS is open: there
-	// are 0 liveness facts, so `alive` is still the only source. Saying so on every timed read
-	// is deliberate — an unmet precondition nobody is reminded of is one that never gets met.
+	// Liveness USED to be reported as a permanent fallback, with this line hardcoded to say
+	// "no liveness facts exist". That was true when T52 wrote it and stopped being true the
+	// moment T32's producer landed -- a log that STATES a precondition instead of MEASURING
+	// it goes stale silently, and this one asserted the opposite of the truth. Counted per
+	// read now, exactly like name and alias.
 	if beforeIdx >= 0 {
 		slog.Debug("known-entities resolved at a story position",
 			"book_id", bookID.String(), "as_of", beforeIdx,
@@ -244,7 +279,8 @@ func (s *Server) publicKnownEntities(w http.ResponseWriter, r *http.Request) {
 			"name_source", "entity_facts(fact_kind=name)",
 			"alias_source", "entity_facts(fact_kind=alias)",
 			"kind_source", "book_kinds (CURRENT - no kind facts exist)",
-			"liveness_source", "glossary_entities.alive (CURRENT - no liveness facts exist)")
+			"liveness_source", "entity_facts(life_status) AND glossary_entities.alive",
+			"liveness_fallbacks", fellBackLife)
 		if fellBackName > 0 || fellBackAlias > 0 {
 			slog.Warn("known-entities fell back to CURRENT values on a timed read",
 				"book_id", bookID.String(), "as_of", beforeIdx,

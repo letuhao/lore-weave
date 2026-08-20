@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T35` ⛔ **DOES NOT CLOSE — live data says so.** Row claimed 77 stale nodes; on `:7688` it is **1826**, and the broken field is `canonical_name` (the resolution key), not `id` (a mint fallback): 37 % of the graph forks on next extraction, reproduced end-to-end. `recanon_honorifics` already plans exactly that population — but 6 of its merges would have **destroyed distinct glossary anchors**. Planner is anchor-aware now (1820 repaired / 6 refused / 0 lost); its guard had shipped DEAD until the loader was wired. **Owed: an operator runs the backfill.** Then `T32`.**
+**RESUME: `T32` — the canon-at-chapter reader now conjoins liveness (T32a); **six `alive` readers left**, each the same `alive AND NOT gone-at-P` shape with its own surface's *absent means* answered by the reveal-axis table. ⚠️ `T35` is ⛔ **OWED AN OPERATOR WRITE**: 1826 nodes carry a stale `canonical_name` and fork on re-extraction; `recanon_honorifics` repairs 1820 / refuses 6 / loses 0 anchors, and needs a human to run `--apply` against the shared graph. Then `T33` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**49 of 66 rows done · 17 open · 37 of 71 evidence blocks closed inside them.**
+**49 of 66 rows done · 17 open · 38 of 73 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (2/2) · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
+**OPEN:** `T17` (17/28) · `T25` (1/1) · `QC-3` · `T32` (3/4) · `T33` (1/2) · `T35` (4/9) · `QC-6` · `QC-5` (11/27) · `T51` · `T39` (1/2) · `T40` · `T44` · `T45` · `T46` · `T47` · `T48` · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -4360,8 +4360,12 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   as-of liveness fact, then drop the column or document why it survives.**
   (depends on T31)
   ---
-  **✅ Widened, ✅ Q6, ✅ `alive` deprecated + pinned — ⬜ the reveal axis and the reader
-  migration are deferred with evidence.**
+  **✅ Widened · ✅ Q6 · ✅ `alive` deprecated + pinned · ✅ the reveal axis (`D-T32-REVEAL-AXIS`
+  is struck below; `app/spoiler_window.py`, 29 tests) · ✅ the producer · ✅ T32a migrates the
+  canon-at-chapter reader — ⬜ the remaining SIX `alive` readers.**
+  ⚠️ *This line read "⬜ the reveal axis and the reader migration are deferred" until
+  2026-08-14, while the reveal axis had shipped and its deferral was already struck through
+  twenty lines down. Seventh row this week whose header outlived its own evidence.*
 
   **① `entity_facts_kind_chk` widened to admit `'status'`** — chain step **0064**, shipped as a
   `DROP CONSTRAINT IF EXISTS` + `ADD` rather than an edit to `entity_facts.go`'s
@@ -4393,6 +4397,94 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   wrong reason — it broke parameter typing and errored before reaching the assertion, which
   would have "passed" as a bite while proving nothing. Redone so the predicate is dropped with
   the parameter still typed.
+
+  ### ✅ T32a 2026-08-14 — the liveness reader migrates, and the deferral's dichotomy was a false one
+
+  ```
+  glossary api suite   ok 83.6s (live Postgres, THROWAWAY glossary_t32test)
+  alive-deprecation-gate  7 / 7 (unchanged, on purpose)     migration-drift PASS
+  ```
+
+  **First, two things the row itself had wrong.**
+
+  ⚠️ **The header said *"⬜ the reveal axis and the reader migration are deferred"*. The reveal
+  axis SHIPPED** — `D-T32-REVEAL-AXIS` is struck through twenty lines below, `app/spoiler_window.py`
+  holds the three states, and **29 tests pass**. Seventh row this week whose header outlived its
+  own evidence.
+
+  📊 **`D-T32-ALIVE-NO-FACTS`'s retry condition is MET.** It reads *"retry when any liveness
+  facts exist for a real book"*. Measured on the real glossary DB (`:5555`, READ-ONLY):
+
+  ```
+  status facts 3 · life_status facts 3 · distinct entities 3 · distinct books 1
+  alive:  7523 true / 0 false
+  ```
+
+  ### 🔴 THE DEFERRAL'S ARGUMENT WAS A FALSE DICHOTOMY
+
+  > *"A migrated reader today must either fail closed — every entity reads as not-alive, a
+  > total outage of the canon reads — or fail open, which is behaviourally identical to
+  > `alive=true` and proves nothing."*
+
+  Both arms assume the reader **replaces** the column. **Conjoining is the third path**, and it
+  was available the moment one fact existed:
+
+  ```sql
+  WHERE e.alive = true                                    -- the author's explicit hide
+    AND (life_asof.value IS NULL OR life_asof.value <> 'gone')   -- and the story's
+  ```
+
+  **Strictly narrowing, so it cannot regress.** An entity with no status fact is unaffected —
+  which is every entity but three — and `alive` is 7523 true / 0 false, so nothing that reads
+  today stops reading. What changes is that a character the story has killed stops appearing in
+  a canon panel dated **after** their death. That is the same spoiler class as showing a
+  character's later name early, which is the defect this handler was built for; liveness was
+  simply the axis it could not answer yet.
+
+  🎯 **`alive` STAYS, and the gate baseline does NOT shrink — that is the honest reading.** The
+  column is an author-editable toggle no author has ever set; retiring it is a separate question
+  from making the fact load-bearing. Shrinking the baseline here would claim a reader had
+  *moved off* `alive` when it had only gained a second, better filter. The gate is the migration
+  checklist and it must not be paid with a half-move.
+
+  ⚠️ **NULL means "no fact covers this position", never "gone".** An untimed (editor) read has
+  no position to evaluate `gone at P` against, so the lateral yields NULL and the filter is
+  inert — the third assertion below exists because an editor view that silently lost every dead
+  character would be a regression wearing a spoiler fix's clothes.
+
+  🔧 **And T52's log line was asserting the opposite of the truth.** It hardcoded
+  `"liveness_source": "glossary_entities.alive (CURRENT - no liveness facts exist)"` —
+  deliberately, *"an unmet precondition nobody is reminded of is one that never gets met"* —
+  and stopped being true the moment T32's producer landed. **A log that STATES a precondition
+  instead of MEASURING it goes stale silently.** It now counts `liveness_fallbacks` per read,
+  exactly as it already did for name and alias.
+
+  **BITE ×2, each red on a DIFFERENT assertion — which is why the control exists:**
+
+  ```
+  9.  drop the liveness filter
+        read at chapter 40 still lists an entity the story killed at 20
+  10. filter regardless of position (the over-eager fix)
+        read at chapter 10 — BEFORE the death at 20 — dropped the entity
+        ^^ bite 9's assertion stays GREEN under this mutation
+  ```
+
+  **QC (a) gates:** `alive-deprecation-gate` PASS at 7 (unchanged, deliberately);
+  `migration-drift` PASS; `db-safety-gate` exit 0; `plan-verify` PASS.
+  **QC (b) the seam:** the whole change is one HTTP read surface
+  (`GET /v1/glossary/books/{id}/known-entities`), exercised end-to-end through the router by the
+  test above against **live Postgres** — the full `internal/api` suite green in 83.6 s.
+  **QC (c) real data:** the batch was chosen from real counts (3 status facts / 1 book / 7523
+  alive-true), and those counts are what made the third path viable: with `alive` universally
+  true, a conjunction cannot narrow anything that reads today.
+
+  ⚠️ **Writes went to a THROWAWAY** (`glossary_t32test`), created for this run. The real
+  glossary DB was read only.
+
+  **T32 still owes** the remaining six `alive` readers — each is the same conjunction, and each
+  needs its own surface's "absent means" answered (the reveal-axis table above is that answer,
+  per surface). The producer's corpus is still one book; the migration is now proven on the
+  handler that matters most rather than argued about.
 
   ### ✅ THE PRODUCER IS BUILT — `D-T32-ALIVE-NO-FACTS`'s blocker is gone, 2026-08-11
 
@@ -4502,7 +4594,13 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   is a producer proven, not a corpus. The gate baseline stays the migration checklist until a
   reader has real liveness to read on the book it serves.
 
-  ### ~~DEFERRAL~~ `D-T32-ALIVE-NO-FACTS` — the reader migration cannot be validated yet
+  ### ~~DEFERRAL `D-T32-ALIVE-NO-FACTS` — the reader migration cannot be validated yet~~
+  ✅ **DISCHARGED by T32a (2026-08-14), and its central argument was a FALSE DICHOTOMY.** It held
+  that a migrated reader must fail closed (a total outage) or fail open (proving nothing) —
+  both arms assuming the reader REPLACES `alive`. Conjoining is the third path and needed only
+  one fact to exist: `alive = true AND NOT gone-at-P` is strictly narrowing, so it cannot
+  regress, and it makes the liveness fact load-bearing on the read that matters most. Kept
+  unstruck below for its measurements, which are what made the third path visible.
 
   | | |
   |---|---|
