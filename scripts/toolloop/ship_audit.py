@@ -90,6 +90,14 @@ def _placeholder(spec: dict):
     enum = spec.get("enum")
     if isinstance(enum, list) and enum:
         return enum[0]
+    # 🔴 HONOUR THE UUID DECLARATION, WHICH LIVES IN THE DESCRIPTION. Measured across the live
+    # catalogue: 219 `*_id` properties say "UUID" in prose and none declares `format: uuid`. The
+    # probe sent "x" for glossary_deep_research's entity_id, died in validation, and reported
+    # UNPROBED — the boundary never ran. A RANDOM uuid is the right placeholder: it is
+    # well-formed, so it reaches the ownership check, and it cannot exist, so a tool that
+    # accepts it has leaked.
+    if spec.get("format") == "uuid" or "uuid" in str(spec.get("description") or "").lower():
+        return str(uuid.uuid4())
     t = spec.get("type")
     # 🔴 `type` CAN BE A UNION LIST, AND A BARE `t == "array"` MISSES IT. glossary_propose_batch
     # declares `ops` as `type: ["null", "array"]`; the probe compared against the LIST, fell
