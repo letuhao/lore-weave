@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from app.engine.name_grounding import NEAR_MISS_MAX_DISTANCE, audit_names, extract_names
+from app.engine.name_grounding import NEAR_MISS_MAX_DISTANCE, audit_names, extract_names, known_names_from_cast
 
 GROUNDING = (
     "<beat>goal=anchor the street</beat>\n"
@@ -299,3 +299,121 @@ def test_the_FOLD_is_the_primitive_a_widened_extractor_would_need():
     # the discriminating one, asserted rather than implied:
     assert "Ｅｌａｒａ".lower() != "Elara".lower()
     assert normalize_entity_name("Ｅｌａｒａ") == normalize_entity_name("Elara")
+
+
+# ── D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION ────────────────────────────────────────
+# The live call was `audit_names(draft, packed_prompt, language)` with `known_names` never
+# passed, so production compared the draft against the DRAFTER'S OWN INPUT. This module's
+# docstring already said what that is worth — "a check whose input and whose expectation come
+# from the same place verifies nothing" — and the deferral measured it: with the authored cast
+# the invented name is caught, through the live path it reported `unanchored: []`.
+
+
+def test_known_names_from_cast_reads_BOTH_cast_shapes():
+    """The KAL `cast` read returns `name`/`aliases`; by-ids and select-for-context return
+    `cached_name`/`cached_aliases`. Reading only one of them is how "36 entities, 0 with a
+    surface form" shipped once already — the gateway carries a comment about exactly that.
+    """
+    got = known_names_from_cast([
+        {"entity_id": "1", "name": "Aurelia", "aliases": ["The Grey Wren"]},
+        {"entity_id": "2", "cached_name": "Halvard", "cached_aliases": ["Hal"]},
+    ])
+    assert got == {"Aurelia", "The Grey Wren", "Halvard", "Hal"}
+
+
+def test_an_empty_cast_yields_NONE_not_an_empty_set():
+    """Load-bearing, and not a style choice. `audit_names` treats a falsy `known_names` as
+    "fall back to the prompt proxy"; an EMPTY SET that reached the glossary branch would mean
+    "this book has no names at all" and would accuse every proper noun in the draft. A glossary
+    outage must degrade to a weaker check, never to a false-accusation machine.
+    """
+    assert known_names_from_cast([]) is None
+    assert known_names_from_cast(None) is None
+    assert known_names_from_cast([{"entity_id": "1", "name": "   "}]) is None
+
+
+def test_the_authored_cast_CATCHES_an_invented_name_the_proxy_cannot():
+    """The deferral's measurement, as a test. The draft invents a name that the packed prompt
+    also contains — which is the whole point: the drafter wrote it into its own context, so a
+    comparison against that context can never flag it.
+    """
+    # Varenne is IN the packed prompt and NOT in the glossary — the realistic shape of the
+    # defect. The drafter had the name in its own context (a stray mention, a hallucination
+    # carried forward from an earlier pass), so the proxy sees it on both sides and agrees with
+    # itself. Only an independent truth side can say the book never authored this character.
+    prompt = "Aurelia crossed the bridge. Lucian waited beyond it. Varenne is mentioned here."
+    draft = "Aurelia crossed the bridge. Lucian waited beyond it, and so did Varenne."
+
+    proxy = audit_names(draft, prompt, "en")
+    assert proxy.truth_source == "prompt_proxy"
+    assert "Varenne" not in proxy.unanchored, (
+        "fixture is wrong: the proxy is supposed to MISS this, otherwise the test below "
+        "proves nothing about the difference the cast makes")
+
+    grounded = audit_names(draft, prompt, "en",
+                           known_names=known_names_from_cast([
+                               {"entity_id": "1", "name": "Aurelia"},
+                               {"entity_id": "2", "name": "Lucian"},
+                           ]))
+    assert grounded.truth_source == "glossary"
+    assert "Varenne" in grounded.unanchored, (
+        f"the authored cast did not catch the invented name (got {grounded.unanchored}) — "
+        "the check is still comparing the draft against the drafter's own input")
+
+
+def test_an_ALIAS_in_the_draft_is_not_accused_when_the_cast_carries_it():
+    """The reason `roster` could not be the source. It is deliberately projection-restricted to
+    id+name+kind — the gateway says widening it "would put aliases and descriptions on the
+    enumeration path every indexing pass walks" — so an alias-free name set turns every
+    legitimate alias into an invented name. `name_grounding` says which error direction matters:
+    "a name missing from `known` becomes a false accusation an author reads".
+    """
+    prompt = "Aurelia crossed the bridge."
+    draft = "The Grey Wren crossed the bridge."
+    names_without_aliases = known_names_from_cast([{"entity_id": "1", "name": "Aurelia"}])
+    assert "Wren" in audit_names(draft, prompt, "en",
+                                 known_names=names_without_aliases).unanchored, (
+        "fixture is wrong: an alias-free cast is supposed to false-accuse here")
+
+    with_aliases = known_names_from_cast(
+        [{"entity_id": "1", "name": "Aurelia", "aliases": ["The Grey Wren"]}])
+    accused = audit_names(draft, prompt, "en", known_names=with_aliases).unanchored
+    assert not accused, f"an authored alias was reported as an invented name: {accused}"
+
+
+@pytest.mark.asyncio
+async def test_run_canon_reflect_ACTUALLY_PASSES_the_authored_cast_through():
+    """The wiring, not the helper. `audit_names` has supported `known_names` all along and
+    `truth_source` has always been on the envelope — the defect was that the live call never
+    passed one, so production ran in `prompt_proxy` mode while the report looked like a
+    verification.
+
+    Drives the real `run_canon_reflect` (the same `cast_glossary_ids=[]` shortcut the test
+    above uses, which still runs name grounding) and asserts the envelope says `glossary`.
+    """
+    from types import SimpleNamespace
+
+    from app.engine.canon_reflect import run_canon_reflect
+
+    kwargs = dict(
+        knowledge=None, llm=None, user_id=__import__("uuid").uuid4(),
+        project_id=__import__("uuid").uuid4(), cast_glossary_ids=[], scene_sort_order=1,
+        # "Mira" is in the grounding, so the proxy cannot flag her; only an authored cast can.
+        draft="Elara knelt. Beside her, Mira lifted the quill.", packed_prompt=GROUNDING,
+        profile=SimpleNamespace(source_language="en"),
+        drafter_source="s", drafter_ref="m", judge_source=None, judge_ref=None,
+        prompt_estimate=0, max_output_tokens=100,
+    )
+
+    _t, proxy, _n = await run_canon_reflect(**kwargs)
+    assert proxy.name_truth_source == "prompt_proxy", (
+        "without an authored cast the audit must SAY it fell back to the proxy")
+
+    _t, grounded, _n = await run_canon_reflect(
+        **kwargs, authored_cast=[{"entity_id": "1", "name": "Elara"}])
+    assert grounded.name_truth_source == "glossary", (
+        "run_canon_reflect did not pass the authored cast to audit_names — the check is back "
+        "to comparing the draft against the drafter's own input")
+    assert "Mira" in grounded.unanchored_names, (
+        f"the authored cast reached the audit but the invented name was not caught "
+        f"(got {grounded.unanchored_names})")

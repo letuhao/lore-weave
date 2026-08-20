@@ -258,6 +258,29 @@ def extract_names(text: str, corpus: str | None = None) -> set[str]:
     return {w for w, mid in seen.items() if _is_name(w, mid, lowercase)}
 
 
+def known_names_from_cast(rows: list[dict] | None) -> set[str] | None:
+    """The authored surface forms for a book, as `audit_names(known_names=…)` wants them.
+
+    Accepts both cast shapes this codebase has: the KAL `cast` read returns `name`/`aliases`,
+    while by-ids and select-for-context return `cached_name`/`cached_aliases`. Reading only one
+    of them is how "36 entities, 0 with a surface form" shipped once already, so both are taken.
+
+    Returns **None** for an empty or absent cast rather than an empty set, and the distinction
+    is load-bearing: `audit_names` treats a falsy `known_names` as "fall back to the prompt
+    proxy", whereas an empty set that reached the glossary branch would mean "this book has no
+    names" and accuse every proper noun in the draft.
+    """
+    if not rows:
+        return None
+    out: set[str] = set()
+    for e in rows:
+        for raw in (e.get("name"), e.get("cached_name"),
+                    *(e.get("aliases") or []), *(e.get("cached_aliases") or [])):
+            if isinstance(raw, str) and raw.strip():
+                out.add(raw.strip())
+    return out or None
+
+
 def audit_names(draft: str, grounding: str, language: str | None = None,
                 known_names: set[str] | None = None) -> NameAudit:
     """Which names in `draft` appear nowhere in the story's known names.

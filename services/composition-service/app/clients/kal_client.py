@@ -139,6 +139,82 @@ class KalClient:
             _ROSTER_MAX_PAGES, book_id,
         )
         return _partial("page cap")
+    async def cast(
+        self, book_id: UUID, *, user_id: UUID | str | None = None, strict: bool = False,
+    ) -> list[dict[str, Any]]:
+        """The book's cast WITH SURFACE FORMS — ``[{entity_id, name, aliases, kind}, ...]``,
+        drained across the keyset cursor to completion exactly like ``roster``.
+
+        ``roster`` cannot serve this. It is **deliberately** projection-restricted to
+        id+name+kind — the gateway says widening it "would put aliases and descriptions on the
+        enumeration path every indexing pass walks" — and an alias-free name set is worse than
+        no name set for `audit_names`: every alias an author legitimately uses comes back as an
+        invented name. `name_grounding`'s own note says which error direction matters ("a name
+        missing from `known` becomes a false accusation an author reads"), so the completeness
+        check needs the richer projection, which is what ``cast`` is for.
+
+        ``strict=True`` raises ``RosterIncomplete`` on a partial drain, and callers that treat
+        the cast as AUTHORITATIVE must use it: a truncated set does not merely miss names, it
+        actively accuses the ones it dropped.
+        """
+        url = f"{self._base_url}/v1/kal/books/{book_id}/cast"
+        out: list[dict[str, Any]] = []
+        cursor: str | None = None
+
+        def _partial(reason: str) -> list[dict[str, Any]]:
+            if strict:
+                raise RosterIncomplete(reason)
+            return out
+
+        for _ in range(_ROSTER_MAX_PAGES):
+            params: dict[str, Any] = {"limit": _ROSTER_PAGE_LIMIT}
+            if cursor:
+                params["cursor"] = cursor
+            try:
+                resp = await self._http.get(url, params=params, headers=self._headers(user_id))
+            except httpx.HTTPError as exc:
+                logger.warning("kal cast unavailable (partial drain): %s", exc)
+                return _partial(f"transport: {exc}")
+            if resp.status_code != 200:
+                logger.warning("kal cast → %d (partial drain)", resp.status_code)
+                return _partial(f"status {resp.status_code}")
+            try:
+                data = resp.json()
+            except (ValueError, AttributeError) as exc:
+                logger.warning("kal cast bad JSON: %s", exc)
+                return _partial("bad json")
+            items = data.get("items", []) if isinstance(data, dict) else []
+            for e in items:
+                eid = e.get("entity_id")
+                name = e.get("name") or e.get("cached_name")
+                if not (eid and name):
+                    continue
+                # Both alias keys are accepted for the same reason the gateway accepts both:
+                # the LIST endpoint returns `aliases` while by-ids/select-for-context return
+                # `cached_aliases`, and reading only one of them is how "36 entities, 0 with a
+                # surface form" shipped once already.
+                raw = e.get("aliases")
+                if not isinstance(raw, list):
+                    raw = e.get("cached_aliases")
+                out.append({
+                    "entity_id": str(eid),
+                    "name": name,
+                    "aliases": [a for a in (raw or []) if isinstance(a, str) and a.strip()],
+                    "kind": e.get("kind"),
+                })
+            nxt = data.get("next_cursor") if isinstance(data, dict) else None
+            if not nxt:
+                return out  # COMPLETE drain (even if out is empty)
+            if nxt == cursor:
+                logger.warning("kal cast stuck cursor for book %s — stopping", book_id)
+                return _partial("stuck cursor")
+            cursor = nxt
+        logger.warning(
+            "kal cast drain hit the %d-page safety cap for book %s (cast may be incomplete)",
+            _ROSTER_MAX_PAGES, book_id,
+        )
+        return _partial("page cap")
+
 
 
     async def state(

@@ -350,6 +350,32 @@ async def run_stitch(
     }
 
 
+async def _authored_cast(work, user_id: str) -> list[dict[str, Any]] | None:
+    """The book's authored cast WITH surface forms, for `audit_names`' truth side.
+
+    🔴 `D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION`: without this the name check compared
+    the draft against the packed prompt — the drafter's own input — and could only ever agree
+    with itself.
+
+    `strict=True` on purpose. A partial drain does not merely miss names; every name in a
+    dropped page becomes an INVENTED name in the author's report. Failing to None is the
+    degrade story: the audit falls back to the proxy and `truth_source` says which happened,
+    so a regression is visible rather than silent.
+    """
+    if work is None or not getattr(work, "book_id", None):
+        return None
+    try:
+        from app.clients.kal_client import RosterIncomplete, get_kal_client
+        return await get_kal_client().cast(work.book_id, user_id=user_id, strict=True)
+    except RosterIncomplete as exc:
+        logger.warning("authored cast incomplete (%s) — name audit falls back to the proxy", exc)
+        return None
+    except Exception:  # noqa: BLE001
+        logger.warning("authored cast unavailable — name audit falls back to the proxy",
+                       exc_info=True)
+        return None
+
+
 async def run_generate(
     pool: asyncpg.Pool, llm: LLMClient, knowledge, *, input: dict[str, Any],
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
@@ -453,6 +479,7 @@ async def run_generate(
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
             plan_status=plan_status, plan_cast=plan_cast,
+            authored_cast=await _authored_cast(work, user_id),
             # SET-3 — the per-book half; the deploy ceiling is ANDed inside.
             role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             draft=w.text, packed_prompt=packed_prompt, profile=profile,
@@ -679,6 +706,7 @@ async def run_chapter_generate(
             role_check_enabled=bool(sdict.get("canon_role_check_enabled", False)),
             knowledge=knowledge, llm=llm, user_id=UUID(user_id), project_id=UUID(project_id),
             cast_glossary_ids=cast_glossary_ids, scene_sort_order=input.get("scene_sort_order"),
+            authored_cast=await _authored_cast(work, user_id),
             draft=winner.text, packed_prompt=packed_prompt, profile=profile,
             drafter_source=model_source, drafter_ref=model_ref,
             judge_source=critic_source, judge_ref=critic_ref,

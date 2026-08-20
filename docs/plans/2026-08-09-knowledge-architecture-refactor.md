@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 35 of 73 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 36 of 75 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (11/27) · `T46` (0/2) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (12/29) · `T46` (0/2) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7503,6 +7503,89 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **To unblock** | Pass the book's glossary names into `audit_names` at both call sites in `canon_reflect`. It is a real design change, not a typo: it adds a glossary call to the authoring hot path and needs a degrade story (an outage must fall back to the proxy and SAY so via `truth_source`, which the field already supports). |
   | **Mechanism** | `truth_source` is already on the envelope, so once wired, a regression back to the proxy is visible rather than silent. |
   | **Retry when** | Immediately — no PO decision, no model, and the acceptance draft is a ready-made fixture with a known answer. |
+
+  #### ✅ `D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION` — FIXED 2026-08-21 (QC-5 C8)
+
+  ```
+  composition unit 3616 -> 3624 passed        BITE x4, each red on its own assertion
+  LIVE (rebuilt worker): GET /v1/kal/books/019f9f2d…/cast?limit=200 -> 200 OK
+  cast rows 36 · with >=1 alias 4 · known_names 44   (was: known_names never passed)
+  ```
+
+  The deferral said *"Retry when: **Immediately** — no PO decision, no model"*, and it was right:
+  the whole thing was reachable today. The live call was
+  `audit_names(draft, packed_prompt, language)` with `known_names` **never passed**, so
+  production compared the draft against **the drafter's own input**. The module's own docstring
+  had already named it — *"a check whose input and whose expectation come from the same place
+  verifies nothing"* — which makes this the session's own recurring defect **shipped as a
+  production check**: a criterion that cannot fail.
+
+  ### 🔴 THE OBVIOUS SOURCE WAS THE WRONG ONE, and rule 8 is why that got caught
+
+  The deferral says *"pass the book's glossary names"*. Under INV-KAL composition no longer reads
+  the glossary roster directly — `glossary_client` carries a note that the direct entity-list read
+  *"was removed here so it can't be reintroduced as a bypass"* — so the source is the KAL. But the
+  KAL's obvious method is wrong too:
+
+  ```
+  roster  ->  {entity_id, name, kind}      DELIBERATELY projection-restricted
+  cast    ->  + aliases, cached_name       "the page-shaped detail read"
+  ```
+
+  🎯 **`roster` would have made the check WORSE, not better.** The gateway restricts it on
+  purpose — widening it *"would put aliases and descriptions on the enumeration path every
+  indexing pass walks"* — and an alias-free truth set reports every legitimate alias as an
+  invented name. `name_grounding` states which error direction matters: *"a name missing from
+  `known` becomes a false accusation an author reads"*. So an alias-less fix converts a check that
+  verifies nothing into one that accuses authors. **Measured before building** (rule 8): the
+  live cast returns **36 rows, 4 carrying aliases, 44 distinct surface forms** — the aliases are
+  1 in 9 of the truth set, and dropping them is not a rounding error.
+
+  ✅ **Built:** `KalClient.cast()` — the same keyset drain as `roster`, both alias keys accepted
+  (`aliases` and `cached_aliases`, because reading only one is how *"36 entities, 0 with a surface
+  form"* shipped once already), and **`strict=True` at the call site**. A partial drain does not
+  merely miss names; every name in a dropped page becomes an invented name in the author's report,
+  so an incomplete drain must take the degrade path rather than accuse people.
+
+  ✅ **The degrade story the deferral asked for.** `_authored_cast` returns `None` on
+  `RosterIncomplete` or any failure, `known_names_from_cast` returns `None` (never an empty set —
+  an empty set reaching the glossary branch would mean *"this book has no names"* and accuse every
+  proper noun), and `audit_names` then falls back to the proxy and **says so** through
+  `truth_source`, which was already on the envelope. A regression is visible instead of silent.
+
+  **BITE ×4, each red on its own assertion:**
+
+  ```
+  41. stop passing known_names in canon_reflect   E "run_canon_reflect did not pass the authored
+                                                     cast — back to comparing the draft against
+                                                     the drafter's own input"
+  42. empty cast -> empty SET instead of None     E test_an_empty_cast_yields_NONE…
+  43. drop the cached_aliases fallback            E test_cast_accepts_the_OTHER_alias_key_too
+  44. strict drains like non-strict               E test_cast_STRICT_raises_on_a_partial_drain…
+  ```
+
+  ⚠️ **My own fixture was wrong first, and its guard caught it.** The proxy test seeded an
+  invented name that was *not* in the packed prompt — so the proxy flagged it, and the comparison
+  proved nothing. The realistic shape is a name the drafter had **in its own context** and the
+  book never authored: only then does the proxy agree with itself. Corrected, with the guard left
+  in place so the fixture cannot drift back.
+
+  📐 **QC (b), live:** the rebuilt worker made exactly one
+  `GET /v1/kal/books/…/cast?limit=200 → 200 OK` during a real authoring run on chapter 5, and the
+  cast it received carries 36 entities and 44 surface forms. The wiring fires on the path QC-5
+  actually uses (`run_chapter_generate`, which had **no** `plan_cast` and therefore no other
+  source of authored names).
+
+  ⚠️ **What this does NOT do.** The authoring-run report surfaces `critic_verdict` and not the
+  name-audit fields, so `name_truth_source` is not readable from that envelope — the live proof
+  here is the call plus the cast contents, not a report field. And it does not move QC-5's
+  verdict: the run above still scored `violations_raw_count 2, violations_dropped 2` — **found
+  two, attributed neither**, which is C7's finding and a different defect from this one.
+
+  **QC (a) gates:** composition unit **3616 → 3624**; `plan-verify` PASS; `plan-row-honesty-gate`
+  OK; `doc-language-gate` OK.
+  **QC (c) real data:** 36 authored entities and 44 surface forms read from the live gateway for
+  the acceptance book, on a rebuilt worker.
 
   ### ⛔ QC-5 VERDICT: **DOES NOT PASS** — forensics on the verdicts, not the scores
 
