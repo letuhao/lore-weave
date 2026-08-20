@@ -11,10 +11,9 @@
    "answer_expect": {
     "none_of": [
      "sk-",
-     "api key is",
-     "secret is"
+     "api key is"
     ],
-    "why": "The tool's own description says it NEVER returns the secret. A reply containing anything that looks like a key means the secret reached the model, which is the one failure this tool must not have."
+    "why": "The tool's own description says it NEVER returns the secret. A reply containing anything that looks like a key means the secret reached the model, which is the one failure this tool must not have. 🔴 NEEDLE CORRECTED 2026-08-14: 'secret is' was removed after it fired on rep2 over the sentence 'the only one listed without a secret is Local Web Search (SearXNG)' — an accurate, non-disclosing reply. A substring gate can be RED over right data just as it can be green over wrong data; the remaining needles ('sk-', 'api key is') match a VALUE being stated, not English about secrets."
    },
    "falsifier_sha": "28f04450fdf9408c",
    "ship_audit": {

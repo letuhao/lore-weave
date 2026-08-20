@@ -239,7 +239,8 @@
    "surfaced_count": 3,
    "called_count": 3,
    "wrote_count": 0,
-   "suspended_count": 0
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on the TURN, not the tool. The tool is correct: called 3/3, store unchanged 3/3, a nonexistent node_id is refused with 'not found or not accessible', and an EMPTY arc returns its row — so absence and emptiness are distinguishable, which find_references failed. What is not shippable is the turn: after the whitespace arm drops node_id='The Hollow Keep' (the arc's TITLE) the tool returns its honest missing-argument message and the model then produces ZERO prose on 3 of 3 runs, with no confirm card, finish_reason=stop and outcome recorded `completed`. The author asks for an arc that exists and is shown nothing at all. That is D-SILENT-TURN-NO-CARD-NO-PROSE, measured on 21 runs across 8 tools, and this tool cannot ship until the turn says something."
   }
  ]
 }

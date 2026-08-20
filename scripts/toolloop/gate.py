@@ -141,17 +141,58 @@ class Gate:
         # populated table), and the only thing that made it visible was a seed where the right
         # answer and the lazy answer DIFFER. So the expectation is declared in the scenario and
         # checked here, rather than being prose I grade by eye after seeing the reply.
+        # 🔴 AND THE BAR ITSELF WAS VACUOUS FOR MOST OF ITS LIFE. Measured 2026-08-14 across
+        # every evidence file and scenario on disk: 45 answer_expect declarations, of which
+        # all_of=24, none_of=13, any_of=2 — while this code read ONLY must_contain (2) and
+        # must_not_contain (8). An unrecognised key produced an EMPTY requirement list, and an
+        # empty list is satisfied by anything, so the check reported PASS. The bar written to
+        # catch a confidently false answer was silent on the majority of the tools that declared
+        # one, including glossary_curation_list, the incident it was written for.
+        #
+        # THE INVARIANT: a declared expectation is either READ or the gate REFUSES. Silence over
+        # an unknown key is what let the vocabulary drift for twelve batches, so an unknown key is
+        # now a hard failure rather than a no-op — the one thing that cannot drift again.
         exp = t.get("answer_expect") or {}
         if exp:
-            must = [str(x).lower() for x in (exp.get("must_contain") or [])]
-            mustnt = [str(x).lower() for x in (exp.get("must_not_contain") or [])]
+            KNOWN = {"all_of": "must", "must_contain": "must",
+                     "none_of": "mustnt", "must_not_contain": "mustnt",
+                     "any_of": "any", "why": None}
+            unknown = sorted(k for k in exp if k not in KNOWN)
+            self._check(
+                not unknown, f"[{t['tool']}] DATA answer_expect is READABLE",
+                f"unrecognised key(s) {unknown} in answer_expect — the gate cannot check what it "
+                f"cannot read, and an unread expectation PASSES silently. Known keys are "
+                f"{sorted(k for k in KNOWN if k != 'why')}")
+            must, mustnt, any_of = [], [], []
+            for k, bucket in KNOWN.items():
+                if bucket is None or k not in exp:
+                    continue
+                vals = [str(x).lower() for x in (exp.get(k) or [])]
+                {"must": must, "mustnt": mustnt, "any": any_of}[bucket].extend(vals)
+            declared = bool(must or mustnt or any_of)
             bad = []
             for r in runs:
                 a = str(r.get("answer") or "").lower()
                 if not a:
+                    # 🔴 AN EMPTY REPLY USED TO `continue` HERE, WHICH IS THE SAME BLINDNESS ONE
+                    # level down: composition_arc_get produced ZERO prose on 3 of 3 runs and this
+                    # bar passed over all three. A turn with no text cannot satisfy a declared
+                    # all_of, and reporting it as satisfied hides an empty answer from the gate.
+                    #
+                    # BUT THE CONTROL REFUTES THE OBVIOUS VERSION OF THAT RULE, so it is folded in
+                    # here rather than left to be rediscovered. Measured over every run on disk:
+                    # 113 of 347 turns had no prose — and 92 of those 113 ended SUSPENDED ON A
+                    # CONFIRM CARD, where the card IS the output and prose is legitimately absent.
+                    # Failing those would fail correct Tier-A behaviour, and would have wrongly
+                    # withdrawn glossary_extract_entities_from_doc. Only the 21 genuinely silent
+                    # turns — no card, no approval, no text — are the defect.
+                    if declared and not (r.get("left_suspended") or r.get("approvals")):
+                        bad.append((r.get("rep"), ["<EMPTY REPLY, no card>"], []))
                     continue
                 miss = [m for m in must if m not in a]
                 hit = [m for m in mustnt if m in a]
+                if any_of and not any(m in a for m in any_of):
+                    miss.append(f"<none of {any_of}>")
                 if miss or hit:
                     bad.append((r.get("rep"), miss, hit))
             self._check(
@@ -286,6 +327,75 @@ def cmd_refresh(a) -> int:
     return 0
 
 
+def _record(a, path: pathlib.Path, row: dict, reason: str) -> None:
+    """🔴 THE GATE USED TO SAY "may be recorded" AND WRITE NOTHING.
+
+    Measured 2026-08-14: batch 14 passed all five of its per-tool decisions, I read "gate PASSED"
+    as the end of the step, and no ledger row was ever written. `scengen.py --next` then re-derived
+    the SAME five tools as the next batch, which is the only reason it surfaced at all. A sweep of
+    every evidence file on disk found exactly those five with evidence and no row, so the seam had
+    bitten once — but a passed gate that depends on a human remembering to transcribe it is a
+    progress number that drifts silently, which is the defect class this loop exists to remove.
+
+    THE INVARIANT: the gate's decision and the ledger are written in ONE step, by the gate. The
+    note is assembled from what was MEASURED — counts, store movement, the evidence path — and
+    never from prose invented here; judgement still belongs in the batch file, where the gate can
+    re-check it.
+    """
+    ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
+    tools = ledger["tools"]
+    runs = row.get("runs") or []
+    moved = sum(1 for r in runs
+                if (r.get("store") or {}).get("before") != (r.get("store") or {}).get("after"))
+    prev = tools.get(a.tool, {})
+    note = (f"{a.state.upper()} by scripts/toolloop/gate.py against {path.as_posix()}. "
+            f"MEASURED: surfaced {row.get('surfaced_count')}/{len(runs)}, "
+            f"called {row.get('called_count')}/{len(runs)}, "
+            f"suspended-on-card {row.get('suspended_count')}/{len(runs)}, "
+            f"owning store moved on {moved}/{len(runs)} run(s). "
+            f"ship_audit and falsifier are on file in the same entry.")
+    if reason:
+        note += f" BLOCKED REASON: {reason}"
+    tools[a.tool] = {**prev, "state": a.state, "cycle": ledger.get("progress", {}).get("last_batch"),
+                     "note": note, "evidence_file": path.as_posix(),
+                     "evidence_class": "gate-backed", "counts_toward_release": True}
+    pr = ledger["progress"]
+    pr.update({
+        "tools_concluded": sum(1 for v in tools.values()
+                               if v.get("state") in ("proven", "blocked")),
+        "tools_in_cycle": sum(1 for v in tools.values() if v.get("state") == "in_cycle"),
+        "tools_proven": sum(1 for v in tools.values() if v.get("state") == "proven"),
+        "tools_blocked": sum(1 for v in tools.values() if v.get("state") == "blocked"),
+    })
+    LEDGER.write_text(json.dumps(ledger, indent=1, ensure_ascii=False) + chr(10), encoding="utf-8")
+
+
+def cmd_audit(a) -> int:
+    """Evidence that exists on disk but has NO ledger row — the seam _record now closes, kept as a
+    standing check so the class cannot come back by another route (a hand-edited ledger, a batch
+    concluded before this fix, a row deleted in a merge)."""
+    ledger = json.loads(LEDGER.read_text(encoding="utf-8"))
+    tools = ledger["tools"]
+    orphans = {}
+    for f in sorted(pathlib.Path("docs/eval/toolloop").rglob("*.json")):
+        try:
+            d = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not isinstance(d, dict):
+            continue
+        for e in (d.get("tools") or []):
+            if isinstance(e, dict) and e.get("tool") and e["tool"] not in tools:
+                orphans.setdefault(e["tool"], f.as_posix())
+    if not orphans:
+        print(f"audit clean — every tool with evidence has a ledger row ({len(tools)} rows)")
+        return 0
+    print(f"REFUSED — {len(orphans)} tool(s) have evidence on disk and NO ledger row:")
+    for n, f in sorted(orphans.items(), key=lambda x: (x[1], x[0])):
+        print(f"  {n:40} {f}")
+    return 1
+
+
 def cmd_conclude(a) -> int:
     if a.state not in TERMINAL:
         print(f"'{a.state}' is not terminal. Exactly two words are: {TERMINAL}. "
@@ -323,7 +433,8 @@ def cmd_conclude(a) -> int:
             for line in hard:
                 print(f"  FAIL  {line}")
             return 1
-        print(f"gate PASSED for {a.tool} → may be recorded blocked")
+        _record(a, path, row, reason)
+        print(f"gate PASSED for {a.tool} → RECORDED blocked in the ledger")
         print(f"  reason on file: {reason[:160]}")
         print("  (a blocked tool is NOT progress — it is a tool this platform cannot ship yet)")
         return 0
@@ -335,7 +446,8 @@ def cmd_conclude(a) -> int:
     if not LEDGER.exists():
         print(f"ledger missing: {LEDGER}")
         return 3
-    print(f"gate PASSED for {a.tool} → may be recorded {a.state}")
+    _record(a, path, row, "")
+    print(f"gate PASSED for {a.tool} → RECORDED {a.state} in the ledger")
     print("  (the gate proves the EVIDENCE exists; it does not prove the root cause is right)")
     return 0
 
@@ -355,6 +467,8 @@ def main() -> int:
     d.add_argument("--tool", required=True)
     d.add_argument("--state", required=True)
     d.set_defaults(fn=cmd_conclude)
+    au = sub.add_parser("audit")
+    au.set_defaults(fn=cmd_audit)
     a = ap.parse_args()
     return a.fn(a)
 

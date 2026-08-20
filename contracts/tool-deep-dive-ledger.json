@@ -1675,14 +1675,14 @@
    "note": "BLOCKED on a NAMED fixture gap. Surfaced 3/3, called 0/3: asked to record that two named characters know each other, the model called kg_project_create 3/3 and suspended on THAT card — it bootstrapped the graph instead of proposing the edge, which is not obviously wrong given the KG side was un-bootstrapped. Boundary probes are good: two unknown entity ids are refused with an actionable message naming both endpoints and the projection step needed; tenancy refused. The seed must create the KG project and project both entities as graph nodes so the edge is the only outstanding action."
   },
   "memory_search": {
-   "state": "proven",
+   "state": "in_cycle",
    "provider": "memory",
    "tier": "R",
    "cycle": "batch-6",
    "group": "C",
    "evidence_class": "gate-backed",
-   "counts_toward_release": true,
-   "note": "Called 3/3 from 'What has been established about the Obsidian Trench so far?' — its OWN declared phrase, deliberately not 'who is', which belongs to memory_recall_entity and cost batch 4 a scenario. Store unchanged 3/3, and the answer carried the seeded chapter's fact ('only walkable during low tide') which is its ONLY source. SHIP: tenancy refused; empty case returns hits [] WITH a note saying why ('this project has no indexed memory yet') rather than a blank presented as an answer."
+   "counts_toward_release": false,
+   "note": "WITHDRAWN from proven 2026-08-14. The note claimed 'the answer carried the seeded chapter's fact (only walkable during low tide)'. Re-checked against the runs once the answer bar was repaired: 1 of 3 replies carried it and 2 of 3 said 'I couldn't find any mention of the Obsidian Trench ... it's possible it hasn't been written into the story yet' over a fixture that contains it. I generalised a conclusion from the one run I read. That is a FALSE ABSENCE over a seeded fixture — the same class as story_search's D-DEGRADED-READ-REPORTED-AS-ABSENCE — and it passed only because the gate read must_contain while the scenario declared all_of. PRIOR NOTE: Called 3/3 from 'What has been established about the Obsidian Trench so far?' — its OWN declared phrase, deliberately not 'who is', which belongs to memory_recall_entity and cost batch 4 a scenario. Store unchanged 3/3, and the answer carried the seeded chapter's fact ('only walkable during low tide') which is its ONLY source. SHIP: tenancy refused; empty case returns hits [] WITH a note saying wh"
   },
   "translation_start_extraction": {
    "state": "proven",
@@ -1725,14 +1725,14 @@
    "note": "BLOCKED on DQ-T31, a surfacing defect measured in two passes. The VAGUE prompt left the intent gate open (0 withheld) and the model correctly asked which kinds, because `ops` must be explicit. The CONCRETE prompt naming Faction/Allegiance and Artifact/Origin — world-setup by definition — SHUT the gate: 4 tools withheld at stage=intent_gate including this one. With it invisible the model reached for glossary_adopt_standards 3/3 and suspended on ITS card, which adopts SYSTEM standards and would create neither kind. Its own boundary is sound: empty `ops` is refused with a message naming the missing input."
   },
   "jobs_list": {
-   "state": "proven",
+   "state": "in_cycle",
    "provider": "jobs",
    "tier": "R",
    "cycle": "batch-9 (re-earned)",
    "group": "C",
    "evidence_class": "gate-backed",
-   "counts_toward_release": true,
-   "note": "RE-EARNED after the 2026-08-14 withdrawal. The batch-7 conclusion rested on 'the reply named this account's real jobs by id' while the reply said 'You currently have 10 background jobs running' — the PAGE SIZE, against 31 actually active. Found by cross-checking jobs_summary's answer, not by re-reading the evidence. Fixed at the tool (D-PAGE-READ-AS-A-TOTAL, 40e331288): the payload now carries page {returned, has_more} and a guidance line naming jobs_summary, mirroring world_list, which was already built that way and whose answer was correct the same day. RE-MEASURED K=5: called 5/5, store unchanged, and 0 of 5 replies state the item count as the number of jobs (was 3 of 3). One turn in five produced no prose at all — recorded as OBS-COMPLETED-TURN-WITH-NO-PROSE, correlation not causation."
+   "counts_toward_release": false,
+   "note": "WITHDRAWN from proven a SECOND time, 2026-08-14. The page-as-a-total defect it was re-earned against is genuinely fixed and 4 of 5 replies are correct. The fifth produced NO text at all with no card: D-SILENT-TURN-NO-CARD-NO-PROSE — the turn produced no user-visible text, no confirm card and no approval, yet is recorded outcome=`completed`, is_error=false, finish_reason=stop. A tool cannot be proven on a K=5 distribution that includes a turn the author would experience as the product doing nothing. PRIOR NOTE: RE-EARNED after the 2026-08-14 withdrawal. The batch-7 conclusion rested on 'the reply named this account's real jobs by id' while the reply said 'You currently have 10 background jobs running' — the PAGE SIZE, against 31 actually active. Found by cross-checking jobs_summary's answer, not by re-reading the evidence. Fixed at the tool (D-PAGE-READ-AS-A-TOTAL, 40e331288): the payload now carries pag"
   },
   "world_map_add_region": {
    "state": "proven",
@@ -2073,6 +2073,48 @@
    "evidence_class": "gate-backed",
    "counts_toward_release": true,
    "note": "Called 3/3, gated, store unchanged — and live it did the RIGHT thing: with a completed translation and nothing changed it declined to spend, answering 'no changes have been detected in the source text that would require a re-translation'. 🔴 ITS AUDIT FOUND THE HOLE ANYWAY: on a chapter with NO translation it minted a card titled 'Re-translate 0 changed segment(s)'. Same invariant as D-EXTRACTION-CONFIRMS-A-NO-OP, in this service's other tool, found by probing the sibling after fixing the first. FIXED and re-verified live."
+  },
+  "composition_arc_extract_template": {
+   "state": "proven",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch14.json. MEASURED: surfaced 3/3, called 3/3, suspended-on-card 3/3, owning store moved on 0/3 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_arc_edit": {
+   "state": "blocked",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch14.json. MEASURED: surfaced 3/3, called 0/3, suspended-on-card 3/3, owning store moved on 0/3 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: Surfaced 3/3, called 0/3 — the model used composition_arc_create, the DEDICATED create tool, and suspended on its card. arc_edit's op enum includes create, so the two overlap and the model picked the more specific one. A declaration-overlap finding, not a defect: nothing wrong happened, and the unified entry point simply lost to its own specialised sibling.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_arc_apply": {
+   "state": "blocked",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch14.json. MEASURED: surfaced 3/3, called 0/3, suspended-on-card 0/3, owning store moved on 0/3 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: Surfaced 3/3, called 0/3 — and the model was RIGHT. It called composition_arc_template_list and asked 'I've found several arc templates in your library. Which one would you like me to apply?'. My prompt said 'use one of my library arc templates' and named none, so asking is correct. Same shape as glossary_propose_batch in batch 6: a tool needing an explicit choice cannot act on a vague ask.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_arc_import_analyze": {
+   "state": "blocked",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch14.json. MEASURED: surfaced 3/3, called 0/3, suspended-on-card 0/3, owning store moved on 0/3 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: Surfaced 3/3, called 0/3 — and the model was RIGHT again. It called tool_list (discovery) and explained it has a tool to deconstruct an imported work, then asked for the source. The fixture has NO import source, so refusing to proceed is the honest outcome; a card over a nonexistent source would have been D-EXTRACTION-CONFIRMS-A-NO-OP a third time.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_arc_get": {
+   "state": "in_cycle",
+   "provider": "composition",
+   "tier": "R",
+   "cycle": "batch-14 (2026-08-14)",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14-get.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": false,
+   "note": "NOT CONCLUDED, and the gate refused it in BOTH directions, which is the right answer. The TOOL is good: called 3/3, store unchanged 3/3, a nonexistent node_id is refused, an EMPTY arc returns its row (so absence and emptiness are distinguishable — the thing find_references failed). `proven` is refused because all 3 replies are empty; `blocked` is refused because blocked means the tool could not be EXERCISED and this one was exercised perfectly. What is broken is the turn. D-SILENT-TURN-NO-CARD-NO-PROSE — the turn produced no user-visible text, no confirm card and no approval, yet is recorded outcome=`completed`, is_error=false, finish_reason=stop."
   }
  },
  "defects": {
@@ -2295,6 +2337,13 @@
    "commit": "5ddffdece",
    "wording_is_the_risk": "The OPPOSITE error is measured and worse: naming an unreachable tool produced 40,597 chars of one repeated paragraph. Four tests pin that the stamp says not-callable, that the model cannot open the gate itself, and that the route out is to ASK THE USER — not a retry.",
    "live": "VOID x2 — see the observation below. Unit-proven with falsifiers RED on both halves; deployed md5-verified."
+  },
+  "D-SILENT-TURN-NO-CARD-NO-PROSE": {
+   "state": "open",
+   "found": "2026-08-14",
+   "measured": "21 runs across 8 tools produced no user-visible text with NO confirm card and no approval: composition_arc_get 5, glossary_curation_list 3, plan_compile 3, jobs_get 3, translation_job_status 3, settings_model_delete 2, jobs_list 1, memory_recall_entity 1. Every one is recorded outcome=`completed`, is_error=false, so every count that reads outcomes sees a success and the author sees a blank reply.",
+   "control_that_shrank_it": "First measured as 113 of 347 turns (32%). The control refutes most of it: 92 of those 113 ended SUSPENDED ON A CONFIRM CARD, where the card is the output and prose is legitimately absent. Failing those would have wrongly withdrawn glossary_extract_entities_from_doc. The defect is the 21 that had no card either.",
+   "why_it_was_invisible": "The gate's own 'DATA answer is true' bar skipped an empty reply with a bare `continue`, and separately read must_contain/must_not_contain while 39 of 45 declarations used all_of/none_of/any_of. Both are fixed at that one bar; an unknown key is now a hard failure so the vocabulary cannot drift again."
   }
  },
  "deferred_questions": {
@@ -2739,22 +2788,24 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 35,
-  "tools_in_cycle": 0,
-  "tools_proven": 30,
-  "tools_blocked": 0,
+  "tools_concluded": 94,
+  "tools_in_cycle": 3,
+  "tools_proven": 74,
+  "tools_blocked": 20,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
-  "last_batch": "batch-1 (2026-08-14)",
+  "last_batch": "batch-14 (2026-08-14)",
   "evidence_split": {
-   "gate_backed": 5,
+   "gate_backed": 62,
    "prose_note_pre_gate": 30,
    "note": "A conclusion is 'gate-backed' when it cites an evidence file that exists and that scripts/toolloop/gate.py can re-check. The pre-gate rows are cycles 1-31, concluded one tool at a time before the harness existed; they carry detailed LIVE/DATA/FALSIFIER prose and represent real work, but nothing can RE-VERIFY them without re-running the tool. Split recorded so the headline count is never read as uniformly machine-checked."
   },
   "release_surface": 198,
   "concluded_in_release_surface": 40,
-  "remaining_in_release_surface": 158
+  "remaining_in_release_surface": 158,
+  "shippable_denominator": 198,
+  "_stale_block_note": "This block read tools_concluded=35 while its own rows held 92, for batches 2-14. It is now RECOMPUTED from the rows on every update; a hand-typed progress number always drifts toward what was true when someone last remembered to edit it."
  },
  "observations": [
   {
