@@ -5140,10 +5140,58 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   **Bite:** run over the corpus → edge count non-zero **and** the graph acyclic.
   (depends on T32)
   ⬜ **STILL OWED, checked 2026-08-14:** the code, the unit evidence and the corpus bite are all
-  done below — which is why the honesty gate flags this row — but it **depends on T32**, which
-  is open and names its own remainder. Coverage is not the gap: §4.3 moved that to **QC-6**
+  done below — which is why the honesty gate flags this row — and **T32 has since CLOSED** (corrected 2026-08-21, T33a — the
+  dependency is discharged; what remains is the live run, not another row). Coverage is not the gap: §4.3 moved that to **QC-6**
   deliberately (*"both are live proofs on real data, and QC-6 is where the plan runs them"*).
   ---
+  ### 📊 T33a 2026-08-21 — every open row's blocker re-checked; **four were stale, one pointed at a retracted phase**
+
+  ```
+  67 rows parsed · 9 open
+  stale `(depends on X)` where X is CLOSED : 3   (T33->T32, T46->T45, T48->T47)
+  prose asserting a CLOSED row is open     : 1   ("T35 is deferred")
+  ```
+
+  Four times this session a row's blocker turned out to be stale — `T35`'s (T32 closed a week
+  ago), `T25`'s rebuild measurement (QC-3a delivered it 2026-08-10), `D-T25B-SOAK`'s "first half
+  DONE", and `OD-2`'s discharge. So rather than find a fifth by accident, all nine open rows were
+  swept mechanically.
+
+  🔴 **`T33`'s unblock condition pointed at a phase that had been RULED OUT.** It read *"build a
+  reference corpus with known ground truth … tracked as Phase A of
+  `docs/plans/2026-08-11-architecture-conformance-audit.md`"*. That plan **opens by rejecting it**:
+
+  > *"decided the fix was a synthetic reference corpus with hand-authored ground truth, hypotheses
+  > registered in advance, the whole apparatus. **That was over-engineering** — a research
+  > instrument built to work around a problem that finishing the implementation dissolves…
+  > measurement comes **last**, and it needs no special instrument."*
+
+  T33 has therefore been waiting on work that was deliberately cancelled. Its real unblock is the
+  PO's own ruling — **finish the implementation, do a live run, measure what that run produced** —
+  which §4.3 already routes through `QC-6`.
+
+  📐 **`(depends on X)` staleness is NOT a defect, and a gate for it was measured and abandoned.**
+  All three hits (`T33→T32`, `T46→T45`, `T48→T47`) name rows that have since closed, which is what
+  a satisfied dependency looks like; the notation records ordering, not a live blocker. A gate
+  flagging them would fire on every correctly-sequenced plan. **Rule 8 killed the batch** — the
+  measurement is the deliverable, not the tool it would have justified.
+
+  ✅ **What the sweep leaves is a consistent picture, verified from both plans rather than
+  asserted:** the conformance plan says measurement comes last and needs no instrument; this plan's
+  remaining rows all reduce to the same two writes. `T46b` showed 1819 entities fork on
+  re-extraction until `recanon --apply` runs; `T25c` showed the vector soak has never run. **Those
+  two writes are the live run**, and both are rule-6 writes to shared databases.
+
+  **BITE — N/A, and what stands in for it:** no code changed; the sweep is a parse of the plan's
+  own checkboxes against its own prose. Its control is that it produced a **negative** result on
+  the class it was built to find — three `depends on` hits that turned out to be benign — which is
+  the only reason to believe the one positive.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-progress-block --check`
+  OK · `soak-armed-gate --selftest` 7/7.
+  **QC (b) the seam:** N/A — a consistency check across two plan documents.
+  **QC (c) real data:** the plan is the data: 67 rows and 9 open blockers, read off disk.
+
   ✅ **Code + unit evidence done; the corpus bite is running (see below).**
 
   **`causes | precedes | unknown`.** `causal_edges.py` labelled nothing — it returned bare
@@ -5192,7 +5240,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Blocker** | ⛔ **Re-framed 2026-08-11 (PO).** The first version of this row argued from dev-store coverage — *"4 of 1184 events, the corpus is not populated"*. **That reasoning is invalid and is withdrawn.** There is no production system and no production corpus; the dev database holds residue from ad-hoc development runs, so a low ratio there is explained by *"nobody ran the pipeline over that data"* and says nothing about whether `MD10` is implemented. The real blocker is one level up: **no instrument exists that could settle the question.** Every measurement in this refactor has been taken against whatever data happened to exist. |
   | **Evidence** | What the dev store legitimately proves is an **existence result**: the causal writer executes end-to-end and persists both relationship types (`CAUSES` 2, `PRECEDES` 2, from T33's single-book bite over 31 events). The surrounding census — `Entity` 4813 · `Event` 1184 · `Passage` 1041 · `Fact` 341 · `EntityStatus` 35 — is recorded as context, **not as a denominator**. |
   | **Also fixed here** | Stop condition 3 was written against **`HAPPENS_BEFORE`**, a relationship type that exists in **neither the code nor the graph** — T33 deliberately persists `CAUSES` and `PRECEDES` as distinct types. A literal check of the old wording returns 0, which is indistinguishable from a broken query. The stop condition now pins the *query*, not a name. |
-  | **To unblock** | Build a **reference corpus with known ground truth** — a fixture book with a known cast, a known event chain and known role changes — then state the expected output and the pass criterion **before** running, and run on a **throwaway** store. Re-counting the dev database is not a smaller version of this; it is a different and invalid experiment. Tracked as Phase A of `docs/plans/2026-08-11-architecture-conformance-audit.md`. |
+  | **To unblock** | 🔴 **THE MECHANISM THIS ROW POINTS AT WAS RETRACTED — corrected 2026-08-21 (T33a).** It said: build a reference corpus with hand-authored ground truth, *"tracked as Phase A of `docs/plans/2026-08-11-architecture-conformance-audit.md`"*. **That plan rules the corpus OUT in its own opening**: *"decided the fix was a synthetic reference corpus with hand-authored ground truth, hypotheses registered in advance, the whole apparatus. **That was over-engineering** — a research instrument built to work around a problem that finishing the implementation dissolves… measurement comes **last**, and it needs no special instrument."* So this row was waiting on a phase that does not exist. The real unblock is the PO's ruling: **finish the implementation, do a live run, measure what that run produced** — which is `QC-6`, per §4.3. |
   | **Mechanism** | Two parts, and only one of them is data. **(a)** The wording fix in **Stop conditions § 3** is repo-grounded and stands on its own: the condition named `HAPPENS_BEFORE`, which exists in neither the code nor the graph, so a literal check returned 0 and was indistinguishable from a broken query. **(b)** The reference corpus is what makes the condition falsifiable at all. Until (b) exists, `MD5`, `MD9`, `MD10` and this stop condition are **unfalsifiable — which is not the same as passing**. |
   | **Retry when** | Before Phase 7 opens. T42's engine choice is argued partly from *"the workload is shallow because relationship extraction is immature"* (decision X1) — deciding an engine while the causal layer sits at 0.34 % coverage would settle it on an artefact, which is the argument X1 exists to reject. |
 
@@ -6131,7 +6179,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   | | |
   |---|---|
-  | **Blocker** | The live half (rename -> re-kind -> re-extract -> assert no stale node and no minted duplicate) asserts a **post-condition of a migration that has not run**. T35 is deferred, so the assertion has nothing to be true of. |
+  | **Blocker** | The live half (rename -> re-kind -> re-extract -> assert no stale node and no minted duplicate) asserts a **post-condition of a migration that has not run**. ~~T35 is deferred, so the assertion has nothing to be true of.~~ **T35 CLOSED 2026-08-21 (T35h) and QC-6's identity half then RAN (QC-6a) — finding a duplicate-minting defect the assertion existed to catch.** |
   | **Evidence** | The data half above, run today: **2819 of 6297** nodes already disagree with a recomputed id, and QC-6's own criterion is *"must be 0"*. A live rename would add one more mismatch to 2819 and prove nothing about the property being asserted. |
   | **To unblock** | `D-T35-OPAQUE-IDENTITY` closes and the 2819 stale rows are reconciled. |
   | **Mechanism** | The count above is a one-command re-run whose output is self-describing, and `scripts/derived-entity-id-gate.py` (pre-commit + CI) keeps the caller set from growing meanwhile, so the debt can only shrink between now and then. |
