@@ -33,7 +33,9 @@
         }
       ],
       "answer_expect": {
-        "all_of": ["low tide"],
+        "all_of": [
+          "low tide"
+        ],
         "why": "The seeded chapter is the ONLY source for this. A reply carrying it read something; a reply about the Trench WITHOUT it is either unsourced or invented."
       },
       "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply asserts anything about the Trench beyond the seeded sentence (there is nothing else stored), OR memory_search is not called and the answer comes from the chapter being in context anyway — that last case is NOT a pass, it is the tool being unnecessary on this fixture, and must be recorded as such.",
@@ -61,7 +63,15 @@
             "domain": "glossary",
             "method": "POST",
             "path": "/v1/glossary/books/{book_id}/adopt",
-            "json": {"genres": ["universal"], "kinds": ["character", "location"]}
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location"
+              ]
+            }
           }
         }
       ],
@@ -116,17 +126,26 @@
       "approve": null,
       "seed": [
         {
-          "tool": "translation_start_job",
-          "args": {"book_id": "{book_id}", "chapter_ids": ["{chapter_id}"], "target_language": "vi"}
+          "rest": {
+            "domain": "translation",
+            "method": "POST",
+            "path": "/v1/translation/books/{book_id}/jobs",
+            "json": {
+              "chapter_ids": [
+                "{chapter_id}"
+              ],
+              "target_language": "vi"
+            }
+          }
         },
         {
           "wait": {
             "db": "loreweave_translation",
             "query": "SELECT count(*)::text FROM translation_jobs WHERE book_id='{book_id}'",
             "expect": "1",
-            "timeout": 180,
+            "timeout": 120,
             "poll": 2,
-            "why": "The job row must EXIST before the turn runs — translation_job_status takes a job_id and there is nothing to ask about otherwise. It need not FINISH; a running job is the honest thing to report on."
+            "why": "The job row must EXIST before the turn runs. THE MCP TOOL CANNOT SEED THIS: translation_start_job is Tier W and mints a confirm_token, writing nothing at call time — measured, job rows 0 immediately after a successful call. Same reason provision.py seeds glossary_adopt_standards over REST. No confirm tool is federated, so the token cannot be redeemed from a seed step."
           }
         }
       ],

@@ -248,6 +248,18 @@ class Throwaway:
             r = httpx.request(spec.get("method", "POST"), f"{base}{spec['path']}",
                               headers=_tle_auth().bearer_header(),
                               json=spec.get("json") or {}, timeout=60)
+            if r.status_code == 404:
+                # 🔴 A 404 HERE IS AS LIKELY TO BE THE WRONG SERVICE AS THE WRONG PATH, and the
+                # wrong service is the harder one to see. Measured 2026-08-14: DOMAIN_BASE
+                # pointed "translation" at localhost:8207, which is catalog-service — and it
+                # answers /health with 200, so nothing upstream could flag it. The Go services
+                # all return a bare "ok" with no identity, so only a ROUTE probe distinguishes
+                # them. Name both possibilities rather than letting this read as a bad path.
+                raise ProvisionError(
+                    f"SEED REST 404: {spec.get('method', 'POST')} {base}{spec['path']}\n"
+                    f"    Either the path is wrong, OR DOMAIN_BASE[{spec['domain']!r}] = {base} "
+                    f"points at a DIFFERENT service. Check by route, not by /health — several "
+                    f"services answer /health with a bare 'ok' and cannot be told apart by it.")
             r.raise_for_status()
             self.seeded.append({"rest": spec, "status": r.status_code})
             return

@@ -1,0 +1,74 @@
+{
+  "batch": "batch6-jobstatus",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "translation_job_status",
+      "scenario": "translation-job-status",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the reply states a job status without translation_job_status being called on the turn — jobs_list carries a summary, and answering from it while claiming the job's detail is the registry-vs-live shape already filed as D-LIVE-INVENTORY-ANSWERED-FROM-THE-REGISTRY. CONTROL: the tool REQUIRES job_id, which the model must obtain from a listing, so a correct turn is a two-call chain.",
+      "answer_expect": null,
+      "falsifier_sha": "10e3b2aa57c85549",
+      "ship_audit": {
+        "absent_case": "OWED — a job_id that does not exist must be refused with one string that does not distinguish 'not yours' from 'no such job'.",
+        "tenancy": "OWED — another account's job_id must be refused."
+      },
+      "defects": [],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "Is my translation done yet? Check the job.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8207/v1/translation/books/01a01ffb-32ef-71c9-8d7a-ed6f046f63a7/jobs'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "Is my translation done yet? Check the job.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8207/v1/translation/books/01a01ffb-3597-7c89-a320-795ebbcaca87/jobs'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": null,
+          "session_id": null,
+          "prompt": "Is my translation done yet? Check the job.",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [],
+          "error": "PROVISION HTTPStatusError: Client error '404 Not Found' for url 'http://localhost:8207/v1/translation/books/01a01ffb-3830-707e-9f84-a5d4eb629194/jobs'\nFor more information check: https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/404",
+          "approvals": [],
+          "left_suspended": false,
+          "store": {},
+          "store_diff": {},
+          "answer": ""
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}
