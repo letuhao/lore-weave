@@ -228,6 +228,68 @@ impl BridgeClient {
         }
     }
 
+    /// Who currently drives `actor` in `reality` — `None` when nobody does.
+    ///
+    /// `RA2` / `D-PC-NO-RUST-READ-AUDIT`. This is the ONLY way Rust may ask that
+    /// question. The answer lives in `actor_control_binding`, and a read of it
+    /// keyed by actor with no user predicate is `actor_binding_cross_user` in
+    /// `meta-sensitive-read-paths.yml` — a sensitive path whose audit row is
+    /// written by Go's `liveBinding`. There is no Rust equivalent and there
+    /// should not be one: a `SELECT` here would be a second read with no
+    /// `meta_read_audit` row, which is the bypass the discipline names.
+    ///
+    /// So the round trip is not overhead, it is the point. The audit is written
+    /// because the read happens over there.
+    ///
+    /// `None` is an ANSWER — "this actor has no driver" — and not an error. The
+    /// bridge says so with `200 {"driven": false}` for the same reason.
+    pub async fn read_actor_control(
+        &self,
+        reality_id: Uuid,
+        actor_id: Uuid,
+    ) -> Result<Option<Uuid>, ProvisionerError> {
+        let resp = self
+            .http
+            .post(format!("{}/internal/provisioner/read-actor-control", self.base_url))
+            .header("X-Service-Token", &self.token)
+            .json(&serde_json::json!({
+                "reality_id": reality_id.to_string(),
+                "actor_id": actor_id.to_string(),
+            }))
+            .send()
+            .await
+            .map_err(|e| ProvisionerError::Bridge(format!("read-actor-control send: {e}")))?;
+        match resp.status().as_u16() {
+            200 => {
+                let body: serde_json::Value = resp.json().await.map_err(|e| {
+                    ProvisionerError::Bridge(format!("read-actor-control body: {e}"))
+                })?;
+                if body.get("driven").and_then(|v| v.as_bool()) != Some(true) {
+                    return Ok(None);
+                }
+                // `driven: true` with no parseable user is a CONTRADICTION, not
+                // an undriven actor. Reporting it as `None` would tell a caller
+                // the slot is free when the bridge just said it is taken — the
+                // one wrong answer this function must never give.
+                let raw = body.get("user_ref_id").and_then(|v| v.as_str()).ok_or_else(|| {
+                    ProvisionerError::Bridge(
+                        "read-actor-control: driven=true with no user_ref_id".into(),
+                    )
+                })?;
+                Uuid::parse_str(raw)
+                    .map(Some)
+                    .map_err(|e| ProvisionerError::Bridge(format!(
+                        "read-actor-control: user_ref_id {raw:?} is not a uuid: {e}"
+                    )))
+            }
+            401 => Err(ProvisionerError::Bridge("read-actor-control: 401 unauthorized".into())),
+            code => Err(ProvisionerError::Bridge(format!(
+                "read-actor-control: unexpected {code}: {}",
+                resp.text().await.unwrap_or_default()
+            ))),
+        }
+    }
+
     /// End the live binding for `(reality, actor)`.
     ///
     /// `expected_user_ref_id` is the optional CAS: when supplied, the revoke

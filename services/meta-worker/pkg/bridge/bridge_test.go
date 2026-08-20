@@ -29,6 +29,20 @@ type fakeReg struct {
 	revokeErr     error
 	revokeCalls   int
 	lastRevokeReq RevokeControlReq
+
+	// RA1 — the read half. `readBinding` nil means "nobody drives it", which is
+	// an ANSWER and not a miss, so the zero value of this fake is the
+	// undriven-actor case rather than an error.
+	readErr     error
+	readCalls   int
+	lastReadReq ReadControlReq
+	readBinding *LiveBinding
+}
+
+func (f *fakeReg) ReadActorControl(_ context.Context, r ReadControlReq) (*LiveBinding, error) {
+	f.readCalls++
+	f.lastReadReq = r
+	return f.readBinding, f.readErr
 }
 
 func (f *fakeReg) GrantActorControl(_ context.Context, r GrantControlReq) error {

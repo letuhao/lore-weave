@@ -250,15 +250,29 @@ def stop_markers(plan: str, states: dict[str, str]) -> dict[str, str]:
     """
     out: dict[str, str] = {}
     lines = plan.split("\n")
-    positions = [
-        (n, m.group(2))
-        for n, m in ((n, ROW_CHECKBOX.match(l) or ROW_TABLE.match(l)) for n, l in enumerate(lines))
-        if m
-    ]
-    for i, (n, row) in enumerate(positions):
-        if states.get(row) == "x":
+    positions: list[tuple[int, str, str]] = []
+    for n, line in enumerate(lines):
+        if m := ROW_CHECKBOX.match(line):
+            positions.append((n, m.group(2), "list"))
+        elif m := ROW_TABLE.match(line):
+            positions.append((n, m.group(2), "table"))
+    for i, (n, row, kind) in enumerate(positions):
+        # Only rows the BOARD tracks. A drift register or an open-row table also
+        # puts a backticked id in its first cell, and those are not slices — a
+        # long run cannot "stop at" a row that was never in the queue.
+        if row not in states or states.get(row) == "x":
             continue
-        end = positions[i + 1][0] if i + 1 < len(positions) else len(lines)
+        # A TABLE row is ONE line. A checkbox row owns everything up to the next
+        # row, because that dialect keeps its evidence beneath the row.
+        #
+        # 🔴 Not cosmetic. With the span running to the next match, the LAST
+        # table row in a file absorbed everything after it — including the
+        # RESUME line — so a RESUME reading "the ⏸ POST-REVIEW checkpoint" turned
+        # a drift-register row into a hand-back. Found by running this tool on
+        # the plan it was generating a goal for, which is the only reason it was
+        # found at all: it needs a marker AFTER the last row to show up.
+        end = n + 1 if kind == "table" else (
+            positions[i + 1][0] if i + 1 < len(positions) else len(lines))
         marks = set()
         for line in lines[n:end]:
             up = line.upper()
@@ -548,6 +562,33 @@ def selftest() -> int:
     check("a done row cannot be a hand-back",
           "T1" not in stop_markers("- [x] **T1** — done, stop condition\n",
                                    {"T1": "x"}), "")
+
+    # ⑤b A TABLE row owns ONE LINE, and a row the board does not track is not a
+    # hand-back at all. Both halves of a defect found by running this tool on a
+    # real plan: the last table row's span ran to EOF, swallowed a RESUME line
+    # reading "the ⏸ POST-REVIEW checkpoint", and reported a DRIFT-REGISTER row
+    # as a reason to stop a long run. Over-stopping is the failure the run policy
+    # exists to prevent, so a false hand-back is not a cosmetic bug.
+    # The tracked row must be LAST, or the bug is not reachable: only the final
+    # row's span runs to EOF. A first draft of this fixture put a drift row after
+    # it, the mutation did not red, and the arm was decoration. Bitten, fixed.
+    spanning = chr(10).join([
+        "| `B2` another | `[x]` | done |",
+        "| `D1` a drift row, tracked by nothing |",
+        "| `B1` a slice | `[ ]` | |",
+        "",
+        "**RESUME: `B1` — and this line mentions a ⏸ POST-REVIEW checkpoint.**",
+    ])
+    sp = row_states(spanning)
+    mk = stop_markers(spanning, sp)
+    check("a table row does not absorb the lines after it", "B1" not in mk, str(mk))
+    check("a row the board does not track is not a hand-back", "D1" not in mk, str(mk))
+    # …and a marker ON a table row's own line still counts, or the fix above
+    # would have been "never see anything", which passes both arms for free.
+    onrow = "| `B3` a slice ⏸ POST-REVIEW checkpoint | `[ ]` | |"
+    check("a marker on the row's OWN line still counts",
+          stop_markers(onrow, row_states(onrow)).get("B3") == "⏸",
+          str(stop_markers(onrow, row_states(onrow))))
 
     # ⑥ Derived markers must reach the EMITTED TEXT.
     emitted = build(marked, "p.md")

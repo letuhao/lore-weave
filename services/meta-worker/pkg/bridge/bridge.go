@@ -64,6 +64,11 @@ type Registrar interface {
 	// writer — the one it has never had. See actor_control.go.
 	GrantActorControl(ctx context.Context, r GrantControlReq) error
 	RevokeActorControl(ctx context.Context, r RevokeControlReq) error
+	// ReadActorControl answers "who drives this actor". A READ on the interface
+	// beside two writes, because the read is the one that needs the audit row:
+	// it is keyed by ACTOR with no user predicate, which is
+	// `actor_binding_cross_user` in meta-sensitive-read-paths.yml.
+	ReadActorControl(ctx context.Context, r ReadControlReq) (*LiveBinding, error)
 }
 
 // AuditSink records one service_to_service_audit row per bridge call.
@@ -172,6 +177,11 @@ func (s *Server) Handler() http.Handler {
 	// audit row, same server-builds-the-intent scoping as the three above.
 	mux.HandleFunc("POST /internal/provisioner/grant-actor-control", s.guarded("grant-actor-control", s.handleGrantControl))
 	mux.HandleFunc("POST /internal/provisioner/revoke-actor-control", s.guarded("revoke-actor-control", s.handleRevokeControl))
+	// The READ half. It exists so a caller that is not the writer can ask who
+	// drives an actor WITHOUT writing its own SELECT — there is no audited
+	// cross-user read path outside this package, and the alternative every
+	// caller reaches for is a bare query the lint then catches.
+	mux.HandleFunc("POST /internal/provisioner/read-actor-control", s.guarded("read-actor-control", s.handleReadControl))
 	return mux
 }
 

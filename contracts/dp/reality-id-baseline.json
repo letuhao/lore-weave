@@ -7,8 +7,8 @@
     },
     "services/world-service": {
       "adoptable": 0,
-      "boundary": 15,
-      "exempt": 56
+      "boundary": 16,
+      "exempt": 57
     }
   }
 }

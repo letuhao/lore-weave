@@ -329,6 +329,30 @@ pub async fn revoke(
     Ok(if revoked { Outcome::Revoked } else { Outcome::AlreadyRevoked })
 }
 
+/// Who currently drives this actor — `None` when nobody does.
+///
+/// `RA2`. The flow-level door to the audited cross-user read, and the reason
+/// [`Preview`] can stay silent about the holder without that silence being
+/// permanent: the capability now EXISTS. Whether an operator gets it is `RA3`,
+/// a separate decision, because building the pipe and opening it to everyone
+/// with `admin:write` are different acts.
+///
+/// It does **not** bind the reality, for the same reason [`revoke`] does not:
+/// asking who drives an actor in a frozen world is a legitimate question — very
+/// often the FIRST question, when working out why a world was frozen — and
+/// refusing it would make the read useless in exactly the situation that needs
+/// it.
+///
+/// Every call writes a `meta_read_audit` row on the far side. That is not a
+/// side effect to be optimised away; it is what makes the read permissible.
+pub async fn current_driver(
+    cfg: &EffectsConfig,
+    reality_id: Uuid,
+    actor_id: Uuid,
+) -> Result<Option<Uuid>, ProvisionerError> {
+    bridge(cfg).read_actor_control(reality_id, actor_id).await
+}
+
 fn bridge(cfg: &EffectsConfig) -> BridgeClient {
     BridgeClient::new(cfg.bridge_url.clone(), cfg.bridge_token.clone())
 }

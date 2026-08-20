@@ -328,3 +328,97 @@ func threeUUIDs(user, reality, actor string) (uuid.UUID, uuid.UUID, uuid.UUID, e
 	}
 	return u, rl, a, nil
 }
+
+// ─── RA1 · the READ half ─────────────────────────────────────────────────────
+
+// ReadControlReq asks who currently drives one actor in one reality.
+//
+// No user field, and that absence is the whole point: this is the cross-user
+// question. A read keyed by (reality, actor, user) would be owner-scoped and
+// would need no audit row; this one needs one, and gets one.
+type ReadControlReq struct {
+	RealityID string `json:"reality_id"`
+	ActorID   string `json:"actor_id"`
+}
+
+// handleReadControl serves `POST /internal/provisioner/read-actor-control`.
+//
+// # Why this route exists at all
+//
+// `liveBinding` has been the only audited cross-user read of
+// `actor_control_binding` since `034`, and it was PRIVATE — reachable only from
+// inside the grant/revoke CAS. So a caller in another service that needed the
+// same answer had exactly two options: write its own bare `SELECT`, which
+// `meta-sensitive-read-bypass-lint` correctly refuses, or go without. That is
+// `D-PC-NO-RUST-READ-AUDIT`: the discipline had no reachable path, so the first
+// caller to need one would have bypassed it by default rather than by choice.
+//
+// The route changes nothing about the read. It reuses `liveBinding` unmodified,
+// which means the `meta_read_audit` row is written by the same line that has
+// always written it — the audit cannot be skipped by using this door, because
+// there is no second implementation to skip it with.
+//
+// # 200 with a null body is the ANSWER, not a miss
+//
+// "Nobody drives this actor" is a fact about the world and a perfectly good
+// reply. A `404` would make the caller's error path carry a normal outcome, and
+// the first thing anyone writes against a 404 is a retry.
+func (s *Server) handleReadControl(w http.ResponseWriter, r *http.Request) (int, error) {
+	var req ReadControlReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "bad json: " + err.Error()})
+		return http.StatusBadRequest, nil
+	}
+	if req.RealityID == "" || req.ActorID == "" {
+		writeJSON(w, http.StatusBadRequest,
+			map[string]string{"error": "reality_id and actor_id are required"})
+		return http.StatusBadRequest, nil
+	}
+	realityID, err := uuid.Parse(req.RealityID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "reality_id: " + err.Error()})
+		return http.StatusBadRequest, nil
+	}
+	actorID, err := uuid.Parse(req.ActorID)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "actor_id: " + err.Error()})
+		return http.StatusBadRequest, nil
+	}
+
+	b, err := s.reg.ReadActorControl(r.Context(), ReadControlReq{
+		RealityID: realityID.String(), ActorID: actorID.String(),
+	})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		return http.StatusInternalServerError, err
+	}
+	if b == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"driven": false})
+		return http.StatusOK, nil
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"driven":      true,
+		"user_ref_id": b.UserRefID.String(),
+		"binding_id":  b.BindingID.String(),
+	})
+	return http.StatusOK, nil
+}
+
+// ReadActorControl exposes the audited read on the production registrar.
+//
+// A one-line delegate on purpose. `liveBinding` stays the single implementation
+// so the `meta_read_audit` write has exactly one home; a second query here —
+// even an identical one — would be a second place for the audit to be forgotten,
+// which is the shape `PD-10` recorded when this table's registered read path had
+// no SDK constant to reach it.
+func (m MetaRegistrar) ReadActorControl(ctx context.Context, r ReadControlReq) (*LiveBinding, error) {
+	realityID, err := uuid.Parse(r.RealityID)
+	if err != nil {
+		return nil, fmt.Errorf("reality_id: %w", err)
+	}
+	actorID, err := uuid.Parse(r.ActorID)
+	if err != nil {
+		return nil, fmt.Errorf("actor_id: %w", err)
+	}
+	return m.liveBinding(ctx, realityID, actorID)
+}
