@@ -1,0 +1,252 @@
+{
+ "batch": "batch14-get-v3",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_arc_get",
+   "scenario": "composition-arc-get-v2",
+   "intent": "read",
+   "falsifier": "RE-RUN AFTER THE WHITESPACE ARM (an `*_id` containing a space is a NAME). v1 was called 3/3 with node_id='The Hollow Keep' and node_id='arc_1'; the tool refused correctly but only after a round trip, and one reply told the author the arc 'hasn't been planned yet' while the seed assertion proved it exists. REFUTED IF a NAME again reaches the tool as node_id. EXPECTED: it is dropped and reported missing, so the model lists the arcs and resolves the id.",
+   "answer_expect": {
+    "all_of": [
+     "Hollow Keep"
+    ],
+    "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+   },
+   "falsifier_sha": "8084c01eac5df305",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's arc node refused.",
+    "absent_case": "EXERCISED by the v1 run and it is a GOOD refusal: node_id='The Hollow Keep' was answered 'node_id must be a UUID — received The Hollow Keep. Compare it against the id you meant to send'. The tool names the argument, the value, and the likely cause.",
+    "empty_case": "EXERCISED and it PASSES the distinction that find_references failed: an arc that exists but is empty returns the arc ROW, while a nonexistent node_id is refused with 'not found or not accessible'. Absence and emptiness are distinguishable here."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a0213d-27d9-7196-a524-c47c6cbe7d37",
+     "session_id": "01a0213d-4e53-794d-9bea-5c66548d9ca0",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_arc_get",
+      "composition_list_outline",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.336162+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.530437+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.672118+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.518371+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.336162+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.530437+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.672118+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 22:14:11.518371+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've looked into the structure of your book, but I can't find any detailed arc information for \"The Hollow Keep\" yet. \n\nThe outline shows that \"Arc I — The Hollow Keep\" is listed in your story spec, but it hasn't been compiled into a formal structure (scenes or beats) that I can read. It currently appears as an \"unplanned\" arc.\n\nIf you have a plan or notes for this arc, you can share them with me, and we can work on turning them into a structured outline!\n\nI did not re-read the book or the arc details before answering your previous request, so my information may be stale. I will now attempt to fetch the details for \"The Hollow Keep\" using the appropriate tools.\n\nI did not re-read the book or the arc details before answering your previous request, so my information may be stale. I attempted to fetch the full outline for your project, but the system returned no nodes or scenes for \"The Hollow Keep.\" This suggests that while the arc is mentioned in your story spec, it has not yet been compiled into a structured outline of scenes or beats."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02140-8792-785a-a5bc-b0dbfbe7daa0",
+     "session_id": "01a02140-a47a-73f3-9dad-8c8c1a236b81",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_arc_get",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.439451+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.655074+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.787765+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.645479+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.439451+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.655074+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.787765+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 22:17:52.645479+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I'm having trouble accessing the specific details for \"The Hollow Keep.\" \n\nWhile I can see that it is listed as the first arc in your book's outline, I am unable to retrieve its full content (such as the specific beats or roster) because the system requires a unique ID rather than the title to pull that data.\n\nIf you have the ID handy, please let me know, or I can try to search for it if you'd like."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02140-f5d7-71b4-b0a3-6ad16c76a6f6",
+     "session_id": "01a02141-123b-7bde-ad46-e703f085b6d0",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_get",
+      "composition_list_outline",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:20.672725+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:20.88175+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:21.00368+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:20.874416+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:20.672725+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:20.88175+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:21.00368+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 22:18:20.874416+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've looked into the structure of your book, but I can't find any detailed arc information for \"The Hollow Keep\" yet. \n\nThe outline shows that \"Arc I — The Hollow Keep\" is listed in your story spec, but it hasn't been compiled into a formal structure (scenes or beats) that I can read. It's currently marked as an \"unrun\" arc.\n\nIf you have a plan or a draft for this arc, please share it with me, and I can help you compile it into a proper outline!\n\nI did not re-read the book or the arc details before answering your previous request, so my information may be stale. I attempted to locate the details using the available tools, but I could not find any compiled scene or beat data for \"The Hollow Keep\" in the current structure."
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 0
+  }
+ ]
+}

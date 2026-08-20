@@ -9538,6 +9538,40 @@ async def _emit_chat_turn(
         final_text = "".join(full_content)
         final_reasoning = "".join(full_reasoning)
 
+        # ── D-SILENT-TURN-NO-CARD-NO-PROSE ────────────────────────────────────────────────
+        # A turn that produces no user-visible text is not a completed turn.
+        #
+        # MEASURED 2026-08-14 over 347 recorded runs: 21 turns across 8 tools ended with NO
+        # prose, NO confirm card and no approval — composition_arc_get 5, glossary_curation_list
+        # 3, plan_compile 3, jobs_get 3, translation_job_status 3, settings_model_delete 2,
+        # jobs_list 1, memory_recall_entity 1. Every one was stored outcome='completed',
+        # is_error=false, finish_reason='stop', so every count that reads outcomes saw a success
+        # while the author saw an empty reply. The commonest trigger is a tool returning an
+        # argument-repair message ("... is missing required argument(s) ... do NOT guess a
+        # value"): the model reads it, declines to guess — correctly — and then says nothing.
+        #
+        # THE CONTROL, which is why this is scoped to `full_content` and not to "no tool
+        # result": 113 of those 347 turns had no prose, but 92 SUSPENDED ON A CONFIRM CARD,
+        # where the card IS the output and prose is legitimately absent. Those never reach this
+        # site — the awaiting_input handler persists them — so this guard cannot see them, and
+        # scoping it here rather than at a shared helper is what keeps the two apart.
+        #
+        # is_error is the seam the row model already has for this: `outcome_for_finish_reason`
+        # takes it, so the outcome becomes `failed` while `finish_reason` keeps reporting
+        # whatever the loop actually reported. That preserves F-19 — the two still derive from
+        # one signal and the row does not contradict itself — while making the turn countable.
+        # What this does NOT do is invent a reply; putting words in the assistant's mouth here
+        # would be this loop's own "prose is not the lever" mistake in service code.
+        _silent_turn = not final_text.strip()
+        if _silent_turn:
+            logger.warning(
+                "silent turn: session=%s produced NO user-visible text with no confirm card "
+                "after %d tool call(s) (last: %s) — recording outcome=failed, because a turn the "
+                "author experiences as the product doing nothing is not a completion",
+                session_id, len(tool_calls_history),
+                tool_calls_history[-1].get("name") if tool_calls_history else None,
+            )
+
         # ── CP-3 · THE REQUEST PATH · create half ──────────────────────────────────────────
         # A fenced ```plan block in the reply creates the session's plan, or revises it as a new
         # VERSION when one is live. Arm-gated, and outside the persist transaction below: adopting a
@@ -9832,7 +9866,8 @@ async def _emit_chat_turn(
                     # through instead of being overwritten. Whether the breaker produces one is a
                     # live question for a verifier, not something to settle by reading the code I
                     # just wrote.
-                    instrument.outcome_for_finish_reason(_loop_finish_reason or "stop"),
+                    instrument.outcome_for_finish_reason(
+                        _loop_finish_reason or "stop", is_error=_silent_turn),
                     json.dumps(_advertised.advertised_json()) if _advertised.advertised_json() else None,
                     json.dumps(_advertised.withheld_json()) if _advertised.withheld_json() else None,
                     # CP-0.7 — DERIVED, never the constant. This is the CLEAN-FINISH path: the

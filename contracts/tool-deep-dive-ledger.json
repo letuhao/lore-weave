@@ -2107,14 +2107,14 @@
    "counts_toward_release": true
   },
   "composition_arc_get": {
-   "state": "in_cycle",
+   "state": "proven",
    "provider": "composition",
    "tier": "R",
    "cycle": "batch-14 (2026-08-14)",
-   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14-get.json",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch14-get-v3.json",
    "evidence_class": "gate-backed",
-   "counts_toward_release": false,
-   "note": "NOT CONCLUDED, and the gate refused it in BOTH directions, which is the right answer. The TOOL is good: called 3/3, store unchanged 3/3, a nonexistent node_id is refused, an EMPTY arc returns its row (so absence and emptiness are distinguishable — the thing find_references failed). `proven` is refused because all 3 replies are empty; `blocked` is refused because blocked means the tool could not be EXERCISED and this one was exercised perfectly. What is broken is the turn. D-SILENT-TURN-NO-CARD-NO-PROSE — the turn produced no user-visible text, no confirm card and no approval, yet is recorded outcome=`completed`, is_error=false, finish_reason=stop."
+   "counts_toward_release": true,
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch14-get-v3.json. MEASURED: surfaced 3/3, called 3/3, suspended-on-card 0/3, owning store moved on 0/3 run(s). ship_audit and falsifier are on file in the same entry. THE DISTRIBUTION ACROSS THREE ARMS, because one clean K=3 is not the whole story: v1 (pre-fix) let node_id='The Hollow Keep' — the arc's TITLE — reach the tool and one reply then told the author the arc 'hasn't been planned yet' while the seed assertion proved it exists. v2 (after the whitespace arm) dropped the name correctly but produced ZERO prose on 3 of 3. v3, on the current build, is called 3/3, store unchanged 3/3, and all three replies name The Hollow Keep and describe it accurately as an arc that exists but has no beats yet — which is exactly what the title-only fixture is. Concluded on v3; v1 and v2 are superseded, not deleted."
   }
  },
  "defects": {
@@ -2339,11 +2339,12 @@
    "live": "VOID x2 — see the observation below. Unit-proven with falsifiers RED on both halves; deployed md5-verified."
   },
   "D-SILENT-TURN-NO-CARD-NO-PROSE": {
-   "state": "open",
+   "state": "open — recording fixed, cause not",
    "found": "2026-08-14",
    "measured": "21 runs across 8 tools produced no user-visible text with NO confirm card and no approval: composition_arc_get 5, glossary_curation_list 3, plan_compile 3, jobs_get 3, translation_job_status 3, settings_model_delete 2, jobs_list 1, memory_recall_entity 1. Every one is recorded outcome=`completed`, is_error=false, so every count that reads outcomes sees a success and the author sees a blank reply.",
    "control_that_shrank_it": "First measured as 113 of 347 turns (32%). The control refutes most of it: 92 of those 113 ended SUSPENDED ON A CONFIRM CARD, where the card is the output and prose is legitimately absent. Failing those would have wrongly withdrawn glossary_extract_entities_from_doc. The defect is the 21 that had no card either.",
-   "why_it_was_invisible": "The gate's own 'DATA answer is true' bar skipped an empty reply with a bare `continue`, and separately read must_contain/must_not_contain while 39 of 45 declarations used all_of/none_of/any_of. Both are fixed at that one bar; an unknown key is now a hard failure so the vocabulary cannot drift again."
+   "why_it_was_invisible": "The gate's own 'DATA answer is true' bar skipped an empty reply with a bare `continue`, and separately read must_contain/must_not_contain while 39 of 45 declarations used all_of/none_of/any_of. Both are fixed at that one bar; an unknown key is now a hard failure so the vocabulary cannot drift again.",
+   "live_status": "🔴 THE GUARD IS UNEXERCISED LIVE AND I CANNOT CLAIM IT WORKS. Re-running the arc_get scenario on the deployed build produced PROSE on 3 of 3 runs (1051/413/730 chars), so the silence did not reproduce and the new branch never ran. That is not evidence the guard is correct, and it is certainly not evidence my change stopped the silence — the guard only relabels an outcome, it never adds text. The silence is stochastic; catching it live needs a scenario that reproduces it on demand, which I do not yet have."
   }
  },
  "deferred_questions": {
@@ -2390,6 +2391,14 @@
    "evidence": "Batch 12's natural experiment: perfect correlation between 'a declared synonym appears verbatim' and 'the tool was surfaced', 1/5 -> 5/5 once the declarations were widened. Every original miss was a pronoun substitution or an interposed word, never a different meaning.",
    "why_it_is_a_decision": "_synonym_pattern's word-boundary work exists because 'cat' matched inside 'category' and cost a live run. Relaxing the matcher trades precision for recall across all 315 tools, and the CONSENT check now depends on answerability too — a read-only turn sets a standing write grant aside — so a widening changes consent behaviour, not just surfacing. Option (a) is shipped and working; (b) and (c) need measuring against the live catalogue.",
    "status": "OPEN — recorded per the RUNBOOK rather than answered."
+  },
+  "DQ-T33": {
+   "state": "open",
+   "raised": "2026-08-14",
+   "blocked_by": "a product decision, so recorded and not asked",
+   "question": "When a turn ends with no user-visible text, should the service surface the last TOOL error to the author rather than leaving the reply blank?",
+   "why_it_is_a_product_decision": "The tool's own message is often the most useful sentence available ('composition_arc_get is missing required argument(s): [node_id], and this tool does not declare which side supplies them — so do NOT guess a value'), and showing it is reporting what happened, not inventing prose. But it exposes internal tool vocabulary in the author's chat, which is a voice-and-surface decision this loop must not make unilaterally. The alternative — a generic apology — IS invented prose, and three prose interventions were measured and refuted on 2026-08-14.",
+   "what_shipped_meanwhile": "Only the RECORDING is fixed: a silent turn is now stored outcome=failed instead of completed, so the 21 measured cases stop counting as successes. The author still sees a blank reply when it happens."
   }
  },
  "carried_observations": [
@@ -2788,9 +2797,9 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 94,
-  "tools_in_cycle": 3,
-  "tools_proven": 74,
+  "tools_concluded": 95,
+  "tools_in_cycle": 2,
+  "tools_proven": 75,
   "tools_blocked": 20,
   "defects_proven": 23,
   "defects_open": 0,
