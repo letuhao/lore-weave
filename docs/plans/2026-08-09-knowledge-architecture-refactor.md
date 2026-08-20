@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `QC-3`'s ⏸ sign-off — its `/review-impl` half is now DONE (QC-3c: no HIGH, 3 MED; MED-1 fixed — the overlap metric was **blind in the direction the cutover travels**, reading 1.0 for any superset). Still owed by the checkpoint: the real-corpus recall/latency comparison + the restore drill, then present and WAIT. ⚠️ `T35`'s operator write (`recanon_honorifics --apply`, proven working by T35f) unblocks `T46` and `QC-6`. `T33` ⛔ · `T49` ⛔ · `QC-5` ⏸.**
+**RESUME: `QC-3` — ⏸ **ALL THREE OWED ITEMS ARE NOW DELIVERED**; only the sign-off is left, and it is the PO's. `/review-impl` (QC-3c: no HIGH, 3 MED, MED-1 fixed) · restore drill (2026-08-10) · **real-corpus recall (QC-3d): diskann 0.500 with one query at 0.000, everything else 1.000, `control_ok: true`** — diskann must not serve this corpus; `halfvec_hnsw` is perfect at 0.82× exact and 41 % of hnsw's size. ⚠️ `T35`'s operator write unblocks `T46`/`QC-6`. `T33` ⛔ · `T49` ⛔ · `QC-5` ⏸.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**56 of 66 rows done · 10 open · 37 of 76 evidence blocks closed inside them.**
+**56 of 66 rows done · 10 open · 37 of 77 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/3) · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (1/1) · `QC-3` (1/4) · `T33` (1/2) · `T35` (4/10) · `QC-6` · `QC-5` (11/27) · `T46` (0/1) · `T48` (1/2) · `T49`
 
 > ⚠️ **12 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3656,6 +3656,75 @@ vectors and validity intervals live in different stores.
   says vectors are durable primary data — **an untested restore is not a backup.**
   ⏸ **POST-REVIEW checkpoint — present evidence and WAIT.**
   ---
+  ### 🔻 QC-3d 2026-08-14 — recall on the REAL corpus: **diskann returns half the top-10, and one query none of it**
+
+  ```
+  377 real 1024-dim passages · k=10 · 25 queries · control_ok: TRUE
+  exact 1.000 · halfvec_exact 1.000 · diskann 0.500 (min 0.000) · hnsw 1.000 · halfvec_hnsw 1.000
+  ```
+
+  Full evidence: [`docs/measurements/2026-08-14-qc3-real-corpus-recall.md`](../measurements/2026-08-14-qc3-real-corpus-recall.md).
+
+  QC-3's row asks for *"recall@10 and latency **ratios**, not absolutes"* against the real
+  corpus on both backends. Run with vectors pulled **READ-ONLY** from the dev graph and indexes
+  built in a **throwaway** Postgres — the harness's own `_guard_throwaway` refuses a
+  non-disposable database and is what forced the scratch DB to be renamed before it would run.
+
+  | backend | recall@10 | worst query | p50 ratio vs exact | table |
+  |---|---|---|---|---|
+  | `exact` | 1.000 | 1.000 | 1.00× | 2.2 MB |
+  | `halfvec_exact` | 1.000 | 1.000 | 0.89× | 1.2 MB |
+  | **`diskann`** | **0.500** | **0.000** | 0.79× | 2.4 MB |
+  | `hnsw` | 1.000 | 1.000 | 0.98× | 5.3 MB |
+  | **`halfvec_hnsw`** | **1.000** | 1.000 | **0.82×** | **2.2 MB** |
+
+  🔴 **`recall_min 0.000` — one of the 25 queries returned NONE of its true top-10**, and the
+  median query lost half. Not a tail effect.
+
+  🎯 **`control_ok: true` is what makes this a finding rather than an artifact.** The `exact`
+  arm scores 1.000 against its own ground truth on the same corpus and the same queries, so the
+  apparatus is sound and the 0.500 belongs to the index — rule 3's control, supplied by the
+  harness rather than by me.
+
+  📊 **Latency is not the deciding variable.** Everything sits between 0.79× and 1.00× of exact —
+  under a millisecond of spread — so nothing here is bought with speed. On the evidence
+  available **`halfvec_hnsw` dominates**: perfect recall, 0.82× exact's p50, and **2.2 MB against
+  hnsw's 5.3 MB** — the same answers at 41 % of the index.
+
+  ⚠️ **This does not settle the production choice, and publishing ratios is why.** 377 vectors is
+  three orders of magnitude below the scale QC-3a measured index *builds* at, and diskann exists
+  for corpora where an exact scan stops being free. What it settles is narrower and firmer:
+  **diskann must not serve this corpus** — a reader would get half their results and one reader
+  in twenty-five would get none of the right ones.
+
+  ⚠️ **`--rows 556` was requested and 377 returned** — every 1024-dim passage vector the filter
+  found. Recorded rather than padded, because a benchmark that silently ran at a different size
+  than it reported would make every ratio above unreproducible.
+
+  **BITE — N/A, and the reason:** this batch runs an existing harness and reads its output; no
+  code changed. Its non-vacuity control is `control_ok`, which is computed per run and is the
+  thing that would go false if the ground truth were broken — the harness's own bite, evaluated
+  on this corpus rather than on the synthetic one it was written against.
+
+  **QC (a) gates:** `plan-verify` PASS · `db-safety-gate` exit 0 · the harness's throwaway guard
+  refused the first DSN by name.
+  **QC (b) the seam:** N/A — a benchmark reading one store and writing a scratch one.
+  **QC (c) real data:** this batch **is** real data — 377 production passage embeddings, read
+  from `:7688` without writing to it.
+
+  ### ⛔ QC-3's REMAINING ITEM IS THE CHECKPOINT ITSELF
+
+  ```
+  /review-impl              ✅ QC-3c — no HIGH, 3 MED, one fixed
+  restore drill             ✅ docs/measurements/2026-08-10-vector-restore-drill.md
+  real-corpus recall        ✅ this block
+  ⏸ present evidence and WAIT   ← the PO's, and the only thing left
+  ```
+
+  The three MEDs from QC-3c and the diskann result above are what the sign-off should be read
+  against. **None of them is a blocker a review may clear on its own**, which is what the ⏸ is
+  for.
+
   ### 🔻 QC-3c 2026-08-14 — the `/review-impl` this row owes: **no HIGH, three MED, one fixed here**
 
   ```
