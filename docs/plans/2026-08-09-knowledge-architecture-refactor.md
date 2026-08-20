@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: three PO decisions, and every one of them was recorded as already settled. ⛔ `QC-5`'s FRESH three-run measurement is DELIVERED (C7) and **DOES NOT PASS**: chapter 5, same models, canon **4/5/4**, raw findings **3/5/1**, attributed **0/0/0** — clause 1 scores 0 of 3. Unlike C6 this validates the RULE too (clause 2 could have fired on run B's 5 and correctly did not). Nine findings, nine discarded; with C3's 7-of-7 that is three chapters showing one shape. Ran on lw-iso against local models for $0.18, so neither "real DB" nor "real spend" was ever the blocker — and the hold's own retry condition had been met since 2026-08-13. 🔴 `recanon_honorifics --apply` (T46b): 1819 entities fork on re-extraction, armed. 🔴 `OD-2` (T25c): the vector soak was never running. Both are rule-6 writes. `T35` CLOSED · `QC-6` identity half proven live · `QC-3` ⏸ owes only a sign-off · `T33` ⛔ · `T49` ⛔.**
+**RESUME: the unblocked work is EXHAUSTED, and this time it was swept three ways — `A13` (T17's 54 binders), `T33a` (every `depends on`), `C9` (every `Retry when`). The last actionable item found that way was fixed here: `C8` — name grounding compared the draft against **the drafter's own input** (`known_names` never passed), now reading the KAL `cast` (36 entities / 44 surface forms live, aliases included because `roster` is deliberately alias-free and would false-accuse). ⛔ FOUR PO ITEMS REMAIN, all of them recorded as already settled at some point: **(1)** `recanon_honorifics --apply` — 1819 entities fork on re-extraction (T46b); **(2)** `OD-2` — the vector soak was never running (T25c); **(3)** `QC-3` ⏸ sign-off (diskann 0.500); **(4)** `QC-5` ⏸ — its measurement is DELIVERED and FAILS (C7: canon 4/5/4, attributed 0/0/0), and `D-QC5-ROLE-JUDGE-PRECISION` is a **spend** call, not a design one. `T33` ⛔ · `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -6188,6 +6188,48 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
   ---
+  ### 📊 QC-5 C9 2026-08-21 — the "Retry when: **Immediately**" class is now EMPTY
+
+  ```
+  open rows swept for Retry-when / To-unblock clauses whose condition is ALREADY MET
+  4 deferrals said "Immediately — not a wait"  ->  4 dispositions, 0 left
+  ```
+
+  `T33a` swept every open row's `(depends on X)`. That misses the clause that actually hid the
+  work: **`Retry when`**. QC-5's own fresh measurement (C7) was gated by one whose condition had
+  been satisfied eight days earlier, so all nine open rows were re-swept for the general form.
+
+  **Four deferrals said their retry condition was `Immediately`. None is now open:**
+
+  | deferral | disposition |
+  |---|---|
+  | `D-QC5-PROSE-JUDGE-VERDICT-NOT-PER-RULE` | ✅ fixed 2026-08-12 — *"it does not need a PO decision, so it was fixed inside this checkpoint rather than parked beside it"* |
+  | `D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES` | ✅ fixed — *"and it uncovered a second defect"* |
+  | `D-NAME-GROUNDING-USES-PROMPT-PROXY-IN-PRODUCTION` | ✅ **fixed here (C8)** — it really was reachable today |
+  | `D-QC5-ROLE-JUDGE-PRECISION` | ⛔ **not "Immediately" any more** — see below |
+
+  ⚠️ **`D-QC5-ROLE-JUDGE-PRECISION`'s own retry line is stale and the plan already knows it.**
+  The row still reads *"Immediately — it is the next unit of this task, not a wait"*, but the
+  calibration was **attempted on 2026-08-11 and moved 8 → 7** (*"the prompt is not the
+  constraint"*), and §the audit reclassified it: *"a **spend** question, not a design one: two
+  experiments and a mechanism say the judge model is the limit, so it costs a stronger model or
+  it stays `[~]`."* A prompt rewrite is no longer the unblock; a model budget is, and that is
+  the PO's.
+
+  📐 **So the sweep closes rather than opens.** Between `A13` (T17's 54 binders), `T33a` (every
+  `depends on`) and this (every `Retry when`), the three ways a blocker can hide in this plan
+  have each been walked once. What remains is the two rule-6 writes and the sign-offs.
+
+  **BITE — N/A, and its control:** no code changed; this is a parse of the plan against itself.
+  It earns belief the same way `T33a` did — by producing a **negative** on most of what it
+  examined (three of four already discharged) and one positive that was then acted on in the
+  same session.
+
+  **QC (a) gates:** `plan-verify` PASS · `plan-row-honesty-gate` OK · `plan-progress-block
+  --check` OK.
+  **QC (b) the seam:** N/A — a consistency parse of one document.
+  **QC (c) real data:** the plan is the data; 9 open rows and their deferral tables, read off disk.
+
   ### ⛔ QC-5 C7 2026-08-21 — the FRESH three-run measurement: **DOES NOT PASS**, and this time the rule is validated too
 
   ```
