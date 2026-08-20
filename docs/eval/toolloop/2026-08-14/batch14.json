@@ -1,0 +1,1113 @@
+{
+ "batch": "batch14",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_arc_edit",
+   "scenario": "composition-arc-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: an arc lands with NO confirm card (Tier A), OR the op chosen is not `create` when the user said create — its op enum spans create|edit|delete|archive|restore|move|reorder, and a destructive op on a create request would be the worst outcome. Store check: structure_node arc count stays 0.",
+   "answer_expect": null,
+   "falsifier_sha": "beb3df02a2dfad82",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's book/arc refused.",
+    "gate": "NOT REACHED — never called live; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020fb-b359-763f-b86f-ba724359825e",
+     "session_id": "01a020fb-cf40-79c0-bc59-17509d9d58e3",
+     "prompt": "Create arc — I want to author an arc called The Drowned Court for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_create"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:02:41.687011+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:02:41.905989+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:02:41.897964+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:02:41.687011+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:02:41.905989+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:02:41.897964+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020fc-0476-7b87-ab81-8ec1b68cf1ff",
+     "session_id": "01a020fc-249c-78c5-884a-f5f4182637d4",
+     "prompt": "Create arc — I want to author an arc called The Drowned Court for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_create"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:02.468006+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:02.708318+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:02.694857+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:02.468006+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:02.708318+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:02.694857+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a020fc-591c-74b7-b9e7-63cd9c7c34c5",
+     "session_id": "01a020fc-778f-7697-ae1d-bd58bfa70556",
+     "prompt": "Create arc — I want to author an arc called The Drowned Court for this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_create"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:24.124204+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:24.350236+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:24.341206+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:24.124204+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:24.350236+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:24.341206+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 3,
+   "blocked_reason": "Surfaced 3/3, called 0/3 — the model used composition_arc_create, the DEDICATED create tool, and suspended on its card. arc_edit's op enum includes create, so the two overlap and the model picked the more specific one. A declaration-overlap finding, not a defect: nothing wrong happened, and the unified entry point simply lost to its own specialised sibling."
+  },
+  {
+   "tool": "composition_arc_get",
+   "scenario": "composition-arc-get",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the model invents a node_id rather than resolving 'The Hollow Keep' (the D-DECLARED-UUID class, now guarded — a fabricated-but-valid UUID here is a NEW instance), OR the reply describes arc content the seeded arc does not have (it has a title and nothing else, so any beats/tracks are fabricated).",
+   "answer_expect": {
+    "all_of": [
+     "Hollow Keep"
+    ],
+    "why": "The seeded arc is the only one; naming it is the minimum evidence that the arc was actually read rather than described."
+   },
+   "falsifier_sha": "6422b5ef36fd872a",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's arc node refused.",
+    "absent_case": "EXERCISED — a nonexistent node_id is refused.",
+    "gate": "n/a — Tier R."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020fc-ab05-7ac1-9fdc-ae88f640cf12",
+     "session_id": "01a020fc-cc1e-71a7-a6c1-bf1d555e7f5d",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_get"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.103247+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.43583+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.611339+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.427297+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.103247+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.43583+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.611339+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:03:45.427297+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020fd-03a4-7735-aaa8-4e9b735163f9",
+     "session_id": "01a020fd-2544-7386-afe1-083ec9ee156a",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_arc_get",
+      "composition_list_outline",
+      "composition_package_tree"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:07.785414+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:08.025149+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:08.174168+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:08.015287+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:07.785414+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:08.025149+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:08.174168+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:04:08.015287+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I couldn't find an arc titled \"The Hollow Keep\" in your current project's outline. It's possible the arc hasn't been planned yet, or it might be under a different name.\n\nIf you have the ID for that arc, please let me know. Otherwise, would you like me to list the current outline so we can see what has been planned so far?"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02100-519e-749e-8d74-9da4d20166d5",
+     "session_id": "01a02100-6e3f-7d4e-8547-a858173cdb3a",
+     "prompt": "Read arc — show me the arc detail for The Hollow Keep.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_get"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.327612+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.526501+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.665028+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.518891+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.327612+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.526501+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.665028+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:07:44.518891+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "Superseded — these runs are the v1 arm, where the model passed node_id='The Hollow Keep' (the arc's TITLE). Re-run after the whitespace arm in docs/eval/toolloop/2026-08-14/batch14-get.json."
+  },
+  {
+   "tool": "composition_arc_extract_template",
+   "scenario": "composition-arc-extract-template",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a template is created with NO confirm card, OR the model invents a node_id, OR it fabricates a `code` that collides with an existing template rather than deriving a fresh one. NOTE the account already holds arc templates (arc_template_list returns several), so a collision is reachable and its refusal is worth seeing.",
+   "answer_expect": null,
+   "falsifier_sha": "c6f16dd447673936",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A: card raised 3/3, store unchanged without approval.",
+    "tenancy": "EXERCISED — another account's arc node refused with 'not found or not accessible' (the node_id scope added this cycle).",
+    "absent_case": "EXERCISED — extracting from a nonexistent node is refused with 'not found or not accessible'.",
+    "idempotency": "EXERCISED and precise — a DUPLICATE template `code` returns {success: false, outcome: 'applied_conflict', error: 'an arc template with this code already exists in your library'}. It refuses rather than overwriting a template the author already has."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02100-a384-7404-9f1e-0bcaceea66f0",
+     "session_id": "01a02100-bf58-7b51-95b4-19a1251bc63d",
+     "prompt": "Save arc as template — turn The Hollow Keep into a reusable arc template.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_extract_template"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.324563+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.550821+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.700164+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.543091+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.324563+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.550821+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.700164+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:05.543091+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02100-f1a7-7087-9564-1a9603df92c8",
+     "session_id": "01a02101-0ed3-7369-a4de-293fd2ff3d9b",
+     "prompt": "Save arc as template — turn The Hollow Keep into a reusable arc template.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_extract_template"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.312807+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.547691+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.704554+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.538205+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.312807+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.547691+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.704554+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:25.538205+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02101-4184-7372-b9a1-42ae0c35986b",
+     "session_id": "01a02101-5d9b-791b-a6b2-58e0681d0db8",
+     "prompt": "Save arc as template — turn The Hollow Keep into a reusable arc template.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_extract_template"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:45.771642+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:46.002529+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:46.16974+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:45.992559+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:45.771642+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:46.002529+00"
+       },
+       "loreweave_composition.structure_node": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:46.16974+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:08:45.992559+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 3
+  },
+  {
+   "tool": "composition_arc_apply",
+   "scenario": "composition-arc-apply",
+   "intent": "write",
+   "falsifier": "REFUTED IF: an arc is materialised with NO confirm card, OR the model invents an arc_template_id rather than listing the library first (composition_arc_template_list is the supplier). CONTROL: the account genuinely holds arc templates, so 'there are none' would contradict a known reading and is a finding either way.",
+   "answer_expect": null,
+   "falsifier_sha": "8e0c9fcf3e76e707",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's book/arc refused.",
+    "gate": "NOT REACHED — never called live; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02101-8e04-70c0-abff-a72e35494cce",
+     "session_id": "01a02101-a747-7bf9-ad42-bd00008c7396",
+     "prompt": "Apply arc template — use one of my library arc templates on this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:05.347124+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:05.572779+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:05.565236+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:05.347124+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:05.572779+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:05.565236+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've found several arc templates in your library. Which one would you like me to apply to this book?\n\n**Available Templates:**\n*   **Apply Smoke** (`smoke-apply-20198`)\n*   **BB Arc 1784273647** (`bb.arc.1784273647`)\n*   **BB Arc 1784273680** (`bb.arc.1784273680`)\n*   **Deep Smoke Arc** (`deep-smoke-arc-1782705398`) — *2 chapters, includes motifs: Auction House Treasure, Betrayal Hinted*\n*   **E2E Hero Journey** (Multiple versions)\n*   **i146 Portable** (`i146.portable`) — *2 chapters, includes motifs: Duel, Meet*\n*   **i146 Round Trip** (`i146.roundtrip`) — *2 chapters, includes motifs: Duel, Meet*\n*   **My Reusable Act Structure** (Multiple versions)\n*   **TLE Arc Template** (`tle_arc_tmpl`)"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02101-e74d-726c-9a94-b9fc53c6ef1e",
+     "session_id": "01a02102-02b8-7892-bc93-e93a143e9473",
+     "prompt": "Apply arc template — use one of my library arc templates on this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:28.180076+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:28.390124+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:28.381512+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:28.180076+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:28.390124+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:28.381512+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've found several arc templates in your library. Here are a few options:\n\n*   **Deep Smoke Arc** (2 chapters, includes motifs: *auction house treasure*, *betrayal hinted*)\n*   **i146 Portable** (2 chapters, includes motifs: *duel*, *meet*)\n*   **i146 Round Trip** (2 chapters, includes motifs: *duel*, *meet*)\n*   **My Reusable Act Structure** (Multiple versions available)\n*   **TLE Arc Template**\n\nWhich one would you like me to apply to this book? (If you have a specific one in mind that isn't listed, just let me know!)"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02102-4254-7061-97ea-8847fae7dfa4",
+     "session_id": "01a02102-5f69-728d-a62a-fcac70dbcbe3",
+     "prompt": "Apply arc template — use one of my library arc templates on this book.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_arc_template_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:51.514094+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:51.747411+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:51.738114+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:51.514094+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:51.747411+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:09:51.738114+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've found several arc templates in your library. Since many of them are \"Hero Journey\" or \"Act Structure\" templates, could you let me know which one you'd like to use?\n\nHere are a few options from your list:\n* **Deep Smoke Arc** (A 2-chapter arc with motifs like *Auction House Treasure* and *Betrayal*)\n* **E2E Hero Journey** (Multiple versions available)\n* **My Reusable Act Structure** (Multiple versions available)\n* **TLE Arc Template**\n\nIf you have a specific one in mind, just let me know the name or a description, and I'll apply it to your book."
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "Surfaced 3/3, called 0/3 — and the model was RIGHT. It called composition_arc_template_list and asked 'I've found several arc templates in your library. Which one would you like me to apply?'. My prompt said 'use one of my library arc templates' and named none, so asking is correct. Same shape as glossary_propose_batch in batch 6: a tool needing an explicit choice cannot act on a vague ask."
+  },
+  {
+   "tool": "composition_arc_import_analyze",
+   "scenario": "composition-arc-import-analyze",
+   "intent": "write",
+   "falsifier": "REFUTED IF: it spends LLM tokens with no confirm card (Tier W and it analyses a whole work), OR it proceeds with an invented import_source_id. CONTROL, stated up front: the fixture has NO import source, so the honest outcome is a refusal naming what is missing — and a turn that cannot proceed is a PRECONDITION finding, not a tool defect. If it mints a card over a nonexistent source that is D-EXTRACTION-CONFIRMS-A-NO-OP again, in a third tool of the same family.",
+   "answer_expect": null,
+   "falsifier_sha": "cbb131eae9874e0f",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's book/arc refused.",
+    "gate": "NOT REACHED — never called live; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02102-9a75-79b8-92ff-094d5f0fcb8b",
+     "session_id": "01a02102-b7c5-774b-b5d6-1e5ee4db9517",
+     "prompt": "Reverse-engineer arc — analyze a work I imported and deconstruct its structure.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "tool_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:14.068765+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:14.314193+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:14.297789+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:14.068765+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:14.314193+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:14.297789+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can certainly do that. I have a specialized tool designed to deconstruct an imported work—reverse-engineering its structure into an abstract arc template without copying its prose.\n\nTo get started, please **provide the ID of the imported work** you want me to analyze. \n\nOnce you provide the ID, I will:\n1.  **Propose a deconstruction** of the work's structure.\n2.  **Analyze its pacing, beats, and narrative threads** to create a reusable template.\n3.  **Present the results** for your review.\n\n*(Note: This process involves an LLM-driven analysis and will require your confirmation before proceeding.)*"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02102-f4e5-7dc8-b306-53e6c1727443",
+     "session_id": "01a02103-0f9c-7985-8220-cf3beeb36122",
+     "prompt": "Reverse-engineer arc — analyze a work I imported and deconstruct its structure.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "tool_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:37.26351+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:37.506313+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:37.4975+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:37.26351+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:37.506313+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:10:37.4975+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can certainly do that. To deconstruct an imported work and reverse-engineer its structural arc, I will use the **Arc Import & Analyze** process.\n\nThis process will:\n1.  **Analyze the structure:** I'll look at the pacing, the sequence of major beats, and the way different narrative threads (character arcs, plot lines) intersect.\n2.  **Create an abstract template:** I will generate a structural \"skeleton\" (an arc template) that captures the *logic* of the story—the tension curves, the reversals, and the setups/payoffs—without copying the actual prose.\n3.  **Provide a blueprint:** You'll receive a structured template that you can use to guide your own writing, ensuring your story follows a similar, proven rhythm.\n\n**To begin, please provide the `import_source_id` of the work you want me to analyze.** \n\n*(If you aren't sure what the ID is, you can ask me to list your imported works first.)*"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02103-502a-77ef-998e-097935bd5713",
+     "session_id": "01a02103-6ce5-7af5-a8fb-62c25e1a3432",
+     "prompt": "Reverse-engineer arc — analyze a work I imported and deconstruct its structure.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "tool_list"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:11:00.594095+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:11:00.8642+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:11:00.83682+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 21:11:00.594095+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 21:11:00.8642+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 21:11:00.83682+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can certainly do that. To deconstruct an imported work and extract its structural DNA (the arcs, pacing, and beats), I will use the **Arc Import & Analyze** tool.\n\nThis process will:\n1.  **Analyze the source:** I'll examine the imported text to identify the underlying narrative structure.\n2.  **Extract an Abstract Template:** I will create a reusable \"skeleton\" of the story—mapping out the arcs and major beats—without copying the actual prose.\n3.  **Propose the Structure:** I'll present this deconstructed template to you so you can see the \"blueprint\" of the work.\n\n**To get started, please provide the ID of the imported work you want me to analyze.** (If you aren't sure of the ID, I can list your imported references for you)."
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "Surfaced 3/3, called 0/3 — and the model was RIGHT again. It called tool_list (discovery) and explained it has a tool to deconstruct an imported work, then asked for the source. The fixture has NO import source, so refusing to proceed is the honest outcome; a card over a nonexistent source would have been D-EXTRACTION-CONFIRMS-A-NO-OP a third time."
+  }
+ ]
+}

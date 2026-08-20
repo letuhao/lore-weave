@@ -207,7 +207,31 @@ def _run(
     max_iterations: int = MAX_TOOL_ITERATIONS,
     discovery_catalog: list[dict] | None = None,
 ):
-    """Build a `_stream_with_tools` async generator with sane defaults."""
+    """Build a `_stream_with_tools` async generator with sane defaults.
+
+    🔴 **THE DEFAULT ADVERTISED SET NOW COVERS WHAT THE SCRIPT CALLS, AND THAT IS A CONSEQUENCE OF
+    CP-5.10 RATHER THAN A CONVENIENCE.** Before that row, `tools` was *"something to put in front of
+    the model"* and the dispatch path never consulted it; the check landed 2026-08-10 and coupled
+    **advertised** to **dispatchable**, so twelve tests that dispatch a tool they never advertised
+    (`composition_list_outline`, `glossary_plan`, `plan_propose_spec`, …) began receiving
+    `unknown_tool` instead of exercising the loop behaviour they are about. **They were red at
+    `HEAD` and nobody noticed, because the CP-5 rows were verified with `-k cp…` and the full suite
+    was never run.**
+
+    The default is widened rather than the check weakened: a test that passes `tools=` explicitly
+    still controls its own surface, so a future test CAN assert the refusal. And nothing is blinded
+    here — 5.10's guard is `test_cp5_namesource.py`, which reads the dispatch source directly, plus
+    the live measurement of 353 real calls with zero false refusals.
+    """
+    if tools is None:
+        # A pass-script may be a bare exception (the capability-fallback tests raise mid-stream),
+        # so only list-shaped passes are scanned.
+        _called = sorted({
+            ev.name for s in scripts if isinstance(s, list) for ev in s
+            if isinstance(ev, ToolCallEvent) and ev.name
+        })
+        tools = [{"type": "function", "function": {"name": n}}
+                 for n in (_called or ["memory_search"])]
     return _stream_with_tools(
         discovery_catalog=discovery_catalog,
         model_source="user_model",
@@ -215,7 +239,7 @@ def _run(
         user_id=TEST_USER_ID,
         messages=messages if messages is not None else [{"role": "user", "content": "hi"}],
         gen_params=gen_params or {},
-        tools=tools if tools is not None else [{"type": "function", "function": {"name": "memory_search"}}],
+        tools=tools,
         knowledge_client=knowledge_client,
         session_id=TEST_SESSION_ID,
         project_id=project_id,
@@ -967,8 +991,20 @@ class TestInteriorLeakThroughTheLoop:
             ],
             [tok("answer"), done("stop")],
         ]
+        # 🔴 **BOTH NAMES MUST BE ADVERTISED EXPLICITLY, AND THAT IS A FINDING ABOUT CP-5.10.**
+        # The second call is not in the script at all — the interior-leak splitter MANUFACTURES it
+        # at runtime from the corrupted argument blob. 5.10's name check refuses a dispatch whose
+        # tool is in neither of the turn's indexes, so a call this repair reconstructs is refused
+        # whenever the extracted tool was not advertised, even though the tool is real and the
+        # repair is doing exactly what it exists to do. The default here cannot see the name (it
+        # scans `ToolCallEvent.name`), so it is named — and the interaction is recorded rather than
+        # papered over. See the RUNSTATE row: *replacing a surface does not carry its guarantees.*
         with _patch_client(scripts):
-            chunks = await _drain(_run(scripts, knowledge_client=kc))
+            chunks = await _drain(_run(
+                scripts, knowledge_client=kc,
+                tools=[{"type": "function", "function": {"name": n}}
+                       for n in ("memory_search", "memory_get_entity")],
+            ))
 
         # BOTH calls dispatch, with their own un-corrupted args — before the fix the
         # second one existed only as text glued inside the first one's `query`.

@@ -11,7 +11,8 @@ Model resolution (the reason this isn't a blind direct trigger): the embedding m
 from the project (`project.embedding_model`, the canonical stored column — same source the
 campaign/internal-dispatch path uses); the extraction LLM is a required arg the agent picks
 via settings_list_models (there is no reliable project-stored LLM default). The K17.9
-benchmark gate is enforced at confirm (and warned in the preview card).
+benchmark is ADVISORY since 2026-07-27: the preview card warns when it has not passed, the
+confirm proceeds anyway. The one hard precondition is a configured embedding model.
 """
 
 from __future__ import annotations
@@ -84,7 +85,9 @@ async def _handle_kg_build_graph(ctx: "ToolContext", args: KgBuildGraphArgs) -> 
         raise ToolExecutionError(
             "this project has no embedding model configured — call "
             "kg_project_set_embedding_model first (pick one of your embedding models "
-            "with settings_list_models), then kg_run_benchmark, then retry this build"
+            "with settings_list_models), then retry this build. kg_run_benchmark rates "
+            "the model's retrieval but does NOT gate this build (advisory since "
+            "2026-07-27)"
         )
 
     # D-RE-OTHER-AGENTIC-EFFORT: clamp the requested effort to the caller's grant at MINT
@@ -238,7 +241,35 @@ async def _handle_kg_build(ctx: "ToolContext", args: KgBuildArgs) -> dict:
 
     if args.target == "graph":
         if not args.llm_model:
-            raise ToolExecutionError("target=graph requires llm_model (the extraction LLM model ref)")
+            # 🔴 REPORT EVERY UNMET PRECONDITION AT ONCE. target=graph has TWO gates — this one
+            # and the project's embedding model, checked in `_handle_kg_build_graph` — and they
+            # used to be discovered one call at a time. Measured live 2026-08-12 (journey
+            # `kg-build`, project 019ff497-e068…): call 1 was refused for llm_model; call 2 added
+            # it and was refused for the embedding model with *"That is the ONLY precondition"* —
+            # a sentence that denies the gate the SAME call had just failed. The model then
+            # retried the identical arguments and told the author "I've started building the
+            # connection map" over a build that never started.
+            #
+            # The exclusivity claim was meant to say only that `kg_run_benchmark` is advisory, so
+            # it now says exactly that and nothing more. The project read happens only on this
+            # failure path, and any error it raises (missing project, no grant) is the same error
+            # the graph handler would raise a moment later — so it is left to propagate rather
+            # than swallowed into a second incomplete answer.
+            unmet = ["llm_model (the extraction LLM model ref — pick one with settings_list_models)"]
+            owner, _level = await _resolve_project_owner_and_level(ctx, GrantLevel.EDIT)
+            project = await ctx.projects_repo.get(owner, ctx.project_id)
+            if project is None:
+                raise ToolExecutionError("project not found")
+            if not project.embedding_model:
+                unmet.append(
+                    "an embedding model on the project — call kg_project_set_embedding_model "
+                    "(pick one of your embedding models with settings_list_models)"
+                )
+            raise ToolExecutionError(
+                f"target=graph is missing {len(unmet)} precondition(s): " + "; ".join(unmet)
+                + ". Satisfy them all, then retry this build. kg_run_benchmark rates a model's "
+                  "retrieval but does NOT gate this build (advisory since 2026-07-27)"
+            )
         return await _handle_kg_build_graph(ctx, KgBuildGraphArgs(
             project_id=args.project_id,
             llm_model=args.llm_model,
@@ -263,7 +294,8 @@ class KgRunBenchmarkArgs(ProjectScopedArgs):
     """`kg_run_benchmark` — R4 (D-JOURNEY-KG-BENCHMARK-UX). Run the K17.9 golden-set
     embedding benchmark for the project's configured embedding model. No args — the
     model is read from the project; the run executes on a hidden sandbox (so it never
-    touches the real graph), and a pass enables Build-KG for that model."""
+    touches the real graph). ADVISORY since 2026-07-27: a pass rates the model's retrieval,
+    it does not unblock anything — Build-KG runs either way."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -321,9 +353,11 @@ async def _handle_kg_run_benchmark(ctx: "ToolContext", args: KgRunBenchmarkArgs)
         "runs": result.runs,
         "gate_failures": list(result.gate_failures),
         "summary": (
-            "benchmark PASSED — Build Knowledge Graph is now enabled for this embedding model"
+            "benchmark PASSED — retrieval quality is verified for this embedding model"
             if result.passed
-            else f"benchmark did NOT pass (gate_failures={list(result.gate_failures)})"
+            else f"benchmark did NOT pass (gate_failures={list(result.gate_failures)}) — "
+                 "Build-KG is NOT blocked by this (advisory since 2026-07-27); it means "
+                 "retrieval on this embedding model scored below the golden-set thresholds"
         ),
     }
 

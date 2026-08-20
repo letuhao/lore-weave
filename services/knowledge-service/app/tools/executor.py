@@ -388,11 +388,49 @@ async def _handle_story_search(ctx: ToolContext, args: StorySearchArgs) -> dict:
     if result.degraded:
         out["degraded"] = result.degraded
     if not projected:
-        out["note"] = (
-            "no matches — try mode='semantic' for ideas described in your own "
-            "words, or a shorter exact phrase"
-        )
+        out["note"] = _empty_story_search_note(args.mode, result.degraded)
     return out
+
+
+def _empty_story_search_note(mode: str, degraded: dict[str, str]) -> str:
+    """The advice for an empty result — which must not name a leg that just reported it did
+    not run.
+
+    The two branches above were written independently and never consulted each other, so an
+    empty result carrying `degraded: {"semantic": "not_indexed"}` was followed by "try
+    mode='semantic'". S1 row 12 recorded it and it happened 9 times on 2026-07-15: the tool
+    said the semantic leg could not run and then recommended it in the next key.
+
+    That is worse than an unhelpful note. The model has no way to know the advice is void, so
+    it spends its next call on the one thing guaranteed to fail — and when that returns empty
+    too, the same note comes back. Naming the real obstacle, and the tool that clears it, is
+    the difference between an empty result and a dead end.
+    """
+    if degraded.get("semantic") == "not_indexed":
+        # The project has no passage vectors, so `semantic` and the semantic half of `hybrid`
+        # are BOTH unavailable — recommending either is recommending nothing.
+        return (
+            "no matches, and semantic search did not run: this project has no indexed "
+            "passages. Only exact matching was applied, so try a shorter exact phrase or a "
+            "different spelling. To enable meaning-based search, index the project first "
+            "(kg_project_set_embedding_model, then run extraction)."
+        )
+    if degraded:
+        return (
+            "no matches, and part of the search did not run ("
+            + ", ".join(f"{leg}: {why}" for leg, why in sorted(degraded.items()))
+            + "). Try a shorter exact phrase; the missing leg may be why this is empty."
+        )
+    if mode == "semantic":
+        # Suggesting the mode already in use is the same dead end in a smaller form.
+        return (
+            "no matches — try mode='exact' for a literal phrase or name, or a broader "
+            "description of the idea"
+        )
+    return (
+        "no matches — try mode='semantic' for ideas described in your own "
+        "words, or a shorter exact phrase"
+    )
 
 
 async def _handle_memory_search(ctx: ToolContext, args: MemorySearchArgs) -> dict:
@@ -572,6 +610,27 @@ async def _handle_memory_recall_entity(
         }
         for r in detail.relations
     ]
+    # `other_matches` used to be a list of NAMES, which by construction could not
+    # disambiguate anything: `find_entities_by_name` matches ON the name (canonical or
+    # alias), so every other match carries the same string. Measured on the corpus, all
+    # 13 calls that returned this field returned FIVE entries with ONE distinct value —
+    # the field never once carried information. It also truncated silently at 5 while
+    # `relations` next to it declares `relations_truncated`; the live probe that found
+    # this was 5 of 47 matches, all in different projects, with `entity` being an
+    # arbitrary one of them and nothing in the payload saying so.
+    #
+    # What distinguishes same-named matches is the project they live in, so each row now
+    # carries it — and `project_id` is a real argument of this tool, which makes the
+    # disambiguation ACTIONABLE: the model can re-call scoped to one project.
+    #
+    # `anchor_score` and `confidence` are the ACTUAL tiebreak: the find-by-name Cypher
+    # orders by anchor_score DESC, confidence DESC, name ASC. S1 row 11 records this pick
+    # as having "no declared tiebreak" — it has one, in the query, invisible to every
+    # caller. Returning the two sort keys states it in the payload rather than in a
+    # sentence, so the caller can see WHY this match won and not merely that it did.
+    # This is the candidate-set half of the unadmitted C-23; the `outcome: "ambiguous"`
+    # half is a contract change and is not smuggled in here.
+    others = matches[1 : 1 + _OTHER_MATCHES_CAP]
     return {
         "found": True,
         "entity": {
@@ -579,10 +638,25 @@ async def _handle_memory_recall_entity(
             "kind": detail.entity.kind,
             "aliases": detail.entity.aliases,
             "confidence": detail.entity.confidence,
+            "project_id": detail.entity.project_id,
+            "anchor_score": detail.entity.anchor_score,
         },
         "relations": relations,
         "relations_truncated": detail.relations_truncated,
-        "other_matches": [e.name for e in matches[1 : 1 + _OTHER_MATCHES_CAP]],
+        "other_matches": [
+            {
+                "name": e.name,
+                "kind": e.kind,
+                "project_id": e.project_id,
+                "confidence": e.confidence,
+                "anchor_score": e.anchor_score,
+            }
+            for e in others
+        ],
+        # A COUNT, not a bool, and derived from the match list rather than typed: the
+        # Cypher has no LIMIT, so this is the true residue. `> len(other_matches)` is the
+        # truncation signal, which is why no separate flag is added.
+        "other_matches_total": len(matches) - 1,
     }
 
 

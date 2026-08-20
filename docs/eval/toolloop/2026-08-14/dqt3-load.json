@@ -1,0 +1,225 @@
+{
+  "batch": "dqt3-load",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "tool_load",
+      "scenario": "dqt3-gated-tool-load-is-withheld-not-absent",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the reply says the tool does not exist / is not available on the platform, OR the turn retries the load repeatedly. CONTROL: read chat_messages.withheld_tools for stage='intent_gate' — if the count is 0 the gate did not fire, nothing was withheld, and the run says NOTHING about the stamp. That control voided the first attempt and must be checked before any conclusion.",
+      "answer_expect": {
+        "none_of": [
+          "do not exist",
+          "don't exist",
+          "no such tool",
+          "not available on this platform"
+        ],
+        "why": "The failure DQ-T3 records is the model reporting a withheld capability as non-existent. Any of these phrasings about the gated tools is the defect reproducing."
+      },
+      "falsifier_sha": "30eddb58d73fa6e4",
+      "ship_audit": {
+        "empty_case": "OWED — a category with nothing withheld must carry no stamp at all.",
+        "tenancy": "n/a — tool_list is consumer-local and reads no user data."
+      },
+      "defects": [
+        "DQ-T3"
+      ],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "01a0009d-d855-7a84-bf23-449c773863b9",
+          "session_id": "01a0009d-f1bc-7f69-ae6a-283952763061",
+          "prompt": "Load the tool called glossary_book_sync_apply by name and tell me exactly what arguments it takes. Do not call it, just read me its requirements.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:19.823194+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:20.018608+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:20.010805+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:19.823194+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:20.018608+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:20.010805+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `glossary_book_sync_apply` tool requires the following arguments:\n\n*   **`items`** (Required): An array of objects representing the per-row choices to apply. Each object in the array must contain:\n    *   **`element`** (Required): The type of element being synced. Must be one of: `genre`, `kind`, or `detail`.\n    *   **`id`** (Required): The specific BOOK row ID (obtained from `glossary_book_sync_available`).\n    *   **`choice`** (Required): The action to take for this row. Must be one of: `take_theirs` (overwrite the book row from its source) or `keep_mine` (keep the book's current value but stop prompting).\n\nI did not make any changes. I only loaded the tool and read its requirements as you requested; I did not call the tool because I do not have the necessary arguments (the `items` array containing specific `id`s and `choice`s) to perform a sync.\n\nI did not re-read the book, and my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "01a0009d-ec4b-7049-bf0b-d888721bc350",
+          "session_id": "01a0009e-5212-7163-bfb8-b48150c83c09",
+          "prompt": "Load the tool called glossary_book_sync_apply by name and tell me exactly what arguments it takes. Do not call it, just read me its requirements.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:24.947453+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:44.321078+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:44.313282+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:24.947453+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:44.321078+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:12:44.313282+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `glossary_book_sync_apply` tool requires the following arguments:\n\n*   **`items`** (Required): An array of objects representing the per-row choices to apply. Each object in the array must contain:\n    *   **`element`** (Required): The type of element being synced. Must be one of: `genre`, `kind`, or `detail`.\n    *   **`id`** (Required): The specific BOOK row ID (obtained from `glossary_book_sync_available`).\n    *   **`choice`** (Required): The action to take for this row. Must be one of: `take_theirs` (overwrite the book row from its source) or `keep_mine` (keep the book's current value but stop prompting).\n\nI did not make any changes. I was only responding to your request to read and describe the tool's requirements, not to execute it.\n\nI did not re-read the book, and my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "01a0009e-93b3-77c5-99aa-a8f30d7ef1fc",
+          "session_id": "01a0009e-b074-7de5-ae09-a3a89b7eb04b",
+          "prompt": "Load the tool called glossary_book_sync_apply by name and tell me exactly what arguments it takes. Do not call it, just read me its requirements.",
+          "called": true,
+          "surfaced": true,
+          "called_tools": [
+            "tool_load"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:13:07.804277+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:13:08.066626+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:13:08.047516+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 14:13:07.804277+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 14:13:08.066626+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 14:13:08.047516+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "The `glossary_book_sync_apply` tool takes the following arguments:\n\n*   **`items`** (Required): An array of objects representing the per-row choices to apply. Each object in the array must contain:\n    *   **`element`** (Required): The type of element being synced. Must be one of: `\"genre\"`, `\"kind\"`, or `\"detail\"`.\n    *   **`id`** (Required): The specific ID of the book row (obtained from `glossary_book_sync_available`).\n    *   **`choice`** (Required): The action to take for this row. Must be one of: `\"take_theirs\"` (overwrite the book row with the source value) or `\"keep_mine\"` (keep the current book value and stop prompting).\n\nI did not make any changes. I only read the tool's requirements as you requested, and I did not call the tool.\n\nI did not re-read the book, and my answer may be stale."
+        }
+      ],
+      "surfaced_count": 3,
+      "called_count": 3,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

@@ -54,7 +54,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"concepts) by name, alias, or natural-language terms. Returns ranked entities " +
 			"with name, aliases, kind, and a short description. Use this to find what the " +
 			"glossary already knows before answering or proposing changes.",
-		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithAmbientBook(lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"look up a character", "find a character", "who is", "do i have an entry for", "search my story bible", "find an entity", "is there an entry for", "look up in the glossary"})),
 	}, s.toolSearch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -87,7 +91,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"Calling this twice returns the identical list. For what a specific book ALREADY has, " +
 			"use glossary_book_ontology_read.",
 		// Global System-standards read, no scope key (not book/user scoped) ⇒ ScopeNone.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeNone, nil, []string{"what categories can i use", "what kinds exist", "what can i track in a story bible", "available entity types", "built in categories"}),
 	}, s.toolListKinds)
 
 	// T1: book-tier ontology tools (read, adopt, create/patch/delete, set-genres,
@@ -154,7 +162,7 @@ func (s *Server) mcpHandler() http.Handler {
 		// Tier was previously unset (defaulting to R) despite being a direct write --
 		// corrected to A (auto-commit, draft-only so low-risk) while legacy-tagging it,
 		// since both edits touch this same registration.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_entities"),
 	}, s.toolProposeNewEntity)
 
 	// Class-C proposals. These MINT a generalized action confirm token (no write) +
@@ -179,7 +187,7 @@ func (s *Server) mcpHandler() http.Handler {
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W. LEGACY (catalog-unification
 		// 2026-07-22): superseded by glossary_propose_batch's create_kinds op — hidden from the
 		// hot-set, still loadable for existing callers.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_batch"),
 	}, s.toolProposeNewKind)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -196,7 +204,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"kinds[].attributes[].field_type": enumFieldTypes,
 		}),
 		// LEGACY (catalog-unification 2026-07-22): superseded by glossary_propose_batch's create_kinds op.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_batch"),
 	}, s.toolProposeKinds)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -211,7 +219,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"nothing until confirmed.",
 		// Mints a grant confirm_token ⇒ Tier W. Calls a PLANNER LLM synchronously at
 		// mint time (runPlanner → provider-registry) ⇒ Paid (spends real money on call).
-		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil)),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.WithPaid(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"plan my ontology", "design a story bible", "how should i structure my world", "plan the categories for this book"})),
 	}, s.toolPlan)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -251,7 +263,11 @@ func (s *Server) mcpHandler() http.Handler {
 			"", "ops[]",
 		),
 		// Mints a grant confirm_token ⇒ Tier W. NO planner LLM (deterministic) ⇒ not paid.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"make several ontology changes", "batch of glossary changes", "apply these changes together", "several kinds and attributes at once"}),
 	}, s.toolProposeBatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -265,7 +281,7 @@ func (s *Server) mcpHandler() http.Handler {
 			"field_type": enumFieldTypes,
 		}),
 		// LEGACY (catalog-unification 2026-07-22): superseded by glossary_propose_batch's add_attributes op.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_batch"),
 	}, s.toolProposeNewAttribute)
 	// glossary_book_delete + glossary_book_* tools are registered in RegisterBookTools (T1).
 
@@ -373,7 +389,57 @@ type searchToolIn struct {
 	Limit  int    `json:"limit,omitempty" jsonschema:"max entities to return (default 20, max 50)"`
 }
 type searchToolOut struct {
+	// RESULTS. Empty means the query matched nothing — always, with no exceptions and nothing
+	// else to read. See RecentForOrientation.
 	Entities []glossaryEntityForContext `json:"entities"`
+	// T28-D1 — set ONLY when the query matched nothing and the recents were returned instead.
+	// Absent on a real match, so a caller that ignores it is never misled by its presence.
+	Note string `json:"note,omitempty"`
+	// T28-D1 ROUND 2 (2026-08-14) — the recents live HERE now, not in Entities.
+	//
+	// 🔴 THE NOTE WAS WRITTEN, IT WAS CORRECT, AND THE MODEL IGNORED IT. T28-D1 added a plain
+	// sentence — "NO ENTITY MATCHED this query … returned for orientation only … Do NOT treat
+	// them as results for this search" — on the reasoning that a caller who ignores it is never
+	// misled. Measured live 2026-08-14, K=3: asked "Are there any suggested entries waiting for
+	// me to review?" against a book with exactly ONE queued entity, the model called
+	// glossary_search, got this fallback with all three recents and that exact note, and replied
+	// "3 suggested entries waiting for your review" on 3 of 3 runs.
+	//
+	// It used the data and dropped the sentence. That is the same lesson three other experiments
+	// gave this week: prose in the payload, prose in the system note and prose in a context block
+	// all failed to stop a weak model from using answer-shaped data that was sitting right there.
+	// A disclaimer is not a mechanism.
+	//
+	// So the mechanism is the SHAPE: on a no-match `entities` is empty, which cannot be read as
+	// three results by any caller, careful or not. The recents are still available — orientation
+	// was a real need — but under a key whose name is what it is for.
+	RecentForOrientation []glossaryEntityForContext `json:"recent_for_orientation,omitempty"`
+}
+
+// searchIsRecentFallback reports whether EVERY returned entity is the tier-3 "recent" fallback,
+// i.e. nothing actually matched the query.
+//
+// 🔴 THE PAYLOAD USED TO CARRY NO SIGNAL AT ALL. A search whose query matched nothing returns the
+// book's most recently touched entities at tier "recent" / rank_score 0.1 — which is a useful
+// orientation answer, but it arrived in the same `entities` array, with the same shape, as real
+// matches. MEASURED 2026-08-13: searching a throwaway book for 'zzzznotathing' returned all four
+// of its entities, and cycle 10 measured the live version of the same thing — searching for the
+// character 'Lam Uyen' returned unrelated EVENTS ("Cuộc đối thoại với Tô Thanh Dao") at
+// rank_score 0.1 as the top results.
+//
+// This is the anti-false-suggestion rule the ai-gateway's own find_tools states for the same
+// reason — "keeps pure-noise near-misses out so a true 'no such tool' reads as empty" — and the
+// same class as T7-D2, where a listing emptied by a filter claimed no such tools existed.
+func searchIsRecentFallback(entities []glossaryEntityForContext) bool {
+	if len(entities) == 0 {
+		return false
+	}
+	for _, e := range entities {
+		if e.Tier != tierRecent {
+			return false
+		}
+	}
+	return true
 }
 
 type getEntityToolIn struct {
@@ -458,7 +524,20 @@ func (s *Server) toolSearch(ctx context.Context, _ *mcp.CallToolRequest, in sear
 	if err != nil {
 		return nil, searchToolOut{}, errors.New("glossary search failed")
 	}
-	return nil, searchToolOut{Entities: resp.Entities}, nil
+	out := searchToolOut{Entities: resp.Entities}
+	if strings.TrimSpace(in.Query) != "" && searchIsRecentFallback(resp.Entities) {
+		// T28-D1 ROUND 2 — MOVE them, do not merely label them. Leaving the recents in
+		// `entities` beside a "do not treat these as results" note was measured 3/3 to produce
+		// exactly that: three orientation rows reported as three search hits. An empty
+		// `entities` cannot be misread.
+		out.RecentForOrientation = resp.Entities
+		out.Entities = []glossaryEntityForContext{}
+		out.Note = "NO ENTITY MATCHED this query — `entities` is empty. `recent_for_orientation` " +
+			"holds the book's most recently touched entities (tier=\"recent\", rank_score 0.1) " +
+			"purely so you can orient; they are NOT results for this search and answer no " +
+			"question about how many or which entities match anything."
+	}
+	return nil, out, nil
 }
 
 func (s *Server) toolGetEntity(ctx context.Context, _ *mcp.CallToolRequest, in getEntityToolIn) (*mcp.CallToolResult, getEntityToolOut, error) {

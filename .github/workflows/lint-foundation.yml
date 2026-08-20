@@ -80,6 +80,23 @@ jobs:
           - language-bias-gate
           - sdk-duplication-gate
           - slo-latency-lint
+          # CP-1 / M2 — the agent-runtime membrane. ARCHITECTURE §3 forbids a CODE
+          # PATH from the legacy catalog to the new surface, not merely a wrong
+          # result: "old declarations are not hidden, they are ABSENT". A
+          # behavioural test can only show the path was not taken on the inputs it
+          # tried, and "invisibility implemented as a filter" has leaked or
+          # silently deleted the wrong thing thirteen times in this repository.
+          # So the new package may import the standard library, itself, and what is
+          # named in ALLOWED_EXTERNAL with a reason — an ALLOWLIST, because a
+          # denylist is default-permitted and a legacy module written tomorrow
+          # would be reachable until someone remembered it. CP-2.1 added the first
+          # entry, `pydantic_ai`, SCOPED to assembly.py: P4 Assembly is a BUY
+          # decision, and the gate additionally refuses the toolset library's two
+          # CEILING apis (`.filtered`, `.prepared`), which delete a declaration
+          # instead of deferring it. Its default mode runs --selftest, which fires
+          # the gate on eleven bypass shapes — and stays silent on two negative
+          # controls — before it is trusted to pass.
+          - agentruntime-membrane-gate
           # Context Budget Law §13c — the §11a Inspector coverage manifest stays
           # un-gameable: every checklist item must bind to an existing proving test.
           # Static (no suite execution); the referenced tests' green-ness is enforced
@@ -104,3 +121,88 @@ jobs:
         run: python -m pip install --quiet pyyaml
       - name: Run ${{ matrix.lint }}
         run: python scripts/${{ matrix.lint }}.py
+
+  # CP-1 — the REFUSAL CENSUS. It is NOT in the lint matrix above, and that is
+  # deliberate: those lints are stdlib-only and the shared step installs `pyyaml`
+  # and nothing else, while this one RUNS THE SUITE 68 times. Put in the matrix it
+  # would either fail on a missing pytest or — far worse — pass over a suite that
+  # never ran, which is the vacuous-green shape this whole effort exists to end.
+  #
+  # Why it exists: twelve rounds of independent verification on CP-1 produced no
+  # convergence — findings introduced per round read 2,1,2,1,3,2,4,3,2,2,2,5, with
+  # the maximum on the SMALLEST delta of the run. The decisive evidence was
+  # structural rather than numeric: a verifier stopped reporting a defect and WROTE
+  # the patch, measured it at baseline and named the line; it was applied verbatim
+  # and still shipped a regression. **When the pre-written fix still fails, the loop
+  # is not limited by the quality of its findings.**
+  #
+  # Exactly one measurement in that run converged. Three verifiers independently
+  # AST-enumerated the package's `raise` sites, agreed on 68, and agreed member for
+  # member on which thirteen are unguarded. Two of them added a hand-picked
+  # structural addendum (87 and 92 sites) and no two cut it the same way — every
+  # unit of divergence lived there. So the reproducible half is mechanised and the
+  # addendum is dropped, on their advice.
+  #
+  # What it changes: "a finding is closed" stops meaning "the builder wrote a test"
+  # and starts meaning "this named site moved SILENT → RED". That structurally
+  # forbids the run's most-repeated failure — a fix landing on the SIBLING of the
+  # site a verifier named, seven times — because the sibling has its own id and its
+  # own row in the allowlist.
+  #
+  # What it does NOT do: it cannot tell whether a guard is RIGHT, only whether the
+  # suite notices the check is gone. A test that reds for the wrong reason still
+  # reads RED here. That remains the verdicts' job.
+  agentruntime-census:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      # 🔴 `requirements.txt` HAS NO PYTEST, so the first version of this job could never
+      # pass: a verifier executed it and got `SELFTEST FAIL`, rc=1, every time. I wired a gate whose
+      # green state was unreachable and did not run it in its CI shape before shipping it — which is
+      # the vacuous-gate failure this job exists to prevent, committed in the job that prevents it.
+      - name: Install chat-service deps
+        working-directory: services/chat-service
+        run: python -m pip install --quiet -r requirements.txt -r requirements-test.txt
+      # Default mode runs --selftest first: it asserts the enumeration still finds
+      # the sites AND that neutering a guarded refusal reds the suite, so CI cannot
+      # pass a census that has not been shown to fire in both directions.
+      - name: Refusal census
+        # --force: CI re-derives the verdict from nothing. The local cache is an
+        # inner-loop accelerator; if a branch could be certified by a recorded answer,
+        # a stale key would be a way to merge a verdict nobody computed.
+        run: python scripts/agentruntime-census.py --force
+
+  # 🔴 THE GUARDS, NOT THE FIXES, ARE WHERE THIS RUN'S DEFECTS NOW LIVE.
+  #
+  # Six independent verification rounds on CP-1 converged on one shape: the fixes land, and the
+  # guards written for them have holes. Round 26's ten findings were ALL guards — a control that
+  # could not fail, a column that reddened for a different clause than the one it tested, an
+  # anti-vacuity check calibrated below the thing it guarded. Sibling pairs fixed at both ends
+  # across the run: 3 of 12.
+  #
+  # The rule "a fix without a red-able test is not a closed finding" was in force the whole time and
+  # did not hold, because it is a thing a person is supposed to remember at the moment they are most
+  # convinced they have just fixed something. What DID hold is the reversion prover: it caught four
+  # fixes shipped with no guard at all in one round, before either verifier saw the tree.
+  #
+  # `--run` applies each recorded falsifier in a throwaway mirror and requires the guard it NAMES to
+  # be the failing test — a red somewhere else is a bystander, which is the R26 finding this clause
+  # is built from. ~2 minutes; it reuses one mirror rather than one per falsifier.
+  agentruntime-falsification:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install chat-service deps
+        working-directory: services/chat-service
+        run: python -m pip install --quiet -r requirements.txt -r requirements-test.txt
+      # Default mode checks the PARTITION — every guard is falsified, deliberately unfalsifiable
+      # with a reason, or in the checked-in backlog. `--run` then proves the recorded ones fire.
+      - name: Falsification gate
+        # --force, for the same reason as the census above.
+        run: python scripts/agentruntime-falsification.py --run --force

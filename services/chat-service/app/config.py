@@ -15,6 +15,18 @@ class Settings(BaseSettings):
     audio_ttl_hours: int = 48         # Voice audio retention DEPLOY CEILING (WS-4.3): the max;
                                       # each user narrows within it via voice.audio_retention_hours
     audio_cleanup_interval_hours: int = 4  # How often to run cleanup
+    # CP-3.6 — the suspended-run maintenance loop, which is `sweep_expired_runs`'s missing owner.
+    # The interval is NOT the TTL: a run expires after 6 hours, and until this loop existed the
+    # turn it belonged to went on advertising `awaiting_input` until the next process restart.
+    #
+    # SECONDS, not hours, and deliberately so. An hours-only knob with a 1-hour floor cannot be
+    # WATCHED RUN inside a test window — and a mechanism nobody can observe running is precisely how
+    # `sweep_expired_runs` stayed dead for months behind a docstring. The floor stays (60s) so a
+    # zero can never turn this into a busy loop.
+    suspended_run_maintenance_interval_seconds: int = 3600
+    # Retention PAST expiry, not the TTL. A row stops being resumable when it expires; it stops
+    # being EVIDENCE only once the turn it justifies has been resolved. See sweep_expired_runs.
+    suspended_run_retention_days: int = 30
     internal_service_token: str
     statistics_service_internal_url: str = "http://statistics-service:8089"
     # R3 (D-PROACTIVE-DELIVERY) — the notification sink for the proactive check-in's content-free push.
@@ -270,6 +282,19 @@ class Settings(BaseSettings):
     # demand. The domain's TOOLS stay hot regardless (surface_hot_domains is
     # surface-driven, not skill-body-driven) — only the verbose prose defers.
     lazy_skill_bodies: bool = True
+    # CP-2.7 — THE ROUTE. When ON, a turn's advertised set comes from
+    # `contracts/agent-runtime-manifest.json` and from nothing else: no core tools, no
+    # `find_tools`, no frontend extras. "Old declarations are not hidden. They are ABSENT."
+    #
+    # 🔴 **OFF BY DEFAULT, AND THAT IS A MEASUREMENT DECISION RATHER THAN CAUTION.** The legacy arm
+    # is CP-2's CONTROL GROUP (ARCHITECTURE §7). CP-1.9 spent a whole item establishing that a
+    # control perturbed by changes nobody decided invalidates the comparison before it starts — so
+    # with this flag off, the advertise chokepoint is byte-identical to what it was.
+    #
+    # The manifest is committed as `declarations: []`, so turning this on today advertises NOTHING.
+    # That is the honest state of an empty membrane, and it is what makes CP-2.7's item A — the
+    # agent SAYS it has no declarations — a thing that can be observed rather than argued.
+    agentruntime_arm: bool = False
     # `lazy_workflow_directive` — when ON, the WS-5 workflow-preference block lists
     # workflow SLUGS + short titles only (drops each workflow's full description,
     # ~1-2k), keeping the "call workflow_load(<slug>) FIRST" directive that steers

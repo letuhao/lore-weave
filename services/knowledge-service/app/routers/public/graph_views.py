@@ -178,10 +178,16 @@ def _slugify(name: str) -> str:
 def _coerce_ordinal(value: Any) -> int | None:
     """Coerce a Neo4j temporal-ordinal property to an int (or None).
 
-    `valid_from`/`valid_to` are chapter ordinals stored as ints. A legacy
-    edge may still carry a datetime in `valid_until` (the pre-ontology
-    timestamp model) — that is NOT an ordinal, so we coerce only int-like
-    values and treat anything non-int as None (invariant / open)."""
+    `valid_from_ordinal`/`valid_to_ordinal` are chapter ordinals stored as
+    ints. A legacy edge may still carry a datetime in `valid_until` (the
+    pre-ontology timestamp model) — that is NOT an ordinal, so we coerce only
+    int-like values and treat anything non-int as None (invariant / open).
+
+    NOTE (#249-adjacent, measured 2026-08-11): the bare `valid_from` property is
+    a wall-clock datetime on every one of the 1142 RELATES_TO edges in this
+    instance — zero are int-like. Passing it here returns None unconditionally,
+    which is exactly the bug this function's callers used to have. Feed it the
+    `*_ordinal` properties, never the bare ones."""
     if value is None:
         return None
     if isinstance(value, bool):  # bool is an int subclass — exclude it
@@ -298,7 +304,7 @@ WHERE subj.user_id = $user_id
   AND r.user_id = $user_id
   AND r.predicate = $edge_type
 RETURN properties(r) AS rel, properties(obj) AS obj
-ORDER BY coalesce(r.valid_from, 2147483647) ASC, obj.id ASC
+ORDER BY coalesce(r.valid_from_ordinal, 9223372036854775807) ASC, obj.id ASC
 LIMIT $limit
 """
 
@@ -317,8 +323,13 @@ def build_timeline(
             TimelineInstance(
                 target_id=str(obj.get("id", "")),
                 target_label=obj.get("name"),
-                valid_from=_coerce_ordinal(rel.get("valid_from")),
-                valid_to=_coerce_ordinal(rel.get("valid_to")),
+                # F3's ordinal model (see neo4j_repos/temporal.py): the NARRATIVE interval
+                # lives in `valid_from_ordinal` / `valid_to_ordinal` (null ⇒ open). The bare
+                # `valid_from` is a wall-clock datetime and `valid_to` is not a property at
+                # all — reading those coerced every instance to None, which is why a timeline
+                # of 13 closed and 1 open instances rendered as 14 undated open ones.
+                valid_from=_coerce_ordinal(rel.get("valid_from_ordinal")),
+                valid_to=_coerce_ordinal(rel.get("valid_to_ordinal")),
                 evidence_chapter_id=rel.get("source_chapter"),
                 schema_version=_coerce_ordinal(rel.get("schema_version")),
                 target_glossary_entity_id=obj.get("glossary_entity_id"),

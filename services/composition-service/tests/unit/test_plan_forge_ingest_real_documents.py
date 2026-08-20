@@ -325,6 +325,47 @@ def test_a_lone_section_with_a_lone_child_is_NOT_a_title():
     assert len(spec["arcs"]) == 1 and len(spec["events"]) == 2
 
 
+def test_a_numbered_section_with_SEVERAL_arcs_is_still_not_a_title():
+    """The counter-case the lone-child test did NOT cover, and the shape every real plan has.
+
+    Both `# 1. Arc Overview` documents in the corpus happened to hold ONE arc, so descent stopped at
+    the `len(children) < 2` guard by luck rather than by rule. A plan with the ordinary THREE arcs
+    has three `## ` siblings, so the rule descended, read `# 1. Arc Overview` as the document's
+    TITLE, and promoted each ARC to a top-level section. The kind matcher cannot place an arc's name,
+    so all three landed in `unclassified` and the spec parsed **zero arcs**.
+
+    🔴 MEASURED LIVE 2026-08-12 (book `019ff482…`, plan_run `019ff486-8eaf…`): the model sent exactly
+    the shape `plan_propose_spec`'s own `guidance` prescribes — opens `# 1. Arc Overview`, one `## `
+    per arc, one `### ` per beat — and got `problem: no_arcs_parsed` with guidance telling it to send
+    that same shape again. An instruction a caller cannot satisfy is unrecoverable, which is how the
+    turn ended with the author told a chapter plan was "ready" over an empty book.
+
+    One arc parsed and three did not: the failure was invisible precisely because the small case
+    worked.
+    """
+    doc = ingest_markdown(
+        "# 1. Arc Overview\n\n"
+        "## The Forged Path\n"
+        "### Iseul finds the discrepancy.\n"
+        "### Rho admits the first forgery.\n\n"
+        "## The Salted Truth\n"
+        "### Iseul flees across the flats.\n\n"
+        "## The Great Unmapping\n"
+        "### The Guild sabotages the route.\n"
+    )
+    assert [s["title"] for s in doc["sections"]] == ["Arc Overview"], (
+        "the numbered Arc Overview section was read as a document title and its arcs promoted"
+    )
+    spec = propose_spec(doc)
+    assert [a["title"] for a in spec["arcs"]] == [
+        "The Forged Path", "The Salted Truth", "The Great Unmapping",
+    ]
+    assert len(spec["events"]) == 4
+    # The honesty block must not be reporting a failed read on a document that parsed cleanly.
+    assert not (spec["meta"].get("ingest_unread") or {}).get("empty_read")
+    assert not (spec["meta"].get("ingest_unread") or {}).get("unclassified")
+
+
 def test_an_EMPTY_read_of_a_substantial_document_says_so():
     """The hole in the honesty block: it reported what it could not CLASSIFY, never what it could not
     EXTRACT.

@@ -1,0 +1,42 @@
+[
+  {
+    "tool": "glossary_curation_list",
+    "args": {
+      "book_id": "450aad9f-a22e-4d7c-b1bf-48996c831e8f",
+      "view": "merge_candidates"
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_curation_list error: book not accessible"
+  },
+  {
+    "tool": "glossary_propose_aliases",
+    "args": {
+      "book_id": "450aad9f-a22e-4d7c-b1bf-48996c831e8f",
+      "language_code": "x",
+      "items": []
+    },
+    "verdict": "refused",
+    "response": "MCP glossary_propose_aliases error: book not accessible"
+  },
+  {
+    "tool": "web_search",
+    "verdict": "n/a",
+    "why": "declares no book/project/map/world/user_model id \u2014 no tenancy argument"
+  },
+  {
+    "tool": "composition_conformance_status",
+    "args": {
+      "book_id": "450aad9f-a22e-4d7c-b1bf-48996c831e8f"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_conformance_status error: Error executing tool composition_conformance_status: not found or not accessible"
+  },
+  {
+    "tool": "composition_motif_book_list",
+    "args": {
+      "book_id": "450aad9f-a22e-4d7c-b1bf-48996c831e8f"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_motif_book_list error: Error executing tool composition_motif_book_list: not found or not accessible"
+  }
+]

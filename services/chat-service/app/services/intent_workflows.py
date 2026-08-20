@@ -31,7 +31,9 @@ import re
 # lowercase-matched against the user's message. Kept SPECIFIC to avoid mis-pinning.
 _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
     ("entity-triage", [
-        r"\btriage\b",
+        # Same inflection blindness as translation-pass below: "triaging"/"triaged" are the natural
+        # forms and the bare stem missed both.
+        r"\btriag(e|es|ed|ing)\b",
         r"clean\s+up.*(suggestion|inbox|pile|entit|character|item)",
         r"review.*(inbox|suggestion)",
         r"(keep|throw).*(junk|out).*(character|entit|item|suggestion)",
@@ -63,7 +65,15 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"plan\s+out.*(story|novel|book)",
     ]),
     ("translation-pass", [
-        r"\btranslate\b",
+        # 🔴 `\btranslate\b` MATCHED NEITHER "translating" NOR "translation" — the two forms a user
+        # is most likely to write, for the rail literally named `translation-pass`. MEASURED LIVE
+        # 2026-08-12: "Check what in this book still needs translating into Vietnamese, and bring
+        # the translation up to date" pinned NOTHING; the turn engaged a stale vision-to-book rail
+        # instead and no translation tool was ever called. A word-boundary match on a bare verb STEM
+        # is blind to ordinary English morphology, and this table is matched against a human
+        # sentence. Reproduced with no model in the loop: intent_pinned_workflows(that sentence)
+        # returned [].
+        r"\btranslat(e|es|ed|ing|ion|ions)\b",
         r"english\s+reader",
         r"(only|just).*(what\s+changed|the\s+new|dirty)",
         r"translation\s+pass",
@@ -73,6 +83,18 @@ _INTENT_PATTERNS: list[tuple[str, list[str]]] = [
         r"keep\s+(writing|drafting)",
         r"write.*(several|multiple|the\s+next\s+few).*chapter",
         r"draft.*while\s+i",
+        # 🔴 THE WORKFLOW'S OWN DESCRIPTION IS "drafting itself chapter by chapter, on its own", and
+        # not one pattern above matched a user who wrote exactly that. MEASURED LIVE 2026-08-12:
+        # "Set this book drafting itself chapter by chapter from the plan, and pause for me to
+        # review before it goes too far" pinned NOTHING — the only rail computed was a completed
+        # vision-to-book — so none of this workflow's five steps was ever reached.
+        #
+        # These three phrases are what make it AUTONOMOUS (many chapters, unattended), which is the
+        # line against chapter-compose ("write THIS chapter"). Kept to that: a bare "write this
+        # chapter" must still pin chapter-compose alone, and the guard asserts it.
+        r"chapter\s+by\s+chapter",
+        r"draft(ing)?\s+itself",
+        r"on\s+its\s+own.*(draft|writ)",
     ]),
     # Single-chapter/scene writing (chapter-compose: outline → get-chapter → draft). This is the
     # rail for "write THIS scene/chapter" once the world is built — the continued-writing case the

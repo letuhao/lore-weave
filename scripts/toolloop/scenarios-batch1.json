@@ -1,0 +1,402 @@
+{
+  "scenarios": [
+    {
+      "id": "composition-package-tree",
+      "tool_under_test": "composition_package_tree",
+      "expect_tool": "composition_package_tree",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What is in this book?",
+      "prompt_source": "_meta.synonyms['what is in this book']",
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: any run's after-snapshot differs from its before-snapshot (a read that writes), OR the reply names a chapter/entity that is not in the fixture — the fixture holds exactly one chapter ('Chapter I - The Ember Codex') and three glossary entities (Aldric Vane, Mira Solene, Ember Codex), so any fourth name is fabricated.",
+      "ship_audit": {
+        "empty_case": "EXERCISED, K=3 (docs/eval/toolloop/2026-08-14/batch1-empty.json): a book with one chapter and nothing else. Called 3/3, store unchanged 3/3, and the reply was specific and true — '1 chapter', 'no structured story plan', the chapter 'unplanned'. No fabricated content.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'not found or not accessible'. No leak.",
+        "gate": "Tier R — no approval card, and none was raised on any run."
+      }
+    },
+    {
+      "id": "plan-propose-spec",
+      "tool_under_test": "plan_propose_spec",
+      "expect_tool": "plan_propose_spec",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please plan a novel. The idea: a courier named Aldric carries a book that rewrites whoever reads it, and the Pale Regent wants it back. Grimdark fantasy, one continent, about thirty chapters.",
+      "prompt_source": "_meta.synonyms['plan a novel']",
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: the model reports a spec was created and the composition store shows no new row after the approval was granted (a silent success), OR a spec row appears WITHOUT the approval card ever being raised (a Tier-A write that skipped its gate), OR the run is left suspended while the reply claims the work is done.",
+      "ship_audit": {
+        "empty_case": "EXERCISED, K=3: on an empty book the tool was NOT reached on 3/3 (the turn bootstrapped the glossary ontology instead and wrote to 6 glossary tables on 2/3). Against the seeded fixture it was reached 3/3. Recorded as a finding, not waived.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'not found or not accessible'. No leak.",
+        "gate": "Tier A — the approval card was raised and had to be granted before any write; the run stayed suspended on 3/3 until it was."
+      }
+    },
+    {
+      "id": "glossary-entity-set-attributes",
+      "tool_under_test": "glossary_entity_set_attributes",
+      "expect_tool": "glossary_entity_set_attributes",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please change an existing entity's attribute. Set Aldric Vane's rank to Knight of the Ember.",
+      "prompt_source": "_meta.synonyms[\"change an existing entity's attribute\"]",
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: after an approved run the named entity's attributes are unchanged in loreweave_glossary, OR the change lands on a DIFFERENT entity than the one the prose named (the fixture seeds three, so a mis-resolve is visible), OR the reply claims the edit was applied while the store is unchanged.",
+      "ship_audit": {
+        "empty_case": "EXERCISED, K=3: with no entities seeded the tool was correctly NOT called (0/3), the store was unchanged 3/3, and the reply was an honest miss — \"I couldn't find an element named 'Aldric Vane' in your story bible.\" This is the case the loop has twice seen fail in the opposite direction.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Probed at its real boundary — the ENTITY, seeded in the other user's book, because a placeholder entity_id only reaches validation ('entity_id must be a UUID') and a validation error is not a refusal. With both real ids: refused 'book not accessible', and the entity row was re-read and UNCHANGED (cached_name and updated_at identical).",
+        "gate": "Tier A — card raised and granted on 3/3 of the seeded runs before the write landed."
+      }
+    },
+    {
+      "id": "book-chapter-create-in-editor",
+      "tool_under_test": "book_chapter_create",
+      "expect_tool": "book_chapter_create",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please write a chapter. Add a new one after what I have, called The Drowned Road, about Mira leading Aldric through the marsh.",
+      "prompt_source": "_meta.synonyms['write a chapter']",
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: chapters for the throwaway book do not go from 1 to 2 after an approved run, OR they go to 3+ from a single request (a duplicate write, which is what 251 recorded calls and 5 live failures make plausible), OR a chapter appears with no approval card raised.",
+      "ship_audit": {
+        "empty_case": "EXERCISED, K=3: creating a chapter needs no prior content, so this is the absent case that should still SUCCEED — and it did, 3/3, chapters 0->1 with exactly one chapter per request.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'book not accessible'. No leak.",
+        "gate": "Tier A — card raised on every run; no chapter appeared before it was granted.",
+        "idempotency": "EXERCISED: one chapter per request on 3/3 seeded and 3/3 empty runs — the duplicate-write case in the falsifier did not occur."
+      },
+      "editor_context": true,
+      "defects": [
+        {
+          "id": "D-XWIRE-RESULT",
+          "summary": "An id the platform published as `chapter_id` in a tool result was accepted as `book_id` on a later call in the same turn. book_chapter_create was refused 'book not accessible' on 3/3 chat-panel runs; zero chapters created. The same scenario WITH editor context created one every time.",
+          "invariant": "An id argument must be of the type its parameter names. An id THIS PLATFORM published under a different name is a cross-wire by construction — repair it at the single arg chokepoint. An id the turn never published is left strictly alone, so a deliberate cross-book call still works.",
+          "chokepoint": "services/chat-service/app/services/stream_service.py::_inject_context_ids (both call sites), fed by app/services/id_ledger.py",
+          "test_file": "services/chat-service/tests/test_id_from_a_tool_result_is_not_a_book_id.py",
+          "red_on_original": "Restored the original defect (ledger not consulted at the chokepoint): test_a_chapter_id_supplied_as_book_id_is_repaired FAILED, the other 4 stayed green — including the deliberate-cross-book invariant, so the injection is not merely disabling the branch wholesale.",
+          "past_incidents_checked": "D-FJ-20 (2026-08-13, editor chapter_id as book_id for plan_propose_spec) — covered by the predecessor and re-asserted by test_d_fj_20_still_holds_without_a_ledger. S06 (2026-07-11, mistranscribed UUID) — covered by the existing _is_uuid branch, untouched. Corpus sweep: 232 recorded calls refused 'not accessible' with a UUID book_id; of 53 distinct ids exactly ONE is a chapter id (4 calls, all plan_propose_spec = the D-FJ-20 incident) and 51 no longer exist, so the corpus cannot separate deleted fixtures from hallucinations. My first guess of a 232-call epidemic was REFUTED by this check; the finding rests on today's live K=3 evidence.",
+          "live_after": "chapters 1 -> 2 on 3/3 runs, ok:true, exactly one chapter per run, cross-wire repair logged 3 times in chat-service."
+        }
+      ],
+      "suite": {
+        "service": "chat-service",
+        "command": "python -m pytest tests/ -q",
+        "exit_code": 0,
+        "passed": 3154,
+        "skipped": 3,
+        "failed": 0
+      },
+      "deploy": {
+        "verified_by_content": true,
+        "how": "md5 of services/chat-service/app/services/{stream_service,id_ledger}.py vs /app/app/... in infra-chat-service-1 — both MATCH; plus a whole-app property (62 .py files under app/services in both), because verifying only the symbol I just added cannot detect a stale image.",
+        "rebuilt": "docker compose up -d --build --force-recreate chat-service"
+      }
+    },
+    {
+      "id": "composition-diagnostics",
+      "tool_under_test": "composition_diagnostics",
+      "expect_tool": "composition_diagnostics",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "What needs fixing?",
+      "prompt_source": "_meta.synonyms['what needs fixing']",
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: any run's after-snapshot differs from its before-snapshot, OR the reply reports concrete problems about content the fixture does not contain — a diagnostics tool that narrates plausible issues without reading is the same failure as answering 'you have no canon rules' over a populated table.",
+      "ship_audit": {
+        "empty_case": "EXERCISED, K=3: called 3/3, store unchanged 3/3, and the reply reported the one real condition ('Unplanned Chapter: Chapter I — The Ember Codex') rather than inventing problems.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'not found or not accessible'. No leak.",
+        "gate": "Tier R. NOTE, carried as a finding: on the SEEDED runs this read-intent turn proposed a Tier-A WRITE (composition_error_block_edit) and left the run suspended on 3/3. The store was unchanged only because the card was never granted — under this account's 46 standing approvals it would have executed unseen."
+      }
+    },
+    {
+      "id": "book-chapter-create-chat-panel",
+      "tool_under_test": "book_chapter_create",
+      "expect_tool": "book_chapter_create",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please write a chapter. Add a new one after what I have, called The Drowned Road, about Mira leading Aldric through the marsh.",
+      "prompt_source": "_meta.synonyms['write a chapter']",
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": "CONTROL for the editor_context confound. With a chapter open, 'write a chapter' plausibly means 'write THIS chapter', and the model chose book_chapter_save_draft 3/3. This run asks the same thing from the chat panel with NO chapter open. REFUTED IF: the model still edits the existing chapter rather than creating one — which would mean editor_context is not the cause and the selection defect is real on its own.",
+      "ship_audit": {
+        "empty_case": "EXERCISED, K=3: creating a chapter needs no prior content, so this is the absent case that should still SUCCEED — and it did, 3/3, chapters 0->1 with exactly one chapter per request.",
+        "refusals": "EXERCISED 2026-08-14 (scripts/toolloop/ship_audit.py): called as the harness account against a book owned by claude-test2. Driven at the TOOL boundary, not through the model — making the model attack another user's book would require typing that id into the prompt, which voids the LIVE bar and would test my phrasing, not the boundary. Refused: 'book not accessible'. No leak.",
+        "gate": "Tier A — card raised on every run; no chapter appeared before it was granted.",
+        "idempotency": "EXERCISED: one chapter per request on 3/3 seeded and 3/3 empty runs — the duplicate-write case in the falsifier did not occur."
+      },
+      "editor_context": false,
+      "defects": [
+        {
+          "id": "D-XWIRE-RESULT",
+          "summary": "An id the platform published as `chapter_id` in a tool result was accepted as `book_id` on a later call in the same turn. book_chapter_create was refused 'book not accessible' on 3/3 chat-panel runs; zero chapters created. The same scenario WITH editor context created one every time.",
+          "invariant": "An id argument must be of the type its parameter names. An id THIS PLATFORM published under a different name is a cross-wire by construction — repair it at the single arg chokepoint. An id the turn never published is left strictly alone, so a deliberate cross-book call still works.",
+          "chokepoint": "services/chat-service/app/services/stream_service.py::_inject_context_ids (both call sites), fed by app/services/id_ledger.py",
+          "test_file": "services/chat-service/tests/test_id_from_a_tool_result_is_not_a_book_id.py",
+          "red_on_original": "Restored the original defect (ledger not consulted at the chokepoint): test_a_chapter_id_supplied_as_book_id_is_repaired FAILED, the other 4 stayed green — including the deliberate-cross-book invariant, so the injection is not merely disabling the branch wholesale.",
+          "past_incidents_checked": "D-FJ-20 (2026-08-13, editor chapter_id as book_id for plan_propose_spec) — covered by the predecessor and re-asserted by test_d_fj_20_still_holds_without_a_ledger. S06 (2026-07-11, mistranscribed UUID) — covered by the existing _is_uuid branch, untouched. Corpus sweep: 232 recorded calls refused 'not accessible' with a UUID book_id; of 53 distinct ids exactly ONE is a chapter id (4 calls, all plan_propose_spec = the D-FJ-20 incident) and 51 no longer exist, so the corpus cannot separate deleted fixtures from hallucinations. My first guess of a 232-call epidemic was REFUTED by this check; the finding rests on today's live K=3 evidence.",
+          "live_after": "chapters 1 -> 2 on 3/3 runs, ok:true, exactly one chapter per run, cross-wire repair logged 3 times in chat-service."
+        }
+      ],
+      "suite": {
+        "service": "chat-service",
+        "command": "python -m pytest tests/ -q",
+        "exit_code": 0,
+        "passed": 3154,
+        "skipped": 3,
+        "failed": 0
+      },
+      "deploy": {
+        "verified_by_content": true,
+        "how": "md5 of services/chat-service/app/services/{stream_service,id_ledger}.py vs /app/app/... in infra-chat-service-1 — both MATCH; plus a whole-app property (62 .py files under app/services in both), because verifying only the symbol I just added cannot detect a stale image.",
+        "rebuilt": "docker compose up -d --build --force-recreate chat-service"
+      }
+    }
+  ],
+  "_generator": "scengen.py",
+  "_needs_attention": []
+}

@@ -182,7 +182,13 @@ TIMELINE_INSTANCE_REF_FIELDS = ("target_id", "target_label", "valid_from", "vali
 # (small + ACTIONABLE — OUT-1 keeps what the caller acts on to resolve); DROP only the
 # heavy `sample_payload` blob. (K37 first dropped suggested_actions too, which forced a
 # second detail=full call just to resolve — a pre-merge integration test caught it.)
-TRIAGE_GROUP_REF_FIELDS = ("signature", "item_type", "count", "status", "suggested_actions")
+TRIAGE_GROUP_REF_FIELDS = (
+    "signature", "item_type", "count", "status", "suggested_actions",
+    # An id is a reference, not a body: §6b exists to hand back cheap ids the agent can act
+    # on. kg_triage_place_edge needs this one, and `summary` is the DEFAULT detail, so
+    # dropping it here would leave the tool as unreachable as it was before it was emitted.
+    "sample_triage_id",
+)
 
 
 def _project_graph(out: dict, detail: str, *, node_ref, edge_ref, truncated: bool = False) -> dict:
@@ -1057,8 +1063,11 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Manually create ONE knowledge-graph entity node (a character, location, "
         "organization, item, …). Use this BEFORE kg_propose_edge when a relationship's "
         "endpoint isn't in the graph yet — an edge whose endpoints aren't nodes is "
-        "parked and later fails. Idempotent: the same name+kind returns the existing "
-        "node. Returns the entity_id to use as an edge endpoint.",
+        "parked and later fails. Idempotent in RESULT — the same name+kind returns the "
+        "existing node and never creates a duplicate — but it is a WRITE, not a no-op: "
+        "re-running bumps that node's version, so a PATCH holding an If-Match taken "
+        "before the call will 412. Do not call it defensively on a node you already "
+        "have. Returns the entity_id to use as an edge endpoint.",
         {
             "name": {
                 "type": "string",
@@ -1081,8 +1090,10 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "kg_view_edit",
         "Create, replace, or delete one of YOUR saved views (a named lens of edge-type + "
         "node-kind codes) for the current project. Owner-scoped (only ever your own view). "
-        "op=upsert creates/replaces it (needs code + name; optional description/edge_type_codes/"
-        "node_kind_codes); op=delete removes it (needs code; reversible — recreate with upsert).",
+        "op=upsert creates/replaces it WHOLE (needs code + name; description/edge_type_codes/"
+        "node_kind_codes are optional to SUPPLY but not preserved — anything you omit is "
+        "CLEARED, so send the full lens every time, not just the part you are changing); "
+        "op=delete removes it (needs code; reversible — recreate with upsert).",
         {
             "op": {
                 "type": "string",
@@ -1122,7 +1133,10 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "kg_view_upsert",
         "Create or replace one of the caller's saved views (a named lens of "
         "edge-type + node-kind codes) for the current project. Owner-scoped: "
-        "only ever touches your own view.",
+        "only ever touches your own view. It replaces the view WHOLE: anything you omit "
+        "is CLEARED, not left alone, so send the full lens every time. Beware that an "
+        "emptied code list means ALL — clearing them by accident widens the view to "
+        "everything rather than narrowing it to nothing.",
         {
             "code": {
                 "type": "string",
@@ -1168,9 +1182,13 @@ GRAPH_SCHEMA_TOOL_DEFINITIONS: list[dict] = [
         "Resolve a triage signature group with a low-impact, reversible "
         "action: map (alias to a known code), re_target (fix an endpoint), "
         "drop_edge (discard), close_previous (close an open instance), or "
-        "dismiss. Schema-changing actions (add to vocab/schema, widen, "
-        "promote to glossary) are NOT available here — those need explicit "
-        "human confirmation via the review surface.",
+        "dismiss. "
+        "Schema-changing actions (add_to_vocab, add_to_schema, widen_target_kinds, "
+        "set_multi_active) ARE available to you — on kg_triage_schema_write, which "
+        "confirm-gates them. Only promote_to_glossary_kind and demote_to_attribute are "
+        "human-only: they are cross-service glossary writes the user initiates. kg_triage_list's "
+        "suggested_actions names actions from all three triage tools, so match the action to "
+        "the tool that accepts it.",
         {
             "signature": {
                 "type": "string",
@@ -1609,6 +1627,20 @@ async def _handle_kg_world_query(ctx: "ToolContext", args: KgWorldQueryArgs) -> 
             "partitions_read": 0,
             "partitions_unreadable": unreadable,
             "note": note + ".",
+            # #307: the SAME omission #251 fixed on kg_multi_query, in the same file,
+            # left behind because that fix touched only the handler under test. Both
+            # early returns must carry the key set their populated path returns, or
+            # `result["meta"]["truncated"]` is a KeyError exactly when nothing was
+            # readable. Zeros are the honest answer for an empty rollup.
+            "node_cap_hit": False,
+            "meta": {
+                "detail": args.detail,
+                "nodes_total": 0,
+                "nodes_returned": 0,
+                "edges_total": 0,
+                "edges_returned": 0,
+                "truncated": False,
+            },
         }
 
     async with neo4j_session() as session:
@@ -1696,6 +1728,20 @@ async def _handle_kg_multi_query(ctx: "ToolContext", args: KgMultiQueryArgs) -> 
             "partitions_read": 0,
             "partitions_unreadable": unreadable,
             "note": note + ".",
+            # The `detail` contract says "Result `meta` reports total/returned/truncated",
+            # and this early return used to omit it — so the ONE response shape a caller
+            # gets differed by outcome, and `result["meta"]["truncated"]` raised KeyError
+            # exactly when every partition was unreadable. Zeros are the honest answer here,
+            # not an absent key. `node_cap_hit` likewise: nothing was capped.
+            "node_cap_hit": False,
+            "meta": {
+                "detail": args.detail,
+                "nodes_total": 0,
+                "nodes_returned": 0,
+                "edges_total": 0,
+                "edges_returned": 0,
+                "truncated": False,
+            },
         }
 
     async with neo4j_session() as session:
@@ -1824,14 +1870,35 @@ async def _handle_kg_sync_available(ctx: "ToolContext", args: KgSyncAvailableArg
     await _resolve_project_owner(ctx, GrantLevel.VIEW)
     schema_id = await _active_project_schema_id(ctx, str(ctx.project_id))
     if schema_id is None:
-        # Project never adopted a template → nothing to sync against.
-        return {"has_updates": False, "adopted": False, "changes": []}
+        # Project never adopted a template → nothing to sync against. Same KEY SET as the
+        # adopted branch, with nulls: the REST /sync/available route already answers this case
+        # with all five fields nulled, and `adopted: false` is the signal not to proceed. A
+        # branch that drops keys makes `result["base_source_hash"]` a KeyError on one path and a
+        # value on the other — the shape defect #251 fixed on kg_multi_query, and it matters more
+        # here because #256 just made base_source_hash the field agents are told to read.
+        return {
+            "adopted": False,
+            "has_updates": False,
+            "source_ref": None,
+            "changes": [],
+            "base_source_hash": None,
+            "project_source_hash": None,
+        }
     diff = await ctx.ontology_mutations_repo.sync_diff(schema_id)
     return {
         "adopted": True,
         "has_updates": bool(diff.get("has_updates")),
         "source_ref": diff.get("source_ref"),
         "changes": diff.get("changes", []),
+        # kg_sync_apply REQUIRES base_source_hash and its description says to get it "from
+        # kg_sync_available" — but this projection used to drop it, so the agent-native chain
+        # could not be completed at all: the only producer named did not emit the value the
+        # consumer demands. `sync_diff` returns it as `source_hash_current` (the upstream's
+        # recomputed content_hash, which sync_apply compares against to detect drift) and the
+        # REST route already forwards it. Emitted under the CONSUMER's name so an agent passes
+        # it straight through instead of having to guess which of two hashes is meant.
+        "base_source_hash": diff.get("source_hash_current"),
+        "project_source_hash": diff.get("project_source_hash"),
     }
 
 
@@ -1861,6 +1928,10 @@ async def _handle_kg_triage_list(ctx: "ToolContext", args: KgTriageListArgs) -> 
             "count": g.count,
             "status": g.status,
             "sample_payload": g.sample_payload,
+            # kg_triage_place_edge requires a triage_id and its description (and its refusal,
+            # "use kg_triage_list to find one") names THIS tool as the source. A grouped view
+            # has no single id, so it emits the sample's — the item whose payload is shown.
+            "sample_triage_id": g.sample_triage_id,
             "suggested_actions": g.suggested_actions,
         }
         for g in groups
@@ -2199,8 +2270,22 @@ async def _handle_kg_schema_edit(ctx: "ToolContext", args: KgSchemaEditArgs) -> 
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
     if current is None:
         raise ToolExecutionError(
-            "this project has no adopted ontology to edit — adopt a project schema "
-            "first (the System template is read-only and admin-managed)"
+            # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
+            # refusal must name the TOOLS that clear it, in order — the same discipline
+            # kg_build's "call kg_project_set_embedding_model first" follows.
+            #
+            # #260 CORRECTION: #252 wrote "this same tool with op='adopt_template'" here.
+            # That is true only via kg_ontology_propose. This raise is SHARED by
+            # _handle_kg_schema_edit and _handle_kg_triage_schema_write, and neither the
+            # legacy kg_schema_edit nor kg_triage_schema_write has an `op` parameter at
+            # all — so two of the three callers were told to pass an argument that does
+            # not exist. Name the TOOLS instead of "this tool": a shared message must be
+            # true from every caller, and only one of the three was ever tested.
+            "this project has no adopted ontology to edit — call kg_list_templates to "
+            "pick one, then kg_adopt_template (or kg_ontology_propose with "
+            "op='adopt_template') with its source_schema_id, then retry this edit (the "
+            "System template is read-only and admin-managed, so it cannot be edited in "
+            "place)"
         )
 
     label = args.label.strip() or args.code  # add needs a label; default to the code
@@ -2419,8 +2504,22 @@ async def _handle_kg_triage_schema_write(
     current = await ctx.graph_schemas_repo.active_project_schema(project_str)
     if current is None:
         raise ToolExecutionError(
-            "this project has no adopted ontology to edit — adopt a project schema "
-            "first (the System template is read-only and admin-managed)"
+            # F6 (Track D liveness): an agent cannot open a dialog, so a precondition
+            # refusal must name the TOOLS that clear it, in order — the same discipline
+            # kg_build's "call kg_project_set_embedding_model first" follows.
+            #
+            # #260 CORRECTION: #252 wrote "this same tool with op='adopt_template'" here.
+            # That is true only via kg_ontology_propose. This raise is SHARED by
+            # _handle_kg_schema_edit and _handle_kg_triage_schema_write, and neither the
+            # legacy kg_schema_edit nor kg_triage_schema_write has an `op` parameter at
+            # all — so two of the three callers were told to pass an argument that does
+            # not exist. Name the TOOLS instead of "this tool": a shared message must be
+            # true from every caller, and only one of the three was ever tested.
+            "this project has no adopted ontology to edit — call kg_list_templates to "
+            "pick one, then kg_adopt_template (or kg_ontology_propose with "
+            "op='adopt_template') with its source_schema_id, then retry this edit (the "
+            "System template is read-only and admin-managed, so it cannot be edited in "
+            "place)"
         )
 
     token = mint_action_token(

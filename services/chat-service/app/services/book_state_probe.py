@@ -205,3 +205,36 @@ async def probe_book_state(book_id: str, caller_user_id: str) -> BookState:
             len(state.failed_sources), book_id, ", ".join(state.failed_sources),
         )
     return state
+
+
+async def project_for_book(book_id: str) -> str | None:
+    """The knowledge project that anchors this book, or None if it has none yet.
+
+    🔴 D-MEMORY-FACT-STORED-UNSCOPED (2026-08-14). A turn's `project_id` was read from exactly
+    one place — `chat_sessions.project_id` — while `book_id` beside it has a four-step fallback
+    chain (editor_context -> book_context -> studio_context -> the session row). Measured on this
+    stack: **417 of 503 book-bound sessions (83%) carry a book and NO project.**
+
+    On every one of those turns, each tool declaring `ambient_project` is told the project is
+    absent. They do not fail; they degrade silently. Live evidence: `memory_remember` returned
+    `{"remembered": true, "fact_id": …, "confidence": 0.7}` and the fact IS in Neo4j — with
+    `project_id` NULL, one of only 4 such nodes out of 343. A fact stored unscoped is invisible to
+    project-scoped recall, so the same session then answered "I don't have any information about
+    Mira Solene" about the thing it had just been asked to remember.
+
+    This is the SAME endpoint `_connections()` above already calls for its entity count; that
+    response has always carried `project_id` and the code read one field off it and dropped the
+    rest. Kept as its own function rather than folded in because the two callers want different
+    things and `_connections` is only reached on a rail path, while this is needed on every
+    book-bound turn.
+
+    `has_projection: false` is a normal cold-start answer (200, not 404) for a book with no
+    graph yet — so None here means "no project exists", never "the lookup broke". Both collapse
+    to None on purpose: the caller falls back to today's behaviour and every ambient tool fails
+    closed exactly as it does now.
+    """
+    d = await _get_json(settings.knowledge_service_url, f"/internal/books/{book_id}/kg-state")
+    if not d or not d.get("has_projection"):
+        return None
+    pid = d.get("project_id")
+    return str(pid) if pid else None

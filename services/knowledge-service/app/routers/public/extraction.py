@@ -666,12 +666,12 @@ async def _start_extraction_job_core(
     in a single DB transaction. Returns 409 if another active job
     already exists for this project.
 
-    K17.9 benchmark gate: every call must have a passing
-    `project_embedding_benchmark_runs` row for the chosen
-    `embedding_model`, or the call is rejected with 409. This
-    prevents a user from enabling Mode 3 with an embedding model
-    that can't find their own entities — a silent quality
-    regression that the benchmark is designed to catch.
+    K17.9 benchmark: ADVISORY since 2026-07-27, NOT a gate. The
+    absence (or failure) of a `project_embedding_benchmark_runs`
+    row for the chosen `embedding_model` is logged and the job
+    proceeds. The full rationale for the demotion — including the
+    measured evidence that the gate had blocked every extraction
+    for three months — is at the check itself, in step 2.5 below.
 
     Worker pickup (FD-22): worker-ai's poll loop is the source-of-truth
     (it claims + transitions jobs atomically). After the job is confirmed

@@ -40,6 +40,7 @@ from app.services.text_normalizer import TextNormalizer
 from app.services.stream_service import _stream_via_gateway
 from app.services.working_memory import resolve_anchor
 from app.storage.minio_client import upload_file
+from app.services import instrument  # CP-0.4 — outcome vocabulary
 from loreweave_context import build_system_message
 
 logger = logging.getLogger(__name__)
@@ -227,6 +228,20 @@ async def voice_stream_response(
 
     Yields AI SDK data stream protocol SSE lines, extended with voice events.
     """
+    # 🔴 CP-0.2 / U-2 — THE FOURTH TURN ENTRY POINT, AND IT WAS UNARMED IN THE TREE while a gate
+    # asserting "a fourth entry point cannot inherit the silence by omission" was green: that
+    # assertion was a SUBSET check over two names, so a third name simply was not asked about. A
+    # voice turn fetches the same federated catalogue (`:452`) and narrows it the same way, so
+    # everything it withholds — including a whole-catalogue outage — registered nowhere.
+    from app.services import instrument as _instrument
+    _voice_sink = _instrument.arm_turn_surface()
+    # 🔴 ARMING A SINK NOBODY READS IS NOT INSTRUMENTATION. Round 8 armed this turn and stopped
+    # there: the outage row landed in the sink, and then nothing drained it and the INSERT below
+    # carried no `withheld_tools` column at all. Measured: row in the sink ✅, model told ❌,
+    # drained ❌, persisted ❌. The recorder exists here so the column has a writer.
+    _voice_advertised = _instrument.AdvertisedToolsRecorder()
+    _voice_advertised.bind_sink(_voice_sink)
+
     normalizer = TextNormalizer()
     sentence_buffer = SentenceBuffer(clause_mode=False)  # Full sentences for natural TTS prosody
 
@@ -393,6 +408,19 @@ async def voice_stream_response(
     )
     messages: list[dict] = [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
 
+    # 🔴 U-2 · THE CATALOGUE FETCH MOVES ABOVE THE PROMPT, for the third time in this codebase and
+    # for the third identical reason. It sat below `_stream_with_tools`'s call site, i.e. AFTER the
+    # system message was assembled, so a voice turn could not be told its tools were unreachable
+    # even once the record existed. The fresh turn and the admin turn each needed this same move.
+    # A tool set fetch failure degrades to NO tools (voice still answers) and never breaks the turn.
+    _voice_tools: list[dict] = []
+    try:
+        _voice_tools = await knowledge_client.get_tool_definitions(user_id=user_id)
+    except Exception:
+        logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
+        _voice_tools = []
+    _voice_catalogue_outage = _instrument.catalogue_outage_registered(_voice_advertised)
+
     # Compose the system prompt: memory → anchor → session prompt (K5-I3: each part
     # stripped so trailing newlines don't stack into triple-newline runs). T3.4 — the
     # shared kernel renderer (plain path, no cache, no skills/steering — voice is a
@@ -416,6 +444,16 @@ async def voice_stream_response(
         {"role": "system", "content": VOICE_SYSTEM_PROMPT},
     )
 
+    # U-2's second half on the voice surface. It had NEITHER half: the row landed in a sink nobody
+    # drained, and the model was never told — so a spoken turn explained a missing capability with
+    # nothing to explain it from, which is the founding defect out loud.
+    if _voice_catalogue_outage:
+        from app.services.stream_service import CATALOGUE_UNAVAILABLE_NOTICE
+        messages.insert(
+            max(len(messages) - 1, 0),
+            {"role": "system", "content": CATALOGUE_UNAVAILABLE_NOTICE},
+        )
+
     # Tail anchor (recency) — closest to the latest user turn (EC-3/EC-7).
     if wm_tail:
         messages.insert(max(len(messages) - 1, 0), {"role": "system", "content": wm_tail})
@@ -431,6 +469,9 @@ async def voice_stream_response(
     # both the DB row AND the SSE `finish-message` the FE reads carry real tokens.
     last_usage = None
     tts_chars = 0  # WS-4.2b — TTS is metered by CHARACTERS spoken (not tokens)
+    _voice_suspended = False  # CP-0.4 — set when the turn breaks on an un-voiceable confirm
+    _voice_tool_calls: list[dict] = []  # CP-0.3 — recorded calls for this turn
+    _voice_finish_reason: str | None = None  # F-19 — the loop's own terminal reason
     sentence_index = 0
     skipped_count = 0
     # Collect audio segments during streaming — upload AFTER assistant message is saved (FK requirement)
@@ -444,11 +485,8 @@ async def voice_stream_response(
         # but never fire a destructive write mid-speech (no client confirm loop exists for voice).
         # A tool set fetch failure degrades to NO tools (voice still answers), never breaks the turn.
         from app.services.stream_service import _stream_with_tools
-        try:
-            _voice_tools = await knowledge_client.get_tool_definitions(user_id=user_id)
-        except Exception:
-            logger.warning("voice tool-surface fetch failed; proceeding tool-free", exc_info=True)
-            _voice_tools = []
+        # Fetched at the top of the turn now, so the outage can reach the prompt. Re-fetching here
+        # would double the call and leave this the only reader.
         chunk_stream = _stream_with_tools(
             model_source=model_source,
             model_ref=model_ref,
@@ -485,9 +523,28 @@ async def voice_stream_response(
                     completion_tokens=int(_susp.get("output_tokens", 0) or 0),
                 )
                 yield _sse("error", {"errorText": "That needs a confirmation I can't do by voice — try it in text chat."})
+                # CP-0.4 — this turn did NOT complete: the model asked for a confirmation voice
+                # cannot render, so the user's request was not carried out. The INSERT below bound
+                # `outcome=completed` unconditionally and this `break` falls straight through to it,
+                # so every such turn recorded a success. Flagged for the terminal write.
+                _voice_suspended = True
                 break
+            # F-19, SECOND PIPELINE. Voice RECEIVES the terminal reason on its chunks and discarded
+            # it — `_voice_suspended` is a two-valued flag standing in for a >=4-valued terminal
+            # space, so a truncation or a content-filter refusal recorded `completed`/'stop'. The
+            # F-19 fix reached the text loop and stopped there; a defect fixed in one of two
+            # pipelines is fixed in neither, because the column mixes both.
+            if chunk_data.get("finish_reason"):
+                _voice_finish_reason = chunk_data["finish_reason"]
             _tc = chunk_data.get("tool_call")
             if _tc:
+                # CP-0.3 — RECORD it, not just announce it. This file contained zero occurrences of
+                # `tool_calls`: voice turns dispatched tools and persisted none of them, so every
+                # voice tool call was absent from the column the instrument is built on — not
+                # mislabelled, ABSENT. The surrounding turn was instrumented while the calls inside
+                # it were invisible, which is the shape of hole hardest to notice, because the row
+                # looks complete.
+                _voice_tool_calls.append(instrument.ensure_tool_call_instrumented(dict(_tc)))
                 yield _sse("tool-call", {"tool": _tc.get("name") or _tc.get("tool") or "tool"})
                 continue  # a tool_call chunk has no speakable content
 
@@ -579,11 +636,56 @@ async def voice_stream_response(
                 """
                 INSERT INTO chat_messages
                   (message_id, session_id, owner_user_id, role, content, content_parts,
-                   sequence_num, model_ref, branch_id, local_date)
-                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8)
+                   sequence_num, model_ref, branch_id, local_date,
+                   finish_reason, outcome, runtime_variant, advertised_tools, tool_calls,
+                   withheld_tools)
+                VALUES ($1,$2,$3,'assistant',$4,$5::jsonb,$6,$7, 0, $8, $12, $9, $10, $11::jsonb,
+                        $13::jsonb, $14::jsonb)
                 """,
                 msg_id, session_id, user_id, final_text, json.dumps(parts), seq, model_ref,
                 _local_date,  # DBT-11 — same turn as the user msg above (resolved before acquire)
+                # CP-0.4 — the voice pipeline is a SECOND terminal path, and it wrote a row with no
+                # outcome at all. It reaches this INSERT only on a clean finish, so `completed` is
+                # the honest value; the failure was that a whole pipeline was invisible to a column
+                # whose entire premise is "every terminal path". A verifier found it by enumerating
+                # paths rather than by reading the one file the instrument was built in.
+                # CP-0.4 — DERIVED, never a constant. A verifier found this bound to
+                # `completed` unconditionally while a `break` above reaches it after telling the
+                # user their request could not be carried out by voice. `awaiting_input` is the
+                # honest state there: the model asked for something and stopped. Binding a literal
+                # here was the same defect as the `advertised_tools` literal retracted from this
+                # very file — a confident value for something never checked.
+                (instrument.OUTCOME_AWAITING_INPUT if _voice_suspended
+                 else instrument.outcome_for_finish_reason(_voice_finish_reason or "stop")),
+                # CP-0.7 — DERIVED, for the same reason the outcome above is. A literal here says
+                # `legacy` in a process running the new arm, which is not a missing label but a
+                # WRONG one: it credits the control group with the new runtime's turns.
+                instrument.current_runtime_variant(),
+                # CP-0.1 — NULL, deliberately, and this is a RETRACTION.
+                #
+                # I previously bound a hand-typed `[{"pass":1,"names":[],"count":0,
+                # "note":"tool-free by design"}]` here, justified by a comment asserting that voice
+                # routes through `_stream_via_gateway` and offers no tools. **That is false.** This
+                # same file fetches the full catalog via `get_tool_definitions` and hands it to
+                # `_stream_with_tools`. The literal was a confident, well-formed, WRONG record — the
+                # one failure mode this entire column exists to prevent, and strictly worse than the
+                # NULL it replaced, because a NULL is visibly absent while a fabricated value is
+                # never re-checked.
+                #
+                # NULL until the voice path records what it ACTUALLY advertised, at its own
+                # advertise chokepoint. An honest gap beats an invented answer.
+                None,
+                # finish_reason follows outcome rather than asserting 'stop'.
+                "awaiting_input" if _voice_suspended else (_voice_finish_reason or "stop"),
+                json.dumps(_voice_tool_calls) if _voice_tool_calls else None,
+                # CP-0.2 on the voice path. `advertised_tools` stays NULL above — that retraction
+                # stands, because voice has no advertise chokepoint that records what it offered —
+                # but WITHHELD is knowable here and was being thrown away: `withheld_json()` drains
+                # the turn's sink, so a catalogue outage on a spoken turn now reaches the column
+                # instead of dying with the request. An honest gap in one field is not a licence to
+                # drop the other.
+                (json.dumps(_voice_advertised.withheld_json())
+                 if _voice_advertised.withheld_json() else None),
             )
             _mc_row = await conn.fetchrow(
                 "UPDATE chat_sessions SET message_count=message_count+1, last_message_at=now(), "

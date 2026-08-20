@@ -27,6 +27,52 @@ from app.db.repositories.plan_runs import PlanRunsRepo
 logger = logging.getLogger(__name__)
 
 
+def compiled_package_across_arcs(
+    artifacts: list[Any],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Fold a run's `package` artifacts into ONE (chapters, glossary_seeds) pair.
+
+    🔴 THE DEFECT THIS EXISTS FOR, measured live 2026-08-13 on book 019ff497. `propose` read
+    `latest_artifact(..., "package")` — a single artifact — but a run emits ONE PACKAGE PER ARC:
+    `_autocompile_rules_run` loops `compile(arc_id=…)` over every parsed arc, and each compile
+    saves its own arc-scoped package. That book compiled 3 arcs into 3 package artifacts, so the
+    preview offered 2 chapters where the plan holds 6, and the other 4 (arcs 1-2) were silently
+    absent from the thing the author approves from. Nothing looked broken: 2 real chapters with
+    real titles, `status: pending`, no warning.
+
+    TWO RULES, and the second is the one a plain concat gets wrong:
+
+    * LATEST PER ARC, not every artifact. Re-compiling one arc appends ANOTHER package for that
+      arc; concatenating all of them would offer its chapters twice. This is the same "BY TARGET,
+      not latest" rule `plan_forge_service` already states for `link_report`.
+    * ARC ORDER = COMPILE ORDER. `artifacts` arrives oldest-first, so first appearance of an
+      arc_id is its authored position; a later re-compile updates that arc's content WITHOUT
+      moving it. `apply` creates chapters in list order, so this ordering IS the book's order.
+
+    An artifact whose package declares no `arc_id` (a pre-per-arc run, or a whole-run compile)
+    keys on its own id, so it is neither dropped nor deduped against a real arc.
+    """
+    by_arc: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for art in artifacts:
+        content = getattr(art, "content", None) or {}
+        package = content.get("planning_package")
+        if not package:
+            continue  # a package artifact with no compiled package is not a compile result
+        arc_key = str(package.get("arc_id") or f"__artifact:{getattr(art, 'id', len(order))}")
+        if arc_key not in by_arc:
+            order.append(arc_key)
+        by_arc[arc_key] = content  # oldest-first ⇒ the last write per arc is the newest
+
+    chapters: list[dict[str, Any]] = []
+    seeds: list[dict[str, Any]] = []
+    for arc_key in order:
+        content = by_arc[arc_key]
+        chapters.extend((content.get("planning_package") or {}).get("chapters", []) or [])
+        seeds.extend(content.get("glossary_seeds", []) or [])
+    return chapters, seeds
+
+
 def _glossary_item_key(kind_code: str | None, name: str | None) -> str:
     return f"glossary:{kind_code or 'character'}:{name}"
 
@@ -81,13 +127,15 @@ class BootstrapService:
         if run is None:
             raise LookupError("run not found")
 
-        pkg_art = await self._runs.latest_artifact(book_id, run_id, "package")
-        package = pkg_art.content.get("planning_package") if pkg_art else None
-        if not package:
+        # EVERY package, not the latest — a run emits one per ARC. See
+        # `compiled_package_across_arcs` for the measured defect (2 chapters offered on a 6-chapter
+        # plan) and for why the fold is latest-per-arc rather than a concat.
+        pkg_arts = await self._runs.list_artifacts(book_id, run_id, "package")
+        package_chapters, glossary_seeds = compiled_package_across_arcs(pkg_arts)
+        if not any(
+            (getattr(a, "content", None) or {}).get("planning_package") for a in pkg_arts
+        ):
             raise ValueError("run has no compiled package yet — call compile() first")
-
-        package_chapters: list[dict[str, Any]] = package.get("chapters", [])
-        glossary_seeds: list[dict[str, Any]] = pkg_art.content.get("glossary_seeds", [])
 
         existing = await self._book.list_chapters(book_id, bearer)
         existing_titles = {c["title"] for c in existing if c.get("title")}
@@ -129,16 +177,26 @@ class BootstrapService:
                     run_id, pipeline_job_id, exc,
                 )
 
+        # RENUMBER, because the compiler's `ordinal` is PER ARC. Folding three arcs together
+        # yields 1,2,1,2,1,2 — a preview that reads as three first chapters. `apply` ignores
+        # ordinal entirely and creates chapters in list order, so the honest number is this list's
+        # own position: what the author sees is then the order they will actually be created in.
         new_chapters = [
             {
                 "event_id": ch["event_id"],
                 "title": ch["title"],
-                "ordinal": ch.get("ordinal"),
+                "ordinal": i,
                 **({"drafting_guide": drafting_guides[ch["event_id"]]}
                    if ch["event_id"] in drafting_guides else {}),
             }
-            for ch in package_chapters
-            if ch.get("title") not in existing_titles and ch.get("title") not in claimed_titles
+            for i, ch in enumerate(
+                [
+                    c for c in package_chapters
+                    if c.get("title") not in existing_titles
+                    and c.get("title") not in claimed_titles
+                ],
+                start=1,
+            )
         ]
 
         # M2 (§6): the real, already-correct glossary_seeds compile() computes

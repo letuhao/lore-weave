@@ -78,6 +78,49 @@ class CostEstimate:
         return asdict(self)
 
 
+async def _ensure_segments_for_estimate(db: asyncpg.Pool, book_id, chapter_ids: list[UUID]) -> None:
+    """Segment any chapter that has NO segments yet, so the estimate has something to sum.
+
+    🔴 WITHOUT THIS THE COST GATE ESTIMATES ZERO FOR EVERY FIRST-TIME TRANSLATION. Measured live
+    2026-08-13 on a 121-word chapter: the estimate returned segment_count=0, input_tokens=0,
+    cost_usd=null, priced=false, so the confirm card asked the author to approve a PAID action with
+    no figure on it — and the job then cost $0.004485 on 400 input + 219 output tokens. The
+    timestamps show why: the job row was created at 04:23:34.797 and the chapter's only segment
+    (token_estimate=166) was written at 04:23:40.504, SIX SECONDS LATER, BY THE JOB. The gate was
+    reading a table its own downstream fills in, so it could only ever price a chapter that had
+    already been translated once — exactly the case where the author least needs the warning.
+
+    `ensure_chapter_segments` is the SAME function the job uses, and it is idempotent (it skips the
+    rewrite when every segment's source hash is unchanged), so this is the estimate reading the work
+    the job would do rather than a second, drifting implementation of it.
+
+    Bounded on purpose: only chapters with ZERO segments are built, so an already-segmented book
+    costs one cheap query and no book-service calls. Failures DEGRADE — a chapter that cannot be
+    segmented is simply left unsummed, which reproduces the old zero for that chapter rather than
+    failing the whole estimate, and `priced=false` still tells the caller the cost is unknown.
+    """
+    if not chapter_ids:
+        return
+    have = await db.fetch(
+        "SELECT DISTINCT chapter_id FROM chapter_segments WHERE chapter_id = ANY($1::uuid[])",
+        list(chapter_ids),
+    )
+    known = {r["chapter_id"] for r in have}
+    missing = [c for c in chapter_ids if c not in known]
+    if not missing:
+        return
+    from ..workers.segment_store import ensure_chapter_segments
+
+    for chapter_id in missing:
+        try:
+            await ensure_chapter_segments(db, book_id, chapter_id)
+        except Exception:  # noqa: BLE001 — an estimate must never fail the propose
+            log.warning(
+                "estimate: could not segment chapter %s for pricing — it will be omitted from the "
+                "estimate (cost shows as unknown rather than as zero)", chapter_id, exc_info=True,
+            )
+
+
 async def _sum_chapter_tokens(
     db: asyncpg.Pool, chapter_ids: list[UUID]
 ) -> tuple[int, int]:
@@ -196,6 +239,7 @@ async def estimate_job_cost(
         input_tokens, segment_count = await _sum_dirty_tokens(db, chapter_id, lang)
         chapter_count = 1
     else:
+        await _ensure_segments_for_estimate(db, book_id, chapter_ids)
         input_tokens, segment_count = await _sum_chapter_tokens(db, chapter_ids)
         chapter_count = len(chapter_ids)
 

@@ -1,0 +1,43 @@
+[
+  {
+    "tool": "composition_arc_get",
+    "args": {
+      "node_id": "c90c1d0e-13e0-4a5b-bf20-9a6fa4456877"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_arc_get error: Error executing tool composition_arc_get: not found or not accessible"
+  },
+  {
+    "tool": "composition_arc_extract_template",
+    "args": {
+      "node_id": "c90c1d0e-13e0-4a5b-bf20-9a6fa4456877",
+      "code": "x",
+      "name": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_arc_extract_template error: Error executing tool composition_arc_extract_template: not found or not accessible"
+  },
+  {
+    "tool": "composition_arc_apply",
+    "args": {
+      "project_id": "6f05edc6-3029-4f2a-b652-710ab582e2c5",
+      "arc_template_id": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_arc_apply error: Error executing tool composition_arc_apply: not found or not accessible"
+  },
+  {
+    "tool": "composition_arc_edit",
+    "args": {
+      "book_id": "61d74ece-f0e5-431f-9c9c-86919db3bfea",
+      "op": "create"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_arc_edit error: Error executing tool composition_arc_edit: not found or not accessible"
+  },
+  {
+    "tool": "composition_arc_import_analyze",
+    "verdict": "n/a",
+    "why": "declares no book/project/map/world/user_model/node id \u2014 no tenancy argument"
+  }
+]

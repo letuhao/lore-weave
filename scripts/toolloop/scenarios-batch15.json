@@ -1,0 +1,238 @@
+{
+  "scenarios": [
+    {
+      "id": "composition-arc-apply",
+      "tool_under_test": "composition_arc_apply",
+      "expect_tool": "composition_arc_apply",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please apply arc template.",
+      "prompt_source": "_meta.synonyms['apply arc template']",
+      "needs_target": true,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    },
+    {
+      "id": "composition-arc-edit",
+      "tool_under_test": "composition_arc_edit",
+      "expect_tool": "composition_arc_edit",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please archive arc.",
+      "prompt_source": "_meta.synonyms['archive arc']",
+      "needs_target": true,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    },
+    {
+      "id": "composition-arc-extract-template",
+      "tool_under_test": "composition_arc_extract_template",
+      "expect_tool": "composition_arc_extract_template",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Please save arc as template.",
+      "prompt_source": "_meta.synonyms['save arc as template']",
+      "needs_target": true,
+      "approve": "approved_once",
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    },
+    {
+      "id": "composition-arc-get",
+      "tool_under_test": "composition_arc_get",
+      "expect_tool": "composition_arc_get",
+      "intent": "read",
+      "tier": "R",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Show me the resolved tracks for this book.",
+      "prompt_source": "_meta.synonyms['resolved tracks']",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {
+              "genres": [
+                "universal"
+              ],
+              "kinds": [
+                "character",
+                "location",
+                "item"
+              ]
+            }
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {
+            "book_id": "{book_id}",
+            "items": [
+              {
+                "kind": "character",
+                "name": "Aldric Vane"
+              },
+              {
+                "kind": "character",
+                "name": "Mira Solene"
+              },
+              {
+                "kind": "item",
+                "name": "Ember Codex"
+              }
+            ]
+          }
+        }
+      ],
+      "falsifier": null,
+      "ship_audit": null
+    },
+    {
+      "id": "composition-arc-import-analyze",
+      "tool_under_test": "composition_arc_import_analyze",
+      "expect_tool": "composition_arc_import_analyze",
+      "intent": "write",
+      "tier": "W",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "I want to work on the reverse-engineer arc — go ahead.",
+      "prompt_source": "_meta.synonyms['reverse-engineer arc']",
+      "needs_target": true,
+      "approve": "approved_once",
+      "seed": [],
+      "falsifier": null,
+      "ship_audit": null
+    }
+  ],
+  "_generator": "scengen.py",
+  "_needs_attention": []
+}

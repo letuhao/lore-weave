@@ -1,0 +1,47 @@
+[
+  {
+    "tool": "kg_triage_list",
+    "args": {
+      "project_id": "9304c1c2-0761-4619-81b3-94e831091f9d"
+    },
+    "verdict": "refused",
+    "response": "MCP kg_triage_list error: Error executing tool kg_triage_list: {\"message\": \"project not found\"}"
+  },
+  {
+    "tool": "kg_view_read",
+    "args": {
+      "project_id": "9304c1c2-0761-4619-81b3-94e831091f9d"
+    },
+    "verdict": "refused",
+    "response": "MCP kg_view_read error: Error executing tool kg_view_read: {\"message\": \"project not found\"}"
+  },
+  {
+    "tool": "settings_model_set_default",
+    "args": {
+      "user_model_id": "7614bf16-1d21-483a-9115-3dd6989a2a7b",
+      "capability": "x"
+    },
+    "verdict": "refused_other",
+    "response": "MCP settings_model_set_default error: unsupported capability (want one of: rerank, embedding, chat, planner)"
+  },
+  {
+    "tool": "translation_retranslate_dirty",
+    "args": {
+      "book_id": "5a93bed6-a9f6-4696-82df-5583904f364b",
+      "chapter_id": "b6247046-ea5e-464b-afd0-3d114a7b5201",
+      "target_language": "en"
+    },
+    "verdict": "refused",
+    "response": "MCP translation_retranslate_dirty error: Error executing tool translation_retranslate_dirty: not found or not accessible"
+  },
+  {
+    "tool": "translation_segment_status",
+    "args": {
+      "book_id": "5a93bed6-a9f6-4696-82df-5583904f364b",
+      "chapter_id": "1e95590a-b728-4c02-bfa6-31e9abaacb98",
+      "target_language": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP translation_segment_status error: Error executing tool translation_segment_status: not found or not accessible"
+  }
+]

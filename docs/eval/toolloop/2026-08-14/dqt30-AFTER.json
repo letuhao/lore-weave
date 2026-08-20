@@ -1,0 +1,254 @@
+{
+  "batch": "dqt30-after",
+  "generated_by": "fe_runner",
+  "approval_mode": "none",
+  "tools": [
+    {
+      "tool": "composition_list_canon_rules",
+      "scenario": "dqt30-reask-canon-rules",
+      "intent": "read",
+      "falsifier": "REFUTED IF: the re-ask (the LAST turn) answers without composition_list_canon_rules appearing in that turn's tool calls, OR the reply states a count or a rule text that is not in the store, OR a read-intent turn changes the store. CONTROL: turn 1 is recorded in prior_turns — if turn 1 ALSO failed to call the tool, this scenario is measuring the first-ask path (D-FJ-18's territory) and NOT the staleness DQ-T30 names, so the reading is void.",
+      "answer_expect": {
+        "all_of": [
+          "lifespan",
+          "Obsidian Trench"
+        ],
+        "why": "Both seeded rules must appear in the answer to the RE-ASK. The measured failure named one and invented the other, so a reply carrying only one rule is the defect reproducing, not a partial pass."
+      },
+      "falsifier_sha": "09abcb9f47048aba",
+      "ship_audit": {
+        "empty_case": "OWED — a book with zero canon rules must answer 'none declared' from a tool call, not from silence.",
+        "tenancy": "OWED — the read is project-scoped; a second account must not see these rules."
+      },
+      "defects": [
+        "DQ-T30"
+      ],
+      "runs": [
+        {
+          "via": "fe_runner",
+          "rep": 0,
+          "book_id": "019ffff4-3a3f-779d-84b8-18cc824d8586",
+          "session_id": "019ffff4-5924-7571-9e23-25e75fb046d5",
+          "prompt": "What canon rules have I declared for this book?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_diagnostics",
+            "composition_get_mine_job",
+            "composition_list_derivatives",
+            "composition_list_outline"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 11:07:03.782579+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 2,
+                "latest": "2026-08-14 11:07:04.317996+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 11:07:03.99135+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 11:07:03.974122+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 11:07:03.782579+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 2,
+                "latest": "2026-08-14 11:07:04.317996+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 11:07:03.99135+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 11:07:03.974122+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have two consistency rules declared for this book:\n\n*   **Magic always costs lifespan** — every spell burns years from the caster.\n*   **The Obsidian Trench never appears on two maps at once.**\n\nI did not re-read the book on this turn, so my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 1,
+          "book_id": "019ffff5-4af0-751f-8f8b-0ad2c43fa2c2",
+          "session_id": "019ffff5-678f-7b1c-ba7a-81c988299325",
+          "prompt": "What canon rules have I declared for this book?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_list_derivatives",
+            "composition_list_outline"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:13.652367+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 2,
+                "latest": "2026-08-14 11:08:14.176203+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:13.839678+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:13.828899+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:13.652367+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 2,
+                "latest": "2026-08-14 11:08:14.176203+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:13.839678+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:13.828899+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have two consistency rules declared for this book:\n\n*   **Magic always costs lifespan** — every spell burns years from the caster.\n*   **The Obsidian Trench never appears on two maps at once.**\n\nI did not re-read the book's consistency rules on this turn, so my answer may be stale."
+        },
+        {
+          "via": "fe_runner",
+          "rep": 2,
+          "book_id": "019ffff5-fb94-7173-8655-1cab5ed53a8b",
+          "session_id": "019ffff6-1846-7745-9723-794af8425349",
+          "prompt": "What canon rules have I declared for this book?",
+          "called": false,
+          "surfaced": false,
+          "called_tools": [
+            "composition_get_derivative_context",
+            "composition_get_mine_job",
+            "composition_list_derivatives",
+            "composition_list_outline"
+          ],
+          "error": null,
+          "approvals": [],
+          "left_suspended": false,
+          "store": {
+            "before": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:58.828816+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 2,
+                "latest": "2026-08-14 11:08:59.343999+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:59.052509+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:59.042832+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            },
+            "after": {
+              "loreweave_book.chapters": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:58.828816+00"
+              },
+              "loreweave_composition.canon_rule": {
+                "rows": 2,
+                "latest": "2026-08-14 11:08:59.343999+00"
+              },
+              "loreweave_composition.composition_work": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:59.052509+00"
+              },
+              "loreweave_knowledge.knowledge_projects": {
+                "rows": 1,
+                "latest": "2026-08-14 11:08:59.042832+00"
+              },
+              "neo4j.Fact.total": {
+                "rows": 344,
+                "latest": "-"
+              },
+              "neo4j.Fact.project": {
+                "rows": 0,
+                "latest": "-"
+              }
+            }
+          },
+          "store_diff": {},
+          "answer": "You have two consistency rules declared for this book:\n\n1. **Magic always costs lifespan** — every spell burns years from the caster.\n2. **The Obsidian Trench never appears on two maps at once.**\n\nI did not re-read the book this turn, so my answer may be stale."
+        }
+      ],
+      "surfaced_count": 0,
+      "called_count": 0,
+      "wrote_count": 0,
+      "suspended_count": 0
+    }
+  ]
+}

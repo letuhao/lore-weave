@@ -36,6 +36,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 
 from loreweave_mcp import (
+    validation_directive,
     ForbidExtra,
     apply_response_contract,
     build_tool_context,
@@ -68,22 +69,16 @@ mcp_server = make_stateless_fastmcp("jobs")
 # loreweave_mcp kit absorbs it (kit is outside the W0 change surface).
 
 
-def _validation_directive(tool_name: str, exc: ValidationError) -> str:
-    """One line: every failing arg with pydantic's expectation + the sent shape."""
-    parts = []
-    errs = exc.errors(include_url=False)
-    for err in errs[:3]:
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
-        msg = err.get("msg", "invalid value")
-        sent = err.get("input")
-        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
-    if len(errs) > 3:
-        parts.append(f"(+{len(errs) - 3} more)")
-    return (
-        f"invalid arguments for {tool_name} — "
-        + "; ".join(parts)
-        + ". Fix the argument and call the tool again."
-    )
+# W0 #4b — the one-line validation directive now lives in the kit as
+# `validation_directive`. It used to be a byte-identical copy in THIS file and in two sibling
+# services, and the copy was wrong in a way none of the three noticed: for a `missing` error
+# pydantic sets `input` to the PARENT object, so every rendering said "(you sent a dict)" about
+# a field that had never been sent. Measured across the corpus: 79 calls, 7 tools, 16 sessions,
+# args `{}` in 100% of them — the clause was false every single time it appeared.
+#
+# The comment that used to sit here said the kit "will absorb the shared copy later". Three
+# copies is how one of them drifts, so it absorbed it.
+_validation_directive = validation_directive
 
 
 def _install_validation_error_rewriter(server) -> None:
@@ -259,11 +254,35 @@ async def jobs_list(
     projected, _ = apply_response_contract(
         [_with_caps(j) for j in items], ref_fields=_JOB_REF_FIELDS, detail=detail,
     )
-    return {
+    # 🔴 A PAGE READ AS A TOTAL. MEASURED LIVE 2026-08-14 (batch 7, K=3): asked "What background
+    # jobs do I have running right now?", the model called this tool, received 10 items plus a
+    # next_cursor, and answered "You currently have 10 background jobs running". jobs_summary on
+    # the same account reports 31 active. The payload carried the page signal (`next_cursor`) and
+    # nothing that says the ITEM COUNT is not the total, so the model reported the page size.
+    #
+    # world_list is the control and it is already built this way — it returns
+    # `page: {total, returned, has_more, next_offset}` plus a one-line guidance, and its live
+    # answer on the same day was correct ("You have 28 worlds in total"). Same class as
+    # `always_available` on tool_list and `degraded` on story_search: a response that omits must
+    # SAY it omits, in a field a caller cannot skim past.
+    #
+    # A `total` is deliberately NOT computed here — it would be a second query on every list, and
+    # jobs_summary exists precisely to answer "how many". So the guidance NAMES that tool rather
+    # than guessing a number.
+    out: dict = {
         "items": projected,
+        "returned": len(projected),
         "next_cursor": next_cursor,
         "detail": detail,
     }
+    if next_cursor:
+        out["page"] = {"returned": len(projected), "has_more": True}
+        out["guidance"] = (
+            f"This is ONE PAGE of {len(projected)} job(s), NOT the total — more exist. "
+            "Do not report this number as how many jobs there are. "
+            "Pass `next_cursor` to continue, or call jobs_summary for the counts by status."
+        )
+    return out
 
 
 @mcp_server.tool(

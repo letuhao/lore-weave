@@ -42,6 +42,7 @@ from mcp.server.fastmcp.exceptions import ToolError
 from pydantic import ValidationError
 
 from loreweave_mcp import (
+    validation_directive,
     ForbidExtra,
     ToolContext,
     apply_response_contract,
@@ -95,22 +96,16 @@ mcp_server = make_stateless_fastmcp("translation")
 # copy later (kit is outside the W0 change surface).
 
 
-def _validation_directive(tool_name: str, exc: ValidationError) -> str:
-    """One line: every failing arg with pydantic's expectation + the sent shape."""
-    parts = []
-    errs = exc.errors(include_url=False)
-    for err in errs[:3]:
-        loc = ".".join(str(p) for p in err.get("loc", ())) or "arguments"
-        msg = err.get("msg", "invalid value")
-        sent = err.get("input")
-        parts.append(f"`{loc}`: {msg} (you sent a {type(sent).__name__})")
-    if len(errs) > 3:
-        parts.append(f"(+{len(errs) - 3} more)")
-    return (
-        f"invalid arguments for {tool_name} — "
-        + "; ".join(parts)
-        + ". Fix the argument and call the tool again."
-    )
+# W0 #4b — the one-line validation directive now lives in the kit as
+# `validation_directive`. It used to be a byte-identical copy in THIS file and in two sibling
+# services, and the copy was wrong in a way none of the three noticed: for a `missing` error
+# pydantic sets `input` to the PARENT object, so every rendering said "(you sent a dict)" about
+# a field that had never been sent. Measured across the corpus: 79 calls, 7 tools, 16 sessions,
+# args `{}` in 100% of them — the clause was false every single time it appeared.
+#
+# The comment that used to sit here said the kit "will absorb the shared copy later". Three
+# copies is how one of them drifts, so it absorbed it.
+_validation_directive = validation_directive
 
 
 def _install_validation_error_rewriter(server) -> None:
@@ -473,13 +468,22 @@ async def translation_set_active_version(
     name="translation_save_edited_version",
     description=(
         "Save a human-edited translation as a NEW version (authored_by='human'), "
-        "linked to the LLM version it was edited from. Auto-applies; reversible by "
-        "setting the prior active version back. Book-scoped (edit)."
+        "linked to the LLM version it was edited from. It saves without a confirm step, "
+        "but it does NOT make the new version active: readers keep seeing the version it "
+        "was edited from until you call translation_set_active_version with the returned "
+        "version_id. Book-scoped (edit)."
     ),
     meta=require_meta(
         "A", "book",
+        # The old hint said "re-activate the version edited from". Measured: saving does
+        # NOT change the active version (only set_active_version and patch_block do), so
+        # that hint described undoing something that never happened — following it would
+        # re-activate the version that was already active. The real follow-up is the
+        # opposite: the saved version is inert until someone activates it.
         undo_hint={"tool": "translation_set_active_version",
-                   "args": {"note": "re-activate the version edited from"}},
+                   "args": {"note": "saving did not change the active version; use this "
+                                    "to switch to the new version_id, or to switch back "
+                                    "if you already did"}},
         synonyms=["save edit", "save my translation", "human edit",
                   "save edited version"],
         tool_name="translation_save_edited_version",
@@ -657,9 +661,11 @@ async def translation_patch_block(
 @mcp_server.tool(
     name="translation_update_settings",
     description=(
-        "Update a book's translation settings (target language, model, prompts, etc.). "
-        "Only the fields you pass are changed; omitted fields keep their value. "
-        "Auto-applies; reversible by setting the prior values back. Book-scoped (edit)."
+        "Update a book's translation settings: target_language, model_source and "
+        "model_ref — those three, and nothing else. It does NOT set prompts; there is no "
+        "prompt argument, and a prompt passed here is ignored without error. Only the "
+        "fields you pass are changed; omitted fields keep their value. Auto-applies; "
+        "reversible by setting the prior values back. Book-scoped (edit)."
     ),
     meta=require_meta(
         "A", "book",
@@ -815,6 +821,23 @@ async def translation_retranslate_dirty(
         chapter_ids=[cid], scope=SCOPE_DIRTY, chapter_id=cid,
         target_language=target_language,
     )
+    # 🔴 THE SAME INVARIANT AS D-EXTRACTION-CONFIRMS-A-NO-OP, IN THIS SERVICE'S OTHER TOOL, AND
+    # FOUND BY PROBING THE SIBLING AFTER FIXING THE FIRST. Measured 2026-08-14 on a chapter with
+    # NO translation at all: this minted a confirm_token whose own title read "Re-translate 0
+    # changed segment(s)". The author is asked to approve — and pay for — a re-translation of
+    # nothing, on a chapter that was never translated in the first place.
+    #
+    # A confirm gate exists to obtain consent for WORK. Zero segments is not work. Refused on the
+    # ESTIMATE rather than on "is there a translation", because the estimate is what the card
+    # would have charged for and it covers both shapes: never translated, and translated with
+    # nothing changed since.
+    if not est.segment_count:
+        raise ToolError(
+            "there are no changed segments to re-translate for this chapter and language — "
+            "either it has never been translated, or nothing has changed since it was. "
+            "Nothing was proposed and nothing was charged. "
+            "Use translation_segment_status to see the per-segment state, or "
+            "translation_start_job to translate it for the first time.")
     payload = {
         "action": "retranslate_dirty",
         "title": f"Re-translate {est.segment_count} changed segment(s)",
@@ -882,6 +905,17 @@ async def translation_start_extraction(
     caller_level = await _grant_resolver(bid, tc.user_id)
     effort, _capped = clamp_effort_to_grant(requested_effort, caller_level)
     cids = [_uuid(c) for c in chapter_ids]
+    # 🔴 A CONFIRM CARD MUST REPRESENT WORK. Measured 2026-08-14 on a book whose chapters had
+    # been removed: `chapter_ids=[]` minted a confirm_token whose own estimate read
+    # chapters_count 0, llm_calls 0, estimated_total_tokens 0 — a card asking the author to
+    # approve an extraction that would do nothing, and spend the one gate they get on a no-op.
+    # The sibling batch tool already refuses the equivalent ("ops must not be empty — pass the
+    # operations to batch"); this is that rule, applied to the input this tool actually needs.
+    # Named here rather than left to the worker, which would plan 0 batches and report success.
+    if not cids:
+        raise ToolError(
+            "chapter_ids must not be empty — name the chapters to extract from. Nothing was "
+            "proposed and nothing was charged. Use book_list_chapters to pick them.")
     profile = extraction_profile or {}
     # Estimate for the confirm card — a deterministic token projection over
     # (chapter count × the profile's kinds/attrs). The confirm effect re-runs the
@@ -899,6 +933,24 @@ async def translation_start_extraction(
             for k in kinds_metadata
             if k.get("auto_selected", True) and k.get("attributes")
         }
+    # 🔴 THE SAME INVARIANT, ONE LAYER DEEPER — AND THE FIRST GUARD DID NOT REACH IT.
+    # With chapters present but NO kinds adopted, `kinds_metadata` is empty, the default profile
+    # above builds to {}, and the estimate comes back chapters_count 1 / batches_per_chapter 0 /
+    # llm_calls 0 — a card for a run that will extract nothing. Measured on a fresh throwaway
+    # immediately after fixing the empty-chapter_ids case, which is why it is fixed here rather
+    # than filed: the first guard was the instance, this is the rule.
+    #
+    # The handler already knows this shape — the comment above the default-profile block says
+    # "without this the worker plans 0 batches -> 0 entities" — and then proceeds anyway when the
+    # book has nothing to build a profile FROM. Naming the real cause is what makes it actionable:
+    # the book needs an ontology before entities can be extracted into it.
+    if not profile:
+        raise ToolError(
+            "this book has no glossary kinds adopted yet, so an extraction would find nowhere "
+            "to put anything and would return no entities. "
+            "Nothing was proposed and nothing was charged. "
+            "Adopt standards first — glossary_list_system_standards to see them, "
+            "glossary_adopt_standards to adopt.")
     # #36 — real per-chapter sizes (best-effort) so the windowing planner isn't blind to
     # chapter length (the flat 8000 placeholder undercounted LLM calls on large chapters).
     from ..book_client import build_chapters_meta

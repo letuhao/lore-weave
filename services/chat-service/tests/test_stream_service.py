@@ -457,6 +457,60 @@ class TestStreamResponse:
         assert payload["assistant_content_len"] == len("Response text")
 
     @pytest.mark.asyncio
+    async def test_A_DEGRADED_CATALOGUE_DOES_NOT_KILL_THE_EDITOR_TURN(self):
+        """🔴 THE U-2 FIX ARMED A LANDMINE AND A VERIFIER DROVE IT.
+
+        The catalogue-outage record deliberately carries no `tool`; the sink drain read
+        `_sw["tool"]` unconditionally. While the sink was armed 382 lines after the fetch the row
+        never arrived, so the two halves could disagree for free. Arming it first delivered the row:
+        measured on this exact shape — agui + `editor_context`, the editor `<Chat>` surface — the
+        turn ended in `RUN_ERROR "'tool'"` **and the model was never called.** A degraded catalogue
+        became a dead turn.
+
+        This drives the real generator on that shape with a catalogue fetch that genuinely fails
+        (nothing is reachable from the suite). **The turn still ends in a `RUN_ERROR` here, because
+        the LLM gateway is unreachable from the suite too — and telling those two failures apart is
+        the whole assertion.** Before the fix the message was `'tool'`, raised inside the drain
+        before the surface was ever assembled; now it is the connection error from the model call,
+        which means everything up to and including surface assembly survived. Asserting merely
+        "no RUN_ERROR" would be untestable here, and asserting nothing would be worse.
+        """
+        pool, conn = _make_pool_with_conn()
+        pool.fetch.return_value = [{"role": "user", "content": "hi"}]
+        conn.fetchval.return_value = 1
+
+        lines: list[str] = []
+        async for line in stream_response(
+            session_id=TEST_SESSION_ID,
+            user_message_content="hi",
+            user_id=TEST_USER_ID,
+            model_source="user_model",
+            model_ref=TEST_MODEL_REF,
+            creds=_make_creds(),
+            pool=pool,
+            billing=AsyncMock(),
+            stream_format="agui",
+            editor_context={"book_id": "b-1", "chapter_id": "c-1"},
+        ):
+            lines.append(line)
+
+        blob = "".join(lines)
+        assert "'tool'" not in blob, (
+            f"the turn died on the very row it was built to carry — KeyError 'tool' in the sink "
+            f"drain, model never called: {blob[:400]}"
+        )
+        # The turn reached surface assembly and emitted its surface frame — i.e. it got PAST the
+        # drain. This is what the crash pre-empted.
+        assert "agentSurface" in blob, (
+            f"the turn never reached surface assembly: {blob[:400]}"
+        )
+        # And the only failure left is the environment's, named explicitly so this test cannot
+        # quietly start passing over a different error.
+        assert "All connection attempts failed" in blob, (
+            f"the turn failed for a reason other than the unreachable gateway: {blob[:600]}"
+        )
+
+    @pytest.mark.asyncio
     async def test_builds_message_history(self):
         pool, conn = _make_pool_with_conn()
         # The query is ORDER BY sequence_num DESC, then reversed() in code.
@@ -489,11 +543,25 @@ class TestStreamResponse:
             ):
                 pass
 
+        # 🔴 U-2, AND THIS TEST IS THE END-TO-END PROOF THE VERIFIER SAID DID NOT EXIST.
+        #
+        # This turn's catalogue fetch genuinely fails (no gateway is reachable from the suite), so
+        # the outage registers and the model is told — a system block ahead of the history. It used
+        # to see exactly three messages, because the narrowing sink was armed 382 lines AFTER the
+        # fetch and the notice therefore never rendered. **The extra message is the fix arriving on
+        # a real `stream_response` call**, not a regression: the assertion below moved because the
+        # behaviour it describes did.
+        assert captured_messages[0]["role"] == "system"
+        assert "TOOL CATALOGUE UNAVAILABLE" in captured_messages[0]["content"], (
+            "the catalogue fetch failed on this turn and the model was not told — U-2's second half "
+            "is inert again"
+        )
         # History reversed back to ASC — user message is from DB, not appended
-        assert len(captured_messages) == 3
-        assert captured_messages[0]["content"] == "first"
-        assert captured_messages[1]["content"] == "reply"
-        assert captured_messages[2]["content"] == "new msg"
+        history = captured_messages[1:]
+        assert len(history) == 3
+        assert history[0]["content"] == "first"
+        assert history[1]["content"] == "reply"
+        assert history[2]["content"] == "new msg"
 
 
 # ── K18.9 prompt-caching (cache_control on Anthropic system segments) ──────
@@ -544,7 +612,9 @@ def _patched_knowledge(stable: str = "", volatile: str = "", context: str | None
     client.build_context = AsyncMock(return_value=kctx)
     client.get_tool_definitions = AsyncMock(return_value=tool_defs or [])
     # MCP-fanout: discovery reads the catalog-meta (availability) synchronously.
-    client.get_catalog_meta = lambda: {}
+    # U-4 — the real signature takes the user; a zero-arg stub would let a call site
+    # drop the argument and still pass here.
+    client.get_catalog_meta = lambda user_id: {}
     return client
 
 

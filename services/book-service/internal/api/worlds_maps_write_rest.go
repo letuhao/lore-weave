@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -633,9 +634,16 @@ func polygonFromAny(v any) ([][]float64, error) {
 }
 
 // sweepMapImage removes a map's base-image object best-effort (the row is already gone, so a
-// storage hiccup must never surface as a failed delete).
+// storage hiccup must never surface as a failed delete) — but it LOGS a failure rather than
+// discarding it (#310). The name is aspirational: there is no orphan sweeper anywhere in the
+// platform, so a swallowed error here is a permanent, invisible leak. Same reasoning as the MCP
+// world_map_delete path; the two must stay in step.
 func (s *Server) sweepMapImage(r *http.Request, imageKey *string) {
 	if imageKey != nil && *imageKey != "" && s.minio != nil {
-		_ = s.minio.RemoveObject(r.Context(), mediaBucket, *imageKey, minio.RemoveObjectOptions{})
+		ctx := r.Context()
+		if err := s.minio.RemoveObject(ctx, mediaBucket, *imageKey, minio.RemoveObjectOptions{}); err != nil {
+			slog.WarnContext(ctx, "map delete: orphaned map base image (delete succeeded, blob remains)",
+				"object_key", *imageKey, "error", err)
+		}
 	}
 }

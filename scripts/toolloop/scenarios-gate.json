@@ -1,0 +1,76 @@
+{
+  "_note": "Scenario format v2. No book_id/chapter_id: every repeat provisions its own throwaway book (scripts/toolloop/provision.py) and tears it down. `seed` is a list of DIRECT MCP calls that build the substrate deterministically — never the model — with {book_id}/{chapter_id}/{project_id} substituted. `prompt` must be plain user prose that never names a tool. `intent` is read|write; a read-intent turn that changes the store is a defect whatever the model said.",
+  "scenarios": [
+    {
+      "id": "outline-read",
+      "intent": "read",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "composition_list_outline",
+      "prompt": "Show me the outline I've planned for this book — what chapters and scenes are in it?",
+      "seed": [
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Ember Codex",
+            "synopsis": "Aldric reaches Hollow Keep and is given the Codex."
+          }
+        },
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Sunless Marsh",
+            "synopsis": "Mira leads him through the drowned road."
+          }
+        },
+        {
+          "tool": "composition_outline_node_create",
+          "args": {
+            "project_id": "{project_id}",
+            "kind": "chapter",
+            "title": "The Pale Regent",
+            "synopsis": "The Codex is opened and the Regent answers."
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: a run's after-snapshot differs from its before-snapshot, or the outline the model reports back contains a title that is not one of the three seeded ones (The Ember Codex / The Sunless Marsh / The Pale Regent). The seed exists precisely so a fabricated answer is checkable prose rather than an unfalsifiable 'you have three chapters'.",
+      "ship_audit": {
+        "empty_case": "not yet exercised — a book with zero outline nodes must produce 'nothing planned yet' and still not write. Owed before this tool is concluded either way.",
+        "refusals": "not yet exercised — project_id belonging to another user.",
+        "note": "This scenario is PHASE 0 harness evidence. It proves the harness measures correctly; it does not conclude the tool. Selection is 1 of 3 (see runs)."
+      }
+    },
+    {
+      "id": "canon-read",
+      "intent": "read",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "expect_tool": "composition_list_canon_rules",
+      "prompt": "What canon rules have I declared for this book? List them for me.",
+      "seed": [
+        {
+          "tool": "composition_canon_rule_create",
+          "args": {
+            "project_id": "{project_id}",
+            "text": "The Pale Regent is never named aloud by a living character."
+          }
+        },
+        {
+          "tool": "composition_canon_rule_create",
+          "args": {
+            "project_id": "{project_id}",
+            "text": "The Ember Codex cannot be read by anyone who has crossed the Marsh."
+          }
+        }
+      ],
+      "falsifier": "REFUTED IF: a run's after-snapshot differs from its before-snapshot, or the reply claims no canon rules exist while the store holds the two seeded ones — the exact shape of the 2026-08-13 incident, where the answer was 'you haven't declared any' over a non-empty table.",
+      "ship_audit": {
+        "empty_case": "not yet exercised — a project with no rules.",
+        "refusals": "not yet exercised — another user's project_id.",
+        "note": "PHASE 0 harness evidence, not a tool conclusion."
+      }
+    }
+  ]
+}

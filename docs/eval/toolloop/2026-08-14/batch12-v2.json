@@ -1,0 +1,1648 @@
+{
+ "batch": "batch12-v2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "glossary_create_chapter_link",
+   "scenario": "glossary-create-chapter-link-v2",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the link lands with NO confirm card (Tier A), OR the model invents an entity_id or chapter_id rather than resolving them, OR it links to a chapter that is not the one open in the editor. The store check is glossary_chapter_links: unchanged, because the card is never approved.",
+   "answer_expect": null,
+   "falsifier_sha": "c2768926f0435cfc",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's book/project refused.",
+    "gate": "NOT REACHED — never called live; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020de-50b0-7a99-836c-43e94a5bb479",
+     "session_id": "01a020de-6d60-79dd-a018-bf7c06108779",
+     "prompt": "Aldric Vane appears in this chapter — mark where he shows up.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "book_read",
+      "glossary_book_ontology_read",
+      "glossary_list_system_standards",
+      "glossary_propose_entities"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:35.852834+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.052045+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:30:36.186909+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.186909+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:30:36.186909+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.329482+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.042078+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:35.852834+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.052045+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:30:36.186909+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.186909+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:30:36.186909+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.329482+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:36.042078+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020de-a3bd-79a7-b73b-8c8cea79491f",
+     "session_id": "01a020de-bf3c-7336-8644-990b658da8d5",
+     "prompt": "Aldric Vane appears in this chapter — mark where he shows up.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "book_read",
+      "glossary_book_ontology_read",
+      "glossary_list_system_standards",
+      "glossary_propose_entities"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.106642+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.295011+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:30:57.341741+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.341741+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:30:57.341741+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.453412+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.287119+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.106642+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.295011+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:30:57.341741+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.341741+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:30:57.341741+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.453412+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:30:57.287119+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a020de-f698-7660-95b1-1a81897679cb",
+     "session_id": "01a020df-10f9-72d7-bd61-6bdfdec198a7",
+     "prompt": "Aldric Vane appears in this chapter — mark where he shows up.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "book_read",
+      "glossary_book_ontology_read",
+      "glossary_list_system_standards",
+      "glossary_propose_entities"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.316991+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.494627+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:31:18.540116+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.540116+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:31:18.540116+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.6328+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.48822+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.316991+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.494627+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:31:18.540116+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.540116+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:31:18.540116+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.6328+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:18.48822+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 3,
+   "blocked_reason": "Surfaced 3/3 after the declaration fix (was 0/3) — the surfacing half is SOLVED. Still called 0/3: the model called glossary_propose_entities, re-proposing the entity that already exists, rather than linking it. A PRECONDITION-CHAIN block, now isolated because the surfacing failure that masked it is gone."
+  },
+  {
+   "tool": "glossary_entity_rename",
+   "scenario": "glossary-entity-rename-v2",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the rename lands with NO confirm card, OR the model creates a NEW entity called 'Aldric Vane' instead of renaming the existing one (a create-instead-of-edit, which is the v1/v2 surfacing defect's signature), OR it invents an entity_id. Store check: the entity count must stay 1 and cached_name must still be the misspelling, because the card is never approved.",
+   "answer_expect": null,
+   "falsifier_sha": "0abbe0654420717a",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A: card raised 3/3, store unchanged without approval, entity count still 1 and cached_name still the misspelling.",
+    "absent_case": "EXERCISED — renaming a nonexistent entity is refused with 'entity not found in this book'.",
+    "tenancy": "EXERCISED — another account's book refused with 'book not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020df-57ef-7f13-8f18-addb0cd340cf",
+     "session_id": "01a020df-75dd-72c5-9393-66a87f15c173",
+     "prompt": "I spelled a character wrong — rename Aldrik Vayne to Aldric Vane.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_entity_rename"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.270001+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.47448+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:31:43.523998+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.523998+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:31:43.523998+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.632042+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.466424+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.270001+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.47448+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:31:43.523998+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.523998+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:31:43.523998+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.632042+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:31:43.466424+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020df-c638-79fc-9861-65563d03631a",
+     "session_id": "01a020df-e20b-70ed-8e55-377c8acdc6a2",
+     "prompt": "I spelled a character wrong — rename Aldrik Vayne to Aldric Vane.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_entity_rename"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.523337+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.757532+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:32:11.849484+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.849484+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:11.849484+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.974094+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.745576+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.523337+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.757532+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:32:11.849484+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.849484+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:11.849484+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.974094+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:11.745576+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a020e0-1920-7097-ac4d-ffcd623721fa",
+     "session_id": "01a020e0-34c4-7c1f-85ed-bb27aa5eb273",
+     "prompt": "I spelled a character wrong — rename Aldrik Vayne to Aldric Vane.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_entity_rename"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.70198+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.905082+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:32:32.95282+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.95282+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:32.95282+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:33.056415+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.896625+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.70198+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.905082+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:32:32.95282+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.95282+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:32.95282+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:33.056415+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:32.896625+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 3
+  },
+  {
+   "tool": "glossary_propose_translation",
+   "scenario": "glossary-propose-translation-v2",
+   "intent": "write",
+   "falsifier": "REFUTED IF: translations land with NO confirm card, OR the proposal covers fewer entities than the request implies without saying so, OR language_code is not 'vi' when the user said Vietnamese. Store unchanged, because the card is never approved.",
+   "answer_expect": null,
+   "falsifier_sha": "072203ab72733c09",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's book/project refused.",
+    "gate": "NOT REACHED — never called live; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020e0-67ad-7647-8b9d-3562f0a4c6c7",
+     "session_id": "01a020e0-82ba-737a-93ad-0ac2075cd51c",
+     "prompt": "Give me Vietnamese names for these characters — localise the glossary into vi.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_get_entity",
+      "glossary_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:52.812406+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:53.010896+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:32:53.058722+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:53.058722+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:53.058722+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:53.170689+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:53.003627+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:52.812406+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:53.010896+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:32:53.058722+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:53.058722+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:53.058722+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 2,
+        "latest": "2026-08-20 20:32:53.170689+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:32:53.003627+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared some Vietnamese name suggestions for your characters. Since these are names, I've provided options that capture the \"feel\" of the originals (e.g., melodic/light for Mira, strong/noble for Aldric) while sounding natural in Vietnamese.\n\n### Character Name Suggestions\n\n| Original Name | Vietnamese Suggestion | Nuance / Feel |\n| :--- | :--- | :--- |\n| **Mira Solene** | **Minh Nguyệt** | *Minh* (Bright) + *Nguyệt* (Moon). Captures the \"Solene\" (solemn/moon-like) elegance. |\n| | **Linh Lan** | A soft, melodic name, similar to the rhythmic flow of \"Mira\". |\n| **Aldric Vane** | **Anh Tuấn** | A strong, classic name implying intelligence and bravery. |\n| | **Quốc Vương** | If the character has a noble or commanding presence (Vane/Aldric). |\n\n***\n\n**Would you like me to apply these translations to the story bible now?** \n\nI can also look for more characters or terms if you have a larger list. Once you approve, they will appear as \"draft\" translations in your story bible for you to review."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020e0-cc13-7c36-b651-d5f2f8358182",
+     "session_id": "01a020e0-e6dd-7cd5-81cf-05ffcfefaf71",
+     "prompt": "Give me Vietnamese names for these characters — localise the glossary into vi.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_get_entity",
+      "glossary_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.543362+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.762451+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:33:18.822467+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.822467+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:18.822467+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:18.936556+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.754589+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.543362+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.762451+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:33:18.822467+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.822467+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:18.822467+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:18.936556+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:18.754589+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared a localization proposal for your characters. Since these are Western-style names, I have provided two options for each: a **phonetic transliteration** (keeping the sound of the original names) and a **meaning-based localization** (using Vietnamese names that capture the \"essence\" or meaning of the original names).\n\n### Character Name Proposals\n\n| Original Name | Phonetic (Transliteration) | Meaning-based (Vietnamese) | Notes |\n| :--- | :--- | :--- | :--- |\n| **Mira Solene** | Mira Solene | **Minh Nguyệt** | *Mira* (wonderful/peace) + *Solene* (solemn/moonlight) $\\rightarrow$ *Minh Nguyệt* (Bright Moon) |\n| **Aldric Vane** | Aldric Vane | **Lâm Phong** | *Aldric* (old/wise ruler) + *Vane* (weather vane/wind) $\\rightarrow$ *Lâm Phong* (Wise Wind/Forest Wind) |\n\n***\n\n**Would you like me to apply these translations to your story bible?** \nI will add them as Vietnamese name drafts for you to review."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a020e1-30b8-7573-9e18-b9f2fd7743fa",
+     "session_id": "01a020e1-4ea8-7d45-8d21-78c32582fe9a",
+     "prompt": "Give me Vietnamese names for these characters — localise the glossary into vi.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_get_entity",
+      "glossary_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.274686+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.46946+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:33:44.52417+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.52417+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:44.52417+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:44.654526+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.460668+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.274686+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.46946+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:33:44.52417+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.52417+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:44.52417+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 2,
+        "latest": "2026-08-20 20:33:44.654526+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:33:44.460668+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've prepared some Vietnamese name suggestions for your characters. Since these are names, I've provided options that capture the \"feel\" of the originals:\n\n*   **Mira Solene**\n    *   *Option 1 (Phonetic/Soft):* **Mira Solene** (Keeping the original name is common in modern Vietnamese fiction).\n    *   *Option 2 (Meaning-based - \"Bright/Light\"):* **Minh Nguyệt** (Bright Moon) or **Ánh Dương** (Sunlight).\n*   **Aldric Vane**\n    *   *Option 1 (Phonetic/Strong):* **Aldric Vane**\n    *   *Option 2 (Meaning-based - \"Noble/Ruler\"):* **Quốc Vương** (King/Ruler) or **Minh Triết** (Wise/Noble).\n\nI can apply these as translations to the story bible for you. Would you like me to proceed with these specific names, or would you prefer to choose different ones first?"
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "Surfaced 3/3 (unchanged — it was already the control) and called 0/3 this run against 1/3 before. It answered with Vietnamese name suggestions in PROSE rather than minting the proposal — the describe-instead-of-record shape, now the residual after surfacing was fixed."
+  },
+  {
+   "tool": "glossary_create_evidence",
+   "scenario": "glossary-create-evidence-v2",
+   "intent": "write",
+   "falsifier": "REFUTED IF: evidence lands with NO confirm card, OR the quoted original_text is not actually in the chapter (a fabricated citation is the worst outcome here), OR the model invents an attr_value_id. CONTROL: the fixture has no attribute values, so a turn that cannot proceed is the precondition chain, and that must be recorded as such rather than as a tool failure.",
+   "answer_expect": null,
+   "falsifier_sha": "a9ed9c2bb2916fef",
+   "ship_audit": {
+    "tenancy": "EXERCISED — another account's book/project refused.",
+    "gate": "NOT REACHED — never called live; see blocked_reason.",
+    "absent_case": "NOT REACHED for the same reason."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020e1-96e4-794d-ae80-1f6606cccc74",
+     "session_id": "01a020e1-b32b-705f-afd9-95182d660d1b",
+     "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_entity_set_attributes",
+      "glossary_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.434436+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.636067+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:34:10.687145+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.687145+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:34:10.687145+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.79808+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.627607+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.434436+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.636067+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:34:10.687145+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.687145+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:34:10.687145+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.79808+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:10.627607+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020e1-e3a9-78bc-b2be-18dbf98d4719",
+     "session_id": "01a020e2-0103-7b64-8f6a-db329c6c0cb9",
+     "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_entity_set_attributes",
+      "glossary_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.089959+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.298369+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:34:30.347148+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.347148+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:34:30.347148+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.447999+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.290938+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.089959+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.298369+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:34:30.347148+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.347148+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:34:30.347148+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.447999+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:30.290938+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a020e2-366c-7802-aa7e-3edef56cb37a",
+     "session_id": "01a020e2-54da-75a9-9d03-f35f78bfc04d",
+     "prompt": "Back up Aldric Vane's role with a passage from the chapter — cite where it says he climbed the black stair.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "glossary_entity_set_attributes",
+      "glossary_search"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.27365+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.475718+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:34:51.528447+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.528447+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:34:51.528447+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.626934+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.467229+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.27365+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.475718+00"
+       },
+       "loreweave_glossary.book_active_genres": {
+        "rows": 1,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_attributes": {
+        "rows": 16,
+        "latest": "2026-08-20 20:34:51.528447+00"
+       },
+       "loreweave_glossary.book_genres": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.528447+00"
+       },
+       "loreweave_glossary.book_kind_genres": {
+        "rows": 2,
+        "latest": "-"
+       },
+       "loreweave_glossary.book_kinds": {
+        "rows": 2,
+        "latest": "2026-08-20 20:34:51.528447+00"
+       },
+       "loreweave_glossary.glossary_entities": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.626934+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:34:51.467229+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 3,
+   "blocked_reason": "Surfaced 3/3 after the declaration fix (was 0/3). Still called 0/3, and the reason is visible in what it DID call: glossary_entity_set_attributes — i.e. it was working toward the real precondition, since evidence attaches to an attr_value_id and the fixture has none. A PRECONDITION-CHAIN block, correctly identified by the model."
+  },
+  {
+   "tool": "kg_graph_query",
+   "scenario": "kg-graph-query-v2",
+   "intent": "read",
+   "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply describes relationships a fresh project cannot have. EMPTY case by construction — the graph is un-bootstrapped, so the honest answer is that there is nothing in it yet. 🔴 WATCH FOR THE FALSE PRESENCE: batch 11's composition_conformance_status invented 'effectively stale' for a book that had never run conformance, and this shape invites the same — describing what a knowledge graph WOULD hold as if it held it.",
+   "answer_expect": null,
+   "falsifier_sha": "5949666f26bce723",
+   "ship_audit": {
+    "empty_case": "EXERCISED, and the ANSWER is the point: an un-bootstrapped project returns {nodes: [], edges: [], meta: {nodes_total: 0, edges_total: 0}} and the model reported it honestly — 'I don't see any characters or relationships recorded in the connection map for this project yet'. That is the exact OPPOSITE of batch 11's conformance_status, which invented 'effectively stale' for a book that had never run conformance.",
+    "tenancy": "EXERCISED — another account's project refused with 'project not found'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a020e2-8c83-7ad9-b9e5-e9367e791cc1",
+     "session_id": "01a020e2-a7a0-7e1f-8ccc-e87746dc199a",
+     "prompt": "How are the characters in this story connected — show me the relationships.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_graph_query"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:13.330733+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:13.561964+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:13.55171+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:13.330733+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:13.561964+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:13.55171+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't see any characters or relationships recorded in the connection map for this project yet. \n\nThis usually means we haven't officially \"captured\" your cast or connected them to the project's memory. If you've already described your characters to me in this conversation, I can try to extract them now. \n\nOtherwise, if you have a list of characters or a story summary, please paste it here. Once you do, I can:\n1. **Identify your cast** and the types of people they are.\n2. **Map out their connections** (friendships, rivalries, family, etc.).\n3. **Build a visual map** of how they all relate to one another.\n\n**Would you like to paste your character notes or a story summary to get started?**"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a020e2-e12f-7a40-b07e-c361d0c5d8a4",
+     "session_id": "01a020e2-fee1-729e-81b3-596aa1eb0df1",
+     "prompt": "How are the characters in this story connected — show me the relationships.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "kg_graph_query"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:34.994104+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:35.205258+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:35.195057+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:34.994104+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:35.205258+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:35.195057+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I don't see any characters or relationships recorded in the connection map for this project yet. \n\nThis usually means we haven't officially \"captured\" your cast into the system. If you've already described your characters to me in our conversation, I can extract them and build those connections for you now. \n\nAlternatively, if you have a list of characters or a story summary ready, just paste it here and I'll get to work on mapping out how everyone is connected."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a020e3-33f2-7f56-8d29-8a1a2e40ad57",
+     "session_id": "01a020e3-4f1b-794d-8990-9c9f9efc6311",
+     "prompt": "How are the characters in this story connected — show me the relationships.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "book_list",
+      "composition_package_tree",
+      "kg_graph_query"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:56.20075+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:56.434282+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:56.416621+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:56.20075+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:56.434282+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-20 20:35:56.416621+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the current project's connection map, and it appears that no characters or relationships have been recorded in the system yet. \n\nBecause the graph is currently empty, I can't show you the connections between characters. If you've already described characters or relationships in your notes or previous messages, I can try to extract them and add them to the graph for you. \n\nWould you like me to try extracting characters from your story notes, or would you prefer to start by defining the types of characters and relationships your world will track?"
+    }
+   ],
+   "surfaced_count": 3,
+   "called_count": 3,
+   "wrote_count": 0,
+   "suspended_count": 0
+  }
+ ]
+}

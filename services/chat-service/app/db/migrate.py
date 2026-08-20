@@ -298,6 +298,87 @@ ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS exclude_from_memory BOOLEAN N
 -- exist for the error half.
 ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS finish_reason TEXT;
 
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+-- CP-0 · THE INSTRUMENT (spec 2026-08-03-agent-runtime-unification §5)
+--
+-- Four questions the product cannot answer about itself today. Each column below exists because a
+-- specific measurement was attempted and found to have no source. They are not analytics: without
+-- them the claim "the new runtime beats the old" is not computable, and a brick laid before its
+-- instrument is a brick nobody can see fall.
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+
+-- CP-0.1 — WHAT THE MODEL WAS ACTUALLY OFFERED, per model pass.
+-- No column anywhere answers this today, which is why the founding defect of this whole effort is
+-- INVISIBLE in production: the token budgeter silently deleted the one tool the model needed
+-- mid-turn (POC arm E, 0/3), and nothing recorded that the offered set had changed.
+--
+-- JSONB holding an ARRAY, one entry per pass — [{pass, tool_choice, names[], count}] — and the
+-- array is the whole point. A scalar text[] would record only the LAST pass and would therefore
+-- lose exactly the mid-turn deletion this column exists to catch: pass 1 offers the tool, pass 2
+-- does not, and a last-write-wins column shows only pass 2, which looks like it was never offered.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS advertised_tools JSONB;
+
+-- CP-0.2 — WHAT WAS WITHHELD, AND WHY. [{tool, stage, reason}].
+-- A withholding that does not register is a defect, not a policy. Today the token budgeter returns
+-- only what it KEPT and discards what it dropped, so a dropped tool is indistinguishable from a
+-- tool that never existed — for the model AND for us. (Its sibling `budget_rail_tools` already
+-- returns (kept, dropped) and says in its own docstring that dropped names are "REPORTED so the
+-- caller can log it rather than pretend"; this column is where that report lands.)
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS withheld_tools JSONB;
+
+-- CP-0.4 — HOW THE TURN ENDED, on EVERY terminal path.
+-- Distinct from `finish_reason` above, which is the provider's word for why generation stopped and
+-- is populated on 9.4% of rows. `outcome` is OURS, it is mandatory, and its vocabulary is closed so
+-- an unhandled path cannot quietly invent a value:
+--   completed        — reached its end normally
+--   awaiting_input   — asked the user something. A SUCCESS state, not a stall: a model that stops to
+--                      ask is behaving correctly, and counting it as failure punishes the behaviour
+--                      we want (spec §0.5)
+--   abandoned_by_user— the user cancelled. NOT a failure, and it needs its own state because it was
+--                      previously badged 'interrupted' — which the spec declares a DEFECT, making
+--                      the run's own `interrupted` baseline uninterpretable until cancel moves out
+--   failed           — ended on an error
+--   crashed          — the process died mid-turn; the row was left at a checkpoint
+--   interrupted      — RETAINED AND DEPRECATED. Anything still landing here is unclassified, which
+--                      is a finding about US, not about the turn. The metric to drive to zero.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS outcome TEXT
+  CHECK (outcome IS NULL OR outcome IN
+    ('completed','awaiting_input','abandoned_by_user','failed','crashed','interrupted'));
+
+-- CP-0.7 — WHICH RUNTIME PRODUCED THIS TURN.
+-- Without it NO comparison is computable at all, however much data accumulates — the run would
+-- generate traffic that cannot answer its own question. DEFAULT 'legacy' is deliberate and is the
+-- fail-safe direction: an unlabelled turn is attributed to the OLD runtime, so the new one can
+-- never be flattered by rows nobody labelled.
+--
+-- Note what is NOT here: a session-level A/B assignment. You cannot A/B a runtime holding one
+-- declaration against one holding 315 — that is either impossible or biased, and a biased
+-- assignment invalidates the control group. The comparison unit is the DECLARATION (matched pairs
+-- of one capability against its frozen-baseline predecessor), which is why the declaration identity
+-- rides on each tool_calls[] entry rather than on the turn.
+-- 🔴 WHO recorded the outcome. Without this, a swept row and a path-recorded row are the SAME
+-- ROW, so P3 ("every terminal path writes an outcome") reads as satisfied when what actually
+-- happened is that a startup sweep repaired the record three days later. A sweep is not a terminal
+-- path. The metric looked perfect BECAUSE the repair was indistinguishable from the thing it
+-- repaired — measured: 86 of 223 swept rows were in sessions that continued afterwards.
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS outcome_source TEXT
+  CHECK (outcome_source IS NULL OR outcome_source IN ('path', 'reconciler'));
+
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS runtime_variant TEXT NOT NULL DEFAULT 'legacy'
+  CHECK (runtime_variant IN ('legacy', 'agentruntime'));
+
+-- The per-declaration join CP-0.7 exists to serve. Partial: only rows that called something.
+CREATE INDEX IF NOT EXISTS idx_chat_messages_runtime_variant
+  ON chat_messages (runtime_variant, created_at DESC)
+  WHERE tool_calls IS NOT NULL;
+
+-- CP-0.3 (`tool_calls[].source` + `latency_ms`) needs no DDL — tool_calls is already JSONB. It is
+-- enforced at the write site instead: defaulting an unlabelled result to 'tool' would silently
+-- re-merge the exact two populations the field exists to separate. The measured class is
+-- `source != 'tool'` (recomputed 57.7%, 2,315/4,010, itself 57.5% harness traffic) — NOT `breaker`
+-- alone, because splitting `meta` out moves the same rows by 33pp and would manufacture an
+-- improvement out of a redefinition. See instrument.py for the derivation and the trap.
+
 -- ARCH-1 C6 — suspended runs for AG-UI frontend-tool-calls. When the model
 -- calls a frontend tool (e.g. propose_edit), the turn pauses: the in-flight
 -- conversation `working` list + the dangling assistant tool-call cannot be
@@ -360,6 +441,21 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='book_id') THEN
     ALTER TABLE chat_suspended_runs ADD COLUMN book_id UUID;
+  END IF;
+END $$;
+
+-- TOOL DEEP-DIVE (plan_bootstrap_propose, 2026-08-13) — carry the STUDIO flag across the
+-- suspend, for the same reason `permission_mode` is already carried: "the resume continues
+-- under the mode the turn started with". The studio single-book override in
+-- `_inject_context_ids` is STUDIO-SCOPED by design (off a studio turn a valid-but-different
+-- book_id is a legitimate cross-book call and must be honored), and the resume rebuilt
+-- `context_ids` with book_id only — so `studio` silently defaulted to False and the override
+-- was DEAD on every resumed turn. book_id alone cannot stand in for it: a plain book-surface
+-- turn also carries book_id, and overriding there would break the cross-book call the comment
+-- promises to honor. FALSE for pre-existing rows is exactly right: it is the old behaviour.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='chat_suspended_runs' AND column_name='studio') THEN
+    ALTER TABLE chat_suspended_runs ADD COLUMN studio BOOLEAN NOT NULL DEFAULT FALSE;
   END IF;
 END $$;
 
@@ -687,6 +783,67 @@ CREATE INDEX IF NOT EXISTS idx_reflection_patterns_owner_week
 -- authoritative dimension set the Scorecard coerces against (coerce_scorecard's safe-when-wrong
 -- guarantee is anchored to THIS, not the model's output). A coach session with NO resolvable
 -- rubric REFUSES to score (P5-D5). `tier` carries the quarantine state until Gate 4 clears.
+-- ── CP-3.1 · the plan, made durable ────────────────────────────────────────────────────────────
+-- ARCHITECTURE.md §0.11: "one `plans` table in `loreweave_chat`, one live plan per session."
+-- Session-scoped so suspend/resume reaches it, durable so process death is recoverable, and **a ROW
+-- rather than a column so versions are rows** — a revision writes a new SPEC version and the old one
+-- stays readable, which is what makes §0.8's approval-invalidation inspectable after the fact.
+--
+-- 🔴 S3-M6, and it is the reason this table is worth having at all: turns already checkpoint per
+-- tool call at `finish_reason='streaming'` and **nothing ever reads a `'streaming'` row back**. The
+-- write half of recovery has existed the whole time and been discarded. This is the read half.
+CREATE TABLE IF NOT EXISTS chat_plans (
+  plan_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id      UUID NOT NULL REFERENCES chat_sessions(session_id) ON DELETE CASCADE,
+  version         INT NOT NULL,
+  -- Both hashes are STORED rather than recomputed on read. They are what an approval bound to, and
+  -- recomputing would silently re-bind it to whatever the code says today — §0.8's laundering with
+  -- an extra step. A mismatch between these and a fresh hash is a finding, not a repair.
+  spec_hash       TEXT NOT NULL,
+  gated_hash      TEXT NOT NULL,
+  spec            JSONB NOT NULL,
+  status          VARCHAR(16) NOT NULL DEFAULT 'live'
+                  CHECK (status IN ('live', 'superseded', 'terminated')),
+  -- Set only when status='terminated'. §3: a plan that ends anywhere but done_when names what is
+  -- live and hands it to a human, so the scope and the hand-off are columns, not log lines.
+  terminal_scope  VARCHAR(32),
+  hand_to_human   TEXT,
+  created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (session_id, version)
+);
+
+-- 🔴 **"ONE LIVE PLAN PER SESSION" AS AN INDEX, NOT AS A CONVENTION.** A partial unique index makes
+-- the second live plan unrepresentable; enforcing it in application code would make it a race, and
+-- two live plans in one session is the state where "which plan does this message route into?" has
+-- no answer. S3-M4's rule attaches here: a second message during a live plan ROUTES INTO IT, and a
+-- hard reject would be a ceiling.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_chat_plans_one_live_per_session
+  ON chat_plans (session_id) WHERE status = 'live';
+
+-- STATE, event-sourced. §0.11's second adjustment: "replay to reconstruct, resume at the failed step
+-- without re-running completed work" — an event history answers §0.5's *what has already committed*
+-- natively, where a snapshot has to be kept correct by whoever writes it.
+CREATE TABLE IF NOT EXISTS chat_plan_events (
+  plan_id     UUID NOT NULL REFERENCES chat_plans(plan_id) ON DELETE CASCADE,
+  -- 🔴 **APPEND-ONLY IS THE PRIMARY KEY, NOT A PROMISE.** `(plan_id, seq)` makes re-writing an
+  -- existing position a constraint violation rather than an UPDATE nobody notices. STATE is the
+  -- record recovery replays; a history that can be edited after the fact is a history that cannot
+  -- be trusted to say what committed.
+  seq         BIGINT NOT NULL,
+  kind        VARCHAR(24) NOT NULL,
+  step_index  INT NOT NULL CHECK (step_index >= 0),
+  -- The ACTUAL emitted values. `payload` and not `values`, which is reserved.
+  payload     JSONB NOT NULL DEFAULT '{}',
+  error_class VARCHAR(32),
+  undo_hint   TEXT NOT NULL DEFAULT '',
+  committed   BOOLEAN NOT NULL DEFAULT false,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (plan_id, seq)
+);
+
+CREATE INDEX IF NOT EXISTS idx_chat_plans_session_live
+  ON chat_plans (session_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS coaching_rubrics (
   rubric_id       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code            TEXT NOT NULL,

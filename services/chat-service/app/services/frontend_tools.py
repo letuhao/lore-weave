@@ -237,6 +237,22 @@ GLOSSARY_PROPOSE_EDIT_TOOL: dict = {
             "required": ["book_id", "entity_id", "base_version", "changes"],
             "additionalProperties": False,
         },
+        # 🔴 **CP-5 · THIS TOOL WAS ON THE WIRE FOR WEEKS DECLARING NOTHING.** Every one of the 315
+        # federated tools carries `tier` + `scope`; the four chat-service serves itself carried
+        # neither, so `declared_lane` returned None for them while its own docstring said
+        # *"measured on the live catalogue: 315/315 tools declare a tier"* — measured on the
+        # population that excluded the only ones that did not. Undeclared, this tool could not be
+        # derived, therefore not admitted, therefore could not carry a contract — which is why the
+        # corpus's largest 0%-success tool (101 calls, 12 sessions) had no member to fix it.
+        #
+        # `tier: W` is read off this tool's OWN behaviour, not chosen: it suspends the turn and the
+        # browser renders a diff card the user must Apply, which is the definition of W. `served_by`
+        # is the load-bearing one — the NAME says `glossary_`, and `derive.resolve_service` is a
+        # prefix table, so without this the manifest would record glossary-service as the owner of a
+        # tool glossary-service does not serve. The name lying about the owner is a real defect; a
+        # rename is a migration with live traffic (supersession), so the declaration carries the
+        # truth today and the rename stays a separate decision.
+        "_meta": {"tier": "W", "scope": "book", "served_by": "chat-service"},
     },
 }
 
@@ -289,6 +305,14 @@ GLOSSARY_CONFIRM_ACTION_TOOL: dict = {
             "required": ["confirm_token", "descriptor", "title"],
             "additionalProperties": False,
         },
+        #: CP-5 · declared, for the reason on `GLOSSARY_PROPOSE_EDIT_TOOL`. `W` is this tool's whole
+        #: purpose — it exists to surface the human confirm step, and its own comment says
+        #: *"high-impact and destructive changes ALWAYS require explicit human confirmation."*
+        #: `scope: none` rather than `book`, and the parameters are the evidence: this tool takes a
+        #: `confirm_token` and nothing else that identifies a book. The token carries the scope,
+        #: which is what makes it a confirm step rather than a second chance to name a target.
+        "_meta": {"tier": "W", "scope": "none", "served_by": "chat-service",
+                  "_confirm_step": True},
     },
 }
 
@@ -588,6 +612,10 @@ CONFIRM_ACTION_TOOL: dict = {
             "required": ["confirm_token", "descriptor", "title", "domain"],
             "additionalProperties": False,
         },
+        #: CP-5 · declared. `W` is stated by this section's own header — *"generic Tier-W/S
+        #: confirm"* — so the tier is read out of the code rather than chosen. `scope: none`
+        #: because it is the cross-domain tool: `domain` is a parameter, not a scope key.
+        "_meta": {"tier": "W", "scope": "none", "served_by": "chat-service"},
     },
 }
 

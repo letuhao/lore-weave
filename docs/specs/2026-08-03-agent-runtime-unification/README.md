@@ -37,6 +37,24 @@ between. That missing middle layer is why two code paths could disagree about wh
 tool is hidden or labeled, and why the public edge grants four deprecated `book_*` tools while denying
 their replacements.
 
+## Why this is a re-architecture, not a cleanup
+
+Two PO constraints (`SPEC.md` §1.3) invalidate assumptions rather than adding scope:
+
+- **C1 — the catalog is expected to reach thousands of tools.** Measured from this repo's own figure
+  (~375 tokens per tool schema): **3,000 tools = 1.125M tokens of schema, 150k tokens for a bare
+  name+description index, and 214 tools per group** under the flat 14-group taxonomy. `tool_list`
+  returning a whole category stops being a listing and becomes a context dump.
+- **C2 — this repo is maintained for years**, so adding or renaming a tool must be routine. Today a
+  rename must be hand-propagated to `GROUP_DIRECTORY` ×3, two prefix maps, `TOOL_POLICY`, 43 intent
+  regexes, skill prose and `workflows.steps[].tool` — **none of them compiler-checked**.
+
+Every one of the audit's thirteen mechanisms is a *constant-factor* improvement on an approach whose
+cost is linear in catalog size. **That is why local patching cannot save it** — the budget trims
+harder and the breakers fire sooner, but nothing changes the exponent. R13 (a generated migration
+chain, on Entity Framework's model) answers C2; R14 (discovery that does not scale with the catalog)
+answers C1.
+
 ## Why the agent loops
 
 The reported symptom — *the agent calls a tool, cannot tell what went wrong, and loops forever* — has a

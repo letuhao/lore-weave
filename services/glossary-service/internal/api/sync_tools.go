@@ -29,7 +29,11 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"book adopted from System or your user-tier standards, whether the source has since changed " +
 			"(an update is available) or been retired. Read this before proposing a sync. Returns each " +
 			"row's current (mine) vs upstream (theirs) values so you can recommend per-row choices.",
-		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeBook, nil, []string{"are there ontology updates", "is my story bible out of date", "what standard updates are available"}),
 	}, s.toolBookSyncAvailable)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -44,7 +48,11 @@ func (s *Server) RegisterSyncTools(srv *mcp.Server) {
 			"items[].choice": {"take_theirs", "keep_mine"},
 		}),
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W.
-		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil),
+		// R2 (2026-08-14) — DECLARED so a user's words can reach it. tool_list fired ONCE in
+		// 30 live runs and tool_load never, so the answerability pre-filter is the only
+		// dynamic path onto the wire; an undeclared tool cannot be pre-filtered in. These
+		// are phrasings a PERSON types, not the feature's name.
+		Meta: lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, []string{"apply the standard updates", "take the upstream changes", "sync my ontology"}),
 	}, s.toolBookSyncApply)
 }
 

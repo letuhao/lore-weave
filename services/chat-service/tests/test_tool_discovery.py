@@ -134,7 +134,8 @@ def _run_discovery(
 
 def _kc(catalog_meta: dict | None = None) -> AsyncMock:
     kc = AsyncMock()
-    kc.get_catalog_meta = lambda: (catalog_meta or {})
+    # U-4 — mirrors the real per-user signature (see TestCatalogMetaIsPerUser).
+    kc.get_catalog_meta = lambda user_id: (catalog_meta or {})
     return kc
 
 

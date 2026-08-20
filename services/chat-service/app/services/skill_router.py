@@ -21,7 +21,9 @@ evolving copies:
 Skill-vector cache lifetime is DELIBERATELY simpler than the tool-vector cache:
 `SYSTEM_SKILLS` is a module-level constant (~11-15 entries), not a live,
 per-user MCP catalog -- there is no TTL, only a signature check (the sorted
-tuple of skill codes). In practice this means "compute once per process,
+tuple of skill codes, PLUS the embedding model since U-3: vectors from two
+different models are not comparable, so sharing them silently corrupts every
+similarity score the router ranks on). In practice this means "compute once per process,
 never again" today; the signature check exists only so a hypothetical future
 where SYSTEM_SKILLS becomes dynamic doesn't silently serve stale vectors.
 
@@ -71,7 +73,8 @@ ROUTER_CONFIDENCE_THRESHOLD = 0.35
 ROUTER_MAX_ADDITIONS = 2
 
 # Process-lifetime cache: skill code -> embedding vector. No TTL (see module
-# docstring) -- invalidated only by a SYSTEM_SKILLS signature change.
+# docstring) -- invalidated by a change to the SYSTEM_SKILLS signature OR to the
+# embedding model, because vectors from two models are not comparable (U-3).
 _SKILL_VECTOR_CACHE: dict[str, list[float]] | None = None
 _SKILL_VECTOR_CACHE_SIGNATURE: tuple[str, ...] | None = None
 
@@ -102,17 +105,48 @@ def reset_skill_vector_cache() -> None:
 
 
 async def _get_skill_vectors(
-    *, user_id: str, model_source: str, model_ref: str,
+    *, user_id: str,
 ) -> dict[str, list[float]] | None:
     """Best-effort per-skill embedding vectors, cached for the process
     lifetime (see module docstring). Returns None on ANY embedding-client
     failure -- the caller MUST fall back to "no additions"; this never
     raises."""
     global _SKILL_VECTOR_CACHE, _SKILL_VECTOR_CACHE_SIGNATURE
-    sig = _skill_catalog_signature()
+    # 🔴 U-3 — THE EMBEDDING MODEL IS PART OF THE KEY, and it was not.
+    #
+    # The signature was the skill codes alone, while the vectors below are computed BY a specific
+    # embedding model. So whichever model ran first after boot supplied the vectors for every later
+    # turn, whatever model that turn asked for — and vectors from two different models are not
+    # comparable, so the similarity scores the router ranks on were silently wrong.
+    #
+    # This is the SAME defect its twin already fixed: `tool_discovery._TOOL_VECTOR_CACHE` keys on
+    # `(catalog_signature, model_source, model_ref)` under the note "so two distinct embedding
+    # models never share a cached vector set". One of the pair was patched and the other was not,
+    # which is this repository's most repeated shape — a correction applied where someone was
+    # looking, and nowhere else.
+    #
+    # The consequence is a determinism defect as much as a correctness one: the surface then depends
+    # on WHICH TURN RAN FIRST AFTER BOOT, which no record captures and no replay can reproduce.
+    #
+    # 🔴 AND THE TWIN CARRIED **TWO** FIXES; ONLY THE KEY WAS PORTED. `tool_discovery` HIGH-2 also
+    # removed `model_source`/`model_ref` from its signature, because those were the turn-scoped
+    # CHAT-completion model values — *"most chat models can't embed, so that either failed upstream
+    # or risked an improvised vector from a model never meant to embed"* — and replaced them with
+    # `_resolve_embedding_model(user_id)`. So the key here was honest about a model that should not
+    # have been embedding at all: the same erratum-not-applied-everywhere shape as U-3 itself, one
+    # level up, found by a verifier reading the twin rather than this file.
+    from app.services.tool_discovery import _resolve_embedding_model  # noqa: PLC0415
+
+    model = await _resolve_embedding_model(user_id)
+    if model is None:
+        return None
+    model_source, model_ref = model
+    sig = _skill_catalog_signature() + (model_source, model_ref)
     if _SKILL_VECTOR_CACHE is not None and _SKILL_VECTOR_CACHE_SIGNATURE == sig:
         return _SKILL_VECTOR_CACHE
-    codes = list(sig)
+    # NOT `list(sig)` — the signature now carries the model too, and feeding that to
+    # `_skill_embedding_text` would look up a skill named after an embedding model.
+    codes = list(_skill_catalog_signature())
     if not codes:
         return {}
     texts = [_skill_embedding_text(c) for c in codes]
@@ -140,8 +174,6 @@ async def route_additional_skills(
     active_surface: set[str],
     already_selected: list[str],
     user_id: str,
-    model_source: str,
-    model_ref: str,
 ) -> list[str]:
     """Additive-only: EXTRA skill codes (never already in `already_selected`)
     whose cosine similarity to `intent_text` clears `ROUTER_CONFIDENCE_THRESHOLD`,
@@ -160,14 +192,19 @@ async def route_additional_skills(
     vectors: dict[str, list[float]] | None = None
     intent_vector: list[float] | None = None
     try:
-        vectors = await _get_skill_vectors(
-            user_id=user_id, model_source=model_source, model_ref=model_ref,
-        )
+        vectors = await _get_skill_vectors(user_id=user_id)
         if vectors:
             from app.client.embedding_client import get_embedding_client  # noqa: PLC0415
 
+            # The SAME model that produced the cached skill vectors — a cosine score between two
+            # models' vectors is not a similarity, it is a coincidence.
+            from app.services.tool_discovery import _resolve_embedding_model  # noqa: PLC0415
+
+            model = await _resolve_embedding_model(user_id)
+            if model is None:
+                return []
             intent_result = await get_embedding_client().embed(
-                user_id=user_id, model_source=model_source, model_ref=model_ref,
+                user_id=user_id, model_source=model[0], model_ref=model[1],
                 texts=[intent_text],
             )
             intent_vector = intent_result.embeddings[0] if intent_result.embeddings else None

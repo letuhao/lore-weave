@@ -30,7 +30,7 @@ func (s *Server) mcpHandler() http.Handler {
 
 	registerARTool(srv, &mcp.Tool{
 		Name:        "registry_get_skill",
-		Description: "Get the full SKILL.md body of one skill the user can see, by slug. Read-only.",
+		Description: "Get one skill the user can see, by slug — its metadata plus body_md. Read-only. NOTE: a SYSTEM-tier skill (glossary, knowledge, plan_forge, universal, admin) stores no body here; body_md is a marker saying chat-service's skill_registry serves it, so do not treat that sentence as the skill.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"read skill", "skill body", "get skill", "show skill"}),
 	}, s.toolGetSkill)
 
@@ -66,7 +66,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "List the curated multi-step workflows visible to the signed-in user (System defaults + their own). Returns each workflow's slug + title + description — not the full step list. Use to see what workflows exist before proposing a new one or reading one in full.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierR, lwmcp.ScopeUser, nil, []string{"workflows", "list workflows", "my workflows", "what workflows", "recipes"}),
 		InputSchema: closedSetSchemaFor[listWorkflowsIn](map[string][]any{
-			"surface": enumSurfaces,
+			"surface": enumWorkflowSurfaces,
 		}),
 	}, s.toolListWorkflows)
 
@@ -81,7 +81,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "PROPOSE a new curated multi-step workflow. Does NOT create or run it — it records a proposal the user must approve in the UI. Provide slug, title, a one-line description, and an ordered list of steps (each with a tool name and a gate: none | confirm | approval). Optionally declare inputs. By default it's saved as the user's own private workflow; pass book_id to share it with a book you can edit (book-tier). Use this to save a repeatable sequence of tool calls as a reusable workflow.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"save workflow", "propose workflow", "create workflow", "remember this as a workflow", "make a recipe"}),
 		InputSchema: closedSetSchemaFor[proposeWorkflowIn](map[string][]any{
-			"surfaces[]":   enumSurfaces,
+			"surfaces[]":   enumWorkflowSurfaces,
 			"steps[].gate": enumWorkflowGates,
 		}),
 	}, s.toolProposeWorkflow)
@@ -91,7 +91,7 @@ func (s *Server) mcpHandler() http.Handler {
 		Description: "PROPOSE an update to one of the user's OWN workflows (by slug). Does NOT apply immediately — the user approves the diff in the UI. Provide the slug and the new title/description/inputs/steps.",
 		Meta:        lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, []string{"update workflow", "edit workflow", "change workflow"}),
 		InputSchema: closedSetSchemaFor[updateWorkflowIn](map[string][]any{
-			"surfaces[]":   enumSurfaces,
+			"surfaces[]":   enumWorkflowSurfaces,
 			"steps[].gate": enumWorkflowGates,
 		}),
 	}, s.toolUpdateWorkflow)
@@ -229,11 +229,16 @@ func (s *Server) toolProposeSkill(ctx context.Context, _ *mcp.CallToolRequest, i
 }
 
 type updateSkillIn struct {
-	Slug        string   `json:"slug" jsonschema:"the slug of the user's OWN skill to update"`
-	Description string   `json:"description,omitempty" jsonschema:"new description"`
-	BodyMD      string   `json:"body_md" jsonschema:"the new SKILL.md body"`
-	Surfaces    []string `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
-	SessionID   string   `json:"session_id,omitempty"`
+	Slug        string `json:"slug" jsonschema:"the slug of the user's OWN skill to update"`
+	Description string `json:"description,omitempty" jsonschema:"new description"`
+	// omitempty (and therefore NOT required) so a description-only update works, which is
+	// what this tool's own description promises: "the new description and/or body". It was
+	// required, so an agent fixing a typo in the description had to resend the whole body —
+	// and if it did not have the body to hand it would fail, or invent one. The keep-
+	// existing-when-omitted pattern below is the one `description` already used.
+	BodyMD    string   `json:"body_md,omitempty" jsonschema:"the new SKILL.md body — omit to keep the current one"`
+	Surfaces  []string `json:"surfaces,omitempty" jsonschema:"surfaces where this applies (chat, compose, translate, admin)"`
+	SessionID string   `json:"session_id,omitempty"`
 }
 
 func (s *Server) toolUpdateSkill(ctx context.Context, _ *mcp.CallToolRequest, in updateSkillIn) (*mcp.CallToolResult, proposeSkillOut, error) {
@@ -249,11 +254,21 @@ func (s *Server) toolUpdateSkill(ctx context.Context, _ *mcp.CallToolRequest, in
 		return nil, proposeSkillOut{}, errors.New("only your own skills can be updated (System skills are read-only — clone one instead)")
 	}
 	desc := in.Description
-	if desc == "" {
-		// keep existing description when omitted
-		_ = s.db.QueryRow(ctx, `SELECT description FROM skills WHERE skill_id=$1`, id).Scan(&desc)
+	body := in.BodyMD
+	if desc == "" || body == "" {
+		// keep whichever of description / body was omitted — a partial update must not
+		// blank the field it did not mention.
+		var curDesc, curBody string
+		_ = s.db.QueryRow(ctx, `SELECT description, body_md FROM skills WHERE skill_id=$1`, id).
+			Scan(&curDesc, &curBody)
+		if desc == "" {
+			desc = curDesc
+		}
+		if body == "" {
+			body = curBody
+		}
 	}
-	skIn := &skillInput{Slug: in.Slug, Description: desc, BodyMD: in.BodyMD, Surfaces: in.Surfaces}
+	skIn := &skillInput{Slug: in.Slug, Description: desc, BodyMD: body, Surfaces: in.Surfaces}
 	p, msg := s.doProposeSkill(ctx, uid, "update", &id, skIn, in.SessionID, "")
 	if msg != "" {
 		return nil, proposeSkillOut{}, errors.New(msg)

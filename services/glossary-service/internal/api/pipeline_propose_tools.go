@@ -37,7 +37,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"status": {"active", "inactive", "draft", "rejected"},
 		}),
 		// Mints a grant confirm_token (no direct write) ⇒ Tier W. LEGACY → glossary_propose_curation.
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_curation"),
 	}, s.toolProposeStatusChange)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -47,7 +47,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"translations/evidence/chapter-links to that snapshot (current values not in the snapshot are removed). " +
 			"Returns a confirm card; itself captured as a new revision, so it is reversible. " +
 			"NOTE: superseded by glossary_propose_curation (op=restore_revision) — kept for existing callers only.",
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_curation"),
 	}, s.toolProposeRestoreRevision)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -57,7 +57,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"DESTRUCTIVE: attribute values whose code has no counterpart in the new kind are DROPPED (the confirm " +
 			"card previews exactly which). Recoverable via revision restore. Returns a confirm card. " +
 			"NOTE: superseded by glossary_propose_curation (op=reassign_kind) — kept for existing callers only.",
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_curation"),
 	}, s.toolProposeReassignKind)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -67,7 +67,7 @@ func (s *Server) RegisterPipelineProposeTools(srv *mcp.Server) {
 			"rows + name/aliases fold into the winner. Losers must be the SAME kind as the winner. Returns a confirm " +
 			"card; each merge is journaled and reversible via the merge-journal revert. " +
 			"NOTE: superseded by glossary_propose_curation (op=merge) — kept for existing callers only.",
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierW, lwmcp.ScopeBook, nil, nil), lwmcp.VisibilityLegacy), "glossary_propose_curation"),
 	}, s.toolProposeMerge)
 }
 

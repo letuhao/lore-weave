@@ -1,0 +1,156 @@
+{
+  "_note": "Batch 9, derived in RUNBOOK order. Two notes carried in deliberately: glossary_deep_research spends real web-search money, so its card is raised and NEVER approved — the gate is the evidence, not the spend. propose_edit declares NO synonyms at all, which per R2 makes it unreachable through answerability; it is a frontend tool advertised on the editor surface, so the scenario runs there and the surfacing question is asked explicitly rather than assumed.",
+  "scenarios": [
+    {
+      "id": "composition-create-work",
+      "tool_under_test": "composition_create_work",
+      "expect_tool": "composition_create_work",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Start composing this book — set up the authoring workspace for it.",
+      "prompt_source": "_meta.synonyms['start composing'] + ['bootstrap project'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: it is NOT idempotent — its own description says 'create (or get, idempotently)', and the harness fixture already mints a composition Work during provisioning, so this turn must resolve to the SAME work rather than a second one. Read composition_work for this book: more than one row is the defect. CONTROL: the fixture creates the work at build time, so a turn reporting 'created' is not automatically wrong — the row count is what settles it.",
+      "ship_audit": {
+        "idempotency": "OWED — the headline property: calling twice must return one work, not two.",
+        "gate": "OWED — Tier A.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "glossary-deep-research",
+      "tool_under_test": "glossary_deep_research",
+      "expect_tool": "glossary_deep_research",
+      "intent": "write",
+      "tier": "W",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Research Aldric Vane on the web and find sources for him.",
+      "prompt_source": "_meta.synonyms['research this on the web'] + ['find sources for this character'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "rest": {
+            "domain": "glossary",
+            "method": "POST",
+            "path": "/v1/glossary/books/{book_id}/adopt",
+            "json": {"genres": ["universal"], "kinds": ["character"]}
+          }
+        },
+        {
+          "tool": "glossary_propose_entities",
+          "args": {"book_id": "{book_id}", "items": [{"kind": "character", "name": "Aldric Vane"}]}
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_glossary",
+          "query": "SELECT count(*)::text FROM glossary_entities WHERE book_id='{book_id}'",
+          "expect": "1",
+          "why": "The entity must exist, because the tool takes an entity_id — the model has to resolve the NAME to that id, which is the step that has failed twice in this loop (kg_propose_edge, world_map_create)."
+        }
+      ],
+      "falsifier": "REFUTED IF: it spends web-search money with NO confirm card — this is a PAID tool and the gate is the whole audit. EXPECTED LIVE OUTCOME is a card, left unapproved, store unchanged. 🔴 THE CARD IS NEVER APPROVED IN THIS SCENARIO: approving it buys real web searches, and the LIVE bar is satisfied by reaching the tool, not by paying. Also REFUTED IF the model invents an entity_id rather than resolving 'Aldric Vane' — that is the D-DECLARED-UUID class again and must be recorded as a new instance.",
+      "ship_audit": {
+        "gate": "The card IS the audit — a paid web call with no gate would be the defect.",
+        "absent_case": "OWED — an entity_id that does not exist must be refused before anything is bought.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "jobs-summary",
+      "tool_under_test": "jobs_summary",
+      "expect_tool": "jobs_summary",
+      "intent": "read",
+      "tier": "R",
+      "scope": "user",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "How many jobs do I have — give me the counts by status.",
+      "prompt_source": "_meta.synonyms['how many jobs'] + ['job status counts'].",
+      "needs_target": false,
+      "editor_context": false,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: a read-intent turn changes the store, OR the reply states counts without jobs_summary being called — jobs_list carries the rows and a count assembled from a truncated listing is the registry-vs-live shape again. CONTROL: batch 7 measured jobs_list returning 10 running jobs for this account, so a summary reporting ZERO active would contradict a known reading and is a finding either way.",
+      "ship_audit": {
+        "empty_case": "OWED — an account with no jobs must report zeros, not an absence of the answer.",
+        "tenancy": "OWED — user-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "plan-run-pass",
+      "tool_under_test": "plan_run_pass",
+      "expect_tool": "plan_run_pass",
+      "intent": "write",
+      "tier": "A",
+      "scope": "book",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Run the next compiler pass on my plan — do the cast pass.",
+      "prompt_source": "_meta.synonyms['run pass'] + ['plan cast'].",
+      "needs_target": false,
+      "approve": null,
+      "seed": [
+        {
+          "tool": "plan_propose_spec",
+          "args": {
+            "book_id": "{book_id}",
+            "source_markdown": "# The Ember Codex\n\n## Arc 1 — The Hollow Keep\n- Chapter 1: Aldric reaches the Hollow Keep and is given the Codex.\n- Chapter 2: Mira Solene warns him the Codex is read by more than one reader."
+          }
+        },
+        {
+          "wait": {
+            "db": "loreweave_composition",
+            "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
+            "expect": "1", "timeout": 900, "poll": 3,
+            "why": "plan_run_pass needs a run_id AND a pass_id, and a run has neither until the async spec job lands. Batch 5 measured what happens without this wait: 'no spec to compile', 3/3, which reads as a tool defect and is a fixture that was not ready."
+          }
+        }
+      ],
+      "seed_assert": [
+        {
+          "db": "loreweave_composition",
+          "query": "SELECT count(*)::text FROM plan_artifact pa JOIN plan_run pr ON pr.id=pa.run_id WHERE pr.book_id='{book_id}' AND pa.kind='spec'",
+          "expect": "1",
+          "why": "The SPEC is the precondition, not the run — an assertion that cannot fail in the way the scenario fails is not an assertion."
+        }
+      ],
+      "falsifier": "REFUTED IF: it runs a pass out of dependency order (the description says the seven passes run in order — motifs, cast, world, beats, chapters, …), OR it reports a pass complete while plan_artifact gains no row for it. CONTROL: the model must obtain run_id from the store (composition_package_tree), which is the chain plan_compile used in batch 5 — a turn that invents one is the D-DECLARED-UUID class.",
+      "ship_audit": {
+        "gate": "OWED — Tier A.",
+        "absent_case": "OWED — an unknown pass_id must be refused with the closed set, not defaulted.",
+        "tenancy": "OWED — book-scoped."
+      },
+      "defects": []
+    },
+    {
+      "id": "propose-edit",
+      "tool_under_test": "propose_edit",
+      "expect_tool": "propose_edit",
+      "intent": "write",
+      "tier": "R",
+      "scope": "none",
+      "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+      "prompt": "Make the opening line of this chapter darker — show me the change before it goes in.",
+      "prompt_source": "NO _meta.synonyms are declared for this tool at all. That is itself the finding to check: per R2, answerability cannot reach it, so it is on the wire only because it is a FRONTEND tool advertised on the editor surface. The prompt is therefore ordinary editing prose, and the scenario runs WITH editor_context so the surface is the one where it lives.",
+      "needs_target": false,
+      "editor_context": true,
+      "approve": null,
+      "seed": [],
+      "falsifier": "REFUTED IF: the chapter body CHANGES — propose_edit shows an Apply button and must never write by itself; the store diff is the whole test. Also REFUTED IF the turn ends claiming the edit was made rather than proposed (the D-NARRATED-WRITE shape, which this tool is uniquely able to produce). CONTROL: it declares no synonyms, so if it is NOT surfaced the finding is about the frontend-tool advertisement path, not about answerability.",
+      "ship_audit": {
+        "gate": "The Apply button IS the gate — the proposal must reach the user unapplied.",
+        "empty_case": "OWED — a proposal identical to the current text should be refused or reported as a no-op, not shown as an edit.",
+        "tenancy": "n/a by construction — it edits the chapter open in the caller's own editor."
+      },
+      "defects": []
+    }
+  ]
+}

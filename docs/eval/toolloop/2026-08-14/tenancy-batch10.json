@@ -1,0 +1,39 @@
+[
+  {
+    "tool": "settings_list_providers",
+    "verdict": "n/a",
+    "why": "declares no book_id, project_id, map_id or world_id \u2014 no tenancy argument"
+  },
+  {
+    "tool": "settings_model_delete",
+    "verdict": "n/a",
+    "why": "declares no book_id, project_id, map_id or world_id \u2014 no tenancy argument"
+  },
+  {
+    "tool": "translation_list_versions",
+    "args": {
+      "book_id": "e9d8c983-acbb-4e11-a27d-7ad1f75446bb",
+      "chapter_id": "f6b0496b-cfcb-4a5b-9812-adc29494fd6a"
+    },
+    "verdict": "refused",
+    "response": "MCP translation_list_versions error: Error executing tool translation_list_versions: not found or not accessible"
+  },
+  {
+    "tool": "composition_error_block_edit",
+    "args": {
+      "project_id": "a8d04bd3-61da-4e27-9bd6-facb563e7611",
+      "op": "list"
+    },
+    "verdict": "refused_other",
+    "response": "MCP composition_error_block_edit error: Error executing tool composition_error_block_edit: op=list requires chapter_id"
+  },
+  {
+    "tool": "composition_find_references",
+    "args": {
+      "book_id": "e9d8c983-acbb-4e11-a27d-7ad1f75446bb",
+      "entity_id": "791ecc3b-ebaf-4cfe-91e9-9cb7511bab59"
+    },
+    "verdict": "refused",
+    "response": "MCP composition_find_references error: Error executing tool composition_find_references: not found or not accessible"
+  }
+]

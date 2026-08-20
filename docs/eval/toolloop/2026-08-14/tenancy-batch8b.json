@@ -1,0 +1,16 @@
+[
+  {
+    "tool": "world_map_create",
+    "args": {
+      "world_id": "6efd500e-0885-4fd6-bace-3a8927e729cd",
+      "name": "x"
+    },
+    "verdict": "refused",
+    "response": "MCP world_map_create error: world not found"
+  },
+  {
+    "tool": "settings_list_models",
+    "verdict": "n/a",
+    "why": "declares no book_id, project_id, map_id or world_id \u2014 no tenancy argument"
+  }
+]

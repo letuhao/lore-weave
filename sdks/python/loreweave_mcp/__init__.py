@@ -56,6 +56,7 @@ from .errors import (
     NotAccessibleError,
     TolerantArgs,
     uniform_not_accessible,
+    validation_directive,
 )
 from .guards import (
     GrantResolver,
@@ -108,6 +109,7 @@ __all__ = [
     "ForbidExtra",
     "TolerantArgs",
     "uniform_not_accessible",
+    "validation_directive",
     "NotAccessibleError",
     # scope guards (H15)
     "require_book_owner",

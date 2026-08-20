@@ -41,6 +41,101 @@ async def succeeded_tools(pool: asyncpg.Pool, session_id: str) -> set[str]:
     return set(await _iter_succeeded(pool, session_id))
 
 
+#: Identical failures of one tool tolerated across the session before the rail stops driving
+#: the step that needs it. Mirrors chat-service's in-turn REPEATED_FAILURE_CAP so the two
+#: breakers agree on what "stuck" means; kept as its own name because this one is CROSS-turn.
+STUCK_TOOL_CAP = 2
+
+
+def stuck_tools_from_calls(calls: "list[tuple[str, bool, str]]") -> set[str]:
+    """Which tools are stuck: the same error, ``STUCK_TOOL_CAP`` times, with no success since.
+
+    ``calls`` is the session's tool calls in order, as ``(tool, ok, error)``.
+
+    🔴 WHY THIS IS CROSS-TURN, MEASURED 2026-08-13. chat-service already had the right RULE —
+    the repeated-failure breaker keys on (tool → error → count), tolerates 2, and a success
+    clears the tool's whole map. But `fail_by_tool_error` is declared inside the per-turn
+    stream function, and so are the rail's own `nudge_counts`/`nudged_out`, even though the
+    SDK harness documents those two as "the consumer's cross-turn state". All three reset
+    every turn.
+
+    So a step could fail twice per turn forever and neither breaker would ever fire. It did:
+    session 019ff929, `plan_propose_spec` refused "not found or not accessible" 4 times across
+    2 turns, the rail re-drove it to its cap each turn, and the author's actual question was
+    answered three times over with the same stale apology. The rule was right; only its
+    LIFETIME was wrong.
+
+    A pure function over the call list so the rule is testable without a database, and so the
+    "a success clears it" clause is visible rather than implied by a query.
+    """
+    fails: dict[str, dict[str, int]] = {}
+    for tool, ok, error in calls:
+        if not tool:
+            continue
+        if ok:
+            # A success means the model changed something that worked — the loop is broken,
+            # exactly as the in-turn breaker treats it. Clearing the whole map (not just this
+            # error) is deliberate: the tool is demonstrably reachable again.
+            fails.pop(tool, None)
+            continue
+        sig = (error or "")[:200]
+        if not sig:
+            # No error text is not evidence of a repeat. Counting it would let a denied or
+            # gated call — which records no error — read as a wall.
+            continue
+        per = fails.setdefault(tool, {})
+        per[sig] = per.get(sig, 0) + 1
+    return {t for t, per in fails.items() if any(n >= STUCK_TOOL_CAP for n in per.values())}
+
+
+async def stuck_tools(pool: asyncpg.Pool, session_id: str) -> set[str]:
+    """The session's stuck tools — see `stuck_tools_from_calls` for the rule and the incident.
+
+    Best-effort like every other reader here: a failure to read degrades to "nothing is
+    stuck", which is exactly the pre-fix behaviour and can never break a turn.
+    """
+    return stuck_tools_from_calls(await _iter_calls(pool, session_id))
+
+
+async def _iter_calls(pool: asyncpg.Pool, session_id: str) -> list[tuple[str, bool, str]]:
+    """Every recorded tool call this session, in order, as ``(tool, ok, error)``.
+
+    Deliberately unfiltered — unlike `_iter_succeeded`, whose whole point is the `ok` filter.
+    The failures ARE the signal here.
+    """
+    try:
+        rows = await pool.fetch(
+            """
+            SELECT tool_calls
+              FROM chat_messages
+             WHERE session_id = $1::uuid
+               AND tool_calls IS NOT NULL
+             ORDER BY sequence_num
+            """,
+            session_id,
+        )
+    except Exception:  # noqa: BLE001 — best-effort; never break the turn
+        logger.warning("tool-call history unavailable for session=%s", session_id, exc_info=True)
+        return []
+
+    out: list[tuple[str, bool, str]] = []
+    for r in rows:
+        raw = r["tool_calls"]
+        if isinstance(raw, str):
+            try:
+                raw = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+        if not isinstance(raw, list):
+            continue
+        for tc in raw:
+            if isinstance(tc, dict) and tc.get("tool"):
+                out.append((
+                    str(tc["tool"]), bool(tc.get("ok")), str(tc.get("error") or ""),
+                ))
+    return out
+
+
 async def _iter_succeeded(pool: asyncpg.Pool, session_id: str) -> list[str]:
     """The ordered list of successful tool names this session (one entry per success)."""
     try:

@@ -61,7 +61,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[userCreateToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_upsert"),
 	}, s.toolUserCreate)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -73,7 +73,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 		InputSchema: closedSetSchemaFor[userPatchToolIn](map[string][]any{
 			"level": enumLevels, "field_type": enumFieldTypes,
 		}),
-		Meta: lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_upsert"),
 	}, s.toolUserPatch)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{
@@ -83,7 +83,7 @@ func (s *Server) RegisterUserTools(srv *mcp.Server) {
 			"still linked to a kind or carrying attributes can't be trashed until those are removed. " +
 			"NOTE: superseded by glossary_ontology_delete — kept for existing callers only.",
 		InputSchema: closedSetSchemaFor[userDeleteToolIn](map[string][]any{"level": enumLevels}),
-		Meta:        lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy),
+		Meta: lwmcp.WithSupersededBy(lwmcp.WithVisibility(lwmcp.NewToolMeta(lwmcp.TierA, lwmcp.ScopeUser, nil, nil), lwmcp.VisibilityLegacy), "glossary_ontology_delete"),
 	}, s.toolUserDelete)
 
 	lwmcp.RegisterTool(srv, &mcp.Tool{

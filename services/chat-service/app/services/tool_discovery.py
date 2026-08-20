@@ -35,6 +35,7 @@ import logging
 import re
 import time
 from difflib import SequenceMatcher
+from types import MappingProxyType
 
 from loreweave_vecmath import cosine_similarity
 
@@ -481,6 +482,26 @@ def filter_intent_gated_setup_tools(
     if SETUP_INTENT_SKILL in injected_skill_codes:
         return catalog
     _exempt = INTENT_GATED_SETUP_TOOLS - set(rail_step_tools or ())
+    # P1 · THE SEVENTH FRAME, and the last one upstream. This drops tools at CATALOG ASSEMBLY —
+    # before domain selection, before the hot seed, before the advertise loop, i.e. before every
+    # stage instrumented so far. A verifier's accounting landed on exactly this set twice: the four
+    # in neither bucket are `INTENT_GATED_SETUP_TOOLS` minus `glossary_adopt_standards`, which a
+    # rail exempted. `catalog_miss` could never see them, because they ARE in the catalog index —
+    # they are removed from the catalog handed to it.
+    #
+    # A narrowing this early is the easiest to mistake for "not a candidate". It is a candidate: the
+    # gate exists precisely because these tools would otherwise be offered, and one injected skill
+    # makes them appear. Registering it is what separates "the runtime chose not to offer this and
+    # here is why" from "this tool does not exist", which is the distinction P1 is entirely about.
+    _dropped = sorted(n for n in (tool_name(td) for td in catalog) if n in _exempt)
+    if _dropped:
+        from app.services.instrument import record_surface_withheld
+        for _n in _dropped:
+            record_surface_withheld(
+                _n, stage="intent_gate",
+                reason="world-setup tool withheld unless the turn has world-setup intent "
+                       "(inject the glossary_shaping skill, or name it in a rail step)",
+            )
     return [td for td in catalog if tool_name(td) not in _exempt]
 
 
@@ -536,6 +557,30 @@ def tool_tier(tool_def: dict) -> str:
     carries no tier — a missing tier must NEVER auto-commit a write."""
     tier = tool_meta(tool_def).get("tier")
     return tier if tier in ("R", "A", "W", "S") else "R"
+
+
+#: C-1 · **the lane, as DECLARED data.** `_meta.tier` is set by the provider at registration and
+#: federated verbatim; this map is the only place a tier becomes a lane.
+LANES: tuple[str, ...] = ("read", "action", "write", "system")
+_LANE_BY_TIER = MappingProxyType({"R": "read", "A": "action", "W": "write", "S": "system"})
+
+
+def declared_lane(tool_def: dict) -> str | None:
+    """CP-4.d · C-1's *"lane is data at registration, never inferred from a name"* — the read half.
+
+    🔴 **THIS DELIBERATELY DOES NOT REUSE `tool_tier`, AND THE REASON IS ITS DEFAULT.** That function
+    answers *"may this auto-commit a write?"*, where an unknown tier returning `"R"` is the fail-SAFE
+    answer. The ranking asks the opposite question — *"does this belong in the always-advertised hot
+    set?"* — and there the same default is fail-OPEN: an untiered tool would be promoted into the
+    safe read-first set on the strength of a value nobody declared. One constant cannot be the
+    conservative answer to two questions that point in opposite directions.
+
+    So this returns `None` for an undeclared tier rather than guessing, and the caller sorts an
+    undeclared lane with the writes. **Measured on the live catalogue: 315/315 tools declare a tier**
+    (R=102, W=60, A=153), so nothing legitimate is demoted today — the `None` arm exists so that a
+    provider federating an untiered tool tomorrow is visible instead of silently privileged.
+    """
+    return _LANE_BY_TIER.get(tool_meta(tool_def).get("tier"))
 
 
 def tool_async(tool_def: dict) -> bool:
@@ -969,6 +1014,106 @@ def _stamp_incomplete(payload: dict, unavailable: set[str] | None) -> dict:
     return payload
 
 
+def _excluded_in_scope(catalog: list[dict], category: str | None, exclude: set[str]) -> list[str]:
+    """The names `exclude` removed that the caller's scope would otherwise have listed.
+
+    Scoped by the SAME `_domain_of` rule `visible_tools` uses, so this can never name a tool
+    the request was not asking about. A tool absent from the catalog entirely is not "held
+    back" — it is simply not there — so this reads the catalog rather than `exclude` itself.
+    """
+    if not exclude:
+        return []
+    held = []
+    for tool_def in catalog:
+        name = tool_name(tool_def)
+        if not name or name not in exclude:
+            continue
+        if category is not None and _domain_of(name) != category:
+            continue
+        held.append(name)
+    return sorted(set(held))
+
+
+def _stamp_always_available(
+    payload: dict, catalog: list[dict], category: str | None, exclude: set[str],
+) -> dict:
+    """Name what the always-on exclusion withheld, so no listing silently under-reports.
+
+    The exclusion itself is right — re-listing a tool the model already holds is noise. What
+    was wrong was doing it invisibly: `tool_list` describes itself as "complete and
+    deterministic", and a caller cannot tell a withheld tool from an absent one.
+    """
+    held = _excluded_in_scope(catalog, category, exclude)
+    if held:
+        payload["always_available"] = held
+    return payload
+
+
+#: DQ-T3 — how the intent gate is opened, in the model's terms. ONE string, used by both halves
+#: of the discovery pair, so the listing and the load can never describe the same gate differently.
+_SETUP_GATE_HOW = (
+    "These become available on a turn that is explicitly about setting up or restructuring the "
+    "world/ontology, or when a workflow step names one. You cannot enable them yourself, and "
+    "calling or loading them now will not work."
+)
+_SETUP_GATE_WHY = (
+    "They exist on this platform but are NOT callable on this turn: they make sweeping, "
+    "hard-to-undo changes to a book's ontology, so they are held back unless the turn is "
+    "world-setup."
+)
+_SETUP_GATE_DO = (
+    "Do NOT retry them and do NOT tell the user they do not exist. If one of them is what the "
+    "user actually needs, say so in plain words and ask whether they want to start world setup."
+)
+
+
+def _withheld_setup_tools(catalog: list[dict], category: str | None = None) -> list[str]:
+    """The intent-gated setup tools that are MISSING from this turn's catalog.
+
+    Absence from the catalog is the whole signal: `filter_intent_gated_setup_tools` returns the
+    catalog UNCHANGED on a setup turn, so on such a turn nothing is withheld and this is empty.
+    Deriving it from the catalog rather than re-evaluating the gate keeps one source of truth —
+    a second copy of the gate condition would drift from the first.
+    """
+    present = {tool_name(td) for td in catalog}
+    return sorted(
+        n for n in INTENT_GATED_SETUP_TOOLS
+        if n not in present
+        and (category in (None, "all") or _domain_of(n) == category)
+    )
+
+
+def _stamp_withheld_setup(payload: dict, catalog: list[dict], category: str | None) -> dict:
+    """DQ-T3 (a) — name the intent-gated tools the listing did not show, with the gate.
+
+    🔴 A LISTING THAT OMITS WITHOUT SAYING SO READS AS A COMPLETE, HEALTHY ANSWER — the same
+    class as `always_available` above and as `provider_unavailable` in tool_load. Measured
+    2026-08-13: five glossary tools are dropped at CATALOG ASSEMBLY unless the turn is
+    world-setup, so they are un-seeded, un-findable AND un-loadable. That is deliberate
+    (N5a-FULL, the confirmed over-reach) and it IS instrumented — but only into telemetry the
+    model never sees. From the model's side they are indistinguishable from tools that do not
+    exist, and it tells the user so.
+
+    Owner's decision on DQ-T3: option (a), stamp them the way T7-D2 stamps always-on tools.
+
+    THE OPPOSITE ERROR IS ALSO MEASURED, AND IT IS WORSE, WHICH IS WHY THE WORDING IS SHAPED THE
+    WAY IT IS. Naming a tool the capability floor had made unreachable produced 40,597 characters
+    of one repeated paragraph on the dogfood book before the author hit Stop (see
+    `filter_intent_gated_setup_tools`). So this stamp must never read as "here is a tool, go get
+    it". It says the tools are not callable, that the model cannot open the gate itself, and that
+    the move is to ASK THE USER — a route out that is not a retry.
+    """
+    withheld = _withheld_setup_tools(catalog, category)
+    if withheld:
+        payload["withheld_pending_setup_intent"] = {
+            "tools": withheld,
+            "why": _SETUP_GATE_WHY,
+            "how_to_open": _SETUP_GATE_HOW,
+            "do": _SETUP_GATE_DO,
+        }
+    return payload
+
+
 def tool_list_result(
     catalog: list[dict],
     category: str | None = None,
@@ -986,11 +1131,62 @@ def tool_list_result(
         categories: dict[str, list] = {}
         for t in tools:
             categories.setdefault(_domain_of(t["name"]), []).append(t)
-        return _stamp_incomplete({"categories": categories, "count": len(tools)}, unavailable_providers)
+        payload_all: dict = {"categories": categories, "count": len(tools)}
+        _stamp_always_available(payload_all, catalog, None, exclude)
+        return _stamp_incomplete(payload_all, unavailable_providers)
+    if category not in CATEGORY_ENUM:
+        # T7-D3 — a category that is not a domain at all must say SO, not report itself empty.
+        #
+        # This function's contract is that `reason` lets a caller "tell 'no tools' from a bad
+        # guess". It could not: both answered the identical string. MEASURED in recorded traffic
+        # 2026-08-13 — the model sent `book}` (a mangled `book`) twice, plus `learning` and
+        # `media`, and each time was told "no tools currently available in this category". The
+        # `book` domain holds 16 current tools, so a single stray brace told the model the
+        # platform has no book tools.
+        #
+        # `category` declares an enum, but a consumer-local tool is dispatched here WITHOUT the
+        # gateway's JSON-schema validation, so an out-of-enum value arrives intact. The enum is
+        # therefore checked at the only layer that sees the call.
+        return _stamp_incomplete(
+            {
+                "category": category,
+                "count": 0,
+                "tools": [],
+                "reason": (
+                    f"unknown category {category!r} — that is not one of the tool domains, so "
+                    "this is a mistyped or invented name rather than an empty domain. Call "
+                    "tool_list again with one of: " + ", ".join(CATEGORY_ENUM) + "."
+                ),
+                "valid_categories": list(CATEGORY_ENUM),
+            },
+            unavailable_providers,
+        )
     tools = visible_tools(catalog, category, include_deprecated=include_deprecated, exclude=exclude)
     payload: dict = {"category": category, "count": len(tools), "tools": tools}
+    held = _excluded_in_scope(catalog, category, exclude)
     if not tools:
-        payload["reason"] = "no tools currently available in this category"
+        # T7-D2 — `reason` is the field a caller uses to tell "no such tools" from "bad guess",
+        # so it must never assert the first when the EXCLUSION is what emptied the category.
+        #
+        # MEASURED LIVE 2026-08-13 (session 019ff9da). `research` holds exactly one tool,
+        # `web_search`, which is in ALWAYS_ON_CORE_NAMES and therefore excluded from listings as
+        # redundant — it is already advertised on every turn. So tool_list("research") returned
+        # count 0 and "no tools currently available in this category", while the group directory
+        # injected into that same system prompt says `research: External web research — search
+        # the open web for background facts (web_search). PAID.` and instructs the model to call
+        # tool_list to see a domain's tools. Asked to list them, the model answered "there are
+        # actually **no tools** currently listed under a specific research category."
+        #
+        # Same class as the `incomplete` stamp one function up, and for the same reason: a
+        # listing that omits without saying so reads as a complete, healthy answer.
+        payload["reason"] = (
+            "no tools currently available in this category"
+            if not held else
+            "every tool in this category is ALREADY advertised and callable right now, so it is "
+            "not repeated here: " + ", ".join(held) + ". This category is not empty."
+        )
+    _stamp_always_available(payload, catalog, category, exclude)
+    _stamp_withheld_setup(payload, catalog, category)
     return _stamp_incomplete(payload, unavailable_providers)
 
 
@@ -1067,7 +1263,21 @@ def tool_load_result(
                 "try again shortly."
             )
         else:
-            payload["not_found"] = missing
+            # DQ-T3 — the SAME lie as the outage case above, from a different cause. An
+            # intent-gated setup tool is absent from this turn's catalog by design, so an
+            # unresolvable name here is not "no such tool" — it is "not on THIS turn". Asserting
+            # non-existence is what makes the model tell the user the capability is missing.
+            _gated = [n for n in missing if n in INTENT_GATED_SETUP_TOOLS]
+            _really_missing = [n for n in missing if n not in INTENT_GATED_SETUP_TOOLS]
+            if _gated:
+                payload["withheld_pending_setup_intent"] = {
+                    "tools": _gated,
+                    "why": _SETUP_GATE_WHY,
+                    "how_to_open": _SETUP_GATE_HOW,
+                    "do": _SETUP_GATE_DO,
+                }
+            if _really_missing:
+                payload["not_found"] = _really_missing
     if broken & want:
         payload["unavailable"] = sorted(broken & want)
         payload["unavailable_reason"] = (
