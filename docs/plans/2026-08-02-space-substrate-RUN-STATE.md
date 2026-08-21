@@ -82,6 +82,9 @@ its reason, and the amendment row is written before the edit.**
 
 ---
 
+> **⚠ ROUND 2 IS OPEN — see §23.** The board above is round 1 (design without a consumer). On
+> 2026-08-22 the actor hub became the map's first consumer and the round-2 board lives in §23.2.
+
 ## 4 · Decisions (append-only)
 
 | # | Decision | Reason |
@@ -1626,3 +1629,49 @@ axioms*, and the only thing that recovered them was being made to account for ea
 > adjudicated has been *read*, not *used* — and the difference is invisible until someone builds the
 > table. Slice 7 was marked `partial` honestly and then sat there for the whole arc, which is exactly how
 > long the eleven stayed lost.
+
+---
+
+## 23 · ROUND 2 — the map gets a consumer (2026-08-22)
+
+### 23.0 · The commitment, and it is one sentence
+
+> **An actor must be able to come into existence somewhere.**
+
+Round 1 designed the map with **no consumer**: its census was a hypothesis, its research a survey, and its
+own header said so. On 2026-08-03 `d3bb441da` sealed the **actor hub as feature #1** and explicitly
+de-scoped *"spawn · maps and places"*. **That sentence above is now the scope seal for this round** —
+the same discipline that cut the actor round's contracts from 1107 lines to 364 the moment its scope was
+sealed. Anything the spawn demand does not require is round 3.
+
+### 23.1 · What was measured before anything was written
+
+| # | measured fact | why it changes the plan |
+|---|---|---|
+| **M2-1** | the hub registers **18** seams (`S-1..S-18`) and **not one is spatial**; `actor-hub/src/actor.rs` has no location field of any kind | the seam is **new and ours**. The hub's own membership test explains why: *what travels when you move a being to another world is intrinsic* — and **where you are stays behind**, so position is a relation (`T7`), never an actor field |
+| **M2-2** | `contracts/migrations/per_reality/0019_channels.up.sql` ships a per-reality, parent-linked, `depth ≤ 16`, lifecycle-bearing tree that is **acyclic BY CONSTRUCTION** — a `parent_depth` column `GENERATED ALWAYS AS (depth - 1) STORED` inside the FK target | **`SPG-A4` is shipped in SQL and mechanised better than the doc specifying it.** §5's *"`T1` does not exist"* is true of the name and wrong about the substance |
+| **M2-3** | **every `INSERT INTO channels` in the repository is in a test** | the gap is **not the schema**. Nothing in production has ever created a place. The work is a *birth path*, not a tree |
+| **M2-4** | two `ChannelId` types exist — `dp::ChannelId(i64)` (real, `pub(crate)` mint, ratcheted by `scripts/channel-id-adoption-gate.py`) and `tilemap-service::ChannelId(String)` (**self-declared** *"Phase 0a… Phase 2 will swap in the real DP-K1 `ChannelId`"*) | `SDF-Q18`'s `R-58` half is a **disclosed placeholder**, not a competing design. The map tier must not add a third |
+| **M2-5** | `ChannelTree` mints **authored ids only**; `Megaplanet` = 16 384 cells, `Gigaplanet` fixture = 501 264 | `SDF-Q18`'s `R-43` half is a **real gap** — and the answer is that generated cells are not rows at all |
+| **M2-6** | `ChannelTier`, retired by `SPG-R1` on 2026-07-30, is **still live** in `services/tilemap-service` | **known and disclosed**, not a new find: `amendment-rot-gate.py` check D says in its own docstring that a retired identifier in `crates/`/`services/` is **not covered**. It becomes load-bearing because the tilemap is the `Locale` surface a spawn lands on |
+
+### 23.2 · Board
+
+| # | slice | status | evidence |
+|---|---|---|---|
+| **2-1** | Measure the consumer demand before designing to it | **DONE** | doc 41 §14.1–14.3 · `M2-1..M2-6` above |
+| **2-2** | Close `SDF-Q18` — it blocks every node creation | **DONE** | doc 41 §14.4 — `SDF-A31`. **Authored node = a shipped `channels` row; generated cell = an index, never a row.** No new allocator, no new type |
+| **2-3** | `SDF-R2` (integer `Transform`) — **now blocking, not theoretical** | **open** | the moment `T7` carries a position, a float there is a replay defect (`R-13`). Proposed since round 1, unapplied |
+| **2-4** | The map hub contract, sealed by 23.0 | **not started** | mirror the actor hub: the node is the hub (identity · kind · parent · transform · existence), every feature is a layer |
+| **2-5** | The production birth path — *something* must create a place | **not started** | `M2-3`: today only fixtures do |
+| **2-6** | `T7` occupancy — the relation that sites an actor | **not started** | `(entity, node, cell_index, local_pos)`; `R-53` maintains it **on crossing**, never by search |
+
+### 23.3 · What round 2 is deliberately NOT doing
+
+Layers · portals · topology ops · the live set · budgets · projections. **All of it is designed (§4, §10,
+§11) and none of it is required for an actor to come into existence somewhere.** Round 1's own finding
+about the actor round applies to this one: a hub exists so that feature N+1 does not touch feature #1 —
+**not so that this round can specify feature N+1**.
+
+The four measurement rows (`Q12` `Q15` `Q16` `Q17`, §8.1) are **untouched by this round** and stay open;
+none of them blocks a spawn.

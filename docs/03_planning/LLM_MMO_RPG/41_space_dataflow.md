@@ -6,8 +6,8 @@
 
 > **Prefix:** `SDF-*` (registered 2026-08-02 under a `_boundaries` claim; axioms `SDF-A1..A30`,
 > decisions `SDF-D1..D6`, findings `SDF-F1..F9`, amendments `SDF-R1..R9` — **all PROPOSED, none applied** —
-> open `SDF-Q1..Q18`, of which **thirteen are resolved and five remain**: four need a **measurement**
-> (§8.1) and one — `SDF-Q18`, opened by the slice-7 adjudication — is a design decision).
+> open `SDF-Q1..Q18`, of which **fourteen are resolved and four remain**, and every one of the four
+> now needs a **measurement** rather than an argument (§8.1)).
 >
 > **What this doc is for.** [Doc 36](36_map_architecture.md) settled the *shape* of space
 > (`MapKind`, the containment matrix, `SpaceNode`). [Doc 37](37_world_data_storage.md) settled where
@@ -543,7 +543,7 @@ is therefore *"add `PortalSet` **and say which relation a spatial read means**"*
 | `SDF-Q16` | **Does `Adjacency::Geometric` exist above `Locale`?** The mesh gives cell neighbours inside a `World`; region-level adjacency is likely **authored or derived once at S4**, per `R-2`'s Paradox evidence that area→region→superregion are grouping *files*. (§12.6) |
 | ~~`SDF-Q11`~~ | ~~reality scoping~~ **✅ RESOLVED §13.2 — `SDF-A30`**: **scope follows DERIVATION.** Seed-derived → shared by digest · log-derived → per-reality · registry → per-ruleset. So a hundred realities forked from one book share ONE baseline (14.9 MB) and pay only for divergence — `WDS-A1` delivering its actual value. ~~
 | `SDF-Q17` | **The multi-reality tax has no measurement for space**, where the actor track ran an entire red-team round on it. (§13.2) | Doc 37 says the node tree is per-reality and the baseline is shared by digest; §5 says neither. No multi-reality measurement exists for space. (§9.4) |
-| **`SDF-Q18`** ⚠ **NEW — opened by the slice-7 adjudication, §5** | **How is a `NodeId` allocated?** `R-43`: split the space by the top bit — authored ids from a monotonic event-sourced counter, generated ids as a truncated content hash of `(parent_id, generation_rule_ref, local_address)`, so a generated node's identity is **derivable, never stored, identical on every machine and every replay**. `R-58` arrives at the same seam from Bethesda: **interiors keyed by NAME, exteriors by GRID COORDINATE**, an interior having *"no position in any worldspace"* — so `Locale` and `Domain` may need **different addressing**. **This is the only one of the five that is a DESIGN decision rather than arithmetic**, and it went unrecorded for a whole pass because two agents raised it in two vocabularies and neither matched a section heading |
+| ~~`SDF-Q18`~~ | ~~how is a `NodeId` allocated~~ **✅ RESOLVED §14.4 — `SDF-A31`**: the id space has **two halves and only authored nodes are rows.** An authored node is a `channels` row minted by the **shipped** `ChannelTree` — no new allocator, no new type, and emphatically no third `ChannelId`. A generated cell is **not a node**: it is an index `(owner_node, cell_index)` into its owner's baseline, derivable on every machine by *not allocating* rather than by hashing. `R-58`'s "two key spaces" turned out to be a **disclosed placeholder** awaiting a swap, not a competing design. ~~ Opened by the slice-7 adjudication; closed by the first consumer, which is the difference between the two passes |
 | ~~`SDF-Q4`~~ | ~~delta store bound~~ **✅ RESOLVED §11.4 — `SDF-A21`**: bound + refuse + **COMPACT**. Refusing alone is worse than NMS; snapshot-compaction folds divergence into a new baseline `H'` so the bound is on *un-compacted* delta. **Not in doc 37 — a gap in a committed doc.** ~~ `R-61`: No Man's Sky caps at 15 000 edits / 256 buffers and past it **the base regenerates UNDER player-authored content** — and visiting another player's base consumes *your* buffers. Our divergence log is currently unbounded. |
 
 **Non-vacuity obligations, stated in advance** (three agents proposed these against their own
@@ -564,7 +564,7 @@ published benchmark of a 50-layer scenario in any engine."* The storage argument
 adjacent measurement**, not a measurement of our case. Likewise *"every performance claim in these
 ecosystems is qualitative — if you need numbers, you will have to generate them."*
 
-### 8.1 — The four MEASUREMENTS that remain (`SDF-Q18` is the fifth open row and is not one of them)
+### 8.1 — The four MEASUREMENTS that remain — now the whole of the open register
 
 > **Why this subsection exists.** Thirteen rows closed by argument. These four did not, and the reason is
 > the same every time: **they are arithmetic, and nobody has run it.** Leaving them as prose questions
@@ -627,7 +627,7 @@ accessor), `R-4` (id widths), `R-63` (generation annotates, never moves).
 | disposition | findings | where |
 |---|---:|---|
 | folded into the contract **on this pass** | **8** | `R-63` → §1 · `R-5` `R-18` `R-39` `R-41` `R-51` → §4 · `R-4` → §5 · `R-65` → §11.5 |
-| **opened as a row**, because it is a real decision and not an omission | **2** | `R-43` + `R-58` → `SDF-Q18` |
+| **opened as a row**, because it is a real decision and not an omission | **2** | `R-43` + `R-58` → `SDF-Q18` — **closed in §14.4 by the first consumer**, one round after being opened |
 | **owed to a sealed doc** and recorded rather than silently kept | **1** | `R-21` — a *stronger justification for `Passage`-as-node than the one we wrote*, owed to doc 36, in no amendment row |
 
 *(Two further findings — `R-10` encounter-time status ticking, `R-23` metric-table recomputation — are
@@ -1356,3 +1356,107 @@ scope terms.
 
 **What it does NOT settle:** the multi-reality tax has **no measurement** for space, where the actor track
 ran a whole red-team round on it. `SDF-Q17`.
+
+---
+
+## 14 — Round 2 opens with a consumer, and `SDF-Q18` closes against shipped code
+
+> **What changed since §13.** The first pass had **no consumer**. Its census (§9) was a hypothesis and its
+> research a survey. On 2026-08-03 the **actor hub sealed as feature #1** and explicitly de-scoped
+> *"spawn · maps and places"*, which gives this tier its first real demand and its first real scope seal:
+>
+> > **An actor must be able to come into existence somewhere.**
+>
+> Everything in §14 is measured against shipped code rather than argued, because for the first time there
+> is shipped code on both sides of the seam.
+
+### 14.1 — What the hub asks of space: nothing, and that is the finding
+
+`2026-08-02-seams-and-triggers.md` registers **eighteen** measured seams (`S-1..S-18`). **Not one of them
+is spatial.** The hub holds identity, intrinsic quantities, existence, plugin attachment and the fold, and
+`crates/actor-hub/src/actor.rs` carries **no location field of any kind**.
+
+> **So the seam is NEW, and it is ours to define.** The hub does not owe space a location; space owes the
+> hub a place. Its own membership test says why — *strip the being naked and move them to another world;
+> what travels is intrinsic, what stays behind is a plugin's* — and **where you are stays behind.**
+> Position is not an actor field. It is a relation, and `T7` is where it lives.
+
+### 14.2 — The measured surprise: a node-shaped tree ALREADY SHIPS
+
+§5 says `T1 space_node` *does not exist*. **By that name it is true; in substance it is most of the way
+built** — `contracts/migrations/per_reality/0019_channels.up.sql`:
+
+| what `T1` needs | what `channels` ships |
+|---|---|
+| per-reality identity | `PRIMARY KEY (reality_id, id)` — `reality_id` in the key is what stops a channel in reality A claiming a parent in reality B, **structurally** |
+| a parent edge | `parent BIGINT`, FK within the reality |
+| a bounded depth | `depth SMALLINT`, `DP-Ch1`'s `≤16` — the bound §12.5 already reuses |
+| **a strict acyclic tree** (`SPG-A4`) | **enforced by construction**: a `parent_depth` column `GENERATED ALWAYS AS (depth - 1) STORED` in the FK target, so along every parent edge depth falls by exactly one and a cycle of length `k` requires `d = d - k` |
+| a lifecycle | `lifecycle TEXT`, `dissolved_at` |
+
+**`SPG-A4`'s acyclic containment tree is shipped, in SQL, and mechanised better than the doc that
+specifies it.** Note also what the migration records about itself (`REC-106`, amended 2026-08-08): an
+earlier comment claimed a cycle was *"not representable"* and the amendment states plainly that **the
+description was stronger than the mechanism**, naming two measured routes around it. That is this repo's
+own standard applied to the exact table the map tier is about to build on.
+
+### 14.3 — And the gap is not the schema. **Nothing in production ever creates a place.**
+
+Every `INSERT INTO channels` in the repository is in a **test**: `dp-kernel/tests/…`,
+`commit-service/tests/…`. There is no production path that brings a place into existence.
+
+> **That is the real state of "a place where an actor can spawn": the table is ready, the tree is
+> mechanised, and no code has ever made one outside a fixture.** The first pass would have described this
+> as *building the space tree*. It is not. It is **giving the shipped tree a spatial meaning and a
+> production birth path** — which is what `SPG-R1` already decided when it put `MapKind` on a feature
+> aggregate keyed by `channel_id` rather than on the data-plane channel (`SPG-R2`'s retirement, §3).
+
+### 14.4 — `SDF-Q18` → `SDF-A31`: the id space splits, and one half already ships
+
+`SDF-Q18` asked how a `NodeId` is allocated, from two agents in two vocabularies (`R-43` authored vs
+generated · `R-58` two key spaces). **Both halves resolve against shipped code, in opposite directions.**
+
+**`R-58`'s "two key spaces" is not a design question — it is a disclosed placeholder.** Two types with one
+name exist today:
+
+| type | representation | status |
+|---|---|---|
+| `crates/dp/src/ids.rs:126` `ChannelId(i64)` | `i64` | **the real one.** Minted `pub(crate)` only from a resolved `ChannelTree`, and its pre-SDK escape hatch is **ratcheted** — `contracts/dp/channel-id-baseline.json` + `scripts/channel-id-adoption-gate.py` fail on an *increase* |
+| `services/tilemap-service/src/types/channel.rs:14` `ChannelId(String)` | `String` | **self-declared temporary**: *"Phase 0a is a string newtype — Phase 2 will swap in the real DP-K1 `ChannelId` once the Rust DP SDK exists."* |
+
+The doc's own history is the reason to be careful here: `dp/src/ids.rs` records that minting a second
+representation would have produced *"two types with one name differing in representation — the
+`pc_*`/`npc_*` shape with a compiler behind it."* **The map tier must not add a third.**
+
+**`R-43`'s authored-vs-generated split is a REAL gap, and the consumer is what exposes it.**
+`ChannelTree` mints **authored ids only** — a resolved answer from a tree that must already hold the row.
+That is correct for a `Region` or a `Locale` and **impossible for the generated tier**: a `Megaplanet`
+carries **16 384** cells and the `Gigaplanet` fixture **501 264**, and minting a channel row per cell
+would both defeat `WDS-A1`'s content-addressed baseline and walk straight into `R-8`'s prohibition.
+
+> **`SDF-A31` — the space id space has TWO halves and only authored nodes are rows.**
+>
+> - **Authored node** (`Universe`·`World`·`Region`·`Locale`·`Domain`·`Passage`·`Arena`) — **a `channels`
+>   row**, id minted by the shipped `ChannelTree`, per-reality, acyclic by construction. **No new
+>   allocator, no new type, no third `ChannelId`.**
+> - **Generated cell** — **not a node and never a row.** It is an **index into its owner's baseline**,
+>   addressed as `(owner_node, cell_index: u32)`, derivable and identical on every machine and every
+>   replay (`R-43`'s content-derived identity, obtained by *not allocating* rather than by hashing).
+>
+> **The boundary between the halves is `SDF-A5`'s `home_kinds` boundary seen from the id side:** the
+> authored tier is where a feature may attach; the generated tier is where a feature may only *read* a
+> baseline and write a **layer**.
+
+**What this buys for the spawn demand:** an actor spawns **at an authored node**, and its position within
+that node is `(node, cell_index, local_pos)` in `T7`. **No id is invented, because the only id that
+exists is one the shipped tree already mints.**
+
+**What it does NOT settle** — stated because `SDF-A31` is one closure and not three:
+
+- `local_pos` still needs `SDF-R2`'s integer `Transform`, which is **PROPOSED and unapplied**. The moment
+  `T7` carries a position, a float there is a replay defect (`R-13`: a house at tile 137,42 must
+  round-trip). **`SDF-R2` is now blocking rather than theoretical.**
+- **`ChannelTier` is still live** in `services/tilemap-service`, three months after `SPG-R1` retired it.
+  This is *known and disclosed* — `amendment-rot-gate.py` check D states in its own docstring that a
+  retired identifier reappearing in `crates/`/`services/` is **not covered**. It becomes load-bearing here
+  because the tilemap is the `Locale` surface an actor would spawn onto.
