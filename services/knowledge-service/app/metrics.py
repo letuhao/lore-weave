@@ -736,6 +736,27 @@ for _scope in ("passage", "entity"):
     for _outcome in ("both", "primary_only", "secondary_failed", "primary_failed"):
         vector_dual_write_total.labels(scope=_scope, outcome=_outcome)
 
+# The counter above is PRE-SEEDED — every (scope, outcome) series exists at 0.0 from the
+# moment this module imports, whether or not a dual-write store is ever built. That makes
+# "family present" WORTHLESS as an arming signal, and on 2026-08-21 it cost a real
+# misdiagnosis: `soak-armed-gate` read the family's ABSENCE as "KNOWLEDGE_VECTOR_DB_URL is
+# unset" when the variable had been set for nine days and the running IMAGE was simply too
+# old to carry the metric. An unarmed service on current code reports every series at 0.0,
+# indistinguishable from an armed one nothing has written to yet.
+#
+# So arming gets its OWN signal, set from CONFIGURATION at startup (see main.py's lifespan)
+# rather than at construction: the dual-write store is built lazily on first write, so a
+# construction-time signal would read 0 on a correctly-armed service that has merely not
+# been exercised — which is exactly the ARMED_IDLE state the soak must be able to name.
+vector_dual_write_armed = Gauge(
+    "knowledge_vector_dual_write_armed",
+    "1 when KNOWLEDGE_VECTOR_DB_URL is configured so vector writes reach the secondary; "
+    "0 when it is not. The dual-write COUNTER cannot carry this — it is pre-seeded and "
+    "reads 0.0 on armed and unarmed services alike.",
+    registry=registry,
+)
+vector_dual_write_armed.set(0)
+
 vector_shadow_read_total = Counter(
     "knowledge_vector_shadow_read_total",
     "Shadow reads against the secondary vector store, by outcome. "

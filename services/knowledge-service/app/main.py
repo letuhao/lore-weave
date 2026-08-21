@@ -20,6 +20,7 @@ from app.db.neo4j_schema import run_neo4j_schema
 from app.db.pool import close_pools, create_pools, get_knowledge_pool
 from app.db.seed_graph_schemas import seed_system_graph_schemas
 from app.logging_config import setup_logging, trace_id_var
+from app.metrics import vector_dual_write_armed
 from app.middleware.trace_id import TraceIdMiddleware
 from app.routers import (
     context,
@@ -164,6 +165,13 @@ async def lifespan(app: FastAPI):
         # Track 1 mode skips this entirely.
         if settings.neo4j_uri:
             await run_neo4j_schema(get_neo4j_driver())
+        # T25c — publish whether the vector secondary is ARMED, from configuration.
+        # `knowledge_vector_dual_write_total` is pre-seeded at import, so it reads 0.0 on
+        # an unarmed service exactly as it does on an armed-but-unwritten one; without
+        # this gauge `soak-armed-gate` cannot tell the two apart and the T25 cutover
+        # would be cleared by a measurement that cannot fail. Config-derived, so it is
+        # correct before the lazily-built store has been constructed.
+        vector_dual_write_armed.set(1 if settings.knowledge_vector_db_url else 0)
         # D-P2-STALE-CLAIM-LIFESPAN-HOOK. Reset extraction_leaves rows
         # stuck in status='running' for >30 min back to 'pending' so
         # new workers can pick them up. Idempotent + multi-replica safe

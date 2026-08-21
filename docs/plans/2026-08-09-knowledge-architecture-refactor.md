@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**57 of 66 rows done · 9 open · 40 of 85 evidence blocks closed inside them.**
+**57 of 66 rows done · 9 open · 41 of 87 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (2/3) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (1/3) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `QC-3` (1/4) · `T33` (1/2) · `QC-6` (1/3) · `QC-5` (15/38) · `T46` (1/3) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -1096,7 +1096,7 @@ argument order changed … close D-T25B-PG-ANCHOR-SCORE first".)* 4149 unit test
 | **Evidence** | `app/adapters/vector_store_provider.py` returns a plain `Neo4jVectorStore` when the env var is unset (T25a, asserted by test). Consequently `vector_dual_write_total{outcome="secondary_failed"}` reads **0** — and as T25a's own docstring puts it, *a gate that reads zero because nothing is wired looks exactly like a gate that reads zero because nothing failed*. The counter is not evidence of health here; it is evidence of absence. |
 | **To unblock** | Someone with authority over the dev stack sets `KNOWLEDGE_VECTOR_DB_URL`, and the secondary then takes real traffic for long enough that a zero on the failure counter means something. **This is an operational decision about a shared environment, not a code change** — which is exactly why it is not mine to make unilaterally. |
 | **Mechanism** | `tests/unit/test_vector_primary_owns_anchor_score.py::test_the_provider_keeps_neo4j_as_primary` asserts on the **constructed** store that Neo4j is primary and that `DualWriteVectorStore(primary, secondary)` keeps that argument order. Any attempt to begin the read cutover reds it with a message naming this deferral. A note in a file nobody is editing would not have done that; T27 already proved that failure mode here, shipping handlers that could never run. |
-| **Retry when** | 🔴 **THE FIRST HALF IS NOT DONE — MEASURED 2026-08-21 (T25c).** `KNOWLEDGE_VECTOR_DB_URL` is UNSET on the dev stack and the `knowledge_vector_dual_write_total` family is ABSENT from its `/metrics` entirely; the secondary holds **0 rows in all four vector tables** against 1051 passages in the graph. `infra/docker-compose.yml:1234` passes the variable through from the invoking shell (`${KNOWLEDGE_VECTOR_DB_URL:-}`), and the container was recreated 2026-08-14 — two days after this row recorded the variable as set. So the second half was never wall-clock: **nothing was running to wait for.** `scripts/soak-armed-gate.py` now makes the two zeros distinguishable (DISARMED vs ARMED_IDLE vs SOAKING). Was: *First half DONE 2026-08-12 (variable set, dual-write live, writes proven to reach the secondary)*. The second half is wall-clock and cannot be worked, only waited: `KNOWLEDGE_VECTOR_DB_URL` is set on the dev stack **and** the soak has produced a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Both halves are required; the second without the first is the trap above. |
+| **Retry when** | 🟡 **ARMED 2026-08-21 (T25c-2) — AND THE CAUSE RECORDED HERE ON 2026-08-21 WAS WRONG.** This cell said `KNOWLEDGE_VECTOR_DB_URL` is UNSET. It was not: `infra/.env:12` has carried it since 2026-08-12, under a comment naming OD-2, and `docker compose config` resolves it. The `knowledge_vector_dual_write_total` family was absent because the running **image** was built before the metric existed — its `/app/app/metrics.py` was 28763 bytes and ended at `knowledge_extraction_writer_autocreate_total`, i.e. the byte before the T24 block that commit `1361a56e4` added on 2026-08-10. Absence measured the code’s AGE, not the config, so recreating the container (twice) changed nothing until `docker compose build knowledge-service` ran. Now: `armed 1.0`, gate **ARMED_IDLE**. The secondary still holds **0 rows** against 1051 passages, so the second half is unchanged and still requires writes to flow: a non-trivial write count with `secondary_failed` observed at zero *while writes were demonstrably flowing*. Was: *First half DONE 2026-08-12*. Both halves are required; the second without the first is the trap above. |
 
 **PO decisions (both ANSWERED, kept for the record):**
 
@@ -3663,7 +3663,7 @@ vectors and validity intervals live in different stores.
   rows at 502.9 s / 252.9 s. Corrected in the row; the finding there was that
   `maintenance_work_mem` binds four times earlier than the parallel-build threshold.
 
-  ⛔ **STILL OWED, and it is not mine to take.** Restarting the soak means setting
+  ⛔ **STILL OWED, and it is not mine to take.** *(SUPERSEDED — the PO granted it 2026-08-21 and T25c-2 below executed it. The request below was also aimed at the wrong thing: the variable already outlived every recreate; the IMAGE did not.)* Restarting the soak means setting
   `KNOWLEDGE_VECTOR_DB_URL` on the **shared dev stack** and letting real vectors accumulate in a
   real Postgres — which is `OD-2`'s operational half by name, and a write to a non-throwaway
   database under rule 6. What this batch changes is that the request is now specific: **the
@@ -3675,6 +3675,105 @@ vectors and validity intervals live in different stores.
   `:28216` — plus the secondary Postgres read directly, which is the only witness to the row count.
   **QC (c) real data:** 0 rows in four live vector tables against 1051 live passages, and the
   dev service's own `/metrics` exposition.
+
+
+  ### ✅ T25c-2 2026-08-21 — **the soak is ARMED**, and the gate that proved it was itself unable to fail
+
+  ```
+  BEFORE  gate: DISARMED   "the family is ABSENT -> KNOWLEDGE_VECTOR_DB_URL is unset"
+  AFTER   gate: ARMED_IDLE  knowledge_vector_dual_write_armed 1.0
+  knowledge-service unit 4243 -> 4246     BITE x6 (48-53), each red on its own assertion
+  soak-armed-gate --selftest 7/7 -> 12/12
+  ```
+
+  Grant 1 of the PO's four. The instruction was *"config is right (`infra/.env:12`); the CONTAINER
+  is stale — `docker compose up -d knowledge-service` arms dual-write."* The first half held and
+  **the second half was wrong**, which only showed up because rule 2 says run the gate rather than
+  read the command's exit code.
+
+  🔴 **The recreate did nothing, twice.** `docker compose up -d` recreated the container — config
+  hash `60831ab8 → 05feebe0`, `KNOWLEDGE_VECTOR_DB_URL` now present in `.Config.Env` — and the gate
+  still read **DISARMED**. The env was set and the metric family was still absent, which the gate
+  said was impossible. The container's `/app/app/metrics.py` was **28763 bytes, 0 matches** for the
+  counter, ending at `knowledge_extraction_writer_autocreate_total`: the byte before the T24 block
+  that commit `1361a56e4` added on **2026-08-10**, ten days before the image was built. No mounts,
+  so it was the image. `docker compose build` + recreate → `armed 1.0`, and the rebuilt COPY layer
+  matched the host byte for byte (`sha256 336450b9…`, 34951 bytes).
+
+  ### 🔴 AND THEN THE GATE'S OWN VERDICT TURNED OUT TO BE UNFALSIFIABLE
+
+  `metrics.py` **PRE-SEEDS** the counter: it walks every scope × outcome and calls `.labels()` at
+  import, so all eight series exist at `0.0` from boot. Measured, not reasoned — current code with
+  the DSN explicitly cleared:
+
+  ```
+  $ docker exec -e KNOWLEDGE_VECTOR_DB_URL= lw-iso-knowledge-service-1 python -c "..."
+  DSN in this process: ''
+  sample lines for the family with DSN UNSET: 8
+    knowledge_vector_dual_write_total{outcome="both",scope="passage"} 0.0
+  ```
+
+  So **`DISARMED` was unreachable on any current-code service**, and an *unarmed* one reported
+  `ARMED_IDLE`. Both directions wrong at once: the gate told me the variable was unset when it had
+  been set for nine days, and it would have called an unfed secondary "wired". This is the gate
+  standing between T25 and dropping the Neo4j vector indexes — T25a's *"must not be read as a
+  pass"*, wearing the opposite mask.
+
+  ✅ **Arming now has its own signal.** `knowledge_vector_dual_write_armed`, set in the lifespan
+  from `settings.knowledge_vector_db_url`. **Config-derived, not construction-derived**, on
+  purpose: the dual-write store is built lazily on first write, so a construction-time signal would
+  read 0 on a correctly-armed service that simply has not been exercised — erasing `ARMED_IDLE`,
+  the one state the soak needs to be able to name. A fifth verdict, **`INDETERMINATE`**, covers a
+  service new enough to pre-seed the counter but too old to publish arming; it fails closed rather
+  than borrowing the armed reading. `FAILING` now exits non-zero **without** `--require-soaking` —
+  a cutover gate whose worst finding a caller can ignore by default is not a gate.
+
+  📐 **The proof is the same bytes read two ways.** A one-off container from the **same rebuilt
+  image**, on the iso network, DSN blanked, published `armed 0.0` with the pre-seeded counter lines
+  still present. Its real 67526-byte exposition:
+
+  ```
+  NEW gate: DISARMED    — `knowledge_vector_dual_write_armed` reads 0
+  OLD logic: family present: True -> ARMED_IDLE
+  ```
+
+  **BITE ×6, each red on its own assertion:**
+
+  ```
+  48. classify() infers arming from family presence   E "current code with the DSN UNSET:
+                                                         expected DISARMED, got ARMED_IDLE"
+                                                         + identical counters/opposite arming
+  49. an ABSENT arming gauge falls through as armed   E "a missing arming gauge is not read
+                                                         as armed" (4 checks red)
+  50. FAILING stops exiting non-zero on its own       E secondary_failed=3 across 903 writes,
+                                                         rc 1 -> 0
+  51. delete the .set() from the lifespan             E "app/main.py's lifespan no longer calls
+                                                         vector_dual_write_armed.set(...)"
+  52. set the gauge from a LITERAL instead of the DSN E "a hardcoded value makes every
+                                                         deployment look armed"
+  53. default the gauge to 1                          E "expected the arming gauge to be
+                                                         exposed at 0 ..., got 1.0"
+  ```
+
+  ⚠️ **The wiring test is parsed, not grepped.** A `grep` for the gauge name matches the import
+  line and every comment naming it, so bite 51 would have stayed green with the call deleted — the
+  same "criterion that cannot fail" this batch exists to remove. `test_vector_arming_signal.py`
+  walks `main.py`'s AST for a `vector_dual_write_armed.set(...)` call *inside* `lifespan`, and a
+  second test rejects a literal argument.
+
+  ⛔ **This does NOT close `D-T25B-SOAK`.** Armed is the first half. The secondary still holds
+  **0 rows in all ten tables**; `ARMED_IDLE` says so in as many words. The second half needs writes
+  to flow, which is the re-extract, not a wait.
+
+  **QC (a) gates:** knowledge-service unit **4243 → 4246**; `soak-armed-gate --selftest` **7/7 →
+  12/12** + bites 48–50; `gate-wiring-gate` OK (105, 6 exempt); `plan-verify` PASS;
+  `plan-row-honesty-gate` OK; `plan-progress-block --check` OK; `plan-acceptance --floor` OK;
+  `plan-qc-evidence-gate` OK.
+  **QC (b) the seam:** live against **rebuilt images** on two stacks — dev `:8216` (`armed 1.0`,
+  ARMED_IDLE) and a one-off container on the iso network with the DSN cleared (`armed 0.0`,
+  DISARMED). Same image, opposite verdicts, which is the wiring proof.
+  **QC (c) real data:** the dev service's own exposition, the unarmed service's 67526-byte
+  exposition, and 0 rows across the ten live vector tables in `loreweave_knowledge_vectors`.
 
   **① The backup path ✅** — [`scripts/vector-backup-drill.sh`](../../scripts/vector-backup-drill.sh),
   evidence in [`docs/measurements/2026-08-10-vector-restore-drill.md`](../measurements/2026-08-10-vector-restore-drill.md).
