@@ -46,6 +46,7 @@ fn batch_for(reality: Uuid, i: usize) -> Vec<EventEnvelope> {
             recorded_at: format!("2026-01-01T00:00:{:02}Z", ver),
             payload: json!({ "v": ver }),
             metadata: None,
+            ruleset_digest: None,
         })
         .collect()
 }
@@ -141,6 +142,7 @@ fn one_ev(reality: Uuid, agg: &str, version: u64) -> EventEnvelope {
         recorded_at: "2026-01-01T00:00:00Z".into(),
         payload: json!({ "v": version }),
         metadata: None,
+        ruleset_digest: None,
     }
 }
 

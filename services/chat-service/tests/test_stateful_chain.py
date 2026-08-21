@@ -32,6 +32,19 @@ def test_stateless_when_flag_off(monkeypatch):
                         effective_limit=_ML) == (False, None, "stateless")
 
 
+def test_stateless_when_session_opt_out_even_if_deploy_flag_is_on():
+    assert decide_chain(capabilities=_CAPS, latest_assistant=_row(),
+                        current_model_ref="m1", compacted_before_seq=None,
+                        effective_limit=_ML, stateful_requested=False) == (False, None, "stateless")
+
+
+def test_session_opt_in_overrides_disabled_deploy_flag(monkeypatch):
+    monkeypatch.setenv("LLM_STATEFUL_CACHE", "0")
+    assert decide_chain(capabilities=_CAPS, latest_assistant=None,
+                        current_model_ref="m1", compacted_before_seq=None,
+                        effective_limit=_ML, stateful_requested=True) == (True, None, "establish_first")
+
+
 def test_first_turn_establishes():
     assert decide_chain(capabilities=_CAPS, latest_assistant=None,
                         current_model_ref="m1", compacted_before_seq=None,

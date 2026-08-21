@@ -66,7 +66,10 @@
     "publish_anyway": "Trotzdem veröffentlichen",
     "cancel": "Abbrechen",
     "glossary_stale": "Glossar aktualisiert",
-    "glossary_stale_title": "Das Glossar hat sich nach dieser Übersetzung geändert — sie ist möglicherweise veraltet."
+    "glossary_stale_title": "Das Glossar hat sich nach dieser Übersetzung geändert — sie ist möglicherweise veraltet.",
+    "source_injection": "Quelle markiert ({{count}})",
+    "source_injection_other": "Quelle markiert ({{count}})",
+    "source_injection_title": "Der importierte Quelltext enthält anweisungsartige Passagen. Die Übersetzung ändert die Quelle nie — dies ist ein Hinweis, keine Sperre."
   },
   "confirm_name": {
     "button": "Namen korrigieren",

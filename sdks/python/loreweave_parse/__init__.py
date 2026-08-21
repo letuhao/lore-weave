@@ -17,6 +17,7 @@ Parent ADR: docs/03_planning/KNOWLEDGE_SERVICE_HIERARCHICAL_EXTRACTION_ADR.md
 from loreweave_parse._text_strip import html_to_leaf_text
 from loreweave_parse._types import (
     Chapter,
+    FidelityMetrics,
     ParseOptions,
     ParseRequest,
     Part,
@@ -44,6 +45,7 @@ __version__ = "0.1.0"
 
 __all__ = [
     "Chapter",
+    "FidelityMetrics",
     "ExtractedImage",
     "PageContent",
     "ParseOptions",

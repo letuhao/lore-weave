@@ -8,6 +8,7 @@ import type { Attribute } from '@/features/glossary/tieringTypes';
 import { useUserStandards } from '../hooks/useUserStandards';
 import { useStandardAttributes } from '../hooks/useStandardAttributes';
 import { AttributeFormModal, type AttributeFormValues } from './AttributeFormModal';
+import { standardDescription, standardName } from './standardDisplay';
 
 /** Attributes tab — manage user attributes for a (user-kind × user-genre) pair. */
 export function AttributesPanel() {
@@ -97,7 +98,7 @@ export function AttributesPanel() {
           {hasSystemParent && systemAttrs.length > 0 && (
             <section>
               <h3 className="mb-1.5 text-xs font-semibold text-muted-foreground">{t('attributes.system_ref')}</h3>
-              <ul className="space-y-1">{systemAttrs.map((a) => <AttrRow key={a.attr_id} a={a} />)}</ul>
+              <ul className="space-y-1">{systemAttrs.map((a) => <AttrRow key={a.attr_id} a={a} t={t} />)}</ul>
             </section>
           )}
           <section>
@@ -109,7 +110,7 @@ export function AttributesPanel() {
             ) : (
               <ul className="space-y-1" data-testid="user-attrs">
                 {userAttrs.map((a) => (
-                  <AttrRow key={a.attr_id} a={a}>
+                  <AttrRow key={a.attr_id} a={a} t={t}>
                     <button type="button" onClick={() => setEditAttr(a)} className="rounded border p-1 text-muted-foreground hover:text-foreground" aria-label={t('action.edit')} data-testid={`edit-attr-${a.code}`}>
                       <Pencil className="h-3 w-3" />
                     </button>
@@ -139,10 +140,11 @@ export function AttributesPanel() {
   );
 }
 
-function AttrRow({ a, children }: { a: Attribute; children?: ReactNode }) {
+function AttrRow({ a, t, children }: { a: Attribute; t: ReturnType<typeof useTranslation>['t']; children?: ReactNode }) {
   return (
     <li className="flex items-center gap-2 rounded-md border px-3 py-1.5" data-testid={`attr-row-${a.code}`}>
-      <span className="text-[13px] font-medium">{a.name}</span>
+      <span className="text-[13px] font-medium">{standardName(t, 'attribute', a.code, a.name, a.tier === 'system')}</span>
+      {standardDescription(t, 'attribute', a.code, a.description, a.tier === 'system') && <span className="text-xs text-muted-foreground">{standardDescription(t, 'attribute', a.code, a.description, a.tier === 'system')}</span>}
       <code className="text-[11px] text-muted-foreground">{a.code}</code>
       <FieldTypeBadge fieldType={a.field_type} />
       {a.is_required && <span className="text-[10px] font-semibold text-destructive">*</span>}

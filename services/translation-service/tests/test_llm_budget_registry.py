@@ -186,3 +186,63 @@ def test_a_job_with_no_finish_reason_attribute_does_not_crash():
         result = {"messages": [{"content": "x"}], "usage": {}}
 
     assert _parse_sdk_response(_Bare()) == ("x", 0, 0)
+
+
+# ── `signal_inert` must agree with the MECHANISM, not with a comment ──────────────────────
+
+#: Mirrors composition-service's probe set: absurdly large in every direction a row could
+#: respond to, plus a tiny `context_length` because the window clamp pushes DOWN and is the
+#: one that overturned a confident "the ceiling makes this inert" argument over there.
+_PROBE_SIGNALS = (
+    {"target": 100_000},
+    {"language": "zh"},
+    {"target": 100_000, "language": "zh"},
+    {"context_length": 8},
+    {"target": 100_000, "context_length": 4_000_000},
+)
+
+
+def _row_responds_to_any_signal(code: str) -> bool:
+    base = budget_for(code)
+    return any(budget_for(code, **kw) != base for kw in _PROBE_SIGNALS)
+
+
+@pytest.mark.parametrize("code", sorted(PROFILES))
+def test_signal_inert_matches_what_the_mechanism_actually_does(code):
+    """Three of this service's four call sites are MIRROR rows, where `call_budget` returns
+    the omit sentinel BEFORE the sizing model and before every clamp. Without the flag, the
+    only way to clear them from the repo's no-signal ratchet is to pass arguments that are
+    read by nothing — a green gate bought with theatre.
+
+    Two-directional on purpose: a row wrongly marked inert would excuse its call sites from
+    signal they really hold, which is the rot this exemption must not become.
+    """
+    declared = PROFILES[code].signal_inert
+    responds = _row_responds_to_any_signal(code)
+    if declared:
+        assert not responds, (
+            f"{code!r} declares signal_inert=True but its budget DOES move under a real "
+            f"signal — the flag is excusing a call site that could pass one"
+        )
+    else:
+        assert responds, (
+            f"{code!r} does not declare signal_inert, but no signal changes its budget — "
+            f"mark the row with the reason, or make the sizing model consume the signal"
+        )
+
+
+def test_the_probe_reports_BOTH_outcomes_in_this_registry():
+    """The control. Unlike composition-service, this registry holds rows on both sides, so
+    the probe can be shown discriminating without reaching for the SDK: MIRROR is inert and
+    `glossary_sweep` (STRUCTURED, floor 8000) is not."""
+    assert _row_responds_to_any_signal("translate_chunk") is False
+    assert _row_responds_to_any_signal("glossary_sweep") is True
+
+
+def test_every_mirror_row_is_inert_and_nothing_else_claims_to_be():
+    """`signal_inert` tracks MIRROR here, and that is a derived fact rather than a coincidence
+    — MIRROR is defined as short-circuiting before any sizing. Pinned so that adding a capped
+    row with the flag copied across fails rather than silently exempting a real budget."""
+    mirror = {c for c, p in PROFILES.items() if p.kind is OutputKind.MIRROR}
+    inert = {c for c, p in PROFILES.items() if p.signal_inert}
+    assert inert == mirror, f"inert={inert} mirror={mirror}"

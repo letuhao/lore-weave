@@ -27,6 +27,7 @@ from ..llm_budget import budget_for
 from ..llm_client import LLMClient, get_llm_client
 from ..models import TranslateTextRequest, TranslateTextResponse
 from ..workers.session_translator import _parse_sdk_response
+from app.workers.injection_report import scan_untrusted_source
 
 router = APIRouter(prefix="/v1/translation", tags=["translate"])
 
@@ -173,6 +174,9 @@ async def translate_text_core(
         def __missing__(self, key: str) -> str:
             return "{" + key + "}"
 
+    # DoD-4c. The sync route folds the REQUEST's text straight into the prompt. Scanned
+    # once, here, where it enters — never mutated: this text is what gets translated.
+    scan_untrusted_source(body.text, where="sync_translate_text")
     fmt = _SafeMap(
         source_language=source_language,
         target_language=target_language,

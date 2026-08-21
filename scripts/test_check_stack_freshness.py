@@ -118,3 +118,9 @@ def test_every_compose_built_service_resolves_to_a_real_directory():
     assert len(smap) >= 30, f"compose parse looks broken — only {len(smap)} services resolved"
     bad = {svc: d for svc, d in smap.items() if d and not os.path.isdir(d)}
     assert not bad, f"resolved to non-existent directories: {bad}"
+
+def test_lore_enrichment_mcp_is_probed():
+    probed = {svc for svc, _env, _default, _routes in g.PROBE_ROUTES}
+    assert "lore-enrichment-service" in probed
+    le = next(r for r in g.PROBE_ROUTES if r[0] == "lore-enrichment-service")
+    assert "/mcp" in le[3]

@@ -85,6 +85,9 @@ class DecomposeRequest(BaseModel):
     # decompose. Default OFF (opt-in rollout). Long-running ⇒ always via the worker when
     # COMPOSITION_WORKER_ENABLED. NOTE: this SEEDS the proposed cast into the glossary.
     pipeline: bool = False
+    # Optional chapter scope. When omitted, legacy callers may still plan the
+    # whole book; the studio always sends exactly one selected chapter.
+    chapter_ids: list[UUID] | None = None
 
 
 class CommitScene(BaseModel):
@@ -514,6 +517,15 @@ async def decompose_preview(
         raise HTTPException(status_code=400, detail={
             "code": "NO_CHAPTERS",
             "detail": "decompose maps onto existing chapters — create chapters first"})
+    if body.chapter_ids is not None:
+        requested = {str(chapter_id) for chapter_id in body.chapter_ids}
+        available = {str(ch["chapter_id"]) for ch in chapters_raw}
+        bad = sorted(requested - available)
+        if bad:
+            raise HTTPException(status_code=400, detail={"code": "BAD_CHAPTER", "chapter_ids": bad})
+        chapters_raw = [ch for ch in chapters_raw if str(ch["chapter_id"]) in requested]
+        if not chapters_raw:
+            raise HTTPException(status_code=400, detail={"code": "NO_CHAPTERS", "detail": "select a chapter first"})
     if len(chapters_raw) > settings.plan_max_chapters:
         raise HTTPException(status_code=400, detail={
             "code": "TOO_MANY_CHAPTERS", "count": len(chapters_raw),

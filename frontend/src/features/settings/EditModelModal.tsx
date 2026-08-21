@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, Trash2, X, Loader2, Zap, CheckCircle, DollarSign } from 'lucide-react';
+import { Save, Trash2, X, Loader2, Zap, CheckCircle, DollarSign, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/auth';
-import { providerApi, type UserModel, type ModelPricing } from './api';
+import { providerApi, type UserModel, type ModelPricing, type ModelDeletionImpact } from './api';
 import { LOCAL_PROVIDER_KINDS } from '@/features/ai-models/api';
 import { KNOWN_FLAGS } from './CapabilityFlags';
 import { CapabilityFlags } from './CapabilityFlags';
@@ -15,6 +15,16 @@ type Props = {
   onClose: () => void;
   onUpdated: () => void;
 };
+
+// Prices are stored as JSON numbers and must not depend on the browser's
+// locale. Accept the comma decimal separator users commonly type in Russian
+// locales, then normalize it to the dot form before sending it to the API.
+function parsePriceInput(raw: string): number | undefined {
+  const normalized = raw.trim().replace(',', '.');
+  if (normalized === '') return undefined;
+  const value = Number(normalized);
+  return Number.isFinite(value) ? value : Number.NaN;
+}
 
 export function EditModelModal({ model, onClose, onUpdated }: Props) {
   const { t } = useTranslation('settings');
@@ -35,6 +45,8 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deletionImpact, setDeletionImpact] = useState<ModelDeletionImpact | null>(null);
+  const [refreshingCapabilities, setRefreshingCapabilities] = useState(false);
 
   // D-PRICING-REFRESH — pricing was frozen at creation with no edit path at
   // all; local (BYOK self-hosted) kinds are always explicit-zero server-side
@@ -68,8 +80,8 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
     if (!accessToken) return;
     // D-PRICING-REFRESH — mirror the backend's Validate() client-side so a
     // negative rate never round-trips through a 400 the user has to decode.
-    const inNum = inputPerMTok.trim() === '' ? undefined : Number(inputPerMTok);
-    const outNum = outputPerMTok.trim() === '' ? undefined : Number(outputPerMTok);
+    const inNum = parsePriceInput(inputPerMTok);
+    const outNum = parsePriceInput(outputPerMTok);
     if ((inNum != null && (Number.isNaN(inNum) || inNum < 0)) || (outNum != null && (Number.isNaN(outNum) || outNum < 0))) {
       toast.error(t('model_modal.edit.pricing_negative_error'));
       return;
@@ -122,6 +134,37 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
     }
   }
 
+  async function handleRefreshCapabilities() {
+    if (!accessToken) return;
+    setRefreshingCapabilities(true);
+    try {
+      const updated = await providerApi.refreshUserModelCapabilities(accessToken, model.user_model_id);
+      const nextFlags: Record<string, boolean> = {};
+      for (const key of KNOWN_FLAGS) nextFlags[key] = updated.capability_flags?.[key] === true;
+      const canonical = updated.capability_flags?._capability;
+      if (typeof canonical === 'string' && KNOWN_FLAGS.includes(canonical as (typeof KNOWN_FLAGS)[number])) nextFlags[canonical] = true;
+      setFlags(nextFlags);
+      setContextLength(updated.context_length ? String(updated.context_length) : '');
+      if (updated.pricing?.input_per_mtok != null) setInputPerMTok(String(updated.pricing.input_per_mtok));
+      if (updated.pricing?.output_per_mtok != null) setOutputPerMTok(String(updated.pricing.output_per_mtok));
+      toast.success(t('model_modal.edit.capabilities_refreshed', { defaultValue: 'Model capabilities refreshed' }));
+    } catch (e) {
+      toast.error((e as Error).message || t('model_modal.edit.capabilities_refresh_failed', { defaultValue: 'Could not refresh the model capabilities' }));
+    } finally { setRefreshingCapabilities(false); }
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
   async function handleCheckPricing() {
     if (!accessToken) return;
     setCheckingPrice(true);
@@ -148,7 +191,19 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
     if (!accessToken) return;
     setDeleting(true);
     try {
-      await providerApi.deleteUserModel(accessToken, model.user_model_id);
+      // The first click is a read-only preflight. It tells the author exactly
+      // what will be detached and, importantly, blocks deletion while a job is
+      // still running. The second click is the explicit destructive confirm.
+      if (!deletionImpact) {
+        const impact = await providerApi.getUserModelDeletionImpact(accessToken, model.user_model_id);
+        setDeletionImpact(impact);
+        if (!impact.can_delete) {
+          toast.error(t('model_modal.edit.delete_blocked_active', { defaultValue: 'This model cannot be deleted: stop its active jobs first.' }));
+        }
+        return;
+      }
+      if (!deletionImpact.can_delete) return;
+      await providerApi.deleteUserModel(accessToken, model.user_model_id, true);
       toast.success(t('model_modal.toast.deleted'));
       onUpdated();
       onClose();
@@ -185,7 +240,6 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-[2px]"
-      onClick={onClose}
       onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}
       role="dialog"
       aria-modal="true"
@@ -238,21 +292,24 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
                   <div>
                     <label className="mb-1 block text-[10px] text-muted-foreground">{t('model_modal.edit.pricing_input')}</label>
                     <input
-                      type="number" min={0} step="any" value={inputPerMTok}
-                      onChange={(e) => setInputPerMTok(e.target.value)}
+                      type="text" inputMode="decimal" lang="en-US" value={inputPerMTok}
+                      onChange={(e) => setInputPerMTok(e.target.value.replace(',', '.'))}
                       className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                     />
                   </div>
                   <div>
                     <label className="mb-1 block text-[10px] text-muted-foreground">{t('model_modal.edit.pricing_output')}</label>
                     <input
-                      type="number" min={0} step="any" value={outputPerMTok}
-                      onChange={(e) => setOutputPerMTok(e.target.value)}
+                      type="text" inputMode="decimal" lang="en-US" value={outputPerMTok}
+                      onChange={(e) => setOutputPerMTok(e.target.value.replace(',', '.'))}
                       className="h-9 w-full rounded-md border bg-background px-3 font-mono text-[13px] focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring/30"
                     />
                   </div>
                 </div>
                 <p className="mt-1 text-[11px] text-muted-foreground">{t('model_modal.edit.pricing_hint')}</p>
+                {inputPerMTok.trim() === '' && outputPerMTok.trim() === '' && (
+                  <p className="mt-1 rounded-md border border-amber-500/30 bg-amber-500/5 px-2.5 py-1.5 text-[11px] text-amber-200">{t('model_modal.edit.pricing_missing', { defaultValue: 'This model has no pricing — estimated job cost will be unavailable.' })}</p>
+                )}
                 <div className="mt-2 flex items-center gap-2">
                   <button
                     onClick={handleCheckPricing}
@@ -312,7 +369,13 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
           </div>
 
           {/* Capability flags */}
-          <CapabilityFlags flags={flags} onChange={setFlags} />
+          <div className="flex items-start justify-between gap-3">
+            <CapabilityFlags flags={flags} onChange={setFlags} />
+            <button onClick={handleRefreshCapabilities} disabled={refreshingCapabilities} className="flex shrink-0 items-center gap-1 rounded border px-2 py-1 text-[10px] font-medium transition-colors hover:bg-secondary disabled:opacity-50">
+              {refreshingCapabilities ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <RefreshCw className="h-2.5 w-2.5" />}
+              {t('model_modal.edit.refresh_capabilities', { defaultValue: 'Refresh' })}
+            </button>
+          </div>
 
           {/* Tags */}
           <TagEditor tags={tags} onChange={setTags} />
@@ -367,10 +430,25 @@ export function EditModelModal({ model, onClose, onUpdated }: Props) {
             </button>
           ) : (
             <div className="flex items-center gap-1.5">
-              <button onClick={handleDelete} disabled={deleting} className="rounded-md bg-destructive px-2.5 py-1.5 text-[11px] font-medium text-destructive-foreground disabled:opacity-50">
+              <button onClick={handleDelete} disabled={deleting || deletionImpact?.can_delete === false} className="rounded-md bg-destructive px-2.5 py-1.5 text-[11px] font-medium text-destructive-foreground disabled:opacity-50">
                 {deleting ? t('model_modal.edit.deleting') : t('model_modal.edit.confirm_delete')}
               </button>
               <button onClick={() => setConfirmDelete(false)} className="text-[11px] text-muted-foreground hover:text-foreground">{t('model_modal.edit.cancel')}</button>
+            </div>
+          )}
+          {deletionImpact && (
+            <div className={cn('absolute bottom-14 left-5 right-5 rounded-md border px-3 py-2 text-[10px]', deletionImpact.can_delete ? 'border-amber-500/30 bg-amber-500/5 text-amber-200' : 'border-destructive/30 bg-destructive/5 text-destructive')}>
+              {deletionImpact.can_delete
+                ? t('model_modal.edit.delete_impact', {
+                    defaultValue: 'These references will be removed: {{refs}}. Press Delete again to confirm.',
+                    refs: deletionImpact.references.length
+                      ? deletionImpact.references.map((r) => `${r.kind} (${r.count})`).join(', ')
+                      : t('model_modal.edit.delete_impact_none', { defaultValue: 'none' }),
+                  })
+                : t('model_modal.edit.delete_blocked_count', {
+                    defaultValue: 'Deletion is blocked: {{count}} active job(s). Stop them first.',
+                    count: deletionImpact.active_tasks.length,
+                  })}
             </div>
           )}
           <div className="flex gap-2">

@@ -7,7 +7,7 @@ import { useQuery } from '@tanstack/react-query';
 import { glossaryApi } from '../../glossary/api';
 import { defaultFilters } from '../../glossary/types';
 
-export type RosterOption = { id: string; label: string };
+export type RosterOption = { id: string; label: string; active?: boolean };
 
 // One bounded page (books are user-curated — hundreds of entities at most). The
 // picker is a flat select; if a book ever exceeds this, the picker would need
@@ -25,6 +25,10 @@ export function useGlossaryRoster(bookId: string | undefined, token: string | nu
       ),
     enabled: !!bookId && !!token,
     select: (d): RosterOption[] =>
-      d.items.map((e) => ({ id: e.entity_id, label: e.display_name })),
+      d.items.map((e) => ({
+        id: e.entity_id,
+        label: e.display_name_translation || e.display_name,
+        active: e.status === 'active' && e.alive !== false,
+      })),
   });
 }

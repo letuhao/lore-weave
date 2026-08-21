@@ -9,7 +9,9 @@
     "permissions": "أذونات الأدوات",
     "proposals": "المقترحات",
     "activity": "سجل النشاط",
-    "ingest": "مصادر السجل"
+    "ingest": "مصادر السجل",
+    "bindings": "إعداد تلقائي",
+    "workflows": "الوصفات"
   },
   "quota": {
     "unavailable": "الاستخدام غير متاح",

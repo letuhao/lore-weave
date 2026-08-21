@@ -33,6 +33,7 @@ __all__ = [
     "parse_judge_verdicts",
     "extract_judge_text",
     "build_judge_request",
+    "judge_is_self",
     "apply_verdicts",
     "gone_entities_referenced",
     "CanonCandidateBase",
@@ -187,6 +188,33 @@ def build_judge_request(
         },
         "job_meta": {"usage_purpose": usage_purpose, "extractor": extractor},
     }
+
+
+def judge_is_self(judge_ref: Any, subject_ref: Any) -> bool:
+    """Is the model about to grade this the same model that PRODUCED it?
+
+    Invariant 2 is *no model is silently its own judge*. Composition enforces it through
+    `engine/critic_policy.py`, which resolves both refs to a provider identity — five
+    `user_model_id` rows on one dev box are one gemma, so a ref comparison is the weaker test.
+
+    This is the WEAKER test, and it lives here because knowledge-service needs it and cannot
+    use the stronger one: its judge ref is whatever model ran the extraction, it has no
+    `work.settings` to hold a critic, and it has no resolver wired. Ref-level catches the case
+    that is actually happening there — the SAME ref on both sides — and misses two rows that
+    are one model. Named so the difference is visible at the call site rather than assumed.
+
+    Compared as strings because the two sides arrive differently typed: one comes off a job
+    message and the other off a request body, so one may be a `UUID` and the other its text.
+    An identity check between a `UUID` and its own `str` is False, which would report a model
+    as an independent judge of its own output while every same-typed test stayed green.
+
+    Missing on either side is NOT self-judging — it is unknown, and the caller must not read
+    `False` as "verified independent". `judge_is_self(None, x)` is False for the same reason
+    `CriticResolution.identity_verified` distinguishes `None` from `False`.
+    """
+    if not judge_ref or not subject_ref:
+        return False
+    return str(judge_ref).strip() == str(subject_ref).strip()
 
 
 def apply_verdicts(candidates: list[Any], verdicts: dict[str, dict[str, Any]]) -> None:

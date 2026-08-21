@@ -1,16 +1,19 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
+
+import { useUserModels } from '@/components/model-picker';
 
 import type { JobParams } from '../../types';
 
 /** Render one param value: scalars as-is, arrays joined, objects as compact JSON,
  *  null/undefined as an em-dash. Keeps the panel schema-free — whatever the
  *  producer put in `params` shows up (model now, effort later, no FE change). */
-function renderValue(v: unknown): string {
+function renderValue(v: unknown, modelNames: ReadonlyMap<string, string>): string {
   if (v == null) return '—';
   if (typeof v === 'boolean') return v ? 'true' : 'false';
   if (typeof v === 'number') return v.toLocaleString();
-  if (typeof v === 'string') return v || '—';
-  if (Array.isArray(v)) return v.length ? v.map((x) => String(x)).join(' · ') : '—';
+  if (typeof v === 'string') return (modelNames.get(v) ?? v) || '—';
+  if (Array.isArray(v)) return v.length ? v.map((x) => typeof x === 'string' ? (modelNames.get(x) ?? x) : String(x)).join(' · ') : '—';
   try {
     return JSON.stringify(v);
   } catch {
@@ -20,12 +23,25 @@ function renderValue(v: unknown): string {
 
 // bug #37 — these call-count keys are rendered specially in the Progress panel
 // ("LLM calls: done / total"), so keep them out of the raw key/value grid here.
-const _PROGRESS_KEYS = new Set(['estimated_llm_calls', 'llm_calls_done']);
+const _PROGRESS_KEYS = new Set([
+  'estimated_llm_calls',
+  'llm_calls_done',
+  'current_batch_calls_done',
+  'current_batch_calls_total',
+]);
 
 /** Dynamic parameters panel — a key/value grid built from the job's `params` JSONB.
  *  Renders nothing when there are no params (avoids an empty card). */
 export function JobParametersPanel({ params }: { params: JobParams | null }) {
   const { t } = useTranslation('jobs');
+  const { models } = useUserModels({ includeInactive: true });
+  const modelNames = useMemo(() => {
+    const result = new Map<string, string>();
+    for (const model of models ?? []) {
+      result.set(model.user_model_id, model.alias || model.provider_model_name);
+    }
+    return result;
+  }, [models]);
   const entries = params
     ? Object.entries(params).filter(([k]) => !_PROGRESS_KEYS.has(k))
     : [];
@@ -43,7 +59,7 @@ export function JobParametersPanel({ params }: { params: JobParams | null }) {
         {entries.map(([k, v]) => (
           <div key={k} className="flex justify-between gap-3 border-b py-1">
             <span className="text-muted-foreground">{k}</span>
-            <span className="truncate text-right font-mono text-xs">{renderValue(v)}</span>
+            <span className="truncate text-right font-mono text-xs">{renderValue(v, modelNames)}</span>
           </div>
         ))}
       </div>

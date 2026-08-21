@@ -28,8 +28,8 @@ export function StudioOnboardingOverlay({ open, onChooseRole, onSkip }: Props) {
   return (
     <FormDialog
       open={open}
-      // Any dismiss path (backdrop click, Esc, the X button) counts as skip — this can
-      // never trap the user, on the first showing or any re-trigger.
+      // Explicit dismiss paths (Esc and the X button) count as skip. The shared
+      // FormDialog intentionally ignores backdrop clicks so a role choice is not lost.
       onOpenChange={(next) => { if (!next) onSkip(); }}
       title={t('intro.title', { defaultValue: 'Welcome to Writing Studio' })}
       description={t('intro.subtitle', {

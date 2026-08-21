@@ -35,6 +35,7 @@ fn mk_env(reality: Uuid, agg_type: &str, agg_id: &str, version: u64) -> EventEnv
         recorded_at: "2026-01-01T00:00:00Z".into(),
         payload: serde_json::json!({ "v": version }),
         metadata: None,
+        ruleset_digest: None,
     }
 }
 

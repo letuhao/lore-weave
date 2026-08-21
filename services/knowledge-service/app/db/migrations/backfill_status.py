@@ -44,6 +44,7 @@ from app.db.neo4j_helpers import CypherSession, run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
 from app.db.neo4j_repos.entity_status import STATUS_VALUES, merge_entity_status
 from app.db.neo4j_repos.provenance import add_evidence
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -310,13 +311,13 @@ def make_llm_classify_fn(
                 ],
                 "response_format": {"type": "text"},
                 "temperature": 0.0,
-                "max_tokens": 2048,
+                "max_tokens": max_tokens_for("backfill_event_status", target=len(events)),
             },
             job_meta={"usage_purpose": "kg_backfill"},
         )
         out: dict[str, list[tuple[str, str]]] = {}
-        if getattr(job, "status", None) != "completed" or job.result is None:
-            logger.warning("A2-S1b-2 classify batch did not complete; skipping batch")
+        if (why := unusable(job, "backfill_event_status")) or job.result is None:
+            logger.warning("A2-S1b-2 classify batch unusable (%s); skipping batch", why)
             return out
         content = _extract_content(job.result)
         parsed = _parse_classify_json(content)

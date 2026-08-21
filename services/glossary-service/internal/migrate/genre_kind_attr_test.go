@@ -115,19 +115,19 @@ func TestGenreKindAttr_SeedsTieredStandardsFromSystemKinds(t *testing.T) {
 		t.Fatalf("%d system kinds not linked to universal (O4 violated)", n)
 	}
 
-	// character (genre_tags={universal}) → exactly 1 link (universal).
+	// character now covers all story genres → exactly 7 links (universal plus six genres).
 	if n := scalar(`
 		SELECT count(*) FROM system_kind_genres kg
 		JOIN system_kinds k ON k.kind_id = kg.kind_id
-		WHERE k.code = 'character'`); n != 1 {
-		t.Fatalf("character kind_genres = %d, want 1 (universal)", n)
+		WHERE k.code = 'character'`); n != 7 {
+		t.Fatalf("character kind_genres = %d, want 7 (universal plus six genres)", n)
 	}
-	// organization (genre_tags={fantasy,drama}) → universal+fantasy+drama = 3 links.
+	// organization covers fantasy, xianxia, drama, historical and mystery → 6 links including universal.
 	if n := scalar(`
 		SELECT count(*) FROM system_kind_genres kg
 		JOIN system_kinds k ON k.kind_id = kg.kind_id
-		WHERE k.code = 'organization'`); n != 3 {
-		t.Fatalf("organization kind_genres = %d, want 3 (universal+fantasy+drama)", n)
+		WHERE k.code = 'organization'`); n != 6 {
+		t.Fatalf("organization kind_genres = %d, want 6 (universal plus five genres)", n)
 	}
 
 	// character's 13 attrs all lifted into (character, universal), with content_hash.

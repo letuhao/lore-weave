@@ -44,7 +44,13 @@ import (
 // meta_failover_test.go.
 const (
 	rlMetaPrimary = "127.0.0.1:15432"
-	rlMetaDB      = "loreweave_meta_lifecycle"
+
+	// Named `loreweave_meta_lifecycle` until 2026-08-09 — a `loreweave_` prefix on a
+	// database this test DROPs and RECREATES on every run. It was never the real meta
+	// DB, but it was one typo away from reading like it, and `testsafe` classifies by
+	// name precisely because a name is all you have at 2am. Carries a `test` marker now,
+	// matching `lw_reality_test_skel` below.
+	rlMetaDB = "lw_meta_lifecycle_test"
 
 	// Reality count for the "provision N" portion of the test.
 	rlNumRealities = 10
@@ -91,11 +97,17 @@ func TestRealityLifecycle_ProvisionTenAndDeprovision(t *testing.T) {
 	postgresDB := rlConnect(t, "postgres")
 	defer postgresDB.Close()
 
+	// db-safety-gate: ok — DROP+CREATE of `lw_meta_lifecycle_test`, a const carrying a
+	// throwaway marker, over a DSN `rlConnect` hardcodes end to end (127.0.0.1:15432,
+	// the meta-HA compose stack). No environment variable participates, so unlike the
+	// `*_TEST_DATABASE_URL` harnesses there is nothing here to misconfigure. The test
+	// skips entirely when that port is unreachable.
 	_, _ = postgresDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", rlMetaDB))
 	if _, err := postgresDB.Exec(fmt.Sprintf("CREATE DATABASE %s", rlMetaDB)); err != nil {
 		t.Fatalf("create test DB: %v", err)
 	}
 	t.Cleanup(func() {
+		// db-safety-gate: ok — tears down the database created three lines above.
 		_, _ = postgresDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", rlMetaDB))
 	})
 
@@ -216,11 +228,14 @@ func TestRealityLifecycle_PerRealityMigrationSkeletonApplies(t *testing.T) {
 	defer postgresDB.Close()
 
 	const realityDB = "lw_reality_test_skel"
+	// db-safety-gate: ok — same shape as the meta DB above: a marker-carrying const over
+	// `rlConnect`'s hardcoded 127.0.0.1:15432 DSN, dropped and recreated by this test.
 	_, _ = postgresDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", realityDB))
 	if _, err := postgresDB.Exec(fmt.Sprintf("CREATE DATABASE %s", realityDB)); err != nil {
 		t.Fatalf("create reality DB: %v", err)
 	}
 	t.Cleanup(func() {
+		// db-safety-gate: ok — tears down the database created three lines above.
 		_, _ = postgresDB.Exec(fmt.Sprintf("DROP DATABASE IF EXISTS %s", realityDB))
 	})
 

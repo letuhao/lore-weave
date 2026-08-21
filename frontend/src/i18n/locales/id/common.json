@@ -172,5 +172,10 @@
     "saved": "Urutan model disimpan",
     "saveFailed": "Gagal menyimpan urutan.",
     "loadFailed": "Gagal memuat model."
+  },
+  "errorBoundary": {
+    "title": "Halaman ini tidak dapat ditampilkan",
+    "description": "Terjadi kesalahan antarmuka. Kesalahan telah disimpan ke log diagnostik; silakan coba kembali operasi Anda.",
+    "retry": "Coba lagi"
   }
 }

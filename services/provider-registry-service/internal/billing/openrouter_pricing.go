@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -29,9 +30,14 @@ import (
 // absent from this map (every local BYOK kind, or an unrecognized cloud kind)
 // has no OpenRouter equivalent to check.
 var openRouterNamespace = map[string]string{
-	"openai":    "openai",
-	"anthropic": "anthropic",
-	"gemini":    "google",
+	"openai":     "openai",
+	"anthropic":  "anthropic",
+	"gemini":     "google",
+	"openrouter": "",
+	// NeuralDeep exposes OpenAI-compatible model aliases without the
+	// OpenRouter namespace. Its Qwen aliases are listed by OpenRouter under
+	// qwen/<model>, so use that namespace when checking the catalog.
+	"neuraldeep": "qwen",
 }
 
 // OpenRouterModelsURL is a var (not const) so tests can point it at an
@@ -161,9 +167,16 @@ func FetchOpenRouterPricing(ctx context.Context, httpClient *http.Client, provid
 		return OpenRouterSuggestion{Found: false}
 	}
 
-	wantID := ns + "/" + modelName
+	wantIDs := openRouterModelIDs(ns, modelName)
 	for _, m := range models {
-		if m.ID != wantID {
+		matched := false
+		for _, wantID := range wantIDs {
+			if m.ID == wantID {
+				matched = true
+				break
+			}
+		}
+		if !matched {
 			continue
 		}
 		inTok, inOK := parsePerTokenToPerMTok(m.Pricing.Prompt)
@@ -176,6 +189,38 @@ func FetchOpenRouterPricing(ctx context.Context, httpClient *http.Client, provid
 		return OpenRouterSuggestion{Found: true, SourceModelID: m.ID, Pricing: &p}
 	}
 	return OpenRouterSuggestion{Found: false}
+}
+
+// openRouterModelIDs returns exact IDs that can represent a provider model in
+// OpenRouter. Some providers expose deployment aliases (for example
+// qwen3.6-35b-a3b-noreason) while OpenRouter lists the base model
+// (qwen/qwen3.6-35b-a3b). Only well-known presentation suffixes are removed;
+// fuzzy matching could apply a price from a different model.
+func openRouterModelIDs(namespace, modelName string) []string {
+	name := strings.TrimSpace(modelName)
+	if name == "" {
+		return nil
+	}
+	variants := []string{name}
+	for _, suffix := range []string{"-noreason", "-reasoning"} {
+		if strings.HasSuffix(strings.ToLower(name), suffix) {
+			variants = append(variants, name[:len(name)-len(suffix)])
+			break
+		}
+	}
+	ids := make([]string, 0, len(variants))
+	seen := make(map[string]struct{}, len(variants))
+	for _, variant := range variants {
+		id := variant
+		if namespace != "" && !strings.Contains(variant, "/") {
+			id = namespace + "/" + variant
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 // parsePerTokenToPerMTok converts an OpenRouter USD-per-TOKEN string to

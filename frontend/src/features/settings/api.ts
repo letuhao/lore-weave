@@ -79,6 +79,14 @@ export type InventoryModel = {
   provider_model_name: string;
   context_length?: number | null;
   capability_flags?: Record<string, unknown>;
+  pricing?: ModelPricing;
+};
+
+export type ModelDeletionImpact = {
+  user_model_id: string;
+  references: Array<{ kind: string; count: number }>;
+  active_tasks: string[];
+  can_delete: boolean;
 };
 
 // C0 rerank/reranker reconcile (BL-1): the canonical capability token is
@@ -115,9 +123,15 @@ export type CapabilityType = 'chat' | 'embedding' | 'tts' | 'stt' | 'image_gen' 
 
 export function getInventoryMeta(m: InventoryModel) {
   const f = m.capability_flags ?? {};
+  // Some OpenAI-compatible providers return no capability metadata. Infer the
+  // unambiguous embedding family from the model id so the Add Model dialog does
+  // not silently register it as chat-only (which then hides it from every
+  // embedding picker). Explicit inventory metadata still wins.
+  const name = m.provider_model_name.toLowerCase();
+  const inferredEmbedding = /embedding|embed|bge[-_]?m3|(?:^|[-_])e5(?:[-_]|$)|(?:^|[-_])gte(?:[-_]|$)|jina[-_]embeddings/.test(name);
   return {
     displayName: (f._display_name as string) ?? m.provider_model_name,
-    capability: (f._capability as CapabilityType) ?? 'chat',
+    capability: (f._capability as CapabilityType) ?? (inferredEmbedding ? 'embedding' : 'chat'),
     isRecommended: (f._is_recommended as boolean) ?? false,
   };
 }
@@ -164,6 +178,7 @@ export const providerApi = {
     alias?: string;
     context_length?: number;
     capability_flags?: Record<string, unknown>;
+    pricing?: ModelPricing;
     tags?: Array<{ tag_name: string; note?: string }>;
     notes?: string;
   }) {
@@ -215,8 +230,15 @@ export const providerApi = {
     });
   },
 
-  deleteUserModel(token: string, modelId: string) {
-    return apiJson<void>(`/v1/model-registry/user-models/${modelId}`, { method: 'DELETE', token });
+  getUserModelDeletionImpact(token: string, modelId: string) {
+    return apiJson<ModelDeletionImpact>(`/v1/model-registry/user-models/${modelId}/deletion-impact`, { token });
+  },
+
+  deleteUserModel(token: string, modelId: string, confirmed = false) {
+    return apiJson<void>(`/v1/model-registry/user-models/${modelId}`, {
+      method: 'DELETE', token,
+      headers: confirmed ? { 'X-Confirm-Model-Deletion': 'true' } : undefined,
+    });
   },
 
   verifyUserModel(token: string, modelId: string) {
@@ -234,6 +256,22 @@ export const providerApi = {
       `/v1/model-registry/user-models/${modelId}/verify`, { method: 'POST', token },
     );
   },
+
+  refreshUserModelCapabilities(token: string, modelId: string) {
+    return apiJson<UserModel>(`/v1/model-registry/user-models/${modelId}/refresh-capabilities`, { method: 'POST', token });
+  },
+
+
+
+
+
+
+
+
+
+
+
+
 };
 
 // ── Public MCP API keys (P1) ────────────────────────────────────────────────

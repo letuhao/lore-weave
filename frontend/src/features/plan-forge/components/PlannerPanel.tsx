@@ -122,8 +122,16 @@ export function PlannerPanel(props: IDockviewPanelProps) {
   const canPropose =
     !plan.busy && !plan.polling && effectiveMarkdown.trim().length > 0 && (mode === 'rules' || effectiveModelRef.length > 0);
 
-  // Bootstrap only makes sense once a run is compiled (it reads the run's package artifact).
-  const compiledRunId = plan.run?.status === 'compiled' ? plan.run.id : null;
+  // Bootstrap reads the run's PACKAGE artifact, so gate on that artifact existing — the same
+  // precondition the backend enforces ("run has no compiled package yet — call compile() first").
+  // Gating on `status === 'compiled'` instead was strictly narrower than the truth, and the
+  // natural order of work walked straight out of the window: compile writes the package and sets
+  // status='compiled', then Validate (which Agent Mode REQUIRES — it will not accept a plan that
+  // is not `validated`) moves the run on, and the panel that materialises the chapters vanishes.
+  // Measured 2026-08-03 on Mị Đế: a run with 11 compiled chapters and a package artifact offered
+  // no way to turn them into book chapters, because it had been validated. `compiled` is a moment;
+  // the package is a fact.
+  const compiledRunId = plan.run?.artifacts?.some((a) => a.kind === 'package') ? plan.run.id : null;
   // The material keep-or-drop acts on the SPEC, which exists from `proposed` onward -- deliberately
   // NOT gated on `compiled`: its whole value is fixing the spec BEFORE compile reads it.
   const material = useMaterialReview(bookId ?? null, plan.run?.id ?? null, accessToken ?? null);

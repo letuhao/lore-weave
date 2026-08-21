@@ -342,8 +342,14 @@ def chap_ctx(monkeypatch):
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
     async def _resolve_context_length(model_source, model_ref):
         return None  # unresolved in tests — the flat default budget applies
+    async def _resolve_model_identity(model_source, model_ref):
+        # Unresolved on purpose — these tests assert stitch behaviour, not the critic policy,
+        # and the degrade path is the state a router test should sit in.
+        return None
+
     app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(
-        sdk=object(), resolve_context_length=_resolve_context_length)
+        sdk=object(), resolve_context_length=_resolve_context_length,
+        resolve_model_identity=_resolve_model_identity)
     with TestClient(app) as c:
         yield c, works, outline, jobs, book, state
     app.dependency_overrides.clear()

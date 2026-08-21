@@ -5287,12 +5287,35 @@ async def plan_propose_spec(
         ground_on_existing=ground_on_existing,
     )
     detail = await svc.get_run_detail(tc.user_id, bid, run.id)
-    return {
+    out: dict = {
         "run_id": str(run.id),
         "async": is_async,
         "job_id": str(job_id) if job_id else None,
         "run": detail,
     }
+    # A rules-mode parse that matched NOTHING is not a proposal — it is a run holding an empty
+    # spec, and every downstream step (compile, the chapters that hang off it) has nothing to
+    # build from. `validate.py` already knows this ("spec_has_arc" → "no arcs parsed"), but it
+    # lives behind `plan_validate`, a SEPARATE tool the model has to think to call. So the
+    # propose returned a plain success dict and the agent told the author their plan was ready.
+    #
+    # Measured 2026-08-02 (Mị Đế): the co-writer proposed a well-formed 4-chapter outline
+    # headed `# Arc 1: …` / `## Chapter 1: …`, got ok=true, and the spec parsed 0 arcs — the
+    # matcher wants the literal `# 1. Arc Overview` section, and NOTHING on the path told it so.
+    # The `co_write` skill names this tool without the shape requirement; only the rail's notes
+    # carry it, and the rail was not driving. A constraint documented in one place and enforced
+    # in none is how the whole chain stayed silent.
+    if not is_async and isinstance(detail, dict) and not (detail.get("arcs") or []):
+        out["problem"] = "no_arcs_parsed"
+        out["guidance"] = (
+            "The run was created but its spec parsed ZERO arcs, so there is nothing to compile "
+            "and the book gained no structure — do NOT tell the author the plan is ready. "
+            "mode='rules' is a literal heading matcher: `source_markdown` must open with the "
+            "line '# 1. Arc Overview' (that number and dot are required), then one '## ' "
+            "heading per ARC, and under each arc one '### ' heading per beat. Re-send with that "
+            "shape, or use mode='llm', which reads a document written any way."
+        )
+    return out
 
 
 @mcp_server.tool(

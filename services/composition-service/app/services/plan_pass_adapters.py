@@ -440,8 +440,13 @@ async def run_self_heal(ctx: PassContext) -> dict[str, Any]:
     )
     out["heal"] = {
         "findings": [
+            # `locator` alongside the raw chapter/scene, not instead of: this artifact is
+            # read back by pass 7 and a round-trip that loses a field is a defect this file
+            # already guards against. The locator is what says NOWHERE — on a not-located
+            # finding the raw numbers are still populated and address nothing.
             {"chapter": f.chapter, "scene": f.scene, "type": f.type, "issue": f.issue,
-             "fix": f.fix, "applied": f.applied, "skip_reason": f.skip_reason}
+             "fix": f.fix, "applied": f.applied, "skip_reason": f.skip_reason,
+             "locator": f.locator.as_payload()}
             for f in report.findings
         ],
         "edits_applied": report.edits_applied,
@@ -478,6 +483,7 @@ def _decompose_to_artifact(result: Any) -> dict[str, Any]:
                         "synopsis": s.synopsis,
                         "tension": s.tension,
                         "present_entity_ids": [str(e) for e in (s.present_entity_ids or [])],
+                        "present_entity_names": dict(s.present_entity_names or {}),
                         "present_entity_names_unresolved": list(
                             s.present_entity_names_unresolved or [],
                         ),
@@ -523,6 +529,7 @@ def _artifact_to_decompose(art: dict[str, Any]) -> Any:
                     synopsis=str(s.get("synopsis") or ""),
                     tension=s.get("tension"),
                     present_entity_ids=[UUID(e) for e in (s.get("present_entity_ids") or [])],
+                    present_entity_names={str(k): str(v) for k, v in (s.get("present_entity_names") or {}).items()},
                     present_entity_names_unresolved=list(
                         s.get("present_entity_names_unresolved") or [],
                     ),

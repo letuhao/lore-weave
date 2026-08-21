@@ -46,6 +46,7 @@ logger = logging.getLogger(__name__)
 # BYOK model chunk + prompt + output could exceed the window — the exact overflow
 # `resolve_distill_window` exists to prevent, on exactly the models it was written for.
 from app.distiller import OUTPUT_RESERVE_TOKENS as DISTILL_MAX_TOKENS  # noqa: F401,E402
+from loreweave_llm.budget import OutputKind, call_budget
 
 
 class _LLMSubmitter(Protocol):
@@ -71,7 +72,10 @@ def make_distill_llm(
     user_id: str,
     model_source: str,
     model_ref: str,
-    max_tokens: int = DISTILL_MAX_TOKENS,
+    # `None`, not the reserve: a signature default is evaluated ONCE at import, so it can
+    # never see the model window it is reserving against. Resolved per call below, with the
+    # reserve kept as the CEILING — it is a real bound derived from the window, not a guess.
+    max_tokens: int | None = None,
     trace_id: str | None = None,
 ) -> LLMCall:
     """Adapt the worker-ai LLMClient (→ provider-registry, the sanctioned gateway) into the pure
@@ -93,7 +97,8 @@ def make_distill_llm(
                 "messages": [{"role": "user", "content": prompt}],
                 "response_format": {"type": "text"},
                 "temperature": 0.2,
-                "max_tokens": max_tokens,
+                "max_tokens": max_tokens or call_budget(
+                    OutputKind.PROSE, ceiling=DISTILL_MAX_TOKENS).max_output_tokens,
                 "chat_template_kwargs": {"thinking": False, "enable_thinking": False},
             },
             trace_id=trace_id,

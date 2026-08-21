@@ -98,5 +98,27 @@
     "branchAt": "branche au ch. {{ch}}",
     "orphan": "· source hors de ce monde",
     "edgeLabel": "ch. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Lier l'entité",
+    "delete": "Supprimer",
+    "empty": "Aucune carte pour le moment — dessinez le monde dans lequel votre histoire prend vie.",
+    "entityPlaceholder": "id de l'entité de lieu",
+    "error": "Impossible de charger cette carte.",
+    "label": "Étiquette",
+    "marker": "Marqueur",
+    "name": "Nom",
+    "newMap": "+ Nouvelle carte",
+    "newMapPrompt": "Nommer la nouvelle carte",
+    "pickWorld": "Choisissez un monde à cartographier.",
+    "region": "Région",
+    "save": "Enregistrer",
+    "unbind": "Désassocier",
+    "uploadImage": "Télécharger l'image de base",
+    "vertexCapNotice": "{{count}} sommets — la modification de la forme est désactivée au-delà de {{max}} pour des raisons de performance."
+  },
+  "maps": {
+    "empty": "Aucune carte pour le moment. Demandez à l'assistant de « créer une carte de ce monde » pour en générer une.",
+    "heading": "Cartes"
   }
 }

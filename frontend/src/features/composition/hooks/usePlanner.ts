@@ -52,6 +52,7 @@ export function usePlanner(projectId: string, token: string | null) {
   const templates = useStructureTemplates(token);
 
   const [templateId, setTemplateId] = useState('');
+  const [chapterId, setChapterId] = useState('');
   const [premise, setPremise] = useState('');
   const [arcTitle, setArcTitle] = useState('Arc');
   const [draft, setDraft] = useState<PlannerChapterDraft[] | null>(null);
@@ -83,7 +84,7 @@ export function usePlanner(projectId: string, token: string | null) {
       setError(null);
       setNeedsReplace(null);
       previewMut.mutate(
-        { structure_template_id: templateId, premise: premise.trim(), model_source: model.modelSource ?? 'user_model', model_ref: model.modelRef },
+        { structure_template_id: templateId, premise: premise.trim(), model_source: model.modelSource ?? 'user_model', model_ref: model.modelRef, ...(chapterId ? { chapter_ids: [chapterId] } : {}) },
         {
           onSuccess: (p) => {
             setArcTitle(p.arc_title || 'Arc');
@@ -96,7 +97,7 @@ export function usePlanner(projectId: string, token: string | null) {
         },
       );
     },
-    [templateId, premise, previewMut],
+    [templateId, premise, chapterId, previewMut],
   );
 
   const editScene = useCallback((ci: number, si: number, patch: Partial<PlannerSceneDraft>) => {
@@ -138,6 +139,7 @@ export function usePlanner(projectId: string, token: string | null) {
   return {
     templates,
     templateId, setTemplateId,
+    chapterId, setChapterId,
     premise, setPremise,
     arcTitle,
     draft, preview, totalScenes,
@@ -148,6 +150,7 @@ export function usePlanner(projectId: string, token: string | null) {
     committedChapterIds,
     dismissCommitted: () => setCommittedChapterIds([]),
     cancelReplace: () => setNeedsReplace(null),
+    resetDraft: () => { setDraft(null); setPreview(null); setNeedsReplace(null); setError(null); },
     runPreview,
     editScene, editChapter, addScene, removeScene,
     commit: () => doCommit(false),

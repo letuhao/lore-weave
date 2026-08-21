@@ -142,5 +142,8 @@
       "passage": "본문 구절"
     }
   },
-  "ch_short": "{{n}}장"
+  "ch_short": "{{n}}장",
+  "lore": {
+    "heading": "지금까지의 설정"
+  }
 }

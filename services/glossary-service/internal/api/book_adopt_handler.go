@@ -75,17 +75,17 @@ type bookKindGenreLink struct {
 }
 
 type bookAttrResp struct {
-	AttrID      string   `json:"attr_id"`
-	KindID      string   `json:"kind_id"`
-	GenreID     string   `json:"genre_id"`
-	Code        string   `json:"code"`
-	Name        string   `json:"name"`
-	Description *string  `json:"description,omitempty"`
-	FieldType   string   `json:"field_type"`
-	IsRequired  bool     `json:"is_required"`
-	SortOrder   int      `json:"sort_order"`
+	AttrID          string   `json:"attr_id"`
+	KindID          string   `json:"kind_id"`
+	GenreID         string   `json:"genre_id"`
+	Code            string   `json:"code"`
+	Name            string   `json:"name"`
+	Description     *string  `json:"description,omitempty"`
+	FieldType       string   `json:"field_type"`
+	IsRequired      bool     `json:"is_required"`
+	SortOrder       int      `json:"sort_order"`
 	Options         []string `json:"options"`
-	AutoFillPrompt  *string  `json:"auto_fill_prompt,omitempty"`  // G-U2
+	AutoFillPrompt  *string  `json:"auto_fill_prompt,omitempty"` // G-U2
 	TranslationHint *string  `json:"translation_hint,omitempty"`
 	SourceRef       *string  `json:"source_ref,omitempty"`
 	MergeStrategy   string   `json:"merge_strategy"`
@@ -157,15 +157,37 @@ func (s *Server) internalAdoptBookKinds(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	var in struct {
-		Kinds []string `json:"kinds"`
+		Kinds          []string `json:"kinds"`
+		Genres         []string `json:"genres"`
+		SystemDefaults bool     `json:"system_defaults"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
 		writeError(w, http.StatusBadRequest, "GLOSS_INVALID_BODY", "invalid JSON")
 		return
 	}
+	if in.SystemDefaults {
+		sourceGenres := in.Genres
+		var systemGenres []string
+		if err := s.pool.QueryRow(r.Context(), `SELECT COALESCE(array_agg(code ORDER BY sort_order), '{}') FROM system_genres WHERE deprecated_at IS NULL`).Scan(&systemGenres); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load system genres failed")
+			return
+		}
+		in.Genres = append(systemGenres, sourceGenres...)
+		for index := range in.Genres {
+			in.Genres[index] = slugify(in.Genres[index])
+		}
+		if err := s.pool.QueryRow(r.Context(), `SELECT COALESCE(array_agg(code ORDER BY sort_order), '{}') FROM system_kinds WHERE deprecated_at IS NULL`).Scan(&in.Kinds); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load system kinds failed")
+			return
+		}
+	} else {
+		for index := range in.Genres {
+			in.Genres[index] = slugify(in.Genres[index])
+		}
+	}
 	// 1) Copy-down from the System/User catalogue (inherits name/icon/label) for any
 	//    requested code that IS a catalogue kind.
-	if err := s.adoptBookOntologyCore(r.Context(), bookID, userID, nil, in.Kinds); err != nil {
+	if err := s.adoptBookOntologyCore(r.Context(), bookID, userID, in.Genres, in.Kinds); err != nil {
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "adopt kinds failed")
 		return
 	}
@@ -184,7 +206,7 @@ func (s *Server) internalAdoptBookKinds(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"book_id": bookID.String(), "adopted": in.Kinds})
+	writeJSON(w, http.StatusOK, map[string]any{"book_id": bookID.String(), "genres": in.Genres, "adopted": in.Kinds})
 }
 
 // adoptBookOntologyCore copies the picked System standards (shadowed by the caller's
@@ -367,6 +389,9 @@ func (s *Server) getBookOntology(w http.ResponseWriter, r *http.Request) {
 // loadBookOntology reads the book's full ontology from book_* tables ONLY
 // (single-tier; no system_*/user_* join — the spike's book-local read proof).
 func (s *Server) loadBookOntology(ctx context.Context, bookID uuid.UUID) (*bookOntologyResp, error) {
+	if err := s.ensureDefaultBookOntology(ctx, bookID); err != nil {
+		return nil, err
+	}
 	ont := &bookOntologyResp{
 		BookID:     bookID.String(),
 		Genres:     []bookGenreResp{},

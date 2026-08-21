@@ -25,6 +25,9 @@ COPY sdks/go/loreweave_crypto /src/sdks/go/loreweave_crypto
 # contracts/platformjwt — shared HS256 platform-user JWT verifier; its replace
 # (=> ../../contracts/platformjwt) must resolve inside the container.
 COPY contracts/platformjwt /src/contracts/platformjwt
+# EPUB V2 shared inspector/parser package; book-service go.mod replaces this
+# module with ../../pkg/epubimport and the image must contain that path.
+COPY pkg/epubimport /src/pkg/epubimport
 COPY services/book-service /src/services/book-service
 
 WORKDIR /src/services/book-service

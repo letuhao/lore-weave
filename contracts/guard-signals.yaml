@@ -1,0 +1,147 @@
+# guard-signals.yaml — every honesty signal a guard emits, and what READS it.
+#
+# WHY THIS FILE EXISTS
+# --------------------
+# The 2026-08-02 audit cycle closed six gaps, and five of them landed the same way: the
+# HONESTY half shipped and the ACTING half did not. Each was recorded as its own Debt row,
+# each row was individually defensible, and nothing counted them — so the pattern was visible
+# only to someone reading the whole register in one sitting. It reached five before it was
+# named.
+#
+# A signal nobody reads is not worthless: it is strictly better than the silence it replaced,
+# and every one of these was added because two states used to be indistinguishable. But it is
+# also not a working guard. `exclusion_unverified` can be True on every scored run forever and
+# no report will change. That is the S8 shape — a fact made AVAILABLE rather than acted upon —
+# and this repo has now committed it five times in one day.
+#
+# So the count becomes a ratchet. Not a wall: reddening CI on all five would leave no path to
+# green, which is how gates get commented out (`gate-teeth-gate`'s own lesson). The rule is
+# that the number may SHRINK and may never GROW. A sixth unconsumed signal fails.
+#
+# WHAT COUNTS AS A CONSUMER
+# -------------------------
+# Code that CHANGES BEHAVIOUR on the value: a branch, a gate condition, a rendered badge, an
+# alert. NOT a log line, and not a field that merely rides a payload to the next layer — both
+# of those are what "emitted" already means. The gate checks that the named consumer file
+# references the field in CODE (comments and docstrings are stripped); it cannot prove the
+# reference is load-bearing, so a consumer row is a claim a human made and a reviewer can
+# check, while an `unconsumed` row is honest by construction.
+
+version: 1
+
+signals:
+  - id: eval.exclusion_unverified
+    field: exclusion_unverified
+    emitter:
+      file: sdks/python/loreweave_eval/calibration.py
+    consumer:
+      file: sdks/python/loreweave_eval/scorer.py
+      note: >-
+        `metric_of_record_blockers` refuses to certify a number computed with a defaulted
+        exclusion that matched nothing, even though `panel_safe` is True — deliberately True,
+        because otherwise every unconfigured deployment would report unsafe. One boolean
+        could not tell a clean panel from one whose refs belong to another machine; this
+        function is what makes the distinction reachable, and it is the ONE place the
+        question is answered. Wiring it found the field was not merely unread: `score_dump`
+        read it off `PanelSafety` and DROPPED it, so the structure whose own docstring says
+        "for persistence" could not carry it at all. It now reaches `EvalResult` and the
+        `eval_runs` row, so the question is answerable from a stored run.
+
+  - id: glossary.kg_sweep_coverage
+    field: kg_unchecked
+    emitter:
+      file: services/glossary-service/internal/api/wiki_staleness.go
+    consumer:
+      file: frontend/src/features/wiki/hooks/useWikiStaleness.ts
+      note: >-
+        `rescan` branches on `kg_unchecked` (plus an explicit `kg_status === 'degraded'`, so
+        the UI does not inherit the server-side coupling that makes those two equivalent):
+        a gap downgrades the green `toast.success` to `toast.warning` and sets a `coverage`
+        state that KnowledgeUpdatesPanel renders as a standing amber banner above the feed —
+        above the EMPTY state in particular, which is where "0 findings" read as a clean
+        book. The toast alone would not have counted; it is gone in four seconds and the
+        incomplete list it warns about is not.
+
+  - id: composition.unguarded_stream
+    field: guard_status
+    emitter:
+      file: services/composition-service/app/engine/canon_check.py
+    consumer:
+      file: services/composition-service/app/db/repositories/outline.py
+      note: >-
+        Reads `latest.result -> 'canon' ->> 'guard_status'` in the scene-gate query and
+        branches the chapter's publishable state on it. The FIRST version of this row named
+        `engine/chapter_scene_gate.py` — a file that does not exist. That name comes from a
+        COMMENT in `canon_check.py` describing the concept, and it was propagated into a
+        claim about the filesystem. This gate caught it on its first run, which is the whole
+        argument for the gate. PARTIAL: the query consumed `guard_status` before `not_run`
+        existed, so what it does with THAT value is unverified — its own Debt row.
+
+  - id: composition.critic_identity
+    field: identity_verified
+    emitter:
+      file: services/composition-service/app/engine/critic_policy.py
+    consumer:
+      file: services/composition-service/app/engine/canon_reflect.py
+      note: >-
+        `_check_plan_liveness` will not promote a plan-liveness conflict from ADVISORY to HARD
+        when `identity_verified` is False, so an unverifiable judge cannot block a publish.
+        Wiring it exposed the real defect: the distinct-critic fix compared the RESOLVED
+        PROVIDER MODEL, the router adopted it, and the path that decides whether a conflict
+        blocks a publish still compared refs — which cannot see five `user_model_id` rows
+        collapsing to one model. `None` is deliberately NOT `False`: only an ATTEMPT that
+        FAILED downgrades, because treating an absent signal as failure would disable the
+        blocking tier on every path that does not resolve identity.
+
+  - id: translation.source_injection_hits
+    # The name the gate made me settle. The in-memory report is `injection_scan`; what
+    # actually crosses the boundary — column, API field, badge — is `source_injection_hits`,
+    # and registering the first meant the emitter and the consumer named two different things
+    # for one concept. The gate refused the row and it was right to.
+    field: source_injection_hits
+    emitter:
+      # Moved 2026-08-03. The write used to be inlined in `decoupled_translate`, and the gate
+      # caught the move the moment the column stopped being named there — which is the check
+      # working: the emitter row is a claim about where the fact is produced, and it was.
+      file: services/translation-service/app/workers/injection_report.py
+    consumer:
+      file: frontend/src/features/translation/components/TranslationViewer.tsx
+      note: >-
+        The chapter's scan is persisted to `chapter_translations.source_injection_hits` by
+        every chapter path and rendered as an amber badge on the version the importer reads.
+        "Both chapter paths" was WRONG when this row was written: deriving the set from
+        `chapter_worker`'s dispatch gives SEVEN, the two that recorded were the two TEXT
+        paths, and a live translation on the BLOCK pipeline — the one this stack runs —
+        logged a real hit and stored NULL. `record_source_injection` now does the scan and
+        the write together so a path cannot take one without the other.
+        It used to live only in `resume_state`, which `_clear_resume_state` wipes the moment
+        the chapter finishes — i.e. exactly when the translation becomes readable — so the
+        record of the scan disappeared at the moment it became useful.
+        The column is NULLABLE and the badge tests `> 0`, not truthiness: `null` (nobody
+        looked) and `0` (looked, clean) are different answers, both falsy, and only one is an
+        answer. A `DEFAULT 0` would have written "clean" across every historical row.
+        Previous claim in this row, corrected: I said the table belonged to book-service and
+        called this a cross-service slice. It is translation-service's own table — I inferred
+        the owner from a COMMENT in `book_client.py` instead of reading the schema.
+
+  - id: knowledge.judged_by_self
+    field: judged_by_self
+    emitter:
+      file: services/knowledge-service/app/extraction/canon_check.py
+    consumer:
+      file: services/knowledge-service/app/extraction/pass2_orchestrator.py
+      note: >-
+        Invariant 2 in the OTHER service. `_maybe_run_canon_check_gate` hands the canon judge
+        the extraction `model_ref`, so the model that produced the assertions was also
+        confirming the contradictions in them — a self-witness, unlabelled, since 2026-07-06.
+        Found on 2026-08-03 by building `judge-resolution-gate.py`, which is the point of
+        building it: composition's rule was audited eight times and nobody had asked whether
+        a second service had a judge at all.
+        Labelled, not refused, following the sealed S6 decision — a day-one refusal turns
+        every default-configured extraction into an unjudged one, and this service has no
+        critic setting to clear the refusal with. The quarantine row a human reviews now
+        carries the flag in its context and says so in the message, so the reviewer can weigh
+        a self-witnessed confirmation as the weaker evidence it is.
+        Emitted on EVERY flag rather than only when true: `false` (an independent judge) and
+        `null` (nobody asked) are different answers. Ref-level only — `judge_is_self` cannot
+        see two `user_model` rows that are one model, and says so at its definition.

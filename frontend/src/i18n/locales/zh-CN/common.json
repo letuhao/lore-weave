@@ -172,5 +172,10 @@
     "saved": "模型顺序已保存",
     "saveFailed": "保存顺序失败。",
     "loadFailed": "加载模型失败。"
+  },
+  "errorBoundary": {
+    "title": "无法显示此页面",
+    "description": "发生界面错误。错误已保存至诊断日志；请重试该操作。",
+    "retry": "重试"
   }
 }

@@ -44,6 +44,32 @@ def test_parse_html_returns_tree(client: TestClient):
     assert len(tree["parts"][0]["chapters"]) == 2
 
 
+def test_parse_chapter_preserves_supplied_boundary(client: TestClient):
+    """EPUB V2: h1/h2 remain content; only h3 can form scenes."""
+    resp = client.post(
+        "/internal/parse/chapter",
+        json={
+            "source_format": "html",
+            "content": "<h1>Source heading</h1><p>Opening.</p><h2>Inner heading</h2><p>Still one chapter.</p><h3>Scene two</h3><p>Second scene.</p>",
+            "options": {
+                "chapter_title": "Navigation title",
+                "source_key": "sha256:test:chapter.xhtml#one",
+            },
+        },
+        headers=_INTERNAL_TOKEN_HEADER,
+    )
+    assert resp.status_code == 200, resp.text
+    tree = resp.json()
+    assert len(tree["parts"]) == 1
+    assert len(tree["parts"][0]["chapters"]) == 1
+    chapter = tree["parts"][0]["chapters"][0]
+    assert chapter["title"] == "Navigation title"
+    assert chapter["source_key"] == "sha256:test:chapter.xhtml#one"
+    assert len(chapter["scenes"]) == 2
+    assert "Inner heading" in chapter["html"]
+    assert tree["fidelity"]["source_text_chars"] > 0
+
+
 def test_parse_plain_returns_tree(client: TestClient):
     """POST plain -> 200 with detected_language populated for auto-detect."""
     resp = client.post(

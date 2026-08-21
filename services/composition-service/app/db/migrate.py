@@ -1397,6 +1397,31 @@ CREATE INDEX IF NOT EXISTS idx_structure_node_book   ON structure_node(book_id) 
 CREATE INDEX IF NOT EXISTS idx_structure_node_parent ON structure_node(parent_id, rank COLLATE "C", id)
   WHERE NOT is_archived;
 
+-- EPUB Import V2 ToC hierarchy. `structure_node` deliberately remains the
+-- manuscript-part projection used by existing chapter grouping surfaces. EPUB
+-- navigation can be deeper than that model, so the lossless source tree lives
+-- in this Composition-owned table and points to an optional projected part.
+-- Book Service owns chapter provenance and receives the resulting mappings
+-- through its internal API; there is intentionally no cross-service FK here.
+CREATE TABLE IF NOT EXISTS epub_import_hierarchy_node (
+  id                  UUID PRIMARY KEY DEFAULT uuidv7(),
+  book_id             UUID NOT NULL,
+  import_job_id       UUID NOT NULL,
+  source_key          TEXT NOT NULL,
+  parent_source_key   TEXT,
+  role                TEXT NOT NULL,
+  title               TEXT NOT NULL DEFAULT '',
+  ordinal             INT NOT NULL,
+  depth               INT NOT NULL DEFAULT 0,
+  structure_node_id   UUID REFERENCES structure_node(id) ON DELETE SET NULL,
+  created_by          UUID NOT NULL,
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE(book_id, import_job_id, source_key)
+);
+CREATE INDEX IF NOT EXISTS idx_epub_import_hierarchy_book_job
+  ON epub_import_hierarchy_node(book_id, import_job_id, ordinal, source_key);
+
 -- P3 (book-structure-pipeline spec 2026-07-20 §4.6, Option C) — the book_lifecycle MIRROR.
 -- composition's BookLifecycleConsumer mirrors book-service's lifecycle_state onto these two
 -- manuscript-structure ANCHOR tables (structure_node = parts/arcs, composition_work = the Work), so a

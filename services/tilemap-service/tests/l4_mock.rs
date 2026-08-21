@@ -13,6 +13,7 @@ use wiremock::{Mock, MockServer, Request, Respond, ResponseTemplate};
 use tilemap_service::harness::bootstrap::bootstrap_small_reality;
 use tilemap_service::harness::l4_prompt::ZoneNarrationInput;
 use tilemap_service::harness::l4_retry::run_l4_with_retries;
+use tilemap_service::harness::provenance::Provenance;
 use tilemap_service::harness::style::{NarrationLanguage, NarrationVoice, NarrativeTone};
 use tilemap_service::llm::{GatewayClient, ModelSource};
 
@@ -237,6 +238,45 @@ async fn ac4_persistent_failure_falls_back_after_max_attempts() {
     assert_eq!(r.narrations.len(), 2);
     let zb = r.narrations.iter().find(|n| n.zone_id == "zone_b").unwrap();
     assert!(zb.narration.contains("Engine-default"), "zone_b → canonical default");
+
+    // …and the same fact WITHOUT reading English out of the prose. The line above is the only
+    // way this was checkable before `source` existed, and it breaks the first time that
+    // sentence is reworded or translated — the harness already supports several narration
+    // languages. A consumer must be able to ask the item, not parse it.
+    assert_eq!(
+        zb.source,
+        Provenance::CanonicalDefault,
+        "the engine filled zone_b in and the item does not say so"
+    );
+    let za = r.narrations.iter().find(|n| n.zone_id == "zone_a").unwrap();
+    assert_eq!(
+        za.source,
+        Provenance::Llm,
+        "zone_a is the model's work — a `source` that said CanonicalDefault for everything \
+         would satisfy the assertion above and mean nothing"
+    );
+}
+
+#[tokio::test]
+async fn the_fallback_count_and_the_items_cannot_disagree() {
+    // `fallback_count` is the aggregate; `source` is the per-item fact. Two representations of
+    // one truth drift — that is what `canon_envelope` was extracted from, and what this repo's
+    // `guard_status`-reached-six-copies-and-`verdict`-reached-none defect was. So pin them
+    // against each other on a run that actually produces both kinds.
+    let body = narrate_sse(&[("zone_a", &good()), ("zone_b", "short")]);
+    let server = scripted_server(vec![(200, body)]).await;
+    let r = run(&server, &["zone_a", "zone_b"], 3).await;
+
+    let engine_made = r.narrations.iter().filter(|n| n.source.is_engine_default()).count();
+    assert_eq!(
+        engine_made, r.fallback_count,
+        "fallback_count={} but {} item(s) claim the engine made them",
+        r.fallback_count, engine_made
+    );
+    // The premise: this run must produce BOTH kinds, or the equality above holds trivially at
+    // zero and proves nothing about disagreement.
+    assert_eq!(engine_made, 1);
+    assert_eq!(r.narrations.iter().filter(|n| !n.source.is_engine_default()).count(), 1);
 }
 
 #[tokio::test]

@@ -12,7 +12,7 @@ import { CATEGORY_ORDER } from '../palette/useStudioCommands';
 // From tourCatalog.ts specifically (NOT tours.ts) — tours.ts's role-tour steps call
 // getStudioPanelDef from catalog.ts at module-init time, and catalog.ts imports THIS component,
 // so importing tours.ts here would be a circular import. See tourCatalog.ts's header comment.
-import { EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG, type StudioTourCatalogEntry } from '../onboarding/tourCatalog';
+import { EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG, RESEARCH_TOUR_CATALOG, PANEL_TOUR_IDS, type StudioTourCatalogEntry } from '../onboarding/tourCatalog';
 
 function groupByCategory(panels: StudioPanelDef[]): Array<[string, StudioPanelDef[]]> {
   const byCategory = new Map<string, StudioPanelDef[]>();
@@ -56,6 +56,8 @@ function TourList({ tours, onStart }: { tours: StudioTourCatalogEntry[]; onStart
   );
 }
 
+const WORKFLOW_KEYS = ['setup', 'lore', 'factChecking', 'jobs', 'translation'] as const;
+
 export function UserGuidePanel(props: IDockviewPanelProps) {
   useStudioPanel('user-guide', props.api);
   const { t } = useTranslation('studio');
@@ -96,6 +98,24 @@ export function UserGuidePanel(props: IDockviewPanelProps) {
           </h4>
           <TourList tours={COMPOSE_TOUR_CATALOG} onStart={startTour} />
         </div>
+        <div>
+          <h4 className="mb-1.5 text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/50">
+            {t('userGuide.toursResearch', { defaultValue: 'World research' })}
+          </h4>
+          <TourList tours={RESEARCH_TOUR_CATALOG} onStart={startTour} />
+        </div>
+      </section>
+      <section data-testid="studio-user-guide-workflows" className="mb-6 space-y-3">
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/70">
+          {t('userGuide.workflowsTitle', { defaultValue: 'Workflows and practices' })}
+        </h3>
+        {WORKFLOW_KEYS.map((key) => (
+          <article key={key} className="rounded-md border border-border/60 bg-secondary/20 p-3">
+            <h4 className="text-sm font-semibold text-foreground">{t(`userGuide.workflows.${key}.title`)}</h4>
+            <p className="mt-1 text-xs text-muted-foreground">{t(`userGuide.workflows.${key}.body`)}</p>
+            <p className="mt-2 text-xs leading-relaxed text-muted-foreground/80">{t(`userGuide.workflows.${key}.steps`)}</p>
+          </article>
+        ))}
       </section>
       <div className="space-y-6">
         {groups.map(([category, panels]) => (
@@ -106,22 +126,36 @@ export function UserGuidePanel(props: IDockviewPanelProps) {
             <ul className="space-y-1">
               {panels.map((p) => (
                 <li key={p.id}>
-                  <button
-                    type="button"
-                    data-testid={`studio-user-guide-open-${p.id}`}
-                    onClick={() => openPanel(p)}
-                    className="flex w-full items-start justify-between gap-2 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-secondary"
-                  >
-                    <span>
-                      <span className="block text-sm font-medium text-foreground">
-                        {t(p.titleKey, { defaultValue: p.id })}
+                  <div className="flex items-start gap-1 rounded-md px-2 py-1.5 transition-colors hover:bg-secondary">
+                    <button
+                      type="button"
+                      data-testid={`studio-user-guide-open-${p.id}`}
+                      onClick={() => openPanel(p)}
+                      className="flex min-w-0 flex-1 items-start justify-between gap-2 text-left"
+                    >
+                      <span>
+                        <span className="block text-sm font-medium text-foreground">
+                          {t(p.titleKey, { defaultValue: p.id })}
+                        </span>
+                        <span className="block text-xs text-muted-foreground">
+                          {t(p.guideBodyKey ?? p.descKey, { defaultValue: '' })}
+                        </span>
                       </span>
-                      <span className="block text-xs text-muted-foreground">
-                        {t(p.guideBodyKey ?? p.descKey, { defaultValue: '' })}
-                      </span>
-                    </span>
-                    <ExternalLink className="mt-1 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/50" />
-                  </button>
+                      <ExternalLink className="mt-1 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/50" />
+                    </button>
+                    {PANEL_TOUR_IDS[p.id]?.[0] && (
+                      <button
+                        type="button"
+                        data-testid={`studio-user-guide-tour-for-${p.id}`}
+                        aria-label={t('userGuide.startPanelTour', { defaultValue: 'Start panel tour' })}
+                        title={t('userGuide.startPanelTour', { defaultValue: 'Start panel tour' })}
+                        onClick={() => startTour(PANEL_TOUR_IDS[p.id]![0])}
+                        className="mt-0.5 rounded p-1 text-muted-foreground/60 transition-colors hover:bg-primary/10 hover:text-primary"
+                      >
+                        <Compass className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>

@@ -203,6 +203,11 @@
     "rescanPartial": "Quét xong (bỏ qua recipe — knowledge chưa cấp phiên bản) — {{count}} mới",
     "rescanPartial_other": "Quét xong (bỏ qua recipe — knowledge chưa cấp phiên bản) — {{count}} mới",
     "rescanFailed": "Quét lại thất bại",
+    "rescanUnchecked": "Quét chưa đầy đủ — {{count}} bài chưa được so sánh",
+    "rescanUnchecked_other": "Quét chưa đầy đủ — {{count}} bài chưa được so sánh",
+    "coverageGap": "Lần quét gần nhất không so sánh được {{count}} bài (không kết nối được knowledge), nên danh sách này có thể còn thiếu.",
+    "coverageGap_other": "Lần quét gần nhất không so sánh được {{count}} bài (không kết nối được knowledge), nên danh sách này có thể còn thiếu.",
+    "coverageUnknown": "Lần quét này không báo đã so sánh được bao nhiêu, nên danh sách có thể còn thiếu.",
     "ledgerNote": "Thay đổi tri thức được ghi tự động ở đây (ledger trễ, không phải realtime). Cờ tự lật nhưng không bài nào tự tạo lại — token chỉ tốn khi bạn bấm Tạo lại.",
     "reason": {
       "entity_changed": "Mục từ điển đã đổi",

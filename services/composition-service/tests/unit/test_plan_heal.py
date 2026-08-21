@@ -8,6 +8,7 @@ address / runaway expansion), and the no-findings / degrade paths.
 import json
 from types import SimpleNamespace
 
+from app.engine.finding import SkipReason
 from app.engine.plan import ChapterPlan, ChapterScenes, DecomposeResult, ScenePlan
 from app.engine.plan_heal import parse_plan_findings, render_outline, run_plan_self_heal
 
@@ -67,7 +68,12 @@ async def test_run_plan_self_heal_edits_valid_and_skips_out_of_range():
         llm, res, user_id="u", model_source="user_model", model_ref="m", source_language="en")
     assert rep.edits_applied == 1
     assert healed.chapters[0].scenes[0].synopsis == "a calmer humiliation, tension building"
-    assert any(f.skip_reason == "not_found" for f in rep.findings)
+    # S3 — this asserted `"not_found"`, plan-heal's own spelling of the case self-heal called
+    # `"not_located"`. One concept, two names, both free strings. `SkipReason.NOT_LOCATED` is
+    # now the only spelling; the rename is safe because `not_found` had no reader outside this
+    # test (the sole non-test consumer of skip_reason is worker/operations.py, and it reads
+    # `refuted`).
+    assert any(f.skip_reason == SkipReason.NOT_LOCATED for f in rep.findings)
 
 
 async def test_run_plan_self_heal_rejects_runaway_expansion():

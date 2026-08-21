@@ -111,6 +111,7 @@ def _make_client(
     app.dependency_overrides[get_projects_repo] = lambda: repo
 
     gclient = MagicMock()
+    gclient.adopt_book_kinds = AsyncMock(return_value=True)
     gclient.propose_entities = AsyncMock(return_value=propose_return)
     app.dependency_overrides[get_glossary_client] = lambda: gclient
 
@@ -171,6 +172,9 @@ def test_promote_creates_draft_then_anchors():
     assert body["glossary_entity_id"] == _GLOSSARY_ID
 
     # draft-create call carried the ai-suggested tag (draft, NOT active).
+    gclient.adopt_book_kinds.assert_awaited_once_with(
+        _BOOK_ID, _TEST_USER, ["character"]
+    )
     assert gclient.propose_entities.await_count == 1
     _args, kwargs = gclient.propose_entities.await_args
     assert kwargs["default_tags"] == ["ai-suggested"]

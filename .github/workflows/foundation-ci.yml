@@ -133,6 +133,13 @@ jobs:
       (github.event_name == 'pull_request' && (github.base_ref == 'main' || startsWith(github.base_ref, 'mmo-rpg/')))
     steps:
       - uses: actions/checkout@v7
+      # This job ends in `python -m pytest scripts/test_*.py` — 16 files, 250 tests,
+      # including the ratchet that proves every gate can go red. The runner has no
+      # pytest, so that step died on `No module named pytest` and the whole set ran
+      # NOWHERE while the job reported a plain failure that read like a lint finding.
+      # Same "built but not wired" shape the 63-gate inventory found, in the job whose
+      # job is proving the gates work.
+      - run: python -m pip install --quiet pytest
       - run: bash scripts/language-rule-lint.sh
       - run: bash scripts/projection-coverage-lint.sh
       # Phase 0 (DEFERRED 078): wire the lint/validator scripts that PASS on
@@ -154,6 +161,22 @@ jobs:
       - run: bash scripts/alert-rule-validator.sh
       # A registered contract that nothing reads is a claim, not a contract (S12).
       - run: python scripts/enforcement-claims-gate.py
+      # …and a gate that cannot FAIL is a claim too. This one injects each guard's real
+      # violation into real source and asserts the guard goes red, because the defect that
+      # motivated it was invisible to every other kind of check: a `\b` corrupted into a
+      # literal 0x08 byte, so the detector matched nothing and reported PASS with the
+      # violation on the line above. `--gates-only` because the remaining cases drive service
+      # pytest suites, whose deps this job does not install — the script names the ones it
+      # skipped rather than counting them as covered.
+      # A guard signal nobody reads is a fact, not a guard. This repo shipped FIVE such
+      # signals in one day, each with its own defensible Debt row and nothing counting them.
+      # Ratchet, not wall: the number may shrink, never grow.
+      - run: python scripts/guard-signal-consumption-gate.py --self-test
+      - run: python scripts/guard-signal-consumption-gate.py
+      - run: python scripts/estimator-ssot-gate.py --self-test
+      - run: python scripts/estimator-ssot-gate.py
+      - run: python scripts/guard-redability-gate.py --self-test
+      - run: python scripts/guard-redability-gate.py --gates-only
       # A gated test that no workflow arms has never run — 200 of them were found this
       # way, in two sweeps, the second only because the first under-counted by 4x.
       - run: python scripts/test-dsn-coverage-gate.py
@@ -162,6 +185,9 @@ jobs:
       # class has a live seeder, and that a blind class is declared rather than silently
       # measuring nothing. It ran nowhere until 2026-08-01 — the same "built but not wired"
       # shape the 63-gate inventory found, in the slice whose whole job is measurement.
+      - name: install shared Python SDK for composition eval gate
+        working-directory: services/composition-service
+        run: python -m pip install -e ../../sdks/python
       - run: python -m app.eval.gate
         working-directory: services/composition-service
 
@@ -189,16 +215,21 @@ jobs:
       - run: python scripts/language-bias-gate.py
       - run: python scripts/sdk-duplication-gate.py
       - run: python scripts/slo-latency-lint.py
-      # NOT amaw-guardrail-gate.py — despite the name it is a Claude Code PreToolUse
-      # HOOK that reads a JSON payload from stdin, so in CI it blocks forever (measured:
-      # a 300s timeout). Classifying it as a lint by filename was the mistake; running it
-      # exactly as CI would is what caught it.
+      # Do not add an agent HOOK to this list because its filename ends in -gate.py.
+      # A PreToolUse hook reads a JSON payload from stdin, so as a CI step it blocks
+      # forever (measured: a 300s timeout on the since-removed amaw-guardrail-gate.py).
+      # Classifying it as a lint by filename was the mistake; running it exactly as CI
+      # would is what caught it. scripts/gate-wiring-gate.py now tracks the exemptions.
       # Previously pre-commit-hook-only. The hook is opt-in per checkout; CI is not.
       - run: python scripts/context-budget-defaults-lint.py
       - run: python scripts/context-inspector-checklist-gate.py
       - run: python scripts/db-safety-gate.py
       - run: python scripts/design-draft-token-lint.py
       - run: python scripts/i18n-completeness-gate.py
+      # Its blind half: completeness compares bundle to bundle, so a t() key that exists
+      # only as a defaultValue is invisible to it and to i18n_translate.py alike, and
+      # stays untranslated in every locale while parity reports green.
+      - run: python scripts/i18n-key-resolution-gate.py
       - run: python scripts/knowledge-access-gate.py
       - run: python scripts/knowledge-http-surface-gate.py
       - run: python scripts/tier-tag-gate.py
@@ -253,22 +284,48 @@ jobs:
       # A gate must be able to FAIL, and the proof of that is a test. These suites exist
       # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
       # own teeth were as unwired as the gates were.
-      - run: python -m pytest scripts/test_ai_provider_gate.py scripts/test_check_stack_freshness.py
-               scripts/test_slice_manifest_validate.py scripts/test_tier_tag_gate.py
-               scripts/test_warp_base_pin.py scripts/test_warp_worktrees.py
-               scripts/test_deprecated_tool_scan.py scripts/test_gate_teeth_gate.py
-               scripts/test_llm_budget_ssot_gate.py scripts/perf/test_slo_assert.py
-               scripts/eval/tests/test_persist_claim_detector.py
-               scripts/test_generation_guard_gate.py
-               scripts/test_enforcement_claims_gate.py -q
+      #
+      # GLOBBED, not listed. This was fourteen hand-written filenames, and it had already
+      # drifted: `scripts/test_i18n_key_resolution_gate.py` was written 2026-08-08 and
+      # never added, so the proof that the i18n gate can go red ran nowhere — the exact
+      # condition this step exists to prevent, reproduced inside the step itself. A list
+      # is default-uncovered; a glob is default-covered, and a new proof runs the day it
+      # lands. The two outside `scripts/` stay explicit because no glob reaches them.
+      - name: gate red-ability proofs
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(scripts/test_*.py scripts/perf/test_slo_assert.py
+                 scripts/eval/tests/test_persist_claim_detector.py)
+          # An empty expansion would make pytest collect the whole tree, or nothing, and
+          # either way this step would stop meaning what it says.
+          if [ "${#files[@]}" -lt 10 ]; then
+            echo "only ${#files[@]} proof file(s) found — the glob is wrong" >&2
+            exit 1
+          fi
+          echo "running ${#files[@]} gate red-ability proof file(s)"
+          python -m pytest "${files[@]}" -q
+      # S9 — the guard-SDK extraction has an entry criterion (three services carrying a
+      # structurally identical GuardReport). It was a sentence in a spec, which fails both
+      # ways: forgotten, or acted on from memory before it holds. Quiet at 1/3; reds the
+      # moment the third service adopts, because nobody re-reads a July spec sentence to
+      # discover a condition became true.
+      # Invariant 2 has one home now. The rule was hand-rolled at seven sites and an eighth
+      # was found by an audit rather than a guard; when distinctness moved onto the RESOLVED
+      # provider model the router adopted it and the publish gate did not. This reds on a
+      # ninth restatement, and on a judge-carrying module that neither resolves nor says who
+      # resolved for it. It found one on the day it was written: knowledge-service's canon
+      # judge WAS the extraction model, unlabelled, since 2026-07-06.
+      # DoD-3's third limb, which had no gate at all: "a missing finish_reason == 'length'
+      # check". A STRUCTURED response cannot stop early in a valid place, so a clipped one is
+      # unparseable — or worse, parseable with items missing. Measured 2 of 28 sites checking.
+      - run: python scripts/truncation-check-gate.py
+      - run: python scripts/truncation-check-gate.py --self-test
+      - run: python scripts/judge-resolution-gate.py
+      - run: python scripts/judge-resolution-gate.py --self-test
+      - run: python scripts/guard-sdk-entry-gate.py
       - run: python scripts/gate-teeth-gate.py
-      # ...and then RUN the proofs it just counted. The step above matches text:
-      # a gate advertising `--self-test` is certified whether or not that flag
-      # still works. Measured — rename the function, leave the flag, and the
-      # count stays at 49 while `--self-test` raises NameError. This step is the
-      # difference between 42 gates that CLAIM a proof and 42 that have one.
-      # ~19s (8-way pool); the 7 pytest-file proofs run in the step above.
-      - run: python scripts/gate-teeth-gate.py --verify-proofs
 
       # NOT wired, with the reason, because "it exists" is not "it enforces":
       #   fe-door-scan.py          — no exit path at all; a REPORT, not a gate
@@ -280,7 +337,17 @@ jobs:
       # The first two are the ones worth naming twice: a script that cannot return
       # non-zero is indistinguishable from no script, and wiring it would have read as
       # +2 gates in this file while enforcing nothing.
+      # A gate must be able to FAIL, and the proof of that is a test. These suites exist
+      # and pass — 148 tests across 8 files — and not one of them ran anywhere. The gates'
+      # own teeth were as unwired as the gates were.
+      - run: python -m pytest scripts/test_ai_provider_gate.py scripts/test_check_stack_freshness.py
 
+      # ...and then RUN the proofs it just counted. The step above matches text:
+      # a gate advertising `--self-test` is certified whether or not that flag
+      # still works. Measured — rename the function, leave the flag, and the
+      # count stays at 49 while `--self-test` raises NameError. This step is the
+      # difference between gates that CLAIM a proof and gates that have one.
+      - run: python scripts/gate-teeth-gate.py --verify-proofs
   python:
     name: Python services (byte-compile)
     runs-on: ubuntu-latest
@@ -369,7 +436,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.25"
-      - name: create dp_kernel_test + apply migrations 0002 + 0004 + 0013 (+ default partition)
+      - name: create dp_kernel_test + apply migrations 0002 + 0004 + 0013 + 0016 (+ default partition)
         shell: bash
         run: |
           set -euo pipefail
@@ -385,6 +452,8 @@ jobs:
           # W3.4 — append now stamps events.content_sha256, so 0013 is required or
           # the INSERT fails to bind ("column content_sha256 does not exist").
           psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0013_events_content_sha256.up.sql
+          # RLS-A13 — PgEventStore stamps the nullable ruleset pin too.
+          psql -d dp_kernel_test -v ON_ERROR_STOP=1 -f contracts/migrations/per_reality/0016_events_ruleset_digest.up.sql
           # events is RANGE-partitioned with no default partition; the live suite
           # appends arbitrary recorded_at, so add a catch-all partition (mirrors
           # the conformance-ci W3.4 kernel-checksum step).
@@ -417,7 +486,7 @@ jobs:
         run: |
           set -euo pipefail
           psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
-          for db in metaworker_meta metaworker_smoke; do
+          for db in metaworker_meta_smoke metaworker_smoke; do
             exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" || true)
             if [ "$exists" != "1" ]; then
               psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
@@ -426,7 +495,7 @@ jobs:
       - name: go test meta-worker live-smoke
         env:
           LW_INTEGRATION_DB: postgres://foundation:foundation@localhost:5432/metaworker_smoke?sslmode=disable
-          LW_INTEGRATION_META_DB: postgres://foundation:foundation@localhost:5432/metaworker_meta?sslmode=disable
+          LW_INTEGRATION_META_DB: postgres://foundation:foundation@localhost:5432/metaworker_meta_smoke?sslmode=disable
           LW_INTEGRATION_REDIS: redis://localhost:6379/0
         run: go -C tests/integration test -tags=integration -run TestMetaWorkerLiveSmoke -count=1 ./...
       # DEFERRED 056+057 (archive-worker): Parquet+ZSTD → MinIO → DROP → restore.
@@ -485,7 +554,7 @@ jobs:
         run: |
           set -euo pipefail
           psql() { PGPASSWORD=foundation command psql -h localhost -p 5432 -U foundation "$@"; }
-          for db in worldservice_smoke worldservice_meta; do
+          for db in worldservice_smoke worldservice_meta_smoke; do
             exists=$(psql -d foundation -tAc "SELECT 1 FROM pg_database WHERE datname='$db'" || true)
             if [ "$exists" != "1" ]; then
               psql -d foundation -v ON_ERROR_STOP=1 -c "CREATE DATABASE $db;"
@@ -494,7 +563,7 @@ jobs:
       - name: cargo test embedding-worker live-smoke
         env:
           LOREWEAVE_TEST_PG_URL: postgres://foundation:foundation@localhost:5432/worldservice_smoke?sslmode=disable
-          LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/worldservice_meta?sslmode=disable
+          LOREWEAVE_TEST_META_URL: postgres://foundation:foundation@localhost:5432/worldservice_meta_smoke?sslmode=disable
         run: cargo test -p world-service --test embedding_live
       # 147 (D-L3EF-REPLAY-LIVE-SMOKE): the L3.E/F integrity-checker round-trip —
       # seed events, build the live projection row in-process, run the
@@ -602,7 +671,15 @@ jobs:
 
       - name: cargo test provisioner re-entry live-smoke
         env:
-          LOREWEAVE_TEST_PG_ADMIN_URL: postgres://foundation:foundation@localhost:5432/postgres?sslmode=disable
+          # db-safety-gate: ok — `postgres` here is the MAINTENANCE database, not a data
+          # database. `provisioner_reentry_live` connects to it for the one thing it is
+          # for: issuing CREATE/DROP DATABASE for its own throwaway reality. There is no
+          # other database you can be connected to while creating one, so main's CI-DSN
+          # rule (every workflow DSN names a throwaway) cannot be satisfied by renaming.
+          # The protection the rule is really after lives on the TARGET, and is present:
+          # the suite's databases carry markers and the fixture calls
+          # `testsafe.EnsureThrowawayDB(current_database())` before anything destructive.
+          LOREWEAVE_TEST_PG_ADMIN_URL: postgres://foundation:foundation@localhost:5432/postgres?sslmode=disable  # db-safety-gate: ok — maintenance DB, see above
         run: cargo test -p world-service --test provisioner_reentry_live
 
       # ── EVERY live suite, one database each — driven by the registry ──────

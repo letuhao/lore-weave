@@ -140,6 +140,8 @@ describe('Gateway proxy routing', () => {
 
   it('routes books/sharing/catalog paths to corresponding services', async () => {
     await request(app.getHttpServer()).get('/v1/books').expect(200).expect('books');
+    await request(app.getHttpServer()).get('/v1/epub-imports/inspect').expect(200).expect('books');
+    await request(app.getHttpServer()).get('/v1/import-jobs/job-1').expect(200).expect('books');
     await request(app.getHttpServer()).get('/v1/sharing/books/1').expect(200).expect('sharing');
     await request(app.getHttpServer()).get('/v1/catalog/books').expect(200).expect('catalog');
     await request(app.getHttpServer()).get('/v1/model-registry/providers').expect(200).expect('provider-registry');

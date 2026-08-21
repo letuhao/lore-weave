@@ -58,7 +58,10 @@
     "publish_anyway": "Terbitkan sahaja",
     "cancel": "Batal",
     "glossary_stale": "Glosari dikemas kini",
-    "glossary_stale_title": "Glosari telah berubah selepas terjemahan ini dibuat — ia mungkin sudah lapuk."
+    "glossary_stale_title": "Glosari telah berubah selepas terjemahan ini dibuat — ia mungkin sudah lapuk.",
+    "source_injection": "Sumber ditanda ({{count}})",
+    "source_injection_other": "Sumber ditanda ({{count}})",
+    "source_injection_title": "Teks sumber yang diimport mengandungi bahagian menyerupai arahan. Terjemahan tidak pernah menulis semula sumber — ini amaran, bukan sekatan."
   },
   "confirm_name": {
     "button": "Betulkan nama",

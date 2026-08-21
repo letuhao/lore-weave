@@ -66,7 +66,10 @@
     "publish_anyway": "Publicar de todos modos",
     "cancel": "Cancelar",
     "glossary_stale": "Glosario actualizado",
-    "glossary_stale_title": "El glosario ha cambiado después de esta traducción; es posible que esté desactualizado."
+    "glossary_stale_title": "El glosario ha cambiado después de esta traducción; es posible que esté desactualizado.",
+    "source_injection": "Fuente marcada ({{count}})",
+    "source_injection_other": "Fuente marcada ({{count}})",
+    "source_injection_title": "El texto fuente importado contiene fragmentos que parecen instrucciones. La traducción nunca reescribe la fuente: es un aviso, no un bloqueo."
   },
   "confirm_name": {
     "button": "Corregir un nombre",

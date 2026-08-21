@@ -15,6 +15,7 @@ import { PlannerView } from '@/features/composition/components/PlannerView';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useActiveWorkId } from '@/features/composition/hooks/useActiveWork';
 import { resolveActiveWork } from '@/features/composition/workSelect';
+import { useManuscriptUnitMeta } from '../manuscript/unit/ManuscriptUnitProvider';
 
 const str = (v: unknown): string | undefined => (typeof v === 'string' && v ? v : undefined);
 
@@ -24,6 +25,7 @@ export function DecomposePanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   const { accessToken } = useAuth();
   const bookId = host.bookId;
+  const unitMeta = useManuscriptUnitMeta();
 
   // DOCK-6 — the deep-linked template ("Use in decompose" from S-01): read at mount AND on a
   // retarget of the already-open singleton. Keying PlannerView on it re-seeds usePlanner.
@@ -84,6 +86,7 @@ export function DecomposePanel(props: IDockviewPanelProps) {
         modelSource="user_model"
         token={accessToken}
         initialTemplateId={templateId}
+        initialChapterId={unitMeta?.activeChapterId ?? undefined}
       />
     </div>
   );

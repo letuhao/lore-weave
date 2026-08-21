@@ -146,6 +146,11 @@
       "desc": "Duyệt các thực thể do AI soạn thảo",
       "guideBody": "Hiển thị các mục thực thể mà AI tự động soạn thảo từ bản thảo của bạn, đang chờ bạn xem xét. Mở nó để chấp nhận, chỉnh sửa hoặc từ chối từng đề xuất trước khi nó trở thành một phần chính thức của từ điển thuật ngữ."
     },
+    "world-setup": {
+      "title": "Thiết lập Thế giới",
+      "desc": "Xây dựng dàn nhân vật, thế giới và các mối quan hệ của họ từ một bản mô tả",
+      "guideBody": "Biến bản mô tả câu chuyện của bạn thành các tư liệu thực tế và có hệ thống: hệ thống sẽ lập kế hoạch những gì cần xây dựng, bạn phê duyệt hoặc lược bỏ danh sách, sau đó từng nhân vật, phe phái và thuật ngữ sẽ được soạn thảo riêng biệt (những nhân vật quan trọng sẽ có hồ sơ chuyên sâu) và được lưu lại để bạn xem xét. Cuối cùng, hệ thống sẽ xác định cách họ kết nối với nhau và yêu cầu bạn phê duyệt các mối quan hệ đó trước khi lưu lại."
+    },
     "glossary-merge-candidates": {
       "title": "Ứng viên gộp",
       "desc": "Duyệt và xác nhận các thực thể có khả năng trùng lặp",
@@ -719,7 +724,8 @@
     "conflict": "xung đột: {{part}}",
     "format": "Định dạng",
     "revert": "Hoàn tác",
-    "openAs": "Mở dạng JSON"
+    "openAs": "Mở dạng JSON",
+    "readOnly": "chỉ đọc"
   },
   "planPasses": {
     "comingSoon": "Quy trình 7 bước sẽ được tải tại đây.",
@@ -761,7 +767,18 @@
     "approveGated": "Hãy áp dụng hạt giống thuật ngữ trước (PF-7)",
     "editAdd": "Thêm",
     "editRemove": "Xóa",
-    "editEmpty": "Chưa có gì ở đây — thêm một hàng."
+    "editEmpty": "Chưa có gì ở đây — thêm một hàng.",
+    "batchSpends": "Chạy mỗi lượt sẵn sàng cho đến điểm kiểm tra tiếp theo — tiêu tốn 1 lượt gọi LLM mỗi lượt.",
+    "chapterNoScenes": "Không có cảnh — chương này không thể soạn thảo.",
+    "linkOutline": "Liên kết các hồi + chương →",
+    "linkScenes": "Liên kết các cảnh →",
+    "linkScenesBlocked": "Hãy chạy lượt cảnh trước",
+    "noBeat": "(không có nhịp)",
+    "noScenes": "Không có chương nào để chỉnh sửa trong kế hoạch cảnh này.",
+    "openEdit": "chỉnh sửa…",
+    "runPicker": "Chọn một lượt chạy kế hoạch",
+    "runToCheckpoint": "Chạy đến điểm kiểm tra tiếp theo",
+    "runningPass": "đang chạy {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Dán markdown hệ thống truyện…",
@@ -785,10 +802,49 @@
       "colRun": "Lượt chạy",
       "colMode": "Chế độ",
       "colStatus": "Trạng thái",
-      "colCreated": "Ngày tạo"
+      "colCreated": "Ngày tạo",
+      "archive": "Lưu trữ",
+      "restore": "Khôi phục",
+      "showArchived": "Hiển thị phần đã lưu trữ"
     },
     "grounded": "Dựa trên {{chapters}} chương hiện có + {{cast}} thành viên dàn nhân vật; tiếp nối {{arcs}} arc hiện có.",
-    "groundOnExisting": "Tiếp tục cuốn sách này — dựa trên dàn nhân vật, các arc và các chương gần đây hiện có"
+    "groundOnExisting": "Tiếp tục cuốn sách này — dựa trên dàn nhân vật, các arc và các chương gần đây hiện có",
+    "bootstrap": {
+      "apply": "Tạo trong sách của tôi",
+      "applying": "Đang tạo…",
+      "approve": "Phê duyệt",
+      "check": "Kiểm tra các mục cần thiết",
+      "checking": "Đang kiểm tra…",
+      "done": "Hoàn tất — hãy mở Chương để xem những gì đã được tạo.",
+      "idleHint": "Kiểm tra xem kế hoạch này có cần tạo thêm chương hoặc nhân vật mới trong sách của bạn không.",
+      "newChapters": "Chương mới",
+      "newGlossary": "Các mục thuật ngữ mới",
+      "nothingToDo": "Mọi thứ trong kế hoạch này đã tồn tại trong sách của bạn — không có gì mới cần tạo.",
+      "reject": "Để sau",
+      "rejected": "Bạn đã bỏ qua gợi ý này.",
+      "retry": "Thử lại",
+      "title": "Thiết lập cuốn sách của bạn"
+    },
+    "material": {
+      "applied": "Đã thêm vào kế hoạch: {{slots}}. Đã lưu thành ghi chú: {{notes}}.",
+      "askTitle": "Không có trong tài liệu của bạn — cần cân nhắc quyết định",
+      "dropped": "{{n}} dòng gợi ý thực tế không có trong tài liệu của bạn và đã bị loại bỏ.",
+      "find": "Kiểm tra kế hoạch của tôi",
+      "finding": "Đang tìm kiếm…",
+      "idleHint": "Tìm kiếm bất kỳ nội dung nào còn thiếu trong những gì bạn đã viết trước khi yêu cầu bạn cung cấp.",
+      "noChange": "Không có thay đổi nào — mọi thứ bạn giữ lại đều đã có trong kế hoạch.",
+      "nothing": "Không thiếu gì cả — kế hoạch đã bao quát mọi phần.",
+      "readFailed": "Tài liệu của bạn không thể được đọc đầy đủ, vì vậy phần «thiếu» dưới đây có thể không chính xác.",
+      "retry": "Kiểm tra lại các mục này",
+      "reviewHint": "Những dòng này đã có trong tài liệu của bạn. Hãy xóa bất kỳ dòng nào không phù hợp, sau đó thêm các phần còn lại.",
+      "stale": "Kế hoạch của bạn đã thay đổi kể từ lần kiểm tra này — hãy chạy lại để có kết quả cập nhật nhất.",
+      "title": "Kế hoạch này đang thiếu gì?",
+      "unavailableHint": "chưa được kiểm tra; hãy thử lại thay vì coi đó là phần còn thiếu",
+      "unavailableTitle": "Không thể kiểm tra",
+      "uncertain": "(tài liệu của bạn chưa được đọc đầy đủ, vì vậy nội dung này có thể đã tồn tại)",
+      "shrank": "Lần chạy này đã lược bỏ nhiều hơn là giữ lại ({{detail}}) — hãy kiểm tra lại các phần đó trước khi tiếp tục xây dựng."
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Chọn một chương trong navigator để soạn ở đây.",
@@ -808,7 +864,13 @@
     "merging": "Đang hợp nhất…",
     "mergeDone": "Đã hợp nhất vào bản chính — nhánh sẽ giữ phiên bản riêng.",
     "mergeConflict": "Bản chính đã thay đổi — hãy mở lại chương và thực hiện hợp nhất lại.",
-    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại."
+    "mergeFailed": "Không thể hợp nhất — vui lòng thử lại.",
+    "askAiPrompt": "Phân tích đoạn văn này từ bản thảo và trả lời câu hỏi của người dùng:\n\n\"{{text}}\"\n\nCần lưu ý những điểm quan trọng nào?",
+    "loadingChapter": "Đang tải chương…",
+    "sceneSuggestionsHint": "Chọn văn bản bản thảo để tạo các đề xuất cảnh bằng AI",
+    "sceneSuggestionsReady": "Sử dụng Gợi ý cảnh trong thanh công cụ AI phía trên đoạn văn đã chọn.",
+    "sceneSuggestionsSelect": "Hãy chọn một đoạn văn trước, sau đó sử dụng Gợi ý cảnh phía trên phần đã chọn.",
+    "suggestScenes": "Gợi ý cảnh"
   },
   "sceneCompose": {
     "empty": "Chọn một chương trong trình điều hướng bản thảo để soạn thảo các cảnh tại đây.",
@@ -994,11 +1056,20 @@
     "conformanceTitle": "Sự tuân thủ",
     "conformanceDesc": "Văn bản có bám sát kế hoạch không? Truy vết từng nhịp độ trong mỗi cảnh",
     "pickModelRerun": "Chọn một mô hình để chạy lại với…",
-    "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch."
+    "pickChapterConformanceHint": "Chọn một chương ở trên để truy vết cách văn bản thực hiện theo kế hoạch.",
+    "editRule": "Quy tắc chỉnh sửa",
+    "healApplied": "Đã áp dụng các bản sửa lỗi đã chọn vào chương này.",
+    "healApplyError": "Không thể áp dụng các bản sửa lỗi. Vui lòng thử lại.",
+    "healStale": "Chương này đã thay đổi kể từ khi chạy lệnh Trau chuốt — hãy chạy lại lệnh Trau chuốt, sau đó mới áp dụng."
   },
   "sidebar": {
     "collapse": "Thu gọn",
     "resize": "Thay đổi kích thước thanh bên"
+  },
+  "panelsPicker": {
+    "title": "Bảng điều khiển không gian làm việc",
+    "search": "Tìm bảng điều khiển…",
+    "hint": "Chọn các bảng điều khiển muốn hiển thị. Lựa chọn của bạn sẽ được lưu cùng với không gian làm việc này."
   },
   "layout": {
     "title": "Bố cục bảng điều khiển",
@@ -1016,6 +1087,14 @@
       "grid4x2": "Lưới 4×2",
       "cols6": "Sáu cột",
       "cols8": "Tám cột"
+    }
+  },
+  "diagnostics": {
+    "unplannedChapter": "Chương {{title}} đã được viết nhưng không nằm trong kế hoạch",
+    "warning": {
+      "openThread": "Không thể đọc các luồng đang mở",
+      "deletedSpec": "Không thể kiểm tra các nút kế hoạch đã bị xóa",
+      "coverage": "Không thể tính toán độ bao phủ giữa bản thảo/kế hoạch"
     }
   },
   "bottom": {
@@ -1193,6 +1272,68 @@
         "knowledge": {
           "title": "Đồ thị tri thức",
           "body": "Để xây dựng thế giới sâu hơn, đồ thị tri thức theo dõi mọi thứ kết nối với nhau như thế nào — thực thể, sự kiện, và mối quan hệ."
+        }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "Mô tả thế giới trước tiên",
+          "body": "Trình hướng dẫn thiết lập sách sẽ tạo ra một cấu trúc thế giới ổn định và các thiết lập hệ thống mặc định để việc trích xuất sau này diễn ra một cách nhất quán."
+        },
+        "glossary": {
+          "title": "Xây dựng thuật ngữ",
+          "body": "Xem lại các thực thể, loại và thuộc tính. Bắt đầu từ văn bản nguồn, sau đó xác nhận thủ công các bản ghi không rõ ràng."
+        },
+        "entities": {
+          "title": "Nghiên cứu thực thể",
+          "body": "Tìm kiếm nhân vật, địa điểm và vật phẩm, mở bằng chứng của chúng và kiểm tra xem những chương nào có nhắc đến chúng."
+        },
+        "timeline": {
+          "title": "Kiểm tra dòng thời gian",
+          "body": "Dòng thời gian sự kiện giúp phát hiện các lỗ hổng và mâu thuẫn giữa các chương. Hãy xem đây là một giả thuyết đang được xây dựng."
+        },
+        "graph": {
+          "title": "Xem các mối liên kết",
+          "body": "Sơ đồ hiển thị mối quan hệ giữa các thực thể. Tìm các nút có độ kết nối cao và quay lại các đoạn văn hỗ trợ chúng."
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "Bắt đầu từ nguồn của khẳng định",
+          "body": "Bằng chứng sẽ dẫn bạn đến chương và đoạn văn cụ thể. Hãy xác minh trích dẫn trước, sau đó mới quyết định xem một thực thể hay thuộc tính có cần thay đổi hay không."
+        },
+        "triage": {
+          "title": "Xử lý hàng đợi xem xét",
+          "body": "Phân loại nhóm các phát hiện chưa chắc chắn theo mức độ khẩn cấp. Giải quyết các xung đột về chính văn và các cảnh báo lặp lại trước khi xử lý các trường hợp ngoại lệ."
+        },
+        "gaps": {
+          "title": "Tìm chi tiết còn thiếu",
+          "body": "Báo cáo lỗ hổng làm nổi bật các thực thể được nhắc đến thường xuyên nhưng mô tả còn sơ sài — những ứng cử viên cần được làm giàu thêm."
+        },
+        "unknown": {
+          "title": "Giải quyết các lượt nhắc chưa xác định",
+          "body": "Khớp một thuật ngữ với một thực thể hiện có hoặc tạo thực thể mới. Hãy kiểm tra ngữ cảnh và các biến thể chính tả trước khi hợp nhất."
+        },
+        "proposals": {
+          "title": "Biên tập viên quyết định",
+          "body": "Chỉ chấp nhận các đề xuất từ AI sau khi đã xem xét nguồn và tầm ảnh hưởng của chúng. Không đưa các ứng viên đã bị từ chối trở lại nếu không có kiểm tra mới."
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "Danh sách thực thể",
+          "body": "Lọc thực thể theo loại và trạng thái, mở hồ sơ, và nhảy nhanh đến các chương chứa bằng chứng của thực thể đó."
+        },
+        "ontology": {
+          "title": "Hệ thống thực thể trong sách",
+          "body": "Chọn thể loại, loại và thuộc tính. Bắt đầu với một mẫu hệ thống, sau đó chỉ thêm các trường mà thế giới này cần."
+        },
+        "suggestions": {
+          "title": "Gợi ý trích xuất",
+          "body": "Trích xuất từ các chương đã chọn, xem xét các ứng viên, và phê duyệt chúng theo lô. Theo dõi các tác vụ đang chạy trong mục Công việc."
+        },
+        "merge": {
+          "title": "Hợp nhất các mục trùng lặp",
+          "body": "So sánh tên, loại, thuộc tính và bằng chứng trước khi hợp nhất. Kiểm tra các liên kết sau khi thực hiện thao tác."
         }
       },
       "translator": {
@@ -1406,14 +1547,63 @@
           "title": "Mở trong cửa sổ riêng",
           "body": "Mở trình Soạn thảo trong một cửa sổ hệ điều hành riêng biệt — rất hữu ích khi dùng màn hình thứ hai. Những chỉnh sửa bạn phê duyệt tại đó vẫn sẽ được lưu vào trình chỉnh sửa của cuốn sách này."
         }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "Không gian làm việc mẫu cấu trúc",
+          "body": "Bảng này chứa các cấu trúc truyện có sẵn và riêng tư. Chúng giúp bạn sắp xếp các chương vào một trình tự các nhịp truyện theo thứ tự."
+        },
+        "list": {
+          "title": "Mẫu có sẵn và mẫu cá nhân",
+          "body": "Các mẫu có sẵn chỉ có thể đọc. Hãy nhân bản một mẫu hoặc chọn mẫu của riêng bạn để làm việc trên một bản sao có thể chỉnh sửa."
+        },
+        "create": {
+          "title": "Tạo cấu trúc của riêng bạn",
+          "body": "Chọn «Cấu trúc mới», đặt tên và thêm các nhịp truyện. Các mẫu tùy chỉnh của bạn có thể tái sử dụng cho nhiều cuốn sách khác nhau."
+        },
+        "edit": {
+          "title": "Chỉnh sửa và áp dụng",
+          "body": "Sắp xếp lại các nhịp truyện, mô tả mục đích của chúng, lưu các thay đổi, sau đó sử dụng cấu trúc này từ bảng Phân rã."
+        }
       }
     }
   },
   "userGuide": {
+    "open": "Mở hướng dẫn sử dụng",
     "intro": "Mọi công cụ Xưởng Sáng Tác có thể mở, được nhóm theo cùng cách với Command Palette.",
     "toursGroup": "Hướng dẫn tham quan",
     "toursEditor": "Trình chỉnh sửa",
-    "toursComposer": "Trình soạn thảo"
+    "toursComposer": "Trình soạn thảo",
+    "toursResearch": "Nghiên cứu thế giới",
+    "workflowsTitle": "Quy trình và thực hành",
+    "workflows": {
+      "setup": {
+        "title": "Chuẩn bị một cuốn sách",
+        "body": "Hãy tạo cấu trúc trước, sau đó nhập các chương và xác nhận rằng sơ đồ cây được tải lên một cách chính xác.",
+        "steps": "Nhập sách → Trình chỉnh sửa → Kiểm tra tính toàn vẹn trong Thuật ngữ. Tự động sửa các lỗi được báo cáo, sau đó chạy kiểm tra lại."
+      },
+      "lore": {
+        "title": "Nghiên cứu thế giới",
+        "body": "Thuật ngữ lưu trữ các sự thật về thế giới; cơ sở tri thức kết nối chúng với các bằng chứng và sự kiện.",
+        "steps": "Hệ thống khái niệm xác định các loại và thuộc tính → Trích xuất từ các chương đã chọn → Thực thể và Bằng chứng xác minh các phát hiện → Đồ thị và Dòng thời gian hé lộ các mối liên kết."
+      },
+      "factChecking": {
+        "title": "Kiểm tra sự thật và chính văn",
+        "body": "Đừng bao giờ chấp nhận một phát hiện của AI mà không có nguồn: hãy mở đoạn văn trước, sau đó mới chấp nhận hoặc từ chối đề xuất.",
+        "steps": "Bằng chứng → nhảy đến chương → Phân loại hàng đợi chưa xác định → Khoảng trống cho các mô tả còn thiếu. Chạy lại kiểm tra tính toàn vẹn sau khi chỉnh sửa."
+      },
+      "jobs": {
+        "title": "Công việc chạy lâu và khôi phục",
+        "body": "Trích xuất, dịch thuật và làm giàu dữ liệu chạy dưới dạng các tác vụ, vì vậy việc đóng bảng điều khiển sẽ không làm mất tiến trình.",
+        "steps": "Mở Tác vụ để theo dõi tiến độ và chi phí của các đợt/cửa sổ. Khi thất bại, hãy dùng Tiếp tục từ điểm kiểm soát; khi các tham số thay đổi, hãy dùng Bắt đầu lại."
+      },
+      "translation": {
+        "title": "Dịch thuật không làm mất chính văn",
+        "body": "Ổn định thuật ngữ trước khi dịch để tên, thuật ngữ và các mối quan hệ luôn được nhất quán.",
+        "steps": "Dịch thuật hiển thị độ bao phủ và các phiên bản → Làm giàu nội dung lấp đầy các lỗ hổng cốt truyện → trước khi xuất bản, hãy xem lại các chương, thuật ngữ và nhật ký hoạt động."
+      }
+    },
+    "startPanelTour": "Bắt đầu hướng dẫn bảng điều khiển"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1665,22 @@
     "composerPopout": {
       "label": "Cửa sổ rời",
       "desc": "Tách cửa sổ Compose thành một cửa sổ hệ điều hành riêng biệt để dùng cho màn hình thứ hai."
+    },
+    "worldResearch": {
+      "label": "Nghiên cứu thế giới",
+      "desc": "Từ thiết lập sách đến các thực thể, dòng thời gian và biểu đồ mối quan hệ — một quy trình nghiên cứu cốt truyện có thể lặp lại."
+    },
+    "factChecking": {
+      "label": "Kiểm chứng sự thật",
+      "desc": "Bằng chứng, phân loại, lỗ hổng và các thực thể chưa xác định: xác minh các giả thuyết dựa trên văn bản gốc."
+    },
+    "glossaryWorkflow": {
+      "label": "Quy trình thuật ngữ",
+      "desc": "Hệ thống khái niệm, trích xuất, gợi ý và hợp nhất các mục trùng lặp một cách an toàn."
+    },
+    "structureTemplates": {
+      "label": "Mẫu cấu trúc",
+      "desc": "Tạo và tinh chỉnh cấu trúc câu chuyện để phân rã các chương."
     }
   },
   "planHub": {
@@ -1513,7 +1719,14 @@
       "viewNarrative": "Tự sự",
       "viewTimeline": "Dòng thời gian",
       "viewWorldmap": "Bản đồ thế giới",
-      "viewSoon": "Sẽ ra mắt trong giai đoạn sau"
+      "viewSoon": "Sẽ ra mắt trong giai đoạn sau",
+      "addArc": "+ Arc",
+      "addArcHint": "Thêm một arc cấp cao nhất",
+      "addArcNoGrant": "Bạn cần quyền chỉnh sửa để thêm arc",
+      "addSubArc": "+ Sub-arc",
+      "addSubArcHint": "Thêm một sub-arc dưới arc đã chọn",
+      "addSubArcHint2": "Chọn một arc để lồng một sub-arc vào trong đó",
+      "addingArc": "+ Arc…"
     },
     "mode": {
       "simple": "Đơn giản",
@@ -1541,6 +1754,12 @@
       "rename": "Đổi tên",
       "delete": "Xóa chương",
       "aiDraft": "Hoặc để AI viết nháp →",
+      "importPlan": "Nhập kế hoạch từ CSV",
+      "importingPlan": "Đang nhập kế hoạch...",
+      "aiPlan": "Tạo kế hoạch với AI",
+      "csvEmpty": "Tệp CSV không có hàng kế hoạch nào.",
+      "csvNoMatches": "Không có hàng CSV nào khớp với sách này. Hãy sử dụng chapter_id hoặc sort_order.",
+      "csvFailed": "Nhập kế hoạch thất bại.",
       "legend": {
         "authored": "bạn đã viết",
         "ai": "Ý tưởng AI"
@@ -1586,7 +1805,6 @@
     "mineEmpty": "Chưa có — hãy nhân bản một mẫu có sẵn để bắt đầu.",
     "loading": "Đang tải…",
     "pickHint": "Chọn một cấu trúc để xem các nhịp truyện.",
-    "beats": "nhịp truyện",
     "builtinNote": "Đây là cấu trúc có sẵn. Hãy nhân bản để tùy chỉnh — bạn chỉnh sửa bản sao của mình, bản gốc vẫn giữ nguyên cho mọi người.",
     "cloneBuiltin": "Nhân bản vào cấu trúc của tôi",
     "duplicate": "Sao chép",
@@ -1636,7 +1854,15 @@
       "builtin": "mặc định",
       "mine": "của tôi",
       "archived": "đã lưu trữ"
-    }
+    },
+    "help": "Trợ giúp về mẫu cấu trúc",
+    "startTour": "Bắt đầu hướng dẫn về mẫu cấu trúc",
+    "useInDecompose": "Sử dụng trong Phân rã →",
+    "beats_one": "nhịp",
+    "beats_other": "nhịp",
+    "kindPlaceholder": "chung",
+    "beats": "nhịp truyện",
+    "nameRequired": "Yêu cầu nhập tên"
   },
   "search": {
     "modeLabel": "Chế độ tìm kiếm",
@@ -1664,5 +1890,47 @@
     "firstStructureTitle": "Hồi Một",
     "everything": "Hoặc thiết lập hoàn chỉnh cuốn sách này",
     "everythingBusy": "Đang thiết lập…"
+  },
+  "checkpoints": {
+    "blocked_dirty": "Hãy lưu các chỉnh sửa của bạn trước — việc khôi phục sẽ ghi đè lên chúng",
+    "confirm_desc": "Bản thảo hiện tại sẽ được chụp lại trước, vì vậy bạn có thể hoàn tác từ lịch sử phiên bản.",
+    "confirm_title": "Khôi phục về trạng thái trước khi chỉnh sửa bằng AI này?",
+    "dirty_warning": "Hãy lưu các chỉnh sửa hiện tại của bạn trước khi khôi phục điểm mốc.",
+    "header": "Điểm mốc chỉnh sửa AI",
+    "insert": "Đã chèn",
+    "no_restore": "Không có phiên bản cũ hơn để khôi phục",
+    "replace": "Đã viết lại",
+    "restore": "Khôi phục",
+    "restore_failed": "Không thể khôi phục điểm mốc này.",
+    "restored": "Đã khôi phục về trạng thái trước khi chỉnh sửa bằng AI"
+  },
+  "common": {
+    "close": "Đóng"
+  },
+  "compose": {
+    "startDrafting": "Bắt đầu soạn thảo →",
+    "startDraftingTitle": "Mở không gian làm việc soạn thảo để viết các chương từ kế hoạch của bạn"
+  },
+  "errorBlocks": {
+    "dismiss": "Bỏ qua",
+    "drifted": "văn bản đã thay đổi",
+    "remove": "Xóa đánh dấu",
+    "removed": "Đã xóa đánh dấu.",
+    "reopen": "Mở lại",
+    "resolve": "Đã khắc phục",
+    "title": "Các vấn đề đã đánh dấu",
+    "undo": "Hoàn tác",
+    "undoFailed": "Không thể khôi phục đánh dấu."
+  },
+  "revision": {
+    "blocked_dirty": "Bạn có các thay đổi chưa được lưu. Hãy lưu hoặc hủy bỏ chúng trước khi khôi phục bản sửa đổi.",
+    "confirm_desc": "Bản thảo hiện tại sẽ bị thay thế bằng bản sửa đổi này. Thao tác này không thể hoàn tác.",
+    "confirm_title": "Khôi phục bản sửa đổi này?",
+    "current": "Hiện tại",
+    "empty": "Chưa có bản sửa đổi nào.",
+    "header": "Lịch sử sửa đổi",
+    "load_more": "Tải thêm",
+    "loading_more": "Đang tải…",
+    "restore": "Khôi phục"
   }
 }

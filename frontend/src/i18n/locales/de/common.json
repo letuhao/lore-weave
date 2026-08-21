@@ -172,5 +172,10 @@
     "saved": "Modell-Reihenfolge gespeichert",
     "saveFailed": "Reihenfolge konnte nicht gespeichert werden.",
     "loadFailed": "Modelle konnten nicht geladen werden."
+  },
+  "errorBoundary": {
+    "title": "Diese Seite konnte nicht angezeigt werden",
+    "description": "Ein Schnittstellenfehler ist aufgetreten. Er wurde im Diagnoseprotokoll gespeichert; bitte versuchen Sie den Vorgang erneut.",
+    "retry": "Erneut versuchen"
   }
 }

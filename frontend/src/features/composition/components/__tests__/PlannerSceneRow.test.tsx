@@ -20,6 +20,13 @@ describe('PlannerSceneRow (FD-15 cast add/remove/resolve)', () => {
     expect(onEdit).toHaveBeenCalledWith({ present_entity_ids: [] });
   });
 
+  it('prefers planner-resolved names when the roster is stale or incomplete', () => {
+    render(<PlannerSceneRow scene={scene({ present_entity_ids: ['e-missing'] })} index={0}
+      names={{ 'e-missing': 'Чжан Чэньлин' }} unresolved={[]} roster={ROSTER} onEdit={vi.fn()} onRemove={vi.fn()} />);
+    expect(screen.getByText('Чжан Чэньлин')).toBeTruthy();
+    expect(screen.queryByText('e-missing')).toBeNull();
+  });
+
   it('adds a cast member from the roster (excluding those already in)', () => {
     const onEdit = vi.fn();
     render(<PlannerSceneRow scene={scene({ present_entity_ids: ['e1'] })} index={0}

@@ -10,14 +10,16 @@ type Props = {
   scene: PlannerSceneDraft;
   index: number;
   unresolved: string[]; // present_entity_names_unresolved (display hint)
+  names?: Record<string, string>;
+  inactiveIds?: Set<string>;
   roster: RosterOption[];
   onEdit: (patch: Partial<PlannerSceneDraft>) => void;
   onRemove: () => void;
 };
 
-export function PlannerSceneRow({ scene, index, unresolved, roster, onEdit, onRemove }: Props) {
+export function PlannerSceneRow({ scene, index, unresolved, names = {}, inactiveIds = new Set(), roster, onEdit, onRemove }: Props) {
   const { t } = useTranslation('composition');
-  const labelFor = (id: string) => roster.find((o) => o.id === id)?.label ?? id;
+  const labelFor = (id: string) => names[id] ?? roster.find((o) => o.id === id)?.label ?? id;
   const inCast = new Set(scene.present_entity_ids);
   const addable = roster.filter((o) => !inCast.has(o.id));
 
@@ -76,8 +78,9 @@ export function PlannerSceneRow({ scene, index, unresolved, roster, onEdit, onRe
       <div className="flex flex-wrap items-center gap-1 text-xs" data-testid="planner-cast">
         <span className="text-muted-foreground">{t('plan.cast')}:</span>
         {scene.present_entity_ids.map((id) => (
-          <span key={id} data-testid="planner-cast-chip" className="inline-flex items-center gap-1 rounded bg-muted px-1.5 py-0.5">
+          <span key={id} data-testid="planner-cast-chip" title={inactiveIds.has(id) ? t('plan.inactive_cast', { defaultValue: 'Entity is inactive' }) : undefined} className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${inactiveIds.has(id) ? 'border border-amber-500/60 bg-amber-500/15 text-amber-200' : 'bg-muted'}`}>
             {labelFor(id)}
+            {inactiveIds.has(id) && <span aria-label={t('plan.inactive_cast', { defaultValue: 'Entity is inactive' })}>⚠</span>}
             <button
               type="button"
               className="text-muted-foreground hover:text-destructive"

@@ -27,13 +27,16 @@ RUN set -eu; \
 # Service code imports both. Direct provider-SDK calls (litellm,
 # openai, anthropic) are forbidden per CLAUDE.md gateway invariant.
 COPY sdks/python /sdk
+COPY infra/python-constraints.txt /constraints.txt
 RUN set -eu; \
     for i in 1 2 3 4 5; do \
-      if pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk; then exit 0; fi; \
+      if pip install --no-cache-dir -i "$PIP_INDEX_URL" -c /constraints.txt /sdk; then exit 0; fi; \
       echo "pip attempt $i/5 failed — retrying in 5s"; \
       sleep 5; \
     done; \
     echo "pip: all 5 attempts failed"; exit 1
+COPY scripts/verify-python-mcp.sh /usr/local/bin/verify-python-mcp
+RUN /usr/local/bin/verify-python-mcp
 # ── Stage 2: test ─────────────────────────────────────────────
 # CI target: docker build --target test .
 # Installs test deps, copies source + tests, runs pytest.

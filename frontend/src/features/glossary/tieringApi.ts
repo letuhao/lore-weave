@@ -27,6 +27,25 @@ import type {
 
 const BASE = '/v1/glossary';
 
+// Keep the ontology response total even when a rolling deployment or an older
+// book row returns NULL for one of its collection fields. All tiered screens
+// render these collections directly and must not be able to call `.length` on
+// an absent genre/kind/attribute list.
+function normalizeBookOntology(ontology: BookOntology): BookOntology {
+  return {
+    ...ontology,
+    genres: Array.isArray(ontology?.genres) ? ontology.genres : [],
+    kinds: Array.isArray(ontology?.kinds) ? ontology.kinds : [],
+    kind_genres: Array.isArray(ontology?.kind_genres) ? ontology.kind_genres : [],
+    attributes: Array.isArray(ontology?.attributes)
+      ? ontology.attributes.map((attribute) => ({
+          ...attribute,
+          options: Array.isArray(attribute.options) ? attribute.options : [],
+        }))
+      : [],
+  };
+}
+
 export const tieringApi = {
   // ── Standards: genres (System read-only merged + User CRUD) ────────────────
 
@@ -180,7 +199,7 @@ export const tieringApi = {
 
   /** The book-local, single-tier ontology read (View). */
   getOntology(bookId: string, token: string): Promise<BookOntology> {
-    return apiJson<BookOntology>(`${BASE}/books/${bookId}/ontology`, { token });
+    return apiJson<BookOntology>(`${BASE}/books/${bookId}/ontology`, { token }).then(normalizeBookOntology);
   },
 
   // ── Book tier: CRUD (all Manage-gated) ─────────────────────────────────────

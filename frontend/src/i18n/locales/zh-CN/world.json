@@ -98,5 +98,27 @@
     "branchAt": "在第 {{ch}} 章分支出",
     "orphan": "· 来源于此世界之外",
     "edgeLabel": "第 {{ch}} 章"
+  },
+  "mapEditor": {
+    "bind": "绑定实体",
+    "delete": "删除",
+    "empty": "暂无地图 —— 绘制故事赖以生存的世界吧。",
+    "entityPlaceholder": "地点实体 ID",
+    "error": "无法加载此地图。",
+    "label": "标签",
+    "marker": "标记",
+    "name": "名称",
+    "newMap": "+ 新建地图",
+    "newMapPrompt": "为新地图命名",
+    "pickWorld": "选择一个世界进行绘图。",
+    "region": "区域",
+    "save": "保存",
+    "unbind": "解绑",
+    "uploadImage": "上传底图",
+    "vertexCapNotice": "{{count}} 个顶点 — 为保证性能，超过 {{max}} 个顶点时将禁用重塑功能。"
+  },
+  "maps": {
+    "empty": "暂无地图。可以尝试对助手说“制作这个世界的地图”来创建一张。",
+    "heading": "地图"
   }
 }

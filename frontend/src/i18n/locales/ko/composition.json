@@ -74,7 +74,14 @@
     "accept": "수락",
     "discard": "버리기",
     "stop": "중단",
-    "stale": "선택 영역이 변경되었습니다 — 다시 시도하세요."
+    "stale": "선택 영역이 변경되었습니다 — 다시 시도하세요.",
+    "scenePlan": "Suggest scenes",
+    "scenePlanOnly": "This selection is available for scene suggestions only.",
+    "scenePlanInvalid": "The model did not return valid scene proposals. Try again.",
+    "scenePlanNeedsOutline": "This chapter has no outline yet. Create or extract its plan first.",
+    "scenePlanCreateFailed": "Could not create scene proposals.",
+    "createScenes": "Create selected scenes",
+    "applying": "Creating…"
   },
   "inline": {
     "mode": "쓰기 모드",
@@ -147,7 +154,14 @@
     "promoted": "만약에 파생 시나리오로 승인되었습니다.",
     "promotedPartial": "승인되었으나 {{n}}개의 테이크를 추가할 수 없었습니다.",
     "promotedProsePartial": "승인되었으나 {{n}}개의 테이크의 문장을 저장할 수 없었습니다 — 다시 승인하여 재시도하세요.",
-    "promoteHint": "승인하려면 최소 하나 이상의 테이크를 생성하세요"
+    "promoteHint": "승인하려면 최소 하나 이상의 테이크를 생성하세요",
+    "vsCanon": {
+      "absoluteHint": "점수 산출 (비교할 원작 기준 없음)",
+      "judging": "· 원작 대비…",
+      "noBaseline": "· 원작 기준 없음",
+      "take": "선택",
+      "vs": "원작 대비"
+    }
   },
   "cast": "캐스트",
   "codex": {
@@ -254,7 +268,8 @@
     "linkMissing": "해당 장소 중 하나가 더 이상 존재하지 않습니다.",
     "delete": "{{name}} 삭제",
     "deleteConfirm": "월드맵에서 «{{name}}»을(를) 삭제할까요? 삭제하면 해당 장소가 아카이브로 이동합니다.",
-    "deleteFailed": "장소를 삭제하지 못했습니다."
+    "deleteFailed": "장소를 삭제하지 못했습니다.",
+    "backdropNoChapter": "배경을 설정하려면 장을 여세요."
   },
   "grounding": "그라운딩",
   "canon": "설정(Canon)",
@@ -339,7 +354,21 @@
     "noHits": "일치하는 참조가 아직 없습니다.",
     "library": "라이브러리",
     "delete": "삭제",
-    "empty": "참조가 아직 없습니다 — 위에서 영향 요소를 추가하세요."
+    "empty": "참조가 아직 없습니다 — 위에서 영향 요소를 추가하세요.",
+    "addEmbedModel": "임베딩 모델 추가",
+    "content": "콘텐츠",
+    "contentRecomputes": "콘텐츠를 저장하면 이 참조의 임베딩이 다시 계산됩니다.",
+    "deleteBody": "선반에서 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+    "deleteTitle": "이 참조를 삭제할까요?",
+    "done": "완료",
+    "edit": "편집",
+    "filter": "필터…",
+    "noMatch": "필터와 일치하는 참조가 없습니다.",
+    "reembedding": "다시 임베딩…",
+    "saveContent": "콘텐츠 저장 (다시 임베딩)",
+    "saveMetadata": "상세 정보 저장",
+    "saving": "저장 중…",
+    "sourceUrl": "소스 URL (선택 사항)"
   },
   "progressPanel": {
     "loading": "진행률 로딩 중…",
@@ -356,7 +385,8 @@
     "words": "단어",
     "goalPlaceholder": "단어/일",
     "setGoal": "목표 설정",
-    "goalHint": "0은 목표를 초기화합니다"
+    "goalHint": "0은 목표를 초기화합니다",
+    "goalLegacy": "이 목표는 도서의 공유 설정에서 가져왔습니다. 설정을 변경하면 사용자 개인 설정으로 적용됩니다."
   },
   "workSettings": {
     "defaultModel": "기본 초안 모델",
@@ -368,7 +398,11 @@
     "chapter": "챕터 (단일 패스)",
     "narrativeThread": "서사 스레드 추적 (복선 및 약속)",
     "narrativeThreadHint": "권장 사항: 미결된 복선을 감지하고 생성 시 이를 반영하도록 재주입합니다. 해결되지 않은 복선은 '부채 뷰'로 표시됩니다. 선택 사항입니다.",
-    "saveError": "설정을 저장할 수 없습니다 — 다시 시도하세요."
+    "saveError": "설정을 저장할 수 없습니다 — 다시 시도하세요.",
+    "criticModel": "비평 모델 (독립적인 심사위원)",
+    "criticModelHint": "서로 다른 모델이 각 초안을 설정된 세계관과 대조하여 채점하며, 설정과 모순되는 장(章)은 차단할 수 있습니다. 비평 모델이 없으면 문장을 독립적으로 검토할 수 없습니다. 모델은 자신의 결과물을 스스로 채점할 수 없습니다.",
+    "criticSameAsDrafter": "이 모델은 문장을 작성하는 모델과 동일합니다. 이 경우 자신의 결과물을 스스로 채점하게 되므로, 서버에서 이를 거부하고 비평을 건너뜁니다. 다른 모델을 선택하십시오.",
+    "noCritic": "비평 없음 — 초안은 별도로 채점되지 않습니다"
   },
   "loadingStats": "품질 통계 로딩 중…",
   "statsUnavailable": "품질 통계를 사용할 수 없습니다.",
@@ -502,7 +536,25 @@
     "err_no_chapters": "이 책에는 아직 챕터가 없습니다. 계획을 세우기 전에 챕터를 먼저 생성하세요.",
     "err_too_many_chapters": "한 번에 계획하기에는 챕터가 너무 많습니다.",
     "err_bad_entity": "일부 장면 등장인물이 이 책의 용어집에 없습니다.",
-    "err_bad_chapter": "계획에 포함된 챕터가 이 책의 일부가 아닙니다."
+    "err_bad_chapter": "계획에 포함된 챕터가 이 책의 일부가 아닙니다.",
+    "beat_label": "비트",
+    "inactive_cast": "엔티티가 비활성 상태입니다",
+    "add_template": "템플릿 추가",
+    "create_template_title": "새 구조 템플릿",
+    "template_name": "이름",
+    "template_name_placeholder": "예: 영웅의 여정",
+    "template_kind": "종류",
+    "template_beats": "비트 (한 줄에 하나씩)",
+    "template_beats_placeholder": "설정\n전환점\n절정",
+    "template_create": "템플릿 생성",
+    "template_creating": "생성 중…",
+    "template_create_error": "템플릿을 생성할 수 없습니다",
+    "close": "닫기",
+    "chapter_scope": "범위",
+    "all_chapters": "모든 장",
+    "recreate_current": "현재 장 다시 생성",
+    "recreate_all": "모든 장 다시 생성",
+    "done": "완료"
   },
   "threads": "스레드",
   "threadsTitle": "플롯 스레드",
@@ -649,13 +701,16 @@
     "overuse": "\"{{name}}\"이(가) {{chapters}}개 장에서 이미 사용되었습니다 — 변형을 고려해 보세요.",
     "list": {
       "noMatch": "일치하는 모티프가 없습니다 — 필터를 해제하세요.",
-      "truncated": "처음 100개만 표시 중 — 검색이나 필터를 사용하여 범위를 좁히면 나머지를 볼 수 있습니다."
+      "truncated": "처음 100개만 표시 중 — 검색이나 필터를 사용하여 범위를 좁히면 나머지를 볼 수 있습니다.",
+      "loadMore": "더 보기",
+      "loadingMore": "로딩 중…"
     },
     "error": {
       "load": "로드할 수 없습니다 — 다시 시도해 주세요."
     },
     "permission": {
-      "readOnly": "이것은 공유 템플릿입니다 — 편집 가능한 복사본을 만들려면 복제하세요."
+      "readOnly": "이것은 공유 템플릿입니다 — 편집 가능한 복사본을 만들려면 복제하세요.",
+      "noSession": "세션이 재로드될 때까지 편집을 사용할 수 없습니다."
     },
     "action": {
       "open": "열기",
@@ -666,11 +721,19 @@
       "cancel": "취소",
       "retry": "재시도",
       "swap": "교체",
-      "clear": "자유 형식"
+      "clear": "자유 형식",
+      "bind": "모티프 연결",
+      "discard": "버리기",
+      "edit": "편집",
+      "mine": "채굴",
+      "promote": "승격",
+      "restore": "복구",
+      "save": "저장"
     },
     "card": {
       "draft": "추출된 초안",
-      "tension": "강도"
+      "tension": "강도",
+      "shared": "공유됨"
     },
     "empty": {
       "title": "모티프 라이브러리가 준비되었습니다",
@@ -718,7 +781,13 @@
       "toUser": "내 라이브러리",
       "whatItDoes": "이 모티프를 라이브러리에 복사합니다 (개인용 편집 가능 복제본).",
       "continue": "계속",
-      "estimating": "계산 중…"
+      "estimating": "계산 중…",
+      "bodyUser": "복사하기를 누르면 내 라이브러리에 편집 가능한 개인용 사본이 생성됩니다.",
+      "sharedHint": "이 책에 대한 권한이 있는 모든 사용자가 이 모티프를 보고 편집할 수 있습니다.",
+      "targetBook": "이 책 (개인용)",
+      "targetBookShared": "협업자와 공유",
+      "targetLegend": "추가 위치:",
+      "targetUser": "내 라이브러리"
     },
     "quota": {
       "adopt": "이번 기간에 {{used}}/{{limit}}개를 채택했습니다 — 일부를 보관하거나 기다려 주세요."
@@ -745,7 +814,10 @@
     "binding": {
       "freeForm": "일치하는 모티프가 없습니다 — 이 장면은 자유 형식입니다.",
       "commitGenerate": "확정 + 이 장면 쓰기 →",
-      "noWork": "이 책의 장면들에 모티프를 연결할 계획을 세워보세요."
+      "noWork": "이 책의 장면들에 모티프를 연결할 계획을 세워보세요.",
+      "committedTitle": "장면 모티프 연결됨",
+      "loadError": "장면 모티프를 불러올 수 없습니다.",
+      "sectionTitle": "장면 모티프"
     },
     "swap": {
       "title": "모티프 교체",
@@ -770,7 +842,13 @@
         "warn": "강도 편차",
         "bad": "비트 이탈"
       },
-      "rerunNeedsModel": "일치 여부를 다시 확인하려면 모델을 선택하세요"
+      "rerunNeedsModel": "일치 여부를 다시 확인하려면 모델을 선택하세요",
+      "bindCta": "모티프를 장면에 연결하기 →",
+      "couldNotCheck": "확인 불가",
+      "notChecked": "아직 확인되지 않음",
+      "notWritten": "아직 작성되지 않음",
+      "openScene": "인스펙터에서 이 장면 열기",
+      "written": "작성됨"
     },
     "arc": {
       "mobileNotice": "타임라인 그리드는 큰 화면에서 사용할 수 있습니다 — 여기서는 목록 형태로 편집할 수 있습니다.",
@@ -827,7 +905,8 @@
         "driftFolded": "중첩됨 (결합되지 않음)",
         "untitledArc": "(제목 없는 아크)",
         "truncated": "{{count}}개 중 처음 {{shown}}개만 표시됨 — 더 많은 내용을 찾으려면 카탈로그를 이용하거나 더 높은 등급을 사용하세요.",
-        "tabSuggest": "추천"
+        "tabSuggest": "추천",
+        "restore": "복원"
       },
       "import": {
         "privacy": "원문 텍스트는 사용자 본인만 볼 수 있으며 절대 공유되지 않습니다. 파생된 추상적 구조만 게시할 수 있으며, 게시 시 소스 참조 정보는 삭제됩니다.",
@@ -883,7 +962,42 @@
         "error": "챕터를 에피소드로 그룹화할 수 없습니다.",
         "done": "{{chapters}}개의 챕터를 {{arcs}}개의 에피소드로 그룹화했습니다.",
         "none": "아직 그룹화할 챕터가 없습니다."
-      }
+      },
+      "apply": {
+        "dropMerge": "규모 조정",
+        "error": "적용 미리보기를 생성할 수 없습니다.",
+        "previewOnly": "미리보기 전용 — 변경 사항을 적용하려면 책 내부에서 이 아크를 여세요.",
+        "rescaled": "{{from}} → {{to}}장으로 규모 조정됨",
+        "roster": "등장인물 배정 (아크 전체에 한 번만 적용)",
+        "run": "계획 미리보기",
+        "running": "미리보기 중…",
+        "targetChapters": "대상 장",
+        "title": "새 책에 적용 (미리보기)",
+        "unbound": "연결되지 않은 역할: {{keys}}"
+      },
+      "backToList": "모든 아크 템플릿",
+      "chapterCount": "{{count}}개 장",
+      "empty": "이 아크에는 아직 스레드나 배치가 없습니다.",
+      "grabbed": "{{name}}을(를) 가져왔습니다. 화살표 키로 이동, Shift+화살표로 크기 조절, Enter로 배치, Esc로 해제할 수 있습니다.",
+      "loadError": "이 아크 타임라인을 불러올 수 없습니다.",
+      "loading": "타임라인 로딩 중…",
+      "materialize": {
+        "blurb": "이 아크를 현재 책에 확정합니다. 각 장의 장면 개요와 모티프 바인딩이 생성됩니다.",
+        "conflict": "일부 장에 이미 계획이 있습니다. 해당 장면들을 이 아크로 교체할까요?",
+        "done": "{{chapters}}개 장에 걸쳐 {{scenes}}개의 장면을 확정했습니다.",
+        "error": "이 아크를 구체화할 수 없습니다.",
+        "folded": "장 개수 재조정으로 인해 {{count}}개의 모티프가 접혔습니다.",
+        "replace": "기존 장면 교체",
+        "run": "이 책에 구체화하기",
+        "running": "구체화 중…",
+        "unresolved": "{{count}}개의 모티프를 해결할 수 없어 건너뛰었습니다."
+      },
+      "placementDesc": "{{thread}} 스레드, {{from}}-{{to}}장",
+      "readonly": "이 아크는 읽기 전용입니다. 타임라인을 편집하려면 라이브러리에 채택하세요.",
+      "saveConflict": "다시 불러옴 — 다른 곳에서 이 아크가 변경되었습니다.",
+      "saveError": "저장 실패 — 다음 편집 시 다시 시도합니다.",
+      "saved": "저장됨",
+      "saving": "저장 중…"
     },
     "simple": {
       "actant": {
@@ -1014,6 +1128,111 @@
       "overCap": "번역 작업당 최대 {{cap}}개의 모티프만 가능합니다. {{over}}개를 선택 해제해 주세요.",
       "confirmWhat": "사용자의 모델을 사용하여 {{count}}개의 모티프를 {{lang}}(으)로 번역합니다.",
       "doneTitle": "{{total}}개 중 {{written}}개 {{lang}}(으)로 번역 완료"
+    },
+    "arcConf": {
+      "causal": "인과 관계 확인됨",
+      "caused": "유발됨",
+      "chShort": "장",
+      "coarse": "거친 수준 · 구조적 측면만 반영",
+      "deepError": "심층 일치 여부를 실행할 수 없습니다.",
+      "deepWhat": "모델을 사용하여 소설의 산문을 다시 태깅한 후, 이 아크와 비교 분석하십시오 (LLM 측정 방식).",
+      "drift": "최대 편차 {{drift}}",
+      "empty": "이 아크에서 아직 생성된 내용이 없습니다.",
+      "entailed": "함의됨",
+      "estimating": "추정 중…",
+      "legalTransitions": "유효함",
+      "maxDrift": "최대 편차 {{drift}}",
+      "model": "태깅 모델",
+      "noPlanned": "계획된 곡선 없음",
+      "noProse": "추출된 산문이 없습니다 — 이탈 정도를 측정하려면 장면을 생성하세요.",
+      "noWork": "일치 여부를 확인하려면 이 아크를 책으로 구체화하세요.",
+      "notTagged": "스토리라인 진행을 위해 태깅이 필요합니다 — 모델을 실행하세요.",
+      "pacing": "페이싱",
+      "proseDrift": "산문 이탈 (실제 vs 계획)",
+      "proseDriftTitle": "심층 산문 일치도",
+      "proseScale": "추출된 사건의 긴장도 (1–5 ×20)",
+      "proseSuccession": "산문의 연속성",
+      "proseThreads": "산문의 스토리라인",
+      "runDeep": "심층 일치도 실행",
+      "running": "실행 중…",
+      "structural": "구조적",
+      "succUntagged": "계승에 모티프 태깅이 필요합니다 — 모델로 실행하세요.",
+      "succession": "계승 (구조적)",
+      "successionOk": "순서 위반 없음.",
+      "threadMissing": "산문 내에 없음",
+      "threads": "스레드 진행 상황",
+      "title": "아크 일치 여부",
+      "unmaterialized": "구체화되지 않음",
+      "unplannedLabel": "산문 내에 계획되지 않음",
+      "violation": "{{label}}: {{n}}개 순서 오류"
+    },
+    "editor": {
+      "add": "추가",
+      "beatIntent": "의도",
+      "beatLabel": "비트",
+      "beats": "비트",
+      "conflict": "이 모티프는 다른 곳에서 변경되었습니다. 편집하기 전에 다시 열어 최신 상태를 불러오세요.",
+      "deceived": "속임을 당하는 인물 (쉼표로 구분)",
+      "effects": "효과",
+      "emotion": "감정",
+      "examples": "예시 (작성된 내용)",
+      "gap": "간극",
+      "genres": "장르 (쉼표로 구분)",
+      "kind": "종류",
+      "knows": "아는 인물 (쉼표로 구분)",
+      "name": "이름",
+      "preconditions": "전제 조건",
+      "roleConstraints": "제약 사항",
+      "roleLabel": "레이블",
+      "roles": "역할",
+      "saveError": "저장할 수 없습니다.",
+      "saving": "저장 중…",
+      "scheme": "정보 비대칭",
+      "summary": "요약 (검색용 임베딩)",
+      "tension": "긴장도 (1–5)"
+    },
+    "kind": {
+      "arcs": "서사 구조 템플릿",
+      "label": "라이브러리",
+      "motifs": "모티프"
+    },
+    "lens": {
+      "title": "모티프"
+    },
+    "mine": {
+      "belowGate": "품질 기준 미달 후보 {{n}}개",
+      "bookHint": "단일 도서에서 패턴이 반복되는 경우는 드뭅니다. 전체 코퍼스 범위를 설정하면 더 많은 패턴을 찾을 수 있습니다.",
+      "corpus": "내 전체 코퍼스",
+      "estimating": "추출 중…",
+      "failed": "추출 실패.",
+      "minSupport": "최소 지지도",
+      "minedN": "초안 {{n}}개 추출됨 — 검토하기",
+      "model": "추출 모델",
+      "noCorpus": "분석된 코퍼스가 없습니다. 먼저 도서를 추출한 다음 다시 시도하세요.",
+      "noPatterns": "반복되는 패턴을 찾을 수 없습니다. 코퍼스 범위를 넓히거나 최소 지지도를 낮춰보세요.",
+      "quota": "채굴 할당량에 도달했습니다.",
+      "run": "채굴하기",
+      "running": "채굴 중…",
+      "scope": "범위",
+      "thisBook": "이 책",
+      "title": "작품에서 모티프 추출하기",
+      "what": "작품 전체에서 반복되는 플롯 패턴을 초안 모티프로 추상화합니다 (LLM 측정 방식)."
+    },
+    "sync": {
+      "apply": "상위 템플릿에서 {{n}} 가져오기",
+      "applying": "적용 중…",
+      "available": "상위 템플릿에 업데이트가 있습니다.",
+      "conflict": "충돌 — 두 곳 모두에서 수정되었습니다",
+      "error": "병합을 적용할 수 없습니다.",
+      "keepMine": "내 변경 사항 유지",
+      "mine": "내 것",
+      "noChange": "업스트림이 업데이트되었으나 병합할 수 있는 변경 사항이 없습니다.",
+      "review": "검토 및 병합",
+      "take": "업스트림 반영",
+      "theirs": "업스트림",
+      "threeWay": "3방향",
+      "title": "업스트림 업데이트",
+      "twoWay": "양방향"
     }
   },
   "authoringRun": {
@@ -1051,7 +1270,14 @@
       "allowlistAdd": "ツールを追加…",
       "runGateCheck": "実行ゲートチェック →",
       "gating": "チェック中…",
-      "cancel": "キャンセル"
+      "cancel": "キャンセル",
+      "chaptersEmpty": "이 책에는 아직 장이 없습니다. 초안을 작성할 계획을 먼저 만드세요.",
+      "chaptersEmptyCta": "먼저 계획을 구성하려면 플래너 열기 →",
+      "materialize": "이 계획으로 장 생성하기 →",
+      "materializedOk": "계획에서 {{count}}개의 장을 생성했습니다.",
+      "materializing": "장 생성 중…",
+      "modelEmpty": "설정 → 모델에서 채팅 모델을 추가하여 초안을 작성하세요.",
+      "modelLabel": "초안 작성 모델"
     },
     "gate": {
       "title": "ゲートチェック",
@@ -1140,5 +1366,392 @@
   "canonUncheckedUnparseable": "검토 모델이 사용할 수 있는 답을 반환하지 않았습니다",
   "canonUncheckedFailed": "검사 자체에서 오류가 발생했습니다",
   "canonUncheckedOther": "이 검사를 실행할 수 없었습니다",
-  "canonUncheckedWhich": "확인 {{count}}건이 완료되지 않았습니다"
+  "canonUncheckedWhich": "확인 {{count}}건이 완료되지 않았습니다",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "세이브 더 캣",
+      "hero_journey": "영웅의 여정",
+      "story_circle": "스토리 서클",
+      "kishotenketsu": "기승전결",
+      "web_novel": "웹소설 아크",
+      "generic": "3막 구조 (일반)"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "오프닝 이미지",
+          "purpose": "이야기의 첫인상을 결정하는 장면입니다."
+        },
+        "theme_stated": {
+          "label": "주제 제시",
+          "purpose": "이야기가 관통하는 핵심 주제가 드러나는 순간입니다."
+        },
+        "setup": {
+          "label": "설정",
+          "purpose": "주인공의 일상과 세계관을 보여줍니다."
+        },
+        "catalyst": {
+          "label": "촉매제",
+          "purpose": "사건의 시작이자 주인공의 삶을 뒤흔드는 계기입니다."
+        },
+        "debate": {
+          "label": "토론",
+          "purpose": "변화에 대한 주인공의 망설임이나 갈등을 다룹니다."
+        },
+        "break_into_two": {
+          "label": "2막 진입",
+          "purpose": "주인공이 돌이킬 수 없는 새로운 세계로 발을 내딛는 지점입니다."
+        },
+        "b_story": {
+          "label": "B 스토리",
+          "purpose": "서브 플롯의 목적을 입력하세요."
+        },
+        "fun_and_games": {
+          "label": "재미와 유희",
+          "purpose": "이야기의 재미와 핵심 재미 요소를 보여주는 목적을 입력하세요."
+        },
+        "midpoint": {
+          "label": "미드포인트",
+          "purpose": "이야기의 전환점이 되는 중간 지점의 목적을 입력하세요."
+        },
+        "bad_guys_close_in": {
+          "label": "악당들의 압박",
+          "purpose": "갈등이 심화되고 위기가 고조되는 목적을 입력하세요."
+        },
+        "all_is_lost": {
+          "label": "모든 것을 잃다",
+          "purpose": "모든 것을 잃은 듯한 절망적인 순간의 목적을 입력하세요."
+        },
+        "dark_night": {
+          "label": "가장 어두운 밤",
+          "purpose": "가장 어두운 밤, 영혼의 어두운 밤의 목적을 입력하세요."
+        },
+        "break_into_three": {
+          "label": "3막 진입",
+          "purpose": "주인공이 본격적인 사건 속으로 뛰어드는 전환점을 설명합니다."
+        },
+        "finale": {
+          "label": "피날레",
+          "purpose": "모든 갈등이 해소되고 주인공이 최종적인 승리를 거두는 결말을 설명합니다."
+        },
+        "final_image": {
+          "label": "마지막 장면",
+          "purpose": "이야기의 시작과 대비되는 주인공의 변화를 보여주는 마지막 장면을 설명합니다."
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "일상 세계",
+          "purpose": "모험이 시작되기 전, 주인공이 살고 있는 평범한 환경과 일상을 설명합니다."
+        },
+        "call_to_adventure": {
+          "label": "모험의 소명",
+          "purpose": "주인공의 일상을 흔들고 모험을 떠나게 만드는 사건이나 메시지를 설명합니다."
+        },
+        "refusal_of_the_call": {
+          "label": "소명 거부",
+          "purpose": "변화에 대한 두려움이나 망설임으로 인해 모험을 거부하는 단계를 설명합니다."
+        },
+        "meeting_the_mentor": {
+          "label": "스승과의 만남",
+          "purpose": "주인공이 스승을 만나 조언이나 도구를 얻는 단계입니다."
+        },
+        "crossing_the_threshold": {
+          "label": "문턱 넘기",
+          "purpose": "주인공이 일상 세계를 떠나 모험의 세계로 본격적으로 진입하는 단계입니다."
+        },
+        "tests_allies_enemies": {
+          "label": "시험, 협력자, 적",
+          "purpose": "주인공이 새로운 세계의 규칙을 배우고, 동료를 만나며, 적과 마주하는 단계입니다."
+        },
+        "approach": {
+          "label": "접근",
+          "purpose": "가장 큰 시련이 기다리는 동굴이나 목표 지점으로 다가가는 단계입니다."
+        },
+        "ordeal": {
+          "label": "시련",
+          "purpose": "주인공이 직면한 가장 큰 위기나 죽음의 공포를 극복하는 단계입니다."
+        },
+        "reward": {
+          "label": "보상",
+          "purpose": "시련을 이겨낸 후 얻게 되는 소중한 보물이나 깨달음을 얻는 단계입니다."
+        },
+        "the_road_back": {
+          "label": "귀환의 길",
+          "purpose": "주인공이 시련을 극복하고 변화된 모습으로 돌아가는 과정"
+        },
+        "resurrection": {
+          "label": "부활",
+          "purpose": "최종적인 위기를 극복하며 주인공이 완전히 변화하는 결정적인 순간"
+        },
+        "return_with_elixir": {
+          "label": "영약과 함께 귀환",
+          "purpose": "목표를 달성하고 보상이나 깨달음을 얻어 일상으로 돌아옴"
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "주인공",
+          "purpose": "이야기가 시작되는 시점의 주인공의 상태와 상황"
+        },
+        "need": {
+          "label": "욕구",
+          "purpose": "주인공이 결핍을 느끼고 변화를 갈망하게 만드는 동기"
+        },
+        "go": {
+          "label": "출발",
+          "purpose": "익숙한 환경을 떠나 미지의 세계로 발을 내딛는 단계"
+        },
+        "search": {
+          "label": "탐색",
+          "purpose": "목적"
+        },
+        "find": {
+          "label": "찾기",
+          "purpose": "목적 찾기"
+        },
+        "take": {
+          "label": "얻기",
+          "purpose": "목적"
+        },
+        "return": {
+          "label": "귀환",
+          "purpose": "목적"
+        },
+        "change": {
+          "label": "변화",
+          "purpose": "변화의 목적"
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "기",
+          "purpose": "기(起): 이야기의 시작을 알리며, 인물과 배경을 소개하고 사건의 발단을 제시합니다."
+        },
+        "sho": {
+          "label": "승",
+          "purpose": "기(起): 이야기의 시작을 알리며 배경과 인물을 소개합니다."
+        },
+        "ten": {
+          "label": "전(轉)",
+          "purpose": "전(轉): 사건이 급변하거나 갈등이 고조되는 전환점입니다."
+        },
+        "ketsu": {
+          "label": "결(結)",
+          "purpose": "결(結): 갈등이 해소되고 이야기가 마무리됩니다."
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "훅",
+          "purpose": "독자의 시선을 즉각적으로 사로잡는 강렬한 도입부입니다."
+        },
+        "establishment": {
+          "label": "도입부",
+          "purpose": "세계관, 캐릭터, 현재 상황을 설정합니다."
+        },
+        "rising_conflict": {
+          "label": "갈등 고조",
+          "purpose": "사건이 전개되며 긴장감과 갈등이 고조됩니다."
+        },
+        "setback": {
+          "label": "시련",
+          "purpose": "사건의 흐름을 방해하거나 주인공에게 위기를 가져다주는 요소"
+        },
+        "climax": {
+          "label": "절정",
+          "purpose": "갈등이 최고조에 달하며 이야기의 핵심적인 전환점이 되는 지점"
+        },
+        "resolution": {
+          "label": "결말",
+          "purpose": "갈등이 해소되고 이야기의 모든 복선이 정리되는 단계"
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "설정",
+          "purpose": "세계관, 캐릭터, 주요 사건의 배경을 소개하는 단계"
+        },
+        "confrontation": {
+          "label": "대립",
+          "purpose": "주인공이 장애물이나 적과 맞서며 갈등이 심화되는 단계"
+        },
+        "resolution": {
+          "label": "결말",
+          "purpose": "사건이 마무리되고 이야기가 종결되는 단계"
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "Save the Cat 구조",
+      "hero_journey": "영웅의 여정 구조",
+      "story_circle": "스토리 서클 구조",
+      "kishotenketsu": "기승전결 구조",
+      "web_novel": "웹소설 에피소드 구조",
+      "generic": "3막(일반) 구조"
+    }
+  },
+  "branchdiff": {
+    "allNew": "완전 신규 (정사 대응 항목 없음)",
+    "branch": "이본",
+    "canon": "정사",
+    "chg": "변경",
+    "empty": "아직 갈라진 문장이 없습니다. 모든 장면은 정사를 상속받습니다. 차이점을 확인하려면 'What-if' 캔버스에서 초안을 승격시키세요.",
+    "error": "이본의 문장을 읽을 수 없습니다.",
+    "loading": "문장 읽는 중…",
+    "new": "신규",
+    "noProseBody": "이 분기된 장면은 아직 what-if 버전의 산문이 없습니다. what-if 캔버스에서 초안을 생성하면 여기에 차이점이 표시됩니다.",
+    "noProseTitle": "아직 작성되지 않음",
+    "noSource": "이 브랜치는 비교할 수 있는 소스가 없습니다.",
+    "scenes": "{{n}}개 분기됨",
+    "todo": "할 일",
+    "untitledScene": "장면"
+  },
+  "canonBrokenBadge": "{{n}}개 충돌 →",
+  "canonConflictDiscard": "내 수정사항 버리기",
+  "canonConflictKeepTheirs": "상대방 수정사항 유지",
+  "canonConflictReapply": "v{{v}} 버전에 내 편집 내용 다시 적용",
+  "canonConflictTitle": "다른 곳에서 규칙이 변경되었습니다. 작성 중인 초안은 아래에 유지됩니다.",
+  "canonview": {
+    "active": "{{n}}개 활성",
+    "branchHint": "이 분기점 직전의 설정 상태",
+    "branchToggle": "분기점의 설정",
+    "canonState": "설정 상태",
+    "chapterN": "{{n}}장",
+    "countGlossary": "· {{n}}개의 개체",
+    "coverage": "{{pct}}%의 장에 등장",
+    "established": "현재까지 확립된 설정",
+    "events": "{{n}}개의 타임라인 이벤트",
+    "gone": "{{n}}개 소멸",
+    "knowledgeUnavailable": "설정 상태를 불러올 수 없습니다 — 지식 서비스가 응답하지 않습니다.",
+    "loading": "설정 읽는 중…",
+    "noChapter": "포커스된 장이 없습니다 — 장면을 열어 해당 장 기준의 설정을 확인하세요.",
+    "noneHere": "이 장에 연결된 엔티티가 없습니다.",
+    "notAnalyzed": "이 장은 아직 분석되지 않았습니다. 설정을 채우려면 책을 추출하세요.",
+    "presence": "이 장에 등장함",
+    "srcGlossary": "· 용어 사전",
+    "srcKnowledge": "· 지식",
+    "title": "현재 설정 기준일",
+    "windowUnavailable": "읽기 위치를 알 수 없음 — 이 장에 대해 창을 사용할 수 없습니다."
+  },
+  "coverageAbandoned": "버려진 복선 {{n}}개",
+  "coverageAbsent": "누락된 복선 {{n}}개",
+  "coverageClean": "버려진 복선 없음 — 책의 모든 설정이 잘 회수되었습니다.",
+  "coverageDropped": "약속되었으나 버려진 복선:",
+  "coverageIntro": "안내 — 아웃라인에서 설정한 복선들이 책 전체에서 어떻게 회수되는지 보여줍니다. 읽기 전용입니다.",
+  "coverageLoading": "전체 도서 분석 중…",
+  "coverageNa": "약속 커버리지를 사용할 수 없습니다.",
+  "coverageNoPromises": "개요에서 추적 가능한 약속을 찾을 수 없습니다.",
+  "coveragePaid": "유료 {{n}}",
+  "coverageProgressing": "진행 중 {{n}}",
+  "coverageRerun": "다시 분석",
+  "coverageRun": "스토리 약속 분석",
+  "coverageTitle": "스토리 약속",
+  "divergence": {
+    "active": "활성",
+    "addOverride": "재정의 추가",
+    "archive": "보관",
+    "archiveConflict": "다른 곳에서 변경되었습니다 — 다시 불러왔습니다.",
+    "archiveFailed": "아카이브 실패 — 다시 시도해 주세요.",
+    "archived": "아카이브 완료 — 장과 지식이 보존되었으며 목록에서 제외되었습니다.",
+    "branchPoint": "분기점",
+    "branchedAt": "{{n}}장부터 분기됨",
+    "branchedUnknown": "분기점 알 수 없음",
+    "canonRules": "정사(Canon) 규칙",
+    "canonRulesPlaceholder": "한 줄에 규칙 하나씩 입력하세요 (예: 이 분기에서는 마법이 더 이상 존재하지 않음).",
+    "canonTag": "정사",
+    "canonical": "정사",
+    "canonicalSection": "정사",
+    "chapterN": "{{n}}장",
+    "editFailed": "저장 실패 — 다시 시도해 주세요.",
+    "emptyDerivatives": "아직 생성된 what-if 버전이 없습니다. 버전은 특정 장에서 책을 분기하며, 원본은 읽기 전용 정사(canon)로 유지됩니다.",
+    "loading": "로딩 중…",
+    "new": "새로운 분기",
+    "no": "아니요",
+    "noAnchoredEntities": "이 분기 원본에는 아직 용어집에 고정된 캐릭터가 없습니다. POV를 설정하거나 여기서 캐릭터를 재정의하려면 용어집에서 엔티티를 고정하세요.",
+    "noOverrides": "아직 재정의된 엔티티가 없습니다.",
+    "noPov": "— POV 고정 없음 —",
+    "noWork": "이 책은 아직 계획이 없습니다. 먼저 아크와 장을 구성한 다음, 여기서 what-if 분기를 만드세요.",
+    "overrideEntity": "재정의할 엔티티",
+    "overrideNamePlaceholder": "이 버전에서의 새 이름 (선택 사항)…",
+    "overridePlaceholder": "이 엔티티가 어떻게 달라지나요 (예: 이제 악당임)…",
+    "overrideRemoved": "재정의가 삭제되었습니다.",
+    "overrides": "오버라이드",
+    "pickEntity": "다른 엔티티 오버라이드…",
+    "povAnchor": "POV 앵커",
+    "remove": "삭제",
+    "removeConfirm": "삭제하시겠습니까?",
+    "rename": "이름 변경",
+    "renameConflict": "다른 곳에서 변경되었습니다. 다시 로드한 후 다시 시도하세요.",
+    "renameFailed": "이름을 변경할 수 없습니다. 다시 시도하세요.",
+    "renamePlaceholder": "가정 시나리오 이름 (1–200자)",
+    "renameTitle": "이 가정 시나리오의 이름 변경",
+    "renamed": "이름이 변경되었습니다.",
+    "restoreFailed": "복구할 수 없습니다. 다른 곳에서 변경되었을 수 있습니다.",
+    "restored": "목록에 복구되었습니다.",
+    "save": "저장",
+    "saveRules": "저장 규칙",
+    "saving": "저장 중…",
+    "specError": "분기 사양을 불러올 수 없습니다. 다시 선택해 주세요.",
+    "specLoading": "사양 불러오는 중…",
+    "switchFailed": "전환에 실패했습니다. 다시 시도해 주세요.",
+    "switchTo": "전환 대상:",
+    "tabDiff": "차이점",
+    "tabSpec": "사양",
+    "taxonomy": "분류 체계",
+    "title": "What-if 버전",
+    "unavailable": "작성 서비스를 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.",
+    "undo": "실행 취소",
+    "undoFailed": "재정의 내용을 복구할 수 없습니다.",
+    "undoSuperseded": "해당 항목에 대한 최신 재정의 내용이 존재합니다. 복구할 내용이 없습니다.",
+    "unnamed": "제목 없는 버전",
+    "yes": "예",
+    "derivativesSection": "파생물 ({{n}})"
+  },
+  "mark": {
+    "action": "문제 표시",
+    "cancel": "취소",
+    "duplicate": "이미 해당 메모로 이 구절을 표시했습니다.",
+    "failed": "표시를 저장할 수 없습니다. 다시 시도해 주세요.",
+    "kind": "문제 유형",
+    "no_selection": "표시하기 전에 잘못된 구절을 선택해 주세요.",
+    "note": "이 구절의 문제점은 무엇인가요?",
+    "note_ph": "예: 3장에서 그녀가 사망함...",
+    "note_required": "문제점을 입력하세요. 메모는 공동 작가가 수정할 근거가 됩니다.",
+    "save": "마크하기",
+    "saved": "마크 완료 — 공동 작가가 이를 확인할 수 있습니다."
+  },
+  "polishAll": "전체",
+  "polishAllDet": "모든 결정적 수정 사항",
+  "polishApply": "{{count}}개 선택 항목 적용",
+  "polishClean": "발견된 문제 없음 — 문장이 깔끔합니다.",
+  "polishClear": "지우기",
+  "polishDeterministic": "자동",
+  "polishIntro": "문장에 반영하기 전에 제안된 수정 사항을 검토하세요. 결정적 수정(대명사, 오타)은 미리 선택되어 있으며, 의미적 수정은 사용자가 판단할 수 있도록 선택 해제된 상태로 표시됩니다.",
+  "polishLoading": "분석 중…",
+  "polishNoModel": "먼저 모델을 선택하세요.",
+  "polishRerank": "자동 체크 (AI 사용, 비용 추가)",
+  "polishRerankHint": "편집 시마다 AI를 한 번 더 호출하여 좋은 문장을 자동으로 체크합니다 (속도가 느려지고 비용이 추가됩니다).",
+  "polishRerun": "다시 실행",
+  "polishRun": "다듬기 실행",
+  "polishSemantic": "의미론적",
+  "polishStats": "{{edits}}회 편집 · 검증을 통해 {{refuted}}개 제외됨",
+  "polishUnplaced": "텍스트 내에서 찾을 수 없는 {{count}}개의 항목이 있습니다 — 아래에 수정되지 않은 상태로 표시됩니다.",
+  "polishUnplacedNoQuote": "(인용된 텍스트 없음)",
+  "qualityCriticNa": "비평가를 사용할 수 없습니다.",
+  "qualityHasFix": "제안된 수정 사항 ↓",
+  "qualityIntro": "참고용 정보 — 이 장의 점수 산정 방식과 기대 효과에 대해 안내합니다. 이 분석이 문체 자체를 직접 수정하지는 않습니다.",
+  "qualityLoading": "분석 중…",
+  "qualityNoThreads": "이 장에서 새로 제기된 복선이 없습니다.",
+  "qualityRerun": "다시 분석",
+  "qualityRun": "품질 분석",
+  "qualityThreadsNa": "복선 분석을 사용할 수 없습니다.",
+  "qualityThreadsRaised": "이 장에서 제기된 복선 {{n}}개:",
+  "qualityThreadsResolved": "{{r}}개 해결됨",
+  "qualityTitle": "품질 보고서",
+  "resolveWorkFailed": "지식 서비스 이용 불가 — 근거 데이터 설정을 완료할 수 없습니다.",
+  "resolvingWork": "설정 완료 중… 지식 서비스가 일시적으로 중단되었습니다.",
+  "retry": "재시도",
+  "threadFocusMissing": "이 뷰에는 가져오신 약속이 없습니다. 이미 결제되었을 수 있습니다. 필터를 “전체”로 변경해 보세요.",
+  "canonConflictCurrent": "현재 (v{{v}}): {{text}}"
 }

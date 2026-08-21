@@ -16,9 +16,11 @@ interface Props {
 
 export function NodeKindRow({ nodeKind, disabled, usageCount, onPatchStrength, onDelete }: Props) {
   const { t } = useTranslation('kgOntology');
+  const { t: tKnowledge } = useTranslation('knowledge');
+  const kindLabel = (code: string) => tKnowledge(`kind.${code}`, { defaultValue: code });
   return (
     <li className="flex items-center gap-2 py-1" data-testid={`node-kind-row-${nodeKind.kind_code}`}>
-      <OntologyChip variant="glossary">{nodeKind.kind_code}</OntologyChip>
+      <OntologyChip variant="glossary">{kindLabel(nodeKind.kind_code)}</OntologyChip>
       <select
         value={nodeKind.strength}
         disabled={disabled}
@@ -26,8 +28,8 @@ export function NodeKindRow({ nodeKind, disabled, usageCount, onPatchStrength, o
         className="rounded-md border bg-input px-1.5 py-0.5 text-[11px]"
         data-testid={`node-kind-strength-${nodeKind.kind_code}`}
       >
-        <option value="required">required</option>
-        <option value="optional">optional</option>
+        <option value="required">{t('schema.required')}</option>
+        <option value="optional">{t('schema.optional')}</option>
       </select>
       {!!usageCount && (
         <span className="text-[10px] text-muted-foreground" data-testid={`node-kind-usage-${nodeKind.kind_code}`}>

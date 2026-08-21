@@ -35,6 +35,12 @@ func TestMetricsEndpointServesPrometheusText(t *testing.T) {
 		"book_service_projection_total",
 		"book_service_chapters_list_total",
 		"book_service_chapter_fetch_total",
+		"epub_import_jobs_total",
+		"epub_import_items_total",
+		"epub_import_assets_total",
+		"epub_import_warnings_total",
+		"epub_import_duration_seconds",
+		"epub_import_uncompressed_bytes",
 	} {
 		if !strings.Contains(body, name) {
 			t.Errorf("metric %q not exposed in /metrics body", name)
@@ -68,6 +74,13 @@ func TestMetricsOutcomesPreSeeded(t *testing.T) {
 			marker := c + `{outcome="` + o + `"}`
 			if !strings.Contains(body, marker) {
 				t.Errorf("pre-seed missing: %s", marker)
+			}
+		}
+	}
+	for _, name := range []string{"epub_import_jobs_total", "epub_import_items_total", "epub_import_assets_total"} {
+		for _, outcome := range []string{"success", "failure", "warning"} {
+			if !strings.Contains(body, name+`{outcome="`+outcome+`"}`) {
+				t.Errorf("EPUB metric pre-seed missing: %s/%s", name, outcome)
 			}
 		}
 	}

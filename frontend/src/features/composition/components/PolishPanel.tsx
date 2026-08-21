@@ -23,6 +23,11 @@ interface Props {
 export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: Props) {
   const { t } = useTranslation('composition');
   const p = usePolishProposals(projectId, chapterId, token, modelRef);
+  // `?? []` rather than a required field: a backend that predates this key sends nothing, and
+  // an OLD server must degrade to the old behaviour rather than crashing the panel. It cannot
+  // degrade to a false "clean" claim either — with no key there are no unplaced findings to
+  // hide, which is the same state the panel was in before.
+  const unplaced = p.stats?.unplaced ?? [];
 
   return (
     <div data-testid="composition-polish" className="flex flex-col gap-2 p-3 text-sm">
@@ -76,8 +81,37 @@ export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: 
         </p>
       )}
 
-      {p.ran && !p.loading && p.proposals.length === 0 && (
-        <Hint>{t('polishClean', { defaultValue: 'No issues found — the prose is clean.' })}</Hint>
+      {/* S3 — "clean" is a CLAIM, and it used to be made on the strength of an empty
+          proposal list. A judge finding whose quote cannot be located in the chapter produces
+          no proposal, so a run that found problems and placed none rendered exactly the same
+          as a chapter with nothing wrong. `unplaced` carries those findings' locators, each
+          with the quote the judge used, so the author is told what could not be pointed at
+          instead of being told the prose is fine. */}
+      {p.ran && !p.loading && p.proposals.length === 0 && !unplaced.length && (
+        <Hint testid="polish-clean">
+          {t('polishClean', { defaultValue: 'No issues found — the prose is clean.' })}
+        </Hint>
+      )}
+
+      {p.ran && !p.loading && unplaced.length > 0 && (
+        <div data-testid="polish-unplaced" className="text-xs text-amber-600">
+          <p>
+            {t('polishUnplaced', {
+              defaultValue:
+                '{{count}} finding(s) could not be located in this text — shown below, unfixed.',
+              count: unplaced.length,
+            })}
+          </p>
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {unplaced.map((loc, i) => (
+              <li key={`${loc.quote ?? ''}-${i}`} className="truncate">
+                {loc.quote
+                  ? `“${loc.quote}”`
+                  : t('polishUnplacedNoQuote', { defaultValue: '(no quoted text)' })}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       {p.proposals.length > 0 && (
@@ -160,6 +194,6 @@ export function PolishPanel({ projectId, chapterId, token, modelRef, onApply }: 
   );
 }
 
-function Hint({ children }: { children: React.ReactNode }) {
-  return <div className="p-2 text-xs text-neutral-500">{children}</div>;
+function Hint({ children, testid }: { children: React.ReactNode; testid?: string }) {
+  return <div data-testid={testid} className="p-2 text-xs text-neutral-500">{children}</div>;
 }

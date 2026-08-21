@@ -117,7 +117,7 @@ type entityListItem struct {
 	// deciding whether a NEW entity of the same name needs a different one.
 	ScopeLabel string `json:"scope_label,omitempty"`
 	// KindLabels are the SECONDARY readings of this entity's kind — the facets
-	// (spec 2026-08-02-entity-kind-resolution.md). 西岐 is an organization 52 times and a
+	// (spec docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md). 西岐 is an organization 52 times and a
 	// location 38: both are true, and before the vote ledger existed one of them was simply
 	// erased by whichever extraction batch named it first. Empty for the common case.
 	KindLabels []kindSummary `json:"kind_labels,omitempty"`

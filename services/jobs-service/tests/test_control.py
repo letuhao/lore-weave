@@ -60,6 +60,17 @@ def test_control_forwards_and_relays(client):
     assert args == ("knowledge", JID, "cancel", TEST_USER, "extraction")
 
 
+def test_control_forwards_failed_book_import_resume(client):
+    fwd = AsyncMock(return_value=control.ControlResult(202, {"job_id": JID, "status": "queued"}))
+    with (
+        patch("app.routers.jobs.store.get_job", new=AsyncMock(return_value=_job(service="book", kind="book_import", status="failed"))),
+        patch("app.routers.jobs.control.forward_control", new=fwd),
+    ):
+        r = client.post(f"/v1/jobs/book/{JID}/resume", headers={"Authorization": "Bearer x"})
+    assert r.status_code == 202 and r.json()["status"] == "queued"
+    assert fwd.await_args.args == ("book", JID, "resume", TEST_USER, "book_import")
+
+
 def test_control_relays_downstream_409(client):
     fwd = AsyncMock(return_value=control.ControlResult(409, {"detail": "status changed"}))
     with (
@@ -81,7 +92,7 @@ async def test_forward_unknown_service_501():
 async def test_supported_services_registered_unregistered_501():
     # P3-1..P3-4: all five owning services wired. campaign is deliberately NOT on this
     # plane (it keeps its own monitor + control) → an unregistered service stays 501 (honest).
-    for svc in ("knowledge", "composition", "video_gen", "lore_enrichment", "translation"):
+    for svc in ("knowledge", "composition", "video_gen", "lore_enrichment", "translation", "book"):
         assert control.is_supported(svc) is True
     assert control.is_supported("campaign") is False
     res = await control.forward_control("campaign", JID, "cancel", TEST_USER)

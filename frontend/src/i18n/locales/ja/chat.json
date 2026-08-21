@@ -211,7 +211,10 @@
     "feedback_up": "良い回答",
     "feedback_down": "悪い回答",
     "feedback_thanks": "フィードバックありがとうございます",
-    "feedback_error": "フィードバックを保存できませんでした"
+    "feedback_error": "フィードバックを保存できませんでした",
+    "incomplete_error": "エラー — レスポンスが不完全です",
+    "incomplete_interrupted": "中断されました — レスポンスが不完全です",
+    "insert_into_chapter": "章に挿入"
   },
   "tools": {
     "title": "この返信で使用したツール",
@@ -243,7 +246,9 @@
     "cancelled": "キャンセルしました",
     "reprice": "見積もり以降にコストが {{cost}} に上がりました — 新しい価格で再確認するにはもう一度依頼してください。",
     "reprice_title": "コストが変わりました — 未適用",
-    "reprice_detail": "見積もり {{old}}、現在 {{new}}。費用は発生していません — 新しい価格で再確認するにはもう一度依頼してください。"
+    "reprice_detail": "見積もり {{old}}、現在 {{new}}。費用は発生していません — 新しい価格で再確認するにはもう一度依頼してください。",
+    "advisory_items": "リクエスト済み（アドバイザリー） — 適用時にサーバーが正確なセットを確認します",
+    "awaiting_preview": "サーバーのプレビューを読み込み中…"
   },
   "batchConfirm": {
     "title": "{{count}} 件の操作をまとめて確認",
@@ -446,5 +451,120 @@
     "worldbuilder": "世界構築",
     "editor": "編集者",
     "analyst": "分析者"
+  },
+  "sessionSettings": {
+    "description": "このチャットの設定。ここで設定されていない項目は、本、次にアカウント、最後にシステムデフォルトの設定が適用されます。",
+    "saving": "保存中…",
+    "close": "閉じる",
+    "voice": "音声",
+    "messages": "メッセージ",
+    "status": {
+      "label": "ステータス",
+      "active": "アクティブ",
+      "archived": "アーカイブ済み",
+      "closed": "終了"
+    },
+    "models": {
+      "title": "モデル",
+      "composer": "コンポーザー・モデル（任意）",
+      "planner": "プランナー・モデル（任意）",
+      "composerNone": "なし — 単一モデル",
+      "plannerNone": "デフォルトのプランナーを使用",
+      "composerHint": "設定すると、AIは本文の執筆をこのモデルに委任できます。",
+      "plannerHint": "このセッションでマルチステップのプランニングに使用されるモデルです。"
+    },
+    "behavior": {
+      "title": "振る舞い",
+      "systemPrompt": "システムプロンプト",
+      "promptPlaceholder": "ここで設定しない限り、アカウントのデフォルト設定が継承されます。",
+      "reasoning": {
+        "label": "推論の強度",
+        "off": "オフ",
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      },
+      "statefulTitle": "ステートフル Responses API を使用する",
+      "statefulHint": "オプション：サーバーサイドでのコンテキスト再利用。プロバイダーが Responses ツール呼び出しをサポートしていない場合はオフにしてください。",
+      "temperature": "Temperature",
+      "temperatureHint": "値が高いほど意外性が増し、低いほど予測可能性が高まります。",
+      "topP": "Top P",
+      "maxTokens": "最大レスポンス・トークン数",
+      "maxTokensHint": "未設定の場合は、モデル自体の制限が適用されます。"
+    },
+    "grounding": {
+      "title": "グラウンディングとメモリ",
+      "label": "この本の作中の設定に基づいて回答する",
+      "on": "オン — ターンごとにリトリーバルを実行",
+      "off": "オフ — このチャットではリトリーバルを実行しない",
+      "onHint": "用語集、ナレッジグラフの事実、および一節が、毎ターン取得されます。",
+      "offHint": "アシスタントは会話の内容のみに基づいて回答するため、設定されていない世界観を捏造する可能性があります。",
+      "multiHint": "選択されたすべてのナレッジグラフを同時に参照します。事実はソースと共にタグ付けされます。"
+    },
+    "context": {
+      "title": "コンテキスト管理",
+      "label": "長編作品コンテキストモード",
+      "auto": "自動",
+      "on": "常にオン",
+      "off": "オフ",
+      "autoHint": "作品の規模が長編コンテキスト層を必要とする大きさになった時のみ、自動的に有効になります。",
+      "onHint": "常に長編コンテキスト層を使用します。",
+      "offHint": "使用しません。最もシンプルで低コストなコンテキストです。"
+    }
+  },
+  "dock": {
+    "close": "閉じる",
+    "label": "AIに聞く",
+    "open": "用語集アシスタントに聞く",
+    "title": "用語集アシスタント"
+  },
+  "glossaryEdit": {
+    "applied": "適用済み ✓",
+    "apply": "適用",
+    "conflict": "提案時よりこのエンティティが変更されました — 最新の状態を確認するには再度リクエストしてください。",
+    "conflict_short": "提案時から変更されています — 再確認",
+    "dismiss": "却下",
+    "dismissed": "却下済み",
+    "empty": "(空)",
+    "error": "変更を保存できませんでした。",
+    "error_short": "保存失敗",
+    "field": "フィールド",
+    "fields": "{{count}} 個のフィールド",
+    "label": "用語集の編集"
+  },
+  "planner": {
+    "destructive": "破壊的",
+    "enable": "この破壊的なステップを有効にする",
+    "heading": "プラン",
+    "notes": "プランナーのメモ",
+    "steps": "{{count}} ステップ"
+  },
+  "propose": {
+    "applied": "適用済み ✓",
+    "apply": "適用",
+    "apply_failed": "編集を適用できませんでした。",
+    "apply_n": "{{count}} 件を適用",
+    "dismiss": "却下",
+    "dismissed": "却下済み",
+    "hunk_hint": "適用する変更を選択してください",
+    "hunk_toggle": "この変更を受け入れる",
+    "insert_label": "推奨される挿入",
+    "keep_original": "原文を維持",
+    "no_editor": "この編集を適用するには、章を開いてください。",
+    "no_selection": "置換するテキストを選択してから「適用」を押してください。",
+    "popout_no_rewrite": "書き換えを適用するには、ドッキングされたエディタから行う必要があります。まず、このウィンドウをドッキングしてください。",
+    "popout_not_delivered": "編集内容がドッキングされたエディタに反映されませんでした。Studioで章を開き、もう一度やり直してください。",
+    "replace_label": "提案された書き換え",
+    "selection_changed": "選択範囲が変更されました。再度選択して「適用」するか、「破棄」してください。",
+    "wrong_chapter": "この提案は別の章のものです。"
+  },
+  "taskGate": {
+    "cancelled": "破棄されました",
+    "confirm": "確定",
+    "defaultTitle": "この操作を確定しますか？",
+    "dismiss": "閉じる",
+    "done": "確定済み ✓",
+    "error": "確認できませんでした",
+    "label": "確認"
   }
 }

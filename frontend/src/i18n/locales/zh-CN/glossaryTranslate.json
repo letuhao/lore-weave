@@ -42,7 +42,9 @@
     "startTranslate": "开始翻译",
     "startFailed": "启动翻译任务失败",
     "thinkingOn": "思考：开启",
-    "thinkingOff": "思考：关闭"
+    "thinkingOff": "思考：关闭",
+    "concurrency": "并行 LLM 调用",
+    "concurrencyHint": "1 = 顺序执行。如果您的模型支持并发请求，请调高此数值。"
   },
   "progress": {
     "title": "正在翻译术语表",

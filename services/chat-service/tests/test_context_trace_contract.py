@@ -21,7 +21,7 @@ import json
 import os
 from pathlib import Path
 
-from loreweave_context import TraceAccumulator, reduction_pct
+from loreweave_context import PHASES, TIERS, TraceAccumulator, reduction_pct
 from loreweave_context.trace import TraceSpan
 
 from app.services.token_budget import (
@@ -73,6 +73,18 @@ def _build_contract() -> dict:
         # category added to one side without the other reds (the `story_state`-dropped
         # class: added to the emit dict but not the tuple → to_payload silently omits it).
         "breakdown_categories": list(BREAKDOWN_CATEGORIES),
+        # S11 — the two closed sets the contract did not carry, so nothing machine-checked
+        # them across the seam. `phase` was a closed union on BOTH sides
+        # (`PHASES` here, `'planner' | 'compiler'` in TraceSpanFrame) with no cross-check, so
+        # renaming one would not red the other. `tier` was worse: `TIERS` in Python and a bare
+        # `string` in TypeScript, so the Inspector would render "T9" — or anything at all —
+        # without complaint. A closed-set value with no enum on the consuming side is the
+        # exact defect the Frontend-Tool Contract exists to prevent.
+        #
+        # Sourced from `loreweave_context` rather than restated here: the SDK owns the
+        # vocabulary, and a second literal copy is the drift this contract is FOR.
+        "phases": list(PHASES),
+        "tiers": list(TIERS),
     }
 
 
@@ -200,3 +212,35 @@ class TestDeriveHelpers:
             grounding_needed=False, compacted=True, elastic=True, overflowed=True, wire=True,
         )
         assert flags == ["gated", "compacted", "elastic", "overflow", "wire"]
+
+
+# ── S11: the two closed sets must be enforced, not merely published ────────────────────────
+
+def test_every_emitted_span_uses_a_phase_and_tier_FROM_the_closed_sets():
+    """Publishing the vocabulary in the contract does nothing on its own — the producer has
+    to be held to it. `TraceAccumulator.add` takes `phase`/`tier` as free strings, so a typo
+    ("complier", "T7") would ride the wire and the Inspector would render it, because the FE
+    typed `tier` as a bare `string`.
+    """
+    trace = TraceAccumulator()
+    trace.add("compiler", "T6", "summary", "C_persist: summarized", delta=-9800)
+    trace.add("planner", "T0", "results", "wire hygiene", delta=-1600)
+    for span in trace.to_payload():
+        assert span["phase"] in PHASES, f"phase {span['phase']!r} is outside {PHASES}"
+        assert span["tier"] in TIERS, f"tier {span['tier']!r} is outside {TIERS}"
+
+
+def test_the_closed_sets_are_non_empty_and_disjoint_in_shape():
+    """A control for the assertion above. If `PHASES` or `TIERS` were empty, every `in` check
+    would fail loudly — but if either were replaced by something permissive (a set containing
+    the empty string, say) the checks would pass vacuously. Pin the actual vocabulary."""
+    assert set(PHASES) == {"planner", "compiler"}
+    assert set(TIERS) == {"T0", "T1", "T2", "T3", "T4", "T5", "T6"}
+
+
+def test_the_contract_publishes_both_closed_sets():
+    """`breakdown_categories` was carried and cross-checked on both sides; `phases` and
+    `tiers` were not carried at all, so the FE parity test had nothing to compare against."""
+    contract = json.loads(_CONTRACT_PATH.read_text(encoding="utf-8"))
+    assert sorted(contract["phases"]) == sorted(PHASES)
+    assert sorted(contract["tiers"]) == sorted(TIERS)

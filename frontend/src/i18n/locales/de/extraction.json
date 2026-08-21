@@ -30,7 +30,13 @@
     "allOverwrite": "Alle Überschreiben",
     "required": "erforderlich",
     "thinkingEnabled": "Denkprozess aktivieren",
-    "thinkingHint": "Für die JSON-Extraktion wird 'Aus' empfohlen. Aktivieren Sie dies für Modelle wie Gemma, die bei aktiviertem Denkprozess anders argumentieren."
+    "thinkingHint": "Für die JSON-Extraktion wird 'Aus' empfohlen. Aktivieren Sie dies für Modelle wie Gemma, die bei aktiviertem Denkprozess anders argumentieren.",
+    "addDefaults": "Standardtypen hinzufügen",
+    "addingDefaults": "Wird hinzugefügt…",
+    "defaultsError": "Die Standard-Entitätstypen konnten nicht hinzugefügt werden.",
+    "loadError": "Das Extraktionsprofil konnte nicht geladen werden.",
+    "noKindsDescription": "Für die Extraktion muss mindestens ein Typ festgelegt werden. Fügen Sie die Standardtypen hinzu, um zu beginnen, oder definieren Sie eigene im Glossar.",
+    "noKindsTitle": "Dieses Buch enthält noch keine Entitätstypen"
   },
   "batch": {
     "title": "Batch-Konfiguration",
@@ -65,7 +71,19 @@
     "thinkingOn": "Denken: an (Reasoning aktiviert)",
     "thinkingOff": "Denken: aus (schneller, besseres JSON)",
     "startExtraction": "Extraktion starten",
-    "editProfile": "Profil bearbeiten"
+    "editProfile": "Profil bearbeiten",
+    "cacheAuto": "Bei Änderungen erneut ausführen (Standard)",
+    "cacheForce": "Immer neu extrahieren — Cache ignorieren",
+    "cacheHint": "Definition einer Art bearbeitet? Standardmäßig erfolgt eine erneute Ausführung.",
+    "cachePolicy": "Gecachte Ergebnisse",
+    "cacheReuse": "Gecachte Ergebnisse nach Möglichkeit wiederverwenden",
+    "concurrency": "Parallele LLM-Aufrufe",
+    "concurrencyHint": "1 = sequenziell. Erhöhen Sie diesen Wert, wenn Ihr Modell gleichzeitige Anfragen verarbeitet.",
+    "strategy": "Prompt-Struktur",
+    "strategyBatched": "Gebündelt — am gründlichsten (Standard)",
+    "strategyDelta": "Ein Aufruf + Deltas — am günstigsten",
+    "strategyEdc": "Sweep dann Typisierung — ca. 56 % günstiger, beste Fundierung",
+    "strategySingle": "Ein Aufruf — ca. 66 % günstiger, übersieht seltene Arten"
   },
   "progress": {
     "title": "Glossar wird extrahiert",
@@ -107,7 +125,11 @@
     "draftNote": "Alle neuen Entitäten wurden als Entwurf erstellt – bitte im Glossar-Tab überprüfen",
     "viewGlossary": "Im Glossar überprüfen",
     "runAgain": "Erneut extrahieren",
-    "close": "Schließen"
+    "close": "Schließen",
+    "cacheAllFresh": "Alle {{n}} Batches wurden frisch extrahiert.",
+    "cacheForced": "(Cache wurde durch Anfrage umgangen)",
+    "cacheRerunHint": "Falls Sie die Definition einer Art seitdem geändert haben, führen Sie den Vorgang mit „Immer neu extrahieren“ erneut aus.",
+    "cacheServed": "{{pct}} % dieses Durchlaufs ({{cached}} von {{total}} Batches) wurde aus einer vorherigen Extraktion WIEDERVERWENDET und nicht neu gelesen."
   },
   "button": {
     "extract": "Glossar extrahieren",

@@ -30,7 +30,13 @@
     "allOverwrite": "全部覆盖",
     "required": "必填",
     "thinkingEnabled": "启用思考/推理模式",
-    "thinkingHint": "进行 JSON 提取时建议关闭。对于像 Gemma 这样在启用思考模式时推理方式不同的模型，请开启此选项。"
+    "thinkingHint": "进行 JSON 提取时建议关闭。对于像 Gemma 这样在启用思考模式时推理方式不同的模型，请开启此选项。",
+    "addDefaults": "添加默认类型",
+    "addingDefaults": "正在添加…",
+    "defaultsError": "无法添加默认实体类型。",
+    "loadError": "无法加载提取配置文件。",
+    "noKindsDescription": "提取需要至少一种目标类型。请添加默认类型以开始，或在术语表中自定义类型。",
+    "noKindsTitle": "本书尚未设置任何实体类型"
   },
   "batch": {
     "title": "批量配置",
@@ -65,7 +71,19 @@
     "thinkingOn": "思考模式：开启 (已启用推理)",
     "thinkingOff": "思考模式：关闭 (速度更快，JSON 质量更高)",
     "startExtraction": "开始提取",
-    "editProfile": "编辑方案"
+    "editProfile": "编辑方案",
+    "cacheAuto": "内容变更时重新运行（默认）",
+    "cacheForce": "始终重新提取 — 忽略缓存",
+    "cacheHint": "修改了某种定义？默认设置已包含重新运行机制。",
+    "cachePolicy": "缓存结果",
+    "cacheReuse": "尽可能复用缓存结果",
+    "concurrency": "并行 LLM 调用",
+    "concurrencyHint": "1 = 顺序执行。如果您的模型支持并发请求，请调高此值。",
+    "strategy": "提示词构建策略",
+    "strategyBatched": "分批处理 — 最彻底（默认）",
+    "strategyDelta": "单次调用 + 增量更新 — 最经济",
+    "strategyEdc": "全量扫描后增量更新 — 成本降低约 56%，落地效果最佳",
+    "strategySingle": "单次调用 — 成本降低约 66%，但会遗漏罕见类型"
   },
   "progress": {
     "title": "正在提取术语表",
@@ -107,7 +125,11 @@
     "draftNote": "所有新实体均以草稿形式创建 —— 请在“术语表”选项卡中进行审核",
     "viewGlossary": "在术语表中查看",
     "runAgain": "再次提取",
-    "close": "关闭"
+    "close": "关闭",
+    "cacheAllFresh": "所有 {{n}} 个批次均为全新提取。",
+    "cacheForced": "（请求已绕过缓存）",
+    "cacheRerunHint": "如果您自那时起更改了类型定义，请使用“始终重新提取”进行重新运行。",
+    "cacheServed": "本次运行中有 {{pct}}%（{{cached}} / {{total}} 个批次）重用了之前的提取结果，而非重新读取。"
   },
   "button": {
     "extract": "提取术语表",

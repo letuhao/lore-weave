@@ -44,6 +44,8 @@ export function StepConfirm({
   onEditProfile,
 }: StepConfirmProps) {
   const { t } = useTranslation('extraction');
+  const { t: tStandards } = useTranslation('standards');
+  const kindLabel = (kind: ExtractionProfileKind) => tStandards(`system.kinds.${kind.code}.name`, { defaultValue: kind.name });
   const { accessToken } = useAuth();
   const [submitting, setSubmitting] = useState(false);
   // D-EXTRACTION-BATCH-CONCURRENCY: how many of a chapter's batch LLM calls run at
@@ -221,7 +223,7 @@ export function StepConfirm({
                 className="flex items-center gap-1.5 rounded-md border bg-card/50 px-2.5 py-1.5"
               >
                 <span className="text-sm">{kind.icon}</span>
-                <span className="text-xs font-medium">{kind.name}</span>
+                <span className="text-xs font-medium">{kindLabel(kind)}</span>
                 <span className="text-[9px] text-muted-foreground">
                   {t('confirm.attrs', { count: activeAttrs })}
                 </span>

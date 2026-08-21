@@ -1,0 +1,85 @@
+{
+  "loading": "Menyiapkan asisten Anda...",
+  "openingJournal": "Membuka jurnal Anda...",
+  "home": {
+    "welcome": "Selamat datang kembali, {{name}}",
+    "subtitle": "Asisten kerja pribadi Anda.",
+    "capturing": "Mencatat catatan kerja Anda",
+    "captureOff": "Pencatatan nonaktif",
+    "capturingDesc": "Orang & proyek akan terdeteksi saat Anda berbicara.",
+    "captureOffDesc": "Aktifkan untuk mengingat rekan kerja, proyek, dan keputusan.",
+    "refresh": "Segarkan",
+    "capturedItems": "Item yang dicatat",
+    "endDay": "Akhiri hari saya",
+    "endingDay": "Mengakhiri hari Anda...",
+    "journal": "Jurnal",
+    "memory": "Memori",
+    "practice": "Latihan wawancara"
+  },
+  "timezone": {
+    "title": "Konfirmasi zona waktu Anda",
+    "description": "Jurnal Anda mengelompokkan setiap hari berdasarkan waktu lokal Anda. Kami mendeteksi {{zone}}.",
+    "saving": "Menyimpan...",
+    "useThis": "Gunakan ini",
+    "pickAnother": "Pilih yang lain",
+    "save": "Simpan"
+  },
+  "capture": {
+    "title": "Sejauh ini hari ini",
+    "live": "langsung",
+    "description": "Hal-hal yang saya perhatikan saat kita berbicara. Tidak ada yang disimpan ke buku harian Anda sampai Anda meninjaunya malam ini.",
+    "listening": "Mendengarkan…",
+    "nothingYet": "Belum ada yang terekam — ceritakan tentang harimu.",
+    "turnOn": "Aktifkan fitur rekam untuk mulai mencatat orang dan proyek."
+  },
+  "autonomous": {
+    "title": "Biarkan asisten bekerja sendiri",
+    "description": "Mati hingga Anda mengaktifkannya — fitur ini berjalan di latar belakang dan menggunakan model Anda.",
+    "loading": "Memuat…",
+    "on": "Aktif",
+    "next": "Aktif · berikutnya {{time}}",
+    "eod": "Akhiri hariku secara otomatis",
+    "eodDesc": "Jurnal harian setiap malam, bahkan jika Anda lupa melakukannya.",
+    "weeklyReflection": "Refleksi mingguan",
+    "weeklyReflectionDesc": "Pola mingguan yang menenangkan + catatan pembinaan.",
+    "weeklySummary": "Ringkasan mingguan",
+    "weeklySummaryDesc": "Rekapitulasi minggu Anda.",
+    "reminders": "Pengingat menulis jurnal",
+    "remindersDesc": "Pengingat jika Anda belum mengakhiri hari Anda.",
+    "proactive": "Pemeriksaan proaktif",
+    "proactiveOn": "Aktif — Saya mungkin akan menyapa jika sudah lama tidak ada aktivitas.",
+    "proactiveOff": "Biarkan saya memulai dengan sebuah pemikiran setelah masa tenang."
+  },
+  "review": {
+    "title": "Inilah hari Anda",
+    "distilling": "Mengubah percakapan hari ini menjadi entri buku harian...",
+    "genericError": "Terjadi kesalahan.",
+    "words": "{{count}} kata",
+    "kept": "disimpan",
+    "keep": "Simpan entri hari ini",
+    "keptButton": "Tersimpan ✓",
+    "keeping": "Menyimpan…"
+  },
+  "inbox": {
+    "title": "Fakta untuk diingat",
+    "description": "Dari percakapan hari ini. Simpan yang layak diingat; abaikan sisanya.",
+    "loading": "Memuat…",
+    "error": "Tidak dapat memuat fakta.",
+    "keep": "Simpan",
+    "dismiss": "Abaikan",
+    "quoted": "dikutip"
+  },
+  "scorecard": {
+    "title": "Kartu skor pembinaan",
+    "badge": "Tidak ada tren (dalam peninjauan)",
+    "badgeTitle": "Skor ini belum dikalibrasi terhadap penilaian manusia, sehingga hanya ditampilkan sebagai referensi dan tidak dimasukkan ke dalam grafik tren.",
+    "overall": "Keseluruhan:",
+    "notScored": "tidak dinilai"
+  },
+  "reflection": {
+    "defaultTitle": "Refleksi Mingguan",
+    "dismissError": "tidak dapat dibatalkan — coba lagi",
+    "dismissing": "Membatalkan...",
+    "dismiss": "Batalkan"
+  }
+}

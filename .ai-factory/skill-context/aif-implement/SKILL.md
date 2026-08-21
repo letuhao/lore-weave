@@ -1,0 +1,52 @@
+# LoreWeave overrides for `aif-implement`
+
+Read [`.ai-factory/skill-context/aif/SKILL.md`](../aif/SKILL.md) first — it carries the precedence rules and the
+project invariants. This file covers only what changes for implementation work.
+
+## Tests are NOT opt-in here
+
+`aif-implement`'s general rule is *"Do not add tests by default … when in doubt, prefer NO
+tests."* **That rule does not apply to this repository.** LoreWeave's Phase 6 VERIFY is an
+evidence gate: run the command, read the whole output, then claim. A change that alters
+behaviour ships with a test that would fail without it.
+
+This is not stylistic. The repo's history is a list of defects that unit-green code hid —
+which is also why a passing test is not automatically evidence: if the test cannot fail when
+the behaviour breaks, it is a claim wearing the costume of evidence. Break the guarded thing,
+watch it go red, put it back, paste the output.
+
+Exceptions are narrow and stated out loud: a pure rename, a comment, a generated file.
+
+## Follow the repo's phases, not a parallel set
+
+Implementation sits inside `CLARIFY → DESIGN → REVIEW → PLAN → BUILD → VERIFY → REVIEW → QC
+→ POST-REVIEW → SESSION → COMMIT → RETRO`. The state machine is real:
+
+```bash
+./scripts/workflow-gate.sh size M 3 4 0 45     # classify first
+./scripts/workflow-gate.sh phase build
+./scripts/workflow-gate.sh complete build "<evidence>"
+```
+
+- **Never self-authorise a skip.** If the work turns out larger than classified, stop,
+  reclassify, and say so.
+- **POST-REVIEW is a human checkpoint** — present the summary and WAIT. Do not pre-write
+  "0 issues found"; that is the rubber-stamp tell.
+- When a change spans **≥2 services**, unit-green is insufficient — the VERIFY evidence needs
+  a `live smoke:` line, an explicit `LIVE-SMOKE deferred to D-…` row, or
+  `live infra unavailable: <reason>`.
+
+## Frontend work
+
+React MVC separation is enforced by convention and review: hooks own logic, components render,
+context shares state. Never conditionally unmount stateful components; no `useEffect` for event
+handling; split context by update frequency. Check
+[`docs/FEATURE_INDEX.md`](../../../docs/FEATURE_INDEX.md) **before** adding a feature folder,
+and update it in the same commit.
+
+## Fix now, defer rarely
+
+There is no deadline here, so "we'll come back to it" is the trap. A finding may be deferred
+only if it clears the eligibility gate in `AGENTS.md` (out of scope · large/structural ·
+naturally-next-phase · genuinely blocked externally · conscious won't-fix). **"I'd have to
+build it" is not "blocked."** If writing the defer row costs more than the fix, just fix it.

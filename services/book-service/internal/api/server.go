@@ -240,6 +240,17 @@ func (s *Server) Router() http.Handler {
 		// contract (200-id cap, partial responses) but is book-scoped by the path.
 		r.Post("/books/{book_id}/chapters/canon-markers", s.postInternalChapterCanonMarkers)
 		r.Patch("/imports/{import_id}", s.updateImportJobStatus)
+		r.Post("/epub-import-jobs/{job_id}/claim-next", s.claimNextEPUBImportItem)
+
+		r.Post("/epub-import-jobs/{job_id}/resume", s.resumeEpubImportJobInternal)
+		r.Post("/epub-import-jobs/{job_id}/items/{item_id}/stage", s.stageEPUBImportItem)
+		r.Post("/epub-import-jobs/{job_id}/items/{item_id}/fail", s.failEPUBImportItem)
+		r.Post("/epub-import-jobs/{job_id}/assets", s.upsertEPUBImportAsset)
+		r.Post("/epub-import-jobs/{job_id}/scene-mappings", s.applyEPUBImportSceneMappings)
+		r.Get("/epub-import-jobs/{job_id}/hierarchy", s.getEPUBImportHierarchy)
+		r.Post("/epub-import-jobs/{job_id}/hierarchy-mappings", s.applyEPUBImportHierarchyMappings)
+		r.Post("/epub-import-jobs/{job_id}/warnings", s.recordEPUBImportJobWarning)
+		r.Post("/epub-import-jobs/{job_id}/finalize", s.finalizeEPUBImport)
 		// WS-1.8 (spec 06 §Q10) — the journal distiller's ONLY write seam: draft-only,
 		// owner-scoped, idempotent primary-per-day diary entry. Internal-token (the worker
 		// has no user JWT); the (book, owner) pair is verified to be the caller's own diary.
@@ -253,9 +264,24 @@ func (s *Server) Router() http.Handler {
 		r.Delete("/books/{book_id}/diary/erase", s.eraseDiaryBook)
 	})
 
+	// EPUB Import V2 is deliberately mounted outside /v1/books: inspection can
+	// create a new book later, so a target book is optional at upload time.
+	r.Post("/v1/epub-imports/inspect", s.inspectEpubImport)
+	r.Post("/v1/epub-imports", s.startEpubImport)
+	r.Get("/v1/epub-imports/{source_id}/shadow-comparison", s.getEPUBShadowComparison)
+	r.Get("/v1/import-jobs/{job_id}", s.getEpubImportJob)
+	r.Get("/v1/import-jobs/{job_id}/items", s.listEpubImportJobItems)
+	r.Post("/v1/import-jobs/{job_id}/cancel", s.cancelEpubImportJob)
+	r.Post("/v1/import-jobs/{job_id}/resume", s.resumeEpubImportJob)
+	r.Post("/v1/import-jobs/{job_id}/rollback", s.rollbackEpubImportJob)
+	r.Get("/v1/import-jobs/{job_id}/report", s.getEpubImportReport)
+
 	r.Route("/v1/books", func(r chi.Router) {
 		r.Get("/storage-usage", s.getStorageUsage)
 		r.Get("/reading-history", s.getReadingHistory)
+		// Static route must be registered before /{book_id}; this is the
+		// create-and-import FB2 mode, distinct from importing into a known book.
+		r.Post("/import/fb2", s.startNewFB2Import)
 		r.Post("/", s.createBook)
 		r.Get("/", s.listBooks)
 		// WS-1.4 — the diary provisioner (the only kind='diary' write path). Static segment,
@@ -421,16 +447,16 @@ func (s *Server) Router() http.Handler {
 			// S7·2 — the world-map EDITOR's public write surface (~10 routes). All owner-scoped via
 			// requireWorldOwner + the map-owner JOIN; map rename is If-Match/version OCC (428/412),
 			// marker/region writes are last-write-wins (spec §4.4). See worlds_maps_write_rest.go.
-			r.Post("/maps", s.createMapREST)                                     // R1
-			r.Patch("/maps/{map_id}", s.patchMapREST)                            // R2 (If-Match)
-			r.Delete("/maps/{map_id}", s.deleteMapREST)                          // R3
-			r.Post("/maps/{map_id}/image", s.uploadWorldMapImagePublic)          // R4 (public JWT wrapper)
-			r.Post("/maps/{map_id}/markers", s.addMarkerREST)                    // R5
-			r.Patch("/maps/{map_id}/markers/{marker_id}", s.patchMarkerREST)     // R6 (drag)
-			r.Delete("/maps/{map_id}/markers/{marker_id}", s.deleteMarkerREST)   // R7
-			r.Post("/maps/{map_id}/regions", s.addRegionREST)                    // R8
-			r.Patch("/maps/{map_id}/regions/{region_id}", s.patchRegionREST)     // R9 (reshape)
-			r.Delete("/maps/{map_id}/regions/{region_id}", s.deleteRegionREST)   // R10
+			r.Post("/maps", s.createMapREST)                                   // R1
+			r.Patch("/maps/{map_id}", s.patchMapREST)                          // R2 (If-Match)
+			r.Delete("/maps/{map_id}", s.deleteMapREST)                        // R3
+			r.Post("/maps/{map_id}/image", s.uploadWorldMapImagePublic)        // R4 (public JWT wrapper)
+			r.Post("/maps/{map_id}/markers", s.addMarkerREST)                  // R5
+			r.Patch("/maps/{map_id}/markers/{marker_id}", s.patchMarkerREST)   // R6 (drag)
+			r.Delete("/maps/{map_id}/markers/{marker_id}", s.deleteMarkerREST) // R7
+			r.Post("/maps/{map_id}/regions", s.addRegionREST)                  // R8
+			r.Patch("/maps/{map_id}/regions/{region_id}", s.patchRegionREST)   // R9 (reshape)
+			r.Delete("/maps/{map_id}/regions/{region_id}", s.deleteRegionREST) // R10
 		})
 	})
 	return r
@@ -1993,11 +2019,12 @@ func (s *Server) patchChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var bState, cState string
+	var currentTitle *string
 	err := s.pool.QueryRow(r.Context(), `
-SELECT b.lifecycle_state,c.lifecycle_state
+SELECT b.lifecycle_state,c.lifecycle_state,c.title
 FROM books b JOIN chapters c ON c.book_id=b.id
 WHERE b.id=$1 AND c.id=$2
-`, bookID, chID).Scan(&bState, &cState)
+`, bookID, chID).Scan(&bState, &cState, &currentTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
 		return
@@ -2010,7 +2037,13 @@ WHERE b.id=$1 AND c.id=$2
 		writeError(w, http.StatusConflict, "CHAPTER_INVALID_LIFECYCLE", "parent book not active or chapter not patchable")
 		return
 	}
-	_, err = s.pool.Exec(r.Context(), `
+	tx, err := s.pool.Begin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch chapter")
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+	_, err = tx.Exec(r.Context(), `
 UPDATE chapters
 SET title=COALESCE($3,title),
     sort_order=COALESCE($4,sort_order),
@@ -2020,6 +2053,22 @@ WHERE id=$1 AND book_id=$2
 `, chID, bookID, stringFromAny(in["title"]), intFromAny(in["sort_order"]), stringFromAny(in["original_language"]))
 	if err != nil {
 		writeError(w, http.StatusConflict, "BOOK_CONFLICT", "failed to patch chapter")
+		return
+	}
+	if requestedTitle := stringFromAny(in["title"]); requestedTitle != nil {
+		oldTitle := ""
+		if currentTitle != nil {
+			oldTitle = *currentTitle
+		}
+		if oldTitle != *requestedTitle {
+			if err := insertStructureActivityOutbox(r.Context(), tx, caller, bookID, chID, structureActivityRenamed, oldTitle, *requestedTitle); err != nil {
+				writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to record chapter activity")
+				return
+			}
+		}
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to patch chapter")
 		return
 	}
 	s.getChapterByID(w, r.Context(), bookID, chID, caller, http.StatusOK)
@@ -2075,17 +2124,22 @@ func chapterLifecycleNeed(target string) GrantLevel {
 // what counts as a valid transition. Callers MUST have already authorized the
 // caller (authBook) at chapterLifecycleNeed(target) — this function does not
 // re-check the grant, only the book/chapter's current lifecycle state.
-func (s *Server) transitionOneChapterLifecycle(ctx context.Context, bookID, chID uuid.UUID, target string) error {
+func (s *Server) transitionOneChapterLifecycle(ctx context.Context, bookID, chID, actorID uuid.UUID, target string) error {
 	var bState, cState string
+	var chapterTitle *string
 	err := s.pool.QueryRow(ctx, `
-SELECT b.lifecycle_state,c.lifecycle_state FROM books b JOIN chapters c ON c.book_id=b.id
+SELECT b.lifecycle_state,c.lifecycle_state,c.title FROM books b JOIN chapters c ON c.book_id=b.id
 WHERE b.id=$1 AND c.id=$2
-`, bookID, chID).Scan(&bState, &cState)
+`, bookID, chID).Scan(&bState, &cState, &chapterTitle)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return errChapterNotFound
 	}
 	if err != nil {
 		return fmt.Errorf("failed to transition chapter: %w", err)
+	}
+	titleValue := ""
+	if chapterTitle != nil {
+		titleValue = *chapterTitle
 	}
 	switch target {
 	case "trashed":
@@ -2103,6 +2157,9 @@ WHERE b.id=$1 AND c.id=$2
 		if err := insertOutboxEvent(ctx, tx, "chapter.trashed", chID, map[string]any{"book_id": bookID}); err != nil {
 			return fmt.Errorf("failed to trash chapter: %w", err)
 		}
+		if err := insertStructureActivityOutbox(ctx, tx, actorID, bookID, chID, structureActivityTrashed, "", titleValue); err != nil {
+			return fmt.Errorf("failed to record chapter activity: %w", err)
+		}
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to trash chapter: %w", err)
 		}
@@ -2111,7 +2168,21 @@ WHERE b.id=$1 AND c.id=$2
 		if bState != "active" || cState != "trashed" {
 			return errInvalidLifecycle
 		}
-		if _, err := s.pool.Exec(ctx, `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, chID); err != nil {
+		tx, txErr := s.pool.Begin(ctx)
+		if txErr != nil {
+			return fmt.Errorf("failed to restore chapter: %w", txErr)
+		}
+		defer tx.Rollback(ctx) //nolint:errcheck
+		if _, err := tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='active', trashed_at=NULL, purge_eligible_at=NULL, updated_at=now() WHERE id=$1`, chID); err != nil {
+			return fmt.Errorf("failed to restore chapter: %w", err)
+		}
+		if err := insertOutboxEvent(ctx, tx, "chapter.restored", chID, map[string]any{"book_id": bookID}); err != nil {
+			return fmt.Errorf("failed to restore chapter: %w", err)
+		}
+		if err := insertStructureActivityOutbox(ctx, tx, actorID, bookID, chID, structureActivityRestored, "", titleValue); err != nil {
+			return fmt.Errorf("failed to record chapter activity: %w", err)
+		}
+		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to restore chapter: %w", err)
 		}
 		return nil
@@ -2129,6 +2200,9 @@ WHERE b.id=$1 AND c.id=$2
 		}
 		if err := insertOutboxEvent(ctx, tx, "chapter.deleted", chID, map[string]any{"book_id": bookID}); err != nil {
 			return fmt.Errorf("failed to purge chapter: %w", err)
+		}
+		if err := insertStructureActivityOutbox(ctx, tx, actorID, bookID, chID, structureActivityDeleted, "", titleValue); err != nil {
+			return fmt.Errorf("failed to record chapter activity: %w", err)
 		}
 		if err := tx.Commit(ctx); err != nil {
 			return fmt.Errorf("failed to purge chapter: %w", err)
@@ -2152,7 +2226,7 @@ func (s *Server) transitionChapterLifecycle(w http.ResponseWriter, r *http.Reque
 	if !ok {
 		return
 	}
-	err := s.transitionOneChapterLifecycle(r.Context(), bookID, chID, target)
+	err := s.transitionOneChapterLifecycle(r.Context(), bookID, chID, caller, target)
 	switch {
 	case errors.Is(err, errChapterNotFound):
 		writeError(w, http.StatusNotFound, "CHAPTER_NOT_FOUND", "chapter not found")
@@ -2245,7 +2319,8 @@ func (s *Server) bulkUpdateChapterStatus(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	target := in.LifecycleState
-	if _, _, _, ok := s.authBook(w, r, bookID, chapterLifecycleNeed(target)); !ok {
+	caller, _, _, ok := s.authBook(w, r, bookID, chapterLifecycleNeed(target))
+	if !ok {
 		return
 	}
 
@@ -2256,7 +2331,7 @@ func (s *Server) bulkUpdateChapterStatus(w http.ResponseWriter, r *http.Request)
 			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: false, Error: "invalid chapter_id"})
 			continue
 		}
-		switch err := s.transitionOneChapterLifecycle(r.Context(), bookID, chID, target); {
+		switch err := s.transitionOneChapterLifecycle(r.Context(), bookID, chID, caller, target); {
 		case err == nil:
 			results = append(results, bulkChapterStatusOutcome{ChapterID: raw, OK: true})
 		case errors.Is(err, errChapterNotFound):

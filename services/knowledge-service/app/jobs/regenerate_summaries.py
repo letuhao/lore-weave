@@ -69,6 +69,7 @@ from app.metrics import (
     summary_regen_total,
 )
 from app.pricing import cost_per_token
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +91,12 @@ RegenTrigger = Literal["manual", "scheduled"]
 # ── Tunables (KSA §7.6 reference values) ─────────────────────────────
 
 _RECENT_PASSAGE_LIMIT = 50
-_MAX_OUTPUT_TOKENS = 500
+#: The K20.6 overflow guardrail's threshold. It is NOT the wire cap any more (that is the
+#: `regenerate_summary` registry row) — but the two must stay the SAME NUMBER, so it is
+#: derived from the row rather than restated. Replacing only the cap would have left the
+#: rejector policing 500 while the wire allowed more, and a legitimate summary would come
+#: back `token_overflow`: an adjacent decision quietly defeating the one just made.
+_MAX_OUTPUT_TOKENS = max_tokens_for("regenerate_summary")
 _SIMILARITY_NO_OP_THRESHOLD = 0.95
 _USER_EDIT_LOCK_DAYS = 30
 
@@ -380,7 +386,7 @@ async def _invoke_llm_for_summary(
             input={
                 "messages": messages,
                 "temperature": 0.0,
-                "max_tokens": _MAX_OUTPUT_TOKENS,
+                "max_tokens": max_tokens_for("regenerate_summary"),
             },
             chunking=None,  # summaries fit single call
             job_meta={

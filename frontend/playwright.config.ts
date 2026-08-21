@@ -1,6 +1,9 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const baseURL = process.env.PLAYWRIGHT_BASE_URL ?? 'http://localhost:5174';
+const executablePath = process.env.PLAYWRIGHT_EXECUTABLE_PATH;
+const devtoolsPort = process.env.PLAYWRIGHT_DEVTOOLS_PORT;
+const video = process.env.PLAYWRIGHT_VIDEO === 'off' ? 'off' as const : 'retain-on-failure' as const;
 
 export default defineConfig({
   testDir: './tests/e2e/specs',
@@ -18,9 +21,13 @@ export default defineConfig({
     baseURL,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
-    video: 'retain-on-failure',
+    video,
     actionTimeout: 10_000,
     navigationTimeout: 15_000,
+    launchOptions: {
+      ...(executablePath ? { executablePath } : {}),
+      ...(devtoolsPort ? { args: [`--remote-debugging-port=${devtoolsPort}`] } : {}),
+    },
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

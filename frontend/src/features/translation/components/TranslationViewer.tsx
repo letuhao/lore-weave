@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy, SplitSquareVertical, AlertTriangle, History, Pencil, X } from 'lucide-react';
+import { Check, Copy, SplitSquareVertical, AlertTriangle, History, Pencil, ShieldAlert, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { versionsApi, type ChapterTranslation } from '../api';
@@ -155,6 +155,21 @@ export function TranslationViewer({ bookId, chapterId, versionId, isActive, onSe
             >
               <History className="h-2.5 w-2.5" />
               {t('viewer.glossary_stale')}
+            </span>
+          )}
+          {/* `> 0`, deliberately — NOT a truthiness test. `null` means the chapter was
+              translated before the scan existed and 0 means it was scanned and found clean;
+              both are falsy, and only one of them is an answer. This badge stays silent for
+              null because claiming "clean" for text nobody looked at is the false-green this
+              whole defence exists to avoid. */}
+          {(version.source_injection_hits ?? 0) > 0 && (
+            <span
+              data-testid="source-injection-badge"
+              title={t('viewer.source_injection_title')}
+              className="flex items-center gap-1 rounded-full bg-amber-400/15 px-2 py-0.5 text-[10px] font-medium text-amber-600"
+            >
+              <ShieldAlert className="h-2.5 w-2.5" />
+              {t('viewer.source_injection', { count: version.source_injection_hits })}
             </span>
           )}
         </div>

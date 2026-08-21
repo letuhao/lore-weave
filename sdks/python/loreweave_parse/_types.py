@@ -39,6 +39,15 @@ class Chapter(BaseModel):
     path: str  # e.g. "book/part-1/chapter-3"
     html: str  # post-pandoc HTML slice for this chapter; consumed by htmlToTiptapJSON
     scenes: list[Scene] = Field(min_length=1)
+    source_key: str | None = None
+
+
+class FidelityMetrics(BaseModel):
+    """Deterministic content accounting for one-boundary import callers."""
+
+    source_text_chars: int = Field(ge=0)
+    scene_text_chars: int = Field(ge=0)
+    scene_count: int = Field(ge=1)
 
 
 class Part(BaseModel):
@@ -54,6 +63,7 @@ class StructuralTree(BaseModel):
     walker_path: WalkerPath
     book_title: str | None = None
     parts: list[Part] = Field(min_length=1)
+    fidelity: FidelityMetrics | None = None
 
 
 class ParseOptions(BaseModel):
@@ -61,6 +71,10 @@ class ParseOptions(BaseModel):
 
     scene_break_on_hr: bool = True
     max_leaf_chars: int | None = None  # P1: not enforced (P2 concern)
+    preserve_chapter_boundary: bool = False
+    extract_scenes_only: bool = False
+    chapter_title: str | None = None
+    source_key: str | None = None
 
 
 class ParseRequest(BaseModel):
@@ -75,6 +89,7 @@ class ParseRequest(BaseModel):
 
 __all__ = [
     "Chapter",
+    "FidelityMetrics",
     "ParseOptions",
     "ParseRequest",
     "Part",

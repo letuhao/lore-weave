@@ -1,0 +1,85 @@
+{
+  "loading": "Menyediakan pembantu anda...",
+  "openingJournal": "Membuka jurnal anda...",
+  "home": {
+    "welcome": "Selamat kembali, {{name}}",
+    "subtitle": "Pembantu kerja peribadi anda.",
+    "capturing": "Merekod nota kerja anda",
+    "captureOff": "Rakaman dimatikan",
+    "capturingDesc": "Orang & projek akan dikesan semasa anda bercakap.",
+    "captureOffDesc": "Hidupkan untuk mengingati rakan sekerja, projek dan keputusan.",
+    "refresh": "Segarkan",
+    "capturedItems": "Item yang direkod",
+    "endDay": "Tamatkan hari saya",
+    "endingDay": "Menamatkan hari anda...",
+    "journal": "Jurnal",
+    "memory": "Memori",
+    "practice": "Latihan temu duga"
+  },
+  "timezone": {
+    "title": "Sahkan zon masa anda",
+    "description": "Jurnal anda mengumpulkan setiap hari mengikut masa tempatan anda. Kami mengesan {{zone}}.",
+    "saving": "Menyimpan...",
+    "useThis": "Gunakan ini",
+    "pickAnother": "Pilih yang lain",
+    "save": "Simpan"
+  },
+  "capture": {
+    "title": "Setakat hari ini",
+    "live": "langsung",
+    "description": "Perkara yang saya perhatikan semasa kita berbual. Tiada apa yang disimpan ke dalam diari anda sehingga anda menyemaknya malam ini.",
+    "listening": "Sedang mendengar…",
+    "nothingYet": "Tiada apa-apa yang dirakam lagi — ceritakan tentang hari anda.",
+    "turnOn": "Aktifkan rakaman untuk mula memerhati orang dan projek."
+  },
+  "autonomous": {
+    "title": "Biarkan pembantu bekerja sendiri",
+    "description": "Tutup sehingga anda mengaktifkannya — ini berjalan di latar belakang dan menggunakan model anda.",
+    "loading": "Memuatkan…",
+    "on": "Aktif",
+    "next": "Aktif · seterusnya {{time}}",
+    "eod": "Tamatkan hari saya secara automatik",
+    "eodDesc": "Catat jurnal setiap petang, walaupun jika anda terlupa.",
+    "weeklyReflection": "Refleksi mingguan",
+    "weeklyReflectionDesc": "Corak mingguan yang santai + nota bimbingan.",
+    "weeklySummary": "Ringkasan mingguan",
+    "weeklySummaryDesc": "Sorotan aktiviti mingguan anda.",
+    "reminders": "Peringatan jurnal",
+    "remindersDesc": "Satu peringatan jika anda belum melengkapkan catatan hari ini.",
+    "proactive": "Semakan proaktif",
+    "proactiveOn": "Aktif — Saya mungkin akan menghubungi anda jika sudah lama anda tidak menulis.",
+    "proactiveOff": "Biar saya mulakan dengan satu pemikiran selepas tempoh sunyi."
+  },
+  "review": {
+    "title": "Inilah hari anda",
+    "distilling": "Menukarkan perbualan hari ini kepada catatan diari...",
+    "genericError": "Sesuatu telah berlaku.",
+    "words": "{{count}} patah perkataan",
+    "kept": "disimpan",
+    "keep": "Simpan catatan hari ini",
+    "keptButton": "Disimpan ✓",
+    "keeping": "Menyimpan…"
+  },
+  "inbox": {
+    "title": "Fakta untuk diingati",
+    "description": "Daripada perbualan hari ini. Simpan yang berbaloi untuk diingati; abaikan yang selebihnya.",
+    "loading": "Memuatkan…",
+    "error": "Tidak dapat memuatkan fakta.",
+    "keep": "Simpan",
+    "dismiss": "Abaikan",
+    "quoted": "dipetik"
+  },
+  "scorecard": {
+    "title": "Kad skor bimbingan",
+    "badge": "Tiada trend (dalam semakan)",
+    "badgeTitle": "Skor ini belum dikalibrasi terhadap penilaian manusia, jadi ia dipaparkan sebagai rujukan tetapi tidak dilukis pada trend.",
+    "overall": "Keseluruhan:",
+    "notScored": "tidak dinilai"
+  },
+  "reflection": {
+    "defaultTitle": "Refleksi Mingguan",
+    "dismissError": "tidak dapat dibatalkan — cuba lagi",
+    "dismissing": "Membatalkan…",
+    "dismiss": "Batal"
+  }
+}

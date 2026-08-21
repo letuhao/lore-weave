@@ -30,7 +30,13 @@
     "allOverwrite": "Todos Substituir",
     "required": "obrigatório",
     "thinkingEnabled": "Ativar pensamento / raciocínio",
-    "thinkingHint": "O modo 'desativado' é recomendado para extração de JSON. Ative para modelos como o Gemma, que raciocinam de forma diferente quando o pensamento está ativado."
+    "thinkingHint": "O modo 'desativado' é recomendado para extração de JSON. Ative para modelos como o Gemma, que raciocinam de forma diferente quando o pensamento está ativado.",
+    "addDefaults": "Adicionar tipos padrão",
+    "addingDefaults": "Adicionando…",
+    "defaultsError": "Não foi possível adicionar os tipos de entidades padrão.",
+    "loadError": "Não foi possível carregar o perfil de extração.",
+    "noKindsDescription": "A extração precisa de pelo menos um tipo para busca. Adicione os padrões para começar ou defina os seus próprios no glossário.",
+    "noKindsTitle": "Este livro ainda não possui tipos de entidades"
   },
   "batch": {
     "title": "Config. em Lote",
@@ -65,7 +71,19 @@
     "thinkingOn": "Pensamento: ativado (raciocínio habilitado)",
     "thinkingOff": "Pensamento: desativado (mais rápido, melhor JSON)",
     "startExtraction": "Iniciar Extração",
-    "editProfile": "Editar Perfil"
+    "editProfile": "Editar Perfil",
+    "cacheAuto": "Executar novamente quando algo for alterado (padrão)",
+    "cacheForce": "Sempre reextrair — ignorar o cache",
+    "cacheHint": "Editou uma definição de tipo? O padrão já executa novamente.",
+    "cachePolicy": "Resultados em cache",
+    "cacheReuse": "Reutilizar resultados em cache sempre que possível",
+    "concurrency": "Chamadas de LLM em paralelo",
+    "concurrencyHint": "1 = sequencial. Aumente este valor se o seu modelo aceita requisições simultâneas.",
+    "strategy": "Formato do prompt",
+    "strategyBatched": "Em lote — mais minucioso (padrão)",
+    "strategyDelta": "Uma chamada + deltas — mais barato",
+    "strategyEdc": "Varredura e depois tipagem — ~56% mais barato, melhor fundamentação",
+    "strategySingle": "Uma chamada — ~66% mais barato, pode perder tipos raros"
   },
   "progress": {
     "title": "Extraindo Glossário",
@@ -107,7 +125,11 @@
     "draftNote": "Todas as novas entidades foram criadas como rascunho — revise na aba Glossário",
     "viewGlossary": "Revisar no Glossário",
     "runAgain": "Extrair novamente",
-    "close": "Fechar"
+    "close": "Fechar",
+    "cacheAllFresh": "Todos os {{n}} lotes foram extraídos do zero.",
+    "cacheForced": "(o cache foi ignorado pela solicitação)",
+    "cacheRerunHint": "Se você alterou uma definição de tipo desde então, execute novamente com «Sempre reextrair».",
+    "cacheServed": "{{pct}}% desta execução ({{cached}} de {{total}} lotes) foi REUTILIZADA de uma extração anterior, não lida novamente."
   },
   "button": {
     "extract": "Extrair Glossário",

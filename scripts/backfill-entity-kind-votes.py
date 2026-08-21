@@ -8,12 +8,13 @@ answer arrived on the book's very first run.
 
 The evidence that would have prevented it exists: every parse this platform has ever cached
 sits in translation-service's `extraction_raw_outputs`. This script aggregates it per
-(name, kind_code) and posts the counts to glossary-service, which records them and re-resolves
-with `domain.ResolveKind`.
+(name, kind_code) and posts the counts to glossary-service, which resolves them with
+`domain.ResolveKind`.
 
 **It carries no resolution policy of its own.** Reimplementing the estimator here is the
 mirror-the-producer defect this repo shipped twice in one day; the script posts counts and Go
-decides. That is also why `--apply` only changes what glossary does with the same numbers.
+decides. Without `--apply`, glossary performs the calculation in a transaction and rolls it
+back; `--apply` is required to persist the ledger, re-kind entities, and emit outbox events.
 
     python scripts/backfill-entity-kind-votes.py --book <uuid>            # dry run
     python scripts/backfill-entity-kind-votes.py --book <uuid> --apply    # re-kind + emit
@@ -88,8 +89,8 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--book", required=True, help="book_id (UUID)")
     ap.add_argument("--apply", action="store_true",
-                    help="actually re-kind. Without it, votes are recorded and the changes "
-                         "are PREVIEWED but no entity moves.")
+                    help="persist votes and re-kinds. Without it, changes are previewed "
+                         "and the transaction is rolled back.")
     ap.add_argument("--dsn", default=DEFAULT_TRANSLATION_DSN)
     ap.add_argument("--glossary", default=DEFAULT_GLOSSARY_URL)
     args = ap.parse_args()

@@ -23,4 +23,3 @@ Source: 84 motifs across 10 packs, authored in English.
 | zh-TW | machine | 84/84 | 1621 | 0 | 0 | 0 | 0 |
 
 **17/17 locales clean.**
-

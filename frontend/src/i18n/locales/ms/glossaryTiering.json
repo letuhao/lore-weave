@@ -120,7 +120,8 @@
     "no_active": "Tiada genre aktif. Tambah satu untuk membina matriks.",
     "cell_inspector": "Sel terpilih",
     "no_cell": "Klik pada sel untuk memeriksanya.",
-    "sort": "susun"
+    "sort": "susun",
+    "required": "diperlukan"
   },
   "entity": {
     "title_new": "Entiti {{kind}} baharu",
@@ -238,5 +239,16 @@
     "links_saved": "Pautan genre dikemas kini",
     "links_failed": "Tidak dapat mengemas kini pautan genre",
     "forbidden": "Anda memerlukan akses Urus untuk membuat perubahan pada buku ini"
+  },
+  "batch_translate": {
+    "apply": "Gunakan terjemahan",
+    "count": "{{n}} entiti untuk diterjemahkan",
+    "loading": "Memuatkan…",
+    "none": "Tiada entiti yang belum diterjemahkan untuk bahasa ini.",
+    "pick_lang": "Pilih bahasa sasaran untuk bermula.",
+    "result": "{{w}} ditulis · {{v}} dikekalkan (disahkan) · {{e}} kosong · {{f}} gagal",
+    "select_lang": "Pilih…",
+    "target_lang": "Bahasa sasaran",
+    "title": "Terjemahan pukal"
   }
 }

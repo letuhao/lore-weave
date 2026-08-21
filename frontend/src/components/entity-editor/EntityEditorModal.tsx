@@ -269,10 +269,10 @@ export function EntityEditorModal({ bookId, entityId, bookGenreTags = [], kindGe
                 className="w-40 rounded border-none bg-transparent px-1 py-0.5 text-[11px] text-muted-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/40"
               />
             </span>
-            {entity.tags.length > 0 && (
+            {(entity.tags ?? []).length > 0 && (
               <>
                 <span className="flex-1" />
-                <span className="inline-flex items-center gap-1 text-primary"><Tag className="h-3 w-3" />{entity.tags.join(', ')}</span>
+                <span className="inline-flex items-center gap-1 text-primary"><Tag className="h-3 w-3" />{(entity.tags ?? []).join(', ')}</span>
               </>
             )}
           </div>
@@ -515,7 +515,7 @@ function AttrGrid({ attrs, getValue, onChange, pendingChanges, translationLang, 
     const CardComponent = getCardComponent(def.field_type);
     const isShort = SHORT_TYPES.has(def.field_type);
     const modified = pendingChanges.has(attr.attr_value_id);
-    const hasTranslations = attr.translations.length > 0;
+    const hasTranslations = (attr.translations ?? []).length > 0;
 
     const activeLang = viewTranslationMode && displayLanguage
       ? displayLanguage

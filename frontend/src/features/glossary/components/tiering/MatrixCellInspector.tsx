@@ -37,9 +37,9 @@ export function MatrixCellInspector({
         <TierChip tier={tierFromSourceRef(attribute.source_ref)} />
       </div>
       {attribute.description && <p className="text-[13px] text-foreground/80">{attribute.description}</p>}
-      {attribute.field_type === 'select' && attribute.options.length > 0 && (
+      {attribute.field_type === 'select' && (attribute.options ?? []).length > 0 && (
         <div className="flex flex-wrap gap-1">
-          {attribute.options.map((o) => (
+          {(attribute.options ?? []).map((o) => (
             <span key={o} className="rounded border bg-secondary px-1.5 py-0.5 text-[11px]">
               {o}
             </span>

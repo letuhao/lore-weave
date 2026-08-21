@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/google/uuid"
@@ -47,9 +48,9 @@ func (s *Server) internalImportKindVotes(w http.ResponseWriter, r *http.Request)
 	}
 	var in struct {
 		Votes []kindVoteIn `json:"votes"`
-		// Apply=false is a DRY RUN: votes are still recorded (they are observations, and
-		// recording them is not a mutation of anything a user authored), but no entity kind
-		// moves. Re-kinding is a data mutation; it does not happen because a script ran.
+		// Apply=false is a DRY RUN: vote writes and resolution happen in this transaction
+		// to produce an exact preview, then the transaction is rolled back. No ledger,
+		// entity, or outbox state may persist without an explicit --apply.
 		Apply bool `json:"apply"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
@@ -173,9 +174,17 @@ func (s *Server) internalImportKindVotes(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	if err := tx.Commit(ctx); err != nil {
-		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
-		return
+	if in.Apply {
+		if err := tx.Commit(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "commit failed")
+			return
+		}
+	} else {
+		if err := tx.Rollback(ctx); err != nil {
+			writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "dry-run rollback failed")
+			return
+		}
+		slog.Debug("[FIX] kind-vote dry run rolled back", "book_id", bookID, "entities_touched", len(touched))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"applied":          in.Apply,

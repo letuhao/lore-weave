@@ -24,6 +24,10 @@ Model primitives.
 ```bash
 docker compose up -d composition-service      # from infra/
 curl localhost:8217/health                    # {"status":"ok",...}
-# host pytest:
-PYTHONPATH=. python -m pytest tests/unit -q
+# host tests (creates Git-ignored services/composition-service/.venv):
+./scripts/bootstrap-test-venv.sh
+./scripts/test.sh tests/unit -q
+
+# Optional shell activation for repeated Python commands:
+source .venv/bin/activate
 ```

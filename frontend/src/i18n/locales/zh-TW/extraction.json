@@ -30,7 +30,13 @@
     "allOverwrite": "全部覆寫",
     "required": "必填",
     "thinkingEnabled": "啟用思考／推理",
-    "thinkingHint": "JSON 擷取建議關閉。若使用 Gemma 等模型並希望先推理再回答，可開啟。"
+    "thinkingHint": "JSON 擷取建議關閉。若使用 Gemma 等模型並希望先推理再回答，可開啟。",
+    "addDefaults": "新增預設類型",
+    "addingDefaults": "新增中…",
+    "defaultsError": "無法新增預設實體類型。",
+    "loadError": "無法載入擷取設定檔。",
+    "noKindsDescription": "擷取需要至少一種搜尋類型。請新增預設類型以開始，或在術語表中自行定義。",
+    "noKindsTitle": "本書尚未設定任何實體類型"
   },
   "batch": {
     "title": "批量設定",
@@ -65,7 +71,19 @@
     "thinkingOn": "思考：開啟",
     "thinkingOff": "思考：關閉（較快、JSON 較穩定）",
     "startExtraction": "開始提取",
-    "editProfile": "編輯配置"
+    "editProfile": "編輯配置",
+    "cacheAuto": "內容變更時重新執行（預設）",
+    "cacheForce": "始終重新擷取 — 忽略快取",
+    "cacheHint": "修改了定義嗎？預設設定已會自動重新執行。",
+    "cachePolicy": "快取結果",
+    "cacheReuse": "盡可能重複使用快取結果",
+    "concurrency": "並行 LLM 呼叫",
+    "concurrencyHint": "1 = 循序執行。若您的模型支援並行請求，請調高此數值。",
+    "strategy": "提示詞結構",
+    "strategyBatched": "批次處理 — 最徹底（預設）",
+    "strategyDelta": "單次呼叫 + 增量更新 — 最節省成本",
+    "strategyEdc": "掃描後再輸入 — 成本降低約 56%，接地性最佳",
+    "strategySingle": "單次呼叫 — 成本降低約 66%，但會遺漏罕見類型"
   },
   "progress": {
     "title": "正在提取詞彙表",
@@ -107,7 +125,11 @@
     "draftNote": "所有新實體以草稿狀態建立 — 在詞彙表分頁中審核",
     "viewGlossary": "在詞彙表中審核",
     "runAgain": "再次擷取",
-    "close": "關閉"
+    "close": "關閉",
+    "cacheAllFresh": "所有 {{n}} 個批次皆為全新擷取。",
+    "cacheForced": "（請求已跳過快取）",
+    "cacheRerunHint": "若您在此之後更改了類型定義，請使用「一律重新擷取」重新執行。",
+    "cacheServed": "本次執行中有 {{pct}}%（共 {{cached}} / {{total}} 個批次）是從先前的擷取中「重複使用」，而非重新讀取。"
   },
   "button": {
     "extract": "提取詞彙表",

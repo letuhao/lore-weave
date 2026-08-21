@@ -16,7 +16,6 @@ from app.engine import select
 from app.engine.select import Candidate
 from app.packer.profile import NEUTRAL
 
-pytestmark = pytest.mark.asyncio
 
 
 class FakeLLM:

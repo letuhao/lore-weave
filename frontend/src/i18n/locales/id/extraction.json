@@ -30,7 +30,13 @@
     "allOverwrite": "Semua Timpa",
     "required": "wajib",
     "thinkingEnabled": "Aktifkan pemikiran / penalaran",
-    "thinkingHint": "Matikan untuk ekstraksi JSON. Aktifkan untuk model seperti Gemma yang menalar secara berbeda saat fitur pemikiran diaktifkan."
+    "thinkingHint": "Matikan untuk ekstraksi JSON. Aktifkan untuk model seperti Gemma yang menalar secara berbeda saat fitur pemikiran diaktifkan.",
+    "addDefaults": "Tambahkan jenis default",
+    "addingDefaults": "Menambahkan…",
+    "defaultsError": "Tidak dapat menambahkan jenis entitas default.",
+    "loadError": "Tidak dapat memuat profil ekstraksi.",
+    "noKindsDescription": "Ekstraksi membutuhkan setidaknya satu jenis untuk dicari. Tambahkan default untuk memulai, atau tentukan sendiri di glosarium.",
+    "noKindsTitle": "Buku ini belum memiliki jenis entitas"
   },
   "batch": {
     "title": "Konfigurasi Batch",
@@ -65,7 +71,19 @@
     "thinkingOn": "Pemikiran: aktif (penalaran aktif)",
     "thinkingOff": "Pemikiran: nonaktif (lebih cepat, JSON lebih baik)",
     "startExtraction": "Mulai Ekstraksi",
-    "editProfile": "Edit Profil"
+    "editProfile": "Edit Profil",
+    "cacheAuto": "Jalankan ulang jika ada perubahan (default)",
+    "cacheForce": "Selalu ekstrak ulang — abaikan cache",
+    "cacheHint": "Mengedit definisi jenis? Pengaturan default sudah menjalankan ulang secara otomatis.",
+    "cachePolicy": "Hasil cache",
+    "cacheReuse": "Gunakan kembali hasil cache jika memungkinkan",
+    "concurrency": "Pemanggilan LLM paralel",
+    "concurrencyHint": "1 = berurutan. Tingkatkan jika model Anda melayani permintaan konkuren.",
+    "strategy": "Bentuk prompt",
+    "strategyBatched": "Batch — paling menyeluruh (default)",
+    "strategyDelta": "Satu panggilan + delta — paling murah",
+    "strategyEdc": "Pindai lalu ketik — ~56% lebih murah, akurasi terbaik",
+    "strategySingle": "Satu panggilan — ~66% lebih murah, melewatkan jenis yang langka"
   },
   "progress": {
     "title": "Mengekstrak Glosarium",
@@ -107,7 +125,11 @@
     "draftNote": "Semua entitas baru dibuat sebagai draf — tinjau di tab Glosarium",
     "viewGlossary": "Tinjau di Glosarium",
     "runAgain": "Ekstrak lagi",
-    "close": "Tutup"
+    "close": "Tutup",
+    "cacheAllFresh": "Semua {{n}} batch diekstraksi secara segar.",
+    "cacheForced": "(cache dilewati oleh permintaan)",
+    "cacheRerunHint": "Jika Anda mengubah definisi jenis sejak saat itu, jalankan ulang dengan «Selalu ekstrak ulang».",
+    "cacheServed": "{{pct}}% dari sesi ini ({{cached}} dari {{total}} batch) DIGUNAKAN KEMBALI dari ekstraksi sebelumnya, bukan dibaca ulang."
   },
   "button": {
     "extract": "Ekstrak Glosarium",

@@ -1,7 +1,7 @@
 // 14_utility_panels.md Phase C2 — BooksBrowserPanel: registration/self-title chrome (wave1
 // precedent) + the one behavior that must differ from BooksPage — a row click opens the
 // `book-reader` dock panel via the studio host instead of a <Link> route push (DOCK-7).
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
@@ -13,6 +13,8 @@ vi.mock('@/auth', () => ({ useAuth: () => ({ accessToken: 'tok' }) }));
 const booksApiMocks = vi.hoisted(() => ({
   listBooks: vi.fn(),
   createBook: vi.fn(),
+	startNewFB2Import: vi.fn(),
+	getImportJob: vi.fn(),
 }));
 vi.mock('@/features/books/api', () => ({ booksApi: booksApiMocks }));
 
@@ -36,6 +38,8 @@ beforeEach(() => {
   hostRef = null;
   booksApiMocks.listBooks.mockReset();
   booksApiMocks.createBook.mockReset();
+	booksApiMocks.startNewFB2Import.mockReset();
+	booksApiMocks.getImportJob.mockReset();
   translationMocks.getBookCoverage.mockReset();
   booksApiMocks.listBooks.mockResolvedValue({
     items: [{
@@ -75,4 +79,17 @@ describe('BooksBrowserPanel', () => {
     act(() => { screen.getByTestId('book-create-button').click(); });
     expect(await screen.findByTestId('book-title-input')).toBeInTheDocument();
   });
+
+	it('routes a selected FB2 through the create-and-import client operation', async () => {
+		booksApiMocks.startNewFB2Import.mockResolvedValue({ id: 'job-1', book_id: 'fb2-book', status: 'pending', chapters_created: 0 });
+		booksApiMocks.getImportJob.mockResolvedValue({ id: 'job-1', book_id: 'fb2-book', status: 'processing', chapters_created: 0 });
+		withHost(<BooksBrowserPanel {...dockProps()} />);
+		await waitFor(() => expect(screen.getByTestId('book-create-button')).toBeInTheDocument());
+		act(() => { screen.getByTestId('book-create-button').click(); });
+		const file = new File(['<FictionBook/>'], 'book.fb2', { type: 'application/x-fictionbook+xml' });
+		fireEvent.change(await screen.findByTestId('book-fb2-import-input'), { target: { files: [file] } });
+		act(() => { screen.getByTestId('book-create-submit').click(); });
+		await waitFor(() => expect(booksApiMocks.startNewFB2Import).toHaveBeenCalledWith('tok', file, undefined, expect.any(Function)));
+		expect(await screen.findByText('Processing FB2… 0 chapters created so far')).toBeInTheDocument();
+	});
 });

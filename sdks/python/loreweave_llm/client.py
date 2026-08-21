@@ -156,7 +156,14 @@ class Client:
                 logger.warning("loreweave_llm: redis not importable — event resume disabled, polling")
                 self._event_redis_url = None
                 return None
-            self._event_redis = _aioredis.from_url(self._event_redis_url)
+            self._event_redis = _aioredis.from_url(
+                self._event_redis_url,
+                # XREAD BLOCK may legitimately wait longer than redis-py's
+                # default socket timeout. A socket timeout equal to the poll
+                # interval turns every quiet stream into a noisy TimeoutError.
+                socket_timeout=None,
+                socket_connect_timeout=5,
+            )
         return self._event_redis
 
     async def _wait_terminal_event(self, job_id: str, last_id: str, timeout_s: float) -> tuple[bool, str]:

@@ -115,5 +115,365 @@
     "restoreError": "No se pudo restaurar",
     "purged": "Eliminado permanentemente",
     "purgeError": "No se pudo eliminar"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "Universal",
+        "description": "Atributos independientes del género compartidos por todas las historias."
+      },
+      "fantasy": {
+        "name": "Fantasía",
+        "description": "Magia, fuerzas sobrenaturales y mundos imaginarios."
+      },
+      "xianxia": {
+        "name": "Xianxia",
+        "description": "Cultivación, inmortales, sectas y fantasía marcial."
+      },
+      "romance": {
+        "name": "Romance",
+        "description": "Historias centradas en el amor y las relaciones íntimas."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Historias centradas en los personajes, impulsadas por el conflicto y la emoción."
+      },
+      "historical": {
+        "name": "Histórico",
+        "description": "Historias ambientadas en un periodo o entorno histórico."
+      },
+      "mystery": {
+        "name": "Misterio",
+        "description": "Investigaciones, secretos y la búsqueda de la verdad oculta."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "Personaje",
+        "description": "Una persona individual o un ser con nombre que actúa o habla en la historia."
+      },
+      "location": {
+        "name": "Ubicación",
+        "description": "Un lugar físico al que los personajes pueden viajar o en el que pueden estar."
+      },
+      "item": {
+        "name": "Objeto / Utilería",
+        "description": "Un objeto físico como un arma, tesoro, prenda o vehículo."
+      },
+      "event": {
+        "name": "Evento",
+        "description": "Algo que sucede: una batalla, un viaje, una traición o una revelación."
+      },
+      "terminology": {
+        "name": "Terminología",
+        "description": "Un término abstracto, doctrina, rango, título o concepto."
+      },
+      "power_system": {
+        "name": "Sistema de poder",
+        "description": "Un esquema ordenado de poderes o rangos a través de los cuales los personajes pueden progresar."
+      },
+      "species": {
+        "name": "Especie",
+        "description": "Un tipo de ser o raza, no un personaje individual."
+      },
+      "organization": {
+        "name": "Organización",
+        "description": "Un grupo de personas que actúan en conjunto: una facción, casa, gremio o gobierno."
+      },
+      "relationship": {
+        "name": "Relación",
+        "description": "Una conexión significativa entre personajes o grupos."
+      },
+      "plot_arc": {
+        "name": "Arco argumental",
+        "description": "Una línea argumental sostenida con un detonante, riesgos y resolución."
+      },
+      "social_setting": {
+        "name": "Entorno social",
+        "description": "El orden social, la era, las costumbres y la jerarquía que dan forma a la historia."
+      },
+      "trope": {
+        "name": "Tópico",
+        "description": "Un patrón narrativo o convención recurrente."
+      },
+      "technique": {
+        "name": "Técnica",
+        "description": "Una acción, método o habilidad realizada por un personaje."
+      },
+      "colleague": {
+        "name": "Colega",
+        "description": "Una persona con la que trabajas."
+      },
+      "decision": {
+        "name": "Decisión",
+        "description": "Una elección realizada que afecta lo que sucede a continuación."
+      },
+      "jargon": {
+        "name": "Jerga",
+        "description": "Terminología especializada o un acrónimo utilizado en el texto."
+      },
+      "meeting": {
+        "name": "Reunión",
+        "description": "Una discusión o encuentro programado."
+      },
+      "org": {
+        "name": "Organización",
+        "description": "Una empresa, equipo u organización externa."
+      },
+      "project": {
+        "name": "Proyecto",
+        "description": "Un conjunto de trabajo con un objetivo y un resultado esperado."
+      },
+      "task": {
+        "name": "Tarea",
+        "description": "Un elemento de trabajo accionable que debe completarse."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "Nombre",
+        "description": "Atributo de nombre."
+      },
+      "term": {
+        "name": "Término",
+        "description": "Atributo de término."
+      },
+      "aliases": {
+        "name": "Alias",
+        "description": "Atributo de alias."
+      },
+      "gender": {
+        "name": "Género",
+        "description": "Atributo de género."
+      },
+      "role": {
+        "name": "Rol",
+        "description": "Atributo de rol."
+      },
+      "occupation": {
+        "name": "Ocupación",
+        "description": "Atributo de ocupación."
+      },
+      "social_class": {
+        "name": "Clase social",
+        "description": "Atributo de clase social."
+      },
+      "affiliation": {
+        "name": "Afiliación",
+        "description": "Atributo de afiliación."
+      },
+      "appearance": {
+        "name": "Apariencia",
+        "description": "Atributo de apariencia."
+      },
+      "personality": {
+        "name": "Personalidad",
+        "description": "Atributo de personalidad."
+      },
+      "emotional_wound": {
+        "name": "Herida emocional",
+        "description": "Atributo de herida emocional."
+      },
+      "love_language": {
+        "name": "Lenguaje del amor",
+        "description": "Atributo de lenguaje del amor."
+      },
+      "relationships": {
+        "name": "Relaciones",
+        "description": "Atributo de relaciones."
+      },
+      "description": {
+        "name": "Descripción",
+        "description": "Atributo de descripción."
+      },
+      "type": {
+        "name": "Tipo",
+        "description": "Atributo de tipo."
+      },
+      "parent_location": {
+        "name": "Ubicación principal",
+        "description": "Atributo de ubicación principal."
+      },
+      "atmosphere": {
+        "name": "Atmósfera",
+        "description": "Atributo de atmósfera."
+      },
+      "significance": {
+        "name": "Significado",
+        "description": "Atributo de significado."
+      },
+      "owner": {
+        "name": "Propietario",
+        "description": "Atributo de propietario."
+      },
+      "symbolic_meaning": {
+        "name": "Significado simbólico",
+        "description": "Atributo de significado simbólico."
+      },
+      "date_in_story": {
+        "name": "Fecha en la historia",
+        "description": "Atributo de fecha en la historia."
+      },
+      "location": {
+        "name": "Ubicación",
+        "description": "Atributo de ubicación."
+      },
+      "participants": {
+        "name": "Participantes",
+        "description": "Atributo de participantes."
+      },
+      "emotional_impact": {
+        "name": "Impacto emocional",
+        "description": "Atributo de impacto emocional."
+      },
+      "outcome": {
+        "name": "Resultado",
+        "description": "Atributo de resultado."
+      },
+      "category": {
+        "name": "Categoría",
+        "description": "Atributo de categoría."
+      },
+      "definition": {
+        "name": "Definición",
+        "description": "Atributo de definición."
+      },
+      "usage_note": {
+        "name": "Nota de uso",
+        "description": "Atributo Nota de uso."
+      },
+      "tiers": {
+        "name": "Niveles",
+        "description": "Atributo Niveles."
+      },
+      "rank": {
+        "name": "Posición en la escala",
+        "description": "Atributo Posición en la escala."
+      },
+      "entry_requirement": {
+        "name": "Requisito de entrada",
+        "description": "Atributo Requisito de entrada."
+      },
+      "capabilities": {
+        "name": "Capacidades",
+        "description": "Atributo Capacidades."
+      },
+      "arc_type": {
+        "name": "Tipo de arco",
+        "description": "Atributo Tipo de arco."
+      },
+      "parties": {
+        "name": "Partes",
+        "description": "Atributo de Partes."
+      },
+      "trigger": {
+        "name": "Detonante",
+        "description": "Atributo de Detonante."
+      },
+      "stakes": {
+        "name": "Apuestas",
+        "description": "Atributo de Apuestas."
+      },
+      "chapters_span": {
+        "name": "Extensión de capítulos",
+        "description": "Atributo de Extensión de capítulos."
+      },
+      "emotional_beats": {
+        "name": "Puntos emocionales",
+        "description": "Atributo de Puntos emocionales."
+      },
+      "resolution": {
+        "name": "Resolución",
+        "description": "Atributo de Resolución."
+      },
+      "era": {
+        "name": "Era",
+        "description": "Atributo de era."
+      },
+      "class_hierarchy": {
+        "name": "Jerarquía de clases",
+        "description": "Atributo de jerarquía de clases."
+      },
+      "rules_norms": {
+        "name": "Reglas y normas",
+        "description": "Atributo de reglas y normas."
+      },
+      "romance_obstacles": {
+        "name": "Obstáculos románticos",
+        "description": "Atributo de obstáculos románticos."
+      },
+      "traits": {
+        "name": "Rasgos",
+        "description": "Atributo de rasgos."
+      },
+      "abilities": {
+        "name": "Habilidades",
+        "description": "Atributo de habilidades."
+      },
+      "habitat": {
+        "name": "Hábitat",
+        "description": "Atributo de hábitat."
+      },
+      "culture": {
+        "name": "Cultura",
+        "description": "Atributo de cultura."
+      },
+      "how_manifested": {
+        "name": "Cómo se manifiesta",
+        "description": "Atributo de cómo se manifiesta."
+      },
+      "subverted": {
+        "name": "Subvertido",
+        "description": "Atributo de subvertido."
+      },
+      "related_characters": {
+        "name": "Personajes relacionados",
+        "description": "Atributo de personajes relacionados."
+      },
+      "relationship_type": {
+        "name": "Tipo de relación",
+        "description": "Atributo de tipo de relación."
+      },
+      "status": {
+        "name": "Estado",
+        "description": "Atributo de estado."
+      },
+      "tropes": {
+        "name": "Tropos",
+        "description": "Atributo de tropos."
+      },
+      "dynamic": {
+        "name": "Dinámica",
+        "description": "Atributo de dinámica."
+      },
+      "key_conflict": {
+        "name": "Conflicto clave",
+        "description": "Atributo de conflicto clave."
+      },
+      "turning_points": {
+        "name": "Puntos de giro",
+        "description": "Atributo de puntos de giro."
+      },
+      "leader": {
+        "name": "Líder",
+        "description": "Atributo de líder."
+      },
+      "headquarters": {
+        "name": "Cuartel general",
+        "description": "Atributo de cuartel general."
+      },
+      "members": {
+        "name": "Miembros",
+        "description": "Atributo de miembros."
+      },
+      "effects": {
+        "name": "Efectos",
+        "description": "Atributo de efectos."
+      },
+      "user": {
+        "name": "Usuario",
+        "description": "Atributo de usuario."
+      }
+    }
   }
 }

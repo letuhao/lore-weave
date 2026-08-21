@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "entfernt",
       "modified": "überschrieben"
+    },
+    "templates": {
+      "general": {
+        "name": "Allgemein (Legacy-Ontologie)",
+        "description": "Reproduziert die ursprüngliche generische Extraktions-Ontologie – das additive Sicherheitsnetz."
+      },
+      "general-legacy": {
+        "name": "Allgemein (Legacy-Ontologie)",
+        "description": "Reproduziert die ursprüngliche generische Extraktions-Ontologie – das additive Sicherheitsnetz."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Genre-Vorlage für Kultivierungs- und Harem-Romane mit kuratierten Entitäts- und Relationstypen."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Fantasy-Welt-Schema mit Charakteren, Orten, Organisationen, Spezies, Gegenständen, Kräften und Techniken."
+      },
+      "romance": {
+        "name": "Romanze",
+        "description": "Beziehungsorientiertes Schema mit Charakteren, Beziehungen, Handlungsbögen, Tropen und sozialen Settings."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Drama-Schema für Charaktere, Konflikte, Beziehungen, Organisationen, Ereignisse und Handlungsbögen."
+      },
+      "historical": {
+        "name": "Historisch",
+        "description": "Historisches Schema für Personen, Orte, Institutionen, Ereignisse, Terminologie und Gesellschaftsordnung."
+      },
+      "mystery": {
+        "name": "Krimi",
+        "description": "Ermittlungsschema für Charaktere, Hinweise, Objekte, Organisationen, Ereignisse, Handlungsbögen und Tropen."
+      }
+    },
+    "scope": {
+      "system": "System",
+      "user": "Benutzer",
+      "project": "Projekt"
     }
   },
   "schema": {

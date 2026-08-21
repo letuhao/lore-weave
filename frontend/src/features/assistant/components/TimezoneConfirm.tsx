@@ -2,6 +2,7 @@
 // buckets each day by the right LOCAL day. Pure view: the detected zone + the confirm action come from
 // the hook. A curated common-zone list + the detected zone cover the picker without a full tz database.
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 
 interface Props {
   detected: string;
@@ -28,6 +29,7 @@ const COMMON_ZONES = [
 ];
 
 export function TimezoneConfirm({ detected, saving, onConfirm }: Props) {
+  const { t } = useTranslation('assistant');
   const [picking, setPicking] = useState(false);
   const [choice, setChoice] = useState(detected);
   const zones = COMMON_ZONES.includes(detected) ? COMMON_ZONES : [detected, ...COMMON_ZONES];
@@ -37,13 +39,12 @@ export function TimezoneConfirm({ detected, saving, onConfirm }: Props) {
       data-testid="timezone-confirm"
       className="rounded-lg border border-border bg-card p-3 text-sm"
     >
-      <div className="font-medium">Confirm your time zone</div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        Your journal groups each day by your local time. We detected{' '}
-        <span data-testid="tz-detected" className="font-medium text-foreground">
-          {detected}
-        </span>
-        .
+      <div className="font-medium">{t('timezone.title')}</div>
+      {/* The detected zone used to sit in its own <span data-testid="tz-detected">. It cannot:
+          the sentence is one translated string now, and a zone spliced mid-sentence does not
+          survive translation. The testid moved to the paragraph so the banner stays assertable. */}
+      <p data-testid="tz-detected" className="mt-1 text-xs text-muted-foreground">
+        {t('timezone.description', { zone: detected })}
       </p>
       {!picking ? (
         <div className="mt-2 flex items-center gap-2">
@@ -54,7 +55,7 @@ export function TimezoneConfirm({ detected, saving, onConfirm }: Props) {
             onClick={() => onConfirm(detected)}
             className="rounded-md border border-border bg-secondary px-3 py-1 text-xs font-medium disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Use this'}
+            {saving ? t('timezone.saving') : t('timezone.useThis')}
           </button>
           <button
             type="button"
@@ -63,7 +64,7 @@ export function TimezoneConfirm({ detected, saving, onConfirm }: Props) {
             onClick={() => setPicking(true)}
             className="text-xs text-muted-foreground underline-offset-2 hover:underline disabled:opacity-50"
           >
-            Pick another
+            {t('timezone.pickAnother')}
           </button>
         </div>
       ) : (
@@ -87,7 +88,7 @@ export function TimezoneConfirm({ detected, saving, onConfirm }: Props) {
             onClick={() => onConfirm(choice)}
             className="rounded-md border border-border bg-secondary px-3 py-1 text-xs font-medium disabled:opacity-50"
           >
-            {saving ? 'Saving…' : 'Save'}
+            {saving ? t('timezone.saving') : t('timezone.save')}
           </button>
         </div>
       )}

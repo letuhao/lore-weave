@@ -14,6 +14,7 @@ export type DecomposeBody = {
   premise: string;
   model_source: 'user_model' | 'platform_model';
   model_ref: string;
+  chapter_ids?: string[];
 };
 
 // Params for a chapter-level assembly (B2 chapter single-pass / B3 stitch).
@@ -816,13 +817,40 @@ export interface SelfHealProposal {
   rerank_reason?: string;
 }
 
+/** S3 — where one finding is. `placed: false` means the judge found something and NOTHING
+ * could point at it, which is a hole in coverage rather than a clean result. `placed` is
+ * emitted redundantly with `kind` so a reader that has not learned a new kind still cannot
+ * read an unplaced finding as placed. */
+export interface FindingLocator {
+  kind: 'span' | 'scene' | 'seam' | 'blocks' | 'entity' | 'unlocated';
+  placed: boolean;
+  quote?: string;
+  start?: number;
+  end?: number;
+  chapter?: number;
+  scene?: number;
+  right_scene?: number;
+  block_ids?: string[];
+  entity_id?: string;
+  matched?: string;
+  why?: string;
+}
+
 export interface SelfHealProposalResponse {
   job_id: string;
   status: string;
   proposals: SelfHealProposal[];
   source_text: string;
   draft_version: number | null;
-  stats?: { findings: number; located: number; edits: number; refuted: number };
+  stats?: {
+    findings: number;
+    located: number;
+    edits: number;
+    refuted: number;
+    /** Findings nothing could place. Empty is the ordinary case; non-empty means the judge
+     * saw problems it could not point at, and the panel must not call that clean. */
+    unplaced?: FindingLocator[];
+  };
 }
 
 // ── Q1+Q2 Quality Report (read-only diagnostics) ───────────────────────

@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "dihapus",
       "modified": "ditimpa"
+    },
+    "templates": {
+      "general": {
+        "name": "Umum (ontologi lama)",
+        "description": "Mereproduksi ontologi ekstraksi generik asli — jaring pengaman berbasis aditif."
+      },
+      "general-legacy": {
+        "name": "Umum (ontologi lama)",
+        "description": "Mereproduksi ontologi ekstraksi generik asli — jaring pengaman berbasis aditif."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Templat genre untuk novel kultivasi dan harem dengan tipe entitas dan relasi yang telah dikurasi."
+      },
+      "fantasy": {
+        "name": "Fantasi",
+        "description": "Skema dunia fantasi dengan karakter, tempat, organisasi, spesies, item, kekuatan, dan teknik."
+      },
+      "romance": {
+        "name": "Romansa",
+        "description": "Skema berpusat pada hubungan dengan karakter, relasi, alur cerita, kiasan, dan latar sosial."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Skema drama untuk karakter, konflik, hubungan, organisasi, peristiwa, dan alur cerita."
+      },
+      "historical": {
+        "name": "Sejarah",
+        "description": "Skema fiksi sejarah untuk orang, tempat, institusi, peristiwa, terminologi, dan tatanan sosial."
+      },
+      "mystery": {
+        "name": "Misteri",
+        "description": "Skema investigasi untuk karakter, petunjuk, objek, organisasi, peristiwa, alur cerita, dan kiasan."
+      }
+    },
+    "scope": {
+      "system": "sistem",
+      "user": "Pengguna",
+      "project": "Proyek"
     }
   },
   "schema": {

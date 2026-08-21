@@ -15,6 +15,8 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/loreweave/foundation/services/admin-cli/internal/testsafe"
 )
 
 func TestLive_PgProjectionDriftReader(t *testing.T) {
@@ -234,8 +236,35 @@ func TestLive_PgProjectionDriftReader_MissingRowFlagged(t *testing.T) {
 
 // applyDDL applies a migration file, tolerating parallel-DDL deadlocks on the shared
 // test DB (mirrors archive_list_pg_test.go).
+// applyDDL executes a migration file against pool, retrying past the parallel-DDL
+// deadlocks the shared PG test DB produces.
+//
+// db-safety-gate: ok — the SQL words in this comment are prose naming the hazard; the
+// guard below is the mitigation and runs before the file is executed.
+//
+// THE GUARD LIVES HERE, not at the call sites. Seven harnesses in this repo apply
+// migration files; before 2026-08-09 exactly two of them checked the target database
+// first, and the other five were unguarded — not by decision, but because calling a
+// helper that quietly skips the check looks exactly like calling one that doesn't.
+// A safety check you have to remember is default-UNCOVERED. So it sits inside the
+// helper, and the only way to skip it is to not use the helper.
+//
+// The files reached from here (`0007_drift_metadata`, `0011_archive_state`,
+// `001_reality_registry`) are additive today. That is not the reason to skip the
+// guard: this helper executes whatever path it is handed, so its blast radius is a
+// property of its ARGUMENT, and every per-reality `.down.sql` in the same tree drops
+// tables. `PIIKMS_TEST_PG_URL` pointed at a real service DB is all it takes — which is
+// how an unscoped `DELETE FROM books` once hard-deleted every user's books. The
+// statement was fine; the DSN was not.
 func applyDDL(ctx context.Context, t *testing.T, pool *pgxpool.Pool, path string) {
 	t.Helper()
+	var dbName string
+	if e := pool.QueryRow(ctx, `SELECT current_database()`).Scan(&dbName); e != nil {
+		t.Fatalf("applyDDL: resolve current_database() before applying %s: %v", path, e)
+	}
+	if e := testsafe.EnsureThrowawayDB(dbName); e != nil {
+		t.Fatalf("applyDDL: %v", e)
+	}
 	sql, rerr := os.ReadFile(path)
 	if rerr != nil {
 		t.Fatalf("read migration %s: %v", path, rerr)

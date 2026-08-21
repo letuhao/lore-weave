@@ -29,6 +29,7 @@ from app.wiki.ir import WikiArticleIR
 from app.wiki.parse import parse_article
 from app.wiki.prompt import build_messages
 from app.wiki.rulegate import GateResult, evaluate
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,9 @@ async def generate_article(
     user_id: str,
     model_source: str,
     model_ref: str,
-    max_tokens: int = DEFAULT_MAX_TOKENS,
+    # `None`, not DEFAULT_MAX_TOKENS: a signature default is evaluated once at import and
+    # can never read the article it is about to write. Resolved per call below.
+    max_tokens: int | None = None,
     temperature: float = 0.3,
     max_attempts: int = 2,
     initial_corrective: str | None = None,
@@ -158,7 +161,9 @@ async def generate_article(
         )
         markdown = await _call_llm(
             llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
-            messages=messages, max_tokens=max_tokens, temperature=temperature,
+            messages=messages,
+            max_tokens=max_tokens or max_tokens_for("wiki_article"),
+            temperature=temperature,
             reasoning_effort=reasoning_effort,
         )
         if markdown is None:

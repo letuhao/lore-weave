@@ -115,5 +115,365 @@
     "restoreError": "रिस्टोर नहीं कर सके",
     "purged": "स्थायी रूप से हटा दिया गया",
     "purgeError": "हटा नहीं सके"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "सार्वभौमिक",
+        "description": "हर कहानी में साझा किए गए शैली-स्वतंत्र गुण।"
+      },
+      "fantasy": {
+        "name": "फंतासी",
+        "description": "जादू, अलौकिक शक्तियाँ और काल्पनिक दुनिया।"
+      },
+      "xianxia": {
+        "name": "क्सियानक्सिया",
+        "description": "खेती (cultivation), अमर, संप्रदाय और मार्शल फंतासी।"
+      },
+      "romance": {
+        "name": "रोमांस",
+        "description": "प्रेम और अंतरंग संबंधों पर केंद्रित कहानियाँ।"
+      },
+      "drama": {
+        "name": "ड्रामा",
+        "description": "संघर्ष और भावनाओं से प्रेरित चरित्र-केंद्रित कहानियाँ।"
+      },
+      "historical": {
+        "name": "ऐतिहासिक",
+        "description": "ऐतिहासिक काल या परिवेश पर आधारित कहानियाँ।"
+      },
+      "mystery": {
+        "name": "रहस्य",
+        "description": "जांच, रहस्य और छिपे हुए सच की खोज।"
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "पात्र",
+        "description": "एक व्यक्ति या नामित प्राणी जो कहानी में कार्य करता है या बोलता है।"
+      },
+      "location": {
+        "name": "स्थान",
+        "description": "एक भौतिक स्थान जहाँ पात्र यात्रा कर सकते हैं या खड़े हो सकते हैं।"
+      },
+      "item": {
+        "name": "वस्तु / प्रॉप",
+        "description": "एक भौतिक वस्तु जैसे कि हथियार, खजाना, वस्त्र या वाहन।"
+      },
+      "event": {
+        "name": "घटना",
+        "description": "कुछ ऐसा जो घटित होता है: एक युद्ध, यात्रा, विश्वासघात या रहस्योद्घाटन।"
+      },
+      "terminology": {
+        "name": "शब्दावली",
+        "description": "एक अमूर्त शब्द, सिद्धांत, पद, उपाधि या अवधारणा।"
+      },
+      "power_system": {
+        "name": "शक्ति प्रणाली",
+        "description": "शक्तियों या रैंकों की एक व्यवस्थित योजना जिसके माध्यम से पात्र आगे बढ़ सकते हैं।"
+      },
+      "species": {
+        "name": "प्रजाति",
+        "description": "एक प्रकार का जीव या नस्ल, न कि कोई व्यक्तिगत पात्र।"
+      },
+      "organization": {
+        "name": "संगठन",
+        "description": "एक साथ काम करने वाले लोगों का समूह: एक गुट, घराना, संघ या सरकार।"
+      },
+      "relationship": {
+        "name": "संबंध",
+        "description": "पात्रों या समूहों के बीच एक सार्थक जुड़ाव।"
+      },
+      "plot_arc": {
+        "name": "कथानक आर्क",
+        "description": "एक निरंतर चलने वाली कहानी जिसमें एक शुरुआत, जोखिम और समाधान होता है।"
+      },
+      "social_setting": {
+        "name": "सामाजिक परिवेश",
+        "description": "कहानी को आकार देने वाली सामाजिक व्यवस्था, युग, रीति-रिवाज और पदानुक्रम।"
+      },
+      "trope": {
+        "name": "ट्रोप",
+        "description": "एक आवर्ती कथा पैटर्न या परंपरा।"
+      },
+      "technique": {
+        "name": "तकनीक",
+        "description": "किसी पात्र द्वारा किया गया एक नामित कार्य, विधि या कौशल।"
+      },
+      "colleague": {
+        "name": "सहकर्मी",
+        "description": "वह व्यक्ति जिसके साथ आप काम करते हैं।"
+      },
+      "decision": {
+        "name": "निर्णय",
+        "description": "एक चुनाव जो लिया गया और जो आगे होने वाली घटनाओं को प्रभावित करता है।"
+      },
+      "jargon": {
+        "name": "शब्दावली",
+        "description": "पाठ में उपयोग की जाने वाली विशिष्ट शब्दावली या संक्षिप्त नाम।"
+      },
+      "meeting": {
+        "name": "बैठक",
+        "description": "एक निर्धारित चर्चा या सभा।"
+      },
+      "org": {
+        "name": "संगठन",
+        "description": "एक कंपनी, टीम, या बाहरी संगठन।"
+      },
+      "project": {
+        "name": "परियोजना",
+        "description": "एक लक्ष्य और अपेक्षित परिणाम वाला कार्य समूह।"
+      },
+      "task": {
+        "name": "कार्य",
+        "description": "काम का एक क्रियात्मक आइटम जिसे पूरा किया जाना आवश्यक है।"
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "नाम",
+        "description": "नाम विशेषता।"
+      },
+      "term": {
+        "name": "शब्दावली",
+        "description": "शब्दावली विशेषता।"
+      },
+      "aliases": {
+        "name": "उपनाम",
+        "description": "उपनाम विशेषता।"
+      },
+      "gender": {
+        "name": "लिंग",
+        "description": "लिंग विशेषता।"
+      },
+      "role": {
+        "name": "भूमिका",
+        "description": "भूमिका विशेषता।"
+      },
+      "occupation": {
+        "name": "व्यवसाय",
+        "description": "व्यवसाय विशेषता।"
+      },
+      "social_class": {
+        "name": "सामाजिक वर्ग",
+        "description": "सामाजिक वर्ग विशेषता।"
+      },
+      "affiliation": {
+        "name": "संबद्धता",
+        "description": "संबद्धता विशेषता।"
+      },
+      "appearance": {
+        "name": "रूप-रंग",
+        "description": "रूप-रंग विशेषता।"
+      },
+      "personality": {
+        "name": "व्यक्तित्व",
+        "description": "व्यक्तित्व गुण।"
+      },
+      "emotional_wound": {
+        "name": "भावनात्मक घाव",
+        "description": "भावनात्मक घाव गुण।"
+      },
+      "love_language": {
+        "name": "प्रेम की भाषा",
+        "description": "प्रेम की भाषा गुण।"
+      },
+      "relationships": {
+        "name": "संबंध",
+        "description": "संबंध गुण।"
+      },
+      "description": {
+        "name": "विवरण",
+        "description": "विवरण गुण।"
+      },
+      "type": {
+        "name": "प्रकार",
+        "description": "प्रकार गुण।"
+      },
+      "parent_location": {
+        "name": "मुख्य स्थान",
+        "description": "मुख्य स्थान विशेषता।"
+      },
+      "atmosphere": {
+        "name": "वातावरण",
+        "description": "वातावरण विशेषता।"
+      },
+      "significance": {
+        "name": "महत्व",
+        "description": "महत्व विशेषता।"
+      },
+      "owner": {
+        "name": "स्वामी",
+        "description": "स्वामी विशेषता।"
+      },
+      "symbolic_meaning": {
+        "name": "प्रतीकात्मक अर्थ",
+        "description": "प्रतीकात्मक अर्थ विशेषता।"
+      },
+      "date_in_story": {
+        "name": "कहानी में तिथि",
+        "description": "कहानी में तिथि विशेषता।"
+      },
+      "location": {
+        "name": "स्थान",
+        "description": "स्थान विशेषता।"
+      },
+      "participants": {
+        "name": "प्रतिभागी",
+        "description": "प्रतिभागी विशेषता।"
+      },
+      "emotional_impact": {
+        "name": "भावनात्मक प्रभाव",
+        "description": "भावनात्मक प्रभाव विशेषता।"
+      },
+      "outcome": {
+        "name": "परिणाम",
+        "description": "परिणाम विशेषता।"
+      },
+      "category": {
+        "name": "श्रेणी",
+        "description": "श्रेणी विशेषता।"
+      },
+      "definition": {
+        "name": "परिभाषा",
+        "description": "परिभाषा विशेषता।"
+      },
+      "usage_note": {
+        "name": "उपयोग नोट",
+        "description": "उपयोग नोट विशेषता।"
+      },
+      "tiers": {
+        "name": "स्तर",
+        "description": "स्तर विशेषता।"
+      },
+      "rank": {
+        "name": "क्रम में स्थान",
+        "description": "क्रम में स्थान विशेषता।"
+      },
+      "entry_requirement": {
+        "name": "प्रवेश आवश्यकता",
+        "description": "प्रवेश आवश्यकता विशेषता।"
+      },
+      "capabilities": {
+        "name": "क्षमताएँ",
+        "description": "क्षमताएँ विशेषता।"
+      },
+      "arc_type": {
+        "name": "आर्क का प्रकार",
+        "description": "आर्क का प्रकार विशेषता।"
+      },
+      "parties": {
+        "name": "पक्ष",
+        "description": "पक्ष गुणधर्म।"
+      },
+      "trigger": {
+        "name": "ट्रिगर",
+        "description": "ट्रिगर गुणधर्म।"
+      },
+      "stakes": {
+        "name": "दांव",
+        "description": "दांव गुणधर्म।"
+      },
+      "chapters_span": {
+        "name": "अध्यायों का विस्तार",
+        "description": "अध्यायों का विस्तार गुणधर्म।"
+      },
+      "emotional_beats": {
+        "name": "भावनात्मक उतार-चढ़ाव",
+        "description": "भावनात्मक उतार-चढ़ाव गुणधर्म।"
+      },
+      "resolution": {
+        "name": "समाधान",
+        "description": "समाधान गुणधर्म।"
+      },
+      "era": {
+        "name": "युग",
+        "description": "युग विशेषता।"
+      },
+      "class_hierarchy": {
+        "name": "वर्ग पदानुक्रम",
+        "description": "वर्ग पदानुक्रम विशेषता।"
+      },
+      "rules_norms": {
+        "name": "नियम और मानदंड",
+        "description": "नियम और मानदंड विशेषता।"
+      },
+      "romance_obstacles": {
+        "name": "रोमांस की बाधाएं",
+        "description": "रोमांस की बाधाएं विशेषता।"
+      },
+      "traits": {
+        "name": "विशेषताएं",
+        "description": "विशेषताएं विशेषता।"
+      },
+      "abilities": {
+        "name": "क्षमताएं",
+        "description": "क्षमताएं विशेषता।"
+      },
+      "habitat": {
+        "name": "आवास",
+        "description": "आवास विशेषता।"
+      },
+      "culture": {
+        "name": "संस्कृति",
+        "description": "संस्कृति विशेषता।"
+      },
+      "how_manifested": {
+        "name": "कैसे प्रकट हुआ",
+        "description": "कैसे प्रकट हुआ विशेषता।"
+      },
+      "subverted": {
+        "name": "उलट दिया गया",
+        "description": "उलट दिया गया विशेषता।"
+      },
+      "related_characters": {
+        "name": "संबंधित पात्र",
+        "description": "संबंधित पात्र विशेषता।"
+      },
+      "relationship_type": {
+        "name": "संबंध का प्रकार",
+        "description": "संबंध का प्रकार विशेषता।"
+      },
+      "status": {
+        "name": "स्थिति",
+        "description": "स्थिति विशेषता।"
+      },
+      "tropes": {
+        "name": "रूपक",
+        "description": "रूपक विशेषता।"
+      },
+      "dynamic": {
+        "name": "गतिशील",
+        "description": "गतिशील विशेषता।"
+      },
+      "key_conflict": {
+        "name": "मुख्य संघर्ष",
+        "description": "मुख्य संघर्ष विशेषता।"
+      },
+      "turning_points": {
+        "name": "महत्वपूर्ण मोड़",
+        "description": "महत्वपूर्ण मोड़ विशेषता।"
+      },
+      "leader": {
+        "name": "नेता",
+        "description": "नेता विशेषता।"
+      },
+      "headquarters": {
+        "name": "मुख्यालय",
+        "description": "मुख्यालय विशेषता।"
+      },
+      "members": {
+        "name": "सदस्य",
+        "description": "सदस्य विशेषता।"
+      },
+      "effects": {
+        "name": "प्रभाव",
+        "description": "प्रभाव विशेषता।"
+      },
+      "user": {
+        "name": "उपयोगकर्ता",
+        "description": "उपयोगकर्ता विशेषता।"
+      }
+    }
   }
 }

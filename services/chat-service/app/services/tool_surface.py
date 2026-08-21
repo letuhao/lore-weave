@@ -529,7 +529,21 @@ def _skill_prompt_named_tokens(skill_code: str) -> frozenset[str]:
     """Backtick-quoted snake_case tokens a skill's PROSE names (candidate tool names).
 
     Cached per skill code — prompts are static module constants. The catalog
-    intersection happens per call in `skill_named_tools` (the catalog can change)."""
+    intersection happens per call in `skill_named_tools` (the catalog can change).
+
+    The token may be CLOSED by a backtick (```composition_package_tree```) or opened
+    by a call signature (```plan_propose_spec(book_id, source_markdown, mode)```) — both
+    are a skill saying "call this". Requiring the closing backtick to sit immediately
+    after the name is what broke the invariant this function exists to hold: `co_write`
+    names its two plan tools ONLY in signature form, so `plan_propose_spec` and
+    `plan_compile` were never put on the wire, while `composition_package_tree` (written
+    bare) was. Measured on the Mị Đế dogfood 2026-08-02: the co-writer was asked to plan
+    Arc 1, wrote 6948 characters of plan prose, called NOTHING (finish_reason=stop, 0 tool
+    calls) — the plan tools were not advertised, so the skill's own "do NOT stop after
+    proposing" instruction was unexecutable. The lint that guards the same rule at test
+    time (`_TOOL_TOKEN_RE`, word-boundary) DID see both names; it is `co_write`'s
+    `_EXEMPT_SKILL_CODES` entry that kept it quiet. Two guards, each blind in a different
+    way, intersecting on exactly the two tools that materialise a plan."""
     from app.services.skill_registry import SYSTEM_SKILLS
 
     skill = SYSTEM_SKILLS.get(skill_code)
@@ -539,7 +553,7 @@ def _skill_prompt_named_tokens(skill_code: str) -> frozenset[str]:
         prompt = skill.prompt_loader()
     except Exception:  # noqa: BLE001 — a skill that can't load contributes nothing
         return frozenset()
-    return frozenset(re.findall(r"`([a-z][a-z0-9_]{3,})`", prompt))
+    return frozenset(re.findall(r"`([a-z][a-z0-9_]{3,})(?:`|\()", prompt))
 
 
 def skill_named_tools(skill_codes: list[str], catalog: list[dict]) -> set[str]:

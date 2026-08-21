@@ -19,6 +19,10 @@ import { KindResearchPanel } from './KindResearchPanel';
  *  Every book row is the book's own editable copy; the tier chip shows provenance. */
 export function ManageWorkspace({ bookId }: { bookId: string }) {
   const { t } = useTranslation('glossaryTiering');
+  const { t: tStandards } = useTranslation('standards');
+  const genreLabel = (genre: { code: string; name: string }) => tStandards(`system.genres.${genre.code}.name`, { defaultValue: genre.name });
+  const kindLabel = (kind: { code: string; name: string }) => tStandards(`system.kinds.${kind.code}.name`, { defaultValue: kind.name });
+  const attributeLabel = (attribute: { code: string; name: string }) => tStandards(`system.attributes.${attribute.code}.name`, { defaultValue: attribute.name });
   const ont = useBookOntology(bookId);
   const standards = useStandards();
   const [genreId, setGenreId] = useState<string | null>(null);
@@ -35,6 +39,8 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   const [linkTarget, setLinkTarget] = useState<{ id: string; name: string } | null>(null);
 
   const { genres, kinds, kind_genres, attributes } = ont.ontology;
+  const selectedGenre = genres.find((g) => g.genre_id === genreId);
+  const selectedKind = kinds.find((k) => k.book_kind_id === kindId);
 
   // kinds linked to the selected genre (via book_kind_genres).
   const kindRows: ColumnRow[] = useMemo(() => {
@@ -42,20 +48,20 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
     const linked = new Set(kind_genres.filter((l) => l.genre_id === genreId).map((l) => l.kind_id));
     return kinds
       .filter((k) => linked.has(k.book_kind_id))
-      .map((k) => ({ id: k.book_kind_id, icon: k.icon, label: k.name, tier: tierFromSourceRef(k.source_ref) }));
+      .map((k) => ({ id: k.book_kind_id, icon: k.icon, label: kindLabel(k), tier: tierFromSourceRef(k.source_ref) }));
   }, [genreId, kinds, kind_genres]);
 
   const attrRows: ColumnRow[] = useMemo(() => {
     if (!genreId || !kindId) return [];
     return attributes
       .filter((a) => a.kind_id === kindId && a.genre_id === genreId)
-      .map((a) => ({ id: a.attr_id, label: a.name, tier: tierFromSourceRef(a.source_ref), meta: a.field_type }));
+      .map((a) => ({ id: a.attr_id, label: attributeLabel(a), tier: tierFromSourceRef(a.source_ref), meta: a.field_type }));
   }, [genreId, kindId, attributes]);
 
   const genreRows: ColumnRow[] = genres.map((g) => ({
     id: g.genre_id,
     icon: g.icon,
-    label: g.name,
+    label: genreLabel(g),
     tier: tierFromSourceRef(g.source_ref),
     meta: t('col.count_kinds', { count: kind_genres.filter((l) => l.genre_id === g.genre_id).length }),
   }));
@@ -94,11 +100,11 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
   // colour swatch + icon reflect the current value, not a stale row prop).
   const openEditGenre = (id: string) => {
     const g = genres.find((x) => x.genre_id === id);
-    if (g) setEditTarget({ type: 'genre', id, initial: { name: g.name, icon: g.icon, color: g.color } });
+    if (g) setEditTarget({ type: 'genre', id, initial: { name: genreLabel(g), icon: g.icon, color: g.color } });
   };
   const openEditKind = (id: string) => {
     const k = kinds.find((x) => x.book_kind_id === id);
-    if (k) setEditTarget({ type: 'kind', id, initial: { name: k.name, icon: k.icon, color: k.color } });
+    if (k) setEditTarget({ type: 'kind', id, initial: { name: kindLabel(k), icon: k.icon, color: k.color } });
   };
   // Patch name/icon/color of the edited row. Code is the stable key (not sent).
   const onEditSubmit = (payload: QuickCreatePayload) => {
@@ -208,7 +214,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
           deleteLabel={t('col.delete_genre')}
         />
         <OntologyColumn
-          title={genreId ? t('col.kinds_in', { genre: genres.find((g) => g.genre_id === genreId)?.name ?? '' }) : t('col.kinds')}
+          title={genreId ? t('col.kinds_in', { genre: selectedGenre ? genreLabel(selectedGenre) : '' }) : t('col.kinds')}
           rows={kindRows}
           selectedId={kindId}
           onSelect={(id) => {
@@ -259,7 +265,7 @@ export function ManageWorkspace({ bookId }: { bookId: string }) {
         <KindResearchPanel
           bookId={bookId}
           kindId={kindId}
-          kindName={kinds.find((k) => k.book_kind_id === kindId)?.name ?? ''}
+          kindName={selectedKind ? kindLabel(selectedKind) : ''}
         />
       )}
 

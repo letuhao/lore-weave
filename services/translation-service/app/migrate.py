@@ -458,6 +458,17 @@ ALTER TABLE chapter_translations
 ALTER TABLE chapter_translations
   ADD COLUMN IF NOT EXISTS is_glossary_stale BOOLEAN NOT NULL DEFAULT false;
 
+-- DoD-4 (the last held guard signal): how many directive-looking spans the imported
+-- SOURCE text carried, per chapter. Translation cannot neutralise its own product, so the
+-- defence is DETECT — and detection is only a defence if somebody is TOLD. This is the
+-- telling, mirroring `is_glossary_stale` above: column -> model -> API -> badge.
+--
+-- NULLABLE on purpose. NULL means NOBODY LOOKED (a chapter translated before this existed);
+-- 0 means scanned and clean. Collapsing those two is the defect this whole run is about, and
+-- a DEFAULT 0 would have written "clean" over every historical row.
+ALTER TABLE chapter_translations
+  ADD COLUMN IF NOT EXISTS source_injection_hits INT;
+
 -- M6b full-propagate: per-(chapter_translation, entity) glossary usage index.
 -- The worker records which glossary entities a chapter's translation actually
 -- drew on (entries that scored > 0 against the chapter text). On a later

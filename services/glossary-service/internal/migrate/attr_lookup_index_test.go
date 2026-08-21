@@ -52,19 +52,19 @@ func TestAttrLookupIndexIsRegisteredInTheChain(t *testing.T) {
 	// a silent no-op on every real DB and taken effect only on a fresh one.
 	var found *Step
 	for i := range chain {
-		if chain[i].Name == "0059_attr_lookup_index" {
+		if chain[i].Name == "0061_attr_lookup_index" {
 			found = &chain[i]
 			break
 		}
 	}
 	if found == nil {
-		t.Fatal("0059_attr_lookup_index is not in the migration chain — the index " +
+		t.Fatal("0061_attr_lookup_index is not in the migration chain — the index " +
 			"would only ever be created on a FRESH database")
 	}
 	if found.Fn == nil {
-		t.Fatal("0059_attr_lookup_index has a nil migration func")
+		t.Fatal("0061_attr_lookup_index has a nil migration func")
 	}
-	if last := chain[len(chain)-1].Name; last != "0059_attr_lookup_index" {
+	if last := chain[len(chain)-1].Name; last != "0061_attr_lookup_index" {
 		// Not a failure — later steps are expected to be appended. Recorded so a
 		// reorder (which re-runs steps on every DB) is visible in the log.
 		t.Logf("note: chain now ends at %s, not 0059_attr_lookup_index", last)

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import pytest
 
+from loreweave_llm.budget import OutputKind, call_budget
 from loreweave_llm import (
     GenerateResult,
     StructuredGenerateError,
@@ -70,7 +71,7 @@ async def test_happy_disables_thinking_by_default():
         user_id="u",
         model_ref="m1",
         messages=[{"role": "user", "content": "hi"}],
-        max_output_tokens=512,
+        budget=call_budget(OutputKind.PROSE, ceiling=512),
     )
     assert isinstance(res, GenerateResult)
     assert res.content == "hello world"
@@ -88,7 +89,7 @@ async def test_graded_effort_enables_thinking():
     fake = _Fake(job=_Job(content="x"))
     await structured_generate(
         fake, user_id="u", model_ref="m", messages=[{"role": "user", "content": "hi"}],
-        max_output_tokens=64, reasoning="high",
+        budget=call_budget(OutputKind.PROSE, ceiling=64), reasoning="high",
     )
     assert fake.seen["input"]["chat_template_kwargs"]["thinking"] is True
     assert fake.seen["input"]["reasoning_effort"] == "high"
@@ -100,7 +101,7 @@ async def test_empty_content_raises_clear_error():
     with pytest.raises(StructuredGenerateError, match="empty response"):
         await structured_generate(
             fake, user_id="u", model_ref="m", messages=[{"role": "user", "content": "hi"}],
-            max_output_tokens=64,
+            budget=call_budget(OutputKind.PROSE, ceiling=64),
         )
 
 
@@ -110,7 +111,7 @@ async def test_failed_job_raises_with_code():
     with pytest.raises(StructuredGenerateError, match="LLM_UPSTREAM_ERROR"):
         await structured_generate(
             fake, user_id="u", model_ref="m", messages=[{"role": "user", "content": "hi"}],
-            max_output_tokens=64,
+            budget=call_budget(OutputKind.PROSE, ceiling=64),
         )
 
 
@@ -120,7 +121,7 @@ async def test_transport_error_wrapped():
     with pytest.raises(StructuredGenerateError, match="LLM call failed"):
         await structured_generate(
             fake, user_id="u", model_ref="m", messages=[{"role": "user", "content": "hi"}],
-            max_output_tokens=64,
+            budget=call_budget(OutputKind.PROSE, ceiling=64),
         )
 
 
@@ -131,6 +132,6 @@ async def test_no_prompt_content_raises_before_call():
         await structured_generate(
             fake, user_id="u", model_ref="m",
             messages=[{"role": "system", "content": "   "}],
-            max_output_tokens=64,
+            budget=call_budget(OutputKind.PROSE, ceiling=64),
         )
     assert fake.seen == {}  # never reached the client

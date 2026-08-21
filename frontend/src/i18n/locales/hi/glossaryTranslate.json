@@ -42,7 +42,9 @@
     "startTranslate": "अनुवाद शुरू करें",
     "startFailed": "अनुवाद कार्य शुरू करने में विफल",
     "thinkingOn": "सोचना (Thinking): चालू",
-    "thinkingOff": "सोचना (Thinking): बंद"
+    "thinkingOff": "सोचना (Thinking): बंद",
+    "concurrency": "समानांतर LLM कॉल",
+    "concurrencyHint": "1 = क्रमिक। यदि आपका मॉडल एक साथ कई अनुरोधों को संभाल सकता है, तो इसे बढ़ाएँ।"
   },
   "progress": {
     "title": "शब्दावली का अनुवाद हो रहा है",

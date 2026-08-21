@@ -113,10 +113,17 @@ export function useBookOntology(bookId: string) {
     return r;
   };
 
-  const ontology: BookOntology =
-    data ?? { book_id: bookId, genres: [], kinds: [], kind_genres: [], attributes: [] };
+  const rawOntology = data ?? { book_id: bookId, genres: [], kinds: [], kind_genres: [], attributes: [] };
+  // Cached responses can outlive a rolling deployment; sanitize again at the hook boundary.
+  const ontology: BookOntology = {
+    ...rawOntology,
+    genres: Array.isArray(rawOntology.genres) ? rawOntology.genres : [],
+    kinds: Array.isArray(rawOntology.kinds) ? rawOntology.kinds : [],
+    kind_genres: Array.isArray(rawOntology.kind_genres) ? rawOntology.kind_genres : [],
+    attributes: Array.isArray(rawOntology.attributes) ? rawOntology.attributes : [],
+  };
   // A book with zero adopted kinds hasn't been scaffolded yet (pre-adopt pick-list).
-  const isAdopted = (data?.kinds.length ?? 0) > 0;
+  const isAdopted = (data?.kinds?.length ?? 0) > 0;
 
   return {
     ontology,

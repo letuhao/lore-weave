@@ -130,9 +130,6 @@ EXEMPT: dict[str, str] = {
     "scripts/test_tier_tag_gate.py": "pytest self-test OF tier-tag-gate; runs with the python suite",
     "scripts/workflow-gate.py": "the WORKFLOW state machine, invoked explicitly by /loom and by the "
                         "pre-commit hook's phase check — not a code gate over the tree",
-    "scripts/amaw-guardrail-gate.py": "a Claude Code PreToolUse HOOK, not a tree gate: it reads a "
-                        "JSON payload from stdin (`json.loads(sys.stdin.read())`) and is invoked "
-                        "per tool-call by the agent runtime. Scanned as a gate it blocks forever",
     "scripts/workflow-gate.sh": "a thin wrapper around workflow-gate.py (which is exempt for "
                         "the same reason): it takes a SUBCOMMAND and prints usage with rc=1 "
                         "when given none, so there is nothing for a tree-scan to run",
@@ -359,7 +356,7 @@ def _run(rel: str, timeout: int = 900) -> tuple[bool, float, str]:
     cmd = [sys.executable, rel] if rel.endswith(".py") else ["bash", rel]
     t0 = time.time()
     try:
-        # stdin=DEVNULL is load-bearing. `amaw-guardrail-gate.py` is a Claude
+        # stdin=DEVNULL is load-bearing. The exempt-hook case that taught this was a Claude
         # Code PreToolUse HOOK that does `json.loads(sys.stdin.read())`, so
         # running it as a tree scan blocks forever — and because children share
         # the parent's stdin, ONE such gate hung a second unrelated one with it
@@ -482,6 +479,14 @@ def run_all() -> int:
         "scripts/db-ensure-bite-gate.py",
         "scripts/gate-bite-harness.py",
         "scripts/reality-layer-bite-harness.py",
+        # Arrives with the merge of `main` (2026-08-21) and it MUTATES: like every
+        # bite harness it writes a modified copy beside the gate it is proving.
+        # Left out of this tuple it would run inside the pool alongside the others,
+        # and two harnesses in one tree do not merely race — the second one's restore
+        # writes back the first one's mutation permanently. Measured earlier the same
+        # day: a killed sweep left `target/.bite-harness.lock` behind and six gates
+        # then refused to start in 0.1s each, which reads as six RED gates.
+        "scripts/guard-redability-gate.py",
     )
     concurrent = [n for n in runnable if n not in MUTATING]
     serial = [n for n in runnable if n in MUTATING]

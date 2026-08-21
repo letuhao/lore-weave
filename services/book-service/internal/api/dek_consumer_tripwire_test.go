@@ -23,8 +23,10 @@ func TestDEK_IsStillSingleConsumer(t *testing.T) {
 	// a deliberate act accompanied by resolving the shared-shred hazard above.
 	allowed := map[string]bool{"auth-service": true, "book-service": true}
 
-	// the crypto SDK itself is the substrate, not a consumer — exclude it.
-	skipDirs := map[string]bool{"node_modules": true, ".git": true, "testdata": true}
+	// Generated dependency trees are not service source. In particular, a local
+	// .venv can contain another service's SDK implementation and must not be
+	// misclassified as a new consumer merely because tests are installed.
+	skipDirs := map[string]bool{"node_modules": true, ".git": true, "testdata": true, ".venv": true}
 
 	// signals that a service TOUCHES the per-user DEK substrate.
 	signals := []string{"user_deks", "DEKClient", "loreweave_crypto", "wrapped_dek", "unwrapDEK", "UnwrapDEK"}

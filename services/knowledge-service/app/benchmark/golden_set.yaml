@@ -136,3 +136,9 @@ thresholds_by_dimension:
   # Observation: session 58 cycle 3 D-K21B-06 follow-on smoke.
   1024:
     negative_control_max_score: 0.70
+
+  # 2560-dimensional embedding model calibration.
+  # Observed: recall@3=1.0, MRR=1.0,
+  # avg_score_positive=0.8544, negative_control_max_score=0.6850.
+  2560:
+    negative_control_max_score: 0.72

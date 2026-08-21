@@ -2,6 +2,39 @@
   "translateIntent": {
     "hint": "Pilih buku untuk diterjemahkan — buka buku tersebut, lalu gunakan tab Terjemahan untuk memulai terjemahan."
   },
+  "help": {
+    "open": "Buka bantuan",
+    "tour": "Panduan tur",
+    "title": "Bekerja dengan buku",
+    "description": "Panduan cepat untuk ruang kerja buku.",
+    "intro": "Kelola buku Anda di sini, lalu buka salah satunya untuk melakukan riset, mengedit, dan membangun dunianya.",
+    "items": [
+      "Buat buku baru atau impor manuskrip untuk memulai.",
+      "Buka buku untuk mengedit bab, glosarium, dan ontologi.",
+      "Gunakan fitur cari dan filter untuk menemukan buku dengan cepat."
+    ],
+    "startTour": "Mulai tur",
+    "back": "Kembali",
+    "next": "Berikutnya",
+    "done": "Selesai",
+    "steps": [
+      {
+        "title": "Cari buku",
+        "description": "Fitur cari dan filter membantu Anda menemukan buku yang tepat dengan cepat.",
+        "body": "Gunakan kolom pencarian dan filter bahasa untuk mempersempit daftar."
+      },
+      {
+        "title": "Buat atau impor",
+        "description": "Mulai dengan buku baru atau naskah yang sudah ada.",
+        "body": "Pilih Buku Baru, masukkan detailnya, atau pilih file untuk diimpor."
+      },
+      {
+        "title": "Buka ruang kerja",
+        "description": "Semua alat buku dikumpulkan dalam ruang kerjanya.",
+        "body": "Di dalam buku, Anda dapat mengerjakan bab, glosarium, ontologi, terjemahan, dan banyak lagi."
+      }
+    ]
+  },
   "workspace": "Buku Saya",
   "new_book": "Buku Baru",
   "search_placeholder": "Cari buku...",
@@ -21,6 +54,9 @@
     "book_description_placeholder": "Tentang apa buku ini?",
     "cover": "Gambar sampul",
     "cover_hint": "PNG, JPG hingga 5MB",
+    "import_file": "Impor file buku",
+    "import_file_hint": "Pilih file FB2 atau EPUB. Alur impor yang sesuai akan terbuka.",
+    "import_metadata_hint": "Metadata sumber akan mengatur judul dan detail buku.",
     "submit": "Buat Buku"
   },
   "empty": {
@@ -119,6 +155,7 @@
     "count_other": "{{count}} bab",
     "import": "Impor",
     "importPdf": "Impor PDF",
+    "importEpub": "Import EPUB",
     "new": "Bab Baru",
     "col": {
       "title": "Judul",
@@ -151,6 +188,75 @@
       "title": "Pindahkan bab ke tempat sampah?",
       "description": "\"{{title}}\" akan dipindahkan ke tempat sampah.",
       "confirm": "Pindahkan ke Tempat Sampah"
+    }
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
     }
   },
   "glossary": {
@@ -220,6 +326,7 @@
       "selected": "{{count}} terpilih",
       "activate": "Aktifkan",
       "deactivate": "Nonaktifkan",
+      "reject": "Tolak",
       "clear": "Hapus pilihan",
       "done": "{{count}} entitas diubah ke {{status}}",
       "select_all_matching": "Pilih semua {{count}} yang cocok",
@@ -229,8 +336,7 @@
       "delete_confirm": {
         "title": "Hapus {{count}} entitas?",
         "description": "{{count}} entitas yang dipilih akan dipindahkan ke tempat sampah."
-      },
-      "reject": "Tolak"
+      }
     },
     "clear_filters": "Hapus semua filter",
     "deleted": "Entitas dihapus",
@@ -239,6 +345,7 @@
       "description": "Buat entitas glosarium pertama Anda — karakter, tempat, item, dan lainnya."
     },
     "untitled": "Tanpa judul",
+    "scope_label_title": "Cakupan — membedakan entitas ini dari entitas lain dengan nama yang sama",
     "alive_title": "Hidup — klik untuk menandai mati",
     "dead_title": "Mati — klik untuk hidupkan kembali",
     "alive": "hidup",
@@ -255,7 +362,38 @@
       "description": "\"{{title}}\" akan dipindahkan ke tempat sampah.",
       "confirm": "Hapus"
     },
-    "scope_label_title": "Cakupan — membedakan entitas ini dari entitas lain dengan nama yang sama"
+    "integrity": {
+      "button": "Periksa",
+      "title": "Periksa integritas lore",
+      "description": "Pemeriksaan mode baca untuk ontologi, entitas, atribut, tautan, dan terjemahan dalam buku ini.",
+      "run": "Jalankan pemeriksaan",
+      "runAgain": "Jalankan lagi",
+      "checking": "Memeriksa integritas buku…",
+      "close": "Tutup",
+      "unavailable": "pemeriksaan tidak tersedia",
+      "issues": "{{count}} masalah",
+      "status": {
+        "ok": "Sehat",
+        "warning": "Perlu perhatian",
+        "error": "Kesalahan integritas"
+      },
+      "repair": "Perbaiki secara otomatis",
+      "repairing": "Memperbaiki integritas&",
+      "repaired": "Perbaikan otomatis selesai: {{count}} pemeriksaan telah diperbaiki.",
+      "checks": {
+        "active_genres": "Genre aktif harus termasuk dalam buku ini.",
+        "kind_genres": "Tautan jenis-ke-genre harus mengarah ke genre dalam buku ini.",
+        "attributes": "Atribut buku harus mengarah ke jenis dan genre buku yang ada.",
+        "entity_kinds": "Entitas harus mengarah ke jenis yang termasuk dalam buku ini.",
+        "entity_names": "Entitas aktif harus memiliki atribut nama atau istilah.",
+        "entity_attributes": "Nilai atribut entitas harus menggunakan definisi atribut dari buku dan jenis ini.",
+        "chapter_links": "Tautan bab harus mengarah ke entitas aktif dalam buku ini.",
+        "translations": "Terjemahan harus mengarah ke nilai atribut yang ada.",
+        "kind_facets": "Faset jenis entitas harus mengarah ke jenis dalam buku ini."
+      }
+    },
+    "batch_translate": "Terjemahkan secara manual",
+    "batch_translate_hint": "Ketik nama target untuk banyak entitas secara manual (draf; tidak akan menimpa yang sudah diverifikasi)"
   },
   "sharing": {
     "title": "Visibilitas",
@@ -400,7 +538,10 @@
     "page_indicator": "Halaman {{page}} / {{pages}}",
     "prev": "Prev",
     "next": "Next",
-    "page": "Halaman"
+    "page": "Halaman",
+    "reasoning_enable": "Aktifkan penalaran model (berpikir)",
+    "reasoning_hint": "Nonaktif secara default — proses berpikir yang tersembunyi dapat menghabiskan kuota output pada model lokal. Aktifkan untuk bagian sulit pada model penalaran.",
+    "retranslate_selected": "Terjemahkan ulang yang dipilih ({{count}})"
   },
   "kind_editor": {
     "modified": "dimodifikasi",
@@ -529,5 +670,12 @@
       "desc": "Atur ulang nama dari \"{{from}}\" kembali ke \"{{to}}\". Bidang lain tidak terpengaruh.",
       "confirm": "Kembalikan"
     }
+  },
+  "lore": {
+    "heading": "Lore sejauh ini",
+    "noPosition": "Buka sebuah bab untuk melihat apa yang telah terungkap hingga titik tersebut.",
+    "nothingYet": "Belum ada yang terungkap tentang ini — teruslah membaca.",
+    "search": "Cari cerita...",
+    "subtitle": "Apa yang telah terungkap dalam cerita hingga bagian yang sedang Anda baca — tanpa spoiler dari bab selanjutnya."
   }
 }

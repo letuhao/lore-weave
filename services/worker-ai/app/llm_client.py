@@ -17,6 +17,7 @@ import asyncio
 import contextvars
 import logging
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from typing import Any
 
 from loreweave_llm.client import Client as SDKClient
@@ -71,6 +72,46 @@ _billing_user_id_ctx: contextvars.ContextVar[str | None] = contextvars.ContextVa
 )
 
 
+# Provider-reported usage accumulated while processing ONE extraction job.
+#
+# The ContextVar holds a MUTABLE accumulator, not a tuple, and that is the whole
+# point. `extract_pass2` fans relations/events/facts out through `asyncio.gather`
+# (sdks/python/loreweave_extraction/pass2.py) and the precision filter does the
+# same in `pass2_filter.py`. `gather` wraps each coroutine in a Task, and a Task
+# COPIES the context at creation — so a `_usage_ctx.set(...)` performed inside one
+# of those children updates the child's private copy and is discarded the moment
+# it finishes. With a tuple, `take_usage()` in the parent saw only the tokens of
+# calls made directly in the parent's own task: the entity pass was counted and
+# the entire relation/event/fact trio, recovery and filter passes silently were
+# not. Sharing one accumulator OBJECT fixes it — the children inherit the same
+# reference and their `+=` lands on the object the parent later reads.
+#
+# It must therefore be installed by `begin_usage_capture()` BEFORE any child task
+# is spawned, and there is deliberately NO module-level default instance: a shared
+# default would be the same object for every job in the process, so two concurrent
+# jobs would bill each other's tokens. `None` means "nobody is capturing" and
+# `_record_usage` becomes a no-op rather than accumulating into a global.
+@dataclass
+class _UsageAccumulator:
+    tokens_in: int = 0
+    tokens_out: int = 0
+
+
+_usage_ctx: contextvars.ContextVar["_UsageAccumulator | None"] = contextvars.ContextVar(
+    "worker_ai_llm_usage", default=None,
+)
+
+
+def begin_usage_capture() -> None:
+    """Install a fresh token accumulator for the job about to be processed.
+
+    Call ONCE per job, in the task that will later call ``take_usage()`` and
+    BEFORE any `asyncio.gather`/`create_task` fan-out — child tasks inherit the
+    reference that exists at the moment they are created. Installing a new
+    accumulator also drops any residue from the previous job on this task."""
+    _usage_ctx.set(_UsageAccumulator())
+
+
 def set_billing_user_id(billing_user_id: str | None) -> None:
     """Set the billing user (collaborator) for provider jobs on this async task.
     Call once at the start of processing a job; pass None to clear (an owner-
@@ -92,6 +133,41 @@ class LLMClient:
     @property
     def sdk(self) -> SDKClient:
         return self._sdk
+
+    def _record_usage(self, job: Job) -> None:
+        # Accounting is observation, never control flow: this sits directly on the
+        # extraction path, so anything it cannot read it SKIPS. Reading `job.result`
+        # as an attribute (rather than assuming it exists) is the difference between
+        # a missing token count and an AttributeError that kills the LLM call —
+        # `wait_terminal` is free to hand back any terminal shape.
+        result = getattr(job, "result", None)
+        usage = result.get("usage") if isinstance(result, dict) else None
+        if not isinstance(usage, dict):
+            return
+        input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0
+        output_tokens = usage.get("output_tokens", usage.get("completion_tokens", 0)) or 0
+        acc = _usage_ctx.get()
+        if acc is None:
+            return  # nobody is capturing for this job — don't accumulate into a global
+        try:
+            acc.tokens_in += max(0, int(input_tokens))
+            acc.tokens_out += max(0, int(output_tokens))
+        except (TypeError, ValueError):
+            return
+
+    def take_usage(self) -> tuple[int, int]:
+        """Return the tokens accumulated since the last take, and reset the counter.
+
+        Resets the accumulator IN PLACE rather than installing a new one: child
+        tasks spawned earlier still hold this reference, so replacing the object
+        would silently orphan any call still in flight."""
+        acc = _usage_ctx.get()
+        if acc is None:
+            return (0, 0)
+        usage = (acc.tokens_in, acc.tokens_out)
+        acc.tokens_in = 0
+        acc.tokens_out = 0
+        return usage
 
     async def aclose(self) -> None:
         await self._sdk.aclose()
@@ -173,6 +249,7 @@ class LLMClient:
                     if exc.retry_after_s and exc.retry_after_s > 0:
                         await asyncio.sleep(exc.retry_after_s)
                     continue
+                self._record_usage(job)
                 return job
             except LLMError:
                 raise
@@ -216,8 +293,10 @@ class LLMClient:
         )
 
     async def get_job(self, job_id, *, user_id: str | None = None) -> Job:
-        """Fetch the terminal Job (the consumer's resume reads result + status)."""
-        return await self._sdk.get_job(job_id, user_id=user_id)
+        """Fetch the terminal Job and retain its provider-reported token usage."""
+        job = await self._sdk.get_job(job_id, user_id=user_id)
+        self._record_usage(job)
+        return job
 
 
 # ── Module-level singleton ────────────────────────────────────────────

@@ -47,8 +47,8 @@ function MergeCandidateCard({
               data-testid={`merge-winner-${m.entity_id}`}
             />
             <span className="truncate font-medium">{m.name || t('merge_candidates.unnamed')}</span>
-            {m.aliases.length > 0 && (
-              <span className="truncate text-[10px] text-muted-foreground">({m.aliases.join(', ')})</span>
+            {(m.aliases ?? []).length > 0 && (
+              <span className="truncate text-[10px] text-muted-foreground">({(m.aliases ?? []).join(', ')})</span>
             )}
             <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
               {t('merge_candidates.mentions', { count: m.chapter_link_count })}

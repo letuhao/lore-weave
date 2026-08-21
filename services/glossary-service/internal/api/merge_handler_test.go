@@ -19,31 +19,20 @@ import (
 
 func runMergeMigrations(t *testing.T, pool *pgxpool.Pool) {
 	t.Helper()
-	ctx := context.Background()
-	for _, m := range []struct {
-		name string
-		fn   func(context.Context, *pgxpool.Pool) error
-	}{
-		{"Up", migrate.Up}, {"Seed", migrate.Seed}, {"UpSnapshot", migrate.UpSnapshot},
-		{"UpSoftDelete", migrate.UpSoftDelete}, {"UpWiki", migrate.UpWiki},
-		{"UpWikiSuggestions", migrate.UpWikiSuggestions}, {"UpExtraction", migrate.UpExtraction},
-		{"UpOutbox", migrate.UpOutbox}, {"UpEntityEnrichments", migrate.UpEntityEnrichments},
-		{"UpEntityMerge", migrate.UpEntityMerge}, {"UpMergeCandidates", migrate.UpMergeCandidates},
-		// G4 tier + cutover (shared DB: must be present in whatever chain runs first).
-		// UpGenreKindAttr creates book_kinds/book_attributes (cutover FK targets); the
-		// cutover then repoints glossary_entities.kind_id → book_kinds.
-		{"UpUserKinds", migrate.UpUserKinds}, {"UpGenreKindAttr", migrate.UpGenreKindAttr},
-		{"SeedGenreKindAttr", migrate.SeedGenreKindAttr}, {"UpGlossaryCutoverG4", migrate.UpGlossaryCutoverG4},
-		// G4 (cont.): merge_candidates.kind_id → book_kinds (after the cutover).
-		{"UpMergeCandidatesG4", migrate.UpMergeCandidatesG4},
-		// G4 (cont.): book-tier cache+search-aware recalculate_entity_snapshot.
-		{"UpGlossaryCutoverG4Cache", migrate.UpGlossaryCutoverG4Cache},
-		// G4e: IRREVERSIBLE drop of the retired legacy objects (runs LAST).
-		{"UpGlossaryDropLegacyG4", migrate.UpGlossaryDropLegacyG4},
-	} {
-		if err := m.fn(ctx, pool); err != nil {
-			t.Fatalf("migrate.%s: %v", m.name, err)
-		}
+	// migrate.RunChain, NOT a hand-copied list. The list this replaced STARTED with
+	// `migrate.Up`, which re-executes schemaSQL — and schemaSQL carries the ORIGINAL
+	// `trig_fn_entity_self_snapshot`, whose watch list predates `short_description`.
+	// Step 0013 CREATE-OR-REPLACEs that function with the version that watches it, so
+	// calling `Up` again after the chain has run silently DOWNGRADES the trigger for
+	// every test that follows in the package. Measured: TestK3_AutoRegenOnDescription
+	// Update passes alone (good function) and fails in the full package (old function),
+	// and the two databases differ by exactly that one predicate.
+	//
+	// `Up` is idempotent per-statement, so this looked safe. Idempotent is not the same
+	// as ORDER-INDEPENDENT: replaying an early step on top of a later one is a
+	// downgrade, and the ledger exists precisely so a step runs once, in order.
+	if err := migrate.RunChain(context.Background(), pool); err != nil {
+		t.Fatalf("migrate.RunChain: %v", err)
 	}
 }
 

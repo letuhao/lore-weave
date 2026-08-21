@@ -66,7 +66,10 @@
     "publish_anyway": "仍然发布",
     "cancel": "取消",
     "glossary_stale": "术语表已更新",
-    "glossary_stale_title": "此翻译完成后术语表发生了变化 — 内容可能已过时。"
+    "glossary_stale_title": "此翻译完成后术语表发生了变化 — 内容可能已过时。",
+    "source_injection": "源文本已标记 ({{count}})",
+    "source_injection_other": "源文本已标记 ({{count}})",
+    "source_injection_title": "导入的源文本含有类似指令的片段。翻译不会改写源文本，因此这是提示而非阻止——请在信任模型对该章的说法前先检查。"
   },
   "confirm_name": {
     "button": "修正名称",

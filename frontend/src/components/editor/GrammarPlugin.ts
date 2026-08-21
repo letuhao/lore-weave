@@ -145,6 +145,9 @@ async function runGrammarCheck(view: any) {
         Decoration.inline(from, to, {
           class: 'grammar-issue',
           title: tooltip,
+          'data-grammar-issue': 'true',
+          'data-grammar-replacements': JSON.stringify(match.replacements.slice(0, 5)),
+          'data-grammar-message': match.message,
         }),
       );
     }

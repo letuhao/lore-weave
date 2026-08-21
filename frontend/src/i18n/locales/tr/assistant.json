@@ -1,0 +1,85 @@
+{
+  "loading": "Asistanınız ayarlanıyor…",
+  "openingJournal": "Günlüğünüz açılıyor…",
+  "home": {
+    "welcome": "Tekrar hoş geldin {{name}}",
+    "subtitle": "Kişisel çalışma asistanınız.",
+    "capturing": "Çalışma notlarınız kaydediliyor",
+    "captureOff": "Kayıt kapalı",
+    "capturingDesc": "Siz konuşurken kişiler ve projeler fark edilir.",
+    "captureOffDesc": "İş arkadaşlarınızı, projeleri ve kararları hatırlamak için açın.",
+    "refresh": "Yenile",
+    "capturedItems": "Kaydedilen öğeler",
+    "endDay": "Günümü bitir",
+    "endingDay": "Gününüz bitiriliyor…",
+    "journal": "Günlük",
+    "memory": "Hafıza",
+    "practice": "Mülakat Pratiği"
+  },
+  "timezone": {
+    "title": "Saat diliminizi onaylayın",
+    "description": "Günlüğünüz, her günü yerel saatinize göre gruplandırır. {{zone}} saat dilimini tespit ettik.",
+    "saving": "Kaydediliyor…",
+    "useThis": "Bunu kullan",
+    "pickAnother": "Başka bir tane seç",
+    "save": "Kaydet"
+  },
+  "capture": {
+    "title": "Bugünden şimdiye kadar",
+    "live": "canlı",
+    "description": "Konuşurken fark ettiklerim. Siz bu gece gözden geçirene kadar hiçbir şey günlüğünüze kaydedilmez.",
+    "listening": "Dinleniyor…",
+    "nothingYet": "Henüz bir şey kaydedilmedi — bana gününden bahset.",
+    "turnOn": "İnsanları ve projeleri fark etmeye başlamak için kaydı açın."
+  },
+  "autonomous": {
+    "title": "Asistanın kendi başına çalışmasına izin ver",
+    "description": "Siz açana kadar kapalıdır — bunlar arka planda çalışır ve modellerinizi kullanır.",
+    "loading": "Yükleniyor…",
+    "on": "Açık",
+    "next": "Açık · sonraki {{time}}",
+    "eod": "Günümü otomatik olarak sonlandır",
+    "eodDesc": "Unutsanız bile her akşam gününüzü günlüğe dökün.",
+    "weeklyReflection": "Haftalık değerlendirme",
+    "weeklyReflectionDesc": "Yumuşak bir haftalık rutin + koçluk notu.",
+    "weeklySummary": "Haftalık özet",
+    "weeklySummaryDesc": "Haftanızın bir özeti.",
+    "reminders": "Günlük tutma hatırlatıcıları",
+    "remindersDesc": "Gününüzü henüz sonlandırmadıysanız küçük bir hatırlatma.",
+    "proactive": "Proaktif kontroller",
+    "proactiveOn": "Açık — Uzun süre geçtiğinde size ulaşabilirim.",
+    "proactiveOff": "Sessiz bir aradan sonra bir düşünceyle söze başlamama izin verin."
+  },
+  "review": {
+    "title": "İşte gününüz",
+    "distilling": "Bugünkü konuşmayı bir günlük girişine dönüştürülüyor…",
+    "genericError": "Bir şeyler ters gitti.",
+    "words": "{{count}} kelime",
+    "kept": "korundu",
+    "keep": "Bugünkü girişi tut",
+    "keptButton": "Tutuldu ✓",
+    "keeping": "Tutuluyor…"
+  },
+  "inbox": {
+    "title": "Hatırlanacak gerçekler",
+    "description": "Bugünkü konuşmalardan. Hatırlanmaya değer olanları tutun; geri kalanları eleyin.",
+    "loading": "Yükleniyor…",
+    "error": "Gerçekler yüklenemedi.",
+    "keep": "Tut",
+    "dismiss": "Ele",
+    "quoted": "alıntılandı"
+  },
+  "scorecard": {
+    "title": "Koçluk karne puanı",
+    "badge": "Trend gösterilmedi (incelemede)",
+    "badgeTitle": "Bu puan henüz insan değerlendirmeleriyle kalibre edilmemiştir; bu nedenle referans amacıyla gösterilir ancak bir trend grafiğine işlenmez.",
+    "overall": "Genel:",
+    "notScored": "puanlanmadı"
+  },
+  "reflection": {
+    "defaultTitle": "Haftalık değerlendirme",
+    "dismissError": "kapatılamadı — tekrar deneyin",
+    "dismissing": "Kapatılıyor…",
+    "dismiss": "Kapat"
+  }
+}

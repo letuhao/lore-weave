@@ -211,7 +211,10 @@
     "feedback_up": "Bonne réponse",
     "feedback_down": "Mauvaise réponse",
     "feedback_thanks": "Merci pour votre retour",
-    "feedback_error": "Impossible d'enregistrer le retour"
+    "feedback_error": "Impossible d'enregistrer le retour",
+    "incomplete_error": "Erreur — réponse incomplète",
+    "incomplete_interrupted": "Interrompu — réponse incomplète",
+    "insert_into_chapter": "Insérer dans le chapitre"
   },
   "tools": {
     "title": "Outils utilisés dans cette réponse",
@@ -243,7 +246,9 @@
     "cancelled": "Annulé",
     "reprice": "Le coût est passé à {{cost}} depuis l'estimation — veuillez relancer pour confirmer au nouveau prix.",
     "reprice_title": "Le coût a changé — non appliqué",
-    "reprice_detail": "Estimé à {{old}}, maintenant {{new}}. Aucun frais n'a été engagé — veuillez relancer pour confirmer au nouveau prix."
+    "reprice_detail": "Estimé à {{old}}, maintenant {{new}}. Aucun frais n'a été engagé — veuillez relancer pour confirmer au nouveau prix.",
+    "advisory_items": "Demandé (conseil) — le serveur confirmera l'ensemble exact lors de l'application",
+    "awaiting_preview": "Chargement de l'aperçu du serveur..."
   },
   "batchConfirm": {
     "title": "Confirmer {{count}} actions en une étape",
@@ -446,5 +451,120 @@
     "worldbuilder": "Créateur d'univers",
     "editor": "Éditeur",
     "analyst": "Analyste"
+  },
+  "sessionSettings": {
+    "description": "Paramètres de cette discussion. Tout ce que vous ne définissez pas ici est hérité du livre, puis de votre compte, puis du paramètre système par défaut.",
+    "saving": "enregistrement…",
+    "close": "Fermer",
+    "voice": "Voix",
+    "messages": "Messages",
+    "status": {
+      "label": "Statut",
+      "active": "Actif",
+      "archived": "Archivé",
+      "closed": "Clôturé"
+    },
+    "models": {
+      "title": "Modèles",
+      "composer": "Modèle compositeur (optionnel)",
+      "planner": "Modèle planificateur (optionnel)",
+      "composerNone": "Aucun — modèle unique",
+      "plannerNone": "Utiliser mon planificateur par défaut",
+      "composerHint": "Une fois configuré, l'IA peut déléguer la rédaction de la prose à ce modèle.",
+      "plannerHint": "Le modèle utilisé pour la planification multi-étapes dans cette session."
+    },
+    "behavior": {
+      "title": "Comportement",
+      "systemPrompt": "Prompt système",
+      "promptPlaceholder": "Hérité des paramètres par défaut de votre compte, sauf si vous en définissez un ici.",
+      "reasoning": {
+        "label": "Effort de raisonnement",
+        "off": "Désactivé",
+        "low": "Faible",
+        "medium": "Moyen",
+        "high": "Élevé"
+      },
+      "statefulTitle": "Utiliser l'API de réponses avec état",
+      "statefulHint": "Réutilisation optionnelle du contexte côté serveur. Laissez désactivé sauf si votre fournisseur prend en charge les appels d'outils Responses.",
+      "temperature": "Température",
+      "temperatureHint": "Plus elle est élevée, plus les réponses sont surprenantes ; plus elle est basse, plus elles sont prévisibles.",
+      "topP": "Top P",
+      "maxTokens": "Nombre max de tokens de réponse",
+      "maxTokensHint": "Si non défini, la limite propre au modèle s'applique."
+    },
+    "grounding": {
+      "title": "Ancrage et mémoire",
+      "label": "Ancrer les réponses sur l'univers de ce livre",
+      "on": "Activé — la recherche est effectuée à chaque tour",
+      "off": "Désactivé — aucune recherche pour ce chat",
+      "onHint": "Le glossaire, les faits du graphe de connaissances et les passages sont extraits à chaque tour.",
+      "offHint": "L'assistant répond uniquement à partir de la conversation et peut inventer du lore.",
+      "multiHint": "Basé sur chaque graphe de connaissances sélectionné simultanément — les faits sont accompagnés de leur source."
+    },
+    "context": {
+      "title": "Gestion du contexte",
+      "label": "Mode de contexte pour œuvres longues",
+      "auto": "Auto",
+      "on": "Toujours activé",
+      "off": "Désactivé",
+      "autoHint": "Active les niveaux de contexte pour œuvres longues uniquement lorsque le livre est assez volumineux pour en avoir besoin.",
+      "onHint": "Utilise systématiquement les niveaux de contexte pour œuvres longues.",
+      "offHint": "Jamais — le contexte le plus simple et le plus économique."
+    }
+  },
+  "dock": {
+    "close": "Fermer",
+    "label": "Demander à l'IA",
+    "open": "Demander à l'assistant du glossaire",
+    "title": "Assistant du glossaire"
+  },
+  "glossaryEdit": {
+    "applied": "Appliqué ✓",
+    "apply": "Appliquer",
+    "conflict": "Cette entité a été modifiée depuis sa proposition — demandez à nouveau pour voir la version la plus récente.",
+    "conflict_short": "Modifié depuis la proposition — redemander",
+    "dismiss": "Ignorer",
+    "dismissed": "Ignoré",
+    "empty": "(vide)",
+    "error": "Impossible d'enregistrer la modification.",
+    "error_short": "Échec de l'enregistrement",
+    "field": "Champ",
+    "fields": "{{count}} champs",
+    "label": "Édition du glossaire"
+  },
+  "planner": {
+    "destructive": "destructif",
+    "enable": "Activer cette étape destructive",
+    "heading": "Plan",
+    "notes": "Notes du planificateur",
+    "steps": "{{count}} étape(s)"
+  },
+  "propose": {
+    "applied": "Appliqué ✓",
+    "apply": "Appliquer",
+    "apply_failed": "Impossible d'appliquer la modification.",
+    "apply_n": "Appliquer {{count}}",
+    "dismiss": "Ignorer",
+    "dismissed": "Ignoré",
+    "hunk_hint": "Choisissez les modifications à appliquer",
+    "hunk_toggle": "Accepter ce changement",
+    "insert_label": "Insertion suggérée",
+    "keep_original": "Conserver l'original",
+    "no_editor": "Ouvrez le chapitre pour appliquer cette modification.",
+    "no_selection": "Sélectionnez le texte à remplacer, puis cliquez sur Appliquer.",
+    "popout_no_rewrite": "Les réécritures doivent être appliquées depuis l'éditeur ancré — ancrez d'abord cette fenêtre.",
+    "popout_not_delivered": "Impossible de confirmer que la modification a atteint l'éditeur ancré — ouvrez le chapitre dans Studio et réessayez.",
+    "replace_label": "Réécriture suggérée",
+    "selection_changed": "Votre sélection a changé — sélectionnez à nouveau et cliquez sur Appliquer ou sur Ignorer.",
+    "wrong_chapter": "Cette suggestion concernait un autre chapitre."
+  },
+  "taskGate": {
+    "cancelled": "Annulé",
+    "confirm": "Confirmer",
+    "defaultTitle": "Confirmer cette action ?",
+    "dismiss": "Ignorer",
+    "done": "Confirmé ✓",
+    "error": "Impossible de confirmer",
+    "label": "Confirmer"
   }
 }

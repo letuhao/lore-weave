@@ -11,6 +11,10 @@ interface Props {
   jobId: string;
   /** State-aware caps for THIS job in its current status (from the row / live event). */
   controlCaps: ControlCap[];
+  /** Server-side retry admission result, when the producer knows retry is blocked. */
+  retryBlockedReason?: string | null;
+  /** Failed extraction jobs expose a checkpoint-backed resume action. */
+  resumeFromCheckpoint?: boolean;
   /** Compact = icon-only buttons (mobile cards / dense rows). */
   compact?: boolean;
 }
@@ -27,14 +31,49 @@ const SUCCESS: Record<JobControlAction, [string, string]> = {
  *  MonitorControls): render cancel/pause/resume strictly from control_caps —
  *  never inferred from kind. A stale-state 409 or 502 surfaces as a toast and the
  *  list re-syncs (useJobControl invalidates ['jobs']). */
-export function JobControls({ service, jobId, controlCaps, compact }: Props) {
+export function JobControls({ service, jobId, controlCaps, compact, retryBlockedReason: serverRetryBlockedReason, resumeFromCheckpoint = false }: Props) {
   const { t } = useTranslation('jobs');
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [retryBlockedReason, setRetryBlockedReason] = useState<string | null>(serverRetryBlockedReason ?? null);
 
+  // A retry is a server-side admission operation (benchmark, budget and active-job
+  // gates are checked again).  Keep the action disabled after a definitive 409 so a
+  // user cannot hammer an operation the backend has already rejected.  The next SSE
+  // event or list refresh remounts/updates the row and clears this local guard.
+  const retryErrorMessage = (e: Error): string | null => {
+    const body = (e as Error & { body?: { detail?: unknown } }).body;
+    const detail = body?.detail;
+    if (detail && typeof detail === 'object') {
+      const d = detail as { code?: unknown; error_code?: unknown; message?: unknown };
+      const code = String(d.error_code ?? d.code ?? '');
+      const message = typeof d.message === 'string' ? d.message : '';
+      if (code === 'benchmark_missing') {
+        return t('controls.retryBenchmarkMissing', {
+          defaultValue: 'Retry is unavailable: the embedding model has no benchmark. Run the model benchmark, then re-check.',
+        });
+      }
+      if (code === 'benchmark_failed') {
+        return t('controls.retryBenchmarkFailed', {
+          defaultValue: 'Retry is unavailable: the embedding model failed its last benchmark.',
+        });
+      }
+      if (message) return message;
+    }
+    return e.message || null;
+  };
+
+  const retryBlockedLabel = (reason: string): string => {
+    const code = reason.split(':', 1)[0].trim();
+    if (code === 'benchmark_missing') return t('controls.retryBenchmarkMissing', { defaultValue: 'Retry is unavailable: the embedding model has no benchmark. Run the model benchmark, then re-check.' });
+    if (code === 'benchmark_failed') return t('controls.retryBenchmarkFailed', { defaultValue: 'Retry is unavailable: the embedding model failed its last benchmark.' });
+    return reason;
+  };
   const onError = (e: Error, args: { action: JobControlAction }) => {
     const code = (e as { status?: number }).status;
     if (code === 409) {
-      toast.error(t('controls.stale', { defaultValue: 'Job state changed — refreshed.' }));
+      const reason = args.action === 'retry' ? retryErrorMessage(e) : null;
+      if (args.action === 'retry') setRetryBlockedReason(reason);
+      toast.error(reason ?? t('controls.stale', { defaultValue: 'Job state changed — refreshed.' }));
     } else {
       toast.error(
         t('controls.actionFailed', { defaultValue: 'Action failed: {{error}}', error: e.message }),
@@ -59,16 +98,25 @@ export function JobControls({ service, jobId, controlCaps, compact }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {has('retry') && (
-        <button
-          className={btn}
-          onClick={() => run('retry')}
-          disabled={ctl.isPending}
-          aria-label={t('controls.retry', { defaultValue: 'Retry' })}
-        >
-          <RotateCcw className="h-4 w-4" />
-          {!compact && t('controls.retry', { defaultValue: 'Retry' })}
-        </button>
+      {has('retry') && !retryBlockedReason && (
+        <span className="flex items-center gap-2">
+          <button
+            className={btn}
+            onClick={() => run('retry')}
+            disabled={ctl.isPending || retryBlockedReason !== null}
+            title={retryBlockedReason ?? undefined}
+            aria-label={t('controls.retry', { defaultValue: 'Retry' })}
+          >
+            <RotateCcw className="h-4 w-4" />
+            {!compact && t('controls.retry', { defaultValue: 'Retry' })}
+          </button>
+
+        </span>
+      )}
+      {retryBlockedReason && (
+        <span className="max-w-[28rem] text-xs text-destructive" role="status">
+          {retryBlockedLabel(retryBlockedReason)}
+        </span>
       )}
       {has('pause') && (
         <button
@@ -86,10 +134,10 @@ export function JobControls({ service, jobId, controlCaps, compact }: Props) {
           className={btn}
           onClick={() => run('resume')}
           disabled={ctl.isPending}
-          aria-label={t('controls.resume', { defaultValue: 'Resume' })}
+          aria-label={t(resumeFromCheckpoint ? 'controls.resumeFromCheckpoint' : 'controls.resume', { defaultValue: resumeFromCheckpoint ? 'Resume from checkpoint' : 'Resume' })}
         >
           <Play className="h-4 w-4" />
-          {!compact && t('controls.resume', { defaultValue: 'Resume' })}
+          {!compact && t(resumeFromCheckpoint ? 'controls.resumeFromCheckpoint' : 'controls.resume', { defaultValue: resumeFromCheckpoint ? 'Resume from checkpoint' : 'Resume' })}
         </button>
       )}
       {has('cancel') &&

@@ -458,7 +458,11 @@
       "replaceFactSave": "Guardar reemplazo",
       "replaceFactSuccess": "Dato reemplazado",
       "markWrongUndo": "Deshacer",
-      "markWrongUndoFailed": "No se pudo deshacer: {{error}}"
+      "markWrongUndoFailed": "No se pudo deshacer: {{error}}",
+      "tabs": {
+        "current": "Actual",
+        "temporal": "Temporal"
+      }
     },
     "edit": {
       "title": "Editar entidad",
@@ -517,11 +521,32 @@
       "discoveredHint": "Las nuevas entidades comienzan como «descubiertas». El estado canónico se obtiene al anclarlas al glosario."
     },
     "kind": {
+      "unknown": "Tipo desconocido",
+      "person": "Persona",
+      "artifact": "Artefacto",
       "character": "Personaje",
       "location": "Ubicación",
       "organization": "Organización",
       "concept": "Concepto",
-      "item": "Objeto"
+      "item": "Objeto",
+      "event_ref": "Evento",
+      "preference": "Preferencia",
+      "event": "Evento",
+      "terminology": "Terminología",
+      "power_system": "Sistema de poder",
+      "species": "Especie",
+      "relationship": "Relación",
+      "plot_arc": "Arco argumental",
+      "social_setting": "Entorno social",
+      "trope": "Tópico",
+      "technique": "Técnica",
+      "colleague": "Colega",
+      "decision": "Decisión",
+      "jargon": "Jerga",
+      "meeting": "Reunión",
+      "org": "Organización",
+      "project": "Proyecto",
+      "task": "Tarea"
     },
     "archive": {
       "action": "Archivar",
@@ -707,7 +732,32 @@
         "errorAlreadyRunning": "Ya hay un benchmark ejecutándose para este proyecto. Espera e inténtalo de nuevo.",
         "errorProviderFlake": "El proveedor de embedding falló durante la ejecución. Por favor, inténtalo de nuevo.",
         "errorGeneric": "Error en el benchmark: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Aún no hay un benchmark — ejecuta el benchmark del conjunto de oro para habilitar la extracción.",
+      "bookIdLocked": "Este libro (bloqueado)",
+      "canonCapture": "Captura automática de nuevos nombres desde el chat",
+      "canonCaptureCeilingOff": "Desactivado para este despliegue — tu elección se guardará, pero la captura no se ejecutará hasta que un administrador la vuelva a habilitar.",
+      "canonCaptureHint": "Cada pocos turnos, los nombres que se introduzcan en la conversación se añadirán a la bandeja de entrada de revisión del glosario de este libro como sugerencias, nunca como canon. Utiliza una llamada adicional de IA por captura, facturada a tu propio modelo.",
+      "canonCaptureNoBook": "Vincula un libro a este proyecto para capturar nombres en su glosario.",
+      "embeddingModel": "Modelo de incrustación (Embedding)",
+      "embeddingModelEmpty": "No hay modelos con capacidad de incrustación configurados — la extracción requiere uno.",
+      "embeddingModelHint": "Determina qué espacio vectorial utiliza este proyecto para la recuperación semántica de pasajes.",
+      "embeddingModelNone": "Ninguno (sin pasajes semánticos)",
+      "genre": "Género",
+      "genrePlaceholder": "p. ej. Tiên hiệp, Cultivación, Fantasía…",
+      "memoryConfirm": "Confirmar antes de guardar memorias",
+      "memoryConfirmHint": "Los hechos que la IA desea recordar esperan tu aprobación en lugar de guardarse automáticamente.",
+      "rerankDiscoveryHint": "¿Alojamiento propio? Añade una credencial de reordenamiento local (compatible con Cohere) en Modelos de IA y luego actualiza; los modelos de reordenamiento se detectan automáticamente.",
+      "rerankModel": "Modelo de reordenamiento (opcional)",
+      "rerankModelEmpty": "No hay modelos con capacidad de reordenamiento configurados. Registra uno para habilitar el rechazo de contenido irrelevante.",
+      "rerankModelHint": "Reordenamiento mediante cross-encoder para el rechazo de ruido en búsquedas directas. Opcional: si se deja vacío, la búsqueda mantiene el orden de fusión.",
+      "rerankModelNone": "Ninguno (omitir reordenamiento — mantener orden de fusión)",
+      "toolCalling": "Herramientas de memoria en el chat",
+      "toolCallingHint": "Permite que la IA busque, recuerde y anote memorias mientras chateas en este proyecto.",
+      "benchmarkFailed": "✗ El benchmark no ha pasado (recall@3 {{recall}}) — este modelo ha obtenido una puntuación inferior al estándar de calidad para la extracción; intenta con un modelo de embedding diferente.",
+      "benchmarkInconclusive": "⋯ El benchmark no es concluyente (recall@3 {{recall}}) — se requieren ≥3 pases para validar este modelo. Inténtalo de nuevo.",
+      "benchmarkPassed": "✓ Benchmark superado (recall@3 {{recall}}).",
+      "genreError": "El género debe tener como máximo {{max}} caracteres."
     },
     "archiveDialog": {
       "title": "¿Archivar proyecto?",
@@ -910,6 +960,32 @@
         "unpin": "Desanclar",
         "budget": "+{{tokens}} tokens por ventana ({{count}} anclados × ~50).",
         "noBook": "Para anclar se requiere un libro vinculado. Primero adjunta un libro a este proyecto."
+      },
+      "disabled": {
+        "benchmarkRequired": "Ejecuta la prueba de referencia del conjunto de oro (golden-set) y pásala para habilitar la extracción (arriba).",
+        "checkingBenchmark": "Comprobando la prueba de referencia de embeddings…",
+        "fixConcurrency": "Las llamadas en paralelo deben estar entre 1 y 64.",
+        "fixMaxSpend": "Introduce un límite de gasto válido.",
+        "fixRange": "Corrige el rango de capítulos.",
+        "pickEmbedding": "Selecciona un modelo de embedding.",
+        "pickLlm": "Selecciona un modelo LLM de extracción."
+      },
+      "embedding": {
+        "changeViaDialog": "Este proyecto ya tiene un modelo de embedding. Usa «Cambiar modelo» para cambiarlo; esto reconstruirá el grafo.",
+        "saveFailed": "No se pudo guardar el modelo de embedding: {{error}}",
+        "saved": "Modelo de embedding guardado; ejecuta la prueba de referencia a continuación para habilitar la extracción."
+      },
+      "prereq": {
+        "benchmarkChecking": "Comprobando la prueba de referencia de embedding…",
+        "benchmarkPassed": "Prueba de referencia de embedding superada",
+        "benchmarkPending": "Prueba de referencia de embedding pendiente (selecciona un modelo primero)",
+        "benchmarkRequired": "Prueba de referencia de embedding necesaria: ejecútala desde el selector de modelos de abajo",
+        "embedding": "Modelo de embedding seleccionado",
+        "llm": "Modelo LLM de extracción seleccionado"
+      },
+      "reasoning": {
+        "hint": "Desactivado por defecto: la extracción devuelve JSON y el pensamiento oculto puede agotar el presupuesto de salida. Actívalo solo para contenido complejo con un modelo de razonamiento.",
+        "label": "Activar el razonamiento del modelo (pensamiento)"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "Guardando…",
       "cancel": "Cancelar",
       "saved": "Configuración de extracción guardada.",
-      "failed": "Error al guardar: {{error}}"
+      "failed": "Error al guardar: {{error}}",
+      "filterModel": "Modelo de filtrado (opcional)",
+      "filterModelDefault": "Usar el modelo de extracción (por defecto)",
+      "filterModelHint": "LLM que evalúa la precisión de las relaciones. Si se deja por defecto, el filtro reutiliza su modelo de extracción (por usuario, BYOK). Elija un modelo más potente para un filtrado de mayor precisión."
     },
     "confirmDestructive": {
       "cancel": "Cancelar",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "Última oportunidad: ¿reconstruir de verdad?",
-        "description": "Hacer clic en Reconstruir ahora iniciará la destrucción y reconstrucción. No hay vuelta atrás una vez que la nueva tarea esté en ejecución."
+        "description": "Hacer clic en Reconstruir ahora iniciará la destrucción y reconstrucción. No hay vuelta atrás una vez que la nueva tarea esté en ejecución.",
+        "descriptionCount": "Esto ELIMINARÁ permanentemente {{entities}} entidades, {{events}} eventos y {{facts}} hechos, y luego reconstruirá todo desde cero. Esta acción no se puede deshacer.",
+        "typePrompt": "Escriba el nombre del proyecto para confirmar"
       },
       "disable": {
         "title": "¿Desactivar extracción?",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "Mostrar diferencias con la actual",
       "diffEmpty": "Sin diferencias."
-    }
+    },
+    "loading": "Cargando…"
   },
   "indicator": {
     "label": "Indicador de conocimiento",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "Global",
       "project": "Proyecto",
-      "degraded": "Degradado"
+      "degraded": "Degradado",
+      "multi": "{{count}} grafos de conocimiento"
     },
     "popover": {
       "projectHeading": "Memoria del proyecto",
@@ -1100,7 +1183,8 @@
       "projectBody": "Esta sesión está vinculada a <strong>{{name}}</strong>. La IA ve tu biografía global más el resumen del proyecto y las entradas del glosario en cada turno.",
       "globalBody": "Esta sesión no tiene ningún proyecto vinculado. La IA solo ve tu biografía global. Vincula un proyecto en la configuración de la sesión para darle acceso a la memoria específica del libro.",
       "degradedBody": "El servicio de conocimiento no estuvo disponible en el último turno. La IA solo utilizó los mensajes recientes; la memoria de tu proyecto no está temporalmente en el prompt. Se recuperará automáticamente en el próximo turno cuando el servicio vuelva a estar disponible.",
-      "manage": "Gestionar conocimiento"
+      "manage": "Gestionar conocimiento",
+      "multiBody": "Este chat se basa en {{count}} grafos de conocimiento a la vez; los hechos están etiquetados con su fuente."
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "Mapear"
     },
     "emptyHint": "Triage recopila cualquier dato extraído que aún no encaje en tu esquema; una cola vacía significa que todo está en orden."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "A partir del capítulo {{ordinal}}",
+      "current": "actual",
+      "loadFailed": "No se pudo cargar el canon para este punto de la historia.",
+      "sourceCanonContent": "canon escrito",
+      "sourceCanonContentHint": "Mostrando el canon escrito (no hay una instantánea plegada para este punto).",
+      "status": {
+        "current": "actual",
+        "stale": "obsoleto",
+        "unbuildable": "no disponible"
+      },
+      "unbuildable": "Síntesis no disponible aquí — degradación segura."
+    },
+    "retrieval": {
+      "chapter": "Capítulo {{chapter}}",
+      "ariaLabel": "Búsqueda de recuperación",
+      "currentStateNote": "Los resultados corresponden al estado actual (la recuperación temporal aún no está disponible).",
+      "error": "Error de búsqueda: {{error}}",
+      "noResults": "No se encontró ningún contexto coincidente.",
+      "noText": "(sin texto de vista previa)",
+      "placeholder": "Buscar el contexto de este libro...",
+      "typeToSearch": "Escribe para buscar el contexto de esta entidad."
+    },
+    "slider": {
+      "atChapter": "Capítulo {{ordinal}}",
+      "aria": "Deslizar el orden cronológico de los capítulos de la historia",
+      "head": "Inicio (último)",
+      "headButton": "Inicio (último)",
+      "label": "Tiempo de la historia",
+      "loadFailed": "No se pudo cargar la línea de tiempo de cambios.",
+      "noChanges": "Aún no hay cambios en la línea de tiempo."
+    },
+    "translation": {
+      "asOfChapter": "capítulo {{n}}",
+      "asOfLabel": "a partir de {{label}}",
+      "error": "Error al cargar el contexto: {{error}}",
+      "asAuthored": "según el autor",
+      "asOfHead": "último",
+      "badgeCached": "traducido · en caché",
+      "badgeFresh": "traducido",
+      "empty": "No hay contexto disponible para este punto de la historia.",
+      "failNoModel": "No se ha configurado ningún modelo de traducción. Elige uno en Ajustes de traducción para ver el contexto traducido.",
+      "failProvider": "Error en la traducción. Mostrando el contexto original por ahora.",
+      "failQuota": "La traducción no está disponible: se ha agotado la cuota del proveedor.",
+      "langOriginal": "Original ({{lang}})",
+      "languageLabel": "Idioma de visualización",
+      "title": "Contexto por episodio",
+      "translating": "Traduciendo… la primera visualización puede tardar un momento"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "En el capítulo {{asOf}}",
+      "current": "Actual",
+      "hint": "Desplaza el control de tiempo para comparar un capítulo pasado con el estado actual.",
+      "loadFailed": "No se pudo cargar la diferencia: {{error}}",
+      "loading": "Cargando diferencia…",
+      "noChanges": "No hay cambios de valor único entre el capítulo {{asOf}} y el presente.",
+      "title": "Vista de diferencias"
+    },
+    "timeline": {
+      "chapter": "cap. {{chapter}}",
+      "empty": "Aún no hay cambios registrados para esta entidad.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → abierto)"
+      },
+      "kind": {
+        "invalidated": "invalidado",
+        "open": "abierto",
+        "superseded": "reemplazado"
+      },
+      "loadFailed": "No se pudo cargar la cronología de cambios: {{error}}",
+      "loadMore": "Cargar más",
+      "loading": "Cargando cambios…",
+      "title": "Cronología de cambios"
+    }
   }
 }

@@ -1,5 +1,40 @@
 {
-  "translateIntent": { "hint": "Pick a book to translate — open it, then use the Translation tab to start a translation." },
+  "translateIntent": {
+    "hint": "Pick a book to translate — open it, then use the Translation tab to start a translation."
+  },
+  "help": {
+    "open": "Open help",
+    "tour": "Guided tour",
+    "title": "Working with books",
+    "description": "A quick guide to the books workspace.",
+    "intro": "Manage your books here, then open one to research, edit, and build its world.",
+    "items": [
+      "Create a book or import a manuscript to get started.",
+      "Open a book to edit chapters, glossary, and ontology.",
+      "Use search and filters to find a book quickly."
+    ],
+    "startTour": "Start tour",
+    "back": "Back",
+    "next": "Next",
+    "done": "Done",
+    "steps": [
+      {
+        "title": "Find a book",
+        "description": "Search and filters help you open the right book quickly.",
+        "body": "Use the search field and language filter to narrow the list."
+      },
+      {
+        "title": "Create or import",
+        "description": "Start with a new book or an existing manuscript.",
+        "body": "Select New Book, enter its details, or choose a file to import."
+      },
+      {
+        "title": "Open the workspace",
+        "description": "All book tools are collected in its workspace.",
+        "body": "Inside a book you can work with chapters, glossary, ontology, translation, and more."
+      }
+    ]
+  },
   "workspace": "My Books",
   "new_book": "New Book",
   "search_placeholder": "Search books...",
@@ -19,6 +54,9 @@
     "book_description_placeholder": "What is this book about?",
     "cover": "Cover image",
     "cover_hint": "PNG, JPG up to 5MB",
+    "import_file": "Import a book file",
+    "import_file_hint": "Choose an FB2 or EPUB file. The appropriate import flow will open.",
+    "import_metadata_hint": "Source metadata will set the book title and details.",
     "submit": "Create Book"
   },
   "empty": {
@@ -117,6 +155,7 @@
     "count_other": "{{count}} chapters",
     "import": "Import",
     "importPdf": "Import PDF",
+    "importEpub": "Import EPUB",
     "new": "New Chapter",
     "col": {
       "title": "Title",
@@ -149,6 +188,75 @@
       "title": "Move chapter to trash?",
       "description": "\"{{title}}\" will be moved to trash.",
       "confirm": "Move to Trash"
+    }
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
     }
   },
   "glossary": {
@@ -191,10 +299,18 @@
     "range": "{{start}}–{{end}} of {{total}}",
     "page_size_label": "Per page",
     "page_size": "{{count}} / page",
-    "pager": { "page": "Page", "prev": "Previous page", "next": "Next page" },
+    "pager": {
+      "page": "Page",
+      "prev": "Previous page",
+      "next": "Next page"
+    },
     "page_empty": "This page is empty.",
     "page_empty_first": "Go to first page",
-    "match_field": { "name": "name", "alias": "alias", "translation": "translation" },
+    "match_field": {
+      "name": "name",
+      "alias": "alias",
+      "translation": "translation"
+    },
     "kind_label": "Kind",
     "status_label": "Status",
     "status_all": "All",
@@ -245,7 +361,39 @@
       "title": "Delete entity?",
       "description": "\"{{title}}\" will be moved to the recycle bin.",
       "confirm": "Delete"
-    }
+    },
+    "integrity": {
+      "button": "Check",
+      "title": "Check lore integrity",
+      "description": "Read-only checks for ontology, entities, attributes, links and translations in this book.",
+      "run": "Run check",
+      "runAgain": "Run again",
+      "checking": "Checking book integrity…",
+      "close": "Close",
+      "unavailable": "check unavailable",
+      "issues": "{{count}} issue(s)",
+      "status": {
+        "ok": "Healthy",
+        "warning": "Needs attention",
+        "error": "Integrity errors"
+      },
+      "repair": "Fix automatically",
+      "repairing": "Fixing integrity&",
+      "repaired": "Automatic repair completed: {{count}} checks fixed.",
+      "checks": {
+        "active_genres": "Active genres must belong to this book.",
+        "kind_genres": "Kind-to-genre links must point to genres in this book.",
+        "attributes": "Book attributes must point to an existing book kind and genre.",
+        "entity_kinds": "Entities must point to a kind belonging to this book.",
+        "entity_names": "Live entities should have a name or term attribute.",
+        "entity_attributes": "Entity attribute values must use an attribute definition from this book and kind.",
+        "chapter_links": "Chapter links must point to live entities in this book.",
+        "translations": "Translations must point to an existing attribute value.",
+        "kind_facets": "Entity kind facets must point to kinds in this book."
+      }
+    },
+    "batch_translate": "Manual translate",
+    "batch_translate_hint": "Type target names for many entities by hand (drafts; never overwrites verified)"
   },
   "sharing": {
     "title": "Visibility",
@@ -279,7 +427,11 @@
     "subtitle": "Invite people by email to view, edit, or manage this book.",
     "email_placeholder": "Collaborator's email",
     "role_label": "Role",
-    "roles": { "view": "Viewer", "edit": "Editor", "manage": "Manager" },
+    "roles": {
+      "view": "Viewer",
+      "edit": "Editor",
+      "manage": "Manager"
+    },
     "invite": "Invite",
     "invited": "Invited {{email}}",
     "invite_failed": "Could not invite that collaborator",
@@ -386,7 +538,10 @@
     "page_indicator": "Page {{page}} / {{pages}}",
     "prev": "Prev",
     "next": "Next",
-    "page": "Page"
+    "page": "Page",
+    "reasoning_enable": "Enable model reasoning (thinking)",
+    "reasoning_hint": "Off by default — hidden thinking can burn the output budget on local models. Enable for hard passages on a reasoning model.",
+    "retranslate_selected": "Re-translate selected ({{count}})"
   },
   "kind_editor": {
     "modified": "modified",
@@ -515,5 +670,12 @@
       "desc": "Reset name from \"{{from}}\" back to \"{{to}}\". Other fields are not affected.",
       "confirm": "Revert"
     }
+  },
+  "lore": {
+    "heading": "Lore so far",
+    "noPosition": "Open a chapter to see what has been revealed by that point.",
+    "nothingYet": "Nothing has been revealed about this yet — keep reading.",
+    "search": "Search the story…",
+    "subtitle": "What the story has revealed up to where you are reading — no spoilers from later chapters."
   }
 }

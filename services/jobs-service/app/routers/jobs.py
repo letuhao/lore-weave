@@ -31,11 +31,18 @@ def _retryable_flag(job: dict) -> bool | None:
     return (job.get("params") or {}).get("retryable")
 
 
+def _retry_blocked(job: dict) -> bool:
+    value = (job.get("params") or {}).get("retry_blocked_reason")
+    return isinstance(value, str) and bool(value.strip())
+
+
 def _with_caps(job: dict) -> dict:
     job["control_caps"] = [
         c.value for c in derive_control_caps(
             job["status"], job["kind"], retryable=_retryable_flag(job))
     ]
+    if _retry_blocked(job) and "retry" in job["control_caps"]:
+        job["control_caps"].remove("retry")
     return job
 
 
@@ -191,6 +198,8 @@ async def control_job(
         raise HTTPException(status_code=404, detail="job not found")
     caps = [c.value for c in derive_control_caps(
         job["status"], job["kind"], retryable=_retryable_flag(job))]
+    if _retry_blocked(job) and "retry" in caps:
+        caps.remove("retry")
     if action not in caps:
         raise HTTPException(
             status_code=409,

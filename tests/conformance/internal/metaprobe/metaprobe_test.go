@@ -90,7 +90,15 @@ func TestS4MetaLifecycleCAS(t *testing.T) {
 	if err := base.PingContext(ctx); err != nil {
 		t.Skipf("foundation Postgres not reachable on port %s: %v", pgPort(), err)
 	}
-	const probeDB = "meta_lifecycle_check"
+	// Was `meta_lifecycle_check` — a name with no throwaway marker on a database this
+	// test unconditionally DROPs. `check` reads as disposable to a human and as
+	// production to `testsafe`, which is the wrong way round for the one audience that
+	// never gets tired. Non-overridable const, so the rename is the whole fix.
+	//
+	const probeDB = "meta_lifecycle_probe_test"
+	// db-safety-gate: ok — DROP+CREATE of a hardcoded probe DB whose name carries a
+	// `test` marker. No env var can redirect this at a real database: only host/port
+	// come from the environment, the database name is the literal above.
 	if _, err := base.ExecContext(ctx, "DROP DATABASE IF EXISTS "+probeDB); err != nil {
 		t.Fatalf("drop %s: %v", probeDB, err)
 	}

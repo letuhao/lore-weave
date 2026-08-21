@@ -15,10 +15,12 @@ export function GlossaryUnknownPanel(props: IDockviewPanelProps) {
   const { kinds } = useEntityKinds();
 
   return (
-    <UnknownEntitiesPanel
-      bookId={host.bookId}
-      kinds={kinds}
-      onClose={() => host.openPanel('glossary')}
-    />
+    <div data-testid="studio-glossary-unknown-panel" className="h-full min-h-0 overflow-auto">
+      <UnknownEntitiesPanel
+        bookId={host.bookId}
+        kinds={kinds}
+        onClose={() => host.openPanel('glossary')}
+      />
+    </div>
   );
 }

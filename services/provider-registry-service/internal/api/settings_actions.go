@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -140,17 +141,88 @@ func (s *Server) confirmSettingsAction(w http.ResponseWriter, r *http.Request) {
 // the token's bound resource id (defense in depth — the token's ResourceID is the
 // model id, re-checked against owner_user_id here).
 func (s *Server) effectModelDelete(w http.ResponseWriter, ctx context.Context, userID uuid.UUID, claims lwmcp.ConfirmClaims) {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`, claims.ResourceID, userID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "SETTINGS_INTERNAL", "delete failed")
-		return
-	}
-	if tag.RowsAffected() == 0 {
-		// The model was already deleted between propose and confirm — re-proposable.
+	impact, err := s.getUserModelDeletionImpact(ctx, userID, claims.ResourceID)
+	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusUnprocessableEntity, "SETTINGS_ACTION_TOKEN", "the model no longer exists — propose again")
 		return
 	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "SETTINGS_INTERNAL", "delete preflight failed")
+		return
+	}
+	if len(impact.ActiveTasks) > 0 {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"code":    "MODEL_DELETE_BLOCKED",
+			"message": "Модель нельзя удалить, пока выполняются активные задачи. Сначала остановите их.",
+			"impact":  impact,
+		})
+		return
+	}
+	if err := s.cleanupKnowledgeModel(ctx, userID, claims.ResourceID); errors.Is(err, errModelDeleteActive) {
+		writeError(w, http.StatusConflict, "MODEL_DELETE_BLOCKED", "Модель нельзя удалить, пока выполняются активные задачи. Сначала остановите их.")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "SETTINGS_INTERNAL", "failed to clear knowledge references")
+		return
+	}
+	if err := s.deleteUserModelData(ctx, userID, claims.ResourceID); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusUnprocessableEntity, "SETTINGS_ACTION_TOKEN", "the model no longer exists — propose again")
+		return
+	} else if errors.Is(err, errModelDeleteActive) {
+		writeError(w, http.StatusConflict, "MODEL_DELETE_BLOCKED", "Модель нельзя удалить, пока выполняются активные задачи. Сначала остановите их.")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "SETTINGS_INTERNAL", "delete failed")
+		return
+	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+var errModelDeleteActive = errors.New("model has active jobs")
+
+// deleteUserModelData is shared by the browser DELETE endpoint and the
+// confirm-token endpoint. Keeping the destructive transaction in one place is
+// important: MCP approvals must obey the same active-task guard as the UI.
+func (s *Server) deleteUserModelData(ctx context.Context, userID, modelID uuid.UUID) error {
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var exists bool
+	if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2 FOR UPDATE)`, modelID, userID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return pgx.ErrNoRows
+	}
+	var active int
+	if err := tx.QueryRow(ctx, `SELECT count(*) FROM llm_jobs WHERE owner_user_id=$1 AND model_source='user_model' AND model_ref=$2 AND status IN ('pending','running')`, userID, modelID).Scan(&active); err != nil {
+		return err
+	}
+	if active > 0 {
+		return errModelDeleteActive
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM usage_outbox WHERE owner_user_id=$1 AND model_source='user_model' AND model_ref=$2`, userID, modelID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM job_event_outbox WHERE job_id IN (SELECT job_id FROM llm_jobs WHERE owner_user_id=$1 AND model_source='user_model' AND model_ref=$2)`, userID, modelID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM llm_jobs WHERE owner_user_id=$1 AND model_source='user_model' AND model_ref=$2`, userID, modelID); err != nil {
+		return err
+	}
+	if _, err = tx.Exec(ctx, `DELETE FROM user_default_models WHERE owner_user_id=$1 AND user_model_id=$2`, userID, modelID); err != nil {
+		return err
+	}
+	cmd, err := tx.Exec(ctx, `DELETE FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`, modelID, userID)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return tx.Commit(ctx)
 }
 
 // previewSettingsAction handles POST /v1/settings/actions/preview — JWT-gated,
@@ -199,6 +271,19 @@ WHERE user_model_id=$1 AND owner_user_id=$2`, claims.ResourceID, userID).Scan(&a
 		{Label: "model", Value: label},
 		{Label: "provider", Value: providerKind},
 		{Label: "provider model name", Value: providerModelName},
+	}
+	if impact, impactErr := s.getUserModelDeletionImpact(ctx, userID, claims.ResourceID); impactErr == nil {
+		for _, ref := range impact.References {
+			out.PreviewRows = append(out.PreviewRows, settingsPreviewRow{Label: ref.Kind, Value: strconv.Itoa(ref.Count), Note: "will be removed"})
+		}
+		if len(impact.ActiveTasks) > 0 {
+			out.PreviewRows = append(out.PreviewRows, settingsPreviewRow{
+				Label: "active tasks", Value: strconv.Itoa(len(impact.ActiveTasks)),
+				Note: "stop these tasks before deleting the model",
+			})
+		} else {
+			out.PreviewRows = append(out.PreviewRows, settingsPreviewRow{Label: "status", Value: "ready to delete", Note: "references will be cleared after confirmation"})
+		}
 	}
 	writeJSON(w, http.StatusOK, out)
 }

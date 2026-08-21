@@ -7,6 +7,11 @@ import type {
   CancelJobResponse,
 } from './types';
 
+function normalizeProfileResponse(response: ExtractionProfileResponse): ExtractionProfileResponse {
+  const kinds = Array.isArray(response?.kinds) ? response.kinds : [];
+  return { ...response, kinds: kinds.map((kind) => ({ ...kind, attributes: Array.isArray(kind.attributes) ? kind.attributes : [] })) };
+}
+
 const GLOSSARY = '/v1/glossary';
 const EXTRACTION = '/v1/extraction';
 
@@ -16,7 +21,7 @@ export const extractionApi = {
     return apiJson<ExtractionProfileResponse>(
       `${GLOSSARY}/books/${bookId}/extraction-profile`,
       { token },
-    );
+    ).then(normalizeProfileResponse);
   },
 
   /** Create an extraction job. Returns 202 with job_id + cost estimate. */

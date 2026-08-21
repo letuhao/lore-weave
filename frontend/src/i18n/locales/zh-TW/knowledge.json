@@ -458,7 +458,11 @@
       "replaceFactSave": "儲存替換",
       "replaceFactSuccess": "事實已替換",
       "markWrongUndo": "復原",
-      "markWrongUndoFailed": "無法復原：{{error}}"
+      "markWrongUndoFailed": "無法復原：{{error}}",
+      "tabs": {
+        "current": "當前",
+        "temporal": "時序"
+      }
     },
     "edit": {
       "title": "編輯實體",
@@ -521,7 +525,28 @@
       "location": "地點",
       "organization": "組織",
       "concept": "概念",
-      "item": "物品"
+      "item": "物品",
+      "unknown": "未知類型",
+      "person": "人物",
+      "artifact": "器物",
+      "event_ref": "事件引用",
+      "preference": "偏好",
+      "event": "事件",
+      "terminology": "術語",
+      "power_system": "力量體系",
+      "species": "物種",
+      "relationship": "關係",
+      "plot_arc": "劇情弧",
+      "social_setting": "社會設定",
+      "trope": "常見套路",
+      "technique": "技巧",
+      "colleague": "同事",
+      "decision": "決策",
+      "jargon": "術語",
+      "meeting": "會議",
+      "org": "組織",
+      "project": "專案",
+      "task": "任務"
     },
     "archive": {
       "action": "封存",
@@ -707,7 +732,32 @@
         "errorProviderFlake": "嵌入服務提供者在執行期間失敗。請重試。",
         "errorGeneric": "基準測試失敗: {{message}}"
       },
-      "bookIdPlaceholder": "uuid"
+      "bookIdPlaceholder": "uuid",
+      "benchmarkNoRun": "⋯ 尚未進行基準測試 — 請執行黃金集 (golden-set) 基準測試以啟用擷取功能。",
+      "bookIdLocked": "此書籍（已鎖定）",
+      "canonCapture": "從對話中自動擷取新名稱",
+      "canonCaptureCeilingOff": "此部署已關閉 — 您的設定已儲存，但在管理員重新啟用前，不會執行擷取。",
+      "canonCaptureHint": "對話中出現的新名稱將每隔幾輪被加入此書的術語表審核收件匣中作為建議 — 絕不會直接設為正典。每次擷取會額外使用一次 AI 呼叫，費用由您自己的模型負擔。",
+      "canonCaptureNoBook": "請連結一本書籍至此專案，以便將名稱擷取至其術語表中。",
+      "embeddingModel": "嵌入模型",
+      "embeddingModelEmpty": "未配置具備嵌入能力的模型 — 擷取功能需要此模型。",
+      "embeddingModelHint": "決定此專案使用哪個向量空間進行語義段落檢索。",
+      "embeddingModelNone": "無（不使用語義段落）",
+      "genre": "類型",
+      "genrePlaceholder": "例如：仙俠、修真、奇幻…",
+      "memoryConfirm": "儲存記憶前進行確認",
+      "memoryConfirmHint": "AI 想要記住的事實將等待您的批准，而非自動儲存。",
+      "rerankDiscoveryHint": "使用自託管服務？請在「AI 模型」中新增本地重排序 (Cohere 相容) 憑證，然後點擊「重新整理」——系統將自動偵測重排序模型。",
+      "rerankModel": "重排序模型 (選填)",
+      "rerankModelEmpty": "尚未配置具備重排序能力的模型。請註冊一個模型以啟用雜訊過濾功能。",
+      "rerankModelHint": "用於原始搜尋雜訊過濾的 Cross-encoder 重排序。此為選填項目 — 若留空，搜尋結果將維持融合後的順序。",
+      "rerankModelNone": "無 (跳過重排序 — 維持融合順序)",
+      "toolCalling": "對話中的記憶工具",
+      "toolCallingHint": "允許 AI 在此專案的對話過程中進行搜尋、回想並記錄記憶。",
+      "benchmarkFailed": "✗ 基準測試未通過 (recall@3 {{recall}}) — 此模型的擷取品質低於標準；請嘗試使用不同的嵌入模型 (embedding model)。",
+      "benchmarkInconclusive": "⋯ 基準測試結果不明確 (recall@3 {{recall}}) — 需要至少 3 次通過才能驗證此模型。請重新執行。",
+      "benchmarkPassed": "✓ 基準測試通過 (recall@3 {{recall}})。",
+      "genreError": "類型名稱長度不得超過 {{max}} 個字元。"
     },
     "archiveDialog": {
       "title": "封存專案?",
@@ -910,6 +960,32 @@
         "unpin": "取消釘選",
         "budget": "每個視窗 +{{tokens}} 個 token（已釘選 {{count}} 個 × 約50）。",
         "noBook": "釘選需要連結的書籍。請先為此專案附加一本書。"
+      },
+      "disabled": {
+        "benchmarkRequired": "請執行黃金集基準測試 (Golden-set benchmark) 並通過測試，以啟用提取功能 (如上所示)。",
+        "checkingBenchmark": "正在檢查嵌入式模型基準測試…",
+        "fixConcurrency": "並行呼叫次數必須介於 1–64 之間。",
+        "fixMaxSpend": "請輸入有效的支出上限。",
+        "fixRange": "請修正章節範圍。",
+        "pickEmbedding": "請選擇一個嵌入模型。",
+        "pickLlm": "請選擇一個用於提取的 LLM 模型。"
+      },
+      "embedding": {
+        "changeViaDialog": "此專案已有嵌入模型。請使用「變更模型」來切換 — 這將會重新構建圖譜。",
+        "saveFailed": "無法儲存嵌入模型：{{error}}",
+        "saved": "嵌入模型已儲存 — 請執行下方的基準測試以啟用提取功能。"
+      },
+      "prereq": {
+        "benchmarkChecking": "正在檢查嵌入基準測試…",
+        "benchmarkPassed": "嵌入基準測試通過",
+        "benchmarkPending": "嵌入基準測試通過（請先選擇模型）",
+        "benchmarkRequired": "嵌入基準測試通過 — 請從下方的模型選擇器執行測試",
+        "embedding": "已選擇嵌入模型",
+        "llm": "已選擇提取 LLM 模型"
+      },
+      "reasoning": {
+        "hint": "預設為關閉 — 提取結果會返回 JSON，且隱藏的思考過程可能會消耗輸出額度。僅在針對推理模型處理高難度內容時才建議開啟。",
+        "label": "啟用模型推理 (思考)"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "儲存中…",
       "cancel": "取消",
       "saved": "已儲存抽取設定。",
-      "failed": "儲存失敗：{{error}}"
+      "failed": "儲存失敗：{{error}}",
+      "filterModel": "過濾模型 (選填)",
+      "filterModelDefault": "使用提取模型 (預設)",
+      "filterModelHint": "用於判斷關係精準度的 LLM。若保持預設，過濾器將重複使用您的提取模型 (每位使用者，BYOK)。若需更高精準度的過濾，請選擇更強大的模型。"
     },
     "confirmDestructive": {
       "cancel": "取消",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "最後確認 — 真的要重建?",
-        "description": "現在按下重建會開始刪除並重建。新作業啟動後無法復原。"
+        "description": "現在按下重建會開始刪除並重建。新作業啟動後無法復原。",
+        "descriptionCount": "這將永久「刪除」{{entities}} 個實體、{{events}} 個事件與 {{facts}} 個事實，然後從頭開始重建。此操作無法復原。",
+        "typePrompt": "請輸入專案名稱以確認"
       },
       "disable": {
         "title": "停用擷取?",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "顯示與目前的差異",
       "diffEmpty": "沒有差異。"
-    }
+    },
+    "loading": "載入中…"
   },
   "indicator": {
     "label": "知識指示器",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "全域",
       "project": "專案",
-      "degraded": "降級"
+      "degraded": "降級",
+      "multi": "{{count}} 個知識圖譜"
     },
     "popover": {
       "projectHeading": "專案記憶",
@@ -1100,7 +1183,8 @@
       "projectBody": "此對話已連結到 <strong>{{name}}</strong>。AI 會看到您的全域簡介,以及該專案的摘要與術語表,在每次對話中都會用到。",
       "globalBody": "此對話未連結任何專案。AI 只會看到您的全域簡介。請在對話設定中連結專案,讓 AI 能存取書籍專屬的記憶。",
       "degradedBody": "上一輪對話無法連線到 knowledge service。AI 已切換為僅使用最近訊息的降級模式 — 您的專案記憶暫時未進入 prompt。一旦服務恢復,下一輪會自動恢復。",
-      "manage": "管理知識"
+      "manage": "管理知識",
+      "multiBody": "此對話同時基於 {{count}} 個知識圖譜 — 事實皆已標記其來源。"
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "對應"
     },
     "emptyHint": "Triage 會收集所有尚未符合您架構的擷取內容 — 佇列清空代表所有內容都已歸位。"
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "截至第 {{ordinal}} 章",
+      "current": "當前",
+      "loadFailed": "無法載入故事此時點的標準內容。",
+      "sourceCanonContent": "作者設定之標準內容",
+      "sourceCanonContentHint": "正在顯示作者設定之標準內容（此時點無摺疊快照）。",
+      "status": {
+        "current": "當前",
+        "stale": "已過時",
+        "unbuildable": "無法使用"
+      },
+      "unbuildable": "此處無法進行合成 — 已降級至安全模式。"
+    },
+    "retrieval": {
+      "chapter": "第 {{chapter}} 章",
+      "ariaLabel": "搜尋檢索",
+      "currentStateNote": "結果為當前狀態（尚未支援時序檢索）。",
+      "error": "搜尋失敗：{{error}}",
+      "noResults": "找不到符合的內容。",
+      "noText": "（無預覽文字）",
+      "placeholder": "搜尋本書的內容脈絡…",
+      "typeToSearch": "請輸入以搜尋此實體的內容脈絡。"
+    },
+    "slider": {
+      "atChapter": "第 {{ordinal}} 章",
+      "aria": "拖動以調整故事時間章節順序",
+      "head": "末端（最新）",
+      "headButton": "末端（最新）",
+      "label": "故事時間軸",
+      "loadFailed": "無法載入變更時間軸。",
+      "noChanges": "目前尚無故事時間軸變更。"
+    },
+    "translation": {
+      "asOfChapter": "第 {{n}} 章",
+      "asOfLabel": "截至 {{label}}",
+      "error": "載入上下文失敗：{{error}}",
+      "asAuthored": "原始作者版本",
+      "asOfHead": "最新版本",
+      "badgeCached": "已翻譯 · 已快取",
+      "badgeFresh": "已翻譯",
+      "empty": "此故事時間點尚無對應的上下文資訊。",
+      "failNoModel": "未設定翻譯模型。請至「翻譯設定」選擇模型以查看翻譯後的上下文。",
+      "failProvider": "翻譯失敗。目前顯示原始上下文。",
+      "failQuota": "翻譯功能暫時無法使用 — 供應商配額已用盡。",
+      "langOriginal": "原文 ({{lang}})",
+      "languageLabel": "顯示語言",
+      "title": "每章節內容對照",
+      "translating": "翻譯中… 首次查看可能需要一點時間"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "於第 {{asOf}} 章",
+      "current": "當前",
+      "hint": "拖動時間軸，將過去的章節與當前狀態進行比較。",
+      "loadFailed": "無法載入差異：{{error}}",
+      "loading": "載入差異中…",
+      "noChanges": "第 {{asOf}} 章與現在之間沒有單值變更。",
+      "title": "差異檢視"
+    },
+    "timeline": {
+      "chapter": "第 {{chapter}} 章",
+      "empty": "此實體尚無任何紀錄的變更。",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → 開啟)"
+      },
+      "kind": {
+        "invalidated": "已失效",
+        "open": "開啟中",
+        "superseded": "已被取代"
+      },
+      "loadFailed": "無法載入變更時間軸：{{error}}",
+      "loadMore": "載入更多",
+      "loading": "正在載入變更…",
+      "title": "變更時間軸"
+    }
   }
 }

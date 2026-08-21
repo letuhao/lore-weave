@@ -2079,6 +2079,51 @@ func SeedGenreKindAttr(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
+	// 3b) the `unknown` PARKING kind. It is deliberately not a DefaultKind — it is the
+	// runtime review bucket an unresolvable kind_code parks under — so the loop above,
+	// which iterates DefaultKinds, gives it a `universal` genre link (2a's catch-all) and
+	// ZERO attributes. `createExtractedEntity` then refuses the write:
+	//
+	//     kind <id> has no display attribute (neither 'name' nor 'term'):
+	//     refusing to create a nameless entity, which cannot be deduped or linked
+	//
+	// …and that refusal is correct — it is the guard that stopped 215 of 224 nameless
+	// `terminology` rows. The consequence is that PARKING IS IMPOSSIBLE: every extraction
+	// that meets an unresolvable kind returns 500 for the whole call, which is the exact
+	// opposite of the "extract-entities never drops" property parking exists to provide.
+	//
+	// schemaSQL already carries this intent — an INSERT of name/aliases/description for
+	// `unknown` — but it writes to `system_kind_attributes`, the pre-G4 table that G4e
+	// DROPS later in the same chain. So the statement runs, succeeds, and is discarded;
+	// on a freshly migrated database the table does not survive to be read. Dead code that
+	// looks like coverage, which is why the live `loreweave_glossary` shows `unknown` with
+	// no attributes at all while every other kind has its set.
+	//
+	// Seeded here instead, in the tier the readers actually use, on `universal` so it
+	// applies regardless of the book's genres.
+	for _, a := range []struct {
+		Code, Name, FieldType string
+		Required              bool
+		Sort                  int
+	}{
+		{"name", "Name", "text", true, 1},
+		{"aliases", "Aliases", "tags", false, 2},
+		{"description", "Description", "textarea", false, 3},
+	} {
+		if _, err := tx.Exec(ctx, `
+			INSERT INTO system_attributes
+			  (kind_id, genre_id, code, name, field_type, is_required, sort_order, content_hash)
+			SELECT k.kind_id, g.genre_id, $1, $2, $3, $4::boolean, $5,
+			       md5($1||'|'||$2||'|'||$3||'|'||($4::boolean)::text)
+			FROM system_kinds k, system_genres g
+			WHERE k.code = 'unknown' AND g.code = 'universal'
+			ON CONFLICT (kind_id, genre_id, code) DO NOTHING`,
+			a.Code, a.Name, a.FieldType, a.Required, a.Sort,
+		); err != nil {
+			return fmt.Errorf("seed unknown-kind attr %s: %w", a.Code, err)
+		}
+	}
+
 	return tx.Commit(ctx)
 }
 
@@ -2354,20 +2399,56 @@ BEGIN
   END IF;
 
   -- ── Read name + aliases from EAV for the read-cache (book tier) ──────────
+  --
+  -- THE ORDER BY IS LOAD-BEARING, and it was not always. This read assumed ONE
+  -- 'name' attribute per entity. SeedGenreKindAttributes (2026-08-05) copies the
+  -- universal attribute definitions onto EVERY genre linked to a kind, so a
+  -- character in a book with six genres now has SEVEN 'name' rows -- one per genre
+  -- plus universal -- all carrying sort_order = 1. The old ORDER BY could not
+  -- distinguish them, so LIMIT 1 returned an arbitrary row, and six of the seven
+  -- are empty.
+  --
+  -- POST /entities writes display_name to the UNIVERSAL row specifically. The entity
+  -- therefore had its name stored correctly and cached_name came back '' anyway --
+  -- and cached_name is what every downstream reader joins on, so the entity was
+  -- unfindable while looking perfectly well-formed in the table it was written to.
+  --
+  -- Four tie-breakers, in this order, and each earns its place:
+  --   1. a NON-EMPTY value wins. Whichever genre the writer chose, the row that has
+  --      the name is the row that means something. This alone fixes the bug.
+  --   2. name beats term (unchanged -- terminology names itself with 'term').
+  --   3. universal beats a genre-specific row, matching where the create handler
+  --      writes, so a deliberate empty and a never-set empty resolve the same way.
+  --   4. sort_order, then attr_id -- a TOTAL order. Without a unique final key the
+  --      result is still arbitrary whenever the earlier keys tie, which is exactly
+  --      how this got shipped: a query that is right in testing and a coin toss in
+  --      production is worse than one that is plainly wrong.
   SELECT av.original_value INTO v_cached_name
   FROM entity_attribute_values av
   JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+  LEFT JOIN book_genres bg ON bg.genre_id = ad.genre_id
   WHERE av.entity_id = p_entity_id
     AND ad.code IN ('name','term')
   ORDER BY
+    (COALESCE(av.original_value, '') <> '') DESC,
     CASE ad.code WHEN 'name' THEN 0 WHEN 'term' THEN 1 ELSE 2 END,
-    ad.sort_order
+    (bg.code = 'universal') DESC NULLS LAST,
+    ad.sort_order,
+    ad.attr_id
   LIMIT 1;
 
+  -- Same fan-out, same fix. This one had NO ORDER BY at all, so it was arbitrary
+  -- even before the genre fan-out gave it seven rows to choose between.
   SELECT av.original_value INTO v_aliases_raw
   FROM entity_attribute_values av
   JOIN book_attributes ad ON ad.attr_id = av.attr_def_id
+  LEFT JOIN book_genres bg ON bg.genre_id = ad.genre_id
   WHERE av.entity_id = p_entity_id AND ad.code = 'aliases'
+  ORDER BY
+    (COALESCE(av.original_value, '') <> '') DESC,
+    (bg.code = 'universal') DESC NULLS LAST,
+    ad.sort_order,
+    ad.attr_id
   LIMIT 1;
 
   BEGIN

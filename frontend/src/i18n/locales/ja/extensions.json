@@ -9,7 +9,9 @@
     "permissions": "ツールの権限",
     "proposals": "プロポーザル",
     "activity": "アクティビティログ",
-    "ingest": "レジストリソース"
+    "ingest": "レジストリソース",
+    "bindings": "自動設定",
+    "workflows": "レシピ"
   },
   "quota": {
     "unavailable": "使用状況を取得できません",

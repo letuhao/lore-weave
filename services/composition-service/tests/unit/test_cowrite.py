@@ -46,17 +46,23 @@ def _profile(voice: str = "", lang: str = "en") -> BookProfile:
 
 
 def test_each_selection_operation_dispatches_its_own_instruction():
-    """rewrite/expand/describe must each get their OWN instruction — a shared
+    """Every selection operation must get its OWN instruction — a shared
     default would let a typo'd op silently behave like another (or draft a scene)."""
     seen = {}
-    for op in ("rewrite", "expand", "describe"):
+    for op in ("rewrite", "expand", "describe", "scene_plan"):
         msgs = cowrite.build_selection_messages("the gate of ash", _profile(), op)
         user = msgs[1]["content"]
         assert cowrite._SELECTION_INSTRUCTIONS[op] in user
         assert "the gate of ash" in user  # the SELECTED passage is fed in
         seen[op] = user
-    # the three instructions are distinct (no accidental aliasing).
-    assert len({cowrite._SELECTION_INSTRUCTIONS[o] for o in ("rewrite", "expand", "describe")}) == 3
+    # Every instruction is distinct (no accidental aliasing).
+    assert len({cowrite._SELECTION_INSTRUCTIONS[o] for o in ("rewrite", "expand", "describe", "scene_plan")}) == 4
+
+
+def test_scene_plan_operation_requires_json_only():
+    msgs = cowrite.build_selection_messages("a turning point", _profile(), "scene_plan")
+    assert "Output ONLY valid JSON" in msgs[0]["content"]
+    assert '"scenes"' in msgs[1]["content"]
 
 
 def test_unregistered_selection_operation_raises_not_falls_back():

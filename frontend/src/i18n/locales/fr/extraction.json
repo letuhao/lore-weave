@@ -30,7 +30,13 @@
     "allOverwrite": "Tout écraser",
     "required": "requis",
     "thinkingEnabled": "Activer la réflexion / le raisonnement",
-    "thinkingHint": "La désactivation est recommandée pour l'extraction JSON. Activez-la pour les modèles comme Gemma qui raisonnent différemment lorsque la réflexion est activée."
+    "thinkingHint": "La désactivation est recommandée pour l'extraction JSON. Activez-la pour les modèles comme Gemma qui raisonnent différemment lorsque la réflexion est activée.",
+    "addDefaults": "Ajouter les types par défaut",
+    "addingDefaults": "Ajout en cours…",
+    "defaultsError": "Impossible d'ajouter les types d'entités par défaut.",
+    "loadError": "Impossible de charger le profil d'extraction.",
+    "noKindsDescription": "L'extraction nécessite au moins un type d'entité à rechercher. Ajoutez les types par défaut pour commencer, ou définissez les vôtres dans le glossaire.",
+    "noKindsTitle": "Ce livre n'a pas encore de types d'entités"
   },
   "batch": {
     "title": "Config. par lot",
@@ -65,7 +71,19 @@
     "thinkingOn": "Réflexion : activée (raisonnement activé)",
     "thinkingOff": "Réflexion : désactivée (plus rapide, meilleur JSON)",
     "startExtraction": "Lancer l'extraction",
-    "editProfile": "Modifier le profil"
+    "editProfile": "Modifier le profil",
+    "cacheAuto": "Relancer si un changement est détecté (par défaut)",
+    "cacheForce": "Toujours ré-extraire — ignorer le cache",
+    "cacheHint": "Vous avez modifié une définition de type ? Le mode par défaut relance déjà l'opération.",
+    "cachePolicy": "Résultats mis en cache",
+    "cacheReuse": "Réutiliser les résultats mis en cache lorsque possible",
+    "concurrency": "Appels LLM parallèles",
+    "concurrencyHint": "1 = séquentiel. Augmentez cette valeur si votre modèle accepte les requêtes simultanées.",
+    "strategy": "Format du prompt",
+    "strategyBatched": "Par lots — le plus approfondi (par défaut)",
+    "strategyDelta": "Un appel + deltas — le moins coûteux",
+    "strategyEdc": "Balayage puis typage — ~56 % moins cher, meilleure ancrage",
+    "strategySingle": "Un seul appel — ~66 % moins cher, risque d'omettre des types rares"
   },
   "progress": {
     "title": "Extraction du glossaire",
@@ -107,7 +125,11 @@
     "draftNote": "Toutes les nouvelles entités sont créées en brouillon — à réviser dans l'onglet Glossaire",
     "viewGlossary": "Réviser dans le Glossaire",
     "runAgain": "Extraire à nouveau",
-    "close": "Fermer"
+    "close": "Fermer",
+    "cacheAllFresh": "Tous les {{n}} lots ont été extraits de manière fraîche.",
+    "cacheForced": "(le cache a été contourné par la requête)",
+    "cacheRerunHint": "Si vous avez modifié une définition de type depuis lors, relancez avec « Toujours réextraire ».",
+    "cacheServed": "{{pct}} % de cette exécution ({{cached}} sur {{total}} lots) a été RÉUTILISÉ depuis une extraction précédente, sans être relu."
   },
   "button": {
     "extract": "Extraire le glossaire",

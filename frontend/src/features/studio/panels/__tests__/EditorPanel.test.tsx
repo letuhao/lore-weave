@@ -69,12 +69,12 @@ vi.mock('@tanstack/react-query', () => ({
 const applyProposedEdit = vi.hoisted(() => vi.fn(() => true));
 const unitState = vi.hoisted(() => ({
   chapterId: 'ch1' as string | null, scenes: [] as { id: string }[],
-  isDerivative: false, forked: false,
+  isDerivative: false, forked: false, saveState: 'idle' as string,
 }));
 vi.mock('../../manuscript/unit/ManuscriptUnitProvider', () => ({
   useManuscriptUnit: () => ({
     state: {
-      chapterId: unitState.chapterId, scenes: unitState.scenes, loadedBody: {}, saveState: 'idle',
+      chapterId: unitState.chapterId, scenes: unitState.scenes, loadedBody: {}, saveState: unitState.saveState,
       isDerivative: unitState.isDerivative, forked: unitState.forked,
     },
     isDirty: false,
@@ -99,6 +99,7 @@ describe('EditorPanel — #16 P1 hoist-action registration', () => {
   beforeEach(() => {
     registerEditorTarget.mockClear();
     unitState.chapterId = 'ch1';
+    unitState.saveState = 'idle';
   });
 
   it('registers the propose_edit target with the hoist applyProposedEdit action', () => {
@@ -106,6 +107,12 @@ describe('EditorPanel — #16 P1 hoist-action registration', () => {
     expect(registerEditorTarget).toHaveBeenCalledWith(
       expect.objectContaining({ bookId: 'book-1', chapterId: 'ch1', applyProposedEdit }),
     );
+  });
+
+  it('shows a blocking loading state while a chapter is being fetched', () => {
+    unitState.saveState = 'loading';
+    const { getByTestId } = render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(getByTestId('studio-editor-loading')).toHaveTextContent('Loading chapter…');
   });
 
   it('does not register when no chapter is open', () => {
@@ -171,6 +178,15 @@ describe('EditorPanel — #16 Phase 4 Scene Rail mobile default', () => {
   it('auto-opens the Scene Rail on desktop when the chapter has scenes', () => {
     render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
     expect(sceneRailSpy).toHaveBeenCalled();
+  });
+
+  // The half of the #12 M-C tri-state that has no other coverage: `null` must mean AUTO, and
+  // auto is CONTEXTUAL — no scenes, no rail, even on desktop. PR #184's `?? false` passed the
+  // desktop and mobile cases above by accident while erasing exactly this distinction.
+  it('does not auto-open the Scene Rail when the chapter has no scenes', () => {
+    unitState.scenes = [];
+    render(<StudioHostProvider bookId="book-1"><EditorPanel {...dockProps} /></StudioHostProvider>);
+    expect(sceneRailSpy).not.toHaveBeenCalled();
   });
 
   it('does not auto-open the Scene Rail on mobile even when the chapter has scenes', () => {

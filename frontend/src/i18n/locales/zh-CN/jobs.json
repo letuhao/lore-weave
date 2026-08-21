@@ -59,7 +59,8 @@
     "noActive": "暂无进行中的任务。",
     "more": "加载更多",
     "toggleChildren": "展开/收起子任务",
-    "noChildren": "暂无子任务。"
+    "noChildren": "暂无子任务。",
+    "errorWithReason": "无法加载任务：{{error}}"
   },
   "row": {
     "ran": "已运行 {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "暂停",
     "resume": "恢复",
+    "resumeFromCheckpoint": "从检查点继续",
     "cancel": "取消",
     "cancelConfirm": "确定停止吗？正在进行的工作将被丢弃，已完成的部分将被保留。",
     "cancelYes": "确定",
@@ -95,7 +97,9 @@
     "retry": "重试",
     "retried": "已作为新任务重新提交。",
     "stale": "任务状态已变更 — 已刷新。",
-    "actionFailed": "操作失败: {{error}}"
+    "actionFailed": "操作失败: {{error}}",
+    "retryBenchmarkMissing": "无法重试：嵌入模型缺少基准测试。请运行模型基准测试，然后重新检查。",
+    "retryBenchmarkFailed": "无法重试：嵌入模型上次基准测试失败。"
   },
   "monitor": {
     "back": "所有任务",

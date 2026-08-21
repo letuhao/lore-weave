@@ -51,6 +51,7 @@ export interface StudioHost {
   // can open per-resource instances (e.g. `json-editor:{docType}:{resourceId}`). Omitted ⇒ the
   // panel id IS the component id (the singleton panels).
   openPanel: (panelId: string, opts?: { focus?: boolean; title?: string; params?: Record<string, unknown>; component?: string }) => void;
+  closePanel: (panelId: string) => void;
   focusManuscriptUnit: (chapterId: string, panelId?: string) => void;
   // Arrange the open dock panels into a cols×rows grid (the layout-preset picker's one seam). Wraps
   // reflowDockGrid so the dock api stays encapsulated; the resulting layout persists via the
@@ -100,6 +101,10 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
       catch { /* panel not in the catalog */ }
     };
 
+    const closePanel = (panelId: string) => {
+      dockApiRef.current?.getPanel(panelId)?.api.close();
+    };
+
     return {
       bookId,
       registerStudioTool: (reg) => { regMap.set(reg.panelId, reg); rebuild(); },
@@ -120,6 +125,7 @@ export function StudioHostProvider({ bookId, children }: { bookId: string; child
         });
       },
       openPanel,
+      closePanel,
       focusManuscriptUnit: (chapterId, panelId = 'editor') => {
         // Publish the active chapter to the bus (the Tier-4 ManuscriptUnitProvider watches it and
         // loads the unit) AND open/focus the editor dock panel. The navigator, Quick Open, and the

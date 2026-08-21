@@ -120,7 +120,8 @@
     "no_active": "Không có thể loại nào đang hoạt động. Thêm một thể loại để dựng ma trận.",
     "cell_inspector": "Ô đã chọn",
     "no_cell": "Nhấp vào một ô để kiểm tra.",
-    "sort": "sắp xếp"
+    "sort": "sắp xếp",
+    "required": "bắt buộc"
   },
   "entity": {
     "title_new": "Thực thể {{kind}} mới",
@@ -179,7 +180,12 @@
     "est_cost": "~${{cost}}",
     "complete_summary": "Xong — {{sources}} nguồn trên {{entities}} thực thể",
     "failed_prefix": "Thất bại",
-    "action": { "pause": "Tạm dừng", "resume": "Tiếp tục", "retry": "Thử lại", "cancel": "Hủy" },
+    "action": {
+      "pause": "Tạm dừng",
+      "resume": "Tiếp tục",
+      "retry": "Thử lại",
+      "cancel": "Hủy"
+    },
     "modal": {
       "title": "Nghiên cứu tất cả thực thể {{kind}}",
       "subtitle": "Mỗi thực thể được tìm web một lần; các nguồn hàng đầu được đính kèm làm bằng chứng nháp.",
@@ -233,5 +239,16 @@
     "links_saved": "Đã cập nhật liên kết thể loại",
     "links_failed": "Không thể cập nhật liên kết thể loại",
     "forbidden": "Bạn cần quyền Quản lý trên cuốn sách này để thực hiện thay đổi"
+  },
+  "batch_translate": {
+    "apply": "Áp dụng bản dịch",
+    "count": "{{n}} thực thể cần dịch",
+    "loading": "Đang tải…",
+    "none": "Không có thực thể nào chưa được dịch cho ngôn ngữ này.",
+    "pick_lang": "Chọn ngôn ngữ đích để bắt đầu.",
+    "result": "{{w}} đã viết · {{v}} đã giữ (đã xác minh) · {{e}} trống · {{f}} thất bại",
+    "select_lang": "Chọn…",
+    "target_lang": "Ngôn ngữ đích",
+    "title": "Dịch hàng loạt"
   }
 }

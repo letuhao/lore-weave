@@ -17,7 +17,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 from app.clients.book_client import BookClient, BookClientError
 from app.clients.glossary_client import GlossaryClient
@@ -60,8 +60,11 @@ from app.engine.adaptive_k import adaptive_k
 from app.engine.chapter_gen import build_chapter_pack_node, union_cast
 from app.engine.prose_doc import text_to_tiptap_doc
 from app.engine.stitch import prepend_scene_headings, stitch_chapter
-from app.engine.canon_check import canon_envelope
+from app.engine.canon_check import canon_envelope, unguarded_envelope
 from app.engine.canon_reflect import run_canon_reflect
+from app.engine.critic_policy import (
+    CriticResolution, CriticStatus, resolve_critic_verified,
+)
 from app.engine.narrative_thread import detect_and_update_threads
 from app.engine.compress import compress
 from app.engine.cowrite import (
@@ -84,11 +87,52 @@ from app.grant_client import GrantClient, GrantLevel
 from app.grant_deps import InsufficientGrant, authorize_book
 from app.packer.pack import OwnershipError, PackRequest, build_derivative_context, pack
 from app.packer.profile import from_settings
+from app.llm_budget import narrowed_by_request
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/composition")
 
+#: Why the LLM critique did not run, in words the AUTHOR can act on.
+#:
+#: One sentence used to cover every case: *"critique skipped: no distinct critic model
+#: configured"*. It was returned both when no critic had ever been set and when the author had
+#: set one that happens to be the model already writing the prose — a misconfiguration with a
+#: concrete fix, described as an absence. Neither message told them the blocking tier was off
+#: or that a setting exists to turn it on.
+#:
+#: Keyed on the enum rather than built with an `if`, so a new `CriticStatus` member cannot be
+#: added without deciding what to tell the author about it — the lookup raises rather than
+#: falling through to a plausible default. Same reason the frontend-tool contract closes its
+#: enums: a string-dispatch default hides a missing case.
+_CRITIC_SKIP_WARNING: dict[CriticStatus, str] = {
+    CriticStatus.NOT_CONFIGURED:
+        "critique skipped: no critic model is set for this book, so nothing independently "
+        "grades the prose. Set one in Composition → Settings → Critic model.",
+    CriticStatus.SAME_AS_DRAFTER:
+        "critique skipped: the critic is the SAME MODEL that wrote this passage, so it would "
+        "be grading its own work. This includes picking a different entry that points at the "
+        "same underlying model — on a typical setup several credentials resolve to one model. "
+        "Choose a genuinely different model in Composition → Settings.",
+    CriticStatus.INCOMPLETE:
+        "critique skipped: the critic model setting is incomplete (a model was recorded "
+        "without its provider). Re-select the critic model in Composition → Settings.",
+}
+
 _MAX_OUTPUT_DEFAULT = 1024
+
+async def _resolved_critic(sdict, drafter_source, drafter_ref, llm) -> CriticResolution:
+    """Resolve the critic against WHICH MODEL each ref is, not which row.
+
+    One helper for seven call sites, for the same reason `resolve_critic` itself exists: this
+    rule had EIGHT hand-rolled copies, and the fix for that is not to hand-roll the awaited
+    version eight times. `llm.resolve_model_identity` is best-effort — a failure leaves the
+    resolution CONFIGURED with `identity_verified=False`, never switches the tier off.
+    """
+    return await resolve_critic_verified(
+        sdict, drafter_source, drafter_ref, llm.resolve_model_identity,
+    )
+
+
 
 
 def _sse(data: dict[str, Any]) -> str:
@@ -131,8 +175,8 @@ class SelectionEditBody(BaseModel):
     # request validation (before any job/stream), mirroring GenerateBody.mode; the
     # engine's build_selection_messages ALSO raises on an unregistered op (defense
     # in depth — the LOOM-39 missing-enum lesson).
-    operation: Literal["rewrite", "expand", "describe"]
-    selection: Annotated[str, StringConstraints(min_length=1, max_length=SELECTION_MAX_CHARS)]
+    operation: Literal["rewrite", "expand", "describe", "scene_plan"]
+    selection: Annotated[str, StringConstraints(min_length=1, max_length=24_000)]
     # PO: couple grounding to the compose panel's active scene. Optional — a free
     # selection may sit in a chapter with no scene node → voice-only grounding.
     scene_context: UUID | None = None
@@ -143,6 +187,17 @@ class SelectionEditBody(BaseModel):
     reasoning: Literal["off", "auto", "low", "medium", "high"] = "auto"
     model_kind: str | None = None
     model_name: str | None = None
+
+    @model_validator(mode="after")
+    def bound_selection_by_operation(self) -> "SelectionEditBody":
+        # Scene planning needs enough contiguous manuscript context to find transitions.
+        # Rewrite/expand/describe stay at the established small-selection ceiling so an
+        # accidental whole-chapter rewrite cannot consume an oversized prompt.
+        if self.operation != "scene_plan" and len(self.selection) > SELECTION_MAX_CHARS:
+            raise ValueError(
+                f"{self.operation} selections are limited to {SELECTION_MAX_CHARS} characters"
+            )
+        return self
 
 
 class GenerateChapterBody(BaseModel):
@@ -442,7 +497,12 @@ async def generate(
     # mid-size window must not cap a genuinely bigger model at the same number
     # (resolved once per request; best-effort, unresolvable ⇒ the flat defaults).
     _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
-    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    # S11 — how much grounding FITS, not merely how much we would like. `scale_by_window`
+    # only ever GROWS a flat default, so an 8K model was asked for a 6000-token block
+    # (73% of its whole window) and a 4K one for 146%. Measured no-op at >=16K and on an
+    # unresolved window; see `pack_budget_for`.
+    _pack_alloc = B.pack_budget_for(_context_length, settings.pack_token_budget)
+    _pack_budget = _pack_alloc.grounding
     _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
 
     async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
@@ -537,8 +597,9 @@ async def generate(
     # writing; `max_tokens` cannot shorten prose, it can only STOP it mid-sentence with
     # the tokens already paid for. So this is deliberately generous, and an explicit
     # caller value still wins.
-    _max_out = body.max_output_tokens or scene_output_budget(
-        _scene_target, pc.profile.source_language, reasoning=reasoning)
+    _max_out = narrowed_by_request(
+        scene_output_budget(_scene_target, pc.profile.source_language, reasoning=reasoning),
+        body.max_output_tokens)
 
     # M4 — the worker decouples ONLY the AUTO compute (diverge→converge→reflect);
     # the cowrite STREAM path stays inline (a worker can't stream to the client).
@@ -553,8 +614,9 @@ async def generate(
         # re-run pack()) + the scene signals the auto compute needs. worker_op is
         # the canonical dispatch key (operation is the free-form prose op).
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         job_input.update({
             "worker_op": "generate",
             "packed_prompt": pc.prompt, "scene_sort_order": pc.scene_sort_order,
@@ -636,8 +698,9 @@ async def generate(
                                  "k": r.get("k"), "candidates": r.get("candidates", []),
                                  "assembly_mode": assembly_mode})
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         try:
             sel = await select_scene(
                 llm, llm, user_id=str(user_id),
@@ -712,6 +775,7 @@ async def generate(
                 draft=w.text, packed_prompt=pc.prompt, profile=pc.profile,
                 drafter_source=body.model_source, drafter_ref=str(body.model_ref),
                 judge_source=str(c_src) if distinct else None,
+                identity_verified=critic_res.identity_verified,
                 judge_ref=str(c_ref) if distinct else None,
                 prompt_estimate=prompt_estimate, max_output_tokens=_max_out,
                 # /review-impl #2 — clamp the per-work setting to a sane ceiling so
@@ -852,7 +916,13 @@ async def generate(
             result = {"text": final["text"], "input_tokens": m.input_tokens,
                       "output_tokens": m.output_tokens, "measured": m.measured,
                       "capped": final.get("capped", False),
-                      "truncated": truncated, "finish_reason": m.finish_reason}
+                      "truncated": truncated, "finish_reason": m.finish_reason,
+                      # S1/DoD-1 — this path runs NO canon guard, and says so. Persisted on
+                      # the job as well as streamed, because `chapter_scene_gate` reads
+                      # `guard_status` back out of `generation_job.result`: a job with no
+                      # canon block at all is indistinguishable there from a checked one.
+                      "canon": unguarded_envelope(
+                          "the co-write stream does not run the canon guard: it is an interactive surface where the author is present and a judge pass between keystrokes would change the product. Approve the scene to have it checked.")}
             if stream_error:
                 result["error"] = stream_error
             empty = _empty_draft_error(final["text"], m.output_tokens, m.finish_reason)
@@ -868,6 +938,10 @@ async def generate(
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "capped": final.get("capped", False),
                         "truncated": truncated, "finish_reason": m.finish_reason,
+                        # The same declaration the job carries. A frame that omitted it would
+                        # leave the FE reading a completed draft with no guard field — which
+                        # is the state this change exists to remove.
+                        "canon": result["canon"],
                         **({"error": stream_error} if stream_error else {})})
         else:
             err = final.get("error") if final is not None else None
@@ -925,7 +999,12 @@ async def selection_edit(
     # Model-context-aware budget scaling — resolved once per request regardless of
     # whether scene_context grounding runs, since prompt_ceiling below always needs it.
     _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
-    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    # S11 — how much grounding FITS, not merely how much we would like. `scale_by_window`
+    # only ever GROWS a flat default, so an 8K model was asked for a 6000-token block
+    # (73% of its whole window) and a 4K one for 146%. Measured no-op at >=16K and on an
+    # unresolved window; see `pack_budget_for`.
+    _pack_alloc = B.pack_budget_for(_context_length, settings.pack_token_budget)
+    _pack_budget = _pack_alloc.grounding
     _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
 
     grounding = ""
@@ -1063,7 +1142,10 @@ async def selection_edit(
             result = {"text": final["text"], "input_tokens": m.input_tokens,
                       "output_tokens": m.output_tokens, "measured": m.measured,
                       "truncated": truncated, "finish_reason": m.finish_reason,
-                      "selection_edit": True}
+                      "selection_edit": True,
+                      # S1/DoD-1 — see the co-write stream: declared, not silent.
+                      "canon": unguarded_envelope(
+                          "the selection-edit stream does not run the canon guard: it rewrites a span the author picked, in-place and interactively. Approve the scene to have the whole passage checked.")}
             if stream_error:
                 result["error"] = stream_error
             empty = _empty_draft_error(final["text"], m.output_tokens, m.finish_reason)
@@ -1078,6 +1160,7 @@ async def selection_edit(
             yield _sse({"type": "done", "job_id": str(job.id), "status": "completed",
                         "output_tokens": m.output_tokens, "measured": m.measured,
                         "truncated": truncated, "finish_reason": m.finish_reason,
+                        "canon": result["canon"],
                         **({"error": stream_error} if stream_error else {})})
         else:
             err = final.get("error") if final is not None else None
@@ -1150,7 +1233,12 @@ async def generate_chapter(
     # Model-context-aware budget scaling — a flat pack/compress budget tuned for a
     # mid-size window must not cap a genuinely bigger model at the same number.
     _context_length = await llm.resolve_context_length(body.model_source, str(body.model_ref))
-    _pack_budget = scale_by_window(settings.pack_token_budget, _context_length)
+    # S11 — how much grounding FITS, not merely how much we would like. `scale_by_window`
+    # only ever GROWS a flat default, so an 8K model was asked for a 6000-token block
+    # (73% of its whole window) and a 4K one for 146%. Measured no-op at >=16K and on an
+    # unresolved window; see `pack_budget_for`.
+    _pack_alloc = B.pack_budget_for(_context_length, settings.pack_token_budget)
+    _pack_budget = _pack_alloc.grounding
     _compress_chars = scale_by_window(settings.compress_max_input_chars, _context_length)
 
     async def _compress_fn(older: list[str], timeline_texts: list[str], plan: str) -> str:
@@ -1224,8 +1312,10 @@ async def generate_chapter(
     # Size the output budget from the plan (scene count) so a multi-scene chapter
     # gets room instead of a flat cap that silently truncates long-form; clamp to
     # the ceiling. An explicit body override still wins.
-    max_out = body.max_output_tokens or min(
-        len(scenes) * settings.chapter_gen_per_scene_tokens, settings.chapter_gen_max_tokens)
+    max_out = narrowed_by_request(
+        min(len(scenes) * settings.chapter_gen_per_scene_tokens,
+            settings.chapter_gen_max_tokens),
+        body.max_output_tokens)
 
     if settings.composition_worker_enabled:
         # M4 (Option A) — resolve the bearer context (pack, chapter_sort, critic)
@@ -1234,8 +1324,9 @@ async def generate_chapter(
         # persistence to the book draft is the separate bearer accept-step
         # (POST /jobs/{id}/persist). Same guard + idempotency as the inline path.
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         job_input = {
             "model_source": body.model_source, "model_ref": str(body.model_ref),
             "operation": body.operation, "worker_op": "chapter_generate",
@@ -1306,8 +1397,9 @@ async def generate_chapter(
                              "canon": r.get("canon"), "assembly_mode": "chapter"})
 
     sdict = work.settings or {}
-    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
+    c_src, c_ref = critic_res.source, critic_res.ref
+    distinct = critic_res.distinct
     try:
         cands = await diverge(
             llm, user_id=str(user_id), model_source=body.model_source,
@@ -1342,6 +1434,7 @@ async def generate_chapter(
             packed_prompt=pc.prompt, profile=pc.profile,
             drafter_source=body.model_source, drafter_ref=str(body.model_ref),
             judge_source=str(c_src) if distinct else None,
+            identity_verified=critic_res.identity_verified,
             judge_ref=str(c_ref) if distinct else None,
             prompt_estimate=prompt_estimate, max_output_tokens=max_out,
             max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
@@ -1460,8 +1553,10 @@ async def stitch_chapter_endpoint(
         auto_source=str(work.settings.get("reasoning_engine", "rule_based")))
     # Size from the number of scene drafts being merged (the stitched chapter is
     # ~their combined length), clamped to the ceiling — long chapters need room.
-    max_out = body.max_output_tokens or min(
-        len(drafts) * settings.chapter_gen_per_scene_tokens, settings.stitch_max_tokens)
+    max_out = narrowed_by_request(
+        min(len(drafts) * settings.chapter_gen_per_scene_tokens,
+            settings.stitch_max_tokens),
+        body.max_output_tokens)
 
     if settings.composition_worker_enabled:
         # M4 (Option A) — resolve the bearer-only bits (chapter_sort, critic config)
@@ -1471,8 +1566,9 @@ async def stitch_chapter_endpoint(
         # in-flight guard + idempotency as the inline path.
         chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
         sdict = work.settings or {}
-        c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-        distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+        critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
+        c_src, c_ref = critic_res.source, critic_res.ref
+        distinct = critic_res.distinct
         job_input = {
             "model_source": body.model_source, "model_ref": str(body.model_ref),
             "operation": "stitch_chapter", "worker_op": "stitch_chapter",
@@ -1560,8 +1656,9 @@ async def stitch_chapter_endpoint(
     # rewrite can re-introduce a gone character). Degrade-safe, never blocks (F1).
     chapter_sort = (await book.get_chapter_sort_orders([chapter_id])).get(str(chapter_id))
     sdict = work.settings or {}
-    c_src, c_ref = sdict.get("critic_model_source"), sdict.get("critic_model_ref")
-    distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))
+    critic_res = await _resolved_critic(sdict, body.model_source, body.model_ref, llm)
+    c_src, c_ref = critic_res.source, critic_res.ref
+    distinct = critic_res.distinct
     canon_v: dict[str, Any] = {"violations": [], "resolved": True, "iterations": 0,
                                "status": "degraded"}
     revise_finish: str | None = None
@@ -1580,6 +1677,7 @@ async def stitch_chapter_endpoint(
             profile=profile,
             drafter_source=body.model_source, drafter_ref=str(body.model_ref),
             judge_source=str(c_src) if distinct else None,
+            identity_verified=critic_res.identity_verified,
             judge_ref=str(c_ref) if distinct else None,
             prompt_estimate=0, max_output_tokens=max_out,
             max_iters=max(0, min(3, int(sdict.get("reflect_max_iters", 1) or 1))),
@@ -1929,20 +2027,28 @@ async def critique(
         if derivative_findings else None
     )
 
-    critic_src = settings_dict.get("critic_model_source")
-    critic_ref = settings_dict.get("critic_model_ref")
     drafter_ref = (job.input or {}).get("model_ref")
-    # Anti-self-reinforcement: the critic MUST be a distinct model. No critic
-    # configured, or same as the drafter → skip the LLM critique (advisory) + warn,
-    # but STILL surface + persist the deterministic derivative findings + the GATE.
-    if not critic_ref or not critic_src or str(critic_ref) == str(drafter_ref):
+    # Anti-self-reinforcement: the critic MUST be a distinct model. Resolved through the ONE
+    # policy (`engine/critic_policy`) rather than restated here — this was the seventh copy of
+    # the rule, and the only one written inverted, which is how it drifted furthest.
+    drafter_source = (job.input or {}).get("model_source")
+    critic_res = await _resolved_critic(settings_dict, drafter_source, drafter_ref, llm)
+    if not critic_res.distinct:
+        # Skip the LLM critique (advisory) but STILL surface + persist the deterministic
+        # derivative findings + the GATE.
         critic = ({"derivative_findings": derivative_findings, **gate}
                   if derivative_findings else None)
         if critic is not None:
             await jobs.update_status(job_id, job.status, critic=critic,
                                      target_revision_id=body.target_revision_id)
+        # `critic_status` is the field that makes this actionable, and it is why the policy
+        # returns a status rather than a boolean. The old single sentence — "no distinct
+        # critic model configured" — was returned for BOTH "you never set one" and "the one
+        # you set is the model already writing the prose". Those need different actions, and
+        # an author reading the first message about the second problem has no way to find it.
         return {"critic": critic,
-                "warning": "critique skipped: no distinct critic model configured"}
+                "critic_status": critic_res.status.value,
+                "warning": _CRITIC_SKIP_WARNING[critic_res.status]}
 
     # CC2: re-resolve the ACTIVE canon at critique time — a deleted/archived rule
     # is never enforced.
@@ -1950,7 +2056,8 @@ async def critique(
     active_rules = [{"rule_id": str(r.id), "text": r.text} for r in rules]
 
     critic = await judge_prose(
-        llm, user_id=str(user_id), model_source=str(critic_src), model_ref=str(critic_ref),
+        llm, user_id=str(user_id),
+        model_source=str(critic_res.source), model_ref=str(critic_res.ref),
         passage=passage, active_rules=active_rules, present_facts=[],
         profile=from_settings(settings_dict),
     )

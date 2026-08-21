@@ -99,4 +99,4 @@ def test_content_hash_is_deterministic_and_distinct():
 
 
 def test_both_templates_present():
-    assert {t["code"] for t in _TEMPLATES} == {"general", "xianxia-harem"}
+    assert {t["code"] for t in _TEMPLATES} == {"general", "xianxia-harem", "fantasy", "romance", "drama", "historical", "mystery"}

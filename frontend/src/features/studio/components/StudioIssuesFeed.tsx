@@ -16,9 +16,26 @@ const KIND_PANEL: Record<string, string> = {
   canon_contradiction: 'quality-canon',
   broken_canon_rule: 'quality-canon-rules',
   open_thread_debt: 'quality-promises',
-  unplanned_chapter: 'plan-hub',
+  unplanned_chapter: 'decompose',
   prose_deleted_spec_node: 'plan-hub',
 };
+
+function localizeDiagnostic(t: (key: string, options?: Record<string, unknown>) => string, item: { kind: string; title: string; node_ref?: { title?: string | null } | null }) {
+  if (item.kind === 'unplanned_chapter') {
+    return t('diagnostics.unplannedChapter', { title: item.node_ref?.title || item.title, defaultValue: '\u0413\u043b\u0430\u0432\u0430 \u00ab{{title}}\u00bb \u043d\u0430\u043f\u0438\u0441\u0430\u043d\u0430, \u043d\u043e \u043d\u0435 \u0434\u043e\u0431\u0430\u0432\u043b\u0435\u043d\u0430 \u0432 \u043f\u043b\u0430\u043d' });
+  }
+  return item.title;
+}
+
+function localizeWarning(t: (key: string, options?: Record<string, unknown>) => string, warning: string) {
+  const map: Record<string, string> = {
+    'open thread debt could not be read': 'diagnostics.warning.openThread',
+    'prose-deleted spec nodes could not be checked': 'diagnostics.warning.deletedSpec',
+    'the planned-vs-written diff could not be computed': 'diagnostics.warning.coverage',
+  };
+  const key = map[warning];
+  return key ? t(key, { defaultValue: warning }) : warning;
+}
 
 const SEV_STYLE: Record<string, string> = {
   error: 'bg-destructive/15 text-destructive',
@@ -77,7 +94,7 @@ export function StudioIssuesFeed() {
                 {t(`bottom.sev.${it.severity}`, { defaultValue: it.severity })}
               </span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12px] text-foreground/90">{it.title}</span>
+                <span className="block truncate text-[12px] text-foreground/90">{localizeDiagnostic(t, it)}</span>
                 {it.detail && <span className="block truncate text-[10px] text-muted-foreground">{it.detail}</span>}
               </span>
               {clickable && <span className="mt-0.5 text-[10px] text-muted-foreground">→</span>}

@@ -26,8 +26,10 @@ from loreweave_llm import no_thinking_fields
 from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
+from app.engine.finding import Locator, SkipReason
 from app.clients.llm_client import LLMClient
 from app.engine.plan import DecomposeResult
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +42,23 @@ class PlanFinding:
     issue: str = ""
     fix: str = ""
     applied: bool = False
-    skip_reason: str | None = None   # not_found | edit_failed | edit_expanded
+    #: One of `SkipReason`. This used to spell the not-located case `not_found` — the same
+    #: concept `self_heal` called `not_located`, under a second name.
+    skip_reason: str | None = None
+
+    @property
+    def locator(self) -> Locator:
+        """Chapter + scene, or NOWHERE when the scene index did not resolve.
+
+        `run_plan_self_heal` sets `skip_reason = NOT_LOCATED` when the chapter or scene index
+        is out of range — at which point `chapter`/`scene` are numbers that point at nothing,
+        and a consumer reading them as a position would send a human to a scene that does not
+        exist. The same two-states-one-shape problem `self_heal` had, arrived at from the
+        other side: there the position was absent, here it is present and meaningless.
+        """
+        if self.skip_reason == SkipReason.NOT_LOCATED:
+            return Locator.nowhere(quote=self.issue, why=self.skip_reason)
+        return Locator.scene_at(self.chapter, self.scene)
 
 
 @dataclass
@@ -100,7 +118,7 @@ def parse_plan_findings(content: str) -> list[PlanFinding]:
 
 
 async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_tokens, purpose,
-                trace_id, cancel_check) -> str | None:
+                code, trace_id, cancel_check) -> str | None:
     try:
         job = await llm.submit_and_wait(
             user_id=user_id, operation="chat", model_source=model_source, model_ref=model_ref,
@@ -111,7 +129,10 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
     except LLMError as exc:
         logger.warning("plan_heal %s LLM error: %s", purpose, exc)
         return None
-    if job.status != "completed":
+    # `code` is the REGISTRY key; `purpose` is the billing label. They are different
+    # vocabularies and only one of them can answer whether a truncation is fatal here.
+    if (why := unusable(job, code)):
+        logger.info("plan_heal %s unusable: %s", purpose, why)
         return None
     c = extract_judge_content(job.result)
     return c if c.strip() else None
@@ -139,7 +160,9 @@ def build_fix_scene_messages(
 async def run_plan_self_heal(
     llm: LLMClient, result: DecomposeResult, *, user_id: str, model_source: str, model_ref: str,
     source_language: str = "auto", max_edit_expansion: float = 1.6,
-    judge_max_tokens: int = 2000, edit_max_tokens: int = 700,
+    # `None`, not a number: a signature default is evaluated ONCE at import, so it can never
+    # read the outline it is about to judge. Resolved per call below.
+    judge_max_tokens: int | None = None, edit_max_tokens: int | None = None,
     trace_id: str | None = None, cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[DecomposeResult, PlanHealReport]:
     """Judge the outline, satellite-edit each flagged scene's synopsis IN PLACE, return the
@@ -148,8 +171,11 @@ async def run_plan_self_heal(
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
     sysj, usrj = build_plan_judge_messages(render_outline(result), source_language)
-    jc = await _chat(llm, system=sysj, user=usrj, max_tokens=judge_max_tokens,
-                     purpose="plan_judge", **kw)
+    jc = await _chat(llm, system=sysj, user=usrj,
+                     max_tokens=judge_max_tokens or max_tokens_for(
+                         "plan_judge",
+                         target=sum(len(c.scenes) for c in result.chapters)),
+                     purpose="plan_judge", code="plan_judge", **kw)
     findings = parse_plan_findings(jc or "")
     report = PlanHealReport(findings=findings)
     if not findings:
@@ -158,11 +184,11 @@ async def run_plan_self_heal(
     for f in findings:
         ci, si = f.chapter - 1, f.scene - 1
         if not (0 <= ci < len(result.chapters)):
-            f.skip_reason = "not_found"
+            f.skip_reason = SkipReason.NOT_LOCATED
             continue
         scenes = result.chapters[ci].scenes
         if not (0 <= si < len(scenes)):
-            f.skip_reason = "not_found"
+            f.skip_reason = SkipReason.NOT_LOCATED
             continue
         target = scenes[si]
         # light neighbor context: the prior + next scene synopses in the chapter
@@ -171,14 +197,16 @@ async def run_plan_self_heal(
             for j in (si - 1, si + 1) if 0 <= j < len(scenes)
         )
         syse, usre = build_fix_scene_messages(target.synopsis, f.issue, f.fix, neigh, source_language)
-        new = await _chat(llm, system=syse, user=usre, max_tokens=edit_max_tokens,
-                          purpose="plan_fix_scene", **kw)
+        new = await _chat(llm, system=syse, user=usre,
+                          max_tokens=edit_max_tokens or max_tokens_for(
+                              "plan_heal_edit", target=len(target.synopsis)),
+                          purpose="plan_fix_scene", code="plan_heal_edit", **kw)
         if not new:
-            f.skip_reason = "edit_failed"
+            f.skip_reason = SkipReason.EDIT_FAILED
             continue
         new = new.strip()
         if len(new) > max(40, len(target.synopsis)) * max_edit_expansion:
-            f.skip_reason = "edit_expanded"
+            f.skip_reason = SkipReason.EDIT_EXPANDED
             continue
         target.synopsis = new
         f.applied = True

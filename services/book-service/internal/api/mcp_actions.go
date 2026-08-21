@@ -445,7 +445,7 @@ func (s *Server) resolveBookAction(exctx context.Context, ownerUserID string, pa
 		if op == "purge_chapter" {
 			target = "purge_pending"
 		}
-		if err := s.mcpTransitionChapter(exctx, bookID, chID, target); err != nil {
+		if err := s.mcpTransitionChapter(exctx, caller, bookID, chID, target); err != nil {
 			return nil, err
 		}
 		return map[string]any{"outcome": "action_done", "op": op,
@@ -717,6 +717,7 @@ func (s *Server) effectPublish(w http.ResponseWriter, ctx context.Context, userI
 }
 
 func (s *Server) effectDelete(w http.ResponseWriter, ctx context.Context, bookID uuid.UUID, p actionPayload) {
+	actorID, _ := mcpUserID(ctx)
 	switch p.Op {
 	case "delete_book":
 		if err := s.mcpTransitionBook(ctx, bookID, "trashed"); err != nil {
@@ -740,7 +741,7 @@ func (s *Server) effectDelete(w http.ResponseWriter, ctx context.Context, bookID
 		if p.Op == "purge_chapter" {
 			target = "purge_pending"
 		}
-		if err := s.mcpTransitionChapter(ctx, bookID, chID, target); err != nil {
+		if err := s.mcpTransitionChapter(ctx, actorID, bookID, chID, target); err != nil {
 			s.writeActionEffectError(w, err)
 			return
 		}
@@ -1035,11 +1036,12 @@ func (s *Server) mcpTransitionBook(ctx context.Context, bookID uuid.UUID, target
 }
 
 // mcpTransitionChapter applies a chapter lifecycle transition.
-func (s *Server) mcpTransitionChapter(ctx context.Context, bookID, chID uuid.UUID, target string) error {
+func (s *Server) mcpTransitionChapter(ctx context.Context, actorID, bookID, chID uuid.UUID, target string) error {
 	var bState, cState string
+	var chapterTitle *string
 	if err := s.pool.QueryRow(ctx, `
-SELECT b.lifecycle_state,c.lifecycle_state FROM books b JOIN chapters c ON c.book_id=b.id
-WHERE b.id=$1 AND c.id=$2`, bookID, chID).Scan(&bState, &cState); err != nil {
+SELECT b.lifecycle_state,c.lifecycle_state,c.title FROM books b JOIN chapters c ON c.book_id=b.id
+WHERE b.id=$1 AND c.id=$2`, bookID, chID).Scan(&bState, &cState, &chapterTitle); err != nil {
 		return errActionTargetGone
 	}
 	tx, err := s.pool.Begin(ctx)
@@ -1047,6 +1049,10 @@ WHERE b.id=$1 AND c.id=$2`, bookID, chID).Scan(&bState, &cState); err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+	titleValue := ""
+	if chapterTitle != nil {
+		titleValue = *chapterTitle
+	}
 	switch target {
 	case "trashed":
 		if bState != "active" || cState != "active" {
@@ -1056,12 +1062,18 @@ WHERE b.id=$1 AND c.id=$2`, bookID, chID).Scan(&bState, &cState); err != nil {
 		if err := insertOutboxEvent(ctx, tx, "chapter.trashed", chID, map[string]any{"book_id": bookID}); err != nil {
 			return err
 		}
+		if err := insertStructureActivityOutbox(ctx, tx, actorID, bookID, chID, structureActivityTrashed, "", titleValue); err != nil {
+			return err
+		}
 	case "purge_pending":
 		if cState != "trashed" {
 			return errActionBadState
 		}
 		_, _ = tx.Exec(ctx, `UPDATE chapters SET lifecycle_state='purge_pending', purge_eligible_at=now(), updated_at=now() WHERE id=$1`, chID)
 		if err := insertOutboxEvent(ctx, tx, "chapter.deleted", chID, map[string]any{"book_id": bookID}); err != nil {
+			return err
+		}
+		if err := insertStructureActivityOutbox(ctx, tx, actorID, bookID, chID, structureActivityDeleted, "", titleValue); err != nil {
 			return err
 		}
 	default:

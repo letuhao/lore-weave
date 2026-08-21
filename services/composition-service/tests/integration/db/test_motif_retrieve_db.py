@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from types import SimpleNamespace
 
 import asyncpg
 import pytest
@@ -26,6 +27,7 @@ import pytest
 from app.db.migrate import run_migrations
 from app.db.repositories.motif_repo import MotifRepo
 from app.db.repositories.motif_retrieve import MotifRetriever
+from app.engine.motif_embed import motif_summary_text, summary_hash
 
 _DSN = os.environ.get("TEST_COMPOSITION_DB_URL")
 
@@ -69,18 +71,33 @@ async def _insert_motif(
     pool, *, owner, code, language="en", visibility="public", genres=("xianxia",),
     status="active", embedding=_VEC, tension_target=3,
 ):
-    """Direct INSERT so we can seed system rows (owner NULL) + arbitrary status/lang."""
+    """Direct INSERT so we can seed system rows (owner NULL) + arbitrary status/lang.
+
+    `embedded_summary_hash` must be the REAL hash of the text this row would embed —
+    `motif_summary_text` is name + summary + beat labels/intents, and here that is
+    `f"{code}\\na summary"` with no beats. It used to be the literal `'h'`, which was fine for
+    as long as nothing read it: the ranking path compared only `embedding_model`, so a
+    placeholder was indistinguishable from a real hash.
+
+    `9db0231e6` made the read side compare the hash too — the right fix, and the bug it closed
+    is that editing a motif's summary left it retrievable forever by the text it used to have.
+    Every row seeded here then read as STALE, so the retriever tried to re-embed all of them,
+    the platform embed model is unset in a test process, and all eight tests got an empty
+    candidate set. The tests were not wrong about the SQL they were written to prove; the
+    fixture was lying about what it had embedded.
+    """
+    text = motif_summary_text(SimpleNamespace(name=code, summary="a summary", beats=[]))
     async with pool.acquire() as c:
         return await c.fetchval(
             """
             INSERT INTO motif
               (owner_user_id, code, original_language, visibility, name, summary, genre_tags,
                tension_target, embedding, embedding_model, embedded_summary_hash, status)
-            VALUES ($1,$2,$3,$4,$5,'a summary',$6,$7,$8,'platform-embed-v1','h',$9)
+            VALUES ($1,$2,$3,$4,$5,'a summary',$6,$7,$8,'platform-embed-v1',$10,$9)
             RETURNING id
             """,
             owner, code, language, visibility, code, list(genres),
-            tension_target, embedding, status,
+            tension_target, embedding, status, summary_hash(text),
         )
 
 

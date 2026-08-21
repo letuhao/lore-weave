@@ -120,7 +120,8 @@
     "no_active": "Nenhum gênero ativo. Adicione um para construir a matriz.",
     "cell_inspector": "Célula selecionada",
     "no_cell": "Clique em uma célula para inspecioná-la.",
-    "sort": "ordenar"
+    "sort": "ordenar",
+    "required": "obrigatório"
   },
   "entity": {
     "title_new": "Nova entidade {{kind}}",
@@ -238,5 +239,16 @@
     "links_saved": "Links de gênero atualizados",
     "links_failed": "Não foi possível atualizar os links de gênero",
     "forbidden": "Você precisa de acesso de Gerenciamento neste livro para fazer alterações"
+  },
+  "batch_translate": {
+    "apply": "Aplicar traduções",
+    "count": "{{n}} entidades para traduzir",
+    "loading": "Carregando…",
+    "none": "Nenhuma entidade não traduzida para este idioma.",
+    "pick_lang": "Escolha um idioma de destino para começar.",
+    "result": "{{w}} escritos · {{v}} mantidos (verificados) · {{e}} vazios · {{f}} falhas",
+    "select_lang": "Selecionar…",
+    "target_lang": "Idioma de destino",
+    "title": "Tradução em lote"
   }
 }

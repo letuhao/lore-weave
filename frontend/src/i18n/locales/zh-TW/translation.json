@@ -66,7 +66,10 @@
     "publish_anyway": "仍要發布",
     "cancel": "取消",
     "glossary_stale": "詞彙表已更新",
-    "glossary_stale_title": "此翻譯之後詞彙表已變更 — 可能已過時。"
+    "glossary_stale_title": "此翻譯之後詞彙表已變更 — 可能已過時。",
+    "source_injection": "原文已標記 ({{count}})",
+    "source_injection_other": "原文已標記 ({{count}})",
+    "source_injection_title": "匯入的原文含有類似指令的片段。翻譯不會改寫原文，因此這是提示而非阻擋——請在信任模型的說法前先檢查該章。"
   },
   "confirm_name": {
     "button": "修正名稱",

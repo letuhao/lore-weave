@@ -30,6 +30,7 @@ from itertools import combinations
 
 from app.db.neo4j_helpers import CypherSession, run_read
 from app.db.neo4j_repos.canonical import canonicalize_entity_name
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -281,7 +282,8 @@ async def _verify_pair(
                 ],
                 "response_format": {"type": "json_object"},
                 "temperature": 0.0,
-                "max_tokens": 200,
+                # `target=1`: one verdict for one candidate pair.
+                "max_tokens": max_tokens_for("coref_verdict", target=1),
             },
             job_meta={"usage_purpose": "coref_detect", "extractor": "coref_verify"},
             transient_retry_budget=1,

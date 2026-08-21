@@ -36,17 +36,37 @@ violates() {
 }
 
 run_lint() {
-  local violations=0 f
+  local violations=0 scanned=0 f text rc
   while IFS= read -r f; do
     [ -f "$f" ] || continue
-    if [ -n "$(violates "$(cat "$f")")" ]; then
+    # `$(cat "$f")` was inlined into the test below, so a read that returned nothing —
+    # or returned PART of the file — was indistinguishable from a script that genuinely
+    # omits 0013. Under CI load that produced confident, specific, WRONG findings:
+    # 2026-08-08 flagged scale-rig.sh on one run and ledger-verify-smoke.sh on the next,
+    # both of which contain 0013_events_content_sha256, while this lint passed locally
+    # 3/3 on the same bytes. Read first, check the status, and only then judge.
+    text=$(cat "$f")
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+      echo "[emit-0013] FAIL — could not read $f (cat exit $rc)."
+      echo "  → this is a READ failure, not a finding. Nothing about the script is implied."
+      exit 1
+    fi
+    scanned=$((scanned + 1))
+    if [ -n "$(violates "$text")" ]; then
       echo "[emit-0013] FAIL — $f sets up its own events baseline + runs 'wg -emit' but does NOT apply 0013_events_content_sha256"
       echo "  → add 0013_events_content_sha256 to its migration list (the emit path stamps events.content_sha256)."
       violations=$((violations + 1))
     fi
   done < <(find "$repo_root/scripts" -name '*.sh' -type f)
   if [ "$violations" -gt 0 ]; then exit 1; fi
-  echo "[emit-0013] PASS — every own-baseline emit script applies 0013"
+  # scripts/ always holds shell scripts — this one among them. Zero scanned means the
+  # find failed, and reporting PASS on it would certify a tree nothing looked at.
+  if [ "$scanned" -eq 0 ]; then
+    echo "[emit-0013] FAIL — no .sh files found under $repo_root/scripts; the scan, not the tree, is empty."
+    exit 1
+  fi
+  echo "[emit-0013] PASS — every own-baseline emit script applies 0013 ($scanned scanned)"
 }
 
 # --selftest is the non-vacuity BITE: a synthetic bad script (own baseline + emit,

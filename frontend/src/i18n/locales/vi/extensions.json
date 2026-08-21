@@ -9,7 +9,9 @@
     "permissions": "Quyền của công cụ",
     "proposals": "Đề xuất",
     "activity": "Nhật ký hoạt động",
-    "ingest": "Nguồn đăng ký"
+    "ingest": "Nguồn đăng ký",
+    "bindings": "Thiết lập tự động",
+    "workflows": "Công thức"
   },
   "quota": {
     "unavailable": "Không có dữ liệu sử dụng",

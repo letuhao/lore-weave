@@ -42,7 +42,9 @@
     "startTranslate": "Übersetzung starten",
     "startFailed": "Übersetzungsauftrag konnte nicht gestartet werden",
     "thinkingOn": "Denkprozess: an",
-    "thinkingOff": "Denkprozess: aus"
+    "thinkingOff": "Denkprozess: aus",
+    "concurrency": "Parallele LLM-Aufrufe",
+    "concurrencyHint": "1 = sequenziell. Erhöhen Sie diesen Wert, wenn Ihr Modell gleichzeitige Anfragen verarbeitet."
   },
   "progress": {
     "title": "Glossar wird übersetzt",

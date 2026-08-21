@@ -54,6 +54,80 @@ router = APIRouter(
 )
 
 
+@router.get("/model-deletion/impact")
+async def model_deletion_impact(user_id: UUID = Query(...), model_id: UUID = Query(...)) -> dict:
+    """Return knowledge-side references before a provider model is deleted.
+
+    This is intentionally internal-only: provider-registry is the coordinator
+    and calls it with the shared service token. Active extraction jobs are a
+    hard blocker; completed/failed rows are removable during the confirmed
+    cleanup so no live knowledge configuration keeps a dangling UUID.
+    """
+    pool = get_knowledge_pool()
+    async with pool.acquire() as conn:
+        projects = await conn.fetchval(
+            "SELECT count(*) FROM knowledge_projects WHERE user_id=$1 AND embedding_model=$2",
+            user_id, str(model_id),
+        )
+        jobs = await conn.fetchval(
+            "SELECT count(*) FROM extraction_jobs WHERE user_id=$1 AND (embedding_model=$2 OR llm_model=$2)",
+            user_id, str(model_id),
+        )
+        active = await conn.fetchval(
+            "SELECT count(*) FROM extraction_jobs WHERE user_id=$1 AND (embedding_model=$2 OR llm_model=$2) AND status IN ('pending','running','summarizing','paused')",
+            user_id, str(model_id),
+        )
+    return {
+        "service": "knowledge",
+        "references": [
+            *([{"kind": "knowledge project embedding", "count": int(projects)}] if projects else []),
+            *([{"kind": "knowledge extraction jobs", "count": int(jobs)}] if jobs else []),
+        ],
+        "active_tasks": int(active),
+        "can_delete": int(active) == 0,
+    }
+
+
+@router.post("/model-deletion/cleanup")
+async def model_deletion_cleanup(user_id: UUID = Query(...), model_id: UUID = Query(...)) -> dict:
+    """Detach a deleted model from knowledge projects and terminal jobs."""
+    pool = get_knowledge_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            active = await conn.fetchval(
+                "SELECT count(*) FROM extraction_jobs WHERE user_id=$1 AND (embedding_model=$2 OR llm_model=$2) AND status IN ('pending','running','summarizing','paused')",
+                user_id, str(model_id),
+            )
+            if active:
+                raise HTTPException(status_code=409, detail={"code": "MODEL_DELETE_BLOCKED", "active_tasks": int(active)})
+            projects = await conn.execute(
+                "UPDATE knowledge_projects SET embedding_model=NULL, embedding_dimension=NULL, extraction_enabled=false, extraction_status='disabled', updated_at=now() WHERE user_id=$1 AND embedding_model=$2",
+                user_id, str(model_id),
+            )
+            jobs = await conn.execute(
+                "DELETE FROM extraction_jobs WHERE user_id=$1 AND (embedding_model=$2 OR llm_model=$2)",
+                user_id, str(model_id),
+            )
+    # Remove the model tag from vector nodes as well. The vectors themselves
+    # remain harmless data, but no graph node may advertise a deleted model.
+    graph_nodes = 0
+    try:
+        async with neo4j_session() as session:
+            result = await session.run(
+                "MATCH (n) WHERE n.user_id=$user_id AND n.embedding_model=$model_id SET n.embedding_model = null RETURN count(n) AS count",
+                user_id=str(user_id), model_id=str(model_id),
+            )
+            record = await result.single()
+            graph_nodes = int(record["count"]) if record else 0
+    except Exception:
+        logger.warning("model deletion graph cleanup failed", exc_info=True)
+    return {
+        "projects_cleared": int(projects.split()[-1]) if projects else 0,
+        "jobs_deleted": int(jobs.split()[-1]) if jobs else 0,
+        "graph_nodes_cleared": graph_nodes,
+    }
+
+
 async def _erase_one_assistant_project(pool, user_id: UUID, project_id: UUID) -> dict:
     """Erase ONE assistant project + its entire semantic index. Neo4j passages FIRST, PG rows LAST (erase
     review MED-3): the project_id identifies the passages, so a PG-first delete that then failed on Neo4j

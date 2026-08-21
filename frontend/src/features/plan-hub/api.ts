@@ -79,6 +79,32 @@ export function getConformanceStatus(
 
 /** Result of the SC6 decompiler (`MaterializeResult.to_dict`). `work_resolved: false` with
  *  `scenes_total > 0` is the graceful no-Work guard — REPORTED, never a silent 200-with-zero. */
+export interface PlanImportChapter {
+  chapter_id: string;
+  title: string;
+  synopsis?: string;
+  story_order?: number;
+}
+
+export interface PlanImportResult {
+  created: number;
+  skipped: number;
+  total: number;
+  detail?: string;
+}
+
+export function importBookPlan(
+  bookId: string,
+  chapters: PlanImportChapter[],
+  token: string,
+): Promise<PlanImportResult> {
+  return apiJson<PlanImportResult>(`${COMP}/books/${bookId}/plan/import`, {
+    method: "POST",
+    token,
+    body: JSON.stringify({ chapters }),
+  });
+}
+
 export interface MaterializeScenesResult {
   book_id: string;
   work_resolved: boolean;

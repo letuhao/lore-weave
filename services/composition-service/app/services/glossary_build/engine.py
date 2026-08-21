@@ -44,9 +44,10 @@ def parse_json_block(text: str) -> Any:
     return None
 
 
-async def _call_json(llm: Llm, messages: list[dict], max_tokens: int) -> Any:
+async def _call_json(llm: Llm, messages: list[dict], *, budget: str,
+                     target: int | None = None) -> Any:
     """One call + ONE retry with the failure named — then None (caller skips)."""
-    out = await llm(messages, max_tokens)
+    out = await llm(messages, budget=budget, target=target)
     parsed = parse_json_block(out)
     if parsed is not None:
         return parsed
@@ -57,7 +58,7 @@ async def _call_json(llm: Llm, messages: list[dict], max_tokens: int) -> Any:
             "shape — no markdown, no commentary."
         )},
     ]
-    return parse_json_block(await llm(retry, max_tokens))
+    return parse_json_block(await llm(retry, budget=budget, target=target))
 
 
 async def run_planner(
@@ -67,7 +68,8 @@ async def run_planner(
     """BREADTH: the validated worklist [{name, kind, depth, why}]. Invalid rows and
     duplicates (vs the glossary AND within the list) are filtered, never fatal."""
     raw = await _call_json(
-        llm, planner_messages(source_text, kinds, existing_names, lang, max_items), 1600,
+        llm, planner_messages(source_text, kinds, existing_names, lang, max_items),
+        budget="glossary_build_plan", target=max_items,
     )
     if not isinstance(raw, list):
         return []
@@ -175,7 +177,8 @@ async def build_standard(
     """DEPTH, one item, single shot (E1/E3) over the kind's REAL fields.
     None ⇒ skip-with-record (never a hollow row)."""
     built = await _call_json(
-        llm, executor_messages(source_text, name, kind, fields, lang, types), 2200,
+        llm, executor_messages(source_text, name, kind, fields, lang, types),
+        budget="glossary_build_entity", target=len(fields) or 1,
     )
     return _clean_entity(built, name=name, kind=kind, allowed=fields)
 
@@ -189,7 +192,8 @@ async def build_batch(
     built, and the caller falls back to per-item for it. Measured 3x cheaper with
     mild positional decay; never used for `deep` items or across kinds."""
     arr = await _call_json(
-        llm, batch_messages(source_text, names, kind, fields, lang, types), 2600,
+        llm, batch_messages(source_text, names, kind, fields, lang, types),
+        budget="glossary_build_batch", target=max(1, len(names) * (len(fields) or 1)),
     )
     if not isinstance(arr, list):
         return {}
@@ -218,7 +222,8 @@ async def build_deep(
     keeps its no-silent-seam guarantee — the fallback is recorded by the caller
     via the empty sections list)."""
     outline_msgs = deep_outline_messages(source_text, name, kind, lang)
-    outline = await _call_json(llm, outline_msgs, 900)
+    outline = await _call_json(
+        llm, outline_msgs, budget="glossary_build_outline", target=1)
     plan = [
         p for p in (outline if isinstance(outline, list) else [])
         if isinstance(p, dict) and str(p.get("section") or "").strip()
@@ -233,14 +238,17 @@ async def build_deep(
     sections: list[dict] = []
     for i, p in enumerate(plan):
         convo.append(deep_section_messages(str(p["section"]), str(p.get("focus") or ""), i))
-        text = (await llm(convo, 800)).strip()
+        text = (await llm(
+            convo, budget="glossary_build_section", target=400, language=lang,
+        )).strip()
         convo.append({"role": "assistant", "content": text})
         if text:
             sections.append({"section": str(p["section"]), "text": text})
 
     profile = "\n\n".join(f"[{s['section']}]\n{s['text']}" for s in sections)
     distilled = await _call_json(
-        llm, distill_messages(name, kind, profile, fields, lang, types), 2200,
+        llm, distill_messages(name, kind, profile, fields, lang, types),
+        budget="glossary_build_distill", target=len(fields) or 1,
     )
     entity = _clean_entity(distilled, name=name, kind=kind, allowed=fields)
     if entity is None and sections:

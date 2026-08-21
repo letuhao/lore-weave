@@ -19,8 +19,305 @@ servers:
 tags:
   - name: books
   - name: chapters
+  - name: imports
 
 paths:
+  /v1/epub-imports/inspect:
+    post:
+      tags: [imports]
+      summary: Upload and inspect an EPUB source without creating chapters
+      operationId: inspectEpubImport
+      description: >
+        Retains the EPUB source for an authenticated user, validates the archive, and returns
+        metadata, cover candidates, and an EPUB3-nav/NCX/spine-normalized navigation preview.
+        This endpoint does not create a book, chapter, or import job.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: EPUB 2 or EPUB 3 source file, subject to deployment archive limits.
+                target_book_id:
+                  type: string
+                  format: uuid
+                  description: Optional existing target. When supplied, edit access is required.
+      responses:
+        '200':
+          description: Valid source inspected successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubInspectionResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
+        '415':
+          $ref: '#/components/responses/ErrorResponse'
+        '422':
+          description: EPUB is invalid, encrypted, or violates an archive safety limit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/epub-imports:
+    post:
+      tags: [imports]
+      summary: Start a structure-preserving EPUB import from an inspected source
+      operationId: startEpubImport
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StartEpubImportRequest'
+      responses:
+        '202':
+          description: Import job queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportJobAccepted'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          description: Source/job state, duplicate source strategy, or explicit destructive confirmation is invalid
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+
+  /v1/epub-imports/{source_id}/shadow-comparison:
+    get:
+      tags: [imports]
+      summary: Read durable legacy-vs-V2 shadow comparison evidence
+      operationId: getEpubShadowComparison
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: source_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Shadow comparison for the retained source
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubShadowComparison'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/import-jobs/{job_id}:
+    get:
+      tags: [imports]
+      summary: Get EPUB import job status, progress, and allowed recovery actions
+      operationId: getEpubImportJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportJobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportJob'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/import-jobs/{job_id}/items:
+    get:
+      tags: [imports]
+      summary: List normalized EPUB import items
+      operationId: listEpubImportJobItems
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportJobId'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - name: status
+          in: query
+          schema:
+            $ref: '#/components/schemas/EpubImportItemStatus'
+        - name: role
+          in: query
+          schema:
+            $ref: '#/components/schemas/EpubImportRole'
+        - name: q
+          in: query
+          schema:
+            type: string
+            maxLength: 500
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportJobItemsResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/import-jobs/{job_id}/resume:
+    post:
+      tags: [imports]
+      summary: Resume a failed or cancelled EPUB import job
+      operationId: resumeEpubImportJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportJobId'
+      responses:
+        '202':
+          description: Resume accepted; completed items are not processed again
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportJobActionResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/import-jobs/{job_id}/cancel:
+    post:
+      tags: [imports]
+      summary: Request safe cancellation of an EPUB import job
+      operationId: cancelEpubImportJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportJobId'
+      responses:
+        '202':
+          description: Cancellation request persisted; the active atomic item may finish
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportJobActionResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/import-jobs/{job_id}/rollback:
+    post:
+      tags: [imports]
+      summary: Roll back the job-owned effects of an EPUB import
+      operationId: rollbackEpubImportJob
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportJobId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm:
+                  type: boolean
+                  enum: [true]
+                  description: Explicit acknowledgement that job-owned import effects will be removed or deactivated.
+      responses:
+        '202':
+          description: Rollback accepted or was already completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportJobActionResponse'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+
+  /v1/import-jobs/{job_id}/report:
+    get:
+      tags: [imports]
+      summary: Get the durable EPUB import report
+      operationId: getEpubImportJobReport
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/ImportJobId'
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubImportReport'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '403':
+          $ref: '#/components/responses/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/ErrorResponse'
+
   /v1/books/storage-usage:
     get:
       tags: [books]
@@ -503,7 +800,7 @@ paths:
   /v1/books/{book_id}/import:
     post:
       tags: [chapters]
-      summary: Import a whole book file (.docx, .epub, .md, .pdf, .txt) as chapters
+      summary: Import a whole book file (.docx, .epub, .fb2, .md, .pdf, .txt) as chapters into an existing book
       description: >
         docs/specs/2026-07-06-pdf-book-import.md. .txt is parsed synchronously (source_format=plain)
         and returns the created chapter(s) directly. All other formats are stored and processed
@@ -527,7 +824,7 @@ paths:
                 file:
                   type: string
                   format: binary
-                  description: .txt, .docx, .epub, .md, or .pdf — up to 200 MB.
+                  description: .txt, .docx, .epub, .fb2, .md, or .pdf — up to 200 MB.
                 original_language:
                   type: string
                   maxLength: 35
@@ -557,7 +854,51 @@ paths:
                   - $ref: '#/components/schemas/Chapter'
                   - $ref: '#/components/schemas/BulkImportSummary'
         '202':
-          description: .docx/.epub/.md/.pdf — queued for async processing by worker-infra.
+          description: .docx/.epub/.fb2/.md/.pdf — queued for async processing by worker-infra. FB2 metadata is retained with the import but does not overwrite existing book metadata.
+
+  /v1/books/import/fb2:
+    post:
+      tags: [books, chapters]
+      summary: Create a book and import an FB2 file
+      description: >
+        Creates a new book owned by the authenticated user and queues its FB2 source for
+        asynchronous import. The worker preserves source hierarchy as chapters/scenes, projects
+        title, annotation, language, genres, and cover image to the new book, and retains the
+        complete supported FB2 metadata record with the import job.
+      operationId: startNewFB2Import
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: .fb2 FictionBook 2.0/2.1/2.2-compatible XML — up to 200 MB.
+                original_language:
+                  type: string
+                  maxLength: 35
+                  description: Optional BCP-47 override. Otherwise the FB2 title-info language is used.
+      responses:
+        '202':
+          description: New book created and FB2 import queued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ImportJob'
+        '400':
+          $ref: '#/components/responses/ErrorResponse'
+        '401':
+          $ref: '#/components/responses/ErrorResponse'
+        '409':
+          $ref: '#/components/responses/ErrorResponse'
+        '413':
+          $ref: '#/components/responses/ErrorResponse'
           content:
             application/json:
               schema:
@@ -1060,6 +1401,13 @@ components:
       schema:
         type: string
         format: uuid
+    ImportJobId:
+      name: job_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
 
   responses:
     ErrorResponse:
@@ -1078,6 +1426,502 @@ components:
           type: string
         message:
           type: string
+
+    EpubImportWarning:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          enum:
+            - navigation_missing_spine_fallback
+            - navigation_anchor_missing
+            - navigation_range_ambiguous
+            - navigation_node_non_content
+            - unsupported_resource
+            - asset_missing
+            - asset_invalid_mime
+            - internal_link_target_missing
+            - metadata_conflict
+            - composition_materialization_failed
+            - rollback_conflict_user_modified
+        message:
+          type: string
+        source_key:
+          type: string
+          nullable: true
+
+    EpubImportErrorCode:
+      type: string
+      enum:
+        - import_source_missing
+        - epub_invalid_archive
+        - epub_mimetype_invalid
+        - epub_container_missing
+        - epub_opf_invalid
+        - epub_drm_unsupported
+        - epub_archive_path_invalid
+        - epub_archive_limit_exceeded
+        - epub_navigation_invalid
+        - epub_item_processing_failed
+        - import_cancelled
+        - import_state_conflict
+
+    EpubNavigationSource:
+      type: string
+      enum: [epub3-nav, epub2-ncx, spine-fallback]
+
+    EpubImportRole:
+      type: string
+      enum: [volume, part, chapter, section, frontmatter, backmatter, appendix, unknown]
+
+    EpubImportItemStatus:
+      type: string
+      enum: [pending, claimed, staged, completed, skipped, failed, cancelled]
+
+    EpubImportJobStatus:
+      type: string
+      enum:
+        - queued
+        - processing
+        - import_staging
+        - import_ready
+        - completed
+        - completed_with_warnings
+        - import_failed
+        - cancelled
+        - rolling_back
+        - rolled_back
+
+    EpubContentRange:
+      type: object
+      required: [href]
+      properties:
+        href:
+          type: string
+        start_anchor:
+          type: string
+          nullable: true
+        end_anchor:
+          type: string
+          nullable: true
+
+    EpubNavigationNode:
+      type: object
+      required: [source_key, ordinal, depth, role, title, selected]
+      properties:
+        source_key:
+          type: string
+          description: Stable source SHA-256 plus normalized href/fragment identity.
+        source_href:
+          type: string
+          nullable: true
+        source_fragment:
+          type: string
+          nullable: true
+        parent_source_key:
+          type: string
+          nullable: true
+        ordinal:
+          type: integer
+          minimum: 0
+        depth:
+          type: integer
+          minimum: 0
+        role:
+          $ref: '#/components/schemas/EpubImportRole'
+        title:
+          type: string
+        linear:
+          type: boolean
+        selected:
+          type: boolean
+        content_ranges:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubContentRange'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubImportWarning'
+        children:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubNavigationNode'
+
+    EpubCoverCandidate:
+      type: object
+      required: [source_path, media_type, size_bytes]
+      properties:
+        source_path:
+          type: string
+        media_type:
+          type: string
+        size_bytes:
+          type: integer
+          minimum: 0
+        source_method:
+          type: string
+          enum: [epub3-cover-image, epub2-meta-cover, guide-cover, filename-fallback]
+
+    EpubInspectionResponse:
+      type: object
+      required: [source_id, sha256, metadata, navigation_source, structure, warnings, limits]
+      properties:
+        source_id:
+          type: string
+          format: uuid
+        sha256:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+        duplicate_source:
+          type: boolean
+        metadata:
+          type: object
+          additionalProperties: true
+        cover:
+          allOf:
+            - $ref: '#/components/schemas/EpubCoverCandidate'
+          nullable: true
+        navigation_source:
+          $ref: '#/components/schemas/EpubNavigationSource'
+        structure:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubNavigationNode'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubImportWarning'
+        limits:
+          type: object
+          additionalProperties:
+            type: integer
+
+    EpubShadowComparison:
+      type: object
+      required: [legacy_chapter_count, v2_chapter_count, delta, legacy_projection, differences]
+      properties:
+        legacy_chapter_count:
+          type: integer
+          minimum: 0
+        v2_chapter_count:
+          type: integer
+          minimum: 0
+        delta:
+          type: integer
+        legacy_projection:
+          type: string
+          enum: [linear_content_document_order]
+        differences:
+          type: array
+          items:
+            type: string
+
+    EpubImportTarget:
+      type: object
+      required: [mode]
+      properties:
+        mode:
+          type: string
+          enum: [existing_book, new_book]
+        book_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: Required when mode is existing_book and omitted when mode is new_book.
+
+    EpubMetadataPolicy:
+      type: object
+      properties:
+        title:
+          type: string
+          enum: [use_source, keep_existing, edit_manually]
+        authors:
+          type: string
+          enum: [use_source, keep_existing, merge, edit_manually]
+        language:
+          type: string
+          enum: [use_source, keep_existing, edit_manually]
+        description:
+          type: string
+          enum: [use_source, keep_existing, merge, edit_manually]
+        cover:
+          type: string
+          enum: [use_source, keep_existing]
+
+    EpubImportOptions:
+      type: object
+      properties:
+        preserve_hierarchy:
+          type: boolean
+          default: true
+        import_images:
+          type: boolean
+          default: true
+        import_footnotes:
+          type: boolean
+          default: true
+        retain_source:
+          type: boolean
+          default: true
+
+    StartEpubImportRequest:
+      type: object
+      required: [source_id, target, strategy, metadata_policy, options]
+      properties:
+        source_id:
+          type: string
+          format: uuid
+        target:
+          $ref: '#/components/schemas/EpubImportTarget'
+        strategy:
+          type: string
+          enum: [append, replace_all, merge_by_source_key]
+        destructive_confirmation:
+          type: boolean
+          description: Required and true when strategy is replace_all.
+        metadata_policy:
+          $ref: '#/components/schemas/EpubMetadataPolicy'
+        selected_source_keys:
+          type: array
+          description: Empty means all selectable leaf items from the inspection.
+          items:
+            type: string
+        title_overrides:
+          type: object
+          additionalProperties:
+            type: string
+        options:
+          $ref: '#/components/schemas/EpubImportOptions'
+
+    EpubImportJobAccepted:
+      type: object
+      required: [job_id, source_id, status]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [queued]
+
+    EpubImportProgress:
+      type: object
+      required: [total, completed, failed]
+      properties:
+        total:
+          type: integer
+          minimum: 0
+        completed:
+          type: integer
+          minimum: 0
+        failed:
+          type: integer
+          minimum: 0
+        current_source_key:
+          type: string
+          nullable: true
+        assets_imported:
+          type: integer
+          minimum: 0
+
+    EpubImportJob:
+      type: object
+      required: [job_id, source_id, status, progress, warnings, created_at, updated_at, resumable, cancellable, rollback_available]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        book_id:
+          type: string
+          format: uuid
+          nullable: true
+        status:
+          $ref: '#/components/schemas/EpubImportJobStatus'
+        progress:
+          $ref: '#/components/schemas/EpubImportProgress'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubImportWarning'
+        error_code:
+          allOf:
+            - $ref: '#/components/schemas/EpubImportErrorCode'
+          nullable: true
+        error_message:
+          type: string
+          nullable: true
+        resumable:
+          type: boolean
+        cancellable:
+          type: boolean
+        rollback_available:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        finalized_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    EpubImportJobItem:
+      type: object
+      required: [item_id, source_key, ordinal, depth, role, title, selected, status]
+      properties:
+        item_id:
+          type: string
+          format: uuid
+        source_key:
+          type: string
+        source_href:
+          type: string
+          nullable: true
+        source_fragment:
+          type: string
+          nullable: true
+        parent_source_key:
+          type: string
+          nullable: true
+        ordinal:
+          type: integer
+          minimum: 0
+        depth:
+          type: integer
+          minimum: 0
+        role:
+          $ref: '#/components/schemas/EpubImportRole'
+        title:
+          type: string
+        selected:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/EpubImportItemStatus'
+        chapter_id:
+          type: string
+          format: uuid
+          nullable: true
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubImportWarning'
+        error_code:
+          allOf:
+            - $ref: '#/components/schemas/EpubImportErrorCode'
+          nullable: true
+
+    EpubImportJobItemsResponse:
+      type: object
+      required: [items, total]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubImportJobItem'
+        total:
+          type: integer
+          minimum: 0
+
+    EpubImportJobActionResponse:
+      type: object
+      required: [job_id, status]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/EpubImportJobStatus'
+        chapters_rolled_back:
+          type: integer
+          minimum: 0
+          description: Present for rollback responses; counts chapters safely removed by this call.
+        conflicts:
+          type: array
+          description: Chapters retained because they changed after import finalization.
+          items:
+            type: object
+            required: [chapter_id, code]
+            properties:
+              chapter_id:
+                type: string
+                format: uuid
+              code:
+                type: string
+                enum: [rollback_conflict_user_modified]
+
+    EpubImportReport:
+      type: object
+      required: [job_id, source_id, status, chapters_detected, chapters_selected, chapters_created, chapters_skipped, assets_detected, assets_imported, warnings, errors, navigation_source, metadata_applied, duration_ms]
+      properties:
+        job_id:
+          type: string
+          format: uuid
+        source_id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/EpubImportJobStatus'
+        chapters_detected:
+          type: integer
+          minimum: 0
+        chapters_selected:
+          type: integer
+          minimum: 0
+        chapters_created:
+          type: integer
+          minimum: 0
+        chapters_active:
+          type: integer
+          minimum: 0
+          description: Imported chapters still active after any completed rollback.
+        chapters_rolled_back:
+          type: integer
+          minimum: 0
+        chapters_skipped:
+          type: integer
+          minimum: 0
+        assets_detected:
+          type: integer
+          minimum: 0
+        assets_imported:
+          type: integer
+          minimum: 0
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/EpubImportWarning'
+        errors:
+          type: array
+          items:
+            type: object
+            required: [code, message]
+            properties:
+              code:
+                $ref: '#/components/schemas/EpubImportErrorCode'
+              message:
+                type: string
+              source_key:
+                type: string
+                nullable: true
+        navigation_source:
+          $ref: '#/components/schemas/EpubNavigationSource'
+        metadata_applied:
+          type: array
+          items:
+            type: string
+        duration_ms:
+          type: integer
+          minimum: 0
 
     LifecycleState:
       type: string
@@ -1348,7 +2192,7 @@ components:
           type: string
         file_format:
           type: string
-          enum: [docx, epub, markdown, pdf]
+          enum: [docx, epub, fb2, markdown, pdf]
         file_size:
           type: integer
           minimum: 0

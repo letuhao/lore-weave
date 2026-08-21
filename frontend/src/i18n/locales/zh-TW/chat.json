@@ -211,7 +211,10 @@
     "feedback_up": "回應良好",
     "feedback_down": "回應不佳",
     "feedback_thanks": "感謝您的回饋",
-    "feedback_error": "無法儲存回饋"
+    "feedback_error": "無法儲存回饋",
+    "incomplete_error": "錯誤 — 回應不完整",
+    "incomplete_interrupted": "已中斷 — 回應不完整",
+    "insert_into_chapter": "插入至章節"
   },
   "tools": {
     "title": "此回覆使用的工具",
@@ -243,7 +246,9 @@
     "cancelled": "已取消",
     "reprice": "估價後費用已上漲至 {{cost}} — 請重新詢問以依新價格再次確認。",
     "reprice_title": "費用已變動 — 尚未套用",
-    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。"
+    "reprice_detail": "原估 {{old}}，現為 {{new}}。未產生任何花費 — 請重新詢問以依新價格再次確認。",
+    "advisory_items": "已請求（建議項目） — 伺服器將在套用時確認確切的項目清單",
+    "awaiting_preview": "正在載入伺服器預覽…"
   },
   "batchConfirm": {
     "title": "一次確認 {{count}} 項操作",
@@ -446,5 +451,120 @@
     "worldbuilder": "世界建構",
     "editor": "編輯",
     "analyst": "分析師"
+  },
+  "sessionSettings": {
+    "description": "此對話的設定。任何未在此設定的項目，將依序繼承自書籍、您的帳戶，最後是系統預設值。",
+    "saving": "儲存中…",
+    "close": "關閉",
+    "voice": "語音",
+    "messages": "訊息",
+    "status": {
+      "label": "狀態",
+      "active": "進行中",
+      "archived": "已封存",
+      "closed": "已結束"
+    },
+    "models": {
+      "title": "模型",
+      "composer": "編寫模型 (選填)",
+      "planner": "規劃模型 (選填)",
+      "composerNone": "無 — 單一模型",
+      "plannerNone": "使用我的預設規劃器",
+      "composerHint": "設定後，AI 可以將散文寫作委派給此模型。",
+      "plannerHint": "此工作階段中用於多步驟規劃的模型。"
+    },
+    "behavior": {
+      "title": "行為設定",
+      "systemPrompt": "系統提示詞",
+      "promptPlaceholder": "除非您在此設定，否則將繼承您的帳戶預設值。",
+      "reasoning": {
+        "label": "推理強度",
+        "off": "關閉",
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      },
+      "statefulTitle": "使用具狀態的 Responses API",
+      "statefulHint": "可選的伺服器端上下文重用。除非您的供應商支援 Responses 工具調用，否則請保持關閉。",
+      "temperature": "溫度 (Temperature)",
+      "temperatureHint": "數值越高，結果越具驚喜感；數值越低，結果越可預測。",
+      "topP": "Top P",
+      "maxTokens": "最大回應 Token 數",
+      "maxTokensHint": "未設定則使用模型自身的限制。"
+    },
+    "grounding": {
+      "title": "事實查核與記憶",
+      "label": "根據本書的世界觀來回答問題",
+      "on": "開啟 — 每一輪對話都會進行檢索",
+      "off": "關閉 — 本次對話不進行檢索",
+      "onHint": "術語表、知識圖譜事實與文本段落將被引入每一輪對話中。",
+      "offHint": "助手僅根據對話內容回答，可能會虛構設定。",
+      "multiHint": "同時基於所有選定的知識圖譜進行檢索 — 事實將標註其來源。"
+    },
+    "context": {
+      "title": "上下文管理",
+      "label": "長篇作品上下文模式",
+      "auto": "自動",
+      "on": "始終開啟",
+      "off": "關閉",
+      "autoHint": "僅在書籍規模大到需要時，才開啟長篇作品分級上下文。",
+      "onHint": "始終使用長篇作品分級上下文。",
+      "offHint": "從不使用 — 最基礎且最節省資源的上下文。"
+    }
+  },
+  "dock": {
+    "close": "關閉",
+    "label": "詢問 AI",
+    "open": "詢問術語表助手",
+    "title": "術語表助手"
+  },
+  "glossaryEdit": {
+    "applied": "已套用 ✓",
+    "apply": "套用",
+    "conflict": "此實體自提案以來已發生變更 — 請再次詢問以查看最新狀態。",
+    "conflict_short": "自提議後已變更 — 重新詢問",
+    "dismiss": "忽略",
+    "dismissed": "已忽略",
+    "empty": "(空白)",
+    "error": "無法儲存變更。",
+    "error_short": "儲存失敗",
+    "field": "欄位",
+    "fields": "{{count}} 個欄位",
+    "label": "詞彙表編輯"
+  },
+  "planner": {
+    "destructive": "破壞性",
+    "enable": "啟用此破壞性步驟",
+    "heading": "規劃",
+    "notes": "規劃筆記",
+    "steps": "{{count}} 個步驟"
+  },
+  "propose": {
+    "applied": "已套用 ✓",
+    "apply": "套用",
+    "apply_failed": "無法套用編輯。",
+    "apply_n": "套用 {{count}} 個",
+    "dismiss": "忽略",
+    "dismissed": "已忽略",
+    "hunk_hint": "選擇要套用的變更",
+    "hunk_toggle": "接受此變更",
+    "insert_label": "建議插入",
+    "keep_original": "保留原文",
+    "no_editor": "請打開章節以套用此編輯。",
+    "no_selection": "請選擇要替換的文字，然後點擊「套用」。",
+    "popout_no_rewrite": "重寫內容必須從停靠的編輯器中套用 — 請先將此視窗停靠。",
+    "popout_not_delivered": "無法確認編輯內容已傳送到停靠的編輯器 — 請在 Studio 中打開章節後再試一次。",
+    "replace_label": "建議重寫內容",
+    "selection_changed": "您的選取範圍已變更 — 請重新選取並點擊「套用」，或點擊「取消」。",
+    "wrong_chapter": "此建議是針對不同的章節。"
+  },
+  "taskGate": {
+    "cancelled": "已取消",
+    "confirm": "確認",
+    "defaultTitle": "確認此操作？",
+    "dismiss": "取消",
+    "done": "已確認 ✓",
+    "error": "無法確認",
+    "label": "確認"
   }
 }

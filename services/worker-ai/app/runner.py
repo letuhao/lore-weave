@@ -65,7 +65,7 @@ from app.clients import (
     KnowledgeClient,
     ProviderRegistryClient,
 )
-from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
+from app.llm_client import LLMClient, begin_usage_capture, set_billing_user_id, set_campaign_id
 from loreweave_llm.attribution import set_public_key_attribution
 from app.metrics import (
     worker_ai_extraction_reasoning_model_advised_total,
@@ -421,6 +421,8 @@ def _build_run_config(job: JobRow) -> tuple[ResolvedConfig, str, str]:
     return snapshot, config_hash(snapshot), base_default_version(global_defaults)
 
 
+
+
 async def _advance_cursor_and_emit_run(
     pool: asyncpg.Pool, user_id: UUID, job_id: UUID, cursor: dict, payload: dict,
     *, chapter_extracted: dict | None = None, skipped_delta: int = 0,
@@ -547,6 +549,8 @@ class JobRow:
     items_processed: int
     current_cursor: dict | None
     cost_spent_usd: Decimal
+    tokens_in: int = 0
+    tokens_out: int = 0
     # S4a — Auto-Draft Factory cost attribution: the owning campaign (NULL for
     # user-initiated jobs). process_job binds it as a contextvar so every
     # provider job_meta carries it (see app.llm_client.set_campaign_id).
@@ -702,7 +706,7 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
         SELECT j.job_id, j.user_id, j.project_id, j.scope, j.scope_range,
                j.status, j.llm_model, j.embedding_model, j.max_spend_usd,
                j.items_total, j.items_processed, j.current_cursor,
-               j.cost_spent_usd, j.campaign_id,
+               j.cost_spent_usd, j.tokens_in, j.tokens_out, j.campaign_id,
                j.billing_user_id, j.billing_embedding_model, j.billing_llm_model,
                j.targets, j.concurrency_level, j.pinned_entity_ids,
                j.reasoning_effort, j.mcp_key_id, j.spend_cap_usd,
@@ -740,6 +744,8 @@ async def _get_running_jobs(pool: asyncpg.Pool) -> list[JobRow]:
             items_processed=r["items_processed"],
             current_cursor=cc,
             cost_spent_usd=r["cost_spent_usd"],
+            tokens_in=int(r["tokens_in"] or 0),
+            tokens_out=int(r["tokens_out"] or 0),
             campaign_id=r["campaign_id"],
             billing_user_id=r["billing_user_id"],
             billing_embedding_model=r["billing_embedding_model"],
@@ -808,6 +814,30 @@ async def _try_spend(
     if row is None:
         return "not_running"
     return "auto_paused" if row["status"] == "paused" else "reserved"
+
+
+async def _record_token_usage(
+    pool: asyncpg.Pool, user_id: UUID, job_id: UUID, tokens_in: int, tokens_out: int,
+) -> tuple[int, int] | None:
+    """Persist cumulative provider usage and publish it to the Jobs projection."""
+    if tokens_in <= 0 and tokens_out <= 0:
+        return None
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """UPDATE extraction_jobs
+               SET tokens_in = tokens_in + $3, tokens_out = tokens_out + $4, updated_at = now()
+             WHERE user_id = $1 AND job_id = $2
+             RETURNING tokens_in, tokens_out""",
+            user_id, job_id, tokens_in, tokens_out,
+        )
+        if row is None:
+            return None
+        await emit_job_event_safe(
+            conn, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status=JobStatus.RUNNING,
+            tokens_in=int(row["tokens_in"]), tokens_out=int(row["tokens_out"]),
+        )
+        return int(row["tokens_in"]), int(row["tokens_out"])
 
 
 async def _advance_cursor(
@@ -957,7 +987,7 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
                 END
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id, cost_spent_usd, items_skipped, items_total,
+            RETURNING job_id, cost_spent_usd, tokens_in, tokens_out, items_skipped, items_total,
                       items_processed, COALESCE(llm_calls_made, 0) AS llm_calls_made
             """,
             user_id, job_id,
@@ -987,6 +1017,7 @@ async def _complete_job(pool: asyncpg.Pool, user_id: UUID, job_id: UUID) -> None
                 conn, service=_JOB_SERVICE, job_id=str(job_id),
                 owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.COMPLETED,
                 cost_usd=float(_cost) if _cost is not None else None,
+                tokens_in=int(row["tokens_in"] or 0), tokens_out=int(row["tokens_out"] or 0),
             )
 
 
@@ -1004,7 +1035,7 @@ async def _fail_job(
                 error_message = $3
             WHERE user_id = $1 AND job_id = $2
               AND status NOT IN ('complete', 'cancelled', 'failed')
-            RETURNING job_id, cost_spent_usd
+            RETURNING job_id, cost_spent_usd, tokens_in, tokens_out
             """,
             user_id, job_id, error[:2000],
         )
@@ -1014,6 +1045,7 @@ async def _fail_job(
                 conn, service=_JOB_SERVICE, job_id=str(job_id),
                 owner_user_id=str(user_id), kind=_JOB_KIND, status=JobStatus.FAILED,
                 cost_usd=float(_cost) if _cost is not None else None,
+                tokens_in=int(row["tokens_in"] or 0), tokens_out=int(row["tokens_out"] or 0),
                 error={"code": "extraction_failed", "message": error[:500]},
             )
 
@@ -2046,6 +2078,12 @@ async def process_job(
     # knowledge extraction is poll-based, so the id rides the row). task-local, like
     # campaign_id; None ⇒ first-party job.
     set_public_key_attribution(job.mcp_key_id, job.spend_cap_usd)
+    # Install this job's token accumulator BEFORE any extraction fan-out. extract_pass2
+    # gathers the relation/event/fact trio into child tasks, and a child inherits the
+    # accumulator that exists when it is created — so this must run first, or those
+    # tokens land nowhere. Also clears any residue from the previous job (poll_and_run
+    # awaits process_job sequentially in one task).
+    begin_usage_capture()
 
     # bug #34 — immediate-cancel hook for in-flight extraction LLM calls.
     # Polled by loreweave_llm.Client.wait_terminal (threaded down via
@@ -2527,6 +2565,9 @@ async def process_job(
                     cancel_check=cancel_check,
                 )
 
+                usage_in, usage_out = llm_client.take_usage()
+                await _record_token_usage(pool, job.user_id, job.job_id, usage_in, usage_out)
+
                 if result.error:
                     # S3c-2b: a provider circuit-open (retryable or not) signals
                     # the provider is down → tell campaign-service to auto-pause.
@@ -2734,6 +2775,9 @@ async def process_job(
                     cancel_check=cancel_check,
                 )
 
+                usage_in, usage_out = llm_client.take_usage()
+                await _record_token_usage(pool, job.user_id, job.job_id, usage_in, usage_out)
+
                 if result.error and not result.retryable:
                     await _fail_job(pool, job.user_id, job.job_id, result.error)
                     await _update_project_status(pool, job.user_id, job.project_id, "failed")
@@ -2854,6 +2898,9 @@ async def process_job(
                     aliases=ent.aliases,
                     short_description=ent.short_description,
                 )
+
+                usage_in, usage_out = llm_client.take_usage()
+                await _record_token_usage(pool, job.user_id, job.job_id, usage_in, usage_out)
 
                 if result.error and not result.retryable:
                     await _fail_job(pool, job.user_id, job.job_id, result.error)

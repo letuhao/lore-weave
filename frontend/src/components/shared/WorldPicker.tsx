@@ -48,7 +48,7 @@ export function WorldPicker({ value, onChange, disabled, placeholder, limit = 20
     worldsApi
       .listWorlds(accessToken, { limit })
       .then((res) => {
-        if (!cancelled) setWorlds(res.items);
+        if (!cancelled) setWorlds(Array.isArray(res?.items) ? res.items : []);
       })
       .catch(() => {
         if (!cancelled) {

@@ -13,6 +13,7 @@ from ..chunk_splitter import estimate_tokens
 from ..session_translator import (
     _parse_sdk_response, _lang_name, _SafeFormatMap, _TRANSLATION_MAX_OUTPUT_TOKENS,
 )
+from ..injection_report import scan_untrusted_source
 
 log = logging.getLogger(__name__)
 
@@ -49,6 +50,12 @@ def _build_messages(source_text, draft_text, issues, source_lang, target_lang, g
     rom = romanization_instruction(source_lang, target_lang)
     if rom:
         system += "\n\n" + rom
+    # DoD-4c. Both sides are untrusted and they are untrusted DIFFERENTLY: the source is
+    # imported third-party text, the draft is model output that may carry a directive the
+    # source planted OR one the model invented. Separate `where` labels so a hit names the
+    # side. Never mutated — this call's output IS the corrected translation.
+    scan_untrusted_source(source_text, where="v3_corrector:source")
+    scan_untrusted_source(draft_text, where="v3_corrector:draft")
     user = (
         f"SOURCE:\n{source_text}\n\n"
         f"PREVIOUS (flawed) TRANSLATION:\n{draft_text}\n\n"

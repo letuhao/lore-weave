@@ -42,7 +42,9 @@
     "startTranslate": "بدء الترجمة",
     "startFailed": "فشل بدء مهمة الترجمة",
     "thinkingOn": "التفكير: مفعل",
-    "thinkingOff": "التفكير: معطل"
+    "thinkingOff": "التفكير: معطل",
+    "concurrency": "استدعاءات LLM متوازية",
+    "concurrencyHint": "1 = تسلسلي. ارفع القيمة إذا كان النموذج الخاص بك يدعم الطلبات المتزامنة."
   },
   "progress": {
     "title": "جاري ترجمة المسرد",

@@ -10,6 +10,7 @@ import { useNavigate } from 'react-router-dom';
 import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useDroppable, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { useStructureTemplates } from '../hooks/usePlanner';
+import { localizedBeat, localizedTemplateKind, localizedTemplateName } from '../structureTemplateLocalization';
 import { useOutline, useOutlineMutations } from '../hooks/useOutline';
 import { BeatCard, NodeChip, type BeatFill } from './BeatCard';
 import type { OutlineNode, StructureTemplate } from '../types';
@@ -69,7 +70,8 @@ export function BeatSheetView({ bookId, projectId, token }: { bookId: string; pr
   const [templateId, setTemplateId] = useState<string>('');
 
   const list = templates.data ?? [];
-  const template = useMemo(() => list.find((tpl) => tpl.id === templateId) ?? null, [list, templateId]);
+  const rawTemplate = useMemo(() => list.find((tpl) => tpl.id === templateId) ?? null, [list, templateId]);
+  const template = useMemo(() => rawTemplate ? ({ ...rawTemplate, name: localizedTemplateName(t, rawTemplate), kind: localizedTemplateKind(t, rawTemplate), beats: rawTemplate.beats.map((b) => localizedBeat(t, rawTemplate, b)) }) : null, [rawTemplate, t]);
   const nodes = q.data ?? [];
   const { beats, unmapped } = useMemo(() => buildBeatSheet(template, nodes), [template, nodes]);
   const beatKeys = template?.beats.map((b) => b.key) ?? [];
@@ -109,7 +111,7 @@ export function BeatSheetView({ bookId, projectId, token }: { bookId: string; pr
           onChange={(e) => setTemplateId(e.target.value)}
         >
           <option value="">{t('beatsheet.pickTemplate', { defaultValue: 'Pick a template…' })}</option>
-          {list.map((tpl) => <option key={tpl.id} value={tpl.id}>{tpl.name}</option>)}
+          {list.map((tpl) => <option key={tpl.id} value={tpl.id}>{localizedTemplateName(t, tpl)}</option>)}
         </select>
       </div>
 

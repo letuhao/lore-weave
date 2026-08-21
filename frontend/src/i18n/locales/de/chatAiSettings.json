@@ -1,0 +1,96 @@
+{
+  "title": "Chat & KI",
+  "description": "Deine Standardeinstellungen für Chat und das Writing Studio an einem Ort. Jede Zeile zeigt den effektiven Wert und die Quelle an; Sitzungen und Studio-Tools übernehmen diese Standardwerte und können sie überschreiben.",
+  "models": {
+    "title": "Modelle",
+    "resolved": "Aktuell angewendet",
+    "chat": "Chat & Entwurf",
+    "composer": "Prosa-Editor",
+    "planner": "Planer",
+    "embedding": "Embedding",
+    "rerank": "Rerank"
+  },
+  "behavior": {
+    "title": "Verhalten",
+    "description": "Diese Einstellungen wurden zuvor stillschweigend angewendet. Sie sind nun sichtbar und bearbeitbar; ein leeres Feld bedeutet den Systemstandard.",
+    "reasoning": {
+      "label": "Denkaufwand",
+      "off": "Aus",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch"
+    },
+    "permission": {
+      "label": "Tool-Berechtigung",
+      "ask": "Fragen",
+      "plan": "Planen",
+      "write": "Schreiben",
+      "hint": "Wie viel der Assistent ohne Rücksprache tun darf. Standard ist Schreiben."
+    },
+    "temperature": {
+      "label": "Temperatur",
+      "placeholder": "Standard des Anbieters"
+    },
+    "systemPrompt": {
+      "label": "System-Prompt",
+      "placeholder": "Standard-Persona-Anweisungen (leer = keine)"
+    }
+  },
+  "grounding": {
+    "title": "Grundlage & Gedächtnis",
+    "label": "Antworten auf meiner Geschichte basieren",
+    "description": "Beziehe in jeder Antwort kanonische Entitäten, Fakten und Manuskriptpassagen ein. Dies ist standardmäßig aktiviert und kann ausgeschaltet werden.",
+    "offWarning": "Die Verankerung ist deaktiviert – der Assistent kann nicht auf dein Story-Bible zugreifen und könnte Lore erfinden. Aktiviere sie für präzise Antworten."
+  },
+  "context": {
+    "title": "Kontextverwaltung",
+    "description": "Wie der Assistent das Speicherbudget für sehr lange Konversationen verwaltet. Die meisten Nutzer sollten dies auf „Auto“ lassen.",
+    "label": "Kontextmodus für Langzeitprojekte",
+    "auto": "Auto",
+    "on": "Immer an",
+    "off": "Aus",
+    "hint": "„Auto“ aktiviert Langzeit-Stufen nur dann, wenn ein Projekt sie benötigt. „Aus“ behält den einfachsten Pfad bei."
+  },
+  "voice": {
+    "title": "Stimme",
+    "description": "Spracheingabe und -ausgabe für den Chat. Diese Einstellungen werden in Ihrem Konto gespeichert und auf Sprachnachrichten angewendet.",
+    "ttsModel": "Sprachausgabe-Modell (TTS)",
+    "sttModel": "Spracheingabe-Modell (STT)",
+    "voice": "Stimme",
+    "placeholder": "z. B. af_heart",
+    "hint": "Eine Stimme ist spezifisch für ihr Modell – wählen Sie eine Stimme, die von Ihrem TTS-Modell unterstützt wird."
+  },
+  "tiers": {
+    "session": {
+      "label": "dieser Chat",
+      "title": "Für diesen Chat festgelegt – überschreibt Ihre Konto- und Bucheinstellungen."
+    },
+    "book": {
+      "label": "dieses Buch",
+      "title": "Übernommen aus den Einstellungen dieses Buches."
+    },
+    "account": {
+      "label": "Ihre Standardeinstellung",
+      "title": "Übernommen von Ihrer Standardkontoeinstellung."
+    },
+    "system": {
+      "label": "Standard",
+      "title": "Der Systemstandard."
+    },
+    "unavailable": {
+      "label": "nicht verfügbar",
+      "title": "Die zugehörige Stufe konnte nicht erreicht werden."
+    },
+    "no_model_configured": {
+      "label": "nicht festgelegt",
+      "title": "Es ist kein Live-Modell konfiguriert."
+    }
+  },
+  "clear": {
+    "default": "Standard",
+    "on": "an",
+    "off": "aus",
+    "action": "löschen",
+    "inherit": "vererben"
+  }
+}

@@ -9,7 +9,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,20 +26,11 @@ func TestLive_PgArchiveListReader(t *testing.T) {
 	}
 	t.Cleanup(pool.Close)
 
-	sql, rerr := os.ReadFile("../../../../contracts/migrations/per_reality/0011_archive_state.up.sql")
-	if rerr != nil {
-		t.Fatalf("read migration: %v", rerr)
-	}
-	for range 5 { // tolerate parallel-DDL deadlock on the shared test DB
-		_, e := pool.Exec(ctx, string(sql))
-		if e == nil || !strings.Contains(e.Error(), "deadlock") {
-			if e != nil {
-				t.Fatalf("apply 0011: %v", e)
-			}
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
+	// Was a hand-rolled read + deadlock-retry loop, byte-for-byte the same as applyDDL's
+	// except for the one thing applyDDL has and this did not: the throwaway-DB check.
+	// Re-implementing a helper is how a harness opts out of a guard without anyone
+	// deciding to.
+	applyDDL(ctx, t, pool, "../../../../contracts/migrations/per_reality/0011_archive_state.up.sql")
 
 	rid, other := uuid.New(), uuid.New()
 	seed := func(reality uuid.UUID, part string) {

@@ -113,6 +113,36 @@ func (c *ParseClient) Call(
 	if filename != "" {
 		body.Filename = &filename
 	}
+	return c.call(ctx, "/internal/parse", body)
+}
+
+// CallChapter invokes the EPUB V2 parser mode. The source navigation has
+// already selected exactly one logical chapter, so h1/h2 must remain content
+// and only scene markers may split the returned chapter.
+func (c *ParseClient) CallChapter(
+	ctx context.Context,
+	content string,
+	language string,
+	title string,
+	sourceKey string,
+) (*StructuralTree, error) {
+	body := parseRequest{
+		SourceFormat: "html",
+		Content:      content,
+		Options: map[string]any{
+			"preserve_chapter_boundary": true,
+			"extract_scenes_only":       true,
+			"chapter_title":             title,
+			"source_key":                sourceKey,
+		},
+	}
+	if language != "" {
+		body.Language = &language
+	}
+	return c.call(ctx, "/internal/parse/chapter", body)
+}
+
+func (c *ParseClient) call(ctx context.Context, endpoint string, body parseRequest) (*StructuralTree, error) {
 	jsonBody, err := json.Marshal(body)
 	if err != nil {
 		return nil, fmt.Errorf("parse_client marshal: %w", err)
@@ -121,7 +151,7 @@ func (c *ParseClient) Call(
 	req, err := http.NewRequestWithContext(
 		ctx,
 		"POST",
-		c.BaseURL+"/internal/parse",
+		c.BaseURL+endpoint,
 		bytes.NewReader(jsonBody),
 	)
 	if err != nil {

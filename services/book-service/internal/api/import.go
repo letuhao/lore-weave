@@ -25,6 +25,7 @@ const maxImportSize = 200 << 20 // 200 MB
 var allowedImportFormats = map[string]string{
 	".docx": "docx",
 	".epub": "epub",
+	".fb2":  "fb2",
 	".txt":  "txt",
 	".md":   "markdown", // P1 (2026-05-23) — pandoc -f markdown -t html in worker-infra.
 	".pdf":  "pdf",      // docs/specs/2026-07-06-pdf-book-import.md
@@ -73,7 +74,7 @@ func (s *Server) startImport(w http.ResponseWriter, r *http.Request) {
 	fileFormat, ok := allowedImportFormats[ext]
 	if !ok {
 		writeError(w, http.StatusBadRequest, "UNSUPPORTED_FORMAT",
-			"supported formats: .docx, .epub, .md, .pdf, .txt")
+			"supported formats: .docx, .epub, .fb2, .md, .pdf, .txt")
 		return
 	}
 
@@ -219,6 +220,103 @@ VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11)
 		"file_size":  int64(len(data)),
 		"created_at": "now",
 	})
+}
+
+// startNewFB2Import creates the book and its queued source job in one
+// transaction. Metadata is unknown until the worker parses the source, so this
+// endpoint creates a filename-derived placeholder which the worker replaces
+// only for this create-mode job. Existing-book imports never take that path.
+func (s *Server) startNewFB2Import(w http.ResponseWriter, r *http.Request) {
+	ownerID, ok := s.requireUserID(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "BOOK_FORBIDDEN", "unauthorized")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, maxImportSize)
+	if err := r.ParseMultipartForm(maxImportSize); err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "FILE_TOO_LARGE", fmt.Sprintf("file exceeds %d MB limit", maxImportSize>>20))
+		return
+	}
+	f, fh, err := r.FormFile("file")
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "BOOK_VALIDATION_ERROR", "file is required")
+		return
+	}
+	defer f.Close()
+	if strings.ToLower(filepath.Ext(fh.Filename)) != ".fb2" {
+		writeError(w, http.StatusBadRequest, "UNSUPPORTED_FORMAT", "new-book import accepts .fb2 files only")
+		return
+	}
+	data, err := io.ReadAll(f)
+	if err != nil {
+		writeError(w, http.StatusRequestEntityTooLarge, "FILE_TOO_LARGE", "failed to read file")
+		return
+	}
+	ctx := r.Context()
+	if err := s.ensureQuotaRow(ctx, ownerID); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to initialize quota")
+		return
+	}
+	count, err := s.countActiveBooks(ctx, ownerID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to check book quota")
+		return
+	}
+	if count >= maxBooksPerUser {
+		writeError(w, http.StatusConflict, "BOOK_LIMIT_REACHED", fmt.Sprintf("book limit reached (%d) — delete or purge a book first", maxBooksPerUser))
+		return
+	}
+
+	bookID, jobID := uuid.New(), uuid.New()
+	storageKey := fmt.Sprintf("imports/%s/%s.fb2", bookID, jobID)
+	if s.minio != nil {
+		exists, _ := s.minio.BucketExists(ctx, s.cfg.BooksStorageBucket)
+		if !exists {
+			_ = s.minio.MakeBucket(ctx, s.cfg.BooksStorageBucket, minio.MakeBucketOptions{})
+		}
+		if _, err := s.minio.PutObject(ctx, s.cfg.BooksStorageBucket, storageKey, bytes.NewReader(data), int64(len(data)), minio.PutObjectOptions{ContentType: "application/x-fictionbook+xml"}); err != nil {
+			slog.ErrorContext(ctx, "fb2 import: source upload failed", "error", err)
+			writeError(w, http.StatusInternalServerError, "IMPORT_UPLOAD_FAILED", "failed to store file")
+			return
+		}
+	}
+
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "internal error")
+		return
+	}
+	defer tx.Rollback(ctx)
+	placeholder := strings.TrimSpace(strings.TrimSuffix(filepath.Base(fh.Filename), filepath.Ext(fh.Filename)))
+	if placeholder == "" {
+		placeholder = "Imported FictionBook"
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO books(id,owner_user_id,title,kind) VALUES($1,$2,$3,'novel')`, bookID, ownerID, placeholder); err != nil {
+		writeError(w, http.StatusInternalServerError, "BOOK_CONFLICT", "failed to create book")
+		return
+	}
+	if _, err := tx.Exec(ctx, `
+INSERT INTO import_jobs (id, book_id, user_id, status, filename, file_format, file_size, file_storage_key, create_book_from_metadata)
+VALUES ($1,$2,$3,'pending',$4,'fb2',$5,$6,true)
+`, jobID, bookID, ownerID, fh.Filename, int64(len(data)), storageKey); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to create import job")
+		return
+	}
+	payload := map[string]any{"job_id": jobID, "book_id": bookID, "user_id": ownerID, "file_format": "fb2", "file_storage_key": storageKey, "original_language": r.FormValue("original_language"), "create_book_from_metadata": true}
+	if err := insertOutboxEvent(ctx, tx, "import.requested", jobID, payload); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
+		return
+	}
+	if err := emitJobEvent(ctx, tx, jobID, ownerID, "book_import", "pending", map[string]any{"title": fh.Filename, "params": map[string]any{"file_format": "fb2", "filename": fh.Filename, "mode": "new_book"}}); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to queue import")
+		return
+	}
+	if err := tx.Commit(ctx); err != nil {
+		writeError(w, http.StatusInternalServerError, "IMPORT_ERROR", "failed to commit")
+		return
+	}
+	slog.InfoContext(ctx, "fb2 import: created book and queued job", "book_id", bookID, "job_id", jobID, "owner_user_id", ownerID)
+	writeJSON(w, http.StatusAccepted, map[string]any{"id": jobID, "book_id": bookID, "status": "pending", "filename": fh.Filename, "file_size": int64(len(data)), "created_at": "now"})
 }
 
 // ── Bulk plain-text chapter create ───────────────────────────────────────────

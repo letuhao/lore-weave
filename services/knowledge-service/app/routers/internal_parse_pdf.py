@@ -38,6 +38,7 @@ from loreweave_parse import (
     get_page_count,
     walk_pdf_pages,
 )
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger(__name__)
 tracer = trace.get_tracer(__name__)
@@ -69,7 +70,8 @@ _CAPTION_PROMPT = (
 #: model completes reasoning (~440 tokens) and emits a correct one-
 #: sentence caption. Sized with headroom above that measured case, not
 #: just the caption's own length.
-_CAPTION_MAX_TOKENS = 700
+# _CAPTION_MAX_TOKENS is now the `pdf_page_caption` registry row; the constant had exactly
+# one reader and keeping it would leave a second number nobody consults.
 
 #: A first non-empty page line at or under this length, with no terminal
 #: sentence punctuation, is treated as a plausible heading (spec §6.10).
@@ -201,7 +203,7 @@ async def _caption_image(
                 "image_b64": base64.b64encode(vision_bytes).decode("ascii"),
                 "mime_type": mime,
                 "prompt": _CAPTION_PROMPT,
-                "max_tokens": _CAPTION_MAX_TOKENS,
+                "max_tokens": max_tokens_for("pdf_page_caption"),
             },
             job_meta={"extractor": "pdf_import_vision"},
         )

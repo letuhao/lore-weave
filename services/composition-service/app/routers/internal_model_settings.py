@@ -22,7 +22,10 @@ grant check is NOT weakened by the re-key: `GrantClient.resolve_owner` doubles a
 — no grant (or book absent) → uniform 404 (no existence/owner oracle). This is a
 read; writes gate on the book grant at their own EDIT chokepoint.
 
-Model roles are **dual-read**: the new `settings.model_roles` map wins if present,
+Model roles are **dual-read** via `engine/model_roles.py` — ONE reader, because a
+second one had already drifted: `critic_policy` read the legacy scalar directly, so a
+book whose critic lived in the map resolved to NOT_CONFIGURED there while this
+endpoint reported it correctly. The map wins if present,
 else the legacy `default_model_ref` (→ chat) / `critic_model_ref` (→ critic)
 scalars — so no write-path change is needed for the resolver to see the book model.
 """
@@ -34,6 +37,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.deps import get_grant_client_dep, get_works_repo
+from app.engine.model_roles import model_roles_from_settings
 from app.middleware.internal_auth import require_internal_token
 
 router = APIRouter(
@@ -41,28 +45,6 @@ router = APIRouter(
     tags=["internal"],
     dependencies=[Depends(require_internal_token)],
 )
-
-
-def _model_roles_from_settings(settings: dict) -> dict:
-    """Derive the per-role model map from a work.settings blob (new map ▸ legacy
-    scalars). Only well-formed {model_ref[, model_source]} entries survive."""
-    roles: dict[str, dict] = {}
-    existing = settings.get("model_roles")
-    if isinstance(existing, dict):
-        for role, val in existing.items():
-            if isinstance(val, dict) and val.get("model_ref"):
-                roles[role] = {
-                    "model_ref": str(val["model_ref"]),
-                    "model_source": val.get("model_source") or "user_model",
-                }
-    # legacy scalars fill only roles the new map didn't set (dual-read compat).
-    dmr = settings.get("default_model_ref")
-    if dmr and "chat" not in roles:
-        roles["chat"] = {"model_ref": str(dmr), "model_source": settings.get("default_model_source") or "user_model"}
-    cmr = settings.get("critic_model_ref")
-    if cmr and "critic" not in roles:
-        roles["critic"] = {"model_ref": str(cmr), "model_source": settings.get("critic_model_source") or "user_model"}
-    return roles
 
 
 @router.get("/books/{book_id}/model-settings")
@@ -84,4 +66,4 @@ async def get_book_model_settings(
     # before any C23 derivative), whose settings hold the Book-tier model roles.
     rows = await works.resolve_by_book(book_id)
     settings = (rows[0].settings if rows else {}) or {}
-    return {"model_roles": _model_roles_from_settings(settings)}
+    return {"model_roles": model_roles_from_settings(settings)}

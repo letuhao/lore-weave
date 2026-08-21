@@ -69,7 +69,12 @@ jobs:
           # Runtime + test requirements across all Python services.
           while IFS= read -r req; do
             echo "::group::pip-audit $req"
-            if ! pip-audit --progress-spinner off -r "$req"; then
+            req_dir=$(dirname "$req")
+            req_file=$(basename "$req")
+            # Pip resolves editable local requirements relative to its current
+            # directory. Audit from the requirement's directory so, for example,
+            # lore-enrichment's `-e ../../sdks/python` stays within the checkout.
+            if ! ( cd "$req_dir" && pip-audit --progress-spinner off -r "$req_file" ); then
               echo "::warning::pip-audit findings in $req"
               fail=1
             fi

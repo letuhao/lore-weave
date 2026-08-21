@@ -14,6 +14,7 @@ pub mod l4_prompt;
 pub mod l4_retry;
 pub mod l4_validate;
 pub mod prompt;
+pub mod provenance;
 pub mod retry;
 pub mod style;
 pub mod validate;

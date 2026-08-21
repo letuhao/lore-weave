@@ -44,6 +44,7 @@ fn mk(reality: Uuid, actor: u64, version: u64) -> EventEnvelope {
         recorded_at: "2026-01-01T00:00:00Z".into(),
         payload: json!({ "actor": actor }),
         metadata: None,
+        ruleset_digest: None,
     }
 }
 

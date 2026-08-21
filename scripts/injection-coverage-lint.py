@@ -42,10 +42,14 @@ Exit 0 = clean (or baseline-only). Exit 1 = a NEW unsanitized assembly module.
 """
 from __future__ import annotations
 
+import ast
+import io
 import os
 import re
 import subprocess
 import sys
+import tokenize
+from dataclasses import dataclass
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -55,6 +59,23 @@ SCAN_DIRS = (
     "services/knowledge-service/app",
     "services/composition-service/app",
     "services/lore-enrichment-service/app",
+    # S4 (2026-08-02) — widened. The four above were the services someone happened to think
+    # of; the rule is about ANY module that folds untrusted text into a prompt.
+    #
+    # translation-service is the one that should have been here first: it processes IMPORTED
+    # third-party book text, which is the least trusted content on the platform, and the scan
+    # had never looked at it. Widening found SEVEN prompt-assembly modules there with no
+    # sanitizer reference (below), plus one in worker-ai.
+    #
+    # learning / video-gen / campaign / jobs come back CLEAN and are included anyway: the cost
+    # is a directory walk, and the value is that a first unsanitized assembly in any of them
+    # reds instead of arriving unnoticed the way translation's seven did.
+    "services/translation-service/app",
+    "services/worker-ai/app",
+    "services/learning-service/app",
+    "services/video-gen-service/app",
+    "services/campaign-service/app",
+    "services/jobs-service/app",
 )
 SCAN_EXTS = (".py",)
 EXCLUDE_DIRS = {
@@ -83,47 +104,133 @@ EXCLUDE_DIRS = {
 # app/services/injection_defense.py and sanitizes at the retrieval chokepoint.
 # Delete each row as the module routes its own retrieved text through the
 # sanitizer (or, for the upstream ones, once verified end-to-end).
-BASELINE: frozenset[str] = frozenset({
-    # sanitized upstream — the module delegates its prompt building to a sibling that
-    # DOES sanitize, and per-file coverage cannot see across the call. Kept listed
-    # rather than cleared: security-conservative, same as the chat-service pair below.
-    "services/composition-service/app/services/glossary_build/engine.py",
-    # sanitized upstream at the stream_service chokepoint (kctx.context)
-    "services/chat-service/app/services/compact_service.py",
-    "services/chat-service/app/services/composer.py",
-    # genuine gaps — composition-service has no sanitizer anywhere
-    "services/composition-service/app/engine/canon_check.py",
-    "services/composition-service/app/engine/canon_reflect.py",
-    "services/composition-service/app/engine/critic.py",
-    "services/composition-service/app/engine/motif_conformance.py",
-    "services/composition-service/app/engine/motif_deconstruct.py",
-    "services/composition-service/app/engine/narrative_thread.py",
-    "services/composition-service/app/engine/self_heal.py",
-    "services/composition-service/app/routers/engine.py",
-    "services/composition-service/app/worker/operations.py",
-    # select.py — the diverge/converge core. Added 2026-08-01 when D-SCENE-BEATS slice 2
-    # gave it the word "passage" (a chunk of prose the model WRITES), which is a (b) marker
-    # meant for a RETRIEVED passage. The word is right for the feature and was not renamed
-    # to dodge the regex; the row is the honest alternative.
-    #
-    # In substance it belongs with the two rows above it, which it feeds: it has assembled
-    # prompts from `packed_prompt` — carrying `<lore>` from imported book text — since A1,
-    # and was invisible here only for lack of a marker word. Its content IS neutralised, by
-    # the packer at assembly (`app/packer/assemble.py` + `sanitize.py`), which per-file
-    # coverage cannot see.
-    #
-    # The one genuinely NEW untrusted flow it introduced — one passage's model output
-    # becoming the next passage's prompt, where a `<lore>` payload could steer a forged
-    # closing tag — is closed at the point the string is built (`cowrite.build_beat_scope`
-    # → `sanitize_prose_context`), not here. Putting an unused import in this file to turn
-    # the regex green would be a claim, not a defense.
-    "services/composition-service/app/engine/select.py",
-    # genuine gap — passages selector doesn't neutralize like the wiki path
-    "services/knowledge-service/app/context/selectors/passages.py",
-    # sanitized upstream in knowledge wiki/context.py (IR spans neutralized)
-    "services/knowledge-service/app/wiki/generate.py",
-    "services/knowledge-service/app/wiki/prompt.py",
-})
+@dataclass(frozen=True)
+class BaselineRow:
+    """One tracked hole, and what would end it.
+
+    `wakes_when` is required and checked non-empty: a row without it is a silence with no exit.
+
+    `upstream` is what makes this baseline EXPIRING rather than permanent. A "sanitized
+    upstream" row is an exemption whose justification lives in ANOTHER FILE, and per-file
+    coverage is why it cannot be seen from here. Naming that file lets the gate verify the
+    claim on every run — if the sibling ever stops sanitizing, the row dies with it and the
+    finding comes back. Without this the exemption would outlive its own reason, which is the
+    escape-hatch-cannot-reach-its-reason defect (NV-6) with a security payload.
+    """
+    kind: str                  # "GENUINE_GAP" | "SANITIZED_UPSTREAM"
+    wakes_when: str
+    upstream: str = ""         # required iff kind == "SANITIZED_UPSTREAM"
+
+
+GENUINE_GAP = "GENUINE_GAP"
+SANITIZED_UPSTREAM = "SANITIZED_UPSTREAM"
+#: A third kind, and it is deliberately NOT folded into the one above. The upstream covers this
+#: module by DETECTING, not by transforming — a strictly weaker promise, and the whole point of
+#: the MUTATE/DETECT split is that the two must not read alike. Verified against the
+#: detect-only references rather than the mutating ones.
+DETECT_UPSTREAM = "DETECT_UPSTREAM"
+
+BASELINE: dict[str, BaselineRow] = {
+    # ── sanitized upstream: the claim is checkable, and now checked ───────────────────────
+    "services/composition-service/app/services/glossary_build/engine.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "the engine builds no prompt text itself; it would wake if it started assembling one",
+        upstream="services/composition-service/app/services/glossary_build/prompts.py"),
+    "services/chat-service/app/services/compact_service.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "wakes if compaction ever reads retrieved text that did not come through the stream "
+        "chokepoint",
+        upstream="services/chat-service/app/services/stream_service.py"),
+    "services/chat-service/app/services/composer.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "same chokepoint as compact_service; wakes if the composer gains its own retrieval",
+        upstream="services/chat-service/app/services/stream_service.py"),
+    "services/composition-service/app/engine/select.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "its content is neutralised by the packer at assembly and by "
+        "`cowrite.build_beat_scope` -> `sanitize_prose_context`; wakes if select ever builds "
+        "prompt text from retrieved bytes directly instead of through cowrite",
+        upstream="services/composition-service/app/engine/cowrite.py"),
+    "services/knowledge-service/app/wiki/prompt.py": BaselineRow(
+        SANITIZED_UPSTREAM,
+        "consumes the IR that wiki/context.py already neutralized span by span; wakes if "
+        "prompt.py starts reading a source context.py did not build",
+        upstream="services/knowledge-service/app/wiki/context.py"),
+
+    # ── genuine gaps: composition-service references no sanitizer in these paths ──────────
+    "services/composition-service/app/engine/canon_check.py": BaselineRow(
+        GENUINE_GAP, "wakes when composition routes canon text through the packer sanitizer"),
+    "services/composition-service/app/engine/critic.py": BaselineRow(
+        GENUINE_GAP, "wakes when the critic's prompt assembly adopts `neutralize`"),
+    "services/composition-service/app/engine/motif_conformance.py": BaselineRow(
+        GENUINE_GAP, "wakes when motif prompts adopt `neutralize`"),
+    "services/composition-service/app/engine/motif_deconstruct.py": BaselineRow(
+        GENUINE_GAP, "wakes when the deconstruct chunk prompt adopts `neutralize`"),
+    "services/composition-service/app/engine/narrative_thread.py": BaselineRow(
+        GENUINE_GAP, "wakes when thread prompts adopt `neutralize`"),
+    "services/composition-service/app/engine/self_heal.py": BaselineRow(
+        GENUINE_GAP, "wakes when the judge/edit prompts adopt `neutralize` for canon text"),
+    "services/composition-service/app/routers/engine.py": BaselineRow(
+        GENUINE_GAP, "wakes when the router stops assembling prompt text inline"),
+    "services/composition-service/app/worker/operations.py": BaselineRow(
+        GENUINE_GAP, "wakes when the worker's prompt assembly adopts `neutralize`"),
+    "services/knowledge-service/app/context/selectors/passages.py": BaselineRow(
+        GENUINE_GAP,
+        "wakes when the passages selector neutralizes like the wiki path already does"),
+
+    # ── S4 2026-08-02: surfaced by widening SCAN_DIRS. Never scanned before; every one a
+    # genuine untracked hole. translation-service is the important entry — it builds prompts
+    # from IMPORTED book text, the least-trusted bytes on the platform, and references no
+    # sanitizer at all. Routing them through `neutralize_injection` is a security change that
+    # needs its own measurement: a sanitizer that mangles source text is a TRANSLATION-fidelity
+    # bug, which is why the translate rows resolve to OutputKind.MIRROR elsewhere.
+    "services/translation-service/app/workers/extraction_worker.py": BaselineRow(
+        DETECT_UPSTREAM,
+        "both of its prompt sites reach the chapter text through `build_user_prompt`, which "
+        "scans it; wakes if this worker ever assembles a prompt without going through there",
+        upstream="services/translation-service/app/workers/extraction_prompt.py"),
+    "services/worker-ai/app/distill_job.py": BaselineRow(
+        GENUINE_GAP, "wakes when the distiller scans the chapter chunks it folds in"),
+}
+
+
+def expired_rows() -> list[str]:
+    """Rows whose own justification no longer holds — the EXPIRY, checked every run.
+
+    Three ways a row dies: no `wakes_when` (a silence with no exit), a SANITIZED_UPSTREAM row
+    whose named sibling is gone or has stopped sanitizing, and a GENUINE_GAP row that names an
+    upstream (a row cannot claim both).
+    """
+    problems: list[str] = []
+    for rel, row in sorted(BASELINE.items()):
+        if not row.wakes_when.strip():
+            problems.append(f"{rel}: no `wakes_when` — a baseline row with no exit is a "
+                            f"permanent silence, not a tracked hole.")
+        if row.kind == SANITIZED_UPSTREAM:
+            if not row.upstream:
+                problems.append(f"{rel}: SANITIZED_UPSTREAM with no `upstream` named — the "
+                                f"claim is unverifiable, which is the same as untrue.")
+                continue
+            up = os.path.join(REPO_ROOT, row.upstream)
+            if not os.path.exists(up):
+                problems.append(f"{rel}: its upstream {row.upstream} no longer exists. The "
+                                f"exemption has outlived its reason.")
+            elif not _MUTATE_REF.search(_read(row.upstream)):
+                problems.append(f"{rel}: its upstream {row.upstream} NO LONGER SANITIZES. "
+                                f"This row was silencing the finding on that file's behalf; "
+                                f"the reason is gone, so the row is too.")
+        elif row.kind == DETECT_UPSTREAM:
+            if not row.upstream:
+                problems.append(f"{rel}: DETECT_UPSTREAM with no `upstream` named.")
+            elif not os.path.exists(os.path.join(REPO_ROOT, row.upstream)):
+                problems.append(f"{rel}: its upstream {row.upstream} no longer exists.")
+            elif not DETECT_ONLY_REF.search(_read(row.upstream)):
+                problems.append(f"{rel}: its upstream {row.upstream} NO LONGER SCANS. The "
+                                f"detect coverage this row leans on is gone.")
+        elif row.upstream:
+            problems.append(f"{rel}: a GENUINE_GAP row names an upstream. If a sibling "
+                            f"sanitizes it, the row's kind is SANITIZED_UPSTREAM.")
+    return problems
 
 # ── detection ─────────────────────────────────────────────────────────────
 
@@ -189,30 +296,133 @@ SANITIZER_REF = re.compile(
     r"\bneutralize_injection\s*\("
     r"|\bneutralize_proposal_text\s*\("
     r"|\bscan_injection\s*\("
+    r"|\bscan_untrusted_source\s*\("
+    r"|\brecord_source_injection\s*\("
     r"|\bneutralize\s*\("
     r"|\bsanitize_lore\s*\("
     r"|\bsanitize_guide\s*\("
     r"|\bsanitize_prose_context\s*\("
 )
 
+#: Two coverage classes, because they are two different promises and merging them would let
+#: the weaker one quietly clear rows the stronger one was tracking.
+#:
+#: MUTATE — the untrusted text is transformed before assembly: delimiters escaped, directive
+#: spans bracketed. The model cannot act on the payload. This is what a composition module
+#: means by "covered".
+#:
+#: DETECT — the text is SCANNED and reported, and reaches the model unchanged. Weaker on
+#: purpose, and correct where mutation is not available: in translation the untrusted text is
+#: the PRODUCT, so escaping a bracket or bracketing a line of dialogue corrupts the author's
+#: chapter. A detect-covered module tells a human that a chapter carries directive-looking
+#: spans; it does not stop the model from reading them.
+#:
+#: Named separately so the PASS line cannot say "every module routes through the sanitizer"
+#: about a set where seven of them only look. That sentence would be the same
+#: two-states-collapsed-into-one defect this lint exists to catch, committed by the lint.
+#: `record_source_injection` is `scan_untrusted_source` PLUS the write that tells somebody,
+#: and it had to be named here the day it was introduced: the three chapter modules switched
+#: to it and this lint went RED on all three inside one commit. A detector keyed on function
+#: names is only as current as its list of names — which is the argument for the red arriving
+#: loudly, rather than a module quietly dropping out of the DETECT set and reading as covered.
+DETECT_ONLY_REF = re.compile(
+    r"\bscan_injection\s*\(|\bscan_untrusted_source\s*\(|\brecord_source_injection\s*\(")
+
+
+def _code_lines(src: str) -> list[str]:
+    """`src` with COMMENT and DOCSTRING lines blanked. Everything else is untouched.
+
+    S4. Every one of this lint's three signals used to be matched against raw file text,
+    which reads PROSE as evidence about BEHAVIOUR — and it cuts both ways:
+
+      · FALSE POSITIVE, live: MEASURED 2026-08-02, three modules were flagged (or held a
+        BASELINE row calling them a "genuine gap") on the strength of markers appearing ONLY
+        in comments, with zero in code — `engine/compress.py`, `engine/canon_reflect.py`,
+        `wiki/generate.py`. `engine/select.py`'s own BASELINE row records the same event
+        happening before: a feature gave it the word "passage" in prose and the row was
+        written rather than rename the word to dodge the regex. That row was the right call
+        for the wrong reason — the regex should not have been reading the comment.
+
+      · FALSE NEGATIVE, and this is the dangerous half: `SANITIZER_REF` matched raw text too,
+        so a module whose ONLY mention of `neutralize(` was in a comment counted as
+        PROTECTED. Measured today: 0 such files — but nothing prevented one, and a security
+        gate silenced by a sentence is worse than no gate. This repo already has the rule
+        (`docs/standards/`: a claim in a docstring is not a mechanism) and the deferral
+        registry already had to grow a stripper for exactly this.
+
+    Regular string literals are DELIBERATELY kept: a prompt template containing "PASSAGE:" is
+    code doing the thing, not prose describing it.
+    """
+    lines = src.splitlines()
+    blank: set[int] = set()
+    try:
+        for tok in tokenize.generate_tokens(io.StringIO(src).readline):
+            if tok.type == tokenize.COMMENT:
+                blank.add(tok.start[0])
+    except (tokenize.TokenError, IndentationError, SyntaxError):
+        pass  # unparseable → fall back to raw text, which is the conservative direction
+    try:
+        tree = ast.parse(src)
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.Module, ast.FunctionDef,
+                                     ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            first = node.body[0] if node.body else None
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                    and isinstance(first.value.value, str):
+                blank.update(range(first.lineno, (first.end_lineno or first.lineno) + 1))
+    except (SyntaxError, ValueError):
+        pass
+    return ["" if i in blank else ln for i, ln in enumerate(lines, 1)]
+
 
 def classify_file(path: str) -> tuple[bool, bool, bool]:
     """Return (assembles_prompt, uses_retrieved_text, has_sanitizer) for a file."""
-    assembles = retrieved = sanitized = False
+    assembles, retrieved, sanitized, _detect = _classify(path)
+    return assembles, retrieved, sanitized
+
+
+def _classify(path: str) -> tuple[bool, bool, bool, bool]:
+    """(assembles_prompt, uses_retrieved_text, has_sanitizer, detect_only)."""
+    assembles = retrieved = sanitized = detect = False
     try:
         with open(path, "r", encoding="utf-8", errors="ignore") as fh:
-            for line in fh:
-                if not assembles and MESSAGE_ASSEMBLY.search(line):
-                    assembles = True
-                if not retrieved and RETRIEVED_TEXT.search(line):
-                    retrieved = True
-                if not sanitized and SANITIZER_REF.search(line):
-                    sanitized = True
-                if assembles and retrieved and sanitized:
-                    break
+            src = fh.read()
     except OSError:
-        pass
-    return assembles, retrieved, sanitized
+        return False, False, False, False
+    for line in _code_lines(src):
+        if not assembles and MESSAGE_ASSEMBLY.search(line):
+            assembles = True
+        if not retrieved and RETRIEVED_TEXT.search(line):
+            retrieved = True
+        if not sanitized and SANITIZER_REF.search(line):
+            sanitized = True
+        if not detect and DETECT_ONLY_REF.search(line):
+            detect = True
+    # DETECT-only means it scans and does NOTHING ELSE. A module that scans AND neutralises
+    # is MUTATE-covered — the stronger promise wins, and it must, or adding a scan beside a
+    # neutraliser would downgrade a module's reported coverage.
+    only_detect = detect and not _MUTATE_REF.search(_read(path))
+    return assembles, retrieved, sanitized, only_detect
+
+
+def _read(path: str) -> str:
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as fh:
+            return "\n".join(_code_lines(fh.read()))
+    except OSError:
+        return ""
+
+
+#: The sanitizer calls that TRANSFORM. `SANITIZER_REF` minus the scan-only names.
+_MUTATE_REF = re.compile(
+    r"\bneutralize_injection\s*\("
+    r"|\bneutralize_proposal_text\s*\("
+    r"|\bneutralize\s*\("
+    r"|\bsanitize_lore\s*\("
+    r"|\bsanitize_guide\s*\("
+    r"|\bsanitize_prose_context\s*\("
+)
 
 
 def flagged_files(files) -> list[str]:
@@ -235,9 +445,46 @@ def flagged_files(files) -> list[str]:
     return sorted(set(out))
 
 
-#: Reach floor. Measured 2026-08-11: 766 non-test .py modules under SCAN_DIRS.
-#: Set well below that and well above zero — a floor AT the measurement turns
-#: every arm above it into a floor test (`BDR-82`).
+def iter_full_scan(repo_root: str | None = None):
+    # `repo_root` defaults to the real tree; the self-test passes a synthetic one so
+    # it can assert the walk's floor without the repo itself being the fixture.
+    repo_root = repo_root or REPO_ROOT
+    for d in SCAN_DIRS:
+        root = os.path.join(repo_root, d)
+        if not os.path.isdir(root):
+            continue
+        for dirpath, dirnames, filenames in os.walk(root):
+            dirnames[:] = [x for x in dirnames if x not in EXCLUDE_DIRS]
+            for fn in filenames:
+                if fn.endswith(SCAN_EXTS) and not fn.startswith("test_"):
+                    full = os.path.join(dirpath, fn)
+                    rel = os.path.relpath(full, repo_root).replace(os.sep, "/")
+                    yield full, rel
+
+
+def iter_staged():
+    try:
+        res = subprocess.run(
+            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return
+    for rel in res.stdout.splitlines():
+        rel = rel.strip().replace(os.sep, "/")
+        if not rel.endswith(SCAN_EXTS):
+            continue
+        if not rel.startswith(SCAN_DIRS):
+            continue
+        if any(part in EXCLUDE_DIRS for part in rel.split("/")):
+            continue
+        if os.path.basename(rel).startswith("test_"):
+            continue
+        full = os.path.join(REPO_ROOT, rel)
+        if os.path.isfile(full):
+            yield full, rel
+
+
 MIN_SCANNED = 200
 
 
@@ -282,43 +529,6 @@ def check_reach(root: str, scanned: int, flagged: set[str]) -> list[str]:
                 f"assembling prompts. Leaving it is how an exemption outlives its reason.")
 
     return problems
-
-
-def iter_full_scan(repo_root: str = REPO_ROOT):
-    for d in SCAN_DIRS:
-        root = os.path.join(repo_root, d)
-        if not os.path.isdir(root):
-            continue
-        for dirpath, dirnames, filenames in os.walk(root):
-            dirnames[:] = [x for x in dirnames if x not in EXCLUDE_DIRS]
-            for fn in filenames:
-                if fn.endswith(SCAN_EXTS) and not fn.startswith("test_"):
-                    full = os.path.join(dirpath, fn)
-                    rel = os.path.relpath(full, repo_root).replace(os.sep, "/")
-                    yield full, rel
-
-
-def iter_staged():
-    try:
-        res = subprocess.run(
-            ["git", "diff", "--cached", "--name-only", "--diff-filter=ACM"],
-            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        return
-    for rel in res.stdout.splitlines():
-        rel = rel.strip().replace(os.sep, "/")
-        if not rel.endswith(SCAN_EXTS):
-            continue
-        if not rel.startswith(SCAN_DIRS):
-            continue
-        if any(part in EXCLUDE_DIRS for part in rel.split("/")):
-            continue
-        if os.path.basename(rel).startswith("test_"):
-            continue
-        full = os.path.join(REPO_ROOT, rel)
-        if os.path.isfile(full):
-            yield full, rel
 
 
 def self_test() -> int:
@@ -478,6 +688,10 @@ def main() -> int:
     files = list(iter_staged() if staged else iter_full_scan())
     flagged = flagged_files(files)
 
+    # Before any verdict: can this gate still SEE its corpus? A missing SCAN_DIRS
+    # entry is skipped without a word, and for a security lint a blind tree and a
+    # clean one print the same success line. Full scans only — a staged run
+    # legitimately sees a handful of files.
     if not staged:
         reach = check_reach(REPO_ROOT, len(files), set(flagged))
         if reach:
@@ -494,14 +708,63 @@ def main() -> int:
             print(f'    "{rel}",')
         return 0
 
+    # DoD-4b — the EXPIRY, before anything else. A row whose justification is gone is
+    # not a tracked hole any more, it is a silence, and it must not be able to green a
+    # run just because the module it covers still looks the same.
+    expired = expired_rows()
+    if expired:
+        print("injection-coverage-lint: FAIL — BASELINE row(s) whose reason no longer holds:")
+        for e in expired:
+            print("  " + e)
+        return 1
+
     new = [rel for rel in flagged if rel not in BASELINE]
     baselined = [rel for rel in flagged if rel in BASELINE]
 
     mode = "staged" if staged else "full"
+
+    # S4 — the baseline must be able to SHRINK, and only a full scan can tell.
+    #
+    # Every row here is documented as "a tracked hole". A row for a module that is no longer
+    # flagged is therefore a claim about a hole that does not exist — and it costs more than
+    # nothing: it is the exemption that would silence the gate if that module ever DID grow a
+    # real unsanitized assembly. Two such rows were found on 2026-08-02 (`canon_reflect.py`,
+    # `wiki/generate.py`), both listed as "genuine gaps" on the strength of a marker word that
+    # appeared only in a comment.
+    #
+    # A NOTE, not a failure: a stale row is a documentation defect, not a security one, and
+    # reddening CI for it would push the next person to delete rows to get green.
+    if not staged:
+        stale = sorted(set(BASELINE) - set(flagged))
+        if stale:
+            print(f"NOTE — {len(stale)} BASELINE row(s) no longer flagged. Each claims a "
+                  f"tracked hole that the scan does not find; delete them:")
+            for rel in stale:
+                print(f"    {rel}")
+            print()
+
     if not new:
         extra = f" ({len(baselined)} baselined)" if baselined else ""
         print(f"injection-coverage-lint ({mode}): OK — every retrieved-text "
               f"prompt-assembly module routes through the sanitizer{extra}")
+        # …and then the honest qualifier. A module that only SCANS is covered by this lint
+        # and makes a weaker promise: the payload reaches the model unchanged and a human is
+        # told. Printing the count is the difference between a gate that reports coverage and
+        # one that reports what KIND of coverage — and this file's own history is a module
+        # that satisfied it with an import.
+        if not staged:
+            # Scoped to actual SUBJECTS (assembles a prompt from retrieved text). Without
+            # this it also names `injection_report.py` — the reporter itself, which scans
+            # because scanning is its job and assembles no prompt at all.
+            detect_only = sorted(
+                rel for full, rel in iter_full_scan()
+                if (lambda c: c[0] and c[1] and c[3])(_classify(full))
+            )
+            if detect_only:
+                print(f"  {len(detect_only)} module(s) are DETECT-only — the untrusted text "
+                      f"is scanned and reported, NOT transformed, because it is the product:")
+                for rel in detect_only:
+                    print(f"    {rel}")
         return 0
 
     print("injection-coverage-lint: FAIL — prompt built from retrieved/external "

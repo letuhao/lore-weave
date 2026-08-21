@@ -290,3 +290,96 @@ func tail(s string, n int) string {
 	}
 	return s[len(s)-n:]
 }
+
+// seededSteps parses every rail's `steps` array out of schemaSQL as real JSON, rather than
+// regex-scraping step objects: one step carries a nested `inputs_map` object, so a
+// `\{"id":[^}]*\}` scrape stops at the INNER brace and silently drops fields — the kind of
+// half-reading that makes a lint quietly narrower than it claims to be.
+func seededSteps(t *testing.T) []map[string]any {
+	t.Helper()
+	arrayRe := regexp.MustCompile(`'(\[[\s\S]*?\])'::jsonb`)
+	var out []map[string]any
+	for _, m := range arrayRe.FindAllStringSubmatch(schemaSQL, -1) {
+		var steps []map[string]any
+		if err := json.Unmarshal([]byte(m[1]), &steps); err != nil {
+			continue // not a steps array (inputs, surfaces, …)
+		}
+		for _, st := range steps {
+			if _, ok := st["tool"]; ok {
+				out = append(out, st)
+			}
+		}
+	}
+	if len(out) < 20 {
+		t.Fatalf("only %d seeded steps parsed — the lint would be vacuously permissive", len(out))
+	}
+	return out
+}
+
+// A rail step is a RECIPE ENTRY, and the same entry appears in more than one recipe: several
+// rails walk the author through saving their cast, connecting it, proposing a plan. When two
+// rails describe the SAME action — same tool, same done_when predicate — they must agree on
+// whether it is repeatable, because `repeat` decides whether `done_suppress` takes the tool
+// away. Nothing enforced that, and the seeds drifted into contradicting themselves:
+//
+//	glossary_propose_entities / "cast > 0"        save        no repeat
+//	glossary_propose_entities / "cast > 0"        save-cast   repeat ✓
+//	kg_add_nodes / "connections > 0"              place-cast  no repeat
+//	kg_add_nodes / "connections > 0"              connect-people repeat ✓
+//
+// So whether an author could save a second batch of characters depended on which rail the
+// intent router happened to pin. The `plan_propose_spec` pair was worse: BOTH were one-shot,
+// which retired the only tool that can start a plan the moment a book had one — measured on
+// the Mị Đế dogfood 2026-08-02, where the co-writer could not plan a second arc and invented
+// a run_id to reach the downstream tools it could still see.
+//
+// This does not decide WHICH value is right — that is a judgement per action. It only refuses
+// to let one action mean two things, which is the drift a seed edited rail-by-rail produces.
+func TestSchemaSQL_SameActionMeansTheSameThingInEveryRail(t *testing.T) {
+	type variant struct {
+		repeat bool
+		ids    []string
+	}
+	byAction := map[string]map[bool]*variant{}
+	for _, st := range seededSteps(t) {
+		dw, _ := st["done_when"].(string)
+		if dw == "" {
+			continue // no artifact predicate ⇒ nothing durable to disagree about
+		}
+		tool, _ := st["tool"].(string)
+		id, _ := st["id"].(string)
+		rep, _ := st["repeat"].(bool)
+		key := tool + " / " + dw
+		if byAction[key] == nil {
+			byAction[key] = map[bool]*variant{}
+		}
+		if byAction[key][rep] == nil {
+			byAction[key][rep] = &variant{repeat: rep}
+		}
+		byAction[key][rep].ids = append(byAction[key][rep].ids, id)
+	}
+	seen := 0
+	for key, variants := range byAction {
+		seen++
+		if len(variants) < 2 {
+			continue
+		}
+		var yes, no []string
+		for rep, v := range variants {
+			if rep {
+				yes = v.ids
+			} else {
+				no = v.ids
+			}
+		}
+		t.Errorf("the action %q is seeded with CONTRADICTORY repeat semantics: steps %v declare "+
+			"repeat:true, steps %v do not. `repeat` decides whether done_suppress removes the "+
+			"tool once the step is finished, so the same action would be re-runnable on one rail "+
+			"and retired on another — an author hits whichever the router pinned. Pick one and "+
+			"apply it to every occurrence.", key, yes, no)
+	}
+	if seen == 0 {
+		t.Error("no done_when-bearing step found — the lint would pass vacuously; if the seeds " +
+			"were refactored, update this lint rather than letting it go quiet.")
+	}
+}

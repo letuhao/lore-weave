@@ -33,6 +33,8 @@ interface Props {
 
 export function SchemaCanvas({ schema, disabled, onAddKind, onAddEdge }: Props) {
   const { t } = useTranslation('kgOntology');
+  const { t: tKnowledge } = useTranslation('knowledge');
+  const kindLabel = (code: string) => tKnowledge(`kind.${code}`, { defaultValue: code });
   const kinds = useMemo(() => (schema.node_kinds ?? []).map((k) => k.kind_code), [schema.node_kinds]);
   const strengthOf = useMemo(
     () => Object.fromEntries((schema.node_kinds ?? []).map((k) => [k.kind_code, k.strength])),
@@ -167,7 +169,7 @@ export function SchemaCanvas({ schema, disabled, onAddKind, onAddEdge }: Props) 
                   }`}
                 >
                   <span className="truncate">
-                    {id}
+                    {kindLabel(id)}
                     <span className="ml-1 text-[9px] text-muted-foreground">{strengthOf[id]}</span>
                   </span>
                   <button
@@ -189,7 +191,7 @@ export function SchemaCanvas({ schema, disabled, onAddKind, onAddEdge }: Props) 
         {pending && (
           <div className="absolute left-1/2 top-2 z-10 -translate-x-1/2 space-y-1.5 rounded-md border bg-card p-2 shadow-lg"
             data-testid="canvas-new-edge">
-            <p className="text-[11px] text-muted-foreground">{pending.from} → {pending.to}</p>
+            <p className="text-[11px] text-muted-foreground">{kindLabel(pending.from)} → {kindLabel(pending.to)}</p>
             <div className="flex items-center gap-1">
               <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="MENTOR_OF" autoFocus
                 className="w-28 rounded-md border bg-input px-1.5 py-0.5 text-[11px]" data-testid="canvas-edge-code" />

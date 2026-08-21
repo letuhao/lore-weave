@@ -6,6 +6,7 @@ import { StandardRow } from './StandardRow';
 import { KindGenresModal } from './KindGenresModal';
 import { StandardFormModal, type StandardFormValues } from './StandardFormModal';
 import { useUserStandards, type KindRow } from '../hooks/useUserStandards';
+import { standardDescription, standardName } from './standardDisplay';
 
 /** Kinds tab — merged System+User kinds; clone System, create/edit/delete your own,
  *  and edit a User kind's genre links. */
@@ -61,7 +62,7 @@ export function KindsPanel() {
         <ul className="space-y-1.5" data-testid="standards-kinds">
           {kinds.map((k) => (
             <li key={`${k.tier}:${k.id}`}>
-              <StandardRow icon={k.icon} name={k.name} code={k.code} tier={k.tier}>
+              <StandardRow icon={k.icon} name={standardName(t, 'kind', k.code, k.name, k.tier === 'system')} description={standardDescription(t, 'kind', k.code, k.description, k.tier === 'system')} code={k.code} tier={k.tier}>
                 {k.tier === 'system' ? (
                   <button type="button" onClick={() => onClone(k)} disabled={cloneKind.isPending} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[12px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50" data-testid={`clone-kind-${k.code}`}>
                     <Copy className="h-3 w-3" />{t('action.clone')}

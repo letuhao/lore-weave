@@ -75,23 +75,38 @@ paths:
     language: python
     file: services/composition-service/app/routers/engine.py
     symbol: event_gen
-    status: unguarded
-    owner: S1-part2
+    status: guarded
+    coverage_field: guard_status
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: unguarded_envelope
     note: >-
-      MEASURED 2026-08-01 — the SSE generators mention `canon` zero times. User-visible prose,
-      no canon guard, no name grounding, no cross-scene check, and no field that says any of
-      that. This is the path a module-based lint cannot see, and it is why this file exists.
+      CLOSED 2026-08-02, and NOT by running the guard. Was: the SSE generators mention `canon`
+      zero times — user-visible prose with no canon guard, no name grounding, no cross-scene
+      check, and no field saying any of that. Skipping the guard on an interactive surface is a
+      real design position; the SILENCE was the defect, because a `done` frame with no canon
+      block and one from a fully-checked draft are identical bytes to a reader. The stream now
+      emits `canon: unguarded_envelope(<reason>)` on both the persisted job result and the
+      terminal frame — `guard_status: not_run` plus a `guard_reason` an author can act on.
+      `not_run` was added to the vocabulary for exactly this: `not_applicable` renders as
+      NOTHING by design and would have rebuilt the silence under a new name.
 
   - id: composition.selection_edit.stream
     service: composition-service
     language: python
     file: services/composition-service/app/routers/engine.py
     symbol: selection_edit
-    status: unguarded
-    owner: S1-part2
+    status: guarded
+    coverage_field: guard_status
+    via:
+      file: services/composition-service/app/engine/canon_check.py
+      symbol: unguarded_envelope
     note: >-
-      Rewrites an author-selected span. Same shape as the cowrite stream: generated text
-      reaches the manuscript with no guard report attached.
+      CLOSED 2026-08-02, same mechanism as the co-write stream above: it rewrites an
+      author-selected span in place, runs no guard, and now says so through the shared
+      `unguarded_envelope` builder rather than emitting nothing. Both call sites go through
+      that one builder, asserted by test — the six-hand-written-copies defect `canon_envelope`
+      was extracted from started as two dicts that agreed on the day they were written.
 
   - id: composition.chapter.single_pass
     service: composition-service
@@ -130,28 +145,41 @@ paths:
     language: go
     file: services/glossary-service/internal/api/wiki_staleness.go
     symbol: sweepKgDrift
-    status: unguarded
-    owner: S1-part2
+    status: guarded
+    coverage_field: kg_status
     note: >-
-      A failed kg-hashes chunk is logged and `continue`d, and the entities in it then take the
-      same branch as "no drift" (`!ok` → skip). The sweep reports `flagged`; it reports nothing
-      about how many entities were never compared. "Could not check" and "nothing changed"
-      produce byte-identical output.
+      CLOSED 2026-08-02. Was: a failed kg-hashes chunk was logged and `continue`d, and its
+      entities then took the same branch as "no drift" (`!ok` → skip), so "could not check"
+      and "nothing changed" produced byte-identical output. `sweepKgDrift` now returns a
+      `guardstatus.Report` — status + checked/unchecked counts — and both handlers emit
+      `kg_status`/`kg_checked`/`kg_unchecked` beside the existing `kg_flagged`. The Go
+      vocabulary is a machine-checked SUBSET of `loreweave_guard.CheckStatus` via
+      contracts/guard-status.contract.json, so this path cannot invent a status a consumer
+      is unable to interpret. Pinned by `TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLonger
+      IdenticalOutput`, which asserts the two arms DIFFER rather than asserting one of them.
 
   # ── tilemap · zone narration (Rust) ──────────────────────────────────────────────────────
   - id: tilemap.l4.zone_narration
     service: tilemap-service
     language: rust
-    file: services/tilemap-service/src/harness/l4_retry.rs
-    symbol: L4Result
-    status: unguarded
-    owner: S1-part2
+    file: services/tilemap-service/src/harness/l4_validate.rs
+    symbol: L4Narration
+    status: guarded
+    coverage_field: source
     note: >-
-      Every zone comes back with a narration; some are `canonical_default_narration`. The
-      honesty is real but OPTIONAL — it lives in `fallback_count`, and nothing obliges a
-      consumer to read it before treating the set as generated content.
-
-  # ── commit-service · NPC combat decision (Rust) ──────────────────────────────────────────
+      CLOSED 2026-08-02, and the severity was re-measured first: the narrations never leave the
+      harness today — the only two consumers are report formatters and BOTH already print
+      `fallback_count`. So the gap was type-level, and cheap to close precisely because it is
+      early. Was: `fallback_count` is an AGGREGATE sitting beside the data, so a consumer
+      holding a `Vec<L4Narration>` held a mix of a model's work and engine boilerplate with
+      nothing on the items to separate them — and could not identify WHICH ones at any price.
+      Each item now carries `source: Provenance` (`llm` | `canonical_default`), defaulted on
+      deserialisation by a NAMED function rather than a `Default` impl, so a future construction
+      site that forgets the field cannot silently attribute the engine's work to a model. Fixed
+      identically in L3 (`validate.rs::L3Classification`), because the same shape was there and
+      fixing one consumer and leaving the other is a defect this run already recorded. Pinned by
+      `the_fallback_count_and_the_items_cannot_disagree`, which asserts the aggregate and the
+      per-item facts against each other on a run that produces both kinds.
   - id: commit.combat.npc_decision
     service: commit-service
     language: rust
@@ -204,5 +232,11 @@ discovery:
     #                       a growth guard — but it means the count is "files mentioning a
     #                       model gateway", not "files calling one", and raising it must not be
     #                       read as six new generation paths.
-    rust: 30
+    # 30 → 31 on 2026-08-02: `src/harness/provenance.rs`, added while closing the
+    # `tilemap.l4.zone_narration` row above. Read before counting, like the six before it:
+    # it declares one enum and one named serde default and makes NO gateway call at all — it
+    # matches the detector on the word, in the module doc explaining what the L3/L4 gateway
+    # loops produce. Same loose-detector trade as the commit-service six. One new file, zero
+    # new generation paths.
+    rust: 31
     typescript: 8

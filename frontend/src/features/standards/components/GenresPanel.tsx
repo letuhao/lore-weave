@@ -6,6 +6,7 @@ import type { Genre } from '@/features/glossary/tieringTypes';
 import { StandardRow } from './StandardRow';
 import { StandardFormModal, type StandardFormValues } from './StandardFormModal';
 import { useUserStandards } from '../hooks/useUserStandards';
+import { standardDescription, standardName } from './standardDisplay';
 
 /** Genres tab — merged System+User genres; clone System, create/edit/delete your own. */
 export function GenresPanel() {
@@ -58,7 +59,7 @@ export function GenresPanel() {
         <ul className="space-y-1.5" data-testid="standards-genres">
           {genres.map((g) => (
             <li key={g.genre_id}>
-              <StandardRow icon={g.icon} name={g.name} code={g.code} tier={g.tier}>
+              <StandardRow icon={g.icon} name={standardName(t, 'genre', g.code, g.name, g.tier === 'system')} description={standardDescription(t, 'genre', g.code, null, g.tier === 'system')} code={g.code} tier={g.tier}>
                 {g.tier === 'system' ? (
                   <button type="button" onClick={() => onClone(g)} disabled={cloneGenre.isPending} className="inline-flex items-center gap-1 rounded border px-2 py-1 text-[12px] font-medium text-muted-foreground hover:text-foreground disabled:opacity-50" data-testid={`clone-genre-${g.code}`}>
                     <Copy className="h-3 w-3" />{t('action.clone')}

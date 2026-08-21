@@ -26,9 +26,10 @@ RUN set -eu; \
 # pattern as knowledge-service. It also brings loreweave_llm/extraction, which
 # the online-eval consumer (phase Q4) will use to run the judge via the gateway.
 COPY sdks/python /sdk
+COPY infra/python-constraints.txt /constraints.txt
 RUN set -eu; \
     for i in 1 2 3 4 5; do \
-      if pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk; then exit 0; fi; \
+      if pip install --no-cache-dir -i "$PIP_INDEX_URL" -c /constraints.txt /sdk; then exit 0; fi; \
       echo "pip attempt $i/5 failed — retrying in 5s"; \
       sleep 5; \
     done; \

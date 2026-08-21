@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -546,6 +547,7 @@ type ModelInventory struct {
 	ProviderModelName string         `json:"provider_model_name"`
 	ContextLength     *int           `json:"context_length,omitempty"`
 	CapabilityFlags   map[string]any `json:"capability_flags"`
+	Pricing           map[string]any `json:"pricing,omitempty"`
 }
 
 type Usage struct {
@@ -726,8 +728,24 @@ type openaiAdapter struct {
 
 const openaiBaseURL = "https://api.openai.com"
 
+// normalizeOpenAICompatibleBase accepts both common forms of an
+// OpenAI-compatible base URL:
+//
+//	https://provider.example
+//	https://provider.example/v1
+//
+// Adapters append canonical /v1/... paths themselves. Stripping one trailing
+// /v1 prevents requests such as /v1/v1/models and /v1/v1/chat/completions.
+func normalizeOpenAICompatibleBase(raw string) string {
+	base := strings.TrimRight(strings.TrimSpace(raw), "/")
+	if strings.HasSuffix(strings.ToLower(base), "/v1") {
+		base = base[:len(base)-len("/v1")]
+	}
+	return strings.TrimRight(base, "/")
+}
+
 func (a *openaiAdapter) ListModels(ctx context.Context, endpointBaseURL, secret string) ([]ModelInventory, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}
@@ -922,6 +940,21 @@ func parseOpenAIModels(data []any, knownContextLength map[string]int) []ModelInv
 			ctxLen := cl
 			entry.ContextLength = &ctxLen
 		}
+		if raw, ok := m["pricing"].(map[string]any); ok {
+			entry.Pricing = map[string]any{}
+			for src, dst := range map[string]string{"prompt": "input_per_mtok", "completion": "output_per_mtok"} {
+				var n float64
+				switch v := raw[src].(type) {
+				case string:
+					n, _ = strconv.ParseFloat(v, 64)
+				case float64:
+					n = v
+				}
+				if n >= 0 {
+					entry.Pricing[dst] = n * 1000000
+				}
+			}
+		}
 		models = append(models, entry)
 	}
 	return models
@@ -956,7 +989,7 @@ func classifyOpenAIModel(id string) string {
 }
 
 func (a *openaiAdapter) Invoke(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any) (map[string]any, Usage, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}
@@ -997,7 +1030,7 @@ func (a *openaiAdapter) HealthCheck(ctx context.Context, endpointBaseURL, secret
 }
 
 func (a *openaiAdapter) Stream(ctx context.Context, endpointBaseURL, secret, modelName string, input map[string]any, emit EmitFn) error {
-	base := strings.TrimRight(endpointBaseURL, "/")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}

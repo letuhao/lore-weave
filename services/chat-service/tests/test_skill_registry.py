@@ -601,6 +601,70 @@ class TestSkillClaimsLint:
                     )
         assert not failures, "\n" + "\n".join(failures)
 
+    def test_every_tool_a_skill_names_is_REACHABLE_on_the_wire(self):
+        """Existence is not reachability — a real tool the model cannot see is still a dead
+        instruction.
+
+        The two checks above ask "is this name in some service's catalog?" and "is its domain
+        hot?". Neither asks the question that actually decides whether the turn works: when
+        this skill is injected, does the named tool END UP ON THE WIRE by SOME mechanism?
+        There are two, and a skill needs only one:
+
+          · `hot_domains`  — seed the whole domain (costs the shared hot-seed budget), or
+          · the D-SKILL-NAMED-TOOLS-RIDE union in `tool_surface.skill_named_tools`, which
+            puts the tools a prompt NAMES on the wire budget-exempt.
+
+        `co_write` is exempt from the hot-domain check on purpose (it keeps the plan/
+        composition long tail lazy), which left the named-tools union as the ONLY thing
+        carrying its two plan tools — and that union's extractor required the closing
+        backtick to sit right after the name, so `plan_propose_spec(book_id, …)` written in
+        signature form was invisible to it. Both guards green, tool not on the wire.
+
+        Measured live 2026-08-02 (Mị Đế): asked to plan Arc 1, the co-writer emitted 6948
+        characters of plan prose with finish_reason=stop and ZERO tool calls, and the book
+        gained no plan_run and no outline_node. The skill's own "do NOT stop after
+        proposing" could not be obeyed.
+
+        Like its sibling above, this DELIBERATELY does not honour `_EXEMPT_SKILL_CODES` —
+        that set is about hot-vs-lazy seeding, and this asks a question that applies to both.
+        """
+        import importlib.util
+        from pathlib import Path
+
+        from app.services.tool_surface import _skill_prompt_named_tokens
+
+        scanner = Path(__file__).resolve().parents[3] / "scripts" / "deprecated-tool-scan.py"
+        if not scanner.exists():
+            pytest.skip(f"tool scanner not found at {scanner} — cannot verify reachability")
+        spec = importlib.util.spec_from_file_location("_tool_scan", scanner)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        legacy, advertised = mod.build_catalog()
+        known = set(advertised) | set(legacy)
+        if len(known) < 100:
+            pytest.skip(f"scanner returned only {len(known)} tools — refusing to assert on it")
+
+        failures = []
+        for skill in SYSTEM_SKILLS.values():
+            # What the RUNTIME union would actually put on the wire for this skill.
+            rides = _skill_prompt_named_tokens(skill.code)
+            contrastive = _ALLOWED_CONTRASTIVE_MENTIONS.get(skill.code, frozenset())
+            for token, domain in sorted(_named_tool_domains(skill.prompt_loader())):
+                if token not in known:
+                    continue        # the sibling test owns "does it exist"
+                if token in _DELIBERATELY_ABSENT_TOOL_NAMES or token in contrastive:
+                    continue        # named to warn the model OFF it, not to call it
+                if token in rides or domain in skill.hot_domains:
+                    continue
+                failures.append(
+                    f"{skill.code}: names '{token}' (domain '{domain}') as a tool to CALL, but "
+                    f"nothing puts it on the wire — '{domain}' is not in hot_domains="
+                    f"{sorted(skill.hot_domains)} and the named-tools union does not see it "
+                    f"(it reads backtick-quoted names; check how the prose writes it). The "
+                    f"model is instructed to call a tool it is never shown."
+                )
+        assert not failures, "\n" + "\n".join(failures)
+
     def test_lint_extraction_sanity(self):
         """The extractor itself: finds real domain tokens, skips field names, resolves
         the kg_/memory_ alias, and ignores tokens with no matching domain at all."""

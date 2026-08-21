@@ -36,8 +36,10 @@ from ..config import settings, DEFAULT_COMPACT_SYSTEM_PROMPT, DEFAULT_COMPACT_US
 from ..llm_budget import budget_for
 from ..llm_client import LLMClient
 from ..metrics import record_stage
+from .injection_report import record_source_injection
 from .chunk_splitter import estimate_tokens, split_chapter
 from .llm_thinking import thinking_llm_fields
+from app.llm_budget import budget_for
 
 log = logging.getLogger(__name__)
 
@@ -351,9 +353,18 @@ async def translate_chapter(
     chunk_size = max(chunk_size, 100)  # floor to avoid degenerate splits
 
     chunks = split_chapter(chapter_text, chunk_size)
+    # Scanned ONCE per chapter, where the untrusted bytes enter, and NEVER mutated — this
+    # text is the product, not context. `injection_report` carries why translation cannot
+    # use composition's neutralisers. Reported on the same line as the chunk count so a
+    # chapter's log record always states whether it was looked at.
+    # Scan AND persist in one call: they were separate here, and separate is how three of the
+    # five chapter paths ended up scanning without telling anyone. See `record_source_injection`.
+    injection = await record_source_injection(pool, chapter_translation_id, chapter_text)
     log.info(
-        "session_translator: chapter_translation=%s, %d chunks (chunk_size=%d, context=%d)",
+        "session_translator: chapter_translation=%s, %d chunks (chunk_size=%d, context=%d), "
+        "injection_scan=%s",
         chapter_translation_id, len(chunks), chunk_size, context_window,
+        injection.as_payload(),
     )
 
     session_history: list[dict] = []
@@ -919,7 +930,9 @@ async def translate_batch_with_retry(
     combined: str,
     block_indices: list[int],
     input_texts: dict[int, str],
-    out_max: int,
+    # `None` ⇒ the registry decides. This kernel has callers in TWO modules, so a bare
+    # required int meant the budget was settled somewhere no scanner follows.
+    out_max: int | None = None,
     max_retries: int,
     job_meta_base: dict,
     thinking_enabled: bool = False,
@@ -958,7 +971,7 @@ async def translate_batch_with_retry(
                 model_ref=model_ref,
                 input={
                     "messages": messages,
-                    "max_tokens": out_max,
+                    "max_tokens": out_max or budget_for("translate_batch"),
                     # D-TRANSLATE-REASONING-TOGGLE — per-job reasoning control. Default
                     # OFF (thinking_enabled=False) keeps the prior behavior; ON enables
                     # the local model's thinking via chat_template_kwargs.enable_thinking.
@@ -1095,6 +1108,18 @@ async def translate_chapter_blocks(
         plan.caption_count, len(plan.batches), chapter_translation_id,
     )
 
+    # Extract all translatable text — for glossary scoring, and for the injection scan below.
+    all_chapter_text = "\n".join(
+        extract_translatable_text(entry.block)
+        for entry in plan.all_entries
+        if entry.action != "passthrough"
+    )
+    # DoD-4. This path had NO scan at all: `translate_chapter` (the TEXT sibling) had one and
+    # this one did not, so a book whose chapters are structured blocks — the ordinary case —
+    # was never screened. Above the empty-plan return, so a chapter that reaches here always
+    # gets an answer rather than the NULL that means nobody looked.
+    await record_source_injection(pool, chapter_translation_id, all_chapter_text)
+
     if not plan.batches:
         return blocks, 0, 0, 0, plan.translatable_count, {}
 
@@ -1103,13 +1128,6 @@ async def translate_chapter_blocks(
     # V2 P4: Fetch glossary context (once per chapter, stable across all batches)
     from .glossary_client import (
         fetch_translation_glossary, build_glossary_context, auto_correct_glossary,
-    )
-
-    # Extract all translatable text for glossary scoring
-    all_chapter_text = "\n".join(
-        extract_translatable_text(entry.block)
-        for entry in plan.all_entries
-        if entry.action != "passthrough"
     )
 
     raw_glossary = await fetch_translation_glossary(
@@ -1193,9 +1211,13 @@ async def translate_chapter_blocks(
         # Output-token budget for this batch: generous headroom (thinking is
         # disabled below, so reasoning shouldn't eat it), capped so
         # input+output stays within the model context window.
-        out_max = min(
-            _TRANSLATION_MAX_OUTPUT_TOKENS,
-            max(2048, context_window - batch.token_estimate - 2048),
+        out_max = budget_for(
+            "translate_batch",
+            context_length=context_window,
+            ceiling=min(
+                _TRANSLATION_MAX_OUTPUT_TOKENS,
+                max(2048, context_window - batch.token_estimate - 2048),
+            ),
         )
 
         # M5d/TD2: the per-batch SDK + validation-retry loop now lives in the

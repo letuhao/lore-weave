@@ -11,13 +11,15 @@ type Props = {
   draft: PlannerChapterDraft[];
   preview: DecomposePreview | null;
   roster: RosterOption[];
+  inactiveIds?: Set<string>;
+  entityNames?: Record<string, string>;
   onEditScene: (ci: number, si: number, patch: Partial<PlannerSceneDraft>) => void;
   onEditChapter: (ci: number, patch: Partial<Pick<PlannerChapterDraft, 'intent' | 'beat_role'>>) => void;
   onAddScene: (ci: number) => void;
   onRemoveScene: (ci: number, si: number) => void;
 };
 
-export function PlannerTree({ draft, preview, roster, onEditScene, onEditChapter, onAddScene, onRemoveScene }: Props) {
+export function PlannerTree({ draft, preview, roster, inactiveIds, entityNames = {}, onEditScene, onEditChapter, onAddScene, onRemoveScene }: Props) {
   const { t } = useTranslation('composition');
   return (
     <div className="space-y-3">
@@ -27,9 +29,12 @@ export function PlannerTree({ draft, preview, roster, onEditScene, onEditChapter
           <div key={ch.chapter_id} className="rounded-md border border-border p-2 space-y-2">
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold">{ch.title || t('plan.untitled_chapter')}</span>
+            </div>
+            <div className="flex items-center gap-2 border-l-2 border-primary/60 pl-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-primary">{t('plan.beat_label', { defaultValue: 'Beat' })}</span>
               <input
                 data-testid="planner-beat-role"
-                className="w-28 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground outline-none"
+                className="w-40 rounded bg-primary/10 px-2 py-1 text-xs font-semibold text-primary outline-none"
                 value={ch.beat_role ?? ''}
                 onChange={(e) => onEditChapter(ci, { beat_role: e.target.value })}
                 placeholder={t('plan.beat_role')}
@@ -51,6 +56,8 @@ export function PlannerTree({ draft, preview, roster, onEditScene, onEditChapter
                   scene={sc}
                   index={si}
                   unresolved={preview?.chapters[ci]?.scenes[si]?.present_entity_names_unresolved ?? []}
+                  names={{ ...entityNames, ...(preview?.chapters[ci]?.scenes[si]?.present_entity_names ?? {}) }}
+                  inactiveIds={inactiveIds}
                   roster={roster}
                   onEdit={(patch) => onEditScene(ci, si, patch)}
                   onRemove={() => onRemoveScene(ci, si)}

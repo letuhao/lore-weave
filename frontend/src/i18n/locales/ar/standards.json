@@ -115,5 +115,365 @@
     "restoreError": "تعذر الاستعادة",
     "purged": "حُذف نهائياً",
     "purgeError": "تعذر الحذف"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "عام",
+        "description": "سمات مستقلة عن النوع الأدبي تشترك فيها جميع القصص."
+      },
+      "fantasy": {
+        "name": "فانتازيا",
+        "description": "السحر، والقوى الخارقة للطبيعة، والعوالم الخيالية."
+      },
+      "xianxia": {
+        "name": "شيانشيا",
+        "description": "التدريب الروحي، والخالدون، والطوائف، وفانتازيا الفنون القتالية."
+      },
+      "romance": {
+        "name": "رومانسية",
+        "description": "قصص تتمحور حول الحب والعلاقات الحميمة."
+      },
+      "drama": {
+        "name": "دراما",
+        "description": "قصص تركز على الشخصيات وتدفعها الصراعات والعواطف."
+      },
+      "historical": {
+        "name": "تاريخي",
+        "description": "قصص مستندة إلى حقبة زمنية أو إطار تاريخي معين."
+      },
+      "mystery": {
+        "name": "غموض",
+        "description": "تحقيقات، أسرار، والبحث عن الحقيقة الخفية."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "شخصية",
+        "description": "فرد أو كائن مسمى يقوم بأفعال أو يتحدث في القصة."
+      },
+      "location": {
+        "name": "موقع",
+        "description": "مكان مادي يمكن للشخصيات الانتقال إليه أو التواجد فيه."
+      },
+      "item": {
+        "name": "عنصر / أداة",
+        "description": "شيء مادي مثل سلاح، كنز، ملابس أو مركبة."
+      },
+      "event": {
+        "name": "حدث",
+        "description": "شيء يقع: معركة، رحلة، خيانة أو كشف."
+      },
+      "terminology": {
+        "name": "مصطلح",
+        "description": "مصطلح مجرد، عقيدة، رتبة، لقب أو مفهوم."
+      },
+      "power_system": {
+        "name": "نظام القوة",
+        "description": "مخطط مرتب من القوى أو الرتب التي يمكن للشخصيات الارتقاء من خلالها."
+      },
+      "species": {
+        "name": "الفصيلة",
+        "description": "نوع من الكائنات أو الأجناس، وليس شخصية فردية."
+      },
+      "organization": {
+        "name": "منظمة",
+        "description": "مجموعة من الأشخاص يعملون معاً: فصيل، أو عائلة، أو نقابة، أو حكومة."
+      },
+      "relationship": {
+        "name": "علاقة",
+        "description": "رابطة ذات مغزى بين الشخصيات أو المجموعات."
+      },
+      "plot_arc": {
+        "name": "مسار الحبكة",
+        "description": "خط قصصي مستمر له محفز، ومخاطر، وحل."
+      },
+      "social_setting": {
+        "name": "الإطار الاجتماعي",
+        "description": "النظام الاجتماعي، والعصر، والعادات، والتسلسل الهرمي الذي يشكل القصة."
+      },
+      "trope": {
+        "name": "نمط سردي",
+        "description": "نمط سردي متكرر أو اصطلاح أدبي."
+      },
+      "technique": {
+        "name": "تقنية",
+        "description": "فعل أو طريقة أو مهارة محددة يقوم بها الشخصية."
+      },
+      "colleague": {
+        "name": "زميل",
+        "description": "شخص تعمل معه."
+      },
+      "decision": {
+        "name": "قرار",
+        "description": "خيار تم اتخاذه ويؤثر على ما سيحدث لاحقاً."
+      },
+      "jargon": {
+        "name": "مصطلح تخصصي",
+        "description": "مصطلحات تقنية أو اختصار مستخدم في النص."
+      },
+      "meeting": {
+        "name": "اجتماع",
+        "description": "نقاش أو تجمع مقرر موعده."
+      },
+      "org": {
+        "name": "منظمة",
+        "description": "شركة أو فريق أو منظمة خارجية."
+      },
+      "project": {
+        "name": "مشروع",
+        "description": "مجموعة من الأعمال ذات هدف ونتيجة متوقعة."
+      },
+      "task": {
+        "name": "مهمة",
+        "description": "بند عمل قابل للتنفيذ يجب إنجازه."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "الاسم",
+        "description": "سمة الاسم."
+      },
+      "term": {
+        "name": "المصطلح",
+        "description": "سمة المصطلح."
+      },
+      "aliases": {
+        "name": "الأسماء المستعارة",
+        "description": "سمة الأسماء المستعارة."
+      },
+      "gender": {
+        "name": "الجنس",
+        "description": "سمة الجنس."
+      },
+      "role": {
+        "name": "الدور",
+        "description": "سمة الدور."
+      },
+      "occupation": {
+        "name": "المهنة",
+        "description": "سمة المهنة."
+      },
+      "social_class": {
+        "name": "الطبقة الاجتماعية",
+        "description": "سمة الطبقة الاجتماعية."
+      },
+      "affiliation": {
+        "name": "الانتماء",
+        "description": "سمة الانتماء."
+      },
+      "appearance": {
+        "name": "المظهر",
+        "description": "سمة المظهر."
+      },
+      "personality": {
+        "name": "الشخصية",
+        "description": "سمة الشخصية."
+      },
+      "emotional_wound": {
+        "name": "الجرح العاطفي",
+        "description": "سمة الجرح العاطفي."
+      },
+      "love_language": {
+        "name": "لغة الحب",
+        "description": "سمة لغة الحب."
+      },
+      "relationships": {
+        "name": "العلاقات",
+        "description": "سمة العلاقات."
+      },
+      "description": {
+        "name": "الوصف",
+        "description": "سمة الوصف."
+      },
+      "type": {
+        "name": "النوع",
+        "description": "سمة النوع."
+      },
+      "parent_location": {
+        "name": "الموقع الرئيسي",
+        "description": "سمة الموقع الرئيسي."
+      },
+      "atmosphere": {
+        "name": "الأجواء",
+        "description": "سمة الأجواء."
+      },
+      "significance": {
+        "name": "الأهمية",
+        "description": "سمة الأهمية."
+      },
+      "owner": {
+        "name": "المالك",
+        "description": "سمة المالك."
+      },
+      "symbolic_meaning": {
+        "name": "المعنى الرمزي",
+        "description": "سمة المعنى الرمزي."
+      },
+      "date_in_story": {
+        "name": "التاريخ في القصة",
+        "description": "سمة التاريخ في القصة."
+      },
+      "location": {
+        "name": "الموقع",
+        "description": "سمة الموقع."
+      },
+      "participants": {
+        "name": "المشاركون",
+        "description": "سمة المشاركين."
+      },
+      "emotional_impact": {
+        "name": "الأثر العاطفي",
+        "description": "سمة الأثر العاطفي."
+      },
+      "outcome": {
+        "name": "النتيجة",
+        "description": "سمة النتيجة."
+      },
+      "category": {
+        "name": "الفئة",
+        "description": "سمة الفئة."
+      },
+      "definition": {
+        "name": "التعريف",
+        "description": "سمة التعريف."
+      },
+      "usage_note": {
+        "name": "ملاحظة الاستخدام",
+        "description": "خاصية ملاحظة الاستخدام."
+      },
+      "tiers": {
+        "name": "المستويات",
+        "description": "خاصية المستويات."
+      },
+      "rank": {
+        "name": "الترتيب في السلم",
+        "description": "خاصية الترتيب في السلم."
+      },
+      "entry_requirement": {
+        "name": "متطلبات الدخول",
+        "description": "خاصية متطلبات الدخول."
+      },
+      "capabilities": {
+        "name": "القدرات",
+        "description": "خاصية القدرات."
+      },
+      "arc_type": {
+        "name": "نوع القوس السردي",
+        "description": "خاصية نوع القوس السردي."
+      },
+      "parties": {
+        "name": "الأجزاء",
+        "description": "سمة الأجزاء."
+      },
+      "trigger": {
+        "name": "المحفز",
+        "description": "سمة المحفز."
+      },
+      "stakes": {
+        "name": "الرهانات",
+        "description": "سمة الرهانات."
+      },
+      "chapters_span": {
+        "name": "نطاق الفصول",
+        "description": "سمة نطاق الفصول."
+      },
+      "emotional_beats": {
+        "name": "النبضات العاطفية",
+        "description": "سمة النبضات العاطفية."
+      },
+      "resolution": {
+        "name": "الحل",
+        "description": "سمة الحل."
+      },
+      "era": {
+        "name": "العصر",
+        "description": "سمة العصر."
+      },
+      "class_hierarchy": {
+        "name": "التسلسل الهرمي للفئات",
+        "description": "سمة التسلسل الهرمي للفئات."
+      },
+      "rules_norms": {
+        "name": "القواعد والأعراف",
+        "description": "سمة القواعد والأعراف."
+      },
+      "romance_obstacles": {
+        "name": "عقبات الرومانسية",
+        "description": "سمة عقبات الرومانسية."
+      },
+      "traits": {
+        "name": "السمات",
+        "description": "سمة السمات."
+      },
+      "abilities": {
+        "name": "القدرات",
+        "description": "سمة القدرات."
+      },
+      "habitat": {
+        "name": "الموطن",
+        "description": "سمة الموطن."
+      },
+      "culture": {
+        "name": "الثقافة",
+        "description": "سمة الثقافة."
+      },
+      "how_manifested": {
+        "name": "كيفية التجلي",
+        "description": "سمة كيفية التجلي."
+      },
+      "subverted": {
+        "name": "مُقوّض",
+        "description": "سمة مُقوّض."
+      },
+      "related_characters": {
+        "name": "الشخصيات ذات الصلة",
+        "description": "سمة الشخصيات ذات الصلة."
+      },
+      "relationship_type": {
+        "name": "نوع العلاقة",
+        "description": "سمة نوع العلاقة."
+      },
+      "status": {
+        "name": "الحالة",
+        "description": "سمة الحالة."
+      },
+      "tropes": {
+        "name": "السمات الأدبية",
+        "description": "سمة السمات الأدبية."
+      },
+      "dynamic": {
+        "name": "الديناميكية",
+        "description": "سمة الديناميكية."
+      },
+      "key_conflict": {
+        "name": "الصراع الرئيسي",
+        "description": "سمة الصراع الرئيسي."
+      },
+      "turning_points": {
+        "name": "نقاط التحول",
+        "description": "سمة نقاط التحول."
+      },
+      "leader": {
+        "name": "القائد",
+        "description": "سمة القائد."
+      },
+      "headquarters": {
+        "name": "المقر الرئيسي",
+        "description": "سمة المقر الرئيسي."
+      },
+      "members": {
+        "name": "الأعضاء",
+        "description": "سمة الأعضاء."
+      },
+      "effects": {
+        "name": "التأثيرات",
+        "description": "سمة التأثيرات."
+      },
+      "user": {
+        "name": "المستخدم",
+        "description": "سمة المستخدم."
+      }
+    }
   }
 }

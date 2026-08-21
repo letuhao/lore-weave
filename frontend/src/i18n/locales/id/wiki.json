@@ -203,6 +203,11 @@
     "rescanPartial": "Pemindaian ulang selesai (resep dilewati — pengetahuan tidak menyediakan versi) — {{count}} baru",
     "rescanPartial_other": "Pemindaian ulang selesai (resep dilewati — pengetahuan tidak menyediakan versi) — {{count}} baru",
     "rescanFailed": "Pemindaian ulang gagal",
+    "rescanUnchecked": "Pemindaian tidak lengkap — {{count}} artikel tidak dibandingkan",
+    "rescanUnchecked_other": "Pemindaian tidak lengkap — {{count}} artikel tidak dibandingkan",
+    "coverageGap": "Pemindaian terakhir tidak dapat membandingkan {{count}} artikel (pengetahuan tidak terjangkau), jadi daftar ini mungkin tidak lengkap.",
+    "coverageGap_other": "Pemindaian terakhir tidak dapat membandingkan {{count}} artikel (pengetahuan tidak terjangkau), jadi daftar ini mungkin tidak lengkap.",
+    "coverageUnknown": "Pemindaian ini tidak melaporkan seberapa banyak yang dibandingkan, jadi daftar ini mungkin tidak lengkap.",
     "ledgerNote": "Perubahan pengetahuan dicatat di sini secara otomatis (buku besar tertunda, bukan real-time). Bendera berubah tetapi tidak ada yang dibuat ulang secara otomatis — token hanya digunakan saat Anda menekan Buat Ulang.",
     "reason": {
       "entity_changed": "Entri glosarium berubah",

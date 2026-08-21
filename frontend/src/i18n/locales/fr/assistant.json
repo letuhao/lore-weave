@@ -1,0 +1,85 @@
+{
+  "loading": "Configuration de votre assistant…",
+  "openingJournal": "Ouverture de votre journal…",
+  "home": {
+    "welcome": "Bon retour, {{name}}",
+    "subtitle": "Votre assistant de travail privé.",
+    "capturing": "Saisie de vos notes de travail",
+    "captureOff": "La saisie est désactivée",
+    "capturingDesc": "Les personnes et les projets sont détectés pendant que vous parlez.",
+    "captureOffDesc": "Activez cette option pour mémoriser vos collègues, vos projets et vos décisions.",
+    "refresh": "Actualiser",
+    "capturedItems": "Éléments saisis",
+    "endDay": "Terminer ma journée",
+    "endingDay": "Fin de votre journée…",
+    "journal": "Journal",
+    "memory": "Mémoire",
+    "practice": "Entretien d'entraînement"
+  },
+  "timezone": {
+    "title": "Confirmez votre fuseau horaire",
+    "description": "Votre journal regroupe chaque journée selon votre heure locale. Nous avons détecté {{zone}}.",
+    "saving": "Enregistrement…",
+    "useThis": "Utiliser celui-ci",
+    "pickAnother": "Choisir un autre",
+    "save": "Enregistrer"
+  },
+  "capture": {
+    "title": "Aujourd'hui jusqu'ici",
+    "live": "en direct",
+    "description": "Ce que je remarque au fil de notre discussion. Rien n'est enregistré dans votre journal tant que vous ne l'aurez pas révisé ce soir.",
+    "listening": "Écoute en cours…",
+    "nothingYet": "Rien n'a encore été capturé — racontez-moi votre journée.",
+    "turnOn": "Activez la capture pour commencer à noter les personnes et les projets."
+  },
+  "autonomous": {
+    "title": "Laissez l'assistant travailler en autonomie",
+    "description": "Désactivé jusqu'à ce que vous l'activiez — ces processus s'exécutent en arrière-plan et utilisent vos modèles.",
+    "loading": "Chargement…",
+    "on": "Activé",
+    "next": "Activé · prochainement {{time}}",
+    "eod": "Clôturer ma journée automatiquement",
+    "eodDesc": "Journalisez votre journée chaque soir, même si vous l'oubliez.",
+    "weeklyReflection": "Réflexion hebdomadaire",
+    "weeklyReflectionDesc": "Un rituel hebdomadaire doux + une note de coaching.",
+    "weeklySummary": "Résumé hebdomadaire",
+    "weeklySummaryDesc": "Un récapitulatif de votre semaine.",
+    "reminders": "Rappels de journalisation",
+    "remindersDesc": "Un petit rappel si vous n'avez pas encore terminé votre journée.",
+    "proactive": "Points de contact proactifs",
+    "proactiveOn": "Activé — Je pourrai vous solliciter après une période d'inactivité.",
+    "proactiveOff": "Laissez-moi commencer par une réflexion après une période de calme."
+  },
+  "review": {
+    "title": "Voici votre journée",
+    "distilling": "Transformation de la conversation du jour en une entrée de journal...",
+    "genericError": "Une erreur est survenue.",
+    "words": "{{count}} mots",
+    "kept": "conservés",
+    "keep": "Conserver l'entrée du jour",
+    "keptButton": "Conservé ✓",
+    "keeping": "Conservation…"
+  },
+  "inbox": {
+    "title": "Faits à retenir",
+    "description": "Issus des conversations d'aujourd'hui. Conservez ceux qui méritent d'être retenus ; rejetez les autres.",
+    "loading": "Chargement…",
+    "error": "Impossible de charger les faits.",
+    "keep": "Conserver",
+    "dismiss": "Rejeter",
+    "quoted": "cité"
+  },
+  "scorecard": {
+    "title": "Fiche de coaching",
+    "badge": "Non analysé (en cours de révision)",
+    "badgeTitle": "Ce score n'est pas encore étalonné par rapport aux évaluations humaines ; il est donc affiché à titre indicatif, mais n'est pas reporté sur une courbe de tendance.",
+    "overall": "Global :",
+    "notScored": "non évalué"
+  },
+  "reflection": {
+    "defaultTitle": "Réflexion hebdomadaire",
+    "dismissError": "impossible de rejeter — réessayer",
+    "dismissing": "Rejet en cours…",
+    "dismiss": "Rejeter"
+  }
+}

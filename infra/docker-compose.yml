@@ -31,6 +31,13 @@ services:
       context: .
       dockerfile: postgres-pgvector.Dockerfile
     image: loreweave/postgres-pgvector:18
+    # The local stack has 22 per-service databases and its steady-state pools
+    # already consume about 90 client slots. Keep enough headroom for a cold
+    # Compose start rather than falling back to Postgres's 100-slot default.
+    command:
+      - postgres
+      - -c
+      - max_connections=300
     environment:
       POSTGRES_USER: loreweave
       POSTGRES_PASSWORD: loreweave_dev
@@ -320,8 +327,9 @@ services:
       # config.go:loadDomainConfirmURLs — domain key → owning service base URL.
       BOOK_SERVICE_URL: http://book-service:8082
       COMPOSITION_SERVICE_URL: http://composition-service:8093
-      TRANSLATION_SERVICE_URL: http://translation-service:8087
+      # New EPUB books receive an idempotent copy of Glossary's system ontology.
       GLOSSARY_SERVICE_URL: http://glossary-service:8088
+      TRANSLATION_SERVICE_URL: http://translation-service:8087
       KNOWLEDGE_SERVICE_URL: http://knowledge-service:8092
       PROVIDER_REGISTRY_SERVICE_URL: http://provider-registry-service:8085
       # Phase 6c — OpenTelemetry trace export (see provider-registry-service).
@@ -375,6 +383,10 @@ services:
       LLM_GATEWAY_INTERNAL_URL: http://provider-registry-service:8085
       USAGE_BILLING_SERVICE_URL: http://usage-billing-service:8086
       INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:-dev_internal_token}
+      # EPUB V2 rollout: local compose is opt-in; production keeps this
+      # explicitly managed until shadow evidence promotes it to default.
+      EPUB_IMPORT_V2_MODE: ${EPUB_IMPORT_V2_MODE:-opt_in}
+      EPUB_IMPORT_ASSET_RETENTION_HOURS: ${EPUB_IMPORT_ASSET_RETENTION_HOURS:-168}
       AUTH_SERVICE_INTERNAL_URL: http://auth-service:8081
       # C5 / SD-C5 (P-12) — diary encryption-at-rest. MUST be the SAME value as auth-service's
       # DIARY_ENCRYPTION_KEY: auth WRAPS each per-user DEK under this KEK, book-service UNWRAPS with
@@ -1154,6 +1166,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # The worker is headless and overrides the API image command, so the image's
+    # HTTP /health probe would always fail. Check event-loop liveness instead.
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.worker.healthcheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
 
   chat-service:
@@ -2096,7 +2116,7 @@ services:
   #   OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 \
   #     docker compose --profile observability up
   # Then open Grafana at http://localhost:3200 (Explore → Tempo). Host
-  # port 3200, not 3000 — 3000 is ContextHub MCP. Services keep a no-op
+  # port 3200, not 3000 — 3000 is the api-gateway-bff container port. Services keep a no-op
   # tracer while OTEL_EXPORTER_OTLP_ENDPOINT is unset, so they boot fine
   # with the profile off — no service depends_on the collector.
   otel-collector:

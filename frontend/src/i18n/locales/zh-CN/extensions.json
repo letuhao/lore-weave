@@ -9,7 +9,9 @@
     "permissions": "工具权限",
     "proposals": "提案",
     "activity": "活动日志",
-    "ingest": "注册表源"
+    "ingest": "注册表源",
+    "bindings": "自动设置",
+    "workflows": "预设方案"
   },
   "quota": {
     "unavailable": "用量不可用",

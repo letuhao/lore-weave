@@ -725,10 +725,27 @@ async def test_chunk_rows_inserted_for_each_chunk():
     assert pool.fetchrow.call_count == num_chunks, (
         f"Expected {num_chunks} INSERT calls, got {pool.fetchrow.call_count}"
     )
-    # execute = UPDATE (one per chunk)
-    assert pool.execute.call_count == num_chunks, (
-        f"Expected {num_chunks} UPDATE calls, got {pool.execute.call_count}"
+    # execute = UPDATE (one per chunk) — counted by SQL, not by total call count.
+    # It used to assert on `pool.execute.call_count`, which is every UPDATE this function makes
+    # for any reason. That held only while the chunk rows were the ONLY thing written, so
+    # adding the per-chapter injection-scan write broke a test about chunk rows. A proxy that
+    # counts unrelated work is a test that fails on unrelated change.
+    chunk_updates = [
+        c for c in pool.execute.call_args_list
+        if "translation_chunks" in str(c.args[0] if c.args else "")
+    ]
+    assert len(chunk_updates) == num_chunks, (
+        f"Expected {num_chunks} chunk-row UPDATEs, got {len(chunk_updates)}"
     )
+    # …and the chapter's source scan is persisted, exactly once. DETECT is only a defence if
+    # somebody is TOLD, and `resume_state` — the scan's only previous home — is wiped the
+    # moment the chapter finishes, i.e. precisely when the translation becomes readable.
+    scan_updates = [
+        c for c in pool.execute.call_args_list
+        if "source_injection_hits" in str(c.args[0] if c.args else "")
+    ]
+    assert len(scan_updates) == 1, "the chapter's source scan must be persisted once"
+    assert scan_updates[0].args[2] == 0, "clean text records 0, not NULL — 0 means looked"
 
 
 # ── Chunk size clamping ────────────────────────────────────────────────────────

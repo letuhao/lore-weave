@@ -3,13 +3,14 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 
 	"github.com/google/uuid"
 
 	"github.com/loreweave/glossary-service/internal/domain"
 )
 
-// The DB half of entity-kind resolution (spec 2026-08-02-entity-kind-resolution.md). The
+// The DB half of entity-kind resolution (spec docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md). The
 // estimator itself is a pure function in internal/domain so it can be tested without a pool;
 // this file only loads its inputs and writes its output.
 
@@ -164,6 +165,10 @@ func (s *Server) applyKindResolution(ctx context.Context, tx pgxRWQuerier, entit
 			_, err := tx.Exec(ctx, `
 				UPDATE glossary_entities SET kind_labels=$2, kind_conflict_id=$3
 				 WHERE entity_id=$1`, entityID, labels, &target)
+			if err == nil {
+				slog.Info("[FIX] entity-kind re-kind blocked by duplicate",
+					"entity_id", entityID, "target_kind_id", r.Primary)
+			}
 			return false, err
 		}
 		_, err := tx.Exec(ctx, `
@@ -184,19 +189,20 @@ func (s *Server) applyKindResolution(ctx context.Context, tx pgxRWQuerier, entit
 func (s *Server) resolveEntityKind(
 	ctx context.Context, tx pgxRWQuerier, entityID, proposedKindID uuid.UUID,
 	incumbentKindID uuid.UUID, parents map[uuid.UUID]uuid.UUID,
-) (domain.Resolution, error) {
+) (domain.Resolution, bool, error) {
 	if err := s.recordKindVote(ctx, tx, entityID, proposedKindID); err != nil {
-		return domain.Resolution{Primary: incumbentKindID}, err
+		return domain.Resolution{Primary: incumbentKindID}, false, err
 	}
 	votes, err := s.loadKindVotes(ctx, tx, entityID)
 	if err != nil {
-		return domain.Resolution{Primary: incumbentKindID}, err
+		return domain.Resolution{Primary: incumbentKindID}, false, err
 	}
 	res := domain.ResolveKind(incumbentKindID, votes, parents)
-	if _, err := s.applyKindResolution(ctx, tx, entityID, res); err != nil {
-		return res, err
+	moved, err := s.applyKindResolution(ctx, tx, entityID, res)
+	if err != nil {
+		return res, false, err
 	}
-	return res, nil
+	return res, moved, nil
 }
 
 // decodeKindFacets turns the two JSON columns the entity queries select into the response

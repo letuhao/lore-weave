@@ -59,7 +59,8 @@
     "noActive": "Tiada tugasan aktif.",
     "more": "Muat lebih banyak",
     "toggleChildren": "Paparkan anak tugasan",
-    "noChildren": "Tiada anak tugasan."
+    "noChildren": "Tiada anak tugasan.",
+    "errorWithReason": "Tidak dapat memuatkan tugasan: {{error}}"
   },
   "row": {
     "ran": "berjalan {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Jeda",
     "resume": "Sambung",
+    "resumeFromCheckpoint": "Sambung dari titik simpanan",
     "cancel": "Batal",
     "cancelConfirm": "Berhenti sekarang? Kerja yang sedang berjalan akan dibuang; bahagian yang telah selesai akan disimpan.",
     "cancelYes": "Ya",
@@ -95,7 +97,9 @@
     "retry": "Cuba lagi",
     "retried": "Dihantar semula sebagai tugasan baharu.",
     "stale": "Keadaan tugasan berubah — dikemas kini.",
-    "actionFailed": "Tindakan gagal: {{error}}"
+    "actionFailed": "Tindakan gagal: {{error}}",
+    "retryBenchmarkMissing": "Percubaan semula tidak tersedia: model embedding tidak mempunyai penanda aras. Jalankan penanda aras model, kemudian semak semula.",
+    "retryBenchmarkFailed": "Percubaan semula tidak tersedia: model embedding gagal dalam penanda aras terakhirnya."
   },
   "monitor": {
     "back": "Semua tugasan",

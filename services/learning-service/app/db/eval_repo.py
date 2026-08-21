@@ -208,10 +208,10 @@ async def persist_eval_result(
                   judge_panel_id, dataset_version, source, judges, disjoint_median_f1,
                   full_panel_median_f1, fleiss_kappa, bootstrap_ci, n_chapters,
                   n_disjoint_judges, idempotency_key, origin_service, origin_event_id,
-                  panel_safe, panel_safety_reason
+                  panel_safe, panel_safety_reason, exclusion_unverified
                 ) VALUES (
                   $1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10,
-                  $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19, $20
+                  $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19, $20, $21
                 )
                 ON CONFLICT (idempotency_key) WHERE idempotency_key IS NOT NULL
                 DO UPDATE SET
@@ -225,7 +225,8 @@ async def persist_eval_result(
                   source = EXCLUDED.source,
                   dataset_version = EXCLUDED.dataset_version,
                   panel_safe = EXCLUDED.panel_safe,
-                  panel_safety_reason = EXCLUDED.panel_safety_reason
+                  panel_safety_reason = EXCLUDED.panel_safety_reason,
+                  exclusion_unverified = EXCLUDED.exclusion_unverified
                 RETURNING eval_run_id
                 """,
                 user_id, project_id, book_id, source_extraction_run_id, config_hash,
@@ -234,6 +235,11 @@ async def persist_eval_result(
                 ci_json, result.n_common_chapters, result.n_disjoint_judges,
                 idempotency_key, origin_service, origin_event_id,
                 getattr(result, "panel_safe", None), getattr(result, "panel_safety_reason", None),
+                # S13. Stored, and stored SEPARATELY from panel_safe on purpose: a reader
+                # that checks one boolean cannot tell a clean panel from one whose exclusion
+                # refs belong to another machine. `metric_of_record_blockers` is what turns
+                # the pair into an answer.
+                getattr(result, "exclusion_unverified", None),
             )
             eval_run_id: UUID = row["eval_run_id"]
             run_id_str = str(eval_run_id)

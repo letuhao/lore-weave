@@ -851,8 +851,16 @@ func resolveChapterForWrite(ctx context.Context, tx pgx.Tx, bookID uuid.UUID, ch
 		num   int
 		ver   int64
 	}
+	// COALESCE, because `chapters.title` is NULLABLE and an untitled chapter is a legal,
+	// ordinary state: an import creates rows from `original_filename` long before anyone names
+	// them. Scanning a NULL into `r.title string` fails, and every branch below turns that into
+	// the same opaque "failed to resolve chapter" — so the FIRST save_draft on an untitled
+	// chapter was unreachable, and the message blamed resolution rather than a scan.
+	// `title` is only ever used for display and selector matching below; empty string is the
+	// correct reading of "not named yet" for both (it matches no non-empty selector, and the
+	// chapter stays selectable by id or by number).
 	rows, err := tx.Query(ctx, `
-SELECT c.id, c.title,
+SELECT c.id, COALESCE(c.title, ''),
        row_number() OVER (ORDER BY c.sort_order, c.created_at)::int AS num,
        d.draft_version
 FROM chapters c JOIN chapter_drafts d ON d.chapter_id = c.id

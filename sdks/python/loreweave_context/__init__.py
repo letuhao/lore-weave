@@ -7,6 +7,11 @@ imports NO provider SDK (LLM/embeddings are injected ports) — provider-gate cl
 T3.1 ships the assembly renderer (`build_system_message`); later slices add CompilePlan /
 Planner / Compiler / CompactionStrategy. See docs/plans/2026-07-04-t3-context-kernel.md.
 """
+from loreweave_context.allocation import (
+    DEFAULT_OVERHEAD_SHARE,
+    ContextAllocation,
+    allocate_context,
+)
 from loreweave_context.budget import compute_target, scale_by_window
 from loreweave_context.compaction import (
     CompactionReport,
@@ -32,6 +37,13 @@ __all__ = [
     "build_system_message",
     "compute_target",
     "scale_by_window",
+    # S11 — the allocation layer between a window and the budgets carved from it. A NEW
+    # NAME on purpose: the SDK is not version-pinned (every service COPYs it and pip
+    # installs), so changing `scale_by_window` in place would be adopted by chat, knowledge
+    # and worker-ai on their next unrelated rebuild.
+    "allocate_context",
+    "ContextAllocation",
+    "DEFAULT_OVERHEAD_SHARE",
     "CompilePlan",
     "Planner",
     "estimate_tokens",

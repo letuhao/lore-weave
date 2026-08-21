@@ -210,6 +210,10 @@ class GenerationParams(BaseModel):
     # thinking entirely — the cure for an over-thinking / runaway-reasoning model that
     # burns tokens without finishing. None ⇒ fall back to `thinking` / platform default.
     reasoning_effort: str | None = None
+    # Stateful Responses API is opt-in per chat. OpenAI-compatible providers
+    # do not all implement the Responses tool-output contract, so the safe
+    # default is the portable chat/completions transport.
+    use_stateful_responses: bool | None = None
 
     def model_post_init(self, __context: Any) -> None:
         if self.temperature is not None and not (0.0 <= self.temperature <= 2.0):
@@ -222,6 +226,8 @@ class GenerationParams(BaseModel):
             "off", "auto", "low", "medium", "high",
         ):
             raise ValueError("reasoning_effort must be off|auto|low|medium|high")
+        if self.use_stateful_responses is not None and not isinstance(self.use_stateful_responses, bool):
+            raise ValueError("use_stateful_responses must be a boolean")
 
 
 class CreateSessionRequest(BaseModel):

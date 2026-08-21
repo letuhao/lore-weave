@@ -4,6 +4,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Typography from '@tiptap/extension-typography';
 import { useState, useEffect, useCallback, useRef, useImperativeHandle, forwardRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { FormatToolbar } from './FormatToolbar';
 import { CodeBlockToolbar } from './CodeBlockToolbar';
 import { SlashMenuExtension, SlashMenuPopup, type EditorMode } from './SlashMenu';
@@ -94,6 +95,8 @@ export interface TiptapEditorHandle {
   setUploadContext: (ctx: ImageUploadContext | null) => void;
 }
 
+export interface GrammarContextMenuContext { from: number; to: number; text: string; message: string; replacements: string[]; isGrammarIssue: boolean; canUseAi: boolean; }
+
 interface TiptapEditorProps {
   content: any;
   /** Fires on every doc mutation (typing OR programmatic insert via the handle).
@@ -117,6 +120,7 @@ interface TiptapEditorProps {
    *  `.focusline` + scrolled to center on every selection/text change (typewriter).
    *  Default off → other TiptapEditor consumers are unaffected. */
   focusMode?: boolean;
+  contextMenuActions?: (editor: Editor, context: GrammarContextMenuContext) => React.ReactNode;
 }
 
 import { extractText, addTextSnapshots } from '@/lib/tiptap-utils';
@@ -125,11 +129,24 @@ export { extractText, addTextSnapshots };
 export { setGlossaryEntities, setGlossaryEnabled, getGlossaryCount };
 
 export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
-  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer, focusMode = false }, ref) {
+  function TiptapEditor({ content, onUpdate, editable = true, grammarEnabled = true, editorMode = 'classic', className, selectionMenu, aiLayer, focusMode = false, contextMenuActions }, ref) {
     const initialContent = useRef(content);
     const prevContent = useRef(content);
     const isExternalUpdate = useRef(false);
     const [showSource, setShowSource] = useState(false);
+    const [grammarContext, setGrammarContext] = useState<GrammarContextMenuContext & { x: number; y: number } | null>(null);
+    const [contextMenuMode, setContextMenuMode] = useState<EditorMode>(() => {
+      try { return localStorage.getItem('loreweave.editor.aiMode') === 'ai' ? 'ai' : editorMode; } catch { return editorMode; }
+    });
+    useEffect(() => {
+      const onMode = (event: Event) => {
+        const mode = (event as CustomEvent<{ mode?: EditorMode }>).detail?.mode;
+        if (mode === 'classic' || mode === 'ai') setContextMenuMode(mode);
+      };
+      window.addEventListener('lw-editor-mode-change', onMode);
+      return () => window.removeEventListener('lw-editor-mode-change', onMode);
+    }, []);
+    useEffect(() => { if (editorMode === 'ai') setContextMenuMode('ai'); }, [editorMode]);
 
     const editor = useEditor({
       extensions: [
@@ -346,8 +363,31 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
 
     if (!editor) return null;
 
+    const onEditorContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+      // The editor owns its context menu. Prevent the browser menu even when the
+      // click is on empty space; standard copy/paste actions remain available there.
+      event.preventDefault();
+      const target = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-grammar-issue="true"]');
+      let from = editor.state.selection.from;
+      let to = editor.state.selection.to;
+      let text = editor.state.doc.textBetween(from, to, ' ');
+      let message = '';
+      let replacements: string[] = [];
+      let isGrammarIssue = false;
+      if (target) {
+        from = editor.view.posAtDOM(target, 0);
+        text = target.textContent ?? '';
+        to = from + text.length;
+        message = target.dataset.grammarMessage ?? '';
+        try { replacements = JSON.parse(target.dataset.grammarReplacements ?? '[]'); } catch { /* stale decoration */ }
+        isGrammarIssue = true;
+      }
+      const rect = event.currentTarget.getBoundingClientRect();
+      setGrammarContext({ from, to, text, message, replacements, isGrammarIssue, canUseAi: text.trim().length > 0 && text.length <= 8000, x: event.clientX - rect.left, y: event.clientY - rect.top });
+    };
+
     return (
-      <div className={`${className ?? ''} tiptap-editor-wrapper relative${focusMode ? ' lw-focus' : ''}`}>
+      <div onContextMenu={onEditorContextMenu} onClick={() => grammarContext && setGrammarContext(null)} className={className + ' tiptap-editor-wrapper relative' + (focusMode ? ' lw-focus' : '')}>
         {editable && <FormatToolbar editor={editor} mode={editorMode} />}
         {showSource ? (
           <SourceView json={editor.getJSON()} />
@@ -358,9 +398,37 @@ export const TiptapEditor = forwardRef<TiptapEditorHandle, TiptapEditorProps>(
             {editable && <CodeBlockToolbar editor={editor} />}
             {editable && selectionMenu?.(editor)}
             {editable && aiLayer?.(editor)}
+            {editable && grammarContext && <GrammarContextMenu editor={editor} mode={contextMenuMode} context={grammarContext} onClose={() => setGrammarContext(null)} extraActions={contextMenuActions} />}
           </>
         )}
       </div>
     );
   },
 );
+
+function GrammarContextMenu({ editor, mode, context, onClose, extraActions }: { editor: Editor; mode: EditorMode; context: GrammarContextMenuContext & { x: number; y: number }; onClose: () => void; extraActions?: (editor: Editor, context: GrammarContextMenuContext) => React.ReactNode }) {
+  const { t } = useTranslation('editor');
+  const replace = (value: string) => { editor.chain().focus().insertContentAt({ from: context.from, to: context.to }, value).run(); onClose(); };
+  const copy = async () => { try { await navigator.clipboard?.writeText(context.text); } catch {} onClose(); };
+  const cut = async () => { try { await navigator.clipboard?.writeText(context.text); } catch {} replace(''); };
+  const paste = async () => { try { const value = await navigator.clipboard?.readText(); if (value) replace(value); } catch {} onClose(); };
+  const selectAll = () => { editor.commands.focus(); editor.commands.setTextSelection({ from: 1, to: editor.state.doc.content.size }); onClose(); };
+  const item = (label: string, action: () => void, testId?: string) => <button type="button" data-testid={testId} onClick={(e) => { e.stopPropagation(); action(); }} className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-secondary">{label}</button>;
+  const requestAi = (operation: 'rewrite' | 'expand' | 'describe') => {
+    editor.chain().focus().setTextSelection({ from: context.from, to: context.to }).run();
+    window.dispatchEvent(new CustomEvent('lw-editor-context-ai', { detail: { operation, from: context.from, to: context.to } }));
+    onClose();
+  };
+  const requestAux = (action: 'dictionary' | 'bookmark' | 'findGlossary' | 'askAi' | 'findMentions') => {
+    window.dispatchEvent(new CustomEvent('lw-editor-context-action', { detail: { action, context } }));
+    onClose();
+  };
+  return <div data-testid="grammar-context-menu" role="menu" onClick={(e) => e.stopPropagation()} style={{ left: context.x, top: context.y }} className="absolute z-50 min-w-48 rounded-md border border-border bg-popover p-1 text-popover-foreground shadow-lg">
+    {context.isGrammarIssue && context.message && <div className="border-b border-border px-2 py-1 text-[10px] text-muted-foreground">{context.message}</div>}
+    {context.replacements.length > 0 && <div className="border-b border-border py-1">{context.replacements.map((value) => item(t('contextMenu.replace', { defaultValue: 'Replace with' }) + ' «' + value + '»', () => replace(value)))}</div>}
+    <div className="border-b border-border py-1">{item(t('contextMenu.copy', { defaultValue: 'Copy' }), copy)}{item(t('contextMenu.cut', { defaultValue: 'Cut' }), cut)}{item(t('contextMenu.paste', { defaultValue: 'Paste' }), paste)}{item(t('contextMenu.selectAll', { defaultValue: 'Select all' }), selectAll)}</div>
+    <div className="border-b border-border py-1">{item(t('contextMenu.undo', { defaultValue: 'Undo' }), () => { editor.commands.undo(); onClose(); })}{item(t('contextMenu.redo', { defaultValue: 'Redo' }), () => { editor.commands.redo(); onClose(); })}</div>
+    {mode === 'ai' && context.canUseAi && <div className="border-b border-border py-1">{item(t('contextMenu.rewrite', { defaultValue: 'Rewrite with AI' }), () => requestAi('rewrite'), 'grammar-context-ai-rewrite')}{item(t('contextMenu.expand', { defaultValue: 'Expand with AI' }), () => requestAi('expand'), 'grammar-context-ai-expand')}{item(t('contextMenu.describe', { defaultValue: 'Describe with AI' }), () => requestAi('describe'), 'grammar-context-ai-describe')}{item(t('contextMenu.askAi', { defaultValue: 'Ask AI about this' }), () => requestAux('askAi'), 'grammar-context-ask-ai')}</div>}
+    {context.text.trim() && <div className="py-1">{item(t('contextMenu.findGlossary', { defaultValue: 'Find in glossary' }), () => requestAux('findGlossary'), 'grammar-context-find-glossary')}{item(t('contextMenu.findMentions', { defaultValue: 'Find mentions' }), () => requestAux('findMentions'))}{extraActions?.(editor, context)}</div>}
+  </div>;
+}

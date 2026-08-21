@@ -713,6 +713,37 @@ class GlossaryClient:
             logger.warning("glossary propose-entities failed: %s", exc)
             return None
 
+    async def adopt_book_kinds(
+        self,
+        book_id: UUID,
+        user_id: UUID,
+        kinds: list[str],
+    ) -> bool:
+        """Ensure the book has the glossary kinds needed by a writeback.
+
+        A knowledge project can contain extracted entities before its glossary
+        ontology has been scaffolded.  The glossary bulk writeback endpoint
+        deliberately rejects such a book (422) instead of silently dropping
+        entities.  This internal, idempotent copy-down closes that lifecycle
+        gap without making the browser orchestrate a second service call.
+        """
+        if not kinds:
+            return True
+        url = f"{self._base_url}/internal/books/{book_id}/ontology/adopt-kinds"
+        try:
+            resp = await self._http.post(
+                url,
+                params={"user_id": str(user_id)},
+                json={"kinds": sorted({str(kind) for kind in kinds if str(kind).strip()})},
+            )
+            if resp.status_code != 200:
+                logger.warning("glossary adopt-kinds %s returned %d", url, resp.status_code)
+                return False
+            return True
+        except httpx.HTTPError as exc:
+            logger.warning("glossary adopt-kinds failed (%s): %s", url, exc)
+            return False
+
     async def propose_merge_candidates(
         self,
         book_id: UUID,

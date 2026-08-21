@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import { Loader2 } from 'lucide-react';
 import { compositionApi } from '@/features/composition/api';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { TiptapEditor, type TiptapEditorHandle } from '@/components/editor/TiptapEditor';
@@ -48,6 +49,33 @@ import type { StudioToolRegistration } from '../host/types';
 export function EditorPanel(props: IDockviewPanelProps) {
   const { t } = useTranslation('studio');
   const host = useStudioHost();
+  useEffect(() => {
+    const onContextAction = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string; context?: { text?: string } }>).detail;
+      const text = detail?.context?.text?.trim();
+      if (!detail?.action || !text) return;
+      if (detail.action === 'findGlossary' || detail.action === 'dictionary') {
+        try { localStorage.setItem('loreweave.glossary.search', text); } catch { /* private mode */ }
+        window.dispatchEvent(new CustomEvent('lw-glossary-search', { detail: { text } }));
+        host.openPanel('glossary', { focus: true });
+      } else if (detail.action === 'askAi') {
+        // Localized on purpose: this lands in the composer for the author to read, edit and
+        // send, so it is UI text — and asking in the author's language is what makes the
+        // model answer in it. English is the source string, per the English-artifacts rule.
+        const prompt = t('editor.askAiPrompt', {
+          defaultValue: 'Analyse this passage from the manuscript and answer the user\'s question:\n\n"{{text}}"\n\nWhat is important to consider?',
+          text,
+        });
+        try { localStorage.setItem('loreweave.chat.prefill', prompt); } catch { /* private mode */ }
+        window.dispatchEvent(new CustomEvent('lw-chat-prefill', { detail: { text: prompt } }));
+        host.openPanel('compose', { focus: true });
+      } else if (detail.action === 'findMentions') {
+        host.openPanel('search', { focus: true, params: { query: text, mode: 'text' } });
+      }
+    };
+    window.addEventListener('lw-editor-context-action', onContextAction);
+    return () => window.removeEventListener('lw-editor-context-action', onContextAction);
+  }, [host]);
   const { bookId } = host;
   const unit = useManuscriptUnit();
   // M3 (F2) — the empty state must not dead-end a newcomer: offer the same "start writing" door the
@@ -102,6 +130,10 @@ export function EditorPanel(props: IDockviewPanelProps) {
   }, [props.api, label]);
 
   const chapterId = unit?.state.chapterId ?? null;
+  // The bus changes before the hoisted draft finishes flushing a dirty chapter. Keep the editor
+  // covered during that transition so stale prose is never presented as the newly selected chapter.
+  const requestedChapterId = useStudioBusSelector((s) => s.activeChapterId ?? null);
+  const chapterIsLoading = unit?.state.saveState === 'loading' || (!!requestedChapterId && requestedChapterId !== chapterId);
 
   // Register the studio editor as the propose_edit write-back target (Lane C). Cleared on unmount
   // / chapter change so a stale handle never receives a write. #16 P1: also hand over the
@@ -313,7 +345,27 @@ export function EditorPanel(props: IDockviewPanelProps) {
   // prose (a real chapter's words wrapped one-per-line in live testing), so the auto-default
   // starts closed on mobile; the toggle button still opens it on demand.
   const railChoice = railChoiceState;
+  // `?? (hasScenes && !isMobile)` is what makes `null` mean AUTO, per the #12 M-C contract on
+  // railChoiceState above. PR #184 changed this to `?? false` ("keep the editor compact"); that
+  // is a defensible preference but it was a half-change — it left the M-C comment declaring
+  // auto-open, made `null` and `false` behave identically (so the tri-state carried no
+  // information), and reduced hasScenes to a count label. Reverted here. Wanting compact by
+  // default is fine, but it means retiring the tri-state and amending #12 M-C + #16 Phase 4
+  // together, not flipping this one operand.
   const railOpen = railChoice ?? (hasScenes && !isMobile);
+  const guideSceneSuggestions = () => {
+    const selection = editorRef.current?.getSelection();
+    if (!selection || selection.empty) {
+      editorEl?.focus();
+      toast.info(t('editor.sceneSuggestionsSelect', {
+        defaultValue: 'Select a passage first, then use Suggest scenes above the selection.',
+      }));
+      return;
+    }
+    toast.info(t('editor.sceneSuggestionsReady', {
+      defaultValue: 'Use Suggest scenes in the AI toolbar above the selected passage.',
+    }));
+  };
 
   return (
     <div data-testid="studio-editor-panel" className="flex h-full min-h-0 flex-col">
@@ -397,6 +449,17 @@ export function EditorPanel(props: IDockviewPanelProps) {
         >
           {t('sceneRail.toggle', { defaultValue: 'Scenes' })} {hasScenes ? state.scenes.length : ''}
         </button>
+        {composeProjectId && (
+          <button
+            type="button"
+            data-testid="studio-editor-suggest-scenes"
+            onClick={guideSceneSuggestions}
+            title={t('editor.sceneSuggestionsHint', { defaultValue: 'Select manuscript text to generate scene proposals with AI' })}
+            className="rounded px-1.5 py-0.5 hover:bg-secondary hover:text-foreground"
+          >
+            ✦ {t('editor.suggestScenes', { defaultValue: 'Suggest scenes' })}
+          </button>
+        )}
         {/* #12 S4/J1 — the "option" editor duality: open THIS unit in the generic json-editor.
             Per-resource dock id (J1 multi-instance): each chapter gets its OWN tab; re-opening
             the same chapter focuses it. Same shared document — edits mirror live. */}
@@ -482,7 +545,11 @@ export function EditorPanel(props: IDockviewPanelProps) {
       </div>
       <ProvenanceTag />
       <div className="flex min-h-0 flex-1">
-        <div ref={editorContainerRef} className="min-h-0 min-w-0 flex-1 overflow-auto">
+        <div
+          ref={editorContainerRef}
+          className="relative min-h-0 min-w-0 flex-1 overflow-auto"
+          aria-busy={chapterIsLoading || undefined}
+        >
           <TiptapEditor
             ref={editorRef}
             content={state.loadedBody}
@@ -506,6 +573,19 @@ export function EditorPanel(props: IDockviewPanelProps) {
               )
               : undefined}
           />
+          {chapterIsLoading && (
+            <div
+              data-testid="studio-editor-loading"
+              role="status"
+              aria-live="polite"
+              className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur-[1px]"
+            >
+              <div className="inline-flex items-center gap-2 rounded-lg border bg-background px-3 py-2 text-xs text-muted-foreground shadow-lg">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" aria-hidden="true" />
+                <span>{t('editor.loadingChapter', { defaultValue: 'Loading chapter…' })}</span>
+              </div>
+            </div>
+          )}
         </div>
         {/* #16 2.2 — focus mode hides the flanking panels (matches legacy's side-panel-hiding
             behavior) so the writer's attention stays on the manuscript. */}

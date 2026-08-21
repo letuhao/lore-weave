@@ -458,7 +458,11 @@
       "replaceFactSave": "Enregistrer le remplacement",
       "replaceFactSuccess": "Fait remplacé",
       "markWrongUndo": "Annuler",
-      "markWrongUndoFailed": "Impossible d'annuler : {{error}}"
+      "markWrongUndoFailed": "Impossible d'annuler : {{error}}",
+      "tabs": {
+        "current": "Actuel",
+        "temporal": "Temporel"
+      }
     },
     "edit": {
       "title": "Modifier l'entité",
@@ -517,11 +521,32 @@
       "discoveredHint": "Les nouvelles entités commencent avec le statut « découverte ». Le statut canonique est obtenu en les ancrant au glossaire."
     },
     "kind": {
+      "unknown": "Type inconnu",
+      "person": "Personne",
+      "artifact": "Artéfact",
       "character": "Personnage",
       "location": "Lieu",
       "organization": "Organisation",
       "concept": "Concept",
-      "item": "Objet"
+      "item": "Objet",
+      "event_ref": "Événement",
+      "preference": "Préférence",
+      "event": "Événement",
+      "terminology": "Terminologie",
+      "power_system": "Système de pouvoir",
+      "species": "Espèce",
+      "relationship": "Relation",
+      "plot_arc": "Arc narratif",
+      "social_setting": "Cadre social",
+      "trope": "Trope",
+      "technique": "Technique",
+      "colleague": "Collègue",
+      "decision": "Décision",
+      "jargon": "Jargon",
+      "meeting": "Réunion",
+      "org": "Organisation",
+      "project": "Projet",
+      "task": "Tâche"
     },
     "archive": {
       "action": "Archiver",
@@ -707,7 +732,32 @@
         "errorAlreadyRunning": "Un benchmark est déjà en cours pour ce projet. Attendez et réessayez.",
         "errorProviderFlake": "Le fournisseur d'embedding a échoué en cours de route. Veuillez réessayer.",
         "errorGeneric": "Échec du benchmark : {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Aucun benchmark pour le moment — lancez le benchmark du « golden-set » pour activer l'extraction.",
+      "bookIdLocked": "Ce livre (verrouillé)",
+      "canonCapture": "Capture automatique des nouveaux noms depuis le chat",
+      "canonCaptureCeilingOff": "Désactivé pour ce déploiement — votre choix est enregistré, mais la capture ne s'exécutera pas tant qu'un administrateur ne l'aura pas réactivée.",
+      "canonCaptureHint": "Toutes les quelques itérations, les noms introduits dans votre conversation sont ajoutés à la boîte de réception de révision du glossaire de ce livre sous forme de suggestions — jamais comme éléments canoniques. Utilise un appel IA supplémentaire par capture, facturé sur votre propre modèle.",
+      "canonCaptureNoBook": "Liez un livre à ce projet pour capturer les noms dans son glossaire.",
+      "embeddingModel": "Modèle d'embedding",
+      "embeddingModelEmpty": "Aucun modèle compatible avec l'embedding n'est configuré — l'extraction en nécessite un.",
+      "embeddingModelHint": "Détermine l'espace vectoriel utilisé par ce projet pour la récupération sémantique de passages.",
+      "embeddingModelNone": "Aucun (pas de passages sémantiques)",
+      "genre": "Genre",
+      "genrePlaceholder": "ex. Tiên hiệp, Cultivation, Fantasy…",
+      "memoryConfirm": "Confirmer avant d'enregistrer les souvenirs",
+      "memoryConfirmHint": "Les faits que l'IA souhaite mémoriser attendent votre approbation au lieu d'être enregistrés automatiquement.",
+      "rerankDiscoveryHint": "Auto-hébergé ? Ajoutez un identifiant de rerank local (compatible Cohere) dans les Modèles d'IA, puis actualisez — les modèles de rerank sont détectés automatiquement.",
+      "rerankModel": "Modèle de rerank (optionnel)",
+      "rerankModelEmpty": "Aucun modèle de rerank configuré. Enregistrez-en un pour activer le rejet des résultats non pertinents.",
+      "rerankModelHint": "Rerank par cross-encoder pour le rejet des résultats de recherche brute. Optionnel — si laissé vide, la recherche conserve l'ordre de fusion.",
+      "rerankModelNone": "Aucun (ignorer le rerank — conserver l'ordre de fusion)",
+      "toolCalling": "Outils de mémoire dans le chat",
+      "toolCallingHint": "Permettez à l'IA de rechercher, de se rappeler et de noter des souvenirs lors de la discussion dans ce projet.",
+      "benchmarkFailed": "✗ Échec du benchmark (recall@3 {{recall}}) — ce modèle a obtenu un score inférieur au seuil de qualité pour l'extraction ; essayez un autre modèle d'embedding.",
+      "benchmarkInconclusive": "⋯ Benchmark non concluant (recall@3 {{recall}}) — nécessite ≥3 passages pour valider ce modèle. Relancez-le.",
+      "benchmarkPassed": "✓ Benchmark réussi (recall@3 {{recall}}).",
+      "genreError": "Le genre doit comporter au maximum {{max}} caractères."
     },
     "archiveDialog": {
       "title": "Archiver le projet ?",
@@ -910,6 +960,32 @@
         "unpin": "Désépingler",
         "budget": "+{{tokens}} tokens par fenêtre ({{count}} épinglés × ~50).",
         "noBook": "L'épinglage nécessite un livre lié. Attachez d'abord un livre à ce projet."
+      },
+      "disabled": {
+        "benchmarkRequired": "Exécutez le benchmark du « golden-set » et validez-le pour activer l'extraction (ci-dessus).",
+        "checkingBenchmark": "Vérification du benchmark d'embedding…",
+        "fixConcurrency": "Les appels parallèles doivent être compris entre 1 et 64.",
+        "fixMaxSpend": "Veuillez saisir un plafond de dépenses valide.",
+        "fixRange": "Veuillez corriger la plage de chapitres.",
+        "pickEmbedding": "Veuillez choisir un modèle d'embedding.",
+        "pickLlm": "Veuillez choisir un modèle LLM d'extraction."
+      },
+      "embedding": {
+        "changeViaDialog": "Ce projet possède déjà un modèle d'embedding. Utilisez « Modifier le modèle » pour le changer — cela reconstruira le graphe.",
+        "saveFailed": "Impossible d'enregistrer le modèle d'embedding : {{error}}",
+        "saved": "Modèle d'embedding enregistré — lancez le benchmark ci-dessous pour activer l'extraction."
+      },
+      "prereq": {
+        "benchmarkChecking": "Vérification du benchmark d'embedding…",
+        "benchmarkPassed": "Benchmark d'embedding réussi",
+        "benchmarkPending": "Benchmark d'embedding en attente (choisissez d'abord un modèle)",
+        "benchmarkRequired": "Benchmark d'embedding requis — lancez-le via le sélecteur de modèle ci-dessous",
+        "embedding": "Modèle d'embedding sélectionné",
+        "llm": "Modèle LLM d'extraction sélectionné"
+      },
+      "reasoning": {
+        "hint": "Désactivé par défaut — l'extraction renvoie du JSON, et la réflexion masquée peut consommer votre budget de sortie. Activez cette option uniquement pour le contenu complexe sur un modèle de raisonnement.",
+        "label": "Activer le raisonnement du modèle (réflexion)"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "Enregistrement…",
       "cancel": "Annuler",
       "saved": "Paramètres d'extraction enregistrés.",
-      "failed": "Échec de l'enregistrement : {{error}}"
+      "failed": "Échec de l'enregistrement : {{error}}",
+      "filterModel": "Modèle de filtrage (optionnel)",
+      "filterModelDefault": "Utiliser le modèle d'extraction (par défaut)",
+      "filterModelHint": "LLM qui évalue la précision des relations. Par défaut, le filtre réutilise votre modèle d'extraction (par utilisateur, BYOK). Choisissez un modèle plus puissant pour un filtrage de haute précision."
     },
     "confirmDestructive": {
       "cancel": "Annuler",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "Dernière chance — vraiment reconstruire ?",
-        "description": "Cliquer sur Reconstruire lancera la destruction et la reconstruction. Il n'y aura pas de retour en arrière une fois que la nouvelle tâche sera lancée."
+        "description": "Cliquer sur Reconstruire lancera la destruction et la reconstruction. Il n'y aura pas de retour en arrière une fois que la nouvelle tâche sera lancée.",
+        "descriptionCount": "Ceci SUPPRIME définitivement {{entities}} entités, {{events}} événements et {{facts}} faits, puis reconstruit tout à partir de zéro. Cette action est irréversible.",
+        "typePrompt": "Tapez le nom du projet pour confirmer"
       },
       "disable": {
         "title": "Désactiver l'extraction ?",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "Afficher la différence avec l'actuelle",
       "diffEmpty": "Aucune différence."
-    }
+    },
+    "loading": "Chargement…"
   },
   "indicator": {
     "label": "Indicateur de connaissances",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "Globale",
       "project": "Projet",
-      "degraded": "Dégradée"
+      "degraded": "Dégradée",
+      "multi": "{{count}} graphes de connaissances"
     },
     "popover": {
       "projectHeading": "Mémoire du projet",
@@ -1100,7 +1183,8 @@
       "projectBody": "Cette session est liée à <strong>{{name}}</strong>. L'IA utilise votre bio globale ainsi que le résumé et le glossaire du projet à chaque tour.",
       "globalBody": "Cette session n'a aucun projet lié. L'IA ne voit que votre bio globale. Liez un projet dans les paramètres de la session pour lui donner accès à la mémoire spécifique du livre.",
       "degradedBody": "Le service de connaissances était injoignable lors du dernier tour. L'IA s'est rabattue sur les messages récents uniquement — la mémoire de votre projet n'est temporairement pas incluse dans le prompt. La récupération sera automatique au prochain tour une fois le service rétabli.",
-      "manage": "Gérer les connaissances"
+      "manage": "Gérer les connaissances",
+      "multiBody": "Cette discussion s'appuie sur {{count}} graphes de connaissances simultanément — les faits sont étiquetés avec leur source."
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "Mapper"
     },
     "emptyHint": "Le triage collecte tout élément extrait qui ne correspond pas encore à votre schéma — une file d'attente vide signifie que tout est bien classé."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "À la date du chapitre {{ordinal}}",
+      "current": "actuel",
+      "loadFailed": "Impossible de charger le canon pour ce point de l'histoire.",
+      "sourceCanonContent": "canon écrit",
+      "sourceCanonContentHint": "Affichage du canon écrit (aucun instantané replié pour ce point).",
+      "status": {
+        "current": "actuel",
+        "stale": "obsolète",
+        "unbuildable": "indisponible"
+      },
+      "unbuildable": "Synthèse indisponible ici — mode dégradé sécurisé."
+    },
+    "retrieval": {
+      "chapter": "Chapitre {{chapter}}",
+      "ariaLabel": "Recherche de récupération",
+      "currentStateNote": "Les résultats correspondent à l'état actuel (la récupération temporelle n'est pas encore disponible).",
+      "error": "Échec de la recherche : {{error}}",
+      "noResults": "Aucun contexte correspondant trouvé.",
+      "noText": "(aucun texte d'aperçu)",
+      "placeholder": "Rechercher dans le contexte de ce livre...",
+      "typeToSearch": "Tapez pour rechercher le contexte de cette entité."
+    },
+    "slider": {
+      "atChapter": "Chapitre {{ordinal}}",
+      "aria": "Faire défiler l'ordre chronologique des chapitres",
+      "head": "Tête (dernière)",
+      "headButton": "Tête (dernière)",
+      "label": "Temps de l'histoire",
+      "loadFailed": "Impossible de charger la chronologie des modifications.",
+      "noChanges": "Aucune modification temporelle pour le moment."
+    },
+    "translation": {
+      "asOfChapter": "chapitre {{n}}",
+      "asOfLabel": "au chapitre {{label}}",
+      "error": "Échec du chargement du contexte : {{error}}",
+      "asAuthored": "tel qu'écrit",
+      "asOfHead": "dernière version",
+      "badgeCached": "traduit · mis en cache",
+      "badgeFresh": "traduit",
+      "empty": "Aucun contexte disponible pour ce moment de l'histoire.",
+      "failNoModel": "Aucun modèle de traduction défini. Choisissez-en un dans les Paramètres de traduction pour voir le contexte traduit.",
+      "failProvider": "Échec de la traduction. Affichage du contexte original pour l'instant.",
+      "failQuota": "La traduction est indisponible — quota du fournisseur épuisé.",
+      "langOriginal": "Original ({{lang}})",
+      "languageLabel": "Langue d'affichage",
+      "title": "Contexte par épisode",
+      "translating": "Traduction en cours… le premier affichage peut prendre un moment"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "Au chapitre {{asOf}}",
+      "current": "Actuel",
+      "hint": "Déplacez le curseur temporel pour comparer un chapitre passé avec l'état actuel.",
+      "loadFailed": "Impossible de charger la différence : {{error}}",
+      "loading": "Chargement de la différence…",
+      "noChanges": "Aucun changement de valeur unique entre le chapitre {{asOf}} et maintenant.",
+      "title": "Vue comparative"
+    },
+    "timeline": {
+      "chapter": "ch. {{chapter}}",
+      "empty": "Aucun changement enregistré pour cette entité pour le moment.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → ouvert)"
+      },
+      "kind": {
+        "invalidated": "invalidé",
+        "open": "ouvert",
+        "superseded": "remplacé"
+      },
+      "loadFailed": "Impossible de charger l'historique des modifications : {{error}}",
+      "loadMore": "Charger plus",
+      "loading": "Chargement des modifications…",
+      "title": "Historique des modifications"
+    }
   }
 }

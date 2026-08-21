@@ -59,6 +59,7 @@ async def reconcile_jobs(
     since: datetime = Query(..., description="ISO-8601 — rows updated at/after this"),
     limit: int = Query(1000, ge=1, le=5000, description="page cap — the sweeper's _PAGE_LIMIT"),
     jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+    benchmark_repo: BenchmarkRunsRepo = Depends(get_benchmark_runs_repo),
 ) -> dict:
     """Reconcile SOURCE (Unified Job Control Plane H1 backstop): extraction jobs updated
     since `since` (oldest-first, capped at `limit`), in canonical `JobEvent` payload shape,
@@ -86,6 +87,23 @@ async def reconcile_jobs(
         status = _canonical_job_status(j.status)
         if status not in _CANONICAL_STATUSES:  # e.g. 'summarizing' — not a JobStatus
             continue
+        params: dict[str, object] = {
+            # Keep the projection's model identity aligned with the authoritative
+            # extraction row. This is especially important after a provider model
+            # is deleted/re-added and receives a new user_model UUID.
+            "embedding_model": j.embedding_model,
+            "model_ref": j.embedding_model,
+        }
+        if j.status == "failed":
+            benchmark = await benchmark_repo.get_latest_for_model(j.user_id, j.embedding_model)
+            if benchmark is None:
+                params["retry_blocked_reason"] = (
+                    "benchmark_missing: run a passing embedding benchmark for this model before retrying"
+                )
+            elif not benchmark.passed:
+                params["retry_blocked_reason"] = (
+                    "benchmark_failed: the latest embedding benchmark did not pass"
+                )
         merged.append((j.updated_at, {
             "service": "knowledge", "job_id": str(j.job_id), "owner_user_id": str(j.user_id),
             "kind": "extraction", "status": status,
@@ -98,8 +116,11 @@ async def reconcile_jobs(
             # can't afford), so this backstop leaves them None — the projection's
             # COALESCE keeps whatever the live 'running' event set (best-effort heal).
             "cost_usd": (float(j.cost_spent_usd) if j.cost_spent_usd is not None else None),
+            "tokens_in": j.tokens_in,
+            "tokens_out": j.tokens_out,
             "error": ({"code": "extraction_failed", "message": (j.error_message or "")[:500]}
                       if j.status == "failed" else None),
+            "params": params,
             "occurred_at": j.updated_at.isoformat() if j.updated_at else None,
         }))
     # wiki-gen UNION — list_since already maps `complete`→`completed` (all wiki statuses
@@ -145,6 +166,17 @@ class JobControlResponse(BaseModel):
 
 
 @router.post("/{job_id}/{action}", response_model=JobControlResponse)
+async def _is_failed(jobs_repo, owner_user_id, job_id) -> bool:
+    """Is this job in the one state checkpoint-retry accepts?
+
+    A missing or unowned job answers False so the caller falls through to the normal
+    path, which already returns the correct 404 — deciding ownership in two places is
+    how the two answers drift apart.
+    """
+    job = await jobs_repo.get(owner_user_id, job_id)
+    return job is not None and job.status == "failed"
+
+
 async def control_extraction_job(
     job_id: UUID,
     action: str,
@@ -160,11 +192,22 @@ async def control_extraction_job(
     # D-WIKI-M7B-RUNNING-CANCEL). The repo methods are owner-blind, so re-verify owner here (M4).
     if payload.kind == "wiki_gen":
         return await _control_wiki_gen_job(job_id, action, payload.owner_user_id)
-    # D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a failed extraction job as a fresh one.
-    if action == "retry":
+    # D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a failed extraction job. `resume`
+    # carries the persisted cursor/items_processed checkpoint; `retry` starts
+    # from the beginning so it can be used after changing parameters.
+    #
+    # `resume` is OVERLOADED, and the two meanings must be told apart by STATE, not by
+    # the verb: it has always meant "un-pause a paused job" (the native _ACTIONS path
+    # below, and the comment above), and checkpoint-retry claimed the same word. Routing
+    # every `resume` here made un-pausing a paused job fail with
+    # `JOBS_NOT_RETRYABLE: only a failed job can be retried (status='paused')` — the
+    # retry guard rejecting a request that was never a retry. Only a FAILED job takes the
+    # checkpoint path; anything else falls through to the lifecycle handling it wanted.
+    if action == "retry" or (action == "resume" and await _is_failed(jobs_repo, payload.owner_user_id, job_id)):
         return await _retry_extraction_job_core(
             job_id, payload.owner_user_id,
             jobs_repo, projects_repo, benchmark_repo, extraction_wake,
+            resume_checkpoint=(action == "resume"),
         )
     if action not in _ACTIONS:
         raise HTTPException(
@@ -240,6 +283,8 @@ async def _retry_extraction_job_core(
     projects_repo: ProjectsRepo,
     benchmark_repo: BenchmarkRunsRepo,
     extraction_wake: ExtractionWakeFn,
+    *,
+    resume_checkpoint: bool = False,
 ) -> JobControlResponse:
     """D-JOBS-P4-RETRY-KNOWLEDGE — re-submit a FAILED extraction job as a FRESH job (new
     job_id), reusing the failed row's scope/models/range/targets. Mirrors translation's
@@ -288,4 +333,16 @@ async def _retry_extraction_job_core(
         projects_repo, jobs_repo, benchmark_repo,
         extraction_wake=extraction_wake,
     )
+    if resume_checkpoint:
+        seeded = await jobs_repo.seed_retry_progress(
+            owner_user_id,
+            new_job.job_id,
+            cursor=job.current_cursor,
+            items_processed=job.items_processed,
+        )
+        if seeded is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail={"code": "JOBS_RESUME_SEED_FAILED", "message": "failed to seed extraction checkpoint"},
+            )
     return JobControlResponse(job_id=new_job.job_id, status=new_job.status)

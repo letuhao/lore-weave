@@ -100,6 +100,51 @@ func TestParseClientCallPropagatesLanguageAndFilename(t *testing.T) {
 	}
 }
 
+func TestParseClientCallChapterUsesBoundaryPreservingEndpoint(t *testing.T) {
+	t.Parallel()
+	var got map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/parse/chapter" {
+			t.Errorf("wrong path: %q", r.URL.Path)
+		}
+		body, _ := io.ReadAll(r.Body)
+		_ = json.Unmarshal(body, &got)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"source_format":"html","walker_path":"fallback_single","parts":[{"sort_order":1,"path":"book/part-1","chapters":[{"sort_order":1,"path":"book/part-1/chapter-1","html":"<h2>Inner</h2>","scenes":[{"sort_order":1,"path":"book/part-1/chapter-1/scene-1","leaf_text":"x","content_hash":"a"}]}]}]}`))
+	}))
+	defer srv.Close()
+
+	client := NewParseClient(srv.URL, "tok")
+	if _, err := client.CallChapter(context.Background(), "<h2>Inner</h2>", "en", "Navigation title", "sha256:test:one"); err != nil {
+		t.Fatalf("CallChapter returned error: %v", err)
+	}
+	options, ok := got["options"].(map[string]any)
+	if !ok || options["preserve_chapter_boundary"] != true || options["extract_scenes_only"] != true {
+		t.Fatalf("missing boundary options: %#v", got)
+	}
+	if options["chapter_title"] != "Navigation title" || options["source_key"] != "sha256:test:one" {
+		t.Fatalf("missing chapter identity: %#v", options)
+	}
+}
+
+func TestEPUBAssetExtensionUsesValidatedMediaType(t *testing.T) {
+	if got := epubAssetExtension("image/png"); got != ".png" {
+		t.Fatalf("epubAssetExtension(image/png) = %q, want .png", got)
+	}
+	if got := epubAssetExtension("application/octet-stream"); got != ".bin" {
+		t.Fatalf("epubAssetExtension(unknown) = %q, want .bin", got)
+	}
+}
+
+func TestImportConsumerIDForHostname(t *testing.T) {
+	if got := importConsumerIDForHostname("worker-a"); got != "worker-1-worker-a" {
+		t.Fatalf("consumer = %q", got)
+	}
+	if got := importConsumerIDForHostname(" "); got != importConsumer {
+		t.Fatalf("empty consumer = %q", got)
+	}
+}
+
 func TestParseClientCallOmitsEmptyLanguageAndFilename(t *testing.T) {
 	t.Parallel()
 

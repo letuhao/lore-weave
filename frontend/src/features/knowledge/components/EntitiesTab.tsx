@@ -8,6 +8,7 @@ import { EntityDetailPanel } from './EntityDetailPanel';
 import { EntityStatusLegend } from './EntityStatusLegend';
 import { CreateEntityDialog } from './CreateEntityDialog';
 import { ENTITY_STATUSES, type EntityStatus } from '../api';
+import { entityKindLabel } from '../lib/entityKinds';
 
 // K19d — Entities tab container. Owns:
 //   - filter state (project_id, kind, search — all nullable/free)
@@ -152,7 +153,7 @@ export function EntitiesTab({ scopedProjectId }: EntitiesTabProps = {}) {
             <option value="">{t('entities.filters.anyKind')}</option>
             {KIND_OPTIONS.map((k) => (
               <option key={k} value={k}>
-                {k}
+                {entityKindLabel(t, k)}
               </option>
             ))}
           </select>

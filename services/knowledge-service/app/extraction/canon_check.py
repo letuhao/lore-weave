@@ -42,6 +42,7 @@ from loreweave_canon_check import (
     CanonCandidateBase,
     apply_verdicts,
     build_judge_request,
+    judge_is_self,
     extract_judge_text,
     gone_entities_referenced,
     parse_judge_verdicts,
@@ -64,6 +65,18 @@ class ExtractionCanonCandidate(CanonCandidateBase):
 
     kind: str = "gone_entity_asserted_active_in_extraction"
     gone_from_order: int | None = None
+    #: Did the SAME model that extracted this chapter also judge the contradiction?
+    #:
+    #: `True` is a self-witness and the verdict is worth less because of it — invariant 2 is
+    #: *no model is silently its own judge*, and until 2026-08-03 this path was exactly that:
+    #: `pass2_orchestrator` hands `_maybe_run_canon_check_gate` the extraction `model_ref`,
+    #: which becomes the judge's. Nothing said so.
+    #:
+    #: Labelled rather than refused, following the sealed S6 decision — a hard refusal on day
+    #: one turns every default-configured extraction into an unjudged one, and this service has
+    #: no critic setting to clear the refusal with. `None` means the question was not asked
+    #: (a caller that supplied no judge ref), which is not the same as `False`.
+    judged_by_self: bool | None = None
 
 
 def gone_entities_asserted_active(
@@ -142,7 +155,7 @@ def _build_judge_messages(
 async def judge_extraction_contradiction(
     llm, *, user_id: str, model_source: str, model_ref: str,
     chapter_text: str, candidates: list[ExtractionCanonCandidate],
-    source_language: str = "auto",
+    source_language: str = "auto", extraction_model_ref: str | None = None,
 ) -> list[ExtractionCanonCandidate]:
     """Confirm the symbolic candidates with the LLM-judge — only the FEW
     candidates the cheap pre-filter flagged, never the whole chapter. Sets
@@ -181,13 +194,29 @@ async def judge_extraction_contradiction(
         return candidates
     verdicts = parse_judge_verdicts(extract_judge_text(job.result))
     apply_verdicts(candidates, verdicts)
+    # Invariant 2. `extraction_model_ref` is the model that produced the assertions being
+    # judged; when it is also the judge, every confirmed verdict below is a self-witness. Said
+    # on the candidate so a consumer can weigh it, and once per call in the log so an operator
+    # can see it without reading rows. Ref-level only — see `judge_is_self` for what that
+    # cannot see, and why the stronger resolved-identity test is not available here.
+    self_judged = judge_is_self(model_ref, extraction_model_ref)
+    for c in candidates:
+        c.judged_by_self = self_judged if extraction_model_ref else None
+    if self_judged and any(c.confirmed for c in candidates):
+        logger.warning(
+            "extraction canon-check: the judge IS the extraction model (%s) — %d confirmed "
+            "contradiction(s) are self-witnessed. Invariant 2: no model is silently its own "
+            "judge; this one is labelled, not refused, because this service has no critic "
+            "setting to clear a refusal with.",
+            model_ref, sum(1 for c in candidates if c.confirmed),
+        )
     return candidates
 
 
 async def check_extraction_canon(
     chapter_text: str, snapshot: dict[str, Any] | None, *,
     llm=None, user_id: str = "", model_source: str = "", model_ref: str = "",
-    source_language: str = "auto",
+    source_language: str = "auto", extraction_model_ref: str | None = None,
 ) -> list[ExtractionCanonCandidate]:
     """Full check: SCORE-style symbolic pre-filter → (if any candidates AND an
     LLM client is configured) judge confirmation. Returns ALL candidates with
@@ -200,4 +229,5 @@ async def check_extraction_canon(
     return await judge_extraction_contradiction(
         llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
         chapter_text=chapter_text, candidates=candidates, source_language=source_language,
+        extraction_model_ref=extraction_model_ref,
     )

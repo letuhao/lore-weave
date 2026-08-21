@@ -286,7 +286,10 @@ suites:
       - env: LOREWEAVE_TEST_META_URL
         kind: postgres
         schema: meta
-        ci_db: worldservice_meta
+        # `_smoke`, not a bare `worldservice_meta`: renamed on `main` so the name
+        # carries a throwaway marker, which is what `db-safety-gate`'s CI-DSN rule
+        # requires of any Postgres DSN in `.github/workflows/`. Registry follows CI.
+        ci_db: worldservice_meta_smoke
 
   - id: world-replay-aggregate
     package: world-service

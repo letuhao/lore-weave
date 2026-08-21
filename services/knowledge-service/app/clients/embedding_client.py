@@ -103,6 +103,31 @@ class EmbeddingClient:
         except httpx.HTTPError as exc:
             raise EmbeddingError(f"connection error: {exc}", retryable=True)
 
+        # A project can outlive a user-model row: deleting and re-adding a
+        # provider model creates a new user_model UUID while the project still
+        # carries the old one. Provider-registry owns the per-user fallback
+        # policy, so retry once with its current embedding default. This keeps
+        # all embedding callers (entities, passages, drawers, extraction) on
+        # the same recovery path instead of each route turning a stale ref into
+        # a user-visible 404.
+        if resp.status_code == 404 and model_source == "user_model":
+            try:
+                fallback = await self._http.get(
+                    f"{self._base_url}/internal/default-models/embedding",
+                    params=params,
+                )
+                if fallback.status_code == 200:
+                    fallback_ref = str(
+                        (fallback.json() or {}).get("user_model_id") or ""
+                    ).strip()
+                    if fallback_ref and fallback_ref != model_ref:
+                        body["model_ref"] = fallback_ref
+                        resp = await self._http.post(url, json=body, params=params)
+            except (httpx.HTTPError, ValueError, TypeError, KeyError):
+                # Preserve the original model error. The fallback is a
+                # resilience aid, never a reason to hide provider failures.
+                pass
+
         if resp.status_code == 200:
             data = resp.json()
             return EmbeddingResult(

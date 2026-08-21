@@ -273,7 +273,8 @@ frontend       :5174   the BAKED nginx prod build — rebuild the image for FE c
 cms-frontend   :5175   admin CMS (System-tier glossary standards)
 frontend-game  :5176   Living Worlds V0 demo SPA — profiles `game`/`full` only
 gateway        :3123   api-gateway-bff (container :3000)
-ContextHub MCP :3000   a DISTINCT optional service, NOT the gateway
+(:3000 free)           host port :3000 is unused since the ContextHub MCP integration was removed
+                       2026-08-03. api-gateway-bff listens on :3000 INSIDE its container only.
 ```
 
 The frontend talks to the gateway via **relative `/v1`** — vite proxies to `:3123` in dev, nginx proxies to `gateway:3000` in prod. A non-empty `VITE_API_BASE` bakes a fixed host into the bundle and breaks any other origin.

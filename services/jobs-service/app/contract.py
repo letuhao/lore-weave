@@ -56,11 +56,6 @@ _RETRYABLE_KINDS: frozenset[str] = frozenset(
     {"translation", "extraction", "video_gen", "enrichment_job"}
 )
 
-# VIEW-ONLY kinds — visible on the unified Jobs screen but with NO unified control surface,
-# so we offer no caps. book_import is fire-and-forget (book-service has no control endpoint;
-# a running import can't be stopped) — D-JOBS-BOOK-IMPORT-UNWIRED.
-_VIEW_ONLY_KINDS: frozenset[str] = frozenset({"book_import"})
-
 # SECONDARY kinds now control-wired in the unified plane (D-JOBS-SECONDARY-KIND-CONTROL) —
 # the owning service's control endpoint dispatches BY KIND to the right job table. Caps match
 # each producer's NATIVE control exactly (offering more would 404/409 downstream):
@@ -81,7 +76,7 @@ def derive_control_caps(
 ) -> list[ControlCap]:
     """Return the control actions valid for a job in its CURRENT status.
 
-    - a VIEW-ONLY kind (no unified control surface) → none
+    - `book_import` → resume only from failed/cancelled, because Book Service retains the source
     - a CANCEL-ONLY secondary kind → cancel when pending|running, else none
     - `wiki_gen` → resume+cancel when paused, cancel when pending, else none (no running-cancel)
     - `failed` → retry (kind in _RETRYABLE_KINDS OR the PER-JOB `retryable` flag is True), else none
@@ -95,9 +90,9 @@ def derive_control_caps(
     path is reconstructable, the inline/streamed path is not — same `kind` for both).
     None (most callers / most kinds) ⇒ kind-based decision only.
     """
-    if kind in _VIEW_ONLY_KINDS:  # no control endpoint → offer nothing
-        return []
     s = status if isinstance(status, JobStatus) else JobStatus(status)
+    if kind == "book_import":
+        return [ControlCap.RESUME] if s in (JobStatus.FAILED, JobStatus.CANCELLED) else []
     # Secondary kinds with restricted native control (match the producer exactly).
     if kind in _CANCEL_ONLY_KINDS:
         return [ControlCap.CANCEL] if s in (JobStatus.PENDING, JobStatus.RUNNING) else []
@@ -117,6 +112,11 @@ def derive_control_caps(
         # (D-JOBS-P4-RETRY): either the kind is unconditionally retryable, or this
         # specific job carries the per-job `retryable` flag (composition). Retry
         # creates a NEW job; the failed row stays as history.
+        if kind == "extraction":
+            # Extraction has a persisted cursor/items_processed checkpoint. Offer
+            # both an explicit checkpoint resume and a full retry (the latter is
+            # useful after changing models or other parameters).
+            return [ControlCap.RESUME, ControlCap.RETRY]
         return [ControlCap.RETRY] if (kind in _RETRYABLE_KINDS or retryable is True) else []
     if s in TERMINAL or s == JobStatus.CANCELLING:
         return []

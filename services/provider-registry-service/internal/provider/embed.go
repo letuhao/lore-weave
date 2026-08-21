@@ -46,11 +46,7 @@ func Embed(ctx context.Context, adapter Adapter, client *http.Client, endpointBa
 
 // embedOpenAI calls POST /v1/embeddings (OpenAI-compatible).
 func embedOpenAI(ctx context.Context, client *http.Client, endpointBaseURL, secret, model string, texts []string) (*EmbedResult, error) {
-	base := strings.TrimRight(endpointBaseURL, "/")
-	// Strip trailing /v1 so credentials stored as "http://host:port/v1"
-	// (the standard form used by LM Studio / local providers) don't
-	// produce a double /v1/v1/embeddings path.
-	base = strings.TrimSuffix(base, "/v1")
+	base := normalizeOpenAICompatibleBase(endpointBaseURL)
 	if base == "" {
 		base = openaiBaseURL
 	}
@@ -58,6 +54,50 @@ func embedOpenAI(ctx context.Context, client *http.Client, endpointBaseURL, secr
 	if secret != "" {
 		headers["Authorization"] = "Bearer " + secret
 	}
+	// NeuralDeep/LiteLLM enforces a maximum of 32 input strings per
+	// embeddings request. Keep the limit here, at the provider boundary, so
+	// all callers (passage, entity and query embedding) get the same safe
+	// batching behavior. The merged result preserves input order.
+	const maxBatchSize = 32
+	if len(texts) <= maxBatchSize {
+		return embedOpenAIBatch(ctx, client, base, headers, model, texts)
+	}
+
+	merged := &EmbedResult{Model: model, Embeddings: make([][]float64, 0, len(texts))}
+	for start := 0; start < len(texts); start += maxBatchSize {
+		end := start + maxBatchSize
+		if end > len(texts) {
+			end = len(texts)
+		}
+		batch, err := embedOpenAIBatch(ctx, client, base, headers, model, texts[start:end])
+		if err != nil {
+			return nil, fmt.Errorf("embedding batch %d-%d failed: %w", start, end, err)
+		}
+		if merged.Dimension == 0 {
+			merged.Dimension = batch.Dimension
+		} else if batch.Dimension != merged.Dimension {
+			return nil, fmt.Errorf(
+				"embedding batch %d-%d returned dimension %d, expected %d",
+				start, end, batch.Dimension, merged.Dimension,
+			)
+		}
+		merged.Embeddings = append(merged.Embeddings, batch.Embeddings...)
+		merged.PromptTokens += batch.PromptTokens
+		if batch.Model != "" {
+			merged.Model = batch.Model
+		}
+	}
+	return merged, nil
+}
+
+func embedOpenAIBatch(
+	ctx context.Context,
+	client *http.Client,
+	base string,
+	headers map[string]string,
+	model string,
+	texts []string,
+) (*EmbedResult, error) {
 	payload := map[string]any{
 		"model": model,
 		"input": texts,

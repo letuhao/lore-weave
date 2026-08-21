@@ -214,6 +214,9 @@ class ChapterTranslation(BaseModel):
     qa_rounds_used: int = 0
     # M5c living-book: true when a glossary change post-dates this translation.
     is_glossary_stale: bool = False
+    # DoD-4: directive-looking spans found in the IMPORTED source. `None` = not scanned
+    # (pre-column chapter), 0 = scanned and clean, >0 = the importer should look.
+    source_injection_hits: Optional[int] = None
     # M7c human-fix gold: 'llm' (worker) | 'human' (edited via the editor) + the
     # LLM version a human edit was based on (the before/after diff source).
     authored_by: str = "llm"

@@ -146,7 +146,7 @@ async def judge_motif_conformance(
     expected_roles: list[str],
     passage: str,
     profile: BookProfile,
-    max_tokens: int = max_tokens_for("judge_motif_conformance"),
+    max_tokens: int | None = None,
     trace_id: str | None = None,
 ) -> dict[str, Any]:
     """Run the binary conformance judge. Returns the judge-output dict (WITHOUT
@@ -155,6 +155,12 @@ async def judge_motif_conformance(
     never raises (advisory must not block)."""
     if not passage.strip():
         return {**_EMPTY, "error": "conformance_no_passage"}
+    # ONE verdict about one motif, so the count is genuinely fixed; `language` is what varies.
+    # The row's floor decides the number at this size and will keep deciding it — that is the
+    # correct answer for a bounded call, not rot. What was wrong was computing it at IMPORT,
+    # where even the language could not reach it.
+    max_tokens = max_tokens or max_tokens_for(
+        "judge_motif_conformance", target=1, language=profile.source_language)
     system, user = build_conformance_prompt(
         beat_intent=beat_intent, beat_key=beat_key, motif_name=motif_name,
         tension_band=tension_band, expected_roles=expected_roles,

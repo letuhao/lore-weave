@@ -21,7 +21,10 @@
     "book_description_placeholder": "这本书讲的是什么？",
     "cover": "封面图片",
     "cover_hint": "PNG, JPG，最大 5MB",
-    "submit": "创建书籍"
+    "submit": "创建书籍",
+    "import_file": "导入书籍文件",
+    "import_file_hint": "选择一个 FB2 或 EPUB 文件。系统将打开相应的导入流程。",
+    "import_metadata_hint": "源元数据将用于设置书名和详细信息。"
   },
   "empty": {
     "title": "暂无书籍",
@@ -151,7 +154,8 @@
       "title": "将章节移至回收站？",
       "description": "“{{title}}”将被移至回收站。",
       "confirm": "移至回收站"
-    }
+    },
+    "importEpub": "Import EPUB"
   },
   "glossary": {
     "header": "术语表与设定",
@@ -255,7 +259,39 @@
       "title": "确定删除实体？",
       "description": "“{{title}}”将被移至回收站。",
       "confirm": "删除"
-    }
+    },
+    "integrity": {
+      "button": "检查",
+      "title": "检查设定完整性",
+      "description": "对本书中的本体、实体、属性、链接及翻译进行只读检查。",
+      "run": "开始检查",
+      "runAgain": "重新检查",
+      "checking": "正在检查书籍完整性…",
+      "close": "关闭",
+      "unavailable": "检查不可用",
+      "issues": "{{count}} 个问题",
+      "status": {
+        "ok": "状态良好",
+        "warning": "需要注意",
+        "error": "完整性错误"
+      },
+      "repair": "自动修复",
+      "repairing": "正在修复完整性&",
+      "repaired": "自动修复已完成：已修复 {{count}} 项检查。",
+      "checks": {
+        "active_genres": "激活的类型必须属于本书。",
+        "kind_genres": "类型与类型之间的链接必须指向本书中的类型。",
+        "attributes": "书籍属性必须指向已存在的书籍类型和类型。",
+        "entity_kinds": "实体必须指向属于本书的类型。",
+        "entity_names": "活动实体应具有名称或术语属性。",
+        "entity_attributes": "实体属性值必须使用来自本书和该类型的属性定义。",
+        "chapter_links": "章节链接必须指向本书中的活动实体。",
+        "translations": "翻译必须指向已存在的属性值。",
+        "kind_facets": "实体类型维度必须指向本书中的类型。"
+      }
+    },
+    "batch_translate": "手动翻译",
+    "batch_translate_hint": "手动输入多个实体的目标名称（草稿；绝不会覆盖已验证的内容）"
   },
   "sharing": {
     "title": "可见性",
@@ -400,7 +436,10 @@
     "page_indicator": "第 {{page}} / {{pages}} 页",
     "prev": "上一页",
     "next": "下一页",
-    "page": "页"
+    "page": "页",
+    "reasoning_enable": "启用模型推理 (思考)",
+    "reasoning_hint": "默认关闭 —— 在本地模型上，隐藏的思考过程可能会消耗输出额度。对于推理模型处理疑难章节时请开启。",
+    "retranslate_selected": "重新翻译所选内容 ({{count}})"
   },
   "kind_editor": {
     "modified": "已修改",
@@ -529,5 +568,114 @@
       "confirm": "还原"
     },
     "ai": "AI"
+  },
+  "help": {
+    "open": "打开帮助",
+    "tour": "新手引导",
+    "title": "书籍管理",
+    "description": "书籍工作区快速指南。",
+    "intro": "在此管理您的书籍，然后打开其中一本进行研究、编辑和构建世界观。",
+    "items": [
+      "创建一本新书或导入手稿以开始创作。",
+      "打开书籍以编辑章节、术语表和本体论。",
+      "使用搜索和筛选功能快速查找书籍。"
+    ],
+    "startTour": "开始引导",
+    "back": "返回",
+    "next": "下一步",
+    "done": "完成",
+    "steps": [
+      {
+        "title": "查找书籍",
+        "description": "搜索和筛选功能可帮助您快速打开目标书籍。",
+        "body": "使用搜索框和语言筛选器来缩小列表范围。"
+      },
+      {
+        "title": "创建或导入",
+        "description": "从一本新书或现有的手稿开始。",
+        "body": "选择“新建书籍”并输入详细信息，或者选择一个文件进行导入。"
+      },
+      {
+        "title": "打开工作区",
+        "description": "所有书籍工具都集中在工作区中。",
+        "body": "在书籍内部，您可以处理章节、术语表、本体论、翻译等内容。"
+      }
+    ]
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
+    }
+  },
+  "lore": {
+    "heading": "目前已知的设定",
+    "noPosition": "打开一个章节，查看截至该时间点已揭示的内容。",
+    "nothingYet": "目前尚未揭示任何相关内容 —— 请继续阅读。",
+    "search": "搜索故事……",
+    "subtitle": "截至你当前阅读进度故事所揭示的内容 —— 不包含后续章节的剧透。"
   }
 }

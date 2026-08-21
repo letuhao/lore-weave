@@ -9,7 +9,9 @@
     "permissions": "Kebenaran alatan",
     "proposals": "Cadangan",
     "activity": "Log aktiviti",
-    "ingest": "Sumber pendaftaran"
+    "ingest": "Sumber pendaftaran",
+    "bindings": "Tetapan Automatik",
+    "workflows": "Resipi"
   },
   "quota": {
     "unavailable": "Penggunaan tidak tersedia",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
-import { AlertTriangle, X } from 'lucide-react';
+import { AlertTriangle, Loader2, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 export interface ConfirmDialogAction {
@@ -61,7 +61,7 @@ export function ConfirmDialog({
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50 backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
+        <Dialog.Content aria-busy={loading || extraAction?.loading || undefined} className="fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2 rounded-xl border bg-background shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95">
 
           {/* Close button — disabled while an async confirm is in flight
               (K19a.6 F4) so users can't dismiss the dialog and leave the
@@ -116,6 +116,7 @@ export function ConfirmDialog({
                 disabled={extraAction.loading}
                 className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
               >
+                {extraAction.loading && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
                 {extraAction.loading ? 'Saving…' : extraAction.label}
               </button>
             )}
@@ -131,6 +132,7 @@ export function ConfirmDialog({
                     : 'bg-primary text-primary-foreground hover:bg-primary/90',
               )}
             >
+              {loading && <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" aria-hidden="true" />}
               {confirmLabel}
             </button>
 

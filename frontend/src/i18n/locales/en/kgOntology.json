@@ -1,7 +1,12 @@
 {
   "page": {
     "title": "Knowledge Graph Schema",
-    "tabs": { "adopt": "Adopt", "schema": "Schema", "views": "Views", "sync": "Sync" },
+    "tabs": {
+      "adopt": "Adopt",
+      "schema": "Schema",
+      "views": "Views",
+      "sync": "Sync"
+    },
     "noProject": "No knowledge project for this book",
     "noProjectHelp": "This book has no linked knowledge project yet. Run extraction or create a project to manage its graph schema.",
     "createProject": "Create Knowledge Project",
@@ -34,6 +39,45 @@
     "lossProceed": "I understand, proceed",
     "lossAcknowledged": "Acknowledged",
     "lossBlockedButton": "Acknowledge the warning to continue",
+    "templates": {
+      "general": {
+        "name": "General (legacy ontology)",
+        "description": "Reproduces the original generic extraction ontology — the additive-first safety net."
+      },
+      "general-legacy": {
+        "name": "General (legacy ontology)",
+        "description": "Reproduces the original generic extraction ontology — the additive-first safety net."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Genre template for cultivation and harem novels with curated entity and relation types."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Fantasy-world schema with characters, places, organizations, species, items, powers and techniques."
+      },
+      "romance": {
+        "name": "Romance",
+        "description": "Relationship-centered schema with characters, relationships, plot arcs, tropes and social settings."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Drama schema for characters, conflicts, relationships, organizations, events and plot arcs."
+      },
+      "historical": {
+        "name": "Historical",
+        "description": "Historical-fiction schema for people, places, institutions, events, terminology and social order."
+      },
+      "mystery": {
+        "name": "Mystery",
+        "description": "Investigation schema for characters, clues, objects, organizations, events, plot arcs and tropes."
+      }
+    },
+    "scope": {
+      "system": "system",
+      "user": "User",
+      "project": "Project"
+    },
     "nodeType": {
       "edge_type": "edge type",
       "fact_type": "fact type",

@@ -1,0 +1,96 @@
+{
+  "title": "Chat e IA",
+  "description": "Tus valores predeterminados para el chat y el Estudio de Escritura, en un solo lugar. Cada fila muestra su valor efectivo y su origen; las sesiones y las herramientas del Estudio heredan estos valores predeterminados y pueden sobrescribirlos.",
+  "models": {
+    "title": "Modelos",
+    "resolved": "Resuelto ahora",
+    "chat": "Chat y borradores",
+    "composer": "Compositor de prosa",
+    "planner": "Planificador",
+    "embedding": "Incrustación",
+    "rerank": "Reordenación"
+  },
+  "behavior": {
+    "title": "Comportamiento",
+    "description": "Estos ajustes se aplicaban anteriormente de forma silenciosa. Ahora son visibles y editables; un campo vacío significa el valor predeterminado del sistema.",
+    "reasoning": {
+      "label": "Esfuerzo de razonamiento",
+      "off": "Desactivado",
+      "low": "Bajo",
+      "medium": "Medio",
+      "high": "Alto"
+    },
+    "permission": {
+      "label": "Autoridad de la herramienta",
+      "ask": "Preguntar",
+      "plan": "Planificar",
+      "write": "Escribir",
+      "hint": "Qué tanto puede hacer el asistente sin preguntar. El valor predeterminado es Escribir."
+    },
+    "temperature": {
+      "label": "Temperatura",
+      "placeholder": "Predeterminado del proveedor"
+    },
+    "systemPrompt": {
+      "label": "Prompt del sistema",
+      "placeholder": "Instrucciones de la personalidad predeterminada (en blanco = ninguna)"
+    }
+  },
+  "grounding": {
+    "title": "Anclaje y memoria",
+    "label": "Basar las respuestas en mi historia",
+    "description": "Incluye entidades canónicas, hechos y pasajes del manuscrito en cada respuesta. Esto está activado por defecto y se puede desactivar.",
+    "offWarning": "El anclaje está desactivado: el asistente no puede acceder a la biblia de tu historia y podría inventar el lore. Actívalo para obtener respuestas precisas."
+  },
+  "context": {
+    "title": "Gestión de contexto",
+    "description": "Cómo el asistente gestiona el presupuesto de memoria para conversaciones muy largas. La mayoría de los usuarios debería dejarlo en Auto.",
+    "label": "Modo de contexto para trabajos largos",
+    "auto": "Auto",
+    "on": "Siempre activado",
+    "off": "Desactivado",
+    "hint": "Auto activa los niveles de trabajo largo solo cuando un proyecto los necesita. Desactivado mantiene la ruta más sencilla."
+  },
+  "voice": {
+    "title": "Voz",
+    "description": "Entrada y salida de voz para el chat. Estos ajustes se guardan en tu cuenta y se aplican a los mensajes de voz.",
+    "ttsModel": "Modelo de salida de voz (TTS)",
+    "sttModel": "Modelo de entrada de voz (STT)",
+    "voice": "Voz",
+    "placeholder": "ej. af_heart",
+    "hint": "Cada voz es específica de su modelo; elige una que sea compatible con tu modelo TTS."
+  },
+  "tiers": {
+    "session": {
+      "label": "este chat",
+      "title": "Configurado para este chat; anula los valores predeterminados de tu cuenta y del libro."
+    },
+    "book": {
+      "label": "este libro",
+      "title": "Heredado de la configuración de este libro."
+    },
+    "account": {
+      "label": "tu predeterminado",
+      "title": "Heredado de la configuración predeterminada de tu cuenta."
+    },
+    "system": {
+      "label": "predeterminado",
+      "title": "El predeterminado del sistema."
+    },
+    "unavailable": {
+      "label": "no disponible",
+      "title": "No se pudo conectar con el nivel de propiedad."
+    },
+    "no_model_configured": {
+      "label": "no establecido",
+      "title": "No hay ningún modelo en vivo configurado."
+    }
+  },
+  "clear": {
+    "default": "el predeterminado",
+    "on": "encendido",
+    "off": "apagado",
+    "action": "borrar",
+    "inherit": "heredar"
+  }
+}

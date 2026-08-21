@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/loreweave/epubimport"
 )
 
 type Config struct {
@@ -71,6 +73,15 @@ type Config struct {
 	// disables the sweeper (e.g. a one-off migration container).
 	ReparseSweepIntervalSeconds int64 // default 300 (5 min)
 	ReparseSweepBatchSize       int   // default 20 chapters/batch; floored to 1
+
+	// EPUBImportLimits are deployment safety ceilings. User requests may only
+	// choose items/options inside these limits.
+	EPUBImportLimits epubimport.Limits
+	// EPUBImportV2Mode controls whether the retained-source, item-level EPUB
+	// pipeline may create worker jobs. "off" remains the safe default while
+	// deployments roll out the Book and worker changes together.
+	EPUBImportV2Mode              string
+	EPUBImportAssetRetentionHours int64
 }
 
 func Load() (*Config, error) {
@@ -98,12 +109,18 @@ func Load() (*Config, error) {
 		TenantAuditCoalesceWindowSeconds: getInt64("TENANT_AUDIT_COALESCE_WINDOW_S", 3600),
 		ReparseSweepIntervalSeconds:      getInt64("REPARSE_SWEEP_INTERVAL_S", 300),
 		ReparseSweepBatchSize:            int(getInt64("REPARSE_SWEEP_BATCH", 20)),
+		EPUBImportLimits:                 epubimport.LimitsFromEnv(os.Getenv),
+		EPUBImportV2Mode:                 getEnv("EPUB_IMPORT_V2_MODE", "off"),
+		EPUBImportAssetRetentionHours:    getInt64("EPUB_IMPORT_ASSET_RETENTION_HOURS", 168),
 	}
 	if c.TenantAuditCoalesceWindowSeconds < 1 {
 		c.TenantAuditCoalesceWindowSeconds = 1 // floor: 0/negative would emit every read
 	}
 	if c.ReparseSweepBatchSize < 1 {
 		c.ReparseSweepBatchSize = 1 // floor: a zero/negative batch would sweep nothing
+	}
+	if c.EPUBImportAssetRetentionHours < 1 {
+		c.EPUBImportAssetRetentionHours = 1
 	}
 	if c.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -141,7 +158,19 @@ func Load() (*Config, error) {
 	if c.LLMGatewayInternalURL == "" {
 		return nil, fmt.Errorf("LLM_GATEWAY_INTERNAL_URL is required")
 	}
+	if !validEPUBImportV2Mode(c.EPUBImportV2Mode) {
+		return nil, fmt.Errorf("EPUB_IMPORT_V2_MODE must be one of off, shadow, opt_in, default, legacy_disabled")
+	}
 	return c, nil
+}
+
+func validEPUBImportV2Mode(mode string) bool {
+	switch mode {
+	case "off", "shadow", "opt_in", "default", "legacy_disabled":
+		return true
+	default:
+		return false
+	}
 }
 
 func getEnv(k, def string) string {

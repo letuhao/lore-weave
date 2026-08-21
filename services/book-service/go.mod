@@ -7,6 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/loreweave/epubimport v0.1.0
 	github.com/loreweave/foundation/contracts/platformjwt v0.0.0
 	github.com/loreweave/llmgw v0.1.0
 	github.com/loreweave/loreweave_crypto v0.0.0
@@ -18,6 +19,8 @@ require (
 )
 
 replace github.com/loreweave/foundation/contracts/platformjwt => ../../contracts/platformjwt
+
+replace github.com/loreweave/epubimport => ../../pkg/epubimport
 
 replace github.com/loreweave/llmgw => ../../sdks/go/llmgw
 

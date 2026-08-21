@@ -142,7 +142,9 @@ async def _one_draft(
 async def diverge(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     packed_prompt: str, profile: BookProfile, operation: str, guide: str,
-    k: int, prompt_est: int, max_tokens: int, temperature: float = 0.8,
+    # `None` ⇒ sized from the scene's own target below. A required int meant the number
+    # was settled by whichever module called this, which is where a scanner loses it.
+    k: int, prompt_est: int, max_tokens: int | None = None, temperature: float = 0.8,
     reasoning: ReasoningDirective | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     target_words: int | None = None, beat_scope: str | None = None,
@@ -153,6 +155,10 @@ async def diverge(
     ``target_words`` threads a scene LENGTH directive into the prompt (else the drafter free-runs
     short — the auto-worker path is the one that actually drafts a scene, so it MUST carry it).
     ``beat_scope`` narrows the draft to one of the scene's beats (D-SCENE-BEATS slice 2)."""
+    # Same resolution as `select_draft`: not in the signature, because a default evaluated
+    # once at import cannot see this scene's target.
+    max_tokens = max_tokens or scene_output_budget(
+        target_words, profile.source_language, reasoning=reasoning)
     messages = build_messages(packed_prompt, profile, operation, guide,
                               target_words=target_words, beat_scope=beat_scope)
     tasks = [
@@ -190,7 +196,7 @@ def build_rerank_prompt(candidates: list[Candidate], profile: BookProfile) -> tu
 
 async def score(
     judge: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    candidates: list[Candidate], profile: BookProfile, max_tokens: int = max_tokens_for("select_score"),
+    candidates: list[Candidate], profile: BookProfile, max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[int, str, bool]:
@@ -198,6 +204,14 @@ async def score(
     single candidate or any failure/malformed verdict (never raises)."""
     if len(candidates) <= 1:
         return 0, "single_candidate", False
+    # Resolved here, not as a default argument, because the candidate count is a per-call
+    # fact and a default is frozen at import. The response is
+    # `{"best": int, "ranking": [one entry per candidate], "reason": str}` and the reason has
+    # to justify a choice among all of them, so it grows with the count — `language` because
+    # a Vietnamese reason costs 2.6 tokens/word against English's 1.7, and VERDICT is one of
+    # the two branches that actually reads it.
+    max_tokens = max_tokens or max_tokens_for(
+        "select_score", target=len(candidates), language=profile.source_language)
     system, user = build_rerank_prompt(candidates, profile)
     try:
         job = await judge.submit_and_wait(
@@ -230,7 +244,9 @@ async def select_draft(
     llm: LLMClient, judge: LLMClient, *, user_id: str,
     drafter_source: str, drafter_ref: str, judge_source: str, judge_ref: str,
     packed_prompt: str, profile: BookProfile, operation: str, guide: str,
-    k: int, prompt_est: int, max_tokens: int, temperature: float = 0.8,
+    # `None` ⇒ sized from the scene's own target below. A required int meant the number
+    # was settled by whichever module called this, which is where a scanner loses it.
+    k: int, prompt_est: int, max_tokens: int | None = None, temperature: float = 0.8,
     reasoning: ReasoningDirective | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     target_words: int | None = None, beat_scope: str | None = None,
@@ -252,6 +268,11 @@ async def select_draft(
     length**. A correct function plus a unit test proving the function is correct is not
     coverage of the path; nothing asserted the directive reached a draft CALL.
     """
+    # Resolved HERE, not in the signature: a default argument is evaluated once at import
+    # and could never see this scene's target. `scene_output_budget` now delegates to
+    # `call_budget`, so the number and its floor/reasoning model come from the one seam.
+    max_tokens = max_tokens or scene_output_budget(
+        target_words, profile.source_language, reasoning=reasoning)
     cands = await diverge(
         llm, user_id=user_id, model_source=drafter_source, model_ref=drafter_ref,
         packed_prompt=packed_prompt, profile=profile, operation=operation, guide=guide,

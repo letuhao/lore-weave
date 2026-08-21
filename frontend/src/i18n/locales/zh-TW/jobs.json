@@ -19,7 +19,9 @@
     "campaign": "活動",
     "enrichment_job": "設定擴充",
     "book_import": "書籍匯入",
-    "composition": { "generate": "創作" }
+    "composition": {
+      "generate": "創作"
+    }
   },
   "summary": {
     "active": "進行中",
@@ -57,7 +59,8 @@
     "noActive": "沒有進行中的工作。",
     "more": "載入更多",
     "toggleChildren": "切換子工作",
-    "noChildren": "沒有子工作。"
+    "noChildren": "沒有子工作。",
+    "errorWithReason": "無法載入任務：{{error}}"
   },
   "row": {
     "ran": "執行 {{d}}",
@@ -83,6 +86,7 @@
   "controls": {
     "pause": "暫停",
     "resume": "繼續",
+    "resumeFromCheckpoint": "從存檔點繼續",
     "cancel": "取消",
     "cancelConfirm": "立即停止？進行中的工作將被捨棄；已完成的部分會保留。",
     "cancelYes": "是",
@@ -93,7 +97,9 @@
     "retry": "重試",
     "retried": "已重新送出為新工作。",
     "stale": "狀態已變更 — 已重新整理。",
-    "actionFailed": "操作失敗：{{error}}"
+    "actionFailed": "操作失敗：{{error}}",
+    "retryBenchmarkMissing": "無法重試：嵌入模型尚未進行基準測試。請執行模型基準測試後，再重新檢查。",
+    "retryBenchmarkFailed": "無法重試：嵌入模型上次基準測試失敗。"
   },
   "monitor": {
     "back": "所有工作",

@@ -14,7 +14,7 @@ import { JobActivityTimeline } from './detail/JobActivityTimeline';
 import { useJob } from '../hooks/useJob';
 import { useJobLive } from '../context/JobsStreamProvider';
 import { effectiveJob } from '../lib';
-import { jobKey } from '../types';
+import { jobKey, retryBlockedReason } from '../types';
 
 /** Generic per-job detail (the cross-service generalization of CampaignMonitor).
  *  Campaign jobs redirect to /campaigns/:id upstream; this renders the unified
@@ -66,7 +66,7 @@ export function JobMonitor({
             <JobStatusBadge status={job.status} />
           </div>
         </div>
-        <JobControls service={job.service} jobId={job.job_id} controlCaps={job.control_caps} />
+        <JobControls service={job.service} jobId={job.job_id} controlCaps={job.control_caps} retryBlockedReason={retryBlockedReason(job.params)} resumeFromCheckpoint={job.kind === 'extraction' && job.status === 'failed'} />
       </div>
 
       {job.status === 'paused' && (

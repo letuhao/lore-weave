@@ -23,15 +23,13 @@ echo "Installing agentic-workflow bundle v2.3 into: $TARGET"
 echo "  AMAW opt-in extension: $([ $NO_AMAW -eq 1 ] && echo 'EXCLUDED' || echo 'INCLUDED')"
 echo ""
 
-# 1. Copy scripts (both .sh wrapper and .py implementation + ContextHub MCP REST helper)
+# 1. Copy scripts (the .sh wrapper and the .py implementation)
 mkdir -p "$TARGET/scripts"
 cp "$SCRIPT_DIR/scripts/workflow-gate.sh" "$TARGET/scripts/workflow-gate.sh"
 cp "$SCRIPT_DIR/scripts/workflow-gate.py" "$TARGET/scripts/workflow-gate.py"
-cp "$SCRIPT_DIR/scripts/mcp-query.py" "$TARGET/scripts/mcp-query.py"
-chmod +x "$TARGET/scripts/workflow-gate.sh" "$TARGET/scripts/workflow-gate.py" "$TARGET/scripts/mcp-query.py"
+chmod +x "$TARGET/scripts/workflow-gate.sh" "$TARGET/scripts/workflow-gate.py"
 echo "[x] scripts/workflow-gate.sh (bash wrapper)"
 echo "[x] scripts/workflow-gate.py (cross-platform implementation)"
-echo "[x] scripts/mcp-query.py (ContextHub MCP REST helper for AMAW L3)"
 
 # 2. Copy hooks (don't overwrite)
 mkdir -p "$TARGET/.claude"
@@ -128,7 +126,7 @@ fi
 
 echo ""
 echo "Done! Next steps:"
-echo "  1. Paste agentic-workflow/WORKFLOW.md (or CLAUDE.md.snippet) into your CLAUDE.md"
+echo "  1. Paste agentic-workflow/WORKFLOW.md (or AGENTS.md.snippet) into your AGENTS.md"
 if [[ $NO_AMAW -eq 0 ]]; then
   echo "  2. (Optional) Read docs/amaw-workflow.md to learn when to invoke /amaw"
   echo "  3. For everyday tasks, default v2.2 just works. For data migrations / schema /"

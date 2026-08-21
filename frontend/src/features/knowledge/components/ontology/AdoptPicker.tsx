@@ -45,6 +45,9 @@ export function AdoptPicker({
   onAcknowledgeLoss,
 }: Props) {
   const { t } = useTranslation('kgOntology');
+  const templateName = (schema: GraphSchemaSummary) => t(`adopt.templates.${schema.code}.name`, { defaultValue: schema.name });
+  const templateDescription = (schema: GraphSchemaSummary) => t(`adopt.templates.${schema.code}.description`, { defaultValue: schema.description ?? '' });
+  const scopeLabel = (scope: string) => t(`adopt.scope.${scope}`, { defaultValue: scope });
   const glossaryBlocked = !!needsGlossary;
   const hasLoss = wouldLose.length > 0;
   // adopt is disabled by either gate: the M1 glossary gate or an un-acknowledged
@@ -70,12 +73,12 @@ export function AdoptPicker({
                 data-testid={`adopt-template-${s.code}`}
               >
                 <div className="flex items-center justify-between">
-                  <b className="text-sm">{s.name}</b>
-                  <OntologyChip variant={s.scope}>{s.scope}</OntologyChip>
+                  <b className="text-sm">{templateName(s)}</b>
+                  <OntologyChip variant={s.scope}>{scopeLabel(s.scope)}</OntologyChip>
                 </div>
                 {s.description && (
                   <p className="mt-1 text-[11px] text-muted-foreground">
-                    {s.description}
+                    {templateDescription(s)}
                   </p>
                 )}
                 <span className="mt-2 inline-block text-[11px] font-medium text-primary">

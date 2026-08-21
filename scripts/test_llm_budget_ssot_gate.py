@@ -158,11 +158,29 @@ def test_an_off_site_payload_is_reported_opaque_not_clean(tmp_path, monkeypatch)
     assert _verdicts(sites) == ["opaque"]
 
 
-def test_a_spread_payload_is_opaque(tmp_path, monkeypatch):
+def test_a_spread_does_NOT_buy_opacity_for_a_payload_that_declares_no_budget(
+        tmp_path, monkeypatch):
+    """A VISIBLE payload with a `**spread` and no budget key is ABSENT, not opaque.
+
+    This test asserted `opaque` until 2026-08-02, and it was pinning a measured defect. The
+    original gate bailed to `opaque` on ANY payload containing a spread, and
+    `**no_thinking_fields()` is the dominant idiom in composition-service — so 27 call sites
+    with a perfectly visible budget were discarded and the ratchet's baseline understated the
+    real backlog by 46%. `d214ddbd5` narrowed it: opacity is for a payload built ELSEWHERE
+    (the test above), not for one written here that happens to splat a helper in.
+
+    The strictness is the point. `no_thinking_fields()` never carries `max_tokens`, so
+    "the spread might contain it" was a way of not answering, and ABSENT tells the author
+    to answer — including with the MIRROR sentinel when the model's natural stop IS correct.
+
+    It stayed stale for a day because it could not run: `test_injection_coverage_lint.py`
+    failed at COLLECTION and aborted the whole `foundation-ci` batch these fifteen files
+    share. A red hidden behind a collection error is indistinguishable from a green one.
+    """
     src = ('async def go(llm, extra):\n'
            '    return await llm.submit_and_wait(user_id="u", input={"messages": [], **extra})\n')
     sites, _ = _tree(tmp_path, monkeypatch, {"services/x/app/a.py": src})
-    assert _verdicts(sites) == ["opaque"]
+    assert _verdicts(sites) == ["ABSENT"]
 
 
 # ── the ratchet ───────────────────────────────────────────────────────────────────────────

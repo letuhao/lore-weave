@@ -1,0 +1,49 @@
+{
+  "$comment": [
+    "S1/DoD-1 -- the CHECK-STATUS vocabulary, shared across languages.",
+    "",
+    "The rule it exists to carry: a guard that could not run must not be shaped like one",
+    "that ran and found nothing. Python has carried this as `loreweave_guard.CheckStatus`",
+    "since S1; Go and Rust generation paths carried it as a bare count, so a degraded sweep",
+    "and a clean sweep produced byte-identical output.",
+    "",
+    "Python (sdks/python/loreweave_guard/__init__.py) is the SSOT. This file is generated",
+    "from it (WRITE_GUARD_STATUS_CONTRACT=1 python -m pytest sdks/python/tests/test_guard_status_contract.py)",
+    "and every other language reads it in a drift test. Nothing reads it at runtime.",
+    "",
+    "A language need not implement every member -- it must not INVENT one, and the members",
+    "it does use must rank the same way. `worst()` is the derived headline: WORST FIRST,",
+    "with not_applicable filtered out before ranking so 'out of scope' never drags a report",
+    "amber."
+  ],
+  "statuses": [
+    "checked",
+    "not_applicable",
+    "trusted_caller",
+    "no_rules",
+    "no_subject",
+    "no_position",
+    "no_judge",
+    "unverified_input",
+    "unparseable",
+    "degraded",
+    "not_run",
+    "failed"
+  ],
+  "rank_worst_first": [
+    "failed",
+    "degraded",
+    "not_run",
+    "unparseable",
+    "unverified_input",
+    "no_judge",
+    "no_position",
+    "no_subject",
+    "no_rules",
+    "trusted_caller",
+    "checked"
+  ],
+  "filtered_before_ranking": [
+    "not_applicable"
+  ]
+}

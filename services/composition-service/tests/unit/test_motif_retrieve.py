@@ -874,5 +874,3 @@ async def test_the_ceiling_placeholder_still_binds_after_the_clauses_move(monkey
     sql, args = pool.conn.fetched_sql[0], pool.conn.fetched_args[0]
     limit_idx = int(sql.split("LIMIT $")[1].split()[0])
     assert isinstance(args[limit_idx - 1], int), "LIMIT must bind the integer ceiling"
-
-

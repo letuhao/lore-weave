@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/loreweave/glossary-service/internal/guardstatus"
 	"github.com/loreweave/grantclient"
 )
 
@@ -371,14 +372,18 @@ func (s *Server) sweepWikiStalenessPublic(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	kgFlagged, err := s.sweepKgDrift(r.Context(), bookID, userID)
+	kg, err := s.sweepKgDrift(r.Context(), bookID, userID)
 	if err != nil {
 		slog.Error("sweepWikiStalenessPublic kg", "error", err)
 		writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"flagged": recipeFlagged, "kg_flagged": kgFlagged, "recipe_swept": recipeSwept,
+		"flagged": recipeFlagged, "kg_flagged": kg.Flagged, "recipe_swept": recipeSwept,
+		// The coverage of that `kg_flagged`. Emitted alongside it, not instead of it, so a
+		// consumer reading only the count is no worse off than before and one reading the
+		// status can tell `0 because nothing drifted` from `0 because nothing was compared`.
+		"kg_status": kg.Status, "kg_checked": kg.Checked, "kg_unchecked": kg.Unchecked,
 	})
 }
 
@@ -426,23 +431,30 @@ func (s *Server) sweepWikiStaleness(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	kgFlagged := 0
+	// NOT_APPLICABLE, in the vocabulary's terms: without an owner id there is no Neo4j tenant
+	// key, so the KG half is out of scope for this call. Distinct from a KG half that ran and
+	// found nothing — which is the whole distinction this path was missing.
+	kg := guardstatus.Report{Status: guardstatus.NotApplicable}
 	if req.UserID != "" {
 		ownerID, perr := uuid.Parse(req.UserID)
 		if perr != nil {
 			writeError(w, http.StatusBadRequest, "WIKI_BAD_REQUEST", "invalid user_id")
 			return
 		}
-		// sweepKgDrift already degrades a knowledge-service outage to (0, nil); a
-		// non-nil error here is a local DB failure.
-		kgFlagged, err = s.sweepKgDrift(r.Context(), bookID, ownerID)
+		// sweepKgDrift degrades a knowledge-service outage to a DEGRADED report with a
+		// non-zero `Unchecked`, not to a silent zero; a non-nil error here is a local DB
+		// failure.
+		kg, err = s.sweepKgDrift(r.Context(), bookID, ownerID)
 		if err != nil {
 			slog.Error("sweepWikiStaleness kg", "error", err)
 			writeError(w, http.StatusInternalServerError, "WIKI_INTERNAL", "internal error")
 			return
 		}
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"flagged": flagged, "kg_flagged": kgFlagged})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"flagged": flagged, "kg_flagged": kg.Flagged,
+		"kg_status": kg.Status, "kg_checked": kg.Checked, "kg_unchecked": kg.Unchecked,
+	})
 }
 
 // sweepRecipeDrift records a pending `recipe_drift` staleness row for every AI
@@ -529,7 +541,12 @@ func (s *Server) sweepRecipeDrift(ctx context.Context, bookID uuid.UUID, promptV
 // book resolves to the SAME project the article was generated under — single project
 // per book/user. A custom kg_limit or a multi-project book could false-flag; see
 // D-WIKI-P2-KG-SWEEP-PROJECT-PARITY.
-func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (int, error) {
+// It returns a guardstatus.Report rather than a bare count. The count alone could not
+// distinguish "nothing has drifted" from "the knowledge service was down and nothing was
+// compared" — a failed kg-hashes chunk left its entities with no current hash, and they then
+// took the same `!ok` branch as an unchanged one. Same shape as the Rust zone narration and
+// the composition SSE streams: the degraded output was shaped exactly like the successful one.
+func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (guardstatus.Report, error) {
 	type article struct {
 		articleID  uuid.UUID
 		entityID   string
@@ -543,7 +560,7 @@ func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (i
 		   AND wa.generation_provenance->'build_inputs' ? 'kg_neighborhood_hash'`,
 		bookID)
 	if err != nil {
-		return 0, err
+		return guardstatus.Report{}, err
 	}
 	var arts []article
 	entitySet := make(map[string]struct{})
@@ -551,17 +568,21 @@ func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (i
 		var a article
 		if err := rows.Scan(&a.articleID, &a.entityID, &a.storedHash); err != nil {
 			rows.Close()
-			return 0, err
+			return guardstatus.Report{}, err
 		}
 		arts = append(arts, a)
 		entitySet[a.entityID] = struct{}{}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
-		return 0, err
+		return guardstatus.Report{}, err
 	}
 	if len(arts) == 0 {
-		return 0, nil
+		// No article in this book carries a stored KG hash — nothing is in scope. Reported as
+		// NoSubject rather than as a clean check over an empty corpus, because "there was
+		// nothing to compare" and "I compared everything and it all matched" are different
+		// answers and only one of them is evidence.
+		return guardstatus.Over(0, 0), nil
 	}
 
 	entityIDs := make([]string, 0, len(entitySet))
@@ -586,12 +607,27 @@ func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (i
 	}
 
 	flagged := 0
+	inScope := 0
+	unchecked := 0
 	for _, a := range arts {
+		// No stored baseline → there is nothing to compare this article AGAINST, so it was
+		// never in scope. Kept out of the denominator on purpose: counting it as unchecked
+		// would report a permanent, unfixable degradation and a flag nobody can clear stops
+		// being read.
+		if a.storedHash == "" {
+			continue
+		}
+		inScope++
 		cur, ok := current[a.entityID]
-		// A missing current hash (knowledge omitted the entity — KG unavailable — or
-		// its chunk failed), an unchanged hash, or no stored baseline → not drift.
-		// Only a present, DIFFERENT current hash is a genuine KG change.
-		if a.storedHash == "" || !ok || cur == a.storedHash {
+		// COUNTED, not merely skipped — this is the defect. A missing current hash means the
+		// entity was never compared (knowledge omitted it, or its chunk failed), and that is
+		// a HOLE IN THE ANSWER, not a finding of "no drift". It used to `continue` down the
+		// same branch as an unchanged hash, so an outage and a clean book were identical.
+		if !ok {
+			unchecked++
+			continue
+		}
+		if cur == a.storedHash {
 			continue
 		}
 		// D-WIKI-P2-SWEEP-DISMISS-RESWEEP: kg_drift's signature is (storedHash → cur).
@@ -615,7 +651,11 @@ func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (i
 			  WHERE status = 'pending' DO NOTHING`,
 			a.articleID, a.storedHash, cur)
 		if err != nil {
-			return flagged, err
+			// A local DB failure mid-sweep. Deliberately NOT a computed coverage split: the
+			// sweep stopped, so any "checked" count would be a guess, and a guess in a field
+			// whose whole purpose is saying how much was verified is worse than the honest
+			// answer. Degraded, with what was actually flagged.
+			return degradedSoFar(flagged, unchecked), err
 		}
 		// Only (re-)flag the article when a fresh pending row was actually inserted — a
 		// dismiss-suppressed or already-pending drift must not re-raise the "outdated" badge.
@@ -626,9 +666,21 @@ func (s *Server) sweepKgDrift(ctx context.Context, bookID, ownerID uuid.UUID) (i
 				  WHERE article_id = $1 AND is_knowledge_stale = false`,
 				a.articleID,
 			); err != nil {
-				return flagged, err
+				return degradedSoFar(flagged, unchecked), err
 			}
 		}
 	}
-	return flagged, nil
+	rep := guardstatus.Over(inScope, unchecked)
+	rep.Flagged = flagged
+	return rep, nil
+}
+
+// degradedSoFar is the report for a sweep that STOPPED. `Checked` is left at zero rather than
+// estimated: the field answers "how much of this was verified", and a number produced by
+// arithmetic over a loop that did not finish is exactly the kind of confident-looking figure
+// this whole change exists to remove.
+func degradedSoFar(flagged, unchecked int) guardstatus.Report {
+	return guardstatus.Report{
+		Status: guardstatus.Degraded, Flagged: flagged, Unchecked: unchecked,
+	}
 }

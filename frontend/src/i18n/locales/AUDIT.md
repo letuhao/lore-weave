@@ -42,4 +42,3 @@ both present and non-empty.
 
 ### ms
   - `ECHOED` kgOntology.schema.temporalField
-

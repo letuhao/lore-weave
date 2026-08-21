@@ -26,9 +26,10 @@ RUN set -eu; \
 # extract_pass2(llm_client, ...) instead of calling knowledge-service's
 # legacy /extract-item HTTP endpoint.
 COPY sdks/python /sdk
+COPY infra/python-constraints.txt /constraints.txt
 RUN set -eu; \
     for i in 1 2 3 4 5; do \
-      if pip install --no-cache-dir -i "$PIP_INDEX_URL" /sdk; then exit 0; fi; \
+      if pip install --no-cache-dir -i "$PIP_INDEX_URL" -c /constraints.txt /sdk; then exit 0; fi; \
       echo "pip attempt $i/5 failed — retrying in 5s"; \
       sleep 5; \
     done; \

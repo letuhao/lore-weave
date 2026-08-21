@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -124,13 +125,14 @@ async def infer_causal_edges(
                 user_id=user_id, operation="chat", model_source=model_source,
                 model_ref=model_ref,
                 input={"messages": build_messages(window_ev),
-                       "temperature": 0.0, "max_tokens": 800},
+                       "temperature": 0.0,
+                        "max_tokens": max_tokens_for("causal_edges", target=len(window_ev))},
                 job_meta={"extractor": "causal_edges"},
             )
         except Exception as exc:
             logger.warning("causal-edges window failed: %r", exc)
             continue
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "causal_edges")):
             continue
         edges.update(parse_edges(
             _job_content(job), order_index=order_index, window_ids=window_ids))

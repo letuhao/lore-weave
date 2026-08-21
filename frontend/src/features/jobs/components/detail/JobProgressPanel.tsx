@@ -48,6 +48,21 @@ export function JobProgressPanel({ job }: { job: Job }) {
     llmCalls = callsDone.toLocaleString();
   }
 
+  // Extraction workers also publish the currently processed chapter's
+  // window/batch count, so a job can show e.g. 3 / 28 while chapters remain 0 / 20.
+  const currentBatchDone =
+    typeof job.params?.current_batch_calls_done === 'number'
+      ? job.params.current_batch_calls_done
+      : null;
+  const currentBatchTotal =
+    typeof job.params?.current_batch_calls_total === 'number'
+      ? job.params.current_batch_calls_total
+      : null;
+  const currentBatchCalls =
+    currentBatchDone != null && currentBatchTotal != null
+      ? `${currentBatchDone.toLocaleString()} / ${currentBatchTotal.toLocaleString()}`
+      : null;
+
   const stat = (labelKey: string, def: string, value: string | null) =>
     value ? (
       <div>
@@ -77,6 +92,7 @@ export function JobProgressPanel({ job }: { job: Job }) {
       )}
       <div className="mt-3 flex flex-wrap gap-8 text-sm">
         {stat('detail.llmCalls', 'LLM calls', llmCalls)}
+        {stat('detail.currentBatchCalls', 'Current window/batch', currentBatchCalls)}
         {stat('detail.elapsed', 'Elapsed', elapsed)}
         {stat('detail.throughput', 'Throughput', throughput)}
         {stat('detail.eta', 'ETA', eta)}

@@ -97,7 +97,7 @@ export function KnowledgeUpdatesPanel({
   const { t } = useTranslation('wiki');
   const { accessToken } = useAuth();
   const studioHost = useOptionalStudioHost();
-  const { rows, dismiss, dismissing, dismissMany, rescan, rescanning } = useWikiStaleness(bookId);
+  const { rows, dismiss, dismissing, dismissMany, rescan, rescanning, coverage } = useWikiStaleness(bookId);
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // W6b-2b — on-demand source diff (before snapshot vs current source). Imperative
@@ -204,6 +204,24 @@ export function KnowledgeUpdatesPanel({
             </Dialog.Close>
           </div>
         </div>
+
+        {/* DoD-1 (Go) — the standing consumer of `kg_unchecked`. It sits ABOVE the feed and
+            above the empty state on purpose: the failure it names is a list that looks
+            complete, and the empty state is where that lie is loudest. */}
+        {coverage && (
+          <div
+            data-testid="staleness-coverage-gap"
+            role="status"
+            className="flex items-start gap-2 border-b bg-amber-400/[0.1] px-5 py-2.5 text-[11px] text-amber-600"
+          >
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              {coverage.unchecked === null
+                ? t('staleness.coverageUnknown')
+                : t('staleness.coverageGap', { count: coverage.unchecked })}
+            </span>
+          </div>
+        )}
 
         <div className="flex items-start gap-2 border-b bg-blue-500/[0.06] px-5 py-2.5 text-[11px] text-muted-foreground">
           <Info className="mt-0.5 h-3.5 w-3.5 shrink-0 text-blue-400" />

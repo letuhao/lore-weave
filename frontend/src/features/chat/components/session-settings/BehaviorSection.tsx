@@ -1,4 +1,4 @@
-// Session settings → Behavior. System prompt (+ the ONE preset list), reasoning effort,
+// Session settings → Behavior. {t('sessionSettings.behavior.systemPrompt')} (+ the ONE preset list), reasoning effort,
 // and the sampling params — each showing which tier supplied it and offering "clear ·
 // inherit X" when this chat overrides it.
 import { useEffect, useState } from 'react';
@@ -28,13 +28,13 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
 
   return (
     <section className="space-y-4" data-testid="session-behavior-section">
-      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Behavior</h4>
+      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{t('sessionSettings.behavior.title')}</h4>
 
-      {/* System prompt + the one shared preset list */}
+      {/* {t('sessionSettings.behavior.systemPrompt')} + the one shared preset list */}
       <div>
         <div className="mb-1.5 flex items-center justify-between">
           <label className="flex items-center text-xs font-medium text-muted-foreground">
-            System prompt
+            {t('sessionSettings.behavior.systemPrompt')}
             {/* The chip reads the SAME override predicate as every other row — a hand-rolled
                 `session.system_prompt ? 'session' : …` here would drift from `isOverridden`
                 the moment either definition changed. */}
@@ -74,14 +74,14 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
           data-testid="session-system-prompt"
           onChange={(e) => { setPrompt(e.target.value); ed.patch({ system_prompt: e.target.value }); }}
           className="w-full rounded border border-border bg-background p-2 text-xs"
-          placeholder="Inherited from your account default unless you set one here."
+          placeholder={t('sessionSettings.behavior.promptPlaceholder')}
         />
       </div>
 
-      {/* Reasoning effort — was silently 'off' with no UI (spec §1 fallback #2) */}
+      {/* {t('sessionSettings.behavior.reasoning.label')} — was silently 'off' with no UI (spec §1 fallback #2) */}
       <div>
         <label className="mb-1.5 flex items-center text-xs font-medium text-muted-foreground">
-          Reasoning effort
+          {t('sessionSettings.behavior.reasoning.label')}
           <TierChip tier={effortTier} />
           <ClearOverride
             show={ed.isOverridden('behavior', 'reasoning_effort')}
@@ -90,7 +90,7 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
             testId="session-effort-clear"
           />
         </label>
-        <div className="flex gap-1" role="group" aria-label="Reasoning effort">
+        <div className="flex gap-1" role="group" aria-label={t('sessionSettings.behavior.reasoning.label')}>
           {EFFORTS.map((e) => (
             <button
               key={e}
@@ -100,14 +100,33 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
               onClick={() => setGen({ reasoning_effort: e, thinking: null })}
               className={`${SEG} ${effort === e ? SEG_ON : SEG_OFF}`}
             >
-              {e}
+              {t('sessionSettings.behavior.reasoning.' + e)}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Stateful Responses is intentionally an explicit opt-in. Many
+          OpenAI-compatible providers expose the same model API but do not
+          implement the Responses tool-output protocol. */}
+      <label className="flex items-start gap-2 rounded border border-border p-3 text-xs">
+        <input
+          type="checkbox"
+          data-testid="session-stateful-responses"
+          checked={session.generation_params?.use_stateful_responses === true}
+          onChange={(e) => setGen({ use_stateful_responses: e.target.checked })}
+          className="mt-0.5 h-4 w-4"
+        />
+        <span>
+          <span className="font-medium text-foreground">{t('sessionSettings.behavior.statefulTitle')}</span>
+          <span className="mt-0.5 block text-muted-foreground">
+            {t('sessionSettings.behavior.statefulHint')}
+          </span>
+        </span>
+      </label>
+
       <OverridableSlider
-        label="Temperature" testId="session-temperature"
+        label={t('sessionSettings.behavior.temperature')} testId="session-temperature"
         field={ed.field('behavior', 'temperature')}
         overridden={ed.isOverridden('behavior', 'temperature')}
         inherited={ed.inheritedValue('behavior', 'temperature')}
@@ -115,11 +134,11 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
         format={(v) => v.toFixed(1)}
         onSet={(v) => setGen({ temperature: v })}
         onClear={() => setGen({ temperature: null })}
-        hint="Higher is more surprising, lower is more predictable."
+        hint={t('sessionSettings.behavior.temperatureHint')}
       />
 
       <OverridableSlider
-        label="Top P" testId="session-top-p"
+        label={t('sessionSettings.behavior.topP')} testId="session-top-p"
         field={ed.field('behavior', 'top_p')}
         overridden={ed.isOverridden('behavior', 'top_p')}
         inherited={ed.inheritedValue('behavior', 'top_p')}
@@ -129,7 +148,7 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
       />
 
       <OverridableSlider
-        label="Max response tokens" testId="session-max-tokens"
+        label={t('sessionSettings.behavior.maxTokens')} testId="session-max-tokens"
         field={ed.field('behavior', 'max_tokens')}
         overridden={ed.isOverridden('behavior', 'max_tokens')}
         inherited={ed.inheritedValue('behavior', 'max_tokens')}
@@ -137,7 +156,7 @@ export function BehaviorSection({ ed }: { ed: SessionSettingsEditor }) {
         format={(v) => String(Math.round(v))}
         onSet={(v) => setGen({ max_tokens: Math.round(v) })}
         onClear={() => setGen({ max_tokens: null })}
-        hint="Unset means the model's own limit — the old ∞ checkbox."
+        hint={t('sessionSettings.behavior.maxTokensHint')}
       />
     </section>
   );

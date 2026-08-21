@@ -80,6 +80,19 @@ class NodeCreate(BaseModel):
     draft_beats: list[dict[str, Any]] | None = None
 
 
+class PlanImportChapter(BaseModel):
+    """One existing manuscript chapter to add to the composition plan."""
+
+    chapter_id: UUID
+    title: str = ""
+    synopsis: str = ""
+    story_order: int | None = None
+
+
+class PlanImportRequest(BaseModel):
+    chapters: list[PlanImportChapter]
+
+
 class NodePatch(BaseModel):
     parent_id: UUID | None = None
     rank: str | None = None
@@ -592,6 +605,51 @@ async def create_node(
     except asyncpg.CheckViolationError as exc:
         raise HTTPException(status_code=400, detail={"code": "CONSTRAINT", "detail": str(exc)})
     return node.model_dump(mode="json")
+
+
+@router.post("/books/{book_id}/plan/import", status_code=200)
+async def import_book_plan(
+    book_id: UUID,
+    body: PlanImportRequest,
+    user_id: UUID = Depends(get_current_user),
+    works: WorksRepo = Depends(get_works_repo),
+    outline: OutlineRepo = Depends(get_outline_repo),
+    grant: GrantClient = Depends(get_grant_client_dep),
+) -> dict[str, Any]:
+    """Import a chapter plan for an existing manuscript, idempotently."""
+    await _gate_book(grant, book_id, user_id, GrantLevel.EDIT)
+    if not body.chapters:
+        return {"created": 0, "skipped": 0, "detail": "no plan rows supplied"}
+    work = resolve_canonical_work(await works.resolve_by_book(book_id))
+    if work is None:
+        work = await works.get_pending_for_book(book_id)
+    if work is None:
+        raise HTTPException(status_code=409, detail={
+            "code": "NO_COMPOSITION_WORK",
+            "detail": "open the book in the studio once before importing a plan",
+        })
+    project_id = work.project_id or work.id
+    await _require_work(works, grant, user_id, project_id, GrantLevel.EDIT)
+    linked = await outline.linked_chapter_nodes(book_id)
+    planned_ids = {str(row["chapter_id"]) for row in linked if row.get("kind") == "chapter"}
+    created = 0
+    skipped = 0
+    for row in body.chapters:
+        if str(row.chapter_id) in planned_ids:
+            skipped += 1
+            continue
+        await outline.create_node(
+            project_id,
+            kind="chapter",
+            title=row.title.strip(),
+            synopsis=row.synopsis.strip(),
+            chapter_id=row.chapter_id,
+            story_order=row.story_order,
+            created_by=user_id,
+        )
+        planned_ids.add(str(row.chapter_id))
+        created += 1
+    return {"created": created, "skipped": skipped, "total": created + skipped}
 
 
 @router.get("/outline/nodes/{node_id}")

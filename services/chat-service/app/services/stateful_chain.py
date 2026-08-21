@@ -17,14 +17,18 @@ from __future__ import annotations
 import os
 
 
-def stateful_enabled() -> bool:
+def stateful_enabled(requested: bool | None = None) -> bool:
     """The deploy flag, read the SAME way the gateway reads it (§5 flag-consistency):
     chat-service must only send a DELTA when it is certain the gateway will run stateful.
-    Default ON — stateful prompt caching is the industry standard (99% cache on the
-    re-sent tool/history prefix, reasoning fully controllable, degrade-safe E1). Disable
-    platform-wide with LLM_STATEFUL_CACHE=0/false/off. Only providers declaring the
-    responses_api capability (openai / lm_studio) ever go stateful; all others stay on the
-    unified chat/completions path regardless."""
+    Default ON for legacy direct callers — stateful prompt caching is the industry
+    standard (99% cache on the re-sent tool/history prefix, reasoning fully controllable,
+    degrade-safe E1). A session can explicitly override it with ``requested``; the
+    chat stream uses that override and defaults sessions to the portable stateless path.
+    Disable platform-wide with LLM_STATEFUL_CACHE=0/false/off. Only providers declaring
+    the responses_api capability (openai / lm_studio) ever go stateful; all others stay
+    on the unified chat/completions path regardless."""
+    if requested is not None:
+        return requested
     return os.getenv("LLM_STATEFUL_CACHE", "").strip().lower() not in ("0", "false", "off")
 
 
@@ -57,6 +61,7 @@ def decide_chain(
     current_model_ref: str,
     compacted_before_seq: int | None,
     effective_limit: int | None,
+    stateful_requested: bool | None = None,
 ) -> tuple[bool, str | None, str]:
     """Return ``(use_stateful, previous_response_id, reason)``.
 
@@ -64,13 +69,16 @@ def decide_chain(
     - ``(True, None, <reestablish reason>)`` — stateful ESTABLISH: full context, fresh chain.
     - ``(True, R, "continue")`` — stateful CONTINUE: send the delta chained onto head ``R``.
 
+    ``stateful_requested`` is the per-session opt-in. ``None`` preserves the deploy-flag
+    behaviour for callers that do not have a session preference.
+
     ``reason`` is surfaced on the contextBudget frame (Inspector §9) so a re-chain is
     visible + attributable. ``latest_assistant`` is the newest assistant row for
     (session, branch) or None: ``{response_id, model_ref, input_tokens, sequence_num,
     context_size}``.
     """
     caps = capabilities or {}
-    if not caps.get("responses_api") or not stateful_enabled():
+    if not caps.get("responses_api") or not stateful_enabled(stateful_requested):
         return (False, None, "stateless")
 
     if latest_assistant is None:

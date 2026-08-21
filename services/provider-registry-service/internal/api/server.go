@@ -14,6 +14,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"path"
 	"slices"
 	"strconv"
@@ -39,16 +40,16 @@ import (
 )
 
 type Server struct {
-	pool         *pgxpool.Pool
-	cfg          *config.Config
-	secret       []byte
-	secretKey    []byte
+	pool      *pgxpool.Pool
+	cfg       *config.Config
+	secret    []byte
+	secretKey []byte
 	// adminPub verifies RS256 admin JWTs for the System-tier platform-model write
 	// endpoints (D-JWT-ROLE-GATE, contracts/adminjwt). nil when
 	// ADMIN_JWT_PUBLIC_KEY_PEM is unset → those endpoints fail closed.
 	// adminKID = KeyFingerprint(adminPub).
-	adminPub *rsa.PublicKey
-	adminKID string
+	adminPub     *rsa.PublicKey
+	adminKID     string
 	client       *http.Client // short-timeout: sync/billing calls (15s)
 	invokeClient *http.Client // no timeout: AI generation can take minutes
 
@@ -434,10 +435,12 @@ func (s *Server) Router() http.Handler {
 		r.Put("/user-models/reorder", s.reorderUserModels)
 		r.Patch("/user-models/{user_model_id}", s.patchUserModel)
 		r.Delete("/user-models/{user_model_id}", s.deleteUserModel)
+		r.Get("/user-models/{user_model_id}/deletion-impact", s.userModelDeletionImpact)
 		r.Patch("/user-models/{user_model_id}/activation", s.patchUserModelActivation)
 		r.Patch("/user-models/{user_model_id}/favorite", s.patchUserModelFavorite)
 		r.Put("/user-models/{user_model_id}/tags", s.putUserModelTags)
 		r.Post("/user-models/{user_model_id}/verify", s.verifyUserModel)
+		r.Post("/user-models/{user_model_id}/refresh-capabilities", s.refreshUserModelCapabilities)
 		r.Get("/user-models/{user_model_id}/pricing/suggest", s.suggestUserModelPricing) // D-PRICING-REFRESH
 
 		// Per-user default model per capability (rerank/embedding). Restores the
@@ -1530,7 +1533,7 @@ func (s *Server) listProviderInventory(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	rows, err := s.pool.Query(r.Context(), `
-SELECT provider_model_name, context_length, capability_flags, synced_at
+SELECT provider_model_name, context_length, capability_flags, pricing, synced_at
 FROM provider_inventory_models
 WHERE provider_credential_id=$1
 ORDER BY provider_model_name ASC
@@ -1546,17 +1549,21 @@ ORDER BY provider_model_name ASC
 		var modelName string
 		var contextLength *int
 		var flagsBytes []byte
+		var pricingBytes []byte
 		var rowSyncedAt time.Time
-		if err := rows.Scan(&modelName, &contextLength, &flagsBytes, &rowSyncedAt); err != nil {
+		if err := rows.Scan(&modelName, &contextLength, &flagsBytes, &pricingBytes, &rowSyncedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, "M03_INVENTORY_QUERY_FAILED", "failed to parse inventory row")
 			return
 		}
 		flags := map[string]any{}
+		pricing := map[string]any{}
 		_ = json.Unmarshal(flagsBytes, &flags)
+		_ = json.Unmarshal(pricingBytes, &pricing)
 		items = append(items, map[string]any{
 			"provider_model_name": modelName,
 			"context_length":      contextLength,
 			"capability_flags":    flags,
+			"pricing":             pricing,
 		})
 		syncedAt = &rowSyncedAt
 	}
@@ -1585,15 +1592,80 @@ func (s *Server) syncInventory(ctx context.Context, cred *credentialRow) error {
 		return err
 	}
 	for _, m := range models {
+		if m.CapabilityFlags == nil {
+			m.CapabilityFlags = map[string]any{}
+		}
+		if m.Pricing == nil {
+			m.Pricing = map[string]any{}
+		}
 		flags, _ := json.Marshal(m.CapabilityFlags)
+		pricing, _ := json.Marshal(m.Pricing)
 		if _, err := tx.Exec(ctx, `
-INSERT INTO provider_inventory_models(provider_credential_id, provider_model_name, context_length, capability_flags, synced_at)
-VALUES ($1,$2,$3,$4,now())
-`, cred.ProviderCredentialID, m.ProviderModelName, m.ContextLength, flags); err != nil {
+INSERT INTO provider_inventory_models(provider_credential_id, provider_model_name, context_length, capability_flags, pricing, synced_at)
+VALUES ($1,$2,$3,$4,$5,now())
+`, cred.ProviderCredentialID, m.ProviderModelName, m.ContextLength, flags, pricing); err != nil {
 			return err
 		}
 	}
+	// Inventory fills metadata only while the user model has no override. This
+	// prevents a provider refresh from erasing user-selected flags or pricing.
+	if _, err := tx.Exec(ctx, `UPDATE user_models um SET capability_flags=CASE WHEN um.capability_flags IS NULL OR um.capability_flags='{}'::jsonb OR um.capability_flags='null'::jsonb THEN pi.capability_flags ELSE um.capability_flags END, context_length=COALESCE(pi.context_length,um.context_length), pricing=CASE WHEN (um.pricing IS NULL OR um.pricing='{}'::jsonb OR um.pricing='null'::jsonb) AND pi.pricing IS NOT NULL AND pi.pricing <> 'null'::jsonb AND pi.pricing <> '{}'::jsonb THEN pi.pricing WHEN um.pricing IS NULL OR um.pricing='null'::jsonb THEN '{}'::jsonb ELSE um.pricing END, updated_at=now() FROM provider_inventory_models pi WHERE um.provider_credential_id=$1 AND pi.provider_credential_id=um.provider_credential_id AND pi.provider_model_name=um.provider_model_name`, cred.ProviderCredentialID); err != nil {
+		return err
+	}
 	return tx.Commit(ctx)
+}
+
+func (s *Server) refreshUserModelCapabilities(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	modelID, ok := parseUUIDParam(w, r, "user_model_id")
+	if !ok {
+		return
+	}
+	var providerID uuid.UUID
+	var modelName, providerKind, endpoint, cipher string
+	err := s.pool.QueryRow(r.Context(), `SELECT um.provider_credential_id, um.provider_model_name, pc.provider_kind, COALESCE(pc.endpoint_base_url,''), COALESCE(pc.secret_ciphertext,'') FROM user_models um JOIN provider_credentials pc ON pc.provider_credential_id=um.provider_credential_id WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND pc.status='active'`, modelID, userID).Scan(&providerID, &modelName, &providerKind, &endpoint, &cipher)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "M03_USER_MODEL_NOT_FOUND", "user model not found or provider inactive")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_QUERY_FAILED", "failed to resolve user model")
+		return
+	}
+	if cipher == "" {
+		writeError(w, http.StatusBadRequest, "M03_MISSING_CREDENTIAL", "provider credential has no secret")
+		return
+	}
+	secret, err := s.decryptSecret(cipher)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_SECRET_DECRYPT_FAILED", "failed to decrypt secret")
+		return
+	}
+	cred := &credentialRow{ProviderCredentialID: providerID, ProviderKind: providerKind, EndpointBaseURL: endpoint, Secret: secret}
+	if err = s.syncInventory(r.Context(), cred); err != nil {
+		writeError(w, http.StatusBadGateway, "M03_PROVIDER_SYNC_FAILED", "failed to sync provider inventory")
+		return
+	}
+	var flags, pricing []byte
+	var ctxLen *int
+	err = s.pool.QueryRow(r.Context(), `SELECT capability_flags, pricing, context_length FROM provider_inventory_models WHERE provider_credential_id=$1 AND provider_model_name=$2`, providerID, modelName).Scan(&flags, &pricing, &ctxLen)
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "M03_INVENTORY_MODEL_NOT_FOUND", "model was not returned by provider")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_INVENTORY_QUERY_FAILED", "failed to read refreshed model metadata")
+		return
+	}
+	if _, err = s.pool.Exec(r.Context(), `UPDATE user_models SET capability_flags=$3, context_length=COALESCE($4,context_length), pricing=CASE WHEN (pricing IS NULL OR pricing='{}'::jsonb OR pricing='null'::jsonb) AND $5::jsonb IS NOT NULL AND $5::jsonb <> 'null'::jsonb AND $5::jsonb <> '{}'::jsonb THEN $5 ELSE COALESCE(NULLIF(pricing,'null'::jsonb),'{}'::jsonb) END, updated_at=now() WHERE user_model_id=$1 AND owner_user_id=$2`, modelID, userID, flags, ctxLen, pricing); err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_UPDATE_FAILED", "failed to update model metadata")
+		return
+	}
+	s.writeUserModel(w, r, userID, modelID)
 }
 
 // parsePricingInput validates a caller-supplied `pricing` payload, shared by
@@ -1786,6 +1858,12 @@ SELECT user_model_id FROM user_models WHERE owner_user_id=$1
 			boolArg := fmt.Sprintf(`{"%s": true}`, capabilityFilter)
 			if capabilityFilter == "chat" {
 				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d OR capability_flags = '{}'::jsonb)`, argPos, argPos+1)
+			} else if capabilityFilter == "embedding" {
+				// Older inventory syncs (and manually added local models) may
+				// leave capability_flags empty even when the provider model is
+				// plainly an embedder. Keep those models selectable without
+				// weakening the non-embedding filters for arbitrary `{}` rows.
+				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d OR lower(provider_model_name) LIKE ANY (ARRAY['%%embedding%%','%%embed%%','%%bge-m3%%','%%bge_%%','%%e5-%%','%%e5_%%','%%gte-%%','%%gte_%%','%%jina-embeddings%%']))`, argPos, argPos+1)
 			} else {
 				query += fmt.Sprintf(` AND (capability_flags @> $%d::jsonb OR capability_flags->>'_capability' = $%d)`, argPos, argPos+1)
 			}
@@ -2062,16 +2140,193 @@ func (s *Server) deleteUserModel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	cmd, err := s.pool.Exec(r.Context(), `DELETE FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2`, id, userID)
+
+	// Model deletion is deliberately a two-step operation.  The first request
+	// is a read-only impact preview; the UI displays it before asking for the
+	// final confirmation.  The second request carries this explicit header and
+	// repeats the active-job check inside the transaction (a job may have been
+	// started while the dialog was open).
+	impact, err := s.getUserModelDeletionImpact(r.Context(), userID, id)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			writeError(w, http.StatusNotFound, "M03_USER_MODEL_NOT_FOUND", "user model not found")
+		} else {
+			writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_DELETE_FAILED", "failed to inspect model references")
+		}
+		return
+	}
+	if len(impact.ActiveTasks) > 0 {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"code":    "MODEL_DELETE_BLOCKED",
+			"message": "Модель нельзя удалить, пока выполняются активные задачи. Сначала остановите их.",
+			"impact":  impact,
+		})
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(r.Header.Get("X-Confirm-Model-Deletion")), "true") {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"code":    "MODEL_DELETE_CONFIRMATION_REQUIRED",
+			"message": "Перед удалением проверьте ссылки на модель и подтвердите операцию.",
+			"impact":  impact,
+		})
+		return
+	}
+	if err := s.cleanupKnowledgeModel(r.Context(), userID, id); errors.Is(err, errModelDeleteActive) {
+		writeError(w, http.StatusConflict, "MODEL_DELETE_BLOCKED", "Модель нельзя удалить, пока выполняются активные задачи. Сначала остановите их.")
+		return
+	} else if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_DELETE_FAILED", "failed to clear knowledge references")
+		return
+	}
+
+	if err := s.deleteUserModelData(r.Context(), userID, id); errors.Is(err, pgx.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "M03_USER_MODEL_NOT_FOUND", "user model not found")
+		return
+	} else if errors.Is(err, errModelDeleteActive) {
+		writeError(w, http.StatusConflict, "MODEL_DELETE_BLOCKED", "Модель нельзя удалить, пока выполняются активные задачи. Сначала остановите их.")
+		return
+	} else if err != nil {
 		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_DELETE_FAILED", "failed to delete user model")
 		return
 	}
-	if cmd.RowsAffected() == 0 {
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type modelDeletionReference struct {
+	Kind  string `json:"kind"`
+	Count int    `json:"count"`
+}
+
+type modelDeletionImpact struct {
+	UserModelID string                   `json:"user_model_id"`
+	References  []modelDeletionReference `json:"references"`
+	ActiveTasks []string                 `json:"active_tasks"`
+	CanDelete   bool                     `json:"can_delete"`
+}
+
+type remoteModelDeletionImpact struct {
+	References  []modelDeletionReference `json:"references"`
+	ActiveTasks int                      `json:"active_tasks"`
+}
+
+func (s *Server) knowledgeModelDeletionImpact(ctx context.Context, userID, modelID uuid.UUID) (remoteModelDeletionImpact, error) {
+	var out remoteModelDeletionImpact
+	if strings.TrimSpace(s.cfg.KnowledgeServiceURL) == "" {
+		return out, nil
+	}
+	u := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/") + "/internal/admin/model-deletion/impact?user_id=" + url.QueryEscape(userID.String()) + "&model_id=" + url.QueryEscape(modelID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return out, err
+	}
+	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return out, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return out, fmt.Errorf("knowledge deletion impact returned %s", resp.Status)
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return out, err
+	}
+	return out, nil
+}
+
+func (s *Server) cleanupKnowledgeModel(ctx context.Context, userID, modelID uuid.UUID) error {
+	if strings.TrimSpace(s.cfg.KnowledgeServiceURL) == "" {
+		return nil
+	}
+	u := strings.TrimRight(s.cfg.KnowledgeServiceURL, "/") + "/internal/admin/model-deletion/cleanup?user_id=" + url.QueryEscape(userID.String()) + "&model_id=" + url.QueryEscape(modelID.String())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, nil)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("X-Internal-Token", s.cfg.InternalServiceToken)
+	resp, err := s.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusConflict {
+		return errModelDeleteActive
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("knowledge deletion cleanup returned %s", resp.Status)
+	}
+	return nil
+}
+
+func (s *Server) getUserModelDeletionImpact(ctx context.Context, userID, modelID uuid.UUID) (modelDeletionImpact, error) {
+	var exists bool
+	if err := s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_models WHERE user_model_id=$1 AND owner_user_id=$2)`, modelID, userID).Scan(&exists); err != nil {
+		return modelDeletionImpact{}, err
+	}
+	if !exists {
+		return modelDeletionImpact{}, pgx.ErrNoRows
+	}
+	out := modelDeletionImpact{UserModelID: modelID.String(), References: []modelDeletionReference{}}
+	var n int
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM user_default_models WHERE owner_user_id=$1 AND user_model_id=$2`, userID, modelID).Scan(&n); err != nil {
+		return out, err
+	}
+	if n > 0 {
+		out.References = append(out.References, modelDeletionReference{Kind: "model defaults", Count: n})
+	}
+	if err := s.pool.QueryRow(ctx, `SELECT count(*) FROM llm_jobs WHERE owner_user_id=$1 AND model_source='user_model' AND model_ref=$2`, userID, modelID).Scan(&n); err != nil {
+		return out, err
+	}
+	if n > 0 {
+		out.References = append(out.References, modelDeletionReference{Kind: "LLM jobs and history", Count: n})
+	}
+	rows, err := s.pool.Query(ctx, `SELECT job_id::text FROM llm_jobs WHERE owner_user_id=$1 AND model_source='user_model' AND model_ref=$2 AND status IN ('pending','running') ORDER BY submitted_at`, userID, modelID)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return out, err
+		}
+		out.ActiveTasks = append(out.ActiveTasks, id)
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	remote, err := s.knowledgeModelDeletionImpact(ctx, userID, modelID)
+	if err != nil {
+		return out, err
+	}
+	out.References = append(out.References, remote.References...)
+	for i := 0; i < remote.ActiveTasks; i++ {
+		out.ActiveTasks = append(out.ActiveTasks, fmt.Sprintf("knowledge:active-%d", i+1))
+	}
+	out.CanDelete = len(out.ActiveTasks) == 0
+	return out, nil
+}
+
+func (s *Server) userModelDeletionImpact(w http.ResponseWriter, r *http.Request) {
+	userID, ok := s.auth(r)
+	if !ok {
+		writeError(w, http.StatusUnauthorized, "M03_UNAUTHORIZED", "unauthorized")
+		return
+	}
+	id, ok := parseUUIDParam(w, r, "user_model_id")
+	if !ok {
+		return
+	}
+	impact, err := s.getUserModelDeletionImpact(r.Context(), userID, id)
+	if errors.Is(err, pgx.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "M03_USER_MODEL_NOT_FOUND", "user model not found")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "M03_USER_MODEL_DELETE_FAILED", "failed to inspect model references")
+		return
+	}
+	writeJSON(w, http.StatusOK, impact)
 }
 
 func (s *Server) patchUserModelActivation(w http.ResponseWriter, r *http.Request) {
@@ -2418,6 +2673,9 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 	json.Unmarshal(capabilityFlagsJSON, &caps)
 
 	capability := detectPrimaryCapability(caps)
+	if capability == "chat" && looksLikeEmbeddingModel(providerModelName) {
+		capability = "embedding"
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Minute)
 	defer cancel()
@@ -2458,6 +2716,21 @@ WHERE um.user_model_id=$1 AND um.owner_user_id=$2 AND um.is_active=true AND pc.s
 		result["latency_ms"] = time.Since(start).Milliseconds()
 		result["capability"] = "video_gen"
 		VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+		writeJSON(w, http.StatusOK, result)
+		return
+
+	case "embedding":
+		// Embedding models must be verified through /v1/embeddings. Sending
+		// them to /v1/chat/completions produces a misleading model-not-found
+		// response from OpenAI-compatible routers such as LiteLLM.
+		result := s.verifyEmbedding(ctx, providerKind, endpointBaseURL, secret, providerModelName)
+		result["latency_ms"] = time.Since(start).Milliseconds()
+		result["capability"] = "embedding"
+		if verified, _ := result["verified"].(bool); verified {
+			VerifyRequestsTotal.WithLabelValues(OutcomeOK).Inc()
+		} else {
+			VerifyRequestsTotal.WithLabelValues(OutcomeProviderError).Inc()
+		}
 		writeJSON(w, http.StatusOK, result)
 		return
 
@@ -2565,23 +2838,78 @@ func canEmbed(caps map[string]any) bool {
 }
 
 // detectPrimaryCapability determines which verification strategy to use based on capability_flags.
-// Priority: stt > tts > image_gen > video_gen > chat (default)
+// Priority: stt > tts > image_gen > video_gen > embedding > rerank > web_search > chat.
+func looksLikeEmbeddingModel(name string) bool {
+	n := strings.ToLower(strings.TrimSpace(name))
+	for _, token := range []string{"embedding", "embed", "bge-", "bge_", "e5-", "e5_", "gte-", "gte_", "jina-embeddings"} {
+		if strings.Contains(n, token) {
+			return true
+		}
+	}
+	return false
+}
+
 func detectPrimaryCapability(caps map[string]any) string {
-	// C3 (BL-10): include rerank so its verify path does a real /v1/rerank
-	// round-trip instead of falling through to the chat ping.
-	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "rerank", "web_search"} {
+	for _, cap := range []string{"stt", "tts", "image_gen", "video_gen", "embedding", "rerank", "web_search"} {
 		if v, ok := caps[cap]; ok {
 			if b, ok := v.(bool); ok && b {
 				return cap
 			}
 		}
 	}
-	// Inventory-discovered rerank (C2) may carry the capability as the `_capability`
-	// metadata string rather than a boolean flag — recognize that form too.
-	if c, _ := caps["_capability"].(string); c == "rerank" || c == "web_search" {
+	// Inventory discovery stores the canonical capability in _capability.
+	// Accept the historical short form "embed" as "embedding" as well.
+	switch c, _ := caps["_capability"].(string); c {
+	case "embed":
+		return "embedding"
+	case "embedding", "rerank", "web_search", "stt", "tts", "image_gen", "video_gen":
 		return c
 	}
 	return "chat"
+}
+
+// verifyEmbedding performs a real, minimal embedding round-trip. It deliberately
+// uses the canonical provider.Embed dispatcher so verification and production
+// embedding calls share URL construction, authentication and response parsing.
+func (s *Server) verifyEmbedding(
+	ctx context.Context,
+	providerKind, baseURL, secret, modelName string,
+) map[string]any {
+	client := &http.Client{Timeout: 60 * time.Second}
+	adapter, err := provider.ResolveAdapter(providerKind, client)
+	if err != nil {
+		return map[string]any{
+			"verified": false,
+			"error":    "failed to resolve provider adapter: " + err.Error(),
+		}
+	}
+
+	result, err := provider.Embed(
+		ctx,
+		adapter,
+		client,
+		baseURL,
+		secret,
+		modelName,
+		[]string{"LoreWeave embedding verification"},
+	)
+	if err != nil {
+		return map[string]any{"verified": false, "error": err.Error()}
+	}
+	if result == nil || len(result.Embeddings) == 0 || result.Dimension <= 0 {
+		return map[string]any{
+			"verified": false,
+			"error":    "provider returned no valid embedding vector",
+		}
+	}
+
+	return map[string]any{
+		"verified":      true,
+		"model":         result.Model,
+		"vector_count":  len(result.Embeddings),
+		"dimension":     result.Dimension,
+		"prompt_tokens": result.PromptTokens,
+	}
 }
 
 // verifyRerank exercises a REAL /v1/rerank round-trip with a tiny fixed

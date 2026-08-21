@@ -34,6 +34,12 @@ export type ChapterTranslation = {
   qa_rounds_used: number;
   // M5c: true when a glossary change post-dates this translation.
   is_glossary_stale: boolean;
+  /** Directive-looking spans found in the IMPORTED source text. `null` = NOT SCANNED (a
+   *  chapter translated before the scan existed), `0` = scanned and clean, `>0` = the
+   *  importer should look. null and 0 are different answers and the badge treats them so —
+   *  translation cannot neutralise its own product, so DETECT is the defence, and a detection
+   *  nobody is told about is not one. */
+  source_injection_hits: number | null;
 };
 
 export type TranslationJob = {

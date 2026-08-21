@@ -35,6 +35,7 @@ from loreweave_extraction.pass2_filter import (
     FilterDecision,
     PrecisionFilterConfig,
     apply_precision_filter,
+    compute_filter_kept,
     load_candidates_from_dump,
 )
 
@@ -203,6 +204,16 @@ async def test_empty_input_short_circuits_with_coverage_1() -> None:
     assert result.filter_status == "skipped"
     assert all(v == 1.0 for v in result.filter_coverage.values())
     client.submit_and_wait.assert_not_called()
+
+
+def test_compute_filter_kept_empty_category_is_fully_covered() -> None:
+    """Decoupled filter fan-in must handle a configured category with no items."""
+    kept, coverage = compute_filter_kept(
+        "event", 0, {}, _config(categories=("event",)), None,
+    )
+
+    assert kept == []
+    assert coverage == 1.0
 
 
 @pytest.mark.asyncio

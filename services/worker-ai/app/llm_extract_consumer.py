@@ -36,7 +36,7 @@ from loreweave_jobs import BaseTerminalConsumer, JobStatus, emit_job_event_safe
 from loreweave_llm.attribution import set_public_key_attribution
 
 from app import decoupled_extract as dx
-from app.llm_client import LLMClient, set_billing_user_id, set_campaign_id
+from app.llm_client import LLMClient, begin_usage_capture, set_billing_user_id, set_campaign_id
 from app.sample_emit import persist_run_sample_best_effort
 
 logger = logging.getLogger(__name__)
@@ -234,6 +234,16 @@ def _concurrency_level(rs: dict) -> int | None:
     return None
 
 
+async def _add_token_usage(conn, ej_id, tokens_in: int, tokens_out: int) -> None:
+    """Add provider usage only after this terminal event wins its row lock."""
+    if tokens_in <= 0 and tokens_out <= 0:
+        return
+    await conn.execute(
+        "UPDATE extraction_jobs SET tokens_in = tokens_in + $2, tokens_out = tokens_out + $3, updated_at = now() WHERE job_id = $1",
+        ej_id, tokens_in, tokens_out,
+    )
+
+
 async def _bump_llm_calls(conn, ej_id, n: int) -> None:
     """bug #37 — atomically advance the realized LLM-call counter for the Jobs GUI. Runs
     on the SAME locked connection as the caller's fan-out (every _submit_map call is under
@@ -261,7 +271,7 @@ async def _emit_kg_progress(pool, ej_id, owner_id) -> None:
 
     try:
         row = await pool.fetchrow(
-            "SELECT items_processed, items_total, llm_calls_made, targets "
+            "SELECT items_processed, items_total, llm_calls_made, tokens_in, tokens_out, targets "
             "FROM extraction_jobs WHERE job_id=$1",
             ej_id,
         )
@@ -286,6 +296,7 @@ async def _emit_kg_progress(pool, ej_id, owner_id) -> None:
             kind=_JOB_KIND, status=JobStatus.RUNNING,
             progress={"done": row["items_processed"], "total": row["items_total"]}
             if row["items_total"] else None,
+            tokens_in=int(row["tokens_in"] or 0), tokens_out=int(row["tokens_out"] or 0),
             params=params,
         )
     except Exception:  # noqa: BLE001
@@ -368,8 +379,12 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
     # submit (a separate process from the start) so the extraction re-spend keeps
     # tagging job_meta with the agent's key (+ cap). Rides resume_state, like billing.
     set_public_key_attribution(rs.get("mcp_key_id"), rs.get("spend_cap_usd"))
+    # Each resume folds exactly one terminal provider job, so capture starts fresh here.
+    # `_resume` is itself the task that reads the accumulator back, one line later.
+    begin_usage_capture()
     try:
         job = await llm_client.get_job(job_id, user_id=owner_user_id or rs.get("billing_user_id") or rs["user_id"])
+        usage_in, usage_out = llm_client.take_usage()
         stage = rs["stage"]
 
         if stage == dx.ENTITY:
@@ -396,6 +411,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                     fresh = fresh if isinstance(fresh, dict) else json.loads(fresh)
                     if fresh.get("stage") != dx.ENTITY:
                         return  # already advanced past entity
+                    await _add_token_usage(conn, ej_id, usage_in, usage_out)
                     fresh = dx.fold_entity_job(fresh, job)
                     if fresh["stage"] == dx.TRIO:
                         submits = dx.assemble_trio_submits(fresh)
@@ -451,6 +467,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                     op = dx.op_for_job(fresh, job_id)
                     if op is None:  # duplicate of an already-superseded op
                         return
+                    await _add_token_usage(conn, ej_id, usage_in, usage_out)
                     fresh = dx.fold_trio_job(fresh, op, job)
                     # All 3 folded → dispatch recovery/filter (or persist); else persist
                     # the partial fan-in and stay in trio. _advance_after_fold submits the
@@ -480,6 +497,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                     batch_key = dx.recovery_task_for_job(fresh, job_id)
                     if batch_key is None:  # dup/superseded batch
                         return
+                    await _add_token_usage(conn, ej_id, usage_in, usage_out)
                     fresh = dx.fold_recovery_terminal(fresh, batch_key, job)
                     completed_rs = await _advance_after_fold(conn, llm_client, ej_id, fresh, dx.RECOVERY)
             if completed_rs is not None:
@@ -506,6 +524,7 @@ async def _resume(pool, knowledge_client, llm_client: LLMClient, owner_user_id, 
                     task_key = dx.filter_task_for_job(fresh, job_id)
                     if task_key is None:
                         return
+                    await _add_token_usage(conn, ej_id, usage_in, usage_out)
                     fresh = dx.fold_filter_terminal(fresh, task_key, job)
                     completed_rs = await _advance_after_fold(conn, llm_client, ej_id, fresh, dx.FILTER)
             if completed_rs is not None:
@@ -644,8 +663,27 @@ async def _sweep_once(pool, knowledge_client, llm_client: LLMClient, *,
                     "resume-sweep: re-drove stranded chunk ej=%s via job=%s (stage=%s)",
                     row["job_id"], jid, rs.get("stage"),
                 )
-            except Exception:  # noqa: BLE001
-                logger.exception("resume-sweep: re-drive failed ej=%s job=%s", row["job_id"], jid)
+            except Exception as exc:  # noqa: BLE001
+                # A terminal provider failure is not recoverable by replaying the
+                # same provider job. Leaving resume_state in place made the
+                # sweeper retry forever and starved the dispatch queue. Fail-stop
+                # the extraction row; the retry endpoint can create a fresh job.
+                message = (
+                    f"provider job {jid} finished with a terminal error while "
+                    f"resuming stage {rs.get('stage')}: {exc}"
+                )[:2000]
+                await pool.execute(
+                    """UPDATE extraction_jobs
+                       SET status='failed', error_message=$2,
+                           resume_state=NULL, provider_job_ids=NULL,
+                           pipeline_stage='failed', completed_at=now(), updated_at=now()
+                       WHERE job_id=$1 AND status IN ('running','paused')""",
+                    row["job_id"], message,
+                )
+                logger.error(
+                    "resume-sweep: terminal provider failure; stopped ej=%s job=%s: %s",
+                    row["job_id"], jid, exc,
+                )
             break  # _resume advanced/persisted the row; re-evaluate on the next tick
     return redriven
 

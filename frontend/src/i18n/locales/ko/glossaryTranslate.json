@@ -42,7 +42,9 @@
     "startTranslate": "번역 시작",
     "startFailed": "번역 작업을 시작하지 못했습니다",
     "thinkingOn": "사고 기능: 켜짐",
-    "thinkingOff": "사고 기능: 꺼짐"
+    "thinkingOff": "사고 기능: 꺼짐",
+    "concurrency": "병렬 LLM 호출",
+    "concurrencyHint": "1 = 순차적 실행. 모델이 동시 요청을 처리할 수 있다면 이 값을 높이세요."
   },
   "progress": {
     "title": "용어집 번역 중",

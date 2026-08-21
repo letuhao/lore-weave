@@ -19,7 +19,9 @@
     "campaign": "Chiến dịch",
     "enrichment_job": "Làm giàu lore",
     "book_import": "Nhập sách",
-    "composition": { "generate": "Sáng tác" }
+    "composition": {
+      "generate": "Sáng tác"
+    }
   },
   "summary": {
     "active": "Đang hoạt động",
@@ -57,7 +59,8 @@
     "noActive": "Không có tác vụ đang chạy.",
     "more": "Tải thêm",
     "toggleChildren": "Mở/đóng tác vụ con",
-    "noChildren": "Không có tác vụ con."
+    "noChildren": "Không có tác vụ con.",
+    "errorWithReason": "Không thể tải công việc: {{error}}"
   },
   "row": {
     "ran": "đã chạy {{d}}",
@@ -83,6 +86,7 @@
   "controls": {
     "pause": "Tạm dừng",
     "resume": "Tiếp tục",
+    "resumeFromCheckpoint": "Tiếp tục từ điểm lưu",
     "cancel": "Hủy",
     "cancelConfirm": "Dừng ngay? Phần đang xử lý sẽ bị bỏ; phần đã hoàn tất được giữ lại.",
     "cancelYes": "Có",
@@ -93,7 +97,9 @@
     "retry": "Thử lại",
     "retried": "Đã gửi lại thành một job mới.",
     "stale": "Trạng thái đã thay đổi — đã làm mới.",
-    "actionFailed": "Thao tác thất bại: {{error}}"
+    "actionFailed": "Thao tác thất bại: {{error}}",
+    "retryBenchmarkMissing": "Không thể thử lại: mô hình embedding chưa có kết quả kiểm thử (benchmark). Hãy chạy kiểm thử mô hình, sau đó kiểm tra lại.",
+    "retryBenchmarkFailed": "Không thể thử lại: mô hình embedding đã thất bại trong lần kiểm thử cuối cùng."
   },
   "monitor": {
     "back": "Tất cả tác vụ",

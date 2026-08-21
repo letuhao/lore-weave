@@ -115,5 +115,365 @@
     "restoreError": "복원할 수 없습니다",
     "purged": "영구 삭제됨",
     "purgeError": "삭제할 수 없습니다"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "유니버설",
+        "description": "모든 이야기에 공통적으로 적용되는 장르 무관 속성."
+      },
+      "fantasy": {
+        "name": "판타지",
+        "description": "마법, 초자연적 힘, 그리고 상상의 세계."
+      },
+      "xianxia": {
+        "name": "선협",
+        "description": "수행, 신선, 문파 및 무협 판타지."
+      },
+      "romance": {
+        "name": "로맨스",
+        "description": "사랑과 친밀한 관계를 중심으로 한 이야기."
+      },
+      "drama": {
+        "name": "드라마",
+        "description": "갈등과 감정에 의해 전개되는 캐릭터 중심의 이야기."
+      },
+      "historical": {
+        "name": "역사",
+        "description": "특정 역사적 시대나 배경을 바탕으로 한 이야기."
+      },
+      "mystery": {
+        "name": "미스터리",
+        "description": "수사, 비밀, 그리고 숨겨진 진실을 찾는 여정."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "캐릭터",
+        "description": "이야기 속에서 행동하거나 말하는 개별 인물 또는 이름을 가진 존재."
+      },
+      "location": {
+        "name": "장소",
+        "description": "캐릭터가 이동하거나 머무를 수 있는 물리적 공간."
+      },
+      "item": {
+        "name": "아이템 / 소품",
+        "description": "무기, 보물, 의복 또는 탈것과 같은 물리적 객체."
+      },
+      "event": {
+        "name": "사건",
+        "description": "전투, 여정, 배신 또는 폭로와 같이 일어나는 일."
+      },
+      "terminology": {
+        "name": "용어",
+        "description": "추상적인 용어, 교리, 계급, 칭호 또는 개념."
+      },
+      "power_system": {
+        "name": "능력 체계",
+        "description": "캐릭터가 성장하며 나아갈 수 있는 서열화된 힘 또는 등급 체계."
+      },
+      "species": {
+        "name": "종족",
+        "description": "개별 캐릭터가 아닌, 존재의 종류나 인종."
+      },
+      "organization": {
+        "name": "조직",
+        "description": "파벌, 가문, 길드 또는 정부와 같이 함께 행동하는 사람들의 집단."
+      },
+      "relationship": {
+        "name": "관계",
+        "description": "캐릭터 또는 집단 간의 의미 있는 연결 고리."
+      },
+      "plot_arc": {
+        "name": "플롯 아크",
+        "description": "계기, 갈등 요소 및 결말을 가진 지속적인 이야기 전개."
+      },
+      "social_setting": {
+        "name": "사회적 배경",
+        "description": "이야기를 형성하는 사회 질서, 시대, 관습 및 계급 구조."
+      },
+      "trope": {
+        "name": "클리셰",
+        "description": "반복되는 서사적 패턴 또는 관습."
+      },
+      "technique": {
+        "name": "기술",
+        "description": "캐릭터가 수행하는 특정 행동, 방법 또는 기술."
+      },
+      "colleague": {
+        "name": "동료",
+        "description": "함께 일하는 사람."
+      },
+      "decision": {
+        "name": "결정",
+        "description": "내려진 선택이며, 이후의 전개에 영향을 미치는 사항."
+      },
+      "jargon": {
+        "name": "전문 용어",
+        "description": "텍스트에서 사용되는 특정 분야의 용어 또는 약어."
+      },
+      "meeting": {
+        "name": "회의",
+        "description": "예정된 토론 또는 모임."
+      },
+      "org": {
+        "name": "조직",
+        "description": "회사, 팀 또는 외부 조직입니다."
+      },
+      "project": {
+        "name": "프로젝트",
+        "description": "목표와 예상 결과가 있는 작업 단위입니다."
+      },
+      "task": {
+        "name": "태스크",
+        "description": "완료해야 하는 실행 가능한 작업 항목입니다."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "이름",
+        "description": "이름 속성입니다."
+      },
+      "term": {
+        "name": "용어",
+        "description": "용어 속성입니다."
+      },
+      "aliases": {
+        "name": "별칭",
+        "description": "별칭 속성입니다."
+      },
+      "gender": {
+        "name": "성별",
+        "description": "성별 속성입니다."
+      },
+      "role": {
+        "name": "역할",
+        "description": "역할 속성입니다."
+      },
+      "occupation": {
+        "name": "직업",
+        "description": "직업 속성입니다."
+      },
+      "social_class": {
+        "name": "사회적 계급",
+        "description": "사회적 계급 속성입니다."
+      },
+      "affiliation": {
+        "name": "소속",
+        "description": "소속 속성입니다."
+      },
+      "appearance": {
+        "name": "외모",
+        "description": "외모 속성입니다."
+      },
+      "personality": {
+        "name": "성격",
+        "description": "성격 속성입니다."
+      },
+      "emotional_wound": {
+        "name": "정서적 상처",
+        "description": "정서적 상처 속성입니다."
+      },
+      "love_language": {
+        "name": "사랑의 언어",
+        "description": "사랑의 언어 속성입니다."
+      },
+      "relationships": {
+        "name": "관계",
+        "description": "관계 속성입니다."
+      },
+      "description": {
+        "name": "설명",
+        "description": "설명 속성입니다."
+      },
+      "type": {
+        "name": "유형",
+        "description": "유형 속성입니다."
+      },
+      "parent_location": {
+        "name": "상위 위치",
+        "description": "상위 위치 속성입니다."
+      },
+      "atmosphere": {
+        "name": "분위기",
+        "description": "분위기 속성입니다."
+      },
+      "significance": {
+        "name": "중요도",
+        "description": "중요도 속성입니다."
+      },
+      "owner": {
+        "name": "소유자",
+        "description": "소유자 속성입니다."
+      },
+      "symbolic_meaning": {
+        "name": "상징적 의미",
+        "description": "상징적 의미 속성입니다."
+      },
+      "date_in_story": {
+        "name": "작중 날짜",
+        "description": "작중 날짜 속성입니다."
+      },
+      "location": {
+        "name": "장소",
+        "description": "장소 속성."
+      },
+      "participants": {
+        "name": "참여자",
+        "description": "참여자 속성."
+      },
+      "emotional_impact": {
+        "name": "감정적 영향",
+        "description": "감정적 영향 속성."
+      },
+      "outcome": {
+        "name": "결과",
+        "description": "결과 속성."
+      },
+      "category": {
+        "name": "카테고리",
+        "description": "카테고리 속성."
+      },
+      "definition": {
+        "name": "정의",
+        "description": "정의 속성."
+      },
+      "usage_note": {
+        "name": "사용 참고 사항",
+        "description": "사용 참고 사항 속성입니다."
+      },
+      "tiers": {
+        "name": "티어",
+        "description": "티어 속성입니다."
+      },
+      "rank": {
+        "name": "서열",
+        "description": "서열 속성입니다."
+      },
+      "entry_requirement": {
+        "name": "진입 요건",
+        "description": "진입 요건 속성입니다."
+      },
+      "capabilities": {
+        "name": "능력치",
+        "description": "능력치 속성입니다."
+      },
+      "arc_type": {
+        "name": "에피소드 유형",
+        "description": "에피소드 유형 속성입니다."
+      },
+      "parties": {
+        "name": "부",
+        "description": "부 속성."
+      },
+      "trigger": {
+        "name": "트리거",
+        "description": "트리거 속성."
+      },
+      "stakes": {
+        "name": "스테이크",
+        "description": "스테이크 속성."
+      },
+      "chapters_span": {
+        "name": "장 범위",
+        "description": "장 범위 속성."
+      },
+      "emotional_beats": {
+        "name": "감정적 비트",
+        "description": "감정적 비트 속성."
+      },
+      "resolution": {
+        "name": "결말",
+        "description": "결말 속성."
+      },
+      "era": {
+        "name": "시대",
+        "description": "시대 속성."
+      },
+      "class_hierarchy": {
+        "name": "계급 체계",
+        "description": "계급 체계 속성."
+      },
+      "rules_norms": {
+        "name": "규칙과 규범",
+        "description": "규칙과 규범 속성."
+      },
+      "romance_obstacles": {
+        "name": "로맨스 장애물",
+        "description": "로맨스 장애물 속성."
+      },
+      "traits": {
+        "name": "특성",
+        "description": "특성 속성."
+      },
+      "abilities": {
+        "name": "능력",
+        "description": "능력 속성."
+      },
+      "habitat": {
+        "name": "서식지",
+        "description": "서식지 속성."
+      },
+      "culture": {
+        "name": "문화",
+        "description": "문화 속성."
+      },
+      "how_manifested": {
+        "name": "발현 방식",
+        "description": "발현 방식 속성."
+      },
+      "subverted": {
+        "name": "전도됨",
+        "description": "전도됨 속성."
+      },
+      "related_characters": {
+        "name": "관련 캐릭터",
+        "description": "관련 캐릭터 속성."
+      },
+      "relationship_type": {
+        "name": "관계 유형",
+        "description": "관계 유형 속성."
+      },
+      "status": {
+        "name": "상태",
+        "description": "상태 속성."
+      },
+      "tropes": {
+        "name": "클리셰",
+        "description": "클리셰 속성."
+      },
+      "dynamic": {
+        "name": "역동성",
+        "description": "역동성 속성."
+      },
+      "key_conflict": {
+        "name": "핵심 갈등",
+        "description": "핵심 갈등 속성."
+      },
+      "turning_points": {
+        "name": "전환점",
+        "description": "전환점 속성."
+      },
+      "leader": {
+        "name": "리더",
+        "description": "리더 속성."
+      },
+      "headquarters": {
+        "name": "본부",
+        "description": "본부 속성입니다."
+      },
+      "members": {
+        "name": "멤버",
+        "description": "멤버 속성입니다."
+      },
+      "effects": {
+        "name": "효과",
+        "description": "효과 속성입니다."
+      },
+      "user": {
+        "name": "사용자",
+        "description": "사용자 속성입니다."
+      }
+    }
   }
 }

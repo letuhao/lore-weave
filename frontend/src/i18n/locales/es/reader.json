@@ -142,5 +142,8 @@
       "kg": "Conocimiento",
       "passage": "Pasaje"
     }
+  },
+  "lore": {
+    "heading": "Lore hasta ahora"
   }
 }

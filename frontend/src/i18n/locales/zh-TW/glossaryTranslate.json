@@ -42,7 +42,9 @@
     "startTranslate": "開始翻譯",
     "startFailed": "無法啟動翻譯任務",
     "thinkingOn": "思考：開啟",
-    "thinkingOff": "思考：關閉"
+    "thinkingOff": "思考：關閉",
+    "concurrency": "並行 LLM 呼叫",
+    "concurrencyHint": "1 = 循序執行。若您的模型支援同時處理多個請求，請調高此數值。"
   },
   "progress": {
     "title": "正在翻譯詞彙",

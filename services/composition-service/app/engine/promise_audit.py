@@ -32,7 +32,7 @@ from loreweave_llm.errors import LLMError
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.critic import parse_critique_json
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -101,11 +101,19 @@ def _parse_audit(content: str) -> dict[str, Any]:
 async def audit_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     arc_text: str, source_language: str = "auto",
-    max_tokens: int = max_tokens_for("audit_promises"), trace_id: str | None = None,
+    max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Audit one arc's promises. On any LLM/parse failure returns empty lists +
     `error` (never raises — an eval that errors must not fabricate a count)."""
+    # DELIBERATELY resolved with no signal, and it stays on the ratchet because of it.
+    # The response is three lists whose lengths are exactly what the audit exists to
+    # discover, and STRUCTURED does not read `language` — so the only kwarg available is one
+    # the kind ignores. Passing it would clear this site from the no-signal count without
+    # changing a single resolved budget, which is the whole failure mode this slice is
+    # paying down. Sentinel rather than an import-time default so a caller that DOES know
+    # (a harness sizing a run) can still reach the seam.
+    max_tokens = max_tokens or max_tokens_for("audit_promises")
     system, user = build_audit_messages(arc_text, source_language)
     try:
         job = await llm.submit_and_wait(
@@ -126,8 +134,8 @@ async def audit_promises(
     except LLMError as exc:
         logger.warning("promise_audit LLM error: %s", exc)
         return _shape([], [], [], error="audit_unavailable")
-    if getattr(job, "status", None) != "completed":
-        return _shape([], [], [], error=f"audit_{getattr(job, 'status', None)}")
+    if (why := unusable(job, "audit_promises")):
+        return _shape([], [], [], error=f"audit_{why}")
     return _parse_audit(extract_judge_content(job.result))
 
 
@@ -251,6 +259,7 @@ def _parse_coverage(content: str, promises: list[str]) -> dict[str, Any]:
 
 
 async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_tokens, trace_id, tag,
+                code: str,
                 cancel_check: Callable[[], Awaitable[bool]] | None = None):
     """Shared single-shot, reasoning-disabled, degrade-safe call. Returns the
     parsed content string, or None on LLM/non-completed failure."""
@@ -269,8 +278,11 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
     except LLMError as exc:
         logger.warning("%s LLM error: %s", tag, exc)
         return None
-    if getattr(job, "status", None) != "completed":
-        logger.warning("%s non-completed: %s", tag, getattr(job, "status", None))
+    # `code`, not `tag`: the registry decides whether a truncation is fatal, and `tag` is a
+    # LOG label ("promise_extract") that is not a registry key. Passing the wrong one would
+    # raise KeyError at the first truncated response — i.e. in production, on the rare path.
+    if (why := unusable(job, code)):
+        logger.warning("%s unusable: %s", tag, why)
         return None
     return extract_judge_content(job.result)
 
@@ -278,15 +290,20 @@ async def _chat(llm, *, user_id, model_source, model_ref, system, user, max_toke
 async def extract_tracked_promises(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, plan_text: str, source_language: str = "auto",
-    max_tokens: int = max_tokens_for("extract_tracked_promises"), trace_id: str | None = None,
+    max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[str]:
     """Derive the fixed tracked-promise set from premise+plan. Returns [] on
     failure (the harness then skips the book rather than scoring a phantom set)."""
+    # Same honest gap as `audit_promises` above: the promise COUNT is the output of this
+    # call, so there is nothing truthful to pass as `target`, and STRUCTURED ignores
+    # `language`. Left on the ratchet rather than cleared with a kwarg the kind discards.
+    max_tokens = max_tokens or max_tokens_for("extract_tracked_promises")
     system, user = build_extract_messages(premise, plan_text, source_language)
     content = await _chat(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                           system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,
-                          tag="promise_extract", cancel_check=cancel_check)
+                          tag="promise_extract", code="extract_tracked_promises",
+                          cancel_check=cancel_check)
     if content is None:
         return []
     obj = parse_critique_json(content) or {}
@@ -296,17 +313,23 @@ async def extract_tracked_promises(
 async def score_promise_coverage(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     promises: list[str], arc_text: str, source_language: str = "auto",
-    max_tokens: int = max_tokens_for("score_promise_coverage"), trace_id: str | None = None,
+    max_tokens: int | None = None, trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> dict[str, Any]:
     """Score one arc's prose against the FIXED promise set. On failure returns the
     all-'absent' shape + `error` (never raises)."""
     if not promises:
         return _coverage_shape([], [], error="no_tracked_promises")
+    # Exactly one score per promise — the cleanest count in this file, and the degrade path
+    # below proves it: it fabricates `["absent"] * len(promises)`, i.e. the code already knows
+    # the response length. It just never told the budget.
+    max_tokens = max_tokens or max_tokens_for(
+        "score_promise_coverage", target=len(promises))
     system, user = build_coverage_messages(promises, arc_text, source_language)
     content = await _chat(llm, user_id=user_id, model_source=model_source, model_ref=model_ref,
                          system=system, user=user, max_tokens=max_tokens, trace_id=trace_id,
-                         tag="promise_coverage", cancel_check=cancel_check)
+                         tag="promise_coverage", code="score_promise_coverage",
+                         cancel_check=cancel_check)
     if content is None:
         return _coverage_shape(promises, ["absent"] * len(promises), error="coverage_unavailable")
     return _parse_coverage(content, promises)

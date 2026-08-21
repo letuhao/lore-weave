@@ -271,7 +271,11 @@
       "unknown_error": "erreur inconnue",
       "model_removed": "{{name}} supprimé",
       "model_delete_failed": "Échec de la suppression du modèle"
-    }
+    },
+    "delete_blocked": "Ce modèle ne peut pas être supprimé : {{count}} tâche(s) active(s). Arrêtez-les d'abord.",
+    "delete_refs_none": "aucune référence",
+    "delete_confirm": "Supprimer le modèle « {{name}} » ?\n\nCes références seront supprimées : {{refs}}.",
+    "return_to_form": "Retour à votre formulaire"
   },
   "translation": {
     "heading": "Paramètres de traduction par défaut",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "Le modèle de prompt utilisateur doit contenir {chapter_text}",
       "saved": "Paramètres de traduction enregistrés",
       "save_failed": "Échec de l'enregistrement des préférences de traduction"
-    }
+    },
+    "models_load_failed": "Impossible de charger vos modèles. Le service du fournisseur est peut-être indisponible.",
+    "retry": "Réessayer"
   },
   "reading": {
     "app_theme": "Thème de l'application",
@@ -344,7 +350,8 @@
     "auto_saved": "Les modifications sont enregistrées automatiquement.",
     "toast": {
       "preset_saved": "Préréglage \"{{name}}\" enregistré"
-    }
+    },
+    "voice_moved": "Les paramètres de voix et de parole se trouvent désormais dans Paramètres → Chat & IA → Voix."
   },
   "language": {
     "gui_language": "Langue de l'interface",
@@ -473,7 +480,9 @@
       "notes_ph": "Notes optionnelles sur cette configuration de modèle...",
       "cancel": "Annuler",
       "adding": "Ajout en cours...",
-      "submit": "Ajouter le modèle"
+      "submit": "Ajouter le modèle",
+      "pricing_summary": "Coût : entrée ${{input}}/1M · sortie ${{output}}/1M",
+      "pricing_missing": "Le fournisseur ne publie pas de tarifs — ajoutez-les manuellement une fois le modèle enregistré."
     },
     "edit": {
       "aria": "Modifier le modèle",
@@ -511,7 +520,16 @@
       "request_failed": "La requête a échoué",
       "cancel": "Annuler",
       "saving": "Enregistrement...",
-      "submit": "Enregistrer les modifications"
+      "submit": "Enregistrer les modifications",
+      "capabilities_refreshed": "Capacités du modèle actualisées",
+      "capabilities_refresh_failed": "Impossible d'actualiser les capacités du modèle",
+      "delete_blocked_active": "Ce modèle ne peut pas être supprimé : arrêtez d'abord ses tâches actives.",
+      "pricing_missing": "Ce modèle n'a pas de tarification — le coût estimé de la tâche ne sera pas disponible.",
+      "refresh_capabilities": "Actualiser",
+      "delete_impact": "Ces références seront supprimées : {{refs}}. Appuyez à nouveau sur Supprimer pour confirmer.",
+      "delete_impact_none": "aucune",
+      "delete_blocked_count": "La suppression est bloquée : {{count}} tâche(s) active(s). Arrêtez-les d'abord.",
+      "verify_ok_rerank": "{{count}} docs classés · top {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Échec de la récupération des modèles : {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Modèle supprimé",
       "delete_failed": "Échec de la suppression"
     }
+  },
+  "defaultModels": {
+    "heading": "Modèles par défaut",
+    "subtitle": "Vos modèles de repli par utilisateur (BYOK — les vôtres). Utilisés lorsqu'aucun modèle par portée n'est défini.",
+    "chat": "Modèle de chat par défaut",
+    "chatHint": "Présélectionné lors du démarrage d'un nouveau chat. Laissez vide pour utiliser vos favoris par défaut.",
+    "rerank": "Réordonnanceur par défaut",
+    "rerankHint": "Réordonnanceur par encodeur croisé pour le rejet des résultats de recherche bruts non pertinents. Optionnel — s'applique lorsqu'aucun modèle de réordonnance n'est défini pour un projet.",
+    "planner": "Planificateur par défaut",
+    "plannerHint": "Le modèle de chat utilisé par l'assistant de glossaire pour élaborer des plans multi-étapes. Choisissez un modèle puissant et capable d'utiliser des outils — sinon, la planification basculera sur un modèle de chat arbitraire et échouera souvent.",
+    "none": "Aucun",
+    "empty": "Aucun modèle compatible configuré.",
+    "saved": "Par défaut mis à jour"
+  },
+  "external_services": {
+    "delete_blocked": "Ce service ne peut pas être supprimé : son modèle est utilisé par {{count}} tâche(s) active(s). Arrêtez-les d'abord.",
+    "delete_refs_none": "aucune référence",
+    "delete_confirm": "Supprimer le service « {{name}} » ?\n\nCes références de modèle seront supprimées : {{refs}}."
   }
 }

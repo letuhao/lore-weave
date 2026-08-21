@@ -7,6 +7,7 @@ import { OntologyShell } from '@/features/glossary/components/tiering/OntologySh
 import { UnknownEntitiesPanel } from '@/features/glossary/components/UnknownEntitiesPanel';
 import { AiSuggestionsPanel } from '@/features/glossary/components/AiSuggestionsPanel';
 import { MergeCandidatePanel } from '@/features/glossary/components/MergeCandidatePanel';
+import { AppErrorBoundary } from '@/components/shared/AppErrorBoundary';
 
 type GlossaryView = 'entities' | OtherGlossaryView;
 
@@ -16,7 +17,7 @@ type GlossaryView = 'entities' | OtherGlossaryView;
  * (the new dock panel) so the ~500 lines of list/filter/bulk logic aren't forked (DOCK-2). This
  * shell only owns the `view` switch across entities/ontology/unknown/ai_suggestions/merge_candidates
  * — unchanged from before the extraction. */
-export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }: { bookId: string; bookGenreTags?: string[]; bookOriginalLanguage?: string }) {
+function GlossaryTabContent({ bookId, bookGenreTags = [], bookOriginalLanguage }: { bookId: string; bookGenreTags?: string[]; bookOriginalLanguage?: string }) {
   const { accessToken } = useAuth();
   const [view, setView] = useState<GlossaryView>('entities');
 
@@ -51,4 +52,8 @@ export function GlossaryTab({ bookId, bookGenreTags = [], bookOriginalLanguage }
       onOpenView={setView}
     />
   );
+}
+
+export function GlossaryTab(props: { bookId: string; bookGenreTags?: string[]; bookOriginalLanguage?: string }) {
+  return <AppErrorBoundary><GlossaryTabContent {...props} /></AppErrorBoundary>;
 }

@@ -15,6 +15,8 @@ interface Props {
 
 export function SchemaEditor({ schema, onDeprecateEdgeType, readOnly }: Props) {
   const { t } = useTranslation('kgOntology');
+  const { t: tKnowledge } = useTranslation('knowledge');
+  const kindLabel = (code: string) => tKnowledge(`kind.${code}`, { defaultValue: code });
   return (
     <div className="space-y-5" data-testid="schema-editor">
       <header className="flex items-center justify-between">
@@ -45,8 +47,8 @@ export function SchemaEditor({ schema, onDeprecateEdgeType, readOnly }: Props) {
                   )}
                 </td>
                 <td className="py-1.5 text-muted-foreground">
-                  {(e.source_node_kinds ?? []).join('/') || '—'} →{' '}
-                  {(e.target_node_kinds ?? []).join('/') || '—'}
+                  {(e.source_node_kinds ?? []).map(kindLabel).join('/') || '—'} →{' '}
+                  {(e.target_node_kinds ?? []).map(kindLabel).join('/') || '—'}
                 </td>
                 <td className="py-1.5">
                   {e.temporal && (
@@ -97,7 +99,7 @@ export function SchemaEditor({ schema, onDeprecateEdgeType, readOnly }: Props) {
             {(schema.node_kinds ?? []).map((k) => (
               <li key={k.kind_code}>
                 <OntologyChip variant="glossary">
-                  {k.kind_code} · {k.strength}
+                  {kindLabel(k.kind_code)} · {t(`schema.${k.strength}`)}
                 </OntologyChip>
               </li>
             ))}

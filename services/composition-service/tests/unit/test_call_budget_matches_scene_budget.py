@@ -38,5 +38,3 @@ def test_prose_never_undercuts_the_implementation_it_generalises(words, lang, ef
     assert generalised >= original, (
         f"{words}w/{lang}/effort={effort}: seam {generalised} < original {original}"
     )
-
-

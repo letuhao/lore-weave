@@ -211,7 +211,10 @@
     "feedback_up": "Respons baik",
     "feedback_down": "Respons buruk",
     "feedback_thanks": "Terima kasih atas maklum balas",
-    "feedback_error": "Tidak dapat menyimpan maklum balas"
+    "feedback_error": "Tidak dapat menyimpan maklum balas",
+    "incomplete_error": "Ralat — respons tidak lengkap",
+    "incomplete_interrupted": "Terganggu — respons tidak lengkap",
+    "insert_into_chapter": "Masukkan ke dalam bab"
   },
   "tools": {
     "title": "Alatan yang digunakan dalam maklum balas ini",
@@ -243,7 +246,9 @@
     "cancelled": "Dibatalkan",
     "reprice": "Kos meningkat kepada {{cost}} sejak anggaran dibuat — minta semula untuk mengesahkan pada harga baharu.",
     "reprice_title": "Kos berubah — tidak dilaksanakan",
-    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu."
+    "reprice_detail": "Anggaran {{old}}, kini {{new}}. Tiada kos dibelanjakan — minta semula untuk mengesahkan pada harga baharu.",
+    "advisory_items": "Diminta (nasihat) — pelayan akan mengesahkan set tepat semasa pelaksanaan",
+    "awaiting_preview": "Memuatkan pratonton pelayan…"
   },
   "batchConfirm": {
     "title": "Sahkan {{count}} tindakan dalam satu langkah",
@@ -446,5 +451,120 @@
     "worldbuilder": "Pembina Dunia",
     "editor": "Editor",
     "analyst": "Penganalisis"
+  },
+  "sessionSettings": {
+    "description": "Tetapan untuk sembang ini. Apa-apa yang tidak anda tetapkan di sini akan diwarisi daripada buku, kemudian akaun anda, dan kemudian tetapan lalai sistem.",
+    "saving": "menyimpan...",
+    "close": "Tutup",
+    "voice": "Suara",
+    "messages": "Mesej",
+    "status": {
+      "label": "Status",
+      "active": "Aktif",
+      "archived": "Diarkibkan",
+      "closed": "Ditutup"
+    },
+    "models": {
+      "title": "Model",
+      "composer": "Model penggubah (pilihan)",
+      "planner": "Model perancang (pilihan)",
+      "composerNone": "Tiada — model tunggal",
+      "plannerNone": "Gunakan perancang lalai saya",
+      "composerHint": "Apabila ditetapkan, AI boleh menyerahkan penulisan prosa kepada model ini.",
+      "plannerHint": "Model yang digunakan untuk perancangan pelbagai langkah dalam sesi ini."
+    },
+    "behavior": {
+      "title": "Tingkah Laku",
+      "systemPrompt": "Prompt sistem",
+      "promptPlaceholder": "Diwarisi daripada tetapan lalai akaun anda melainkan anda menetapkannya di sini.",
+      "reasoning": {
+        "label": "Tahap penaakulan",
+        "off": "Tutup",
+        "low": "Rendah",
+        "medium": "Sederhana",
+        "high": "Tinggi"
+      },
+      "statefulTitle": "Gunakan API Respons keadaan (stateful)",
+      "statefulHint": "Penggunaan semula konteks di sebelah pelayan adalah pilihan. Biarkan jika pembekal anda tidak menyokong panggilan alat Respons.",
+      "temperature": "Suhu",
+      "temperatureHint": "Semakin tinggi nilai, semakin mengejutkan; semakin rendah nilai, semakin boleh diramal.",
+      "topP": "Top P",
+      "maxTokens": "Token respons maksimum",
+      "maxTokensHint": "Jika tidak ditetapkan, had model sendiri akan digunakan."
+    },
+    "grounding": {
+      "title": "Penyandaran & memori",
+      "label": "Sandarkan jawapan pada lore buku ini",
+      "on": "Hidup — pencarian dijalankan setiap pusingan",
+      "off": "Mati — tiada pencarian dalam sembang ini",
+      "onHint": "Glosari, fakta graf pengetahuan dan petikan akan ditarik masuk dalam setiap pusingan.",
+      "offHint": "Pembantu menjawab berdasarkan perbualan sahaja, dan mungkin mencipta lore sendiri.",
+      "multiHint": "Berasaskan setiap graf pengetahuan yang dipilih secara serentak — fakta ditandakan dengan sumbernya."
+    },
+    "context": {
+      "title": "Pengurusan konteks",
+      "label": "Mod konteks karya panjang",
+      "auto": "Automatik",
+      "on": "Sentiasa aktif",
+      "off": "Nyahaktif",
+      "autoHint": "Mengaktifkan peringkat karya panjang hanya apabila buku cukup besar untuk memerlukannya.",
+      "onHint": "Sentiasa gunakan peringkat konteks karya panjang.",
+      "offHint": "Tidak pernah — konteks paling asas dan paling jimat."
+    }
+  },
+  "dock": {
+    "close": "Tutup",
+    "label": "Tanya AI",
+    "open": "Tanya pembantu glosari",
+    "title": "Pembantu glosari"
+  },
+  "glossaryEdit": {
+    "applied": "Diterapkan ✓",
+    "apply": "Terap",
+    "conflict": "Entiti ini telah berubah sejak ia dicadangkan — tanya semula untuk melihat yang terkini.",
+    "conflict_short": "Telah diubah sejak dicadangkan — tanya semula",
+    "dismiss": "Abaikan",
+    "dismissed": "Telah diabaikan",
+    "empty": "(kosong)",
+    "error": "Tidak dapat menyimpan perubahan.",
+    "error_short": "Simpan gagal",
+    "field": "Medan",
+    "fields": "{{count}} medan",
+    "label": "Sunting glosari"
+  },
+  "planner": {
+    "destructive": "memusnahkan",
+    "enable": "Aktifkan langkah memusnahkan ini",
+    "heading": "Pelan",
+    "notes": "Nota perancang",
+    "steps": "{{count}} langkah"
+  },
+  "propose": {
+    "applied": "Diterapkan ✓",
+    "apply": "Terapkan",
+    "apply_failed": "Tidak dapat menerapkan suntingan tersebut.",
+    "apply_n": "Terapkan {{count}}",
+    "dismiss": "Abaikan",
+    "dismissed": "Diabaikan",
+    "hunk_hint": "Pilih perubahan yang ingin diterapkan",
+    "hunk_toggle": "Terima perubahan ini",
+    "insert_label": "Cadangan sisipan",
+    "keep_original": "Kekalkan asal",
+    "no_editor": "Buka bab untuk melaksanakan suntingan ini.",
+    "no_selection": "Pilih teks yang ingin diganti, kemudian klik Apply.",
+    "popout_no_rewrite": "Penulisan semula perlu dilaksanakan daripada editor yang dipaku — paku tetingkap ini terlebih dahulu.",
+    "popout_not_delivered": "Tidak dapat mengesahkan suntingan telah sampai ke editor yang dipaku — buka bab dalam Studio dan cuba lagi.",
+    "replace_label": "Cadangan penulisan semula",
+    "selection_changed": "Pilihan anda telah berubah — pilih semula dan klik Apply, atau Dismiss.",
+    "wrong_chapter": "Cadangan ini adalah untuk bab yang berbeza."
+  },
+  "taskGate": {
+    "cancelled": "Dibatalkan",
+    "confirm": "Sahkan",
+    "defaultTitle": "Sahkan tindakan ini?",
+    "dismiss": "Batal",
+    "done": "Disahkan ✓",
+    "error": "Tidak dapat mengesahkan",
+    "label": "Sahkan"
   }
 }

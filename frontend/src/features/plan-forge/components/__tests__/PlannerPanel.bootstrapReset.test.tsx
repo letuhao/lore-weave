@@ -21,7 +21,10 @@ vi.mock('../../hooks/usePlanRun', () => ({
     run: {
       id: 'r1', book_id: 'b1', status: 'compiled', mode: 'rules', model_ref: null,
       source_checksum: 'abc', active_job_id: null, job_status: null, error_detail: null,
-      checkpoint_state: {}, arcs: [{ id: 'arc_1', title: 'Arc 1' }], artifacts: [],
+      // A compiled run HAS a package artifact — that artifact, not the transient `compiled`
+      // status, is what the bootstrap panel now gates on (see PlannerPanel).
+      checkpoint_state: {}, arcs: [{ id: 'arc_1', title: 'Arc 1' }],
+      artifacts: [{ kind: 'package', artifact_id: 'pkg1' }],
       created_at: '', updated_at: '',
     },
     busy: false, polling: false, error: null,

@@ -251,3 +251,51 @@ def test_a_coined_concept_outside_quotes_still_fires():
     a = audit_names("She would introduce the concept of the Unmaking to a young world.",
                     GROUNDING)
     assert "Unmaking" in a.unanchored
+
+
+# ── ML-2: the equivalence key is a fold, and what that does and does not buy ──────────────
+
+def test_swapping_lower_for_the_FOLD_changed_nothing_on_this_extractors_alphabet():
+    """The honest half, and it is a RETRACTION.
+
+    I wrote that `.lower()` would report an equivalent name as unanchored — a fabricated
+    finding — then measured it. Over every name `_TOKEN` can emit (basic Latin + Latin-1
+    capitals, per the module docstring's "Script honesty" note) the two agree on **every**
+    input. The failure needs a full-width or Han name and this extractor cannot produce one,
+    so it was unreachable through this path.
+
+    Pinned so the next reader does not re-derive the overclaim from the gate's message, and so
+    that a widening of `_TOKEN` shows up here as a CHANGED answer rather than as silence.
+    """
+    from loreweave_extraction.name_normalize import normalize_entity_name
+    from app.engine.name_grounding import _TOKEN
+
+    heads = [chr(c) for c in list(range(0x41, 0x5B)) + list(range(0xC0, 0xD7)) + list(range(0xD8, 0xDF))]
+    tails = [chr(c) for c in list(range(0x61, 0x7B)) + list(range(0xE0, 0xF7)) + list(range(0xF8, 0x100))]
+    disagreements = [
+        n for h in heads for t in tails
+        if _TOKEN.fullmatch(n := f"{h}{t}ra") and n.lower() != normalize_entity_name(n)
+    ]
+    assert disagreements == [], (
+        f"`.lower()` and the fold now DISAGREE on {len(disagreements)} extractable name(s) — "
+        f"e.g. {disagreements[:3]}. The swap is no longer neutral; re-read what changed."
+    )
+
+
+def test_the_FOLD_is_the_primitive_a_widened_extractor_would_need():
+    """Why the swap is still right despite buying nothing today: the extractor's Latin-only
+    alphabet is the ONLY thing that made `.lower()` safe. These are the cases that appear the
+    moment `_TOKEN` widens for CJK books — which the module docstring already names as the
+    obvious next step."""
+    from loreweave_extraction.name_normalize import normalize_entity_name
+
+    for a, b in (("Ｅｌａｒａ", "Elara"),   # full-width vs ASCII
+                 ("靈石", "灵石"),          # traditional vs simplified Han
+                 ("STRASSE", "Strasse")):  # case
+        assert normalize_entity_name(a) == normalize_entity_name(b), f"{a!r} vs {b!r}"
+        if a.lower() == b.lower():
+            continue
+        assert True, "and `.lower()` does NOT equate them — which is the point"
+    # the discriminating one, asserted rather than implied:
+    assert "Ｅｌａｒａ".lower() != "Elara".lower()
+    assert normalize_entity_name("Ｅｌａｒａ") == normalize_entity_name("Elara")

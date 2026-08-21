@@ -196,6 +196,16 @@ Access the UI at **[http://localhost:5174](http://localhost:5174)** · gateway o
 
 `docker compose up` starts the **novel platform**. The Living Worlds reality-ops tier (14 SRE services, the Rust world/travel services, and the meta Patroni cluster) is not in the default stack.
 
+### Test environments
+
+Create or refresh isolated Python test environments for all Python services:
+
+```bash
+make test-env-python
+```
+
+To refresh one service only, run `bash ./scripts/bootstrap-python-test-envs.sh knowledge-service`.
+
 ---
 
 ## AI Models (BYOK)
@@ -312,12 +322,32 @@ The complete design lives in [`docs/03_planning/LLM_MMO_RPG/`](docs/03_planning/
 
 ---
 
+## Fork synchronization
+
+This fork automatically merges `letuhao/lore-weave` `main` every day at 03:17 UTC and can be
+run manually from the **sync upstream** GitHub Actions workflow. The workflow carries product code,
+contracts, documentation, plans, specifications, and checklists forward. Agent configuration,
+manifests, and generated agent skills remain local and are intentionally excluded from synchronization.
+
+If upstream introduces a merge conflict, the workflow stops without pushing; resolve the conflict
+on `main`, then rerun the workflow.
+
+---
+
 ## Contributing
 
 LoreWeave is open to everyone — developers, writers, translators, and artists.
 
-- **License**: [AGPL-3.0-or-later](LICENSE)
-- **Issues**: bug reports, feature requests, and discussions welcome
+**→ Start with [CONTRIBUTING.md](CONTRIBUTING.md)** — setup, repo layout, the rules that matter, and
+how to open a PR. It is written so you only need the slice of the monorepo you are working on.
+
+- **[AGENTS.md](AGENTS.md)** — the deep rulebook: invariants, standards, and the bug lore behind
+  them. Also what AI coding assistants should load (any vendor; `CLAUDE.md` points here).
+- **What to work on** — the Deferred Items in
+  [docs/sessions/SESSION_HANDOFF.md](docs/sessions/SESSION_HANDOFF.md) are the honest backlog, each
+  with why it was postponed. Best source of contributable work.
+- **License**: [AGPL-3.0-or-later](LICENSE) — contributions are under the same terms
+- **Issues**: bug reports, feature requests, and discussions welcome — in any language
 
 ---
 

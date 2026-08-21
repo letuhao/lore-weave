@@ -211,7 +211,10 @@
     "feedback_up": "Phản hồi tốt",
     "feedback_down": "Phản hồi kém",
     "feedback_thanks": "Cảm ơn phản hồi của bạn",
-    "feedback_error": "Không thể lưu phản hồi"
+    "feedback_error": "Không thể lưu phản hồi",
+    "incomplete_error": "Lỗi — phản hồi không đầy đủ",
+    "incomplete_interrupted": "Bị gián đoạn — phản hồi không đầy đủ",
+    "insert_into_chapter": "Chèn vào chương"
   },
   "tools": {
     "title": "Công cụ dùng trong câu trả lời này",
@@ -243,7 +246,9 @@
     "cancelled": "Đã hủy",
     "reprice": "Chi phí đã tăng lên {{cost}} so với ước tính — hãy hỏi lại để xác nhận lại theo giá mới.",
     "reprice_title": "Chi phí đã thay đổi — chưa áp dụng",
-    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới."
+    "reprice_detail": "Ước tính {{old}}, hiện là {{new}}. Chưa tốn khoản nào — hãy hỏi lại để xác nhận theo giá mới.",
+    "advisory_items": "Đã yêu cầu (tư vấn) — máy chủ sẽ xác nhận tập hợp chính xác khi áp dụng",
+    "awaiting_preview": "Đang tải bản xem trước từ máy chủ…"
   },
   "batchConfirm": {
     "title": "Xác nhận {{count}} hành động trong một bước",
@@ -446,5 +451,120 @@
     "worldbuilder": "Kiến tạo thế giới",
     "editor": "Biên tập",
     "analyst": "Phân tích"
+  },
+  "sessionSettings": {
+    "description": "Cài đặt cho cuộc trò chuyện này. Bất kỳ thiết lập nào bạn không đặt ở đây sẽ được kế thừa từ sách, sau đó là từ tài khoản của bạn, rồi đến mặc định của hệ thống.",
+    "saving": "đang lưu…",
+    "close": "Đóng",
+    "voice": "Giọng nói",
+    "messages": "Tin nhắn",
+    "status": {
+      "label": "Trạng thái",
+      "active": "Đang hoạt động",
+      "archived": "Đã lưu trữ",
+      "closed": "Đã đóng"
+    },
+    "models": {
+      "title": "Mô hình",
+      "composer": "Mô hình Composer (tùy chọn)",
+      "planner": "Mô hình Planner (tùy chọn)",
+      "composerNone": "Không — một mô hình duy nhất",
+      "plannerNone": "Sử dụng trình lập kế hoạch mặc định của tôi",
+      "composerHint": "Khi được thiết lập, AI có thể giao việc viết văn xuôi cho mô hình này.",
+      "plannerHint": "Mô hình được sử dụng để lập kế hoạch đa bước trong phiên làm việc này."
+    },
+    "behavior": {
+      "title": "Hành vi",
+      "systemPrompt": "Lời nhắc hệ thống",
+      "promptPlaceholder": "Được kế thừa từ mặc định trong tài khoản của bạn trừ khi bạn thiết lập một lời nhắc mới tại đây.",
+      "reasoning": {
+        "label": "Mức độ suy luận",
+        "off": "Tắt",
+        "low": "Thấp",
+        "medium": "Trung bình",
+        "high": "Cao"
+      },
+      "statefulTitle": "Sử dụng Responses API có trạng thái",
+      "statefulHint": "Tùy chọn tái sử dụng ngữ cảnh phía máy chủ. Để trống trừ khi nhà cung cấp của bạn hỗ trợ các lệnh gọi công cụ Responses.",
+      "temperature": "Nhiệt độ",
+      "temperatureHint": "Chỉ số cao hơn sẽ tạo ra kết quả bất ngờ hơn, chỉ số thấp hơn sẽ mang tính dự đoán cao hơn.",
+      "topP": "Top P",
+      "maxTokens": "Số lượng token phản hồi tối đa",
+      "maxTokensHint": "Nếu không thiết lập sẽ áp dụng giới hạn riêng của mô hình."
+    },
+    "grounding": {
+      "title": "Căn cứ & bộ nhớ",
+      "label": "Dựa trên cốt truyện của cuốn sách này để trả lời",
+      "on": "Bật — thực hiện truy xuất trong mỗi lượt",
+      "off": "Tắt — không truy xuất trong cuộc trò chuyện này",
+      "onHint": "Thuật ngữ, sự thật trong đồ thị tri thức và các đoạn văn sẽ được đưa vào mỗi lượt.",
+      "offHint": "Trợ lý chỉ trả lời dựa trên nội dung cuộc trò chuyện và có thể tự tạo ra các tình tiết hư cấu.",
+      "multiHint": "Dựa trên tất cả các đồ thị tri thức đã chọn cùng một lúc — các sự thật sẽ được gắn thẻ kèm theo nguồn."
+    },
+    "context": {
+      "title": "Quản lý ngữ cảnh",
+      "label": "Chế độ ngữ cảnh tác phẩm dài",
+      "auto": "Tự động",
+      "on": "Luôn bật",
+      "off": "Tắt",
+      "autoHint": "Chỉ bật các phân cấp ngữ cảnh tác phẩm dài khi cuốn sách đủ lớn để cần đến chúng.",
+      "onHint": "Luôn sử dụng các phân cấp ngữ cảnh tác phẩm dài.",
+      "offHint": "Không bao giờ — chế độ ngữ cảnh cơ bản nhất, tiết kiệm nhất."
+    }
+  },
+  "dock": {
+    "close": "Đóng",
+    "label": "Hỏi AI",
+    "open": "Hỏi trợ lý thuật ngữ",
+    "title": "Trợ lý thuật ngữ"
+  },
+  "glossaryEdit": {
+    "applied": "Đã áp dụng ✓",
+    "apply": "Áp dụng",
+    "conflict": "Thực thể này đã thay đổi kể từ khi được đề xuất — hãy yêu cầu lại để xem bản mới nhất.",
+    "conflict_short": "Đã thay đổi so với đề xuất — yêu cầu lại",
+    "dismiss": "Bỏ qua",
+    "dismissed": "Đã bỏ qua",
+    "empty": "(trống)",
+    "error": "Không thể lưu thay đổi.",
+    "error_short": "Lưu thất bại",
+    "field": "Trường",
+    "fields": "{{count}} trường",
+    "label": "Chỉnh sửa thuật ngữ"
+  },
+  "planner": {
+    "destructive": "mang tính hủy diệt",
+    "enable": "Kích hoạt bước mang tính hủy diệt này",
+    "heading": "Kế hoạch",
+    "notes": "Ghi chú kế hoạch",
+    "steps": "{{count}} bước"
+  },
+  "propose": {
+    "applied": "Đã áp dụng ✓",
+    "apply": "Áp dụng",
+    "apply_failed": "Không thể áp dụng chỉnh sửa.",
+    "apply_n": "Áp dụng {{count}}",
+    "dismiss": "Bỏ qua",
+    "dismissed": "Đã bỏ qua",
+    "hunk_hint": "Chọn các thay đổi cần áp dụng",
+    "hunk_toggle": "Chấp nhận thay đổi này",
+    "insert_label": "Gợi ý chèn",
+    "keep_original": "Giữ nguyên bản gốc",
+    "no_editor": "Mở chương để áp dụng chỉnh sửa này.",
+    "no_selection": "Chọn văn bản cần thay thế, sau đó nhấn Áp dụng.",
+    "popout_no_rewrite": "Việc viết lại cần được áp dụng từ trình chỉnh sửa được ghim — hãy ghim cửa sổ này trước.",
+    "popout_not_delivered": "Không thể xác nhận chỉnh sửa đã được gửi đến trình chỉnh sửa được ghim — hãy mở chương trong Studio và thử lại.",
+    "replace_label": "Gợi ý viết lại",
+    "selection_changed": "Lựa chọn của bạn đã thay đổi — vui lòng chọn lại và nhấn Áp dụng hoặc Bỏ qua.",
+    "wrong_chapter": "Gợi ý này dành cho một chương khác."
+  },
+  "taskGate": {
+    "cancelled": "Đã bỏ qua",
+    "confirm": "Xác nhận",
+    "defaultTitle": "Xác nhận hành động này?",
+    "dismiss": "Bỏ qua",
+    "done": "Đã xác nhận ✓",
+    "error": "Không thể xác nhận",
+    "label": "Xác nhận"
   }
 }

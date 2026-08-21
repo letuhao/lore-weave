@@ -18,6 +18,8 @@ interface Props {
 
 export function KindMultiSelect({ value, options, onChange, disabled, testid }: Props) {
   const { t } = useTranslation('kgOntology');
+  const { t: tKnowledge } = useTranslation('knowledge');
+  const kindLabel = (code: string) => tKnowledge(`kind.${code}`, { defaultValue: code });
   const [free, setFree] = useState('');
   const remaining = options.filter((o) => !value.includes(o));
 
@@ -33,7 +35,7 @@ export function KindMultiSelect({ value, options, onChange, disabled, testid }: 
       )}
       {value.map((code) => (
         <span key={code} className="inline-flex items-center gap-0.5">
-          <OntologyChip variant={options.includes(code) ? 'glossary' : 'deprecated'}>{code}</OntologyChip>
+          <OntologyChip variant={options.includes(code) ? 'glossary' : 'deprecated'}>{kindLabel(code)}</OntologyChip>
           <button type="button" disabled={disabled}
             onClick={() => onChange(value.filter((c) => c !== code))}
             className="rounded border px-1 text-[10px] text-rose-600"
@@ -51,7 +53,7 @@ export function KindMultiSelect({ value, options, onChange, disabled, testid }: 
         >
           <option value="">＋ {t('schema.addKind')}</option>
           {remaining.map((o) => (
-            <option key={o} value={o}>{o}</option>
+            <option key={o} value={o}>{kindLabel(o)}</option>
           ))}
         </select>
       )}

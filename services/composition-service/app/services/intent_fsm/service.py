@@ -63,6 +63,7 @@ from app.services.intent_fsm.slots import (
     render,
     spec,
 )
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger("app.services.intent_fsm")
 
@@ -104,7 +105,7 @@ class IntentFSMService:
 
     # ── LLM binding — the platform job seam (never a provider SDK, never a literal model) ───────
     def _llm_fn(self, *, user_id: str, model_source: str, model_ref: str):
-        async def call(messages: list[dict], max_tokens: int,
+        async def call(messages: list[dict], *, budget: str, target: int | None = None,
                        response_format: dict | None = None) -> str:
             # `response_format` rides straight through provider-registry to LM Studio's grammar
             # layer, so a closed-set slot's enum is enforced at DECODE time. Measured 2026-07-28:
@@ -114,7 +115,9 @@ class IntentFSMService:
                 model_source=model_source, model_ref=model_ref,
                 input={"messages": messages,
                        "response_format": response_format or {"type": "text"},
-                       "temperature": 0.5, "max_tokens": max_tokens, **no_thinking_fields()},
+                       "temperature": 0.5,
+                       "max_tokens": max_tokens_for(budget, target=target),
+                       **no_thinking_fields()},
                 job_meta={"usage_purpose": "intent_fsm"},
             )
             if getattr(job, "status", None) != "completed":

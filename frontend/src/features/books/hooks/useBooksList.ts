@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
-import { booksApi, type Book } from '@/features/books/api';
+import { booksApi, type Book, type ImportJob } from '@/features/books/api';
 import { translationApi } from '@/features/translation/api';
+
+export type NewFB2ImportStage = 'idle' | 'uploading' | 'processing' | 'completed' | 'failed';
 
 /**
  * List/search/language-filter/create/coverage-batch logic extracted from `BooksPage.tsx`
@@ -32,6 +34,11 @@ export function useBooksList() {
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
   const [newLang, setNewLang] = useState('');
+	const [newFB2File, setNewFB2File] = useState<File | null>(null);
+  const [newFB2ImportStage, setNewFB2ImportStage] = useState<NewFB2ImportStage>('idle');
+  const [newFB2ImportProgress, setNewFB2ImportProgress] = useState(0);
+  const [newFB2ImportJob, setNewFB2ImportJob] = useState<ImportJob | null>(null);
+  const [newFB2ImportError, setNewFB2ImportError] = useState('');
   const [langFilter, setLangFilter] = useState('');
   const [bookLangs, setBookLangs] = useState<Record<string, string[]>>({});
 
@@ -51,6 +58,42 @@ export function useBooksList() {
   };
 
   useEffect(() => { void load(); }, [accessToken]);
+
+  useEffect(() => {
+    if (!accessToken || !newFB2ImportJob || newFB2ImportStage !== 'processing') return;
+
+    let cancelled = false;
+    let pollTimer: ReturnType<typeof setTimeout> | undefined;
+
+    const poll = async () => {
+      try {
+        const updated = await booksApi.getImportJob(accessToken, newFB2ImportJob.book_id, newFB2ImportJob.id);
+        if (cancelled) return;
+
+        setNewFB2ImportJob(updated);
+        if (updated.status === 'completed') {
+          setNewFB2ImportStage('completed');
+          void load();
+          return;
+        }
+        if (updated.status === 'failed') {
+          setNewFB2ImportStage('failed');
+          setNewFB2ImportError(updated.error || 'The FB2 import failed while processing the file.');
+          return;
+        }
+      } catch {
+        // Keep reporting a running server-side job after a transient status-read failure.
+      }
+
+      if (!cancelled) pollTimer = setTimeout(() => { void poll(); }, 2_000);
+    };
+
+    void poll();
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearTimeout(pollTimer);
+    };
+  }, [accessToken, newFB2ImportJob?.book_id, newFB2ImportJob?.id, newFB2ImportStage]);
 
   // Fetch translation coverage per book (batched 10 at a time, fire-and-forget)
   const bookIds = books.map((b) => b.book_id).join(',');
@@ -119,6 +162,40 @@ export function useBooksList() {
     }
   };
 
+	// New-book FB2 imports intentionally have their own server-owned operation:
+	// keep the dialog mounted so it can report the asynchronous job's real progress.
+	const handleFB2Import = async (): Promise<void> => {
+		if (!accessToken || !newFB2File) return;
+		setCreating(true);
+    setNewFB2ImportStage('uploading');
+    setNewFB2ImportProgress(0);
+    setNewFB2ImportJob(null);
+    setNewFB2ImportError('');
+		try {
+			const job = await booksApi.startNewFB2Import(
+        accessToken,
+        newFB2File,
+        newLang || undefined,
+        setNewFB2ImportProgress,
+      );
+      setNewFB2ImportJob(job);
+      setNewFB2ImportStage('processing');
+		} catch (e) {
+      setNewFB2ImportStage('failed');
+      setNewFB2ImportError((e as Error).message);
+		} finally {
+			setCreating(false);
+		}
+	};
+
+  const resetNewFB2Import = () => {
+    setNewFB2File(null);
+    setNewFB2ImportStage('idle');
+    setNewFB2ImportProgress(0);
+    setNewFB2ImportJob(null);
+    setNewFB2ImportError('');
+  };
+
   return {
     books,
     total,
@@ -138,12 +215,20 @@ export function useBooksList() {
     setNewDesc,
     newLang,
     setNewLang,
+		newFB2File,
+		setNewFB2File,
+    newFB2ImportStage,
+    newFB2ImportProgress,
+    newFB2ImportJob,
+    newFB2ImportError,
     langFilter,
     setLangFilter,
     bookLangs,
     filteredBooks,
     allLanguages,
     handleCreate,
+		handleFB2Import,
+    resetNewFB2Import,
     load,
   };
 }

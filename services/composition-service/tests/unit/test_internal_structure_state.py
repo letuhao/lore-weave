@@ -259,6 +259,51 @@ def test_reorder_parts_conflict_is_409_fail_closed():
         _teardown()
 
 
+def test_epub_hierarchy_rollback_is_owner_and_idempotent():
+    from app.deps import get_epub_import_hierarchy_repo, get_grant_client_dep
+    from app.main import app
+
+    job = uuid4()
+    repo = AsyncMock()
+    repo.rollback = AsyncMock(return_value=3)
+    app.dependency_overrides[get_epub_import_hierarchy_repo] = lambda: repo
+    app.dependency_overrides[get_grant_client_dep] = lambda: _Grant(OWNER)
+    c = TestClient(app)
+    try:
+        response = c.delete(
+            f"/internal/composition/books/{BOOK}/epub-import-hierarchy/{job}?caller_user_id={CALLER}",
+            headers=TOK,
+        )
+        assert response.status_code == 200
+        assert response.json() == {
+            "import_job_id": str(job),
+            "status": "rolled_back",
+            "nodes_removed": 3,
+        }
+        repo.rollback.assert_awaited_once_with(book_id=BOOK, import_job_id=job)
+    finally:
+        _teardown()
+
+
+def test_epub_hierarchy_rollback_denies_unknown_book_before_write():
+    from app.deps import get_epub_import_hierarchy_repo, get_grant_client_dep
+    from app.main import app
+
+    repo = AsyncMock()
+    app.dependency_overrides[get_epub_import_hierarchy_repo] = lambda: repo
+    app.dependency_overrides[get_grant_client_dep] = lambda: _Grant(None)
+    c = TestClient(app)
+    try:
+        response = c.delete(
+            f"/internal/composition/books/{BOOK}/epub-import-hierarchy/{uuid4()}?caller_user_id={CALLER}",
+            headers=TOK,
+        )
+        assert response.status_code == 404
+        repo.rollback.assert_not_awaited()
+    finally:
+        _teardown()
+
+
 def test_reorder_parts_happy_200():
     repo = AsyncMock()
     a, b = _node(node_id=uuid4(), rank="0"), _node(node_id=uuid4(), rank="1")

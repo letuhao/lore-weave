@@ -1,23 +1,24 @@
-// A3 view — "Let the assistant work on its own". The opt-in controls that ARM the (previously dormant)
+// A3 view — "{t('autonomous.title')}". The opt-in controls that ARM the (previously dormant)
 // autonomous jobs. Each toggle is fail-closed OFF and shows its EFFECTIVE state (on/off + the next run),
 // never a hidden default. View-only — the read/write logic lives in useAssistantSchedule.
+import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { AutonomousJobKind } from '../types';
 
 interface JobMeta {
   kind: AutonomousJobKind;
-  label: string;
-  desc: string;
+  labelKey: string;
+  descKey: string;
 }
 
 // The schedule-only set (each fully delivered by arming its schedule row alone). `proactive_nudge` is NOT
 // here — it's double-gated (chat opt-in + schedule), so it gets a DEDICATED row via the `proactive` prop
 // (wired to useProactiveSetting, which sets both). Order = most-valuable first.
 const JOBS: JobMeta[] = [
-  { kind: 'eod_distill', label: 'End my day automatically', desc: 'Journal the day each evening, even if you forget to.' },
-  { kind: 'weekly_reflection', label: 'Weekly reflection', desc: 'A gentle weekly pattern + coaching note.' },
-  { kind: 'weekly_rollup', label: 'Weekly summary', desc: 'A recap of your week.' },
-  { kind: 'nudge', label: 'Reminders to journal', desc: "A nudge if you haven't ended your day." },
+  { kind: 'eod_distill', labelKey: 'autonomous.eod', descKey: 'autonomous.eodDesc' },
+  { kind: 'weekly_reflection', labelKey: 'autonomous.weeklyReflection', descKey: 'autonomous.weeklyReflectionDesc' },
+  { kind: 'weekly_rollup', labelKey: 'autonomous.weeklySummary', descKey: 'autonomous.weeklySummaryDesc' },
+  { kind: 'nudge', labelKey: 'autonomous.reminders', descKey: 'autonomous.remindersDesc' },
 ];
 
 export interface AutonomousSettingsProps {
@@ -34,17 +35,18 @@ export interface AutonomousSettingsProps {
 }
 
 export function AutonomousSettings({ loading, isEnabled, nextFireAt, savingKind, timezone, onToggle, proactive }: AutonomousSettingsProps) {
+  const { t } = useTranslation('assistant');
   return (
     <section className="flex flex-col gap-2 rounded-lg border border-border bg-card p-3" data-testid="autonomous-settings">
       <div>
-        <div className="text-sm font-medium">Let the assistant work on its own</div>
+        <div className="text-sm font-medium">{t('autonomous.title')}</div>
         <div className="text-xs text-muted-foreground">
-          Off until you turn it on — these run in the background and use your models.
+          {t('autonomous.description')}
         </div>
       </div>
 
       {loading ? (
-        <p className="py-2 text-xs text-muted-foreground">Loading…</p>
+        <p className="py-2 text-xs text-muted-foreground" >{t('autonomous.loading')}</p>
       ) : (
         <ul className="flex flex-col divide-y divide-border">
           {JOBS.map((job) => {
@@ -54,17 +56,17 @@ export function AutonomousSettings({ loading, isEnabled, nextFireAt, savingKind,
             return (
               <li key={job.kind} className="flex items-center justify-between gap-3 py-2.5">
                 <div className="min-w-0">
-                  <div className="text-sm">{job.label}</div>
+                  <div className="text-sm">{t(job.labelKey)}</div>
                   <div className="text-xs text-muted-foreground">
                     {/* Effective state, stated plainly (SET rule: never a hidden default). */}
-                    {on ? (next ? `On · next ${new Date(next).toLocaleString()}` : 'On') : job.desc}
+                    {on ? (next ? t('autonomous.next', { time: new Date(next).toLocaleString() }) : t('autonomous.on')) : t(job.descKey)}
                   </div>
                 </div>
                 <button
                   type="button"
                   role="switch"
                   aria-checked={on}
-                  aria-label={job.label}
+                  aria-label={t(job.labelKey)}
                   data-testid={`autonomous-toggle-${job.kind}`}
                   disabled={busy}
                   onClick={() => onToggle(job.kind, !on, timezone)}
@@ -89,16 +91,16 @@ export function AutonomousSettings({ loading, isEnabled, nextFireAt, savingKind,
           {proactive && (
             <li className="flex items-center justify-between gap-3 py-2.5" data-testid="autonomous-proactive-row">
               <div className="min-w-0">
-                <div className="text-sm">Proactive check-ins</div>
+                <div className="text-sm">{t('autonomous.proactive')}</div>
                 <div className="text-xs text-muted-foreground">
-                  {proactive.enabled ? 'On — I may reach out when it has been a while.' : 'Let me open with a thought after a quiet stretch.'}
+                  {proactive.enabled ? t('autonomous.proactiveOn') : t('autonomous.proactiveOff')}
                 </div>
               </div>
               <button
                 type="button"
                 role="switch"
                 aria-checked={proactive.enabled}
-                aria-label="Proactive check-ins"
+                aria-label={t('autonomous.proactive')}
                 data-testid="autonomous-toggle-proactive_nudge"
                 disabled={proactive.saving}
                 onClick={() => proactive.onToggle(!proactive.enabled, timezone)}

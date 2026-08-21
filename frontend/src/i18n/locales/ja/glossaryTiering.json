@@ -120,7 +120,8 @@
     "no_active": "有効なジャンルがありません。マトリクスを作るには1つ追加してください。",
     "cell_inspector": "選択中のセル",
     "no_cell": "セルをクリックすると詳細が表示されます。",
-    "sort": "並べ替え"
+    "sort": "並べ替え",
+    "required": "必須"
   },
   "entity": {
     "title_new": "新規 {{kind}} エンティティ",
@@ -179,7 +180,12 @@
     "est_cost": "~${{cost}}",
     "complete_summary": "完了 — {{entities}} 件のエンティティから {{sources}} 件のソース",
     "failed_prefix": "失敗",
-    "action": { "pause": "一時停止", "resume": "再開", "retry": "再試行", "cancel": "キャンセル" },
+    "action": {
+      "pause": "一時停止",
+      "resume": "再開",
+      "retry": "再試行",
+      "cancel": "キャンセル"
+    },
     "modal": {
       "title": "{{kind}} の全エンティティを調査",
       "subtitle": "各エンティティに1回のウェブ検索を行い、上位ソースを下書き証拠として添付します。",
@@ -233,5 +239,16 @@
     "links_saved": "ジャンルの紐付けを更新しました",
     "links_failed": "ジャンルの紐付けを更新できませんでした",
     "forbidden": "変更するには、この書籍の管理アクセス権が必要です"
+  },
+  "batch_translate": {
+    "apply": "翻訳を適用",
+    "count": "{{n}} 件のエンティティを翻訳",
+    "loading": "読み込み中…",
+    "none": "この言語で未翻訳のエンティティはありません。",
+    "pick_lang": "開始するにはターゲット言語を選択してください。",
+    "result": "{{w}} 執筆済み · {{v}} 維持（確認済み） · {{e}} 空白 · {{f}} 失敗",
+    "select_lang": "選択…",
+    "target_lang": "ターゲット言語",
+    "title": "一括翻訳"
   }
 }

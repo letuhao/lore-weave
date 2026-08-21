@@ -758,8 +758,13 @@ class TestRailActionGateIntegration:
 
     def _prog(self, steps, next_index):
         from app.services.rail_progress import BookState, RailProgress, StepProgress
+        # `session_done=d` — these compose-tests mean "this chat FINISHED the step", which is
+        # the verdict the gate acts on. The book-derived `done` alone deliberately no longer
+        # suppresses (a plan proposed in a prior session must not disarm the tool that proposes
+        # one); that split is pinned in the SDK's test_rail_gate.py.
         sp = [
-            StepProgress(index=i, step_id=f"s{i}", tool=t, done=d, reason="", repeat=r)
+            StepProgress(index=i, step_id=f"s{i}", tool=t, done=d, reason="", repeat=r,
+                         session_done=d)
             for i, (t, d, r) in enumerate(steps, 1)
         ]
         return RailProgress(slug="demo", steps=sp, next_index=next_index, state=BookState())

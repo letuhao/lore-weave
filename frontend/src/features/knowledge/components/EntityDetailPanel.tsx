@@ -34,6 +34,7 @@ import {
 } from '../hooks/useEntityMutations';
 import type { EntityFact, EntityRelation } from '../api';
 import { TOUCH_TARGET_SQUARE_MOBILE_ONLY_CLASS } from '../lib/touchTarget';
+import { entityKindLabel } from '../lib/entityKinds';
 import { EntityEditDialog } from './EntityEditDialog';
 import { EntityMergeDialog } from './EntityMergeDialog';
 import { RelationEditDialog } from './RelationEditDialog';
@@ -110,7 +111,7 @@ function RelationRow({
       </span>
       {other.kind && (
         <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-          {other.kind}
+          {entityKindLabel(t, other.kind)}
         </span>
       )}
       {relation.pending_validation && (
@@ -379,7 +380,7 @@ export function EntityDetailPanel({
                 {detail?.entity.name ?? t('entities.detail.loading')}
               </Dialog.Title>
               <Dialog.Description className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                {detail?.entity.kind ?? ''}
+                {detail?.entity.kind ? entityKindLabel(t, detail.entity.kind) : ''}
               </Dialog.Description>
             </div>
             <div className="flex items-center gap-1">

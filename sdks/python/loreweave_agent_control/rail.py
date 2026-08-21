@@ -155,6 +155,17 @@ class StepProgress:
     reason: str             # why we believe that — shown to nobody, logged for us
     repeat: bool = False    # the step's `repeat` flag — a legitimately-repeatable step (e.g. a
                             # batched propose) whose tool must NEVER be action-gated as "done"
+    # Did THIS CONVERSATION perform the step? Deliberately separate from `done`, which is the
+    # BOOK's verdict and is durable. The two answer different questions and only one of them may
+    # remove a capability:
+    #   done          — "is this already in the book?"  → orient the model, never disarm it
+    #   session_done  — "did this chat already do it?"  → the honest basis for action-gating
+    # Conflating them is what retired `plan_propose_spec` on Mị Đế: one plan run proposed on
+    # 2026-07-29 made `done_when: "plan > 0"` true forever, so `done_suppress` dropped the tool
+    # from every later session and the author could never plan a second arc. The model, shown
+    # `plan_compile`/`plan_run_pass` but not the tool that MINTS a run id, invented one
+    # (`run_id="arc_1_setup_001"`) — correct behaviour given an incoherent surface.
+    session_done: bool = False
 
 
 @dataclass
@@ -254,6 +265,20 @@ def compute_rail_progress(
             return True
         return False
 
+    # The SESSION verdict, computed for EVERY step over its own counter — not as a fallback
+    # branch of the artifact verdict below. It has to be independent in both directions: a step
+    # whose artifact landed still needs "this chat ran it" recorded (or the intra-turn repeat
+    # loop the gate exists to kill would re-open for every artifact-bearing step), and a step
+    # the book already satisfies from a PRIOR session must not read as performed here.
+    session_remaining: Counter = Counter(succeeded_tools)
+    session_done: dict[int, bool] = {}
+    for i, st in enumerate(steps, 1):
+        _t = str(st.get("tool") or "")
+        hit = bool(_t) and session_remaining[_t] > 0
+        if hit:
+            session_remaining[_t] -= 1
+        session_done[i] = hit
+
     out: list[StepProgress] = []
     for i, st in enumerate(steps, 1):
         tool = str(st.get("tool") or "")
@@ -293,7 +318,7 @@ def compute_rail_progress(
 
         out.append(StepProgress(
             index=i, step_id=step_id, tool=tool, done=done, reason=reason,
-            repeat=bool(st.get("repeat")),
+            repeat=bool(st.get("repeat")), session_done=session_done[i],
         ))
 
     next_index = next((s.index for s in out if not s.done), None)
@@ -655,16 +680,34 @@ def rail_gate_suppressions(
             return True
         return False
 
-    # effective-done flag per step, in rail order, advancing turn-start done with live successes
-    eff: list[list[bool]] = []
+    # Two different flags, because there are two different questions.
+    #
+    # `resume` = "where is the book?" — durable, artifact-first. It is the right basis for
+    # picking the CURRENT step (a new chat on a book with 31 categories resumes mid-rail
+    # instead of being marched from step 1).
+    #
+    # `gated` = "did THIS CONVERSATION already do it?" — session-scoped, plus the successes
+    # recorded so far this turn. It is the ONLY honest basis for REMOVING a tool from the
+    # action space. Suppressing on the durable verdict is what made a plan proposed days
+    # earlier, in another session, permanently disarm `plan_propose_spec` for the book — the
+    # author asks for a second arc and the one tool that can start it is not on the wire.
+    # A step is done in the book ⇒ tell the model so (render_progress_block already does, and
+    # says "ALREADY DONE — do NOT repeat"). A step is done in this chat ⇒ take the tool away.
+    # `performed` is computed ONCE — the turn-success counter must be consumed exactly once per
+    # step, in rail order, or a tool used by two steps would advance both on one success. It
+    # short-circuits on `session_done` for the same reason the original short-circuited on
+    # `done`: a step this chat already performed does not spend a fresh success.
+    resume: list[list[bool]] = []
+    gated: list[list[bool]] = []
     for prog in progress_list:
-        flags = [(s.done or _consume(s.tool)) for s in prog.steps]
-        eff.append(flags)
+        performed = [(s.session_done or _consume(s.tool)) for s in prog.steps]
+        gated.append(performed)
+        resume.append([(s.done or p) for s, p in zip(prog.steps, performed)])
 
     if mode == GATE_STEP_LOCK:
         allowed: set[str] = set()
         every: set[str] = set()
-        for prog, flags in zip(progress_list, eff):
+        for prog, flags in zip(progress_list, resume):
             current = next((s for s, d in zip(prog.steps, flags) if not d), None)
             if current and current.tool:
                 allowed.add(current.tool)
@@ -675,7 +718,7 @@ def rail_gate_suppressions(
     # still owed by some not-done step (a tool reused across steps stays until its last use).
     done_tools: set[str] = set()
     owed_tools: set[str] = set()
-    for prog, flags in zip(progress_list, eff):
+    for prog, flags in zip(progress_list, gated):
         for s, d in zip(prog.steps, flags):
             if not s.tool:
                 continue

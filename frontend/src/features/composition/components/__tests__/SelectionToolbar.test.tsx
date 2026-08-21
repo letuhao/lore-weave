@@ -57,6 +57,11 @@ vi.mock('@/lib/syncPrefs', () => ({
 
 import { invalidateUserModelsCache } from '@/components/model-picker';
 
+const { listChapterScenes, createNode } = vi.hoisted(() => ({
+  listChapterScenes: vi.fn(), createNode: vi.fn(),
+}));
+vi.mock('../../api', () => ({ compositionApi: { listChapterScenes, createNode } }));
+
 // W5 — the picker is now the shared combobox; "the sole model is picked" shows as
 // its display name on the trigger (the old assert read the <select>'s value).
 const modelReady = async () =>
@@ -79,11 +84,11 @@ function fakeEditor(selText = 'the gate of ash', from = 5, to = 20, docSize = 10
   } as any;
 }
 
-function renderTB(editor: any) {
+function renderTB(editor: any, chapterId: string | null = null) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={qc}>
-      <SelectionToolbar editor={editor} projectId="p1" sceneContext="scene-9" token="t" />
+      <SelectionToolbar editor={editor} projectId="p1" sceneContext="scene-9" token="t" chapterId={chapterId} />
     </QueryClientProvider>,
   );
 }
@@ -91,6 +96,7 @@ function renderTB(editor: any) {
 describe('SelectionToolbar (T3.2)', () => {
   beforeEach(() => {
     start.mockReset(); stop.mockReset(); clearGhost.mockReset();
+    listChapterScenes.mockReset(); createNode.mockReset();
     trackRangeMock.mockReset(); rangeRelease.mockReset(); rangeNow.value = null;
     (toast.error as ReturnType<typeof vi.fn>).mockReset();
     streamState.ghost = ''; streamState.streaming = false; streamState.error = null;
@@ -159,8 +165,25 @@ describe('SelectionToolbar (T3.2)', () => {
   });
 
   it('disables the tools on an over-long selection', async () => {
-    renderTB(fakeEditor('x'.repeat(9000)));
+    renderTB(fakeEditor('x'.repeat(25000)), 'chapter-1');
     expect(await screen.findByTestId('selection-too-long')).toBeInTheDocument();
     expect(screen.queryByTestId('selection-rewrite')).not.toBeInTheDocument();
+  });
+
+  it('keeps scene suggestions available for a chapter-sized selection while edit operations stay disabled', async () => {
+    renderTB(fakeEditor('x'.repeat(9000)), 'chapter-1');
+    await modelReady();
+    expect(screen.getByTestId('selection-rewrite')).toBeDisabled();
+    expect(screen.getByTestId('selection-scene-plan')).not.toBeDisabled();
+    expect(screen.getByTestId('scene-plan-long-selection')).toBeInTheDocument();
+  });
+
+  it('asks the AI for a scene-plan without tracking or replacing the manuscript selection', async () => {
+    const editor = fakeEditor();
+    renderTB(editor, 'chapter-1');
+    await modelReady();
+    fireEvent.click(screen.getByTestId('selection-scene-plan'));
+    expect(start).toHaveBeenCalledWith(expect.objectContaining({ operation: 'scene_plan' }));
+    expect(trackRangeMock).not.toHaveBeenCalled();
   });
 });

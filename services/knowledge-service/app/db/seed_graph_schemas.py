@@ -174,7 +174,46 @@ _XIANXIA_HAREM = {
     ],
 }
 
-_TEMPLATES = [_GENERAL, _XIANXIA_HAREM]
+def _genre_template(code: str, name: str, description: str, kinds: list[tuple[str, str]]) -> dict:
+    """Build a conservative system template for a standard book genre."""
+    return {
+        "code": code, "name": name, "description": description,
+        "allow_free_edges": True, "node_kinds": kinds,
+        "edge_types": [
+            _e("RELATED_TO", "related to", ["character"], ["character"], directed=False),
+            _e("LOCATED_IN", "located in", ["character"], ["location"]),
+            _e("PARTICIPATES_IN", "participates in", ["character"], ["event"]),
+        ],
+        "fact_types": [("description", "Description"), ("attribute", "Attribute"),
+                       ("temporal", "Temporal"), ("causal", "Causal")],
+        "vocab_sets": [],
+    }
+
+_FANTASY = _genre_template("fantasy", "Fantasy",
+    "Fantasy-world ontology with characters, places, organizations, species, items, powers and techniques.",
+    [("character", "required"), ("location", "required"), ("organization", "required"),
+     ("species", "optional"), ("item", "optional"), ("power_system", "optional"),
+     ("technique", "optional"), ("event", "optional"), ("terminology", "optional")])
+_ROMANCE = _genre_template("romance", "Romance",
+    "Relationship-centered ontology with characters, relationships, plot arcs, tropes and social settings.",
+    [("character", "required"), ("relationship", "required"), ("plot_arc", "optional"),
+     ("trope", "optional"), ("location", "optional"), ("event", "optional"), ("social_setting", "optional")])
+_DRAMA = _genre_template("drama", "Drama",
+    "Drama ontology for characters, conflicts, relationships, organizations, events and plot arcs.",
+    [("character", "required"), ("relationship", "optional"), ("plot_arc", "required"),
+     ("organization", "optional"), ("location", "optional"), ("event", "optional"),
+     ("trope", "optional"), ("social_setting", "optional")])
+_HISTORICAL = _genre_template("historical", "Historical",
+    "Historical-fiction ontology for people, places, institutions, events, terminology and social order.",
+    [("character", "required"), ("location", "required"), ("event", "required"),
+     ("organization", "optional"), ("social_setting", "optional"), ("terminology", "optional")])
+_MYSTERY = _genre_template("mystery", "Mystery",
+    "Investigation ontology for characters, clues and objects, organizations, events, plot arcs and tropes.",
+    [("character", "required"), ("location", "required"), ("event", "required"),
+     ("item", "optional"), ("organization", "optional"), ("plot_arc", "optional"),
+     ("trope", "optional"), ("terminology", "optional")])
+
+_TEMPLATES = [_GENERAL, _XIANXIA_HAREM, _FANTASY, _ROMANCE, _DRAMA, _HISTORICAL, _MYSTERY]
 
 
 def _content_hash(tpl: dict) -> str:

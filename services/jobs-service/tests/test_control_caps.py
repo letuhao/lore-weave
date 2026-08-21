@@ -20,7 +20,8 @@ def test_failed_retryable_kinds_offer_retry():
     # translation (B1) + extraction (RETRY-KNOWLEDGE) + video_gen (RETRY-VIDEOGEN) +
     # enrichment_job (RETRY-LORE — re-drives the failed job, skipping done gaps) honor it.
     for kind in ("translation", "extraction", "video_gen", "enrichment_job"):
-        assert _vals(derive_control_caps(JobStatus.FAILED, kind)) == ["retry"]
+        expected = ["resume", "retry"] if kind == "extraction" else ["retry"]
+        assert _vals(derive_control_caps(JobStatus.FAILED, kind)) == expected
 
 
 def test_failed_non_retryable_kind_offers_nothing():
@@ -97,12 +98,16 @@ def test_unknown_kind_defaults_to_cancel_only_when_running():
     assert _vals(derive_control_caps(JobStatus.RUNNING, "some_new_kind")) == ["cancel"]
 
 
-def test_book_import_is_view_only_in_any_state():
-    # book_import has NO unified control surface (fire-and-forget; a running import can't be
-    # stopped) → NO caps in ANY state (D-JOBS-BOOK-IMPORT-UNWIRED).
-    for s in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED,
-              JobStatus.FAILED, JobStatus.COMPLETED, JobStatus.CANCELLED):
-        assert derive_control_caps(s, "book_import") == [], f"book_import/{s} should be view-only"
+def test_failed_or_cancelled_book_import_offers_resume():
+    # Book Service persists the retained source and can requeue an interrupted EPUB import.
+    # The unified job view must expose that owner-verified recovery action.
+    assert _vals(derive_control_caps(JobStatus.FAILED, "book_import")) == ["resume"]
+    assert _vals(derive_control_caps(JobStatus.CANCELLED, "book_import")) == ["resume"]
+
+
+def test_active_or_completed_book_import_offers_no_unified_control():
+    for s in (JobStatus.PENDING, JobStatus.RUNNING, JobStatus.PAUSED, JobStatus.COMPLETED):
+        assert derive_control_caps(s, "book_import") == [], f"book_import/{s} must not offer {s} control"
 
 
 def test_glossary_secondary_kinds_are_cancel_only():

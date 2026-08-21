@@ -117,3 +117,79 @@ async def parse_endpoint(request: Request) -> StructuralTree:
             span.set_attribute("detected_language", tree.detected_language)
 
         return tree
+
+
+@router.post(
+    "/parse/chapter",
+    response_model=StructuralTree,
+    summary="Chapter-boundary-preserving structural decomposer",
+    description=(
+        "Parse one already-selected HTML chapter into exactly one chapter and one or more "
+        "deterministic scenes. EPUB navigation, not HTML headings, owns chapter boundaries."
+    ),
+)
+async def parse_chapter_endpoint(request: Request) -> StructuralTree:
+    body_bytes = await request.body()
+    if len(body_bytes) > settings.max_parse_body_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"body {len(body_bytes)} bytes exceeds cap "
+                f"{settings.max_parse_body_bytes} bytes"
+            ),
+        )
+    try:
+        req = ParseRequest.model_validate_json(body_bytes)
+    except ValidationError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"invalid request body: {e.errors()}",
+        ) from e
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"malformed JSON: {e}",
+        ) from e
+    if req.source_format != "html":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="chapter parser accepts source_format=html only",
+        )
+    if not req.content or not req.content.strip():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="content is empty or whitespace-only",
+        )
+
+    req.options = req.options.model_copy(
+        update={"preserve_chapter_boundary": True, "extract_scenes_only": True}
+    )
+    with tracer.start_as_current_span("parse.chapter_decomposition") as span:
+        span.set_attribute("source_format", req.source_format)
+        span.set_attribute("body_bytes", len(body_bytes))
+        span.set_attribute("preserve_chapter_boundary", True)
+        if req.options.source_key:
+            span.set_attribute("source_key", req.options.source_key)
+        try:
+            tree = parse(
+                req.source_format,
+                req.content,
+                language=req.language,
+                filename=req.filename,
+                options=req.options,
+            )
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+        chapter_count = sum(len(part.chapters) for part in tree.parts)
+        if chapter_count != 1:
+            logger.error("chapter parser violated single-chapter invariant", extra={"chapter_count": chapter_count})
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="chapter parser violated single-chapter invariant",
+            )
+        span.set_attribute("chapter_count", chapter_count)
+        span.set_attribute("scene_count", len(tree.parts[0].chapters[0].scenes))
+        return tree

@@ -458,7 +458,11 @@
       "replaceFactSave": "Lưu thay đổi",
       "replaceFactSuccess": "Đã thay thế sự thật",
       "markWrongUndo": "Hoàn tác",
-      "markWrongUndoFailed": "Không thể hoàn tác: {{error}}"
+      "markWrongUndoFailed": "Không thể hoàn tác: {{error}}",
+      "tabs": {
+        "current": "Hiện tại",
+        "temporal": "Thời gian"
+      }
     },
     "edit": {
       "title": "Chỉnh sửa thực thể",
@@ -521,7 +525,28 @@
       "location": "Địa điểm",
       "organization": "Tổ chức",
       "concept": "Khái niệm",
-      "item": "Vật phẩm"
+      "item": "Vật phẩm",
+      "unknown": "Loại không xác định",
+      "person": "Nhân vật",
+      "artifact": "Vật phẩm",
+      "event_ref": "Sự kiện tham chiếu",
+      "preference": "Sở thích",
+      "event": "Sự kiện",
+      "terminology": "Thuật ngữ",
+      "power_system": "Hệ thống sức mạnh",
+      "species": "Chủng tộc",
+      "relationship": "Mối quan hệ",
+      "plot_arc": "Hồi cốt truyện",
+      "social_setting": "Bối cảnh xã hội",
+      "trope": "Mô típ",
+      "technique": "Kỹ thuật",
+      "colleague": "Đồng nghiệp",
+      "decision": "Quyết định",
+      "jargon": "Thuật ngữ chuyên môn",
+      "meeting": "Cuộc họp",
+      "org": "Tổ chức",
+      "project": "Dự án",
+      "task": "Nhiệm vụ"
     },
     "archive": {
       "action": "Lưu trữ",
@@ -707,7 +732,32 @@
         "errorAlreadyRunning": "Đã có một benchmark đang chạy cho dự án này. Vui lòng chờ và thử lại.",
         "errorProviderFlake": "Nhà cung cấp embedding gặp lỗi giữa chừng. Vui lòng thử lại.",
         "errorGeneric": "Benchmark thất bại: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Chưa có điểm chuẩn — hãy chạy benchmark bộ dữ liệu chuẩn (golden-set) để kích hoạt tính năng trích xuất.",
+      "bookIdLocked": "Sách này (đã khóa)",
+      "canonCapture": "Tự động ghi nhận tên mới từ cuộc trò chuyện",
+      "canonCaptureCeilingOff": "Đã tắt cho lần triển khai này — lựa chọn của bạn đã được lưu, nhưng việc ghi nhận sẽ không chạy cho đến khi quản trị viên kích hoạt lại.",
+      "canonCaptureHint": "Sau mỗi vài lượt hội thoại, các tên mới xuất hiện sẽ được thêm vào hộp thư xem xét thuật ngữ của cuốn sách này dưới dạng gợi ý — không phải là dữ liệu chính thức. Sử dụng thêm một lượt gọi AI cho mỗi lần ghi nhận, tính vào mô hình của riêng bạn.",
+      "canonCaptureNoBook": "Liên kết một cuốn sách với dự án này để ghi nhận tên vào thuật ngữ của sách.",
+      "embeddingModel": "Mô hình nhúng (Embedding model)",
+      "embeddingModelEmpty": "Chưa cấu hình mô hình hỗ trợ nhúng — cần một mô hình để thực hiện trích xuất.",
+      "embeddingModelHint": "Quy định không gian vector mà dự án này sử dụng để truy xuất các đoạn văn theo ngữ nghĩa.",
+      "embeddingModelNone": "Không (không có đoạn văn ngữ nghĩa)",
+      "genre": "Thể loại",
+      "genrePlaceholder": "ví dụ: Tiên hiệp, Tu chân, Kỳ ảo…",
+      "memoryConfirm": "Xác nhận trước khi lưu ký ức",
+      "memoryConfirmHint": "Các sự kiện mà AI muốn ghi nhớ sẽ chờ sự phê duyệt của bạn thay vì tự động lưu lại.",
+      "rerankDiscoveryHint": "Tự lưu trữ (Self-hosted)? Hãy thêm thông tin xác thực rerank cục bộ (tương thích với Cohere) trong AI Models, sau đó nhấn Làm mới — các mô hình rerank sẽ được tự động phát hiện.",
+      "rerankModel": "Mô hình rerank (tùy chọn)",
+      "rerankModelEmpty": "Chưa cấu hình mô hình có khả năng rerank. Hãy đăng ký một mô hình để kích hoạt tính năng loại bỏ kết quả rác.",
+      "rerankModelHint": "Cross-encoder rerank để loại bỏ kết quả rác khi tìm kiếm thô. Tùy chọn — nếu để trống, kết quả tìm kiếm sẽ giữ nguyên thứ tự hợp nhất.",
+      "rerankModelNone": "Không (bỏ qua rerank — giữ nguyên thứ tự hợp nhất)",
+      "toolCalling": "Công cụ ký ức trong trò chuyện",
+      "toolCallingHint": "Cho phép AI tìm kiếm, truy xuất và ghi chú ký ức trong khi trò chuyện trong dự án này.",
+      "benchmarkFailed": "✗ Benchmark không đạt (recall@3 {{recall}}) — mô hình này có điểm dưới mức tiêu chuẩn chất lượng trích xuất; hãy thử một mô hình embedding khác.",
+      "benchmarkInconclusive": "⋯ Benchmark chưa thể kết luận (recall@3 {{recall}}) — cần ≥3 lần vượt qua để xác thực mô hình này. Hãy chạy lại.",
+      "benchmarkPassed": "✓ Benchmark đã vượt qua (recall@3 {{recall}}).",
+      "genreError": "Thể loại phải có tối đa {{max}} ký tự."
     },
     "archiveDialog": {
       "title": "Lưu trữ dự án?",
@@ -910,6 +960,32 @@
         "unpin": "Bỏ ghim",
         "budget": "+{{tokens}} token mỗi cửa sổ ({{count}} đã ghim × ~50).",
         "noBook": "Việc ghim cần một sách liên kết. Hãy gắn sách cho dự án này trước."
+      },
+      "disabled": {
+        "benchmarkRequired": "Chạy benchmark bộ dữ liệu chuẩn (golden-set) và vượt qua bài kiểm tra để kích hoạt tính năng trích xuất (ở trên).",
+        "checkingBenchmark": "Đang kiểm tra benchmark embedding...",
+        "fixConcurrency": "Số lượng lệnh gọi song song phải nằm trong khoảng từ 1–64.",
+        "fixMaxSpend": "Vui lòng nhập hạn mức chi tiêu hợp lệ.",
+        "fixRange": "Vui lòng chỉnh sửa phạm vi chương.",
+        "pickEmbedding": "Vui lòng chọn một mô hình embedding.",
+        "pickLlm": "Vui lòng chọn một mô hình LLM để trích xuất."
+      },
+      "embedding": {
+        "changeViaDialog": "Dự án này đã có mô hình embedding. Hãy dùng “Thay đổi mô hình” để chuyển đổi — thao tác này sẽ xây dựng lại đồ thị.",
+        "saveFailed": "Không thể lưu mô hình embedding: {{error}}",
+        "saved": "Đã lưu mô hình embedding — hãy chạy bài kiểm tra hiệu năng bên dưới để kích hoạt tính năng trích xuất."
+      },
+      "prereq": {
+        "benchmarkChecking": "Đang kiểm tra bài kiểm tra hiệu năng embedding…",
+        "benchmarkPassed": "Bài kiểm tra hiệu năng embedding đạt yêu cầu",
+        "benchmarkPending": "Bài kiểm tra hiệu năng embedding đạt yêu cầu (vui lòng chọn mô hình trước)",
+        "benchmarkRequired": "Bài kiểm tra hiệu năng embedding đạt yêu cầu — hãy chạy nó từ trình chọn mô hình bên dưới",
+        "embedding": "Đã chọn mô hình embedding",
+        "llm": "Đã chọn mô hình LLM trích xuất"
+      },
+      "reasoning": {
+        "hint": "Mặc định ở chế độ Tắt — việc trích xuất sẽ trả về JSON, và quá trình suy nghĩ ẩn có thể làm tiêu tốn hạn mức đầu ra. Chỉ bật tính năng này cho các nội dung khó khi sử dụng mô hình suy luận.",
+        "label": "Bật khả năng suy luận của mô hình (thinking)"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "Đang lưu…",
       "cancel": "Hủy",
       "saved": "Đã lưu cài đặt trích xuất.",
-      "failed": "Lưu thất bại: {{error}}"
+      "failed": "Lưu thất bại: {{error}}",
+      "filterModel": "Mô hình lọc (tùy chọn)",
+      "filterModelDefault": "Sử dụng mô hình trích xuất (mặc định)",
+      "filterModelHint": "LLM dùng để đánh giá độ chính xác của các mối quan hệ. Nếu để mặc định, bộ lọc sẽ tái sử dụng mô hình trích xuất của bạn (theo từng người dùng, BYOK). Hãy chọn một mô hình mạnh hơn để lọc với độ chính xác cao hơn."
     },
     "confirmDestructive": {
       "cancel": "Hủy",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "Xác nhận lần cuối — thực sự xây lại?",
-        "description": "Nhấn Xây lại ngay bây giờ sẽ bắt đầu xóa và xây lại. Khi tác vụ mới chạy thì không thể hoàn tác."
+        "description": "Nhấn Xây lại ngay bây giờ sẽ bắt đầu xóa và xây lại. Khi tác vụ mới chạy thì không thể hoàn tác.",
+        "descriptionCount": "Thao tác này sẽ XÓA VĨNH VIỄN {{entities}} thực thể, {{events}} sự kiện và {{facts}} sự kiện thực tế, sau đó xây dựng lại từ đầu. Hành động này không thể hoàn tác.",
+        "typePrompt": "Nhập tên dự án để xác nhận"
       },
       "disable": {
         "title": "Vô hiệu hóa trích xuất?",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "Hiện khác biệt so với hiện tại",
       "diffEmpty": "Không có khác biệt."
-    }
+    },
+    "loading": "Đang tải…"
   },
   "indicator": {
     "label": "Chỉ báo tri thức",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "Chung",
       "project": "Dự án",
-      "degraded": "Suy giảm"
+      "degraded": "Suy giảm",
+      "multi": "{{count}} đồ thị tri thức"
     },
     "popover": {
       "projectHeading": "Bộ nhớ dự án",
@@ -1100,7 +1183,8 @@
       "projectBody": "Phiên này được liên kết với <strong>{{name}}</strong>. AI thấy tiểu sử chung của bạn cộng với bản tóm tắt và glossary của dự án trong mọi lượt.",
       "globalBody": "Phiên này không liên kết với dự án nào. AI chỉ thấy tiểu sử chung của bạn. Liên kết một dự án trong cài đặt phiên để cho phép AI truy cập bộ nhớ riêng theo sách.",
       "degradedBody": "Knowledge service không truy cập được ở lượt vừa rồi. AI đã chuyển sang chỉ dùng các tin nhắn gần đây — bộ nhớ dự án tạm thời không có trong prompt. Sẽ tự khôi phục ở lượt tiếp theo khi dịch vụ hoạt động trở lại.",
-      "manage": "Quản lý tri thức"
+      "manage": "Quản lý tri thức",
+      "multiBody": "Cuộc trò chuyện này dựa trên {{count}} đồ thị tri thức cùng lúc — các sự kiện thực tế được gắn thẻ kèm theo nguồn của chúng."
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "Ánh xạ"
     },
     "emptyHint": "Triage thu thập mọi dữ liệu trích xuất được tìm thấy nhưng chưa khớp với schema của bạn — một hàng đợi trống đồng nghĩa với việc mọi thứ đã được sắp xếp ngăn nắp."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "Tính đến chương {{ordinal}}",
+      "current": "hiện tại",
+      "loadFailed": "Không thể tải nội dung chuẩn cho thời điểm này trong câu chuyện.",
+      "sourceCanonContent": "nội dung chuẩn đã viết",
+      "sourceCanonContentHint": "Đang hiển thị nội dung chuẩn đã viết (không có bản sao lưu trữ cho thời điểm này).",
+      "status": {
+        "current": "hiện tại",
+        "stale": "lỗi thời",
+        "unbuildable": "không khả dụng"
+      },
+      "unbuildable": "Không thể tổng hợp tại đây — chế độ an toàn."
+    },
+    "retrieval": {
+      "chapter": "Chương {{chapter}}",
+      "ariaLabel": "Tìm kiếm truy xuất",
+      "currentStateNote": "Kết quả là trạng thái hiện tại (chưa khả dụng tính năng truy xuất theo thời gian).",
+      "error": "Tìm kiếm thất bại: {{error}}",
+      "noResults": "Không tìm thấy ngữ cảnh phù hợp.",
+      "noText": "(không có văn bản xem trước)",
+      "placeholder": "Tìm kiếm ngữ cảnh của cuốn sách này…",
+      "typeToSearch": "Nhập để tìm kiếm ngữ cảnh của thực thể này."
+    },
+    "slider": {
+      "atChapter": "Chương {{ordinal}}",
+      "aria": "Cuộn theo thứ tự chương trong dòng thời gian câu chuyện",
+      "head": "Đầu (mới nhất)",
+      "headButton": "Đầu (mới nhất)",
+      "label": "Thời gian cốt truyện",
+      "loadFailed": "Không thể tải dòng thời gian thay đổi.",
+      "noChanges": "Chưa có thay đổi nào về thời gian cốt truyện."
+    },
+    "translation": {
+      "asOfChapter": "chương {{n}}",
+      "asOfLabel": "tính đến {{label}}",
+      "error": "Không thể tải ngữ cảnh: {{error}}",
+      "asAuthored": "như bản gốc",
+      "asOfHead": "mới nhất",
+      "badgeCached": "đã dịch · đã lưu bộ nhớ đệm",
+      "badgeFresh": "đã dịch",
+      "empty": "Không có ngữ cảnh tương ứng cho thời điểm này trong câu chuyện.",
+      "failNoModel": "Chưa thiết lập mô hình dịch. Hãy chọn một mô hình trong Cài đặt Dịch để xem ngữ cảnh đã dịch.",
+      "failProvider": "Dịch thất bại. Hiện đang hiển thị ngữ cảnh gốc.",
+      "failQuota": "Không thể dịch — đã hết hạn mức của nhà cung cấp.",
+      "langOriginal": "Gốc ({{lang}})",
+      "languageLabel": "Ngôn ngữ hiển thị",
+      "title": "Ngữ cảnh theo từng chương",
+      "translating": "Đang dịch… lần xem đầu tiên có thể mất một chút thời gian"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "Tại chương {{asOf}}",
+      "current": "Hiện tại",
+      "hint": "Kéo thanh trượt thời gian để so sánh một chương trong quá khứ với trạng thái hiện tại.",
+      "loadFailed": "Không thể tải bản so sánh: {{error}}",
+      "loading": "Đang tải bản so sánh…",
+      "noChanges": "Không có thay đổi đơn giá nào giữa chương {{asOf}} và hiện tại.",
+      "title": "Chế độ xem so sánh"
+    },
+    "timeline": {
+      "chapter": "ch. {{chapter}}",
+      "empty": "Chưa có thay đổi nào được ghi lại cho thực thể này.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → mở)"
+      },
+      "kind": {
+        "invalidated": "đã vô hiệu hóa",
+        "open": "mở",
+        "superseded": "đã được thay thế"
+      },
+      "loadFailed": "Không thể tải dòng thời gian thay đổi: {{error}}",
+      "loadMore": "Tải thêm",
+      "loading": "Đang tải các thay đổi…",
+      "title": "Dòng thời gian thay đổi"
+    }
   }
 }

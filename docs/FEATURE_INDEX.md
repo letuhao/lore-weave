@@ -2,11 +2,11 @@
 
 > **Purpose:** The centralized map of `frontend/src/features/*` — every feature folder, where it mounts, what it does, and which backing service it talks to.
 > **Audience:** Developers and AI agents who need to find the code behind a screen (or the screen behind a service).
-> **Last updated:** 2026-07-17
+> **Last updated:** 2026-08-04
 >
 > **Companion docs:** [`ARCHITECTURE.md`](ARCHITECTURE.md) (services + tech stack) · [`DATA_ARCHITECTURE.md`](DATA_ARCHITECTURE.md) (where the data lives) · [`03_planning/LLM_MMO_RPG/features/_index.md`](03_planning/LLM_MMO_RPG/features/_index.md) (the **design-track** feature folders — a different tree, don't confuse them)
 
-**41 feature folders** as of 2026-07-17. Routes are from [`frontend/src/App.tsx`](../frontend/src/App.tsx); service targets are the **actual gateway proxy targets** from `services/api-gateway-bff/src/gateway-setup.ts`, not inferred from the path name.
+**43 feature folders** as of 2026-08-03. Routes are from [`frontend/src/App.tsx`](../frontend/src/App.tsx); service targets are the **actual gateway proxy targets** from `services/api-gateway-bff/src/gateway-setup.ts`, not inferred from the path name.
 
 ---
 
@@ -44,7 +44,7 @@ features/<name>/
 
 | Feature | Route | Purpose | Backing service |
 |---|---|---|---|
-| **studio** (330) | `/books/:bookId/studio`, `/studio/popout` | Writing Studio v2 — the dockable panel workspace (Dockview). Hosts most authoring panels. | knowledge-service + many |
+| **studio** (330) | `/books/:bookId/studio`, `/studio/popout` | Writing Studio v2 — the dockable panel workspace (Dockview). Hosts most authoring panels. The editor selection toolbar can ask an AI model for scene proposals and explicitly create selected outline nodes. | knowledge-service + many |
 | **composition** (358) | `/composition/popout`, studio panels | LOOM co-writer — canon-grounded prose generation, arcs, motifs, conformance. | composition-service |
 | **books** (28) | `/books`, `/books/:bookId`, `/books/:bookId/chapters/:id/*` | Books, chapters, drafts, revision compare (1-vs-1 LCS diff). | book-service, catalog-service, sharing-service |
 | **plan-forge** (29) | studio panel | PlanForge (Studio M5) — the novel-system planner (`rules` / `llm` run modes). | composition-service |
@@ -52,6 +52,7 @@ features/<name>/
 | **steering** (9) | studio panel | Per-book author steering rules ("story-bible-as-steering"). Rendered as a `<steering>` system part on book-scoped turns. | book-service |
 | **grammar** (2) | editor plugin | LanguageTool client (spell/grammar). Has a circuit breaker — a 502 disables checking for 60s. | LanguageTool (via frontend nginx) |
 | **pdf-import** (10) | (embedded) studio `BookImportPanel`, chapters tab | PDF → book import wizard. | book-service |
+| **epub-import** | (embedded) book chapters tab | Localized EPUB V2 inspection and structure-preserving import wizard; source-defined ToC leaves become chapters, current system Lore defaults are adopted for a new book, and durable jobs expose resume/rollback state. | book-service, worker-infra, composition-service, glossary-service |
 | **trash** (4) | `/trash` | Recycle bin — restore/purge. | book-service, glossary-service |
 
 ### AI chat & agents

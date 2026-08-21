@@ -120,7 +120,8 @@
     "no_active": "Tidak ada genre aktif. Tambahkan satu untuk membangun matriks.",
     "cell_inspector": "Sel terpilih",
     "no_cell": "Klik sel untuk memeriksanya.",
-    "sort": "urutkan"
+    "sort": "urutkan",
+    "required": "wajib"
   },
   "entity": {
     "title_new": "Entitas {{kind}} baru",
@@ -238,5 +239,16 @@
     "links_saved": "Tautan genre diperbarui",
     "links_failed": "Tidak dapat memperbarui tautan genre",
     "forbidden": "Anda memerlukan akses Manage pada buku ini untuk melakukan perubahan"
+  },
+  "batch_translate": {
+    "apply": "Terapkan terjemahan",
+    "count": "{{n}} entitas untuk diterjemahkan",
+    "loading": "Memuat…",
+    "none": "Tidak ada entitas yang belum diterjemahkan untuk bahasa ini.",
+    "pick_lang": "Pilih bahasa target untuk memulai.",
+    "result": "{{w}} tertulis · {{v}} dipertahankan (diverifikasi) · {{e}} kosong · {{f}} gagal",
+    "select_lang": "Pilih…",
+    "target_lang": "Bahasa target",
+    "title": "Terjemahan massal"
   }
 }

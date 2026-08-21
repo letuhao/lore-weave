@@ -30,7 +30,13 @@
     "allOverwrite": "All Overwrite",
     "required": "required",
     "thinkingEnabled": "Enable thinking / reasoning",
-    "thinkingHint": "Off is recommended for JSON extraction. Turn on for models like Gemma that reason differently when thinking is enabled."
+    "thinkingHint": "Off is recommended for JSON extraction. Turn on for models like Gemma that reason differently when thinking is enabled.",
+    "addDefaults": "Add default kinds",
+    "addingDefaults": "Adding…",
+    "defaultsError": "Could not add the default entity kinds.",
+    "loadError": "Could not load the extraction profile.",
+    "noKindsDescription": "Extraction needs at least one kind to look for. Add the defaults to get started, or define your own in the glossary.",
+    "noKindsTitle": "This book has no entity kinds yet"
   },
   "batch": {
     "title": "Batch Config",
@@ -65,7 +71,19 @@
     "thinkingOn": "Thinking: on (reasoning enabled)",
     "thinkingOff": "Thinking: off (faster, better JSON)",
     "startExtraction": "Start Extraction",
-    "editProfile": "Edit Profile"
+    "editProfile": "Edit Profile",
+    "cacheAuto": "Re-run when anything changed (default)",
+    "cacheForce": "Always re-extract — ignore the cache",
+    "cacheHint": "Edited a kind definition? The default already re-runs.",
+    "cachePolicy": "Cached results",
+    "cacheReuse": "Reuse cached results where possible",
+    "concurrency": "Parallel LLM calls",
+    "concurrencyHint": "1 = sequential. Raise it if your model serves concurrent requests.",
+    "strategy": "Prompt shape",
+    "strategyBatched": "Batched — most thorough (default)",
+    "strategyDelta": "One call + deltas — cheapest",
+    "strategyEdc": "Sweep then type — ~56% cheaper, best grounding",
+    "strategySingle": "One call — ~66% cheaper, misses rare kinds"
   },
   "progress": {
     "title": "Extracting Glossary",
@@ -107,7 +125,11 @@
     "draftNote": "All new entities created as draft — review in Glossary tab",
     "viewGlossary": "Review in Glossary",
     "runAgain": "Extract again",
-    "close": "Close"
+    "close": "Close",
+    "cacheAllFresh": "All {{n}} batches were extracted fresh.",
+    "cacheForced": "(cache was bypassed by request)",
+    "cacheRerunHint": "If you changed a kind definition since then, re-run with \"Always re-extract\".",
+    "cacheServed": "{{pct}}% of this run ({{cached}} of {{total}} batches) was REUSED from a previous extraction, not re-read."
   },
   "button": {
     "extract": "Extract Glossary",

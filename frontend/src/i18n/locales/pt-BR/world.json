@@ -98,5 +98,27 @@
     "branchAt": "desvia no cap. {{ch}}",
     "orphan": "· fonte fora deste mundo",
     "edgeLabel": "cap. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Vincular entidade",
+    "delete": "Excluir",
+    "empty": "Nenhum mapa ainda — desenhe o mundo onde sua história acontece.",
+    "entityPlaceholder": "id da entidade de localização",
+    "error": "Não foi possível carregar este mapa.",
+    "label": "Rótulo",
+    "marker": "Marcador",
+    "name": "Nome",
+    "newMap": "+ Novo mapa",
+    "newMapPrompt": "Nomeie o novo mapa",
+    "pickWorld": "Escolha um mundo para mapear.",
+    "region": "Região",
+    "save": "Salvar",
+    "unbind": "Desvincular",
+    "uploadImage": "Fazer upload da imagem base",
+    "vertexCapNotice": "{{count}} vértices — a remodelagem foi desativada acima de {{max}} por questões de desempenho."
+  },
+  "maps": {
+    "empty": "Nenhum mapa encontrado. Peça ao assistente para «criar um mapa deste mundo» para gerar um.",
+    "heading": "Mapas"
   }
 }

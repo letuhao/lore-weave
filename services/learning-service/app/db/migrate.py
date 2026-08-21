@@ -297,6 +297,12 @@ CREATE INDEX IF NOT EXISTS idx_quality_scores_user_metric
 -- runs (no judge) set panel_safe = TRUE with a 'structural-only' reason.
 ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS panel_safe BOOLEAN;
 ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS panel_safety_reason TEXT;
+-- S13 — whether the exclusion set was DEFAULTED and matched no judge in this run.
+-- Separate from panel_safe because `panel_safety` deliberately keeps that TRUE in this
+-- case: the panel is safe as far as anyone can tell, and the qualifier is the point.
+-- Persisted so `metric_of_record_blockers` is answerable from a stored run, not only
+-- from the in-memory result that computed it.
+ALTER TABLE eval_runs ADD COLUMN IF NOT EXISTS exclusion_unverified BOOLEAN;
 
 -- FD-19/052 — separate the entity description hash from the name/alias
 -- content_hash so the diff classifier's `boundary` (rename signal) doesn't

@@ -381,6 +381,22 @@ fi
 # walked past. Unconditional, and cheap (docs-only scan).
 "$PY" "$ROOT/scripts/amendment-rot-gate.py"
 
+# agent-skills-parity — the committed agent workflow is installed THREE times, once
+# per agent target (codex / codex-app / copilot), as generated renderings of one
+# source. Hand-edit one copy and two contributors running two different agents
+# follow two different processes on the same repo, each copy looking self-consistent.
+# Nobody reviews three near-identical 150-file trees in a PR, so it is checked
+# mechanically. Unconditional: the trigger is "someone touched a skill tree", and
+# the whole point is to catch the edit nobody was watching.
+"$PY" "$ROOT/scripts/agent-skills-parity.py"
+
+# slash-command-doc-gate — the runners a contributor can type, and the guide that
+# tells them which to type, drifting apart in both directions. `/raid` and `/warp`
+# sat undocumented long enough to fall out of use unnoticed, and a retirement is
+# precisely the change that leaves the prose behind: deleting the file is the easy
+# half. Unconditional and cheap (two files).
+"$PY" "$ROOT/scripts/slash-command-doc-gate.py"
+
 # Q0b B3's asserted trigger. Greens while the RulesetEpochActivated emit path is
 # unbuilt; reds the day any producer appears, printing the three unresolved
 # constraints (DP-A16 lease, the S5 chokepoint, dp::channel_pause) so the path
@@ -404,6 +420,15 @@ fi
 # scripts/i18n_translate.py (gap-fill), never hand-edited into a locale, never a one-off translator.
 if git diff --cached --name-only | grep -qE 'frontend/src/i18n/locales/.*\.json'; then
   "$PY" "$ROOT/scripts/i18n-completeness-gate.py" --staged
+fi
+
+# The other half of ML-7, and the half the gate above cannot see. It compares BUNDLE to
+# BUNDLE, so a `t('key', { defaultValue: '…' })` whose key is in no bundle is invisible to
+# it AND to i18n_translate.py, which reads `en`. Such a string renders fine and is never
+# translated — 609 had accumulated by 2026-08-08, found by hand, not by a check. Triggered
+# on COMPONENTS rather than locale files: adding the call is what creates the debt.
+if git diff --cached --name-only | grep -qE 'frontend/src/.*\.tsx?$'; then
+  "$PY" "$ROOT/scripts/i18n-key-resolution-gate.py" --staged
 fi
 
 # Track A / M9a — the central C-TOOL tier gate: a write-verb-named tool must NOT be Tier-R
@@ -489,3 +514,39 @@ if [ -n "$STAGED_TS" ]; then
     exit 1
   }
 fi
+
+# ── The 12-phase workflow gate — UNIVERSAL as of 2026-08-03 ────────────────────
+#
+# Until today this ran ONLY from `.claude/settings.json`'s PreToolUse hook, so it
+# fired when Claude Code issued `git commit` and for nobody else. That was fine
+# when Claude was effectively the only agent here. It stopped being fine the day
+# this became a five-agent repo: a contributor on Codex, Cursor or Copilot — and
+# any human typing `git commit` — walked straight past it, because none of them
+# read `.claude/settings.json`.
+#
+# A check whose scope reaches one of five callers is the "scope never reaches it"
+# shape from docs/standards/non-vacuity.md. Moved here, where git enforces it for
+# everyone regardless of what wrote the commit.
+#
+# IT DOES NOT BLOCK A CONTRIBUTOR WHO NEVER STARTED A RUN, and that is the property
+# that makes putting it here safe rather than hostile. `workflow-gate.py pre-commit`
+# fails OPEN when there is no `.workflow-state.json` — it prints "No workflow state
+# found. Proceeding without enforcement." and exits 0. It blocks only someone who
+# classified a task and then tried to commit mid-way. Verified through this whole
+# chain, both directions: no state -> exit 0; size classified, VERIFY not recorded
+# -> exit 1.
+#
+# That distinction is the whole design. An always-on phase gate would stop a
+# first-time contributor on their first commit, and the thing they would reach for
+# is `--no-verify`, which switches off db-safety, the provider gate and the secret
+# scan along with it. A gate that teaches people to disable the gates is worse than
+# no gate.
+#
+# It is LAST on purpose. The gates above find defects in the code; this one finds
+# a missing phase. Running it last means a blocked commit reports BOTH, instead of
+# sending you to fix the phase state and only then discovering a real finding.
+#
+# If it blocks you: record the evidence the phase actually has
+# (`python scripts/workflow-gate.py complete verify "<evidence>"`), or state the
+# skip (`... skip verify "<reason>"`). Do not reach for --no-verify.
+"$PY" "$ROOT/scripts/workflow-gate.py" pre-commit

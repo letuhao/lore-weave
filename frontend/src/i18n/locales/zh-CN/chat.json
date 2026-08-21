@@ -211,7 +211,10 @@
     "feedback_up": "好的回答",
     "feedback_down": "差的回答",
     "feedback_thanks": "感谢您的反馈",
-    "feedback_error": "无法保存反馈"
+    "feedback_error": "无法保存反馈",
+    "incomplete_error": "错误 — 响应不完整",
+    "incomplete_interrupted": "已中断 — 响应不完整",
+    "insert_into_chapter": "插入至章节"
   },
   "tools": {
     "title": "此回复中使用的工具",
@@ -243,7 +246,9 @@
     "cancelled": "已取消",
     "reprice": "由于成本已上升至 {{cost}}，原估算已失效 — 请重新确认新价格。",
     "reprice_title": "价格已变动 — 未应用",
-    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。"
+    "reprice_detail": "原估算 {{old}}，现为 {{new}}。未产生任何费用 — 请重新确认新价格。",
+    "advisory_items": "已请求（建议）— 服务器将在应用时确认确切集合",
+    "awaiting_preview": "正在加载服务器预览…"
   },
   "batchConfirm": {
     "title": "一键确认 {{count}} 个操作",
@@ -446,5 +451,120 @@
     "worldbuilder": "世界构建者",
     "editor": "编辑",
     "analyst": "分析师"
+  },
+  "sessionSettings": {
+    "description": "本对话的设置。未在此处设置的任何内容都将依次继承自书籍、您的账户，最后是系统默认设置。",
+    "saving": "正在保存…",
+    "close": "关闭",
+    "voice": "语音",
+    "messages": "消息",
+    "status": {
+      "label": "状态",
+      "active": "进行中",
+      "archived": "已归档",
+      "closed": "已关闭"
+    },
+    "models": {
+      "title": "模型",
+      "composer": "创作模型 (可选)",
+      "planner": "规划模型 (可选)",
+      "composerNone": "无 — 单一模型",
+      "plannerNone": "使用我的默认规划器",
+      "composerHint": "设置后，AI 可以将散文写作任务委派给此模型。",
+      "plannerHint": "在本会话中用于多步规划的模型。"
+    },
+    "behavior": {
+      "title": "行为设置",
+      "systemPrompt": "系统提示词",
+      "promptPlaceholder": "除非您在此处进行设置，否则将继承您的账户默认设置。",
+      "reasoning": {
+        "label": "推理强度",
+        "off": "关闭",
+        "low": "低",
+        "medium": "中",
+        "high": "高"
+      },
+      "statefulTitle": "使用有状态的 Responses API",
+      "statefulHint": "可选的服务器端上下文复用。除非您的提供商支持 Responses 工具调用，否则请保持关闭。",
+      "temperature": "采样温度",
+      "temperatureHint": "数值越高，生成内容越具惊喜感；数值越低，生成内容越可预测。",
+      "topP": "Top P",
+      "maxTokens": "最大响应 Token 数",
+      "maxTokensHint": "未设置则使用模型自身的限制。"
+    },
+    "grounding": {
+      "title": "落地与记忆",
+      "label": "基于本书设定进行回答",
+      "on": "开启 — 每轮对话均执行检索",
+      "off": "关闭 — 本次对话不进行检索",
+      "onHint": "术语表、知识图谱事实和文本片段将被引入到每一轮对话中。",
+      "offHint": "助手仅根据对话内容进行回答，可能会虚构设定。",
+      "multiHint": "基于所有选定的知识图谱进行回答 —— 事实会标记其来源。"
+    },
+    "context": {
+      "title": "上下文管理",
+      "label": "长篇创作上下文模式",
+      "auto": "自动",
+      "on": "始终开启",
+      "off": "关闭",
+      "autoHint": "仅在书籍规模达到需要长篇上下文层级时才开启。",
+      "onHint": "始终使用长篇创作上下文层级。",
+      "offHint": "从不使用 —— 最基础、最经济的上下文模式。"
+    }
+  },
+  "dock": {
+    "close": "关闭",
+    "label": "问问 AI",
+    "open": "咨询术语表助手",
+    "title": "术语表助手"
+  },
+  "glossaryEdit": {
+    "applied": "已应用 ✓",
+    "apply": "应用",
+    "conflict": "该实体自提交以来已发生变更 — 请重新请求以查看最新版本。",
+    "conflict_short": "自提议以来已更改 — 重新询问",
+    "dismiss": "忽略",
+    "dismissed": "已忽略",
+    "empty": "（空）",
+    "error": "无法保存更改。",
+    "error_short": "保存失败",
+    "field": "字段",
+    "fields": "{{count}} 个字段",
+    "label": "术语表编辑"
+  },
+  "planner": {
+    "destructive": "破坏性",
+    "enable": "启用此破坏性步骤",
+    "heading": "规划",
+    "notes": "规划笔记",
+    "steps": "{{count}} 个步骤"
+  },
+  "propose": {
+    "applied": "已应用 ✓",
+    "apply": "应用",
+    "apply_failed": "无法应用修改。",
+    "apply_n": "应用 {{count}} 项",
+    "dismiss": "忽略",
+    "dismissed": "已忽略",
+    "hunk_hint": "选择要应用的修改",
+    "hunk_toggle": "接受此修改",
+    "insert_label": "建议插入",
+    "keep_original": "保留原文",
+    "no_editor": "打开章节以应用此修订。",
+    "no_selection": "请先选择要替换的文本，然后点击“应用”。",
+    "popout_no_rewrite": "重写内容需在停靠编辑器中应用 —— 请先停靠此窗口。",
+    "popout_not_delivered": "无法确认修订已送达停靠编辑器 —— 请在 Studio 中打开该章节并重试。",
+    "replace_label": "建议重写",
+    "selection_changed": "您的选区已更改 —— 请重新选择并点击“应用”，或点击“忽略”。",
+    "wrong_chapter": "此建议针对的是其他章节。"
+  },
+  "taskGate": {
+    "cancelled": "已忽略",
+    "confirm": "确认",
+    "defaultTitle": "确认此操作？",
+    "dismiss": "忽略",
+    "done": "已确认 ✓",
+    "error": "无法确认",
+    "label": "确认"
   }
 }

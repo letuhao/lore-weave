@@ -719,7 +719,8 @@
     "conflict": "conflict: {{part}}",
     "format": "Format",
     "revert": "Revert",
-    "openAs": "Open as JSON"
+    "openAs": "Open as JSON",
+    "readOnly": "read-only"
   },
   "planPasses": {
     "comingSoon": "The 7-pass rail loads here.",
@@ -761,7 +762,18 @@
     "approveGated": "Apply the glossary seed first (PF-7)",
     "editAdd": "Add",
     "editRemove": "Remove",
-    "editEmpty": "Nothing here yet — add a row."
+    "editEmpty": "Nothing here yet — add a row.",
+    "batchSpends": "Runs each ready pass until the next checkpoint — spends 1 LLM call per pass.",
+    "chapterNoScenes": "No scenes — this chapter cannot be drafted.",
+    "linkOutline": "Link arcs + chapters →",
+    "linkScenes": "Link scenes →",
+    "linkScenesBlocked": "Run the scenes pass first",
+    "noBeat": "(no beat)",
+    "noScenes": "No chapters to edit in this scene plan.",
+    "openEdit": "edit…",
+    "runPicker": "Choose a plan run",
+    "runToCheckpoint": "Run to next checkpoint",
+    "runningPass": "running {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Paste the novel-system markdown…",
@@ -785,10 +797,49 @@
       "colRun": "Run",
       "colMode": "Mode",
       "colStatus": "Status",
-      "colCreated": "Created"
+      "colCreated": "Created",
+      "archive": "Archive",
+      "restore": "Restore",
+      "showArchived": "Show archived"
     },
     "grounded": "Grounded on {{chapters}} existing chapter(s) + {{cast}} cast member(s); {{arcs}} existing arc(s) continued.",
-    "groundOnExisting": "Continue this book — ground on its existing cast, arcs & recent chapters"
+    "groundOnExisting": "Continue this book — ground on its existing cast, arcs & recent chapters",
+    "bootstrap": {
+      "apply": "Create in my book",
+      "applying": "Creating…",
+      "approve": "Approve",
+      "check": "Check what’s needed",
+      "checking": "Checking…",
+      "done": "Done — open Chapters to see what was created.",
+      "idleHint": "Check whether this plan needs any new chapters or characters created in your book.",
+      "newChapters": "New chapters",
+      "newGlossary": "New glossary entries",
+      "nothingToDo": "Everything in this plan already exists in your book — nothing new to create.",
+      "reject": "Not now",
+      "rejected": "You dismissed this suggestion.",
+      "retry": "Retry",
+      "title": "Set up your book"
+    },
+    "material": {
+      "applied": "Added to the plan: {{slots}}. Filed as notes: {{notes}}.",
+      "askTitle": "Not in your document — worth deciding",
+      "dropped": "{{n}} suggested line(s) were not actually in your document and were discarded.",
+      "find": "Check my plan",
+      "finding": "Looking…",
+      "idleHint": "Looks for anything missing in what you already wrote, before asking you for it.",
+      "noChange": "Nothing changed — everything you kept was already in the plan.",
+      "nothing": "Nothing missing — the plan covers every part.",
+      "readFailed": "Your document could not be fully read, so \"missing\" below is not certain.",
+      "retry": "Check these again",
+      "reviewHint": "These lines are already in your document. Remove any that do not belong, then add the rest.",
+      "stale": "Your plan has changed since this check — run it again for an up-to-date answer.",
+      "title": "What is this plan missing?",
+      "unavailableHint": "not checked; try again rather than treating it as missing",
+      "unavailableTitle": "Could not check",
+      "uncertain": "(your document was not fully read, so this may already be there)",
+      "shrank": "This run read more than it kept ({{detail}}) — check those parts before building on them."
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Select a chapter in the manuscript navigator to edit it here.",
@@ -808,7 +859,13 @@
     "merging": "Merging…",
     "mergeDone": "Merged into canon — the branch keeps its own version.",
     "mergeConflict": "Canon changed since — reopen the chapter and merge again.",
-    "mergeFailed": "Could not merge — try again."
+    "mergeFailed": "Could not merge — try again.",
+    "askAiPrompt": "Analyse this passage from the manuscript and answer the user's question:\n\n\"{{text}}\"\n\nWhat is important to consider?",
+    "loadingChapter": "Loading chapter…",
+    "sceneSuggestionsHint": "Select manuscript text to generate scene proposals with AI",
+    "sceneSuggestionsReady": "Use Suggest scenes in the AI toolbar above the selected passage.",
+    "sceneSuggestionsSelect": "Select a passage first, then use Suggest scenes above the selection.",
+    "suggestScenes": "Suggest scenes"
   },
   "sceneCompose": {
     "empty": "Select a chapter in the manuscript navigator to draft its scenes here.",
@@ -994,11 +1051,20 @@
     "conformanceTitle": "Conformance",
     "conformanceDesc": "Did the prose realize the plan? Per-scene beat trace",
     "pickModelRerun": "Pick a model to re-run with…",
-    "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan."
+    "pickChapterConformanceHint": "Pick a chapter above to trace how its prose realized the plan.",
+    "editRule": "Edit rule",
+    "healApplied": "Applied the selected fixes to the chapter.",
+    "healApplyError": "Could not apply the fixes. Try again.",
+    "healStale": "This chapter changed since Polish ran — re-run Polish, then apply."
   },
   "sidebar": {
     "collapse": "Collapse",
     "resize": "Resize side bar"
+  },
+  "panelsPicker": {
+    "title": "Workspace panels",
+    "search": "Find a panel…",
+    "hint": "Choose which panels stay visible. Your choice is saved with this workspace."
   },
   "layout": {
     "title": "Panel layout",
@@ -1016,6 +1082,14 @@
       "grid4x2": "Grid 4×2",
       "cols6": "Six columns",
       "cols8": "Eight columns"
+    }
+  },
+  "diagnostics": {
+    "unplannedChapter": "Chapter {{title}} is written but not in the plan",
+    "warning": {
+      "openThread": "Open promises could not be read",
+      "deletedSpec": "Deleted plan nodes could not be checked",
+      "coverage": "The manuscript/plan coverage could not be computed"
     }
   },
   "bottom": {
@@ -1193,6 +1267,68 @@
         "knowledge": {
           "title": "The knowledge graph",
           "body": "For deeper worldbuilding, the knowledge graph tracks how everything connects — entities, events, and relationships."
+        }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "Describe the world first",
+          "body": "The book setup wizard creates a stable world structure and system defaults so later extraction behaves predictably."
+        },
+        "glossary": {
+          "title": "Build the glossary",
+          "body": "Review entities, kinds, and attributes. Start from source text, then confirm ambiguous records manually."
+        },
+        "entities": {
+          "title": "Investigate entities",
+          "body": "Search characters, places, and items, open their evidence, and check which chapters mention them."
+        },
+        "timeline": {
+          "title": "Check the timeline",
+          "body": "The event timeline helps reveal gaps and contradictions between chapters. Treat it as a working hypothesis."
+        },
+        "graph": {
+          "title": "See the connections",
+          "body": "The graph shows relationships between entities. Find highly connected nodes and return to their supporting passages."
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "Start from the claim's source",
+          "body": "Evidence takes you to the chapter and text passage. Verify the quote first, then decide whether an entity or attribute needs changing."
+        },
+        "triage": {
+          "title": "Work the review queue",
+          "body": "Triage groups uncertain findings by urgency. Handle canon conflicts and repeated warnings before edge cases."
+        },
+        "gaps": {
+          "title": "Find missing detail",
+          "body": "The gap report highlights frequently mentioned but poorly described entities — candidates for enrichment."
+        },
+        "unknown": {
+          "title": "Resolve unknown mentions",
+          "body": "Match a term to an existing entity or create a new one. Check context and spelling variants before merging."
+        },
+        "proposals": {
+          "title": "The editor decides",
+          "body": "Accept AI proposals only after reviewing their source and impact. Do not reintroduce rejected candidates without a new check."
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "Entity list",
+          "body": "Filter entities by kind and status, open a record, and jump to chapters containing its evidence."
+        },
+        "ontology": {
+          "title": "Book ontology",
+          "body": "Choose the genre, kinds, and attributes. Start with a system template, then add only fields this world needs."
+        },
+        "suggestions": {
+          "title": "Extraction suggestions",
+          "body": "Extract from selected chapters, review candidates, and approve them in batches. Follow long-running work in Jobs."
+        },
+        "merge": {
+          "title": "Merge duplicates",
+          "body": "Compare names, kinds, attributes, and evidence before merging. Check links after the operation."
         }
       },
       "translator": {
@@ -1406,14 +1542,63 @@
           "title": "Pop out to its own window",
           "body": "Opens Compose in a separate OS window — useful for a second monitor. Edits you approve there still land in this book's editor."
         }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "Structure template workspace",
+          "body": "This panel contains built-in and private story structures. They help you map chapters onto an ordered sequence of narrative beats."
+        },
+        "list": {
+          "title": "Built-in and personal templates",
+          "body": "Built-ins are read-only. Clone one or select your own template to work on an editable copy."
+        },
+        "create": {
+          "title": "Create your own structure",
+          "body": "Choose “New structure”, name it, and add beats. Your custom templates are reusable across your books."
+        },
+        "edit": {
+          "title": "Edit and apply",
+          "body": "Reorder beats, describe their purpose, save the changes, then use the structure from the Decompose panel."
+        }
       }
     }
   },
   "userGuide": {
+    "open": "Open user guide",
     "intro": "Every tool Writing Studio can open, grouped the same way as the Command Palette.",
     "toursGroup": "Guided tours",
     "toursEditor": "Editor",
-    "toursComposer": "Composer"
+    "toursComposer": "Composer",
+    "toursResearch": "World research",
+    "workflowsTitle": "Workflows and practices",
+    "workflows": {
+      "setup": {
+        "title": "Prepare a book",
+        "body": "Create the structure first, then import chapters and verify that the tree loads cleanly.",
+        "steps": "Book Import → Editor → Check integrity in Glossary. Auto-repair reported issues, then run the check again."
+      },
+      "lore": {
+        "title": "Research the world",
+        "body": "The glossary stores world facts; the knowledge base connects them to evidence and events.",
+        "steps": "Ontology defines kinds and attributes → Extract from selected chapters → Entities and Evidence verify findings → Graph and Timeline reveal connections."
+      },
+      "factChecking": {
+        "title": "Check facts and canon",
+        "body": "Never accept an AI finding without its source: open the passage first, then accept or reject the proposal.",
+        "steps": "Evidence → jump to chapter → Triage the uncertain queue → Gaps for missing descriptions. Re-run integrity checks after edits."
+      },
+      "jobs": {
+        "title": "Long-running work and recovery",
+        "body": "Extraction, translation, and enrichment run as jobs, so closing the panel does not lose progress.",
+        "steps": "Open Jobs to watch batch/window progress and cost. On failure use Resume from checkpoint; when parameters change use Restart."
+      },
+      "translation": {
+        "title": "Translate without losing canon",
+        "body": "Stabilize the glossary before translating so names, terms, and relationships remain consistent.",
+        "steps": "Translation shows coverage and versions → Enrichment fills lore gaps → before publishing, review chapters, glossary, and the activity log."
+      }
+    },
+    "startPanelTour": "Start panel tour"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1660,22 @@
     "composerPopout": {
       "label": "Popout Window",
       "desc": "Pop Compose out into its own OS window for a second monitor."
+    },
+    "worldResearch": {
+      "label": "World research",
+      "desc": "From book setup to entities, timeline, and relationship graph — a repeatable lore research workflow."
+    },
+    "factChecking": {
+      "label": "Fact checking",
+      "desc": "Evidence, triage, gaps, and unknown entities: verify hypotheses against the source text."
+    },
+    "glossaryWorkflow": {
+      "label": "Glossary workflow",
+      "desc": "Ontology, extraction, suggestions, and safe duplicate merging."
+    },
+    "structureTemplates": {
+      "label": "Structure templates",
+      "desc": "Create and tune story structures for decomposing chapters."
     }
   },
   "planHub": {
@@ -1513,7 +1714,14 @@
       "viewNarrative": "Narrative",
       "viewTimeline": "Timeline",
       "viewWorldmap": "World map",
-      "viewSoon": "Coming in a later phase"
+      "viewSoon": "Coming in a later phase",
+      "addArc": "+ Arc",
+      "addArcHint": "Add a top-level arc",
+      "addArcNoGrant": "You need edit access to add arcs",
+      "addSubArc": "+ Sub-arc",
+      "addSubArcHint": "Add a sub-arc under the selected arc",
+      "addSubArcHint2": "Select an arc to nest a sub-arc under it",
+      "addingArc": "+ Arc…"
     },
     "mode": {
       "simple": "Simple",
@@ -1541,6 +1749,12 @@
       "rename": "Rename",
       "delete": "Delete chapter",
       "aiDraft": "Or let the AI draft one →",
+      "importPlan": "Import plan from CSV",
+      "importingPlan": "Importing plan...",
+      "aiPlan": "Create a plan with AI",
+      "csvEmpty": "The CSV file has no plan rows.",
+      "csvNoMatches": "No CSV rows matched this book. Use chapter_id or sort_order.",
+      "csvFailed": "Plan import failed.",
       "legend": {
         "authored": "you wrote it",
         "ai": "AI idea"
@@ -1586,7 +1800,6 @@
     "mineEmpty": "None yet — clone a built-in above, or “New structure”.",
     "loading": "Loading…",
     "pickHint": "Pick a structure to view its beats — or create a new one.",
-    "beats": "beats",
     "builtinNote": "This is a built-in structure. Clone it to customise — you edit your copy, the original stays intact for everyone.",
     "cloneBuiltin": "Clone to my structures",
     "duplicate": "Duplicate",
@@ -1636,7 +1849,15 @@
       "builtin": "built-in",
       "mine": "mine",
       "archived": "archived"
-    }
+    },
+    "help": "Structure templates help",
+    "startTour": "Start structure templates tour",
+    "useInDecompose": "Use in Decompose →",
+    "beats_one": "beat",
+    "beats_other": "beats",
+    "kindPlaceholder": "generic",
+    "beats": "beats",
+    "nameRequired": "Name required"
   },
   "search": {
     "modeLabel": "Search mode",
@@ -1664,5 +1885,47 @@
     "firstStructureTitle": "Act One",
     "everything": "Or set up this book completely",
     "everythingBusy": "Setting up…"
+  },
+  "checkpoints": {
+    "blocked_dirty": "Save your edits first — restoring would overwrite them",
+    "confirm_desc": "The current draft is snapshotted first, so this is reversible from the revision history.",
+    "confirm_title": "Restore to before this AI edit?",
+    "dirty_warning": "Save your current edits before restoring a checkpoint.",
+    "header": "AI edit checkpoints",
+    "insert": "Inserted",
+    "no_restore": "No earlier version to restore to",
+    "replace": "Rewrote",
+    "restore": "Restore",
+    "restore_failed": "Could not restore this checkpoint.",
+    "restored": "Restored to before the AI edit"
+  },
+  "common": {
+    "close": "Close"
+  },
+  "compose": {
+    "startDrafting": "Start drafting →",
+    "startDraftingTitle": "Open the drafting workspace to write chapters from your plan"
+  },
+  "errorBlocks": {
+    "dismiss": "Leave it",
+    "drifted": "text changed",
+    "remove": "Remove mark",
+    "removed": "Mark removed.",
+    "reopen": "Reopen",
+    "resolve": "Fixed",
+    "title": "Marked problems",
+    "undo": "Undo",
+    "undoFailed": "Could not restore the mark."
+  },
+  "revision": {
+    "blocked_dirty": "You have unsaved changes. Save or discard them before restoring a revision.",
+    "confirm_desc": "The current draft will be replaced with this revision. This cannot be undone.",
+    "confirm_title": "Restore this revision?",
+    "current": "Current",
+    "empty": "No revisions yet.",
+    "header": "Revision history",
+    "load_more": "Load more",
+    "loading_more": "Loading…",
+    "restore": "Restore"
   }
 }

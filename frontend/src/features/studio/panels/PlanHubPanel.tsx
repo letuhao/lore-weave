@@ -30,6 +30,7 @@ import { booksApi } from '@/features/books/api';
 import { useWorkResolution } from '@/features/composition/hooks/useWork';
 import { useGlossaryRoster } from '@/features/composition/hooks/useGlossaryRoster';
 import { DecompileArcsAction } from '@/features/composition/motif/components/DecompileArcsAction';
+import { importBookPlan } from '@/features/plan-hub/api';
 import { usePlanHub } from '@/features/plan-hub/hooks/usePlanHub';
 import { usePlanOrigin } from '@/features/plan-hub/hooks/usePlanOrigin';
 import { usePlanChildCreate } from '@/features/plan-hub/hooks/usePlanChildCreate';
@@ -81,6 +82,34 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
   const motifRoster = useGlossaryRoster(bookId || undefined, accessToken ?? null).data ?? [];
 
   const simpleChapters = useSimpleChapters(bookId, accessToken, mode.simple);
+  const [importingPlan, setImportingPlan] = useState(false);
+  const importPlanCsv = useCallback(async (file: File) => {
+    if (!accessToken || !projectId || importingPlan) return;
+    setImportingPlan(true);
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) throw new Error(t('planHub.simple.csvEmpty', 'The CSV file has no plan rows.'));
+      const parse = (line: string) => line.split(',').map((v) => v.trim().replace(/^\"|\"$/g, ''));
+      const headers = parse(lines[0]).map((h) => h.toLowerCase());
+      const index = (names: string[]) => names.map((n) => headers.indexOf(n)).find((i) => i >= 0) ?? -1;
+      const titleAt = index(['title', 'chapter', 'name']);
+      const idAt = index(['chapter_id', 'chapterid', 'id']);
+      const orderAt = index(['sort_order', 'order', 'number']);
+      const synopsisAt = index(['synopsis', 'summary', 'description']);
+      const rows = lines.slice(1).map(parse).map((cols) => {
+        const order = orderAt >= 0 ? Number(cols[orderAt]) : undefined;
+        const chapter = idAt >= 0 ? simpleChapters.chapters.find((c) => c.chapter_id === cols[idAt]) : (order ? simpleChapters.chapters.find((c) => c.sort_order === order) : undefined);
+        return chapter ? { chapter_id: chapter.chapter_id, title: titleAt >= 0 ? cols[titleAt] || chapter.title : chapter.title, synopsis: synopsisAt >= 0 ? cols[synopsisAt] || '' : '', story_order: chapter.sort_order } : null;
+      }).filter((row): row is { chapter_id: string; title: string; synopsis: string; story_order: number } => !!row);
+      if (!rows.length) throw new Error(t('planHub.simple.csvNoMatches', 'No CSV rows matched the chapters in this book. Use chapter_id or sort_order.'));
+      await importBookPlan(bookId, rows, accessToken);
+      await qc.invalidateQueries({ queryKey: ['plan-hub'] });
+      notifyManuscriptChanged();
+    } catch (e) {
+      window.alert(e instanceof Error ? e.message : t('planHub.simple.csvFailed', 'Plan import failed.'));
+    } finally { setImportingPlan(false); }
+  }, [accessToken, bookId, importingPlan, projectId, simpleChapters.chapters, qc, t, notifyManuscriptChanged]);
   // The "Write a new chapter" door: create a book chapter, then open it in the editor. This is the
   // content-first entry the pantser + newcomer both said was missing — no arc choice required.
   const chapterDoor = useChapterDoor(bookId);
@@ -244,6 +273,9 @@ export function PlanHubPanel(props: IDockviewPanelProps) {
           mutating={renameChapter.isPending || deleteChapter.isPending}
           onAiDraft={() => openPanel('planner', { focus: true })}
           onGoAdvanced={() => mode.setSimple(false)}
+          onImportPlan={accessToken && projectId ? importPlanCsv : null}
+          importingPlan={importingPlan}
+          onAiPlan={() => openPanel('decompose', { focus: true })}
         />
         {/* S-10 O6c — "Group my chapters into arcs" (the arc decompiler, agent-only until now). Offered
             in Simple mode where the writer is looking at flat chapters and an arc layer would help. */}

@@ -55,10 +55,15 @@ describe('CompositionSettingsView (FE work settings)', () => {
     }));
   });
 
-  it('changing the default model patches default_model_ref', () => {
+  it('changing the default model writes the model_roles MAP, not the legacy scalar', () => {
+    // The map is the form the backend declares it prefers, and it had ZERO writers repo-wide
+    // until 2026-08-03 — so the branch that reads it was dead in production. It also carries
+    // the whole six-role vocabulary, where the two scalars can only ever express two.
     render(<CompositionSettingsView {...base} settings={{}} />);
     fireEvent.change(screen.getByTestId('composition-settings-default-model'), { target: { value: 'm1' } });
-    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({ patch: { default_model_ref: 'm1' } }));
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: { model_roles: { chat: { model_ref: 'm1', model_source: 'user_model' } } },
+    }));
   });
 
   it('changing assembly mode patches assembly_mode', () => {
@@ -78,5 +83,105 @@ describe('CompositionSettingsView (FE work settings)', () => {
     mockSet.isError = true;
     render(<CompositionSettingsView {...base} settings={{}} />);
     expect(screen.getByTestId('composition-settings-error')).toBeTruthy();
+  });
+});
+
+// ── S6: the critic affordance ────────────────────────────────────────────────────────────
+//
+// Until this row existed, `critic_model_ref` appeared in `frontend/src` in __tests__ FILES
+// ONLY — fixtures handed components a value the product had no way to produce, so the suite
+// was green on a configuration no user could reach. These tests drive the real control.
+describe('CompositionSettingsView — critic model (S6)', () => {
+  const critic = () => screen.getByTestId('composition-settings-critic-model') as HTMLSelectElement;
+
+  it('reflects a persisted critic model', () => {
+    render(<CompositionSettingsView {...base} settings={{ critic_model_ref: 'm2' }} />);
+    expect(critic().value).toBe('m2');
+  });
+
+  it('defaults to "no critic" when nothing is set — and that is the state that ships', () => {
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    expect(critic().value).toBe('');
+  });
+
+  it('picking a critic writes BOTH the ref and its source, in the map', () => {
+    // The server reads a ref without a source as INCOMPLETE, not as configured, so writing
+    // only half would leave the blocking tier off while the UI showed a chosen model. That is
+    // still true in the map form — `role_ref` returns the RAW pair precisely so a half-written
+    // entry reaches the policy as INCOMPLETE rather than being normalised into CONFIGURED.
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    fireEvent.change(critic(), { target: { value: 'm1' } });
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: { model_roles: { critic: { model_ref: 'm1', model_source: 'user_model' } } },
+    }));
+  });
+
+  it('a role written into the map leaves the OTHER roles alone', () => {
+    // The patch merges into `settings`, so writing `critic` must not drop a `chat` entry the
+    // author set earlier — the map is one key holding N roles, and a whole-key overwrite would
+    // silently clear the others.
+    render(
+      <CompositionSettingsView
+        {...base}
+        settings={{ model_roles: { chat: { model_ref: 'm2', model_source: 'user_model' } } }}
+      />,
+    );
+    fireEvent.change(critic(), { target: { value: 'm1' } });
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: {
+        model_roles: {
+          chat: { model_ref: 'm2', model_source: 'user_model' },
+          critic: { model_ref: 'm1', model_source: 'user_model' },
+        },
+      },
+    }));
+  });
+
+  it('renders a model stored in the MAP, not only one in the legacy scalar', () => {
+    // Without this the writer could switch forms and the control would render empty — the
+    // setting would save and then appear to revert.
+    render(
+      <CompositionSettingsView
+        {...base}
+        settings={{ model_roles: { critic: { model_ref: 'm2', model_source: 'user_model' } } }}
+      />,
+    );
+    expect((critic() as HTMLSelectElement).value).toBe('m2');
+  });
+
+  it('clearing the critic removes BOTH FORMS — the map entry and the legacy pair', () => {
+    // The reader falls back to the scalar, so dropping only the map entry would make the
+    // setting appear to un-clear itself on the next read. Worse than never clearable.
+    render(
+      <CompositionSettingsView
+        {...base}
+        settings={{
+          critic_model_ref: 'm1',
+          critic_model_source: 'user_model',
+          model_roles: { critic: { model_ref: 'm1', model_source: 'user_model' } },
+        }}
+      />,
+    );
+    fireEvent.change(critic(), { target: { value: '' } });
+    expect(mockSet.mutate).toHaveBeenCalledWith(expect.objectContaining({
+      patch: { model_roles: {}, critic_model_ref: null, critic_model_source: null },
+    }));
+  });
+
+  it('warns when the critic IS the drafter — the state the server refuses', () => {
+    render(<CompositionSettingsView {...base} settings={{ default_model_ref: 'm1', critic_model_ref: 'm1' }} />);
+    expect(screen.getByTestId('composition-settings-critic-same-as-drafter')).toBeInTheDocument();
+  });
+
+  it('does NOT warn when the two models differ — the control', () => {
+    // Without this, the assertion above would pass just as well for a banner that is always
+    // rendered, which is the check-that-cannot-fail shape this run keeps finding.
+    render(<CompositionSettingsView {...base} settings={{ default_model_ref: 'm1', critic_model_ref: 'm2' }} />);
+    expect(screen.queryByTestId('composition-settings-critic-same-as-drafter')).toBeNull();
+  });
+
+  it('does NOT warn when both are unset — "empty equals empty" is not self-judging', () => {
+    render(<CompositionSettingsView {...base} settings={{}} />);
+    expect(screen.queryByTestId('composition-settings-critic-same-as-drafter')).toBeNull();
   });
 });

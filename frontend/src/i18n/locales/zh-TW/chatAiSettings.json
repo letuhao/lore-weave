@@ -1,0 +1,96 @@
+{
+  "title": "聊天與 AI",
+  "description": "將聊天與寫作工作室的預設值整合於此。每一列皆顯示其生效值與來源；對話階段與工作室工具會繼承這些預設值，且可能覆寫它們。",
+  "models": {
+    "title": "模型",
+    "resolved": "目前已解析",
+    "chat": "聊天與草稿",
+    "composer": "散文編寫",
+    "planner": "規劃器",
+    "embedding": "嵌入",
+    "rerank": "重排序"
+  },
+  "behavior": {
+    "title": "行為",
+    "description": "這些設定先前為靜默套用。現在已改為可見且可編輯；空白代表系統預設值。",
+    "reasoning": {
+      "label": "推理強度",
+      "off": "關閉",
+      "low": "低",
+      "medium": "中",
+      "high": "高"
+    },
+    "permission": {
+      "label": "工具權限",
+      "ask": "詢問",
+      "plan": "規劃",
+      "write": "寫入",
+      "hint": "助手在不詢問的情況下可以執行的程度。預設為「寫入」。"
+    },
+    "temperature": {
+      "label": "溫度",
+      "placeholder": "供應商預設值"
+    },
+    "systemPrompt": {
+      "label": "系統提示詞",
+      "placeholder": "預設角色指令（空白 = 無）"
+    }
+  },
+  "grounding": {
+    "title": "事實依據與記憶",
+    "label": "根據我的故事內容進行回答",
+    "description": "在每個回答中納入既定的實體、事實與原稿段落。此功能預設開啟，可隨時關閉。",
+    "offWarning": "事實依據功能已關閉 — 助手無法存取您的故事設定集，可能會虛構世界觀。請開啟此功能以獲得準確的回答。"
+  },
+  "context": {
+    "title": "上下文管理",
+    "description": "助手如何管理超長對話的記憶額度。大多數使用者建議保持「自動」設定。",
+    "label": "長篇創作上下文模式",
+    "auto": "自動",
+    "on": "始終開啟",
+    "off": "關閉",
+    "hint": "「自動」僅在專案需要時才啟用長篇創作層級。「關閉」則維持最精簡的處理方式。"
+  },
+  "voice": {
+    "title": "語音",
+    "description": "用於對話的語音輸入與輸出。這些設定將儲存至您的帳戶，並套用於語音訊息。",
+    "ttsModel": "語音輸出模型 (TTS)",
+    "sttModel": "語音輸入模型 (STT)",
+    "voice": "語音",
+    "placeholder": "例如：af_heart",
+    "hint": "語音與其模型相關聯 — 請選擇您的 TTS 模型所支援的語音。"
+  },
+  "tiers": {
+    "session": {
+      "label": "此對話",
+      "title": "設定於此對話 — 將覆蓋您的帳戶與書籍預設值。"
+    },
+    "book": {
+      "label": "此書籍",
+      "title": "繼承自此書籍的設定。"
+    },
+    "account": {
+      "label": "您的預設值",
+      "title": "繼承自您的帳戶預設值。"
+    },
+    "system": {
+      "label": "預設",
+      "title": "系統預設值。"
+    },
+    "unavailable": {
+      "label": "無法使用",
+      "title": "無法連線至所屬層級。"
+    },
+    "no_model_configured": {
+      "label": "未設定",
+      "title": "未設定即時模型。"
+    }
+  },
+  "clear": {
+    "default": "預設",
+    "on": "開啟",
+    "off": "關閉",
+    "action": "清除",
+    "inherit": "繼承"
+  }
+}

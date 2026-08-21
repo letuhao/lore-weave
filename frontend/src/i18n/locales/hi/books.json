@@ -21,7 +21,10 @@
     "book_description_placeholder": "यह पुस्तक किस बारे में है?",
     "cover": "कवर इमेज",
     "cover_hint": "PNG, JPG अधिकतम 5MB",
-    "submit": "पुस्तक बनाएँ"
+    "submit": "पुस्तक बनाएँ",
+    "import_file": "पुस्तक फ़ाइल आयात करें",
+    "import_file_hint": "FB2 या EPUB फ़ाइल चुनें। उपयुक्त आयात प्रक्रिया खुल जाएगी।",
+    "import_metadata_hint": "स्रोत मेटाडेटा पुस्तक का शीर्षक और विवरण निर्धारित करेगा।"
   },
   "empty": {
     "title": "अभी तक कोई पुस्तक नहीं",
@@ -151,7 +154,8 @@
       "title": "अध्याय को ट्रैश में भेजें?",
       "description": "\"{{title}}\" को ट्रैश में भेज दिया जाएगा।",
       "confirm": "ट्रैश में भेजें"
-    }
+    },
+    "importEpub": "Import EPUB"
   },
   "glossary": {
     "header": "शब्दकोश और लोककथा (Lore)",
@@ -255,7 +259,39 @@
       "title": "इकाई हटाएं?",
       "description": "\"{{title}}\" को रीसायकल बिन में ले जाया जाएगा।",
       "confirm": "हटाएं"
-    }
+    },
+    "integrity": {
+      "button": "जाँचें",
+      "title": "कथा की अखंडता की जाँच करें",
+      "description": "इस पुस्तक में ऑन्टोलॉजी, संस्थाओं, गुणों, कड़ियों और अनुवादों के लिए केवल-पढ़ने योग्य (read-only) जाँच।",
+      "run": "जाँच चलाएँ",
+      "runAgain": "पुनः चलाएँ",
+      "checking": "पुस्तक की अखंडता की जाँच की जा रही है…",
+      "close": "बंद करें",
+      "unavailable": "जाँच उपलब्ध नहीं है",
+      "issues": "{{count}} समस्या(एँ)",
+      "status": {
+        "ok": "स्वस्थ",
+        "warning": "ध्यान देने की आवश्यकता है",
+        "error": "अखंडता त्रुटियाँ"
+      },
+      "repair": "स्वचालित रूप से ठीक करें",
+      "repairing": "अखंडता ठीक की जा रही है&",
+      "repaired": "स्वचालित मरम्मत पूरी हुई: {{count}} जाँचें ठीक की गईं।",
+      "checks": {
+        "active_genres": "सक्रिय शैलियाँ (genres) इस पुस्तक की होनी चाहिए।",
+        "kind_genres": "Kind-to-genre लिंक इस पुस्तक की शैलियों की ओर संकेत करने चाहिए।",
+        "attributes": "पुस्तक के गुण (attributes) एक मौजूदा पुस्तक kind और शैली की ओर संकेत करने चाहिए।",
+        "entity_kinds": "Entities को इस पुस्तक से संबंधित एक kind की ओर संकेत करना चाहिए।",
+        "entity_names": "सक्रिय entities में नाम या शब्द (term) गुण होना चाहिए।",
+        "entity_attributes": "Entity attribute मानों को इस पुस्तक और kind के attribute definition का उपयोग करना चाहिए।",
+        "chapter_links": "अध्याय (Chapter) लिंक इस पुस्तक की सक्रिय entities की ओर संकेत करने चाहिए।",
+        "translations": "अनुवाद एक मौजूदा attribute मान की ओर संकेत करने चाहिए।",
+        "kind_facets": "Entity kind facets को इस पुस्तक के kinds की ओर संकेत करना चाहिए।"
+      }
+    },
+    "batch_translate": "मैन्युअल अनुवाद",
+    "batch_translate_hint": "कई संस्थाओं के लिए लक्ष्य नाम हाथ से टाइप करें (ड्राफ्ट; कभी भी सत्यापित डेटा को ओवरराइट न करें)"
   },
   "sharing": {
     "title": "दृश्यता",
@@ -400,7 +436,10 @@
     "page_indicator": "पृष्ठ {{page}} / {{pages}}",
     "prev": "पिछला",
     "next": "अगला",
-    "page": "पृष्ठ"
+    "page": "पृष्ठ",
+    "reasoning_enable": "मॉडल तर्क (सोच) सक्षम करें",
+    "reasoning_hint": "डिफ़ॉल्ट रूप से बंद — स्थानीय मॉडल पर छिपी हुई सोच आउटपुट बजट को समाप्त कर सकती है। रीजनिंग मॉडल पर कठिन अंशों के लिए सक्षम करें।",
+    "retranslate_selected": "चयनित का पुन: अनुवाद करें ({{count}})"
   },
   "kind_editor": {
     "modified": "संशोधित",
@@ -529,5 +568,114 @@
       "confirm": "रीसेट करें"
     },
     "ai": "AI"
+  },
+  "help": {
+    "open": "सहायता खोलें",
+    "tour": "निर्देशित टूर",
+    "title": "पुस्तकों के साथ काम करना",
+    "description": "पुस्तकों के वर्कस्पेस के लिए एक त्वरित मार्गदर्शिका।",
+    "intro": "यहाँ अपनी पुस्तकों का प्रबंधन करें, फिर शोध करने, संपादन करने और उनकी दुनिया बनाने के लिए एक पुस्तक खोलें।",
+    "items": [
+      "शुरू करने के लिए एक पुस्तक बनाएँ या पांडुलिपि इम्पोर्ट करें।",
+      "अध्यायों, शब्दावली और ऑन्टोलॉजी को संपादित करने के लिए एक पुस्तक खोलें।",
+      "किसी पुस्तक को जल्दी से खोजने के लिए खोज और फ़िल्टर का उपयोग करें।"
+    ],
+    "startTour": "टूर शुरू करें",
+    "back": "पीछे",
+    "next": "अगला",
+    "done": "हो गया",
+    "steps": [
+      {
+        "title": "एक पुस्तक खोजें",
+        "description": "खोज और फ़िल्टर आपको जल्दी से सही पुस्तक खोलने में मदद करते हैं।",
+        "body": "सूची को सीमित करने के लिए खोज फ़ील्ड और भाषा फ़िल्टर का उपयोग करें।"
+      },
+      {
+        "title": "बनाएं या आयात करें",
+        "description": "एक नई पुस्तक या मौजूदा पांडुलिपि के साथ शुरुआत करें।",
+        "body": "नई पुस्तक चुनें, उसका विवरण भरें, या आयात करने के लिए एक फ़ाइल चुनें।"
+      },
+      {
+        "title": "वर्कस्पेस खोलें",
+        "description": "पुस्तक के सभी उपकरण उसके वर्कस्पेस में एकत्र किए गए हैं।",
+        "body": "एक पुस्तक के भीतर आप अध्याय, शब्दावली, ऑन्टोलॉजी, अनुवाद और बहुत कुछ पर काम कर सकते हैं।"
+      }
+    ]
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
+    }
+  },
+  "lore": {
+    "heading": "अब तक का कथानक",
+    "noPosition": "यह देखने के लिए कि उस बिंदु तक क्या खुलासा हुआ है, एक अध्याय खोलें।",
+    "nothingYet": "इसके बारे में अभी तक कुछ भी प्रकट नहीं हुआ है — पढ़ते रहें।",
+    "search": "कहानी खोजें...",
+    "subtitle": "कहानी में अब तक जो कुछ भी प्रकट हुआ है — बाद के अध्यायों से कोई स्पॉइलर नहीं।"
   }
 }

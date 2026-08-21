@@ -170,8 +170,22 @@ def ctx(monkeypatch):
     app.dependency_overrides[get_knowledge_client_dep] = lambda: object()
     async def _resolve_context_length(model_source, model_ref):
         return None  # unresolved in tests — the flat default budget applies
+
+    async def _resolve_model_identity(model_source, model_ref):
+        """Unresolved, DELIBERATELY — these tests exercise the ref-level policy.
+
+        Returning `None` puts every resolution on the degrade path
+        (`identity_verified=False`), which is the state a router test should sit in: the
+        distinctness decisions asserted here are the ones that must hold with provider-registry
+        unreachable. The identity comparisons themselves are unit-tested against the policy in
+        `test_critic_policy.py`, where the resolver is a real (stubbed) function rather than an
+        outage.
+        """
+        return None
+
     app.dependency_overrides[get_llm_client_dep] = lambda: SimpleNamespace(
-        sdk=object(), resolve_context_length=_resolve_context_length)
+        sdk=object(), resolve_context_length=_resolve_context_length,
+        resolve_model_identity=_resolve_model_identity)
     with TestClient(app) as c:
         yield c, works, outline, canon, jobs, judge_stub, captured
     app.dependency_overrides.clear()
@@ -1064,3 +1078,53 @@ def test_list_job_corrections(ctx):
     assert r.status_code == 200
     body = r.json()["corrections"]
     assert len(body) == 1 and body[0]["action"] == "edit"
+
+
+# ── S6: the two skip states must be DISTINGUISHABLE at the route ──────────────────────────
+
+def test_critique_skip_NAMES_which_state_it_is(ctx):
+    """The endpoint returned one sentence for two different problems.
+
+    The tests above assert `"skipped" in warning`, which is true of BOTH — so the conflation
+    was invisible to them. An author told "no distinct critic model configured" when they HAD
+    configured one has no way to discover that the fix is 'pick a different model'.
+    """
+    c, works, _, _, _, judge, _ = ctx
+
+    works.work = _work({})
+    none_r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+                    json={"target_revision_id": str(uuid.uuid4())}).json()
+
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(DRAFTER)})
+    same_r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+                    json={"target_revision_id": str(uuid.uuid4())}).json()
+
+    judge.assert_not_called()
+    assert none_r["critic_status"] == "not_configured"
+    assert same_r["critic_status"] == "same_as_drafter"
+    assert none_r["warning"] != same_r["warning"], "both states still share one sentence"
+    # …and each says what to DO, not merely what happened.
+    assert "Settings" in none_r["warning"] and "Settings" in same_r["warning"]
+
+
+def test_critique_reports_an_INCOMPLETE_critic_setting_as_its_own_state(ctx):
+    """A ref with no source is a half-written setting, not an absent one — a bug report
+    rather than 'you never turned this on'."""
+    c, works, _, _, _, judge, _ = ctx
+    works.work = _work({"critic_model_ref": str(CRITIC)})   # source missing
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+               json={"target_revision_id": str(uuid.uuid4())}).json()
+    judge.assert_not_called()
+    assert r["critic_status"] == "incomplete"
+
+
+def test_a_configured_critique_does_NOT_carry_a_skip_status(ctx):
+    """The CONTROL. Without it every assertion above would also pass for a route that stamped
+    a skip status on every response, including the ones that ran."""
+    c, works, _, canon, _, judge, _ = ctx
+    works.work = _work({"critic_model_source": "user_model", "critic_model_ref": str(CRITIC)})
+    canon.rules = []
+    r = c.post(f"/v1/composition/jobs/{JOB}/critique",
+               json={"target_revision_id": str(uuid.uuid4())}).json()
+    assert r.get("critic_status") is None and r.get("warning") is None
+    judge.assert_called()

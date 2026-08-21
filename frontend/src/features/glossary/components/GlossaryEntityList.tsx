@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, Filter, Trash2, Layers, Sparkles, Languages, HelpCircle, Lightbulb, GitMerge, CheckCircle2, CircleSlash, XCircle, PencilLine, MapPin } from 'lucide-react';
@@ -21,6 +21,7 @@ import { EntityEditorModal } from '@/components/entity-editor';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 import { GlossaryTranslateWizard } from '@/features/glossary-translate/GlossaryTranslateWizard';
 import { BatchTranslateDialog } from './BatchTranslateDialog';
+import { BookIntegrityDialog } from './BookIntegrityDialog';
 
 /** The other 4 glossary capabilities, not yet each their own dock panel (13_glossary_panels.md
  * Phase B — tracked, not a silent gap). The caller (GlossaryTab page / GlossaryPanel dock panel)
@@ -58,7 +59,10 @@ function KindBadge({ kind, faded }: { kind: GlossaryEntitySummary['kind']; faded
  *  and what did not win is kept rather than erased. The faded badges are those; the outlined
  *  one is a kind currently leading the vote WITHOUT enough of a lead to take over, which is a
  *  genuine "we are not sure" and reads as one. */
-function KindFacets({ entity }: { entity: GlossaryEntitySummary }) {
+function KindFacets({ entity, resolveKind }: {
+  entity: GlossaryEntitySummary;
+  resolveKind: (kind: GlossaryEntitySummary['kind']) => GlossaryEntitySummary['kind'];
+}) {
   const labels = entity.kind_labels ?? [];
   const conflict = entity.kind_conflict;
   // A conflict is usually also a label; show it once, as the conflict.
@@ -67,7 +71,7 @@ function KindFacets({ entity }: { entity: GlossaryEntitySummary }) {
   return (
     <>
       {extra.map((l) => (
-        <KindBadge key={l.kind_id} kind={l} faded />
+        <KindBadge key={l.kind_id} kind={resolveKind(l)} faded />
       ))}
       {conflict && (
         <span
@@ -75,8 +79,8 @@ function KindFacets({ entity }: { entity: GlossaryEntitySummary }) {
           style={{ borderColor: conflict.color + '80', color: conflict.color }}
           title={`Extraction currently leans "${conflict.name}" for this entity, but not by enough to change its kind. Both readings are kept.`}
         >
-          <span>{conflict.icon}</span>
-          {conflict.name}?
+          <span>{resolveKind(conflict).icon}</span>
+          {resolveKind(conflict).name}?
         </span>
       )}
     </>
@@ -99,7 +103,24 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
   const { t } = useTranslation('books');
   const { accessToken } = useAuth();
   const queryClient = useQueryClient();
-  const [filters, setFilters] = useState<FilterState>(defaultFilters);
+  const paged = useServerPagedList(10);
+  const [filters, setFilters] = useState<FilterState>(() => {
+    try {
+      const saved = localStorage.getItem('loreweave.glossary.search');
+      if (saved) localStorage.removeItem('loreweave.glossary.search');
+      return saved ? { ...defaultFilters, searchQuery: saved } : defaultFilters;
+    } catch { return defaultFilters; }
+  });
+  useEffect(() => {
+    const onSearch = (event: Event) => {
+      const query = (event as CustomEvent<{ text?: string }>).detail?.text?.trim();
+      if (!query) return;
+      setFilters((current) => ({ ...current, searchQuery: query }));
+      paged.reset();
+    };
+    window.addEventListener('lw-glossary-search', onSearch);
+    return () => window.removeEventListener('lw-glossary-search', onSearch);
+  }, [paged]);
   const [filterOpen, setFilterOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<GlossaryEntitySummary | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -107,6 +128,7 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
   const [extractionOpen, setExtractionOpen] = useState(false);
   const [translateOpen, setTranslateOpen] = useState(false);
   const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
+  const [integrityOpen, setIntegrityOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
@@ -114,7 +136,6 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
   // entities (main characters etc.) surface first instead of sinking by recency.
   const [sort, setSort] = useState<EntitySort>('links');
   const [searchMode, setSearchMode] = useState<'simple' | 'raw'>('simple');
-  const paged = useServerPagedList(10);
   // Debounce the search box so we hit the BE once the user pauses, not per keystroke.
   const debouncedSearch = useDebouncedValue(filters.searchQuery, 300);
 
@@ -212,7 +233,7 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
     enabled: !!accessToken,
     staleTime: 60 * 1000,
   });
-  const mergeCandCount = mergeCandData?.candidates.length ?? 0;
+  const mergeCandCount = mergeCandData?.candidates?.length ?? 0;
 
   const entities = entityData?.items ?? [];
   const total = entityData?.total ?? 0;
@@ -251,6 +272,17 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
     () => kinds.filter((k) => !k.is_hidden).sort((a, b) => a.sort_order - b.sort_order),
     [kinds],
   );
+  // Entity summaries can come from an older glossary read whose kind name is a
+  // raw English/system label. Resolve the display label by the same code used by
+  // the filter, so the filter and every entity row cannot disagree.
+  const kindByCode = useMemo(
+    () => new Map(visibleKinds.map((kind) => [kind.code, kind] as const)),
+    [visibleKinds],
+  );
+  const resolveKind = (kind: GlossaryEntitySummary['kind']): GlossaryEntitySummary['kind'] => {
+    const localized = kindByCode.get(kind.code);
+    return localized ? { ...kind, ...localized } : kind;
+  };
 
   // G6f: creation moved into CreateEntityModal (post-G4 a kind is a book_kind_id, so the
   // tiered form picks a BOOK kind and writes its genre override + attribute values). The
@@ -378,7 +410,8 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
     }
   };
 
-  const activeFilterCount = (filters.kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
+  const kindCodes = Array.isArray(filters.kindCodes) ? filters.kindCodes : [];
+  const activeFilterCount = (kindCodes.length > 0 ? 1 : 0) + (filters.status !== 'all' ? 1 : 0);
 
   if (!displayLangLoaded || (loading && entities.length === 0)) {
     return (
@@ -437,6 +470,14 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
               ))}
             </select>
           </div>
+          <button
+            onClick={() => setIntegrityOpen(true)}
+            data-testid="glossary-integrity-trigger"
+            className="inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors"
+          >
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {t('glossary.integrity.button')}
+          </button>
           <button
             onClick={() => setExtractionOpen(true)}
             data-testid="glossary-extract-trigger"
@@ -514,6 +555,8 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
         </div>
       </div>
 
+      {integrityOpen && <BookIntegrityDialog bookId={bookId} onClose={() => setIntegrityOpen(false)} />}
+
       <EntityListBrowser
         searchValue={filters.searchQuery}
         onSearchChange={(v) => updateFilters({ searchQuery: v })}
@@ -545,12 +588,12 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
               <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">{t('glossary.kind_label')}</span>
               <div className="flex flex-wrap gap-1.5">
                 {visibleKinds.map((k) => {
-                  const active = filters.kindCodes.includes(k.code);
+                  const active = kindCodes.includes(k.code);
                   return (
                     <button
                       key={k.book_kind_id}
                       onClick={() => updateFilters({
-                        kindCodes: active ? filters.kindCodes.filter((c) => c !== k.code) : [...filters.kindCodes, k.code],
+                        kindCodes: active ? kindCodes.filter((c) => c !== k.code) : [...kindCodes, k.code],
                       })}
                       className={cn(
                         'inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium border transition-colors',
@@ -667,8 +710,8 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
                   >
                     {e.display_name || t('glossary.untitled')}
                   </span>
-                  <KindBadge kind={e.kind} />
-                  <KindFacets entity={e} />
+                  <KindBadge kind={resolveKind(e.kind)} />
+                  <KindFacets entity={e} resolveKind={resolveKind} />
                   <span className={cn('rounded-full px-1.5 py-0.5 text-[9px] font-medium', STATUS_COLORS[e.status])}>
                     {t(`glossary.status.${e.status}`)}
                   </span>
@@ -700,7 +743,7 @@ export function GlossaryEntityList({ bookId, bookGenreTags = [], bookOriginalLan
                   {e.chapter_link_count > 0 && <span>{t('glossary.chapter_count', { count: e.chapter_link_count })}</span>}
                   {e.translation_count > 0 && <span>{t('glossary.translation_count', { count: e.translation_count })}</span>}
                   {e.evidence_count > 0 && <span>{t('glossary.evidence_count', { count: e.evidence_count })}</span>}
-                  {e.tags.length > 0 && <span>{e.tags.join(', ')}</span>}
+                  {e.tags?.length > 0 && <span>{e.tags.join(', ')}</span>}
                 </div>
                 {/* Raw-search: show which field matched + a highlighted snippet. */}
                 {searchMode === 'raw' && e.match && (

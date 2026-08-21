@@ -50,6 +50,7 @@ var defaultModelCapabilities = map[string]bool{
 //   - chat (incl. planner) admits undeclared '{}' flags, mirroring
 //     listUserModels — the picker must never offer a model this rejects.
 //   - non-chat capabilities stay strict (canonical flag or legacy _capability).
+//
 // Returns (query, capJSON, validateCap); query params: $1 model, $2 owner,
 // $3 capJSON, $4 validateCap.
 func defaultModelCapQuery(capability string) (query, capJSON, validateCap string) {
@@ -69,6 +70,15 @@ WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
 SELECT 1 FROM user_models
 WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
   AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4 OR capability_flags = '{}'::jsonb)`
+	} else if validateCap == "embedding" {
+		query = `
+SELECT 1 FROM user_models
+WHERE user_model_id=$1 AND owner_user_id=$2 AND is_active=true
+  AND (capability_flags @> $3::jsonb OR capability_flags->>'_capability' = $4
+       OR lower(provider_model_name) LIKE ANY (ARRAY[
+         '%embedding%', '%embed%', '%bge-m3%', '%bge_%', '%e5-%', '%e5_%',
+         '%gte-%', '%gte_%', '%jina-embeddings%'
+       ]))`
 	}
 	return query, capJSON, validateCap
 }
@@ -196,12 +206,42 @@ SELECT d.user_model_id
 FROM user_default_models d
 JOIN user_models um ON um.user_model_id = d.user_model_id AND um.is_active = true
 WHERE d.owner_user_id = $1 AND d.capability = $2`, userID, capability).Scan(&modelID)
-	if err == pgx.ErrNoRows {
-		writeError(w, http.StatusNotFound, "DEFAULT_MODEL_NOT_SET", "no default model for this capability")
+	if err != nil && err != pgx.ErrNoRows {
+		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve default")
 		return
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, "DEFAULT_MODELS_QUERY_FAILED", "failed to resolve default")
+	// Embedding retrieval must keep working when a project references a
+	// user_model UUID that was deleted and re-added. In that case the explicit
+	// default row is absent (or was cascaded with the old model), so choose the
+	// user's preferred active embedding model as a best-effort compatibility
+	// fallback. Explicit capability flags remain preferred by the ordering, but
+	// common local/OpenAI-compatible embedding names are also recognized because
+	// older inventory syncs stored `{}` capability flags.
+	if capability == "embedding" && err == pgx.ErrNoRows {
+		err = s.pool.QueryRow(r.Context(), `
+SELECT user_model_id
+FROM user_models
+WHERE owner_user_id = $1 AND is_active = true
+  AND (
+    capability_flags @> '{"embedding":true}'::jsonb
+    OR capability_flags->>'_capability' IN ('embedding', 'embed')
+    OR lower(provider_model_name) LIKE ANY (ARRAY[
+      '%embedding%', '%embed%', '%bge-m3%', '%bge_%', '%e5-%', '%e5_%',
+      '%gte-%', '%gte_%', '%jina-embeddings%'
+    ])
+  )
+ORDER BY is_favorite DESC,
+         (capability_flags @> '{"embedding":true}'::jsonb) DESC,
+         updated_at DESC, user_model_id
+LIMIT 1`, userID).Scan(&modelID)
+		if err == nil {
+			writeJSON(w, http.StatusOK, map[string]any{
+				"user_model_id": modelID.String(), "model_source": "user_model", "source": "embedding_fallback"})
+			return
+		}
+	}
+	if err == pgx.ErrNoRows {
+		writeError(w, http.StatusNotFound, "DEFAULT_MODEL_NOT_SET", "no default model for this capability")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"user_model_id": modelID.String(), "model_source": "user_model"})

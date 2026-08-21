@@ -130,7 +130,7 @@ func TestParseClientCallOmitsEmptyLanguageAndFilename(t *testing.T) {
 	}
 }
 
-func TestAllowedImportFormatsIncludesMD(t *testing.T) {
+func TestAllowedImportFormatsIncludesStructuredBookFormats(t *testing.T) {
 	t.Parallel()
 	if _, ok := allowedImportFormats[".md"]; !ok {
 		t.Fatal("P1: .md must be in allowedImportFormats")
@@ -144,6 +144,9 @@ func TestAllowedImportFormatsIncludesMD(t *testing.T) {
 	}
 	if allowedImportFormats[".epub"] != "epub" {
 		t.Error(".epub mapping regressed")
+	}
+	if allowedImportFormats[".fb2"] != "fb2" {
+		t.Error(".fb2 must map to fb2")
 	}
 }
 

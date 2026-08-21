@@ -29,7 +29,7 @@ from typing import Any, Awaitable, Callable
 
 from pydantic import BaseModel, Field, computed_field
 
-from loreweave_guard import GuardReport
+from loreweave_guard import CheckStatus, GuardReport
 
 from loreweave_canon_check import (
     CanonCandidateBase,
@@ -40,6 +40,7 @@ from loreweave_canon_check import (
     parse_judge_verdicts,
 )
 from app.llm_budget import max_tokens_for
+from app.engine.finding import Locator, SkipReason
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +79,21 @@ def scene_at_order(scene_sort_order: int | None) -> int | None:
 class CanonViolation(CanonCandidateBase):
     kind: str = "gone_entity_present"
     glossary_entity_id: str | None = None
+
+    @property
+    def locator(self) -> Locator:
+        """The entity, plus the surface form that matched — or NOWHERE.
+
+        `plan_conflicts` returns `unlinked` for every asserted-gone name no index entry
+        matched, and that list is RETURNED rather than logged precisely because an assertion
+        the guard could not place is a hole in coverage. A candidate built for one of those
+        has no entity to point at, and saying so is the same answer `self_heal` gives when it
+        cannot find its quote: `placed=False`, with the quote kept so a human has a handle.
+        """
+        if not self.entity_id:
+            return Locator.nowhere(quote=self.matched or self.name or "",
+                                   why=SkipReason.NOT_LOCATED)
+        return Locator.entity(self.entity_id, matched=self.matched, quote=self.span)
 
 
 def gone_cast_in_draft(
@@ -466,6 +482,49 @@ def canon_envelope(reflect: "ReflectResult") -> dict[str, Any]:
         "name_check_method": reflect.name_check_method,
         # LEGACY scalar, kept verbatim: it is persisted and matched by SQL.
         "status": reflect.status,
+    }
+
+
+def unguarded_envelope(reason: str) -> dict[str, Any]:
+    """The `result.canon` block for a path that runs NO canon check — a DECLARATION.
+
+    Why this exists, and why it is not "just leave the block out"
+    ------------------------------------------------------------
+    The two composition SSE generators hand user-visible prose to an author and mention
+    `canon` zero times. That is a defensible design position on an interactive path — a
+    multi-second judge pass between keystrokes is a different product — but the *silence* is
+    not. A `done` frame with no canon block and a `done` frame from a fully-checked draft are
+    the same bytes to a reader, so "nobody checked this" renders exactly like "checked, clean".
+    Same shape as the Go KG sweep, the Rust zone narration, and every other finding this run.
+
+    So the streams say so. `guard_status` is `not_run`, which the vocabulary added for this
+    case precisely because `not_applicable` renders as NOTHING by design and would have
+    re-created the silence under a new name.
+
+    Every key `canon_envelope` produces is present, with its empty value, so a consumer reads
+    ONE shape whichever path produced it. That parity is asserted by a test rather than trusted
+    — the six-hand-written-copies defect this module's other builder was extracted from began
+    as two dicts that agreed on the day they were written.
+
+    `guard_reason` is the extra key: WHY the guard did not run, in the author's terms. A status
+    with no reason is a badge nobody can act on.
+    """
+    return {
+        "violations": [],
+        "resolved": None,
+        "verdict": None,
+        "iterations": 0,
+        "coverage": {},
+        "checks": {},
+        "guard_status": CheckStatus.NOT_RUN.value,
+        "guard_reason": reason,
+        "cast_liveness": {},
+        "unresolved_refs": [],
+        "unlinked_gone_refs": [],
+        "unanchored_names": [],
+        "name_near_misses": [],
+        "name_check_method": None,
+        "status": None,
     }
 
 

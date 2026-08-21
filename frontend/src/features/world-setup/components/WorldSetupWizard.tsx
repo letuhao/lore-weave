@@ -26,8 +26,10 @@ function stepOf(status: string | undefined): number {
 }
 
 export function WorldSetupWizard({ bookId, token, modelRef, lang = 'vi' }: Props) {
-  const { run, busy, error, start, approvePlan, projectKg, approveEdges, cancel, reset } =
-    useWorldSetup(bookId, token);
+  const {
+    run, busy, error, start, approvePlan, projectKg, approveEdges, cancel, reset,
+    blockedBy, adoptBlocking, cancelBlocking,
+  } = useWorldSetup(bookId, token);
   const [text, setText] = useState('');
   const [dropped, setDropped] = useState<Set<string>>(new Set());
   const [droppedEdges, setDroppedEdges] = useState<Set<string>>(new Set());
@@ -103,10 +105,49 @@ export function WorldSetupWizard({ bookId, token, modelRef, lang = 'vi' }: Props
         </ol>
       </header>
 
-      {error && (
+      {error && !blockedBy && (
         <p data-testid="world-setup-error" role="alert" className="rounded bg-destructive/10 p-2 text-xs text-destructive">
           {error}
         </p>
+      )}
+
+      {/* ACTIVE_RUN — the one error with a concrete way out, so it gets one.
+          The server allows a single in-flight run per book. Until this existed the panel
+          printed the raw code and stopped: no run id, no resume, no cancel. A book whose
+          run had been abandoned at a review checkpoint could not be worked on again from
+          the UI at all — found on a real book, stuck at `edges_ready` for a week. */}
+      {blockedBy && (
+        <div
+          data-testid="world-setup-blocked"
+          role="alert"
+          className="flex flex-col gap-2 rounded bg-amber-500/10 p-2 text-xs text-amber-700 dark:text-amber-300"
+        >
+          <p>
+            Cuốn sách này đã có một lượt thiết lập đang dở, dừng ở bước
+            {' '}<strong>{STEPS[stepOf(blockedBy.status)]}</strong>{' '}
+            (<code>{blockedBy.status}</code>). Mỗi sách chỉ chạy được một lượt.
+          </p>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              data-testid="world-setup-blocked-resume"
+              className="rounded bg-primary px-2 py-1 text-primary-foreground disabled:opacity-50"
+              disabled={busy}
+              onClick={adoptBlocking}
+            >
+              Tiếp tục lượt đó
+            </button>
+            <button
+              type="button"
+              data-testid="world-setup-blocked-cancel"
+              className="rounded border px-2 py-1 disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void cancelBlocking()}
+            >
+              Huỷ để làm lại
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Step 0: describe the world ── */}

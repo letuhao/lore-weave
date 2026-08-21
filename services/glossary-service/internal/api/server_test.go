@@ -160,7 +160,6 @@ func TestRequiredAttrsHaveIsRequired(t *testing.T) {
 // TestGenreTagsAssignment verifies genre tags on a sample of kinds.
 func TestGenreTagsAssignment(t *testing.T) {
 	cases := map[string]string{
-		"character":    "universal",
 		"power_system": "fantasy",
 		"relationship": "romance",
 		"plot_arc":     "drama",
@@ -186,6 +185,45 @@ func TestGenreTagsAssignment(t *testing.T) {
 		}
 		if !hasTag {
 			t.Errorf("kind %s should have genre_tag %q, got %v", kindCode, expectedTag, found.GenreTags)
+		}
+	}
+
+	// Kinds that apply to EVERY story used to carry a single "universal" tag. Genre seeding
+	// replaced that marker with an explicit per-genre enumeration, so universality is now
+	// "carries every genre in the vocabulary" and has to be asserted that way — checking one
+	// representative tag would let a silent narrowing (dropping `mystery` from character)
+	// through. The vocabulary is derived from the seed rather than restated here, so adding a
+	// genre to any kind also makes it required on these three.
+	vocabulary := map[string]bool{}
+	for _, k := range domain.DefaultKinds {
+		for _, tag := range k.GenreTags {
+			vocabulary[tag] = true
+			if tag == "universal" {
+				t.Errorf("kind %s carries the retired \"universal\" tag; genres are enumerated per kind now", k.Code)
+			}
+		}
+	}
+	for _, code := range []string{"character", "location", "event"} {
+		var found *domain.SeedKind
+		for i := range domain.DefaultKinds {
+			if domain.DefaultKinds[i].Code == code {
+				found = &domain.DefaultKinds[i]
+				break
+			}
+		}
+		if found == nil {
+			t.Errorf("kind %s not found", code)
+			continue
+		}
+		has := map[string]bool{}
+		for _, tag := range found.GenreTags {
+			has[tag] = true
+		}
+		for tag := range vocabulary {
+			if !has[tag] {
+				t.Errorf("kind %s applies to every story, so it must carry genre_tag %q; got %v",
+					code, tag, found.GenreTags)
+			}
 		}
 	}
 }

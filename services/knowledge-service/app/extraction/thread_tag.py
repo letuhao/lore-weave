@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 from typing import Any
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -38,12 +39,9 @@ _MAX_EVENTS_PER_CALL = 60
 # Output is one `"<uuid>": "<key>"` row per event (~50 chars ≈ ~20 tokens); a fixed cap
 # truncated a full batch's JSON → that batch degraded to untagged (D-THREAD-TAG-BATCH-TOKENS).
 # Size the budget to the batch so the whole map fits, with headroom for fences/whitespace.
-_BASE_OUTPUT_TOKENS = 256
-_TOKENS_PER_EVENT = 48
-
-
-def _max_tokens_for(batch_len: int) -> int:
-    return _BASE_OUTPUT_TOKENS + _TOKENS_PER_EVENT * batch_len
+# The second copy of motif_tag.py's sizer, now the `thread_tag` row in app/llm_budget.py.
+# Two modules had the same formula and neither knew about the other, which is the argument for
+# a registry rather than for a shared helper.
 
 
 def build_messages(events: list[dict[str, Any]], threads: list[dict[str, Any]]) -> list[dict[str, str]]:
@@ -130,13 +128,14 @@ async def classify_event_threads(
                 user_id=user_id, operation="chat", model_source=model_source,
                 model_ref=model_ref,
                 input={"messages": build_messages(batch, threads),
-                       "temperature": 0.0, "max_tokens": _max_tokens_for(len(batch))},
+                       "temperature": 0.0,
+                       "max_tokens": max_tokens_for("thread_tag", target=len(batch))},
                 job_meta={"extractor": "narrative_thread"},
             )
         except Exception as exc:  # advisory — an LLM outage never fails tagging
             logger.warning("thread-tag classify batch failed: %r", exc)
             continue
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "thread_tag")):
             logger.warning("thread-tag job not completed: %s", getattr(job, "status", "?"))
             continue
         assignments.update(parse_assignments(

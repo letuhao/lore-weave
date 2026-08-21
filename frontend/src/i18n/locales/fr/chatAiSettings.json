@@ -1,0 +1,96 @@
+{
+  "title": "Chat & IA",
+  "description": "Vos paramètres par défaut pour le chat et le Studio d'écriture, au même endroit. Chaque ligne affiche sa valeur effective et sa source ; les sessions et les outils du Studio héritent de ces paramètres par défaut et peuvent les modifier.",
+  "models": {
+    "title": "Modèles",
+    "resolved": "Résolu maintenant",
+    "chat": "Chat & brouillon",
+    "composer": "Compositeur de prose",
+    "planner": "Planificateur",
+    "embedding": "Plongement lexical",
+    "rerank": "Réordonnancement"
+  },
+  "behavior": {
+    "title": "Comportement",
+    "description": "Ces paramètres étaient auparavant appliqués silencieusement. Ils sont désormais visibles et modifiables ; un champ vide correspond à la valeur par défaut du système.",
+    "reasoning": {
+      "label": "Effort de raisonnement",
+      "off": "Désactivé",
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé"
+    },
+    "permission": {
+      "label": "Autorité de l'outil",
+      "ask": "Demander",
+      "plan": "Planifier",
+      "write": "Écrire",
+      "hint": "Niveau d'autonomie de l'assistant sans demander l'autorisation. Par défaut : Écrire."
+    },
+    "temperature": {
+      "label": "Température",
+      "placeholder": "Par défaut par le fournisseur"
+    },
+    "systemPrompt": {
+      "label": "Prompt système",
+      "placeholder": "Instructions de persona par défaut (vide = aucune)"
+    }
+  },
+  "grounding": {
+    "title": "Ancrage et mémoire",
+    "label": "Ancrer les réponses dans mon histoire",
+    "description": "Inclure les entités canoniques, les faits et les passages du manuscrit dans chaque réponse. Cette option est activée par défaut et peut être désactivée.",
+    "offWarning": "L'ancrage est désactivé — l'assistant ne peut pas accéder à votre bible de l'histoire et peut inventer du lore. Activez-le pour obtenir des réponses précises."
+  },
+  "context": {
+    "title": "Gestion du contexte",
+    "description": "La manière dont l'assistant gère le budget de mémoire pour les conversations très longues. La plupart des utilisateurs devraient laisser ce paramètre sur Auto.",
+    "label": "Mode de contexte pour travaux longs",
+    "auto": "Auto",
+    "on": "Toujours activé",
+    "off": "Désactivé",
+    "hint": "Le mode Auto active les niveaux de travail longs uniquement lorsque le projet en a besoin. Le mode Désactivé conserve le chemin le plus simple."
+  },
+  "voice": {
+    "title": "Voix",
+    "description": "Entrée et sortie vocales pour le chat. Ces paramètres sont enregistrés sur votre compte et s'appliquent aux messages vocaux.",
+    "ttsModel": "Modèle de synthèse vocale (TTS)",
+    "sttModel": "Modèle de reconnaissance vocale (STT)",
+    "voice": "Voix",
+    "placeholder": "ex. af_heart",
+    "hint": "Une voix est spécifique à son modèle — choisissez-en une prise en charge par votre modèle TTS."
+  },
+  "tiers": {
+    "session": {
+      "label": "ce chat",
+      "title": "Configuré pour ce chat — remplace vos paramètres par défaut du compte et du livre."
+    },
+    "book": {
+      "label": "ce livre",
+      "title": "Hérité des paramètres de ce livre."
+    },
+    "account": {
+      "label": "votre défaut",
+      "title": "Hérité de vos paramètres par défaut."
+    },
+    "system": {
+      "label": "par défaut",
+      "title": "Le paramètre par défaut du système."
+    },
+    "unavailable": {
+      "label": "indisponible",
+      "title": "Le forfait propriétaire est inaccessible."
+    },
+    "no_model_configured": {
+      "label": "non défini",
+      "title": "Aucun modèle en direct n'est configuré."
+    }
+  },
+  "clear": {
+    "default": "par défaut",
+    "on": "activé",
+    "off": "désactivé",
+    "action": "effacer",
+    "inherit": "hériter"
+  }
+}

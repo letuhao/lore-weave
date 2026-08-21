@@ -47,6 +47,7 @@ fn script(reality: Uuid, i: usize) -> Vec<EventEnvelope> {
         recorded_at: format!("2026-01-01T00:00:{:02}Z", ver),
         payload,
         metadata: None,
+        ruleset_digest: None,
     };
     vec![
         mk(

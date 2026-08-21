@@ -93,7 +93,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "character", Name: "Character",
 		Description: "An individual PERSON, god, immortal or named being who acts, speaks, or is addressed. NOT a group of people (that is organization), and NOT a kind of being (that is species).", Icon: "👤", Color: "#6366f1",
-		SortOrder: 1, GenreTags: []string{"universal"},
+		SortOrder: 1, GenreTags: []string{"fantasy", "xianxia", "romance", "drama", "historical", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The character's canonical name, exactly as written in the source.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Every other name, title or epithet the text uses for this same person.", FieldType: "tags", SortOrder: 2},
@@ -113,7 +113,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "location", Name: "Location",
 		Description: "A PLACE one can travel to or stand in — a mountain, cave, hall, palace, pass, city, river. NOT the body of people seated there: a sect's cave is a location, the sect is an organization.", Icon: "📍", Color: "#f59e0b",
-		SortOrder: 2, GenreTags: []string{"universal"},
+		SortOrder: 2, GenreTags: []string{"fantasy", "xianxia", "romance", "drama", "historical", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The place's canonical name, exactly as written in the source.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for this same place.", FieldType: "tags", SortOrder: 2},
@@ -127,7 +127,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "item", Name: "Item / Prop",
 		Description: "A physical OBJECT — a weapon, treasure, talisman, garment, vehicle. NOT a living creature or mount, even one someone owns (that is species), and NOT the technique performed with it (that is technique).", Icon: "🎁", Color: "#ef4444",
-		SortOrder: 3, GenreTags: []string{"universal"},
+		SortOrder: 3, GenreTags: []string{"fantasy", "xianxia", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The object's canonical name, exactly as written in the source.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for this same object.", FieldType: "tags", SortOrder: 2},
@@ -140,7 +140,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "event", Name: "Event",
 		Description: "Something that HAPPENS — a battle, an execution, a flight, an investiture, a betrayal, a prophecy fulfilled. The text will usually not name it, so give it a short label of your own.", Icon: "📅", Color: "#10b981",
-		SortOrder: 4, GenreTags: []string{"universal"},
+		SortOrder: 4, GenreTags: []string{"fantasy", "xianxia", "romance", "drama", "historical", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "A short label for what happened. The text will usually not name it — write one.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "type", Name: "Type", Description: "What kind of happening — battle, execution, journey, betrayal, investiture.", FieldType: "text", SortOrder: 2},
@@ -155,7 +155,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "terminology", Name: "Terminology",
 		Description: "An abstract TERM, doctrine, rank, title or concept with no physical form and no practitioner. NOT a technique someone performs (that is technique), NOT an object (item), NOT a group of people (organization).", Icon: "📖", Color: "#f97316",
-		SortOrder: 5, GenreTags: []string{"universal"},
+		SortOrder: 5, GenreTags: []string{"fantasy", "xianxia", "historical", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "term", Name: "Term", Description: "The term exactly as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "category", Name: "Category", Description: "What sort of term — a doctrine, a rank, a title, a unit, a concept.", FieldType: "text", SortOrder: 2},
@@ -167,7 +167,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "power_system", Name: "Power System (Tier Ladder)",
 		Description: "The GRADED SCHEME a world measures power by, or one named TIER within it — 練氣/築基/金丹, 大羅金仙, the ranks of a mage college, a belt or class ladder. Extract this only where the text establishes an ORDERING that characters move along; the mark of it is that two tiers can be compared. NOT a single art someone performs, however impressive (that is technique), NOT the object used (item), NOT a bare honorific with no ladder behind it (terminology). A story with no ranked ladder has NO entities of this kind — report none rather than filling it with techniques.", Icon: "✨", Color: "#a855f7",
-		SortOrder: 6, GenreTags: []string{"fantasy"},
+		SortOrder: 6, GenreTags: []string{"fantasy", "xianxia"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The tier's or the scheme's name as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same tier or scheme.", FieldType: "tags", SortOrder: 2},
@@ -181,7 +181,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "technique", Name: "Technique / Art",
 		Description: "A single named ART, SPELL, FORMATION, MARTIAL MOVE or magical METHOD that someone performs, casts or has mastered — 崑崙之妙術, 八九玄功, a named sword form. One art is a whole entity here; it does not need a system behind it. NOT the ladder such arts might be ranked on (power_system), NOT the weapon or talisman used to perform it (item), NOT a doctrine nobody performs (terminology).", Icon: "🌀", Color: "#8b5cf6",
-		SortOrder: 7, GenreTags: []string{"fantasy"},
+		SortOrder: 7, GenreTags: []string{"fantasy", "xianxia"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The technique or art's name as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same technique.", FieldType: "tags", SortOrder: 2},
@@ -195,7 +195,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "organization", Name: "Organization",
 		Description: "A body of PEOPLE acting together — a sect, dynasty, army, clan, court, office. It survives the loss of its building. NOT the place it occupies (location), and NOT a doctrine it teaches (terminology).", Icon: "🏛", Color: "#0ea5e9",
-		SortOrder: 8, GenreTags: []string{"fantasy", "drama"},
+		SortOrder: 8, GenreTags: []string{"fantasy", "xianxia", "drama", "historical", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The group's name exactly as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same group.", FieldType: "tags", SortOrder: 2},
@@ -209,7 +209,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "species", Name: "Species / Race",
 		Description: "A kind of LIVING BEING, or a named individual creature — including divine mounts, beasts and animal companions. NOT an object (item), even when someone owns or rides it.", Icon: "🧬", Color: "#ec4899",
-		SortOrder: 9, GenreTags: []string{"fantasy"},
+		SortOrder: 9, GenreTags: []string{"fantasy", "xianxia"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The creature or kind's name as the text writes it.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "aliases", Name: "Aliases", Description: "Other names the text uses for the same creature or kind.", FieldType: "tags", SortOrder: 2},
@@ -241,7 +241,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "plot_arc", Name: "Plot Arc",
 		Description: "A multi-chapter STORYLINE with a beginning and an end. Larger than one event; a sequence of them.", Icon: "📈", Color: "#f43f5e",
-		SortOrder: 11, GenreTags: []string{"romance", "drama"},
+		SortOrder: 11, GenreTags: []string{"romance", "drama", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "A short label for the storyline.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "arc_type", Name: "Arc Type", Description: "What sort of arc — revenge, ascent, redemption, war, courtship.", FieldType: "text", SortOrder: 2},
@@ -257,7 +257,7 @@ var DefaultKinds = []SeedKind{
 	{
 		Code: "trope", Name: "Trope",
 		Description: "A recurring narrative DEVICE or convention the story uses. A property of the telling, not a thing inside the world.", Icon: "🎭", Color: "#7c3aed",
-		SortOrder: 12, GenreTags: []string{"romance", "drama"},
+		SortOrder: 12, GenreTags: []string{"romance", "drama", "mystery"},
 		Attrs: []SeedAttr{
 			{Code: "name", Name: "Name", Description: "The device's usual name.", FieldType: "text", IsRequired: true, SortOrder: 1},
 			{Code: "category", Name: "Category", Description: "What sort of device — structural, character, romantic, thematic.", FieldType: "text", SortOrder: 2},

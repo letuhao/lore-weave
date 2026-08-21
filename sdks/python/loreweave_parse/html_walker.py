@@ -21,6 +21,7 @@ from bs4 import BeautifulSoup, NavigableString, Tag
 from loreweave_parse._text_strip import html_to_leaf_text
 from loreweave_parse._types import (
     Chapter,
+    FidelityMetrics,
     ParseOptions,
     Part,
     Scene,
@@ -234,6 +235,43 @@ def parse_html(
             book_title = t
     if book_title is None and filename:
         book_title = filename.rsplit(".", 1)[0] or filename
+
+    # EPUB Import V2 establishes a logical chapter before this parser is
+    # called. In this mode headings remain ordinary chapter content; only scene
+    # markers may split the single returned chapter.
+    if opts.preserve_chapter_boundary or opts.extract_scenes_only:
+        chapter_title = opts.chapter_title or book_title
+        full_html = _slice_html(body_elements)
+        scenes = _build_scenes(body_elements, 1, 1, opts)
+        source_text = html_to_leaf_text(full_html)
+        scene_text_chars = sum(len(scene.leaf_text) for scene in scenes)
+        return StructuralTree(
+            source_format="html",
+            walker_path="fallback_single",
+            book_title=chapter_title,
+            parts=[
+                Part(
+                    sort_order=1,
+                    title=None,
+                    path="book/part-1",
+                    chapters=[
+                        Chapter(
+                            sort_order=1,
+                            title=chapter_title,
+                            path="book/part-1/chapter-1",
+                            html=full_html,
+                            scenes=scenes,
+                            source_key=opts.source_key,
+                        )
+                    ],
+                )
+            ],
+            fidelity=FidelityMetrics(
+                source_text_chars=len(source_text),
+                scene_text_chars=scene_text_chars,
+                scene_count=len(scenes),
+            ),
+        )
 
     groups, preamble = _partition_by_headings(body_elements)
 

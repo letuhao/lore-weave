@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import { JobParametersPanel } from '../JobParametersPanel';
@@ -8,6 +8,15 @@ import type { Job } from '../../../types';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({ t: (_k: string, o?: { defaultValue?: string }) => o?.defaultValue ?? _k }),
+}));
+
+// The panel resolves `user_model_id`s to display names, so it now reaches the
+// model registry — which reads the auth token. Stub it the way the other panel
+// tests do; `userModels` is per-test so the id→name substitution can be asserted
+// rather than merely tolerated.
+let userModels: { user_model_id: string; alias: string; provider_model_name: string }[] = [];
+vi.mock('@/components/model-picker', () => ({
+  useUserModels: () => ({ models: userModels }),
 }));
 
 const job: Job = {
@@ -20,6 +29,10 @@ const job: Job = {
 };
 
 describe('JobParametersPanel', () => {
+  beforeEach(() => {
+    userModels = [];
+  });
+
   it('renders every param key/value dynamically (schema-free)', () => {
     render(<JobParametersPanel params={job.params} />);
     expect(screen.getByText('concurrency')).toBeInTheDocument();
@@ -42,6 +55,23 @@ describe('JobParametersPanel', () => {
     expect(screen.getByText('model')).toBeInTheDocument();
     expect(screen.queryByText('estimated_llm_calls')).not.toBeInTheDocument();
     expect(screen.queryByText('llm_calls_done')).not.toBeInTheDocument();
+  });
+
+  it('shows a registered model by name instead of its opaque user_model_id', () => {
+    userModels = [{
+      user_model_id: '019d5e3c-7cc5-7e6a-8b27-000000000001',
+      alias: 'Gemma 4 26B (local)',
+      provider_model_name: 'google/gemma-4-26b-a4b-qat',
+    }];
+    render(<JobParametersPanel params={{ model: '019d5e3c-7cc5-7e6a-8b27-000000000001' }} />);
+    expect(screen.getByText('Gemma 4 26B (local)')).toBeInTheDocument();
+    expect(screen.queryByText('019d5e3c-7cc5-7e6a-8b27-000000000001')).not.toBeInTheDocument();
+  });
+
+  it('leaves an unrecognised id alone rather than blanking the row', () => {
+    userModels = [];
+    render(<JobParametersPanel params={{ model: 'not-in-the-registry' }} />);
+    expect(screen.getByText('not-in-the-registry')).toBeInTheDocument();
   });
 });
 

@@ -211,7 +211,10 @@
     "feedback_up": "Good response",
     "feedback_down": "Bad response",
     "feedback_thanks": "Thanks for the feedback",
-    "feedback_error": "Couldn't save feedback"
+    "feedback_error": "Couldn't save feedback",
+    "incomplete_error": "Error — response incomplete",
+    "incomplete_interrupted": "Interrupted — response incomplete",
+    "insert_into_chapter": "Insert into chapter"
   },
   "tools": {
     "title": "Tools used in this reply",
@@ -243,7 +246,9 @@
     "cancelled": "Cancelled",
     "reprice": "The cost rose to {{cost}} since this was estimated — ask again to re-confirm at the new price.",
     "reprice_title": "Cost changed — not applied",
-    "reprice_detail": "Estimated {{old}}, now {{new}}. Nothing was spent — ask again to re-confirm at the new price."
+    "reprice_detail": "Estimated {{old}}, now {{new}}. Nothing was spent — ask again to re-confirm at the new price.",
+    "advisory_items": "Requested (advisory) — the server confirms the exact set on apply",
+    "awaiting_preview": "Loading the server preview…"
   },
   "batchConfirm": {
     "title": "Confirm {{count}} actions in one step",
@@ -446,5 +451,120 @@
     "worldbuilder": "Worldbuilder",
     "editor": "Editor",
     "analyst": "Analyst"
+  },
+  "sessionSettings": {
+    "description": "Settings for this chat. Anything you don't set here is inherited from the book, then your account, then the system default.",
+    "saving": "saving…",
+    "close": "Close",
+    "voice": "Voice",
+    "messages": "Messages",
+    "status": {
+      "label": "Status",
+      "active": "Active",
+      "archived": "Archived",
+      "closed": "Closed"
+    },
+    "models": {
+      "title": "Models",
+      "composer": "Composer model (optional)",
+      "planner": "Planner model (optional)",
+      "composerNone": "None — single model",
+      "plannerNone": "Use my default planner",
+      "composerHint": "When set, the AI can delegate prose writing to this model.",
+      "plannerHint": "The model used for multi-step planning in this session."
+    },
+    "behavior": {
+      "title": "Behavior",
+      "systemPrompt": "System prompt",
+      "promptPlaceholder": "Inherited from your account default unless you set one here.",
+      "reasoning": {
+        "label": "Reasoning effort",
+        "off": "Off",
+        "low": "Low",
+        "medium": "Medium",
+        "high": "High"
+      },
+      "statefulTitle": "Use stateful Responses API",
+      "statefulHint": "Optional server-side context reuse. Leave off unless your provider supports Responses tool calls.",
+      "temperature": "Temperature",
+      "temperatureHint": "Higher is more surprising, lower is more predictable.",
+      "topP": "Top P",
+      "maxTokens": "Max response tokens",
+      "maxTokensHint": "Unset means the model's own limit."
+    },
+    "grounding": {
+      "title": "Grounding & memory",
+      "label": "Ground answers in this book's lore",
+      "on": "On — retrieval runs each turn",
+      "off": "Off — no retrieval this chat",
+      "onHint": "Glossary, knowledge-graph facts and passages are pulled into every turn.",
+      "offHint": "The assistant answers from the conversation alone, and may invent lore.",
+      "multiHint": "Grounded on every selected knowledge graph at once — facts are tagged with their source."
+    },
+    "context": {
+      "title": "Context management",
+      "label": "Long-work context mode",
+      "auto": "Auto",
+      "on": "Always on",
+      "off": "Off",
+      "autoHint": "Turns the long-work tiers on only when the book is big enough to need them.",
+      "onHint": "Always use the long-work context tiers.",
+      "offHint": "Never — the plainest, cheapest context."
+    }
+  },
+  "dock": {
+    "close": "Close",
+    "label": "Ask AI",
+    "open": "Ask the glossary assistant",
+    "title": "Glossary assistant"
+  },
+  "glossaryEdit": {
+    "applied": "Applied ✓",
+    "apply": "Apply",
+    "conflict": "This entity changed since it was proposed — ask again to see the latest.",
+    "conflict_short": "Changed since proposed — re-ask",
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed",
+    "empty": "(empty)",
+    "error": "Could not save the change.",
+    "error_short": "Save failed",
+    "field": "Field",
+    "fields": "{{count}} fields",
+    "label": "Glossary edit"
+  },
+  "planner": {
+    "destructive": "destructive",
+    "enable": "Enable this destructive step",
+    "heading": "Plan",
+    "notes": "Planner notes",
+    "steps": "{{count}} step(s)"
+  },
+  "propose": {
+    "applied": "Applied ✓",
+    "apply": "Apply",
+    "apply_failed": "Could not apply the edit.",
+    "apply_n": "Apply {{count}}",
+    "dismiss": "Dismiss",
+    "dismissed": "Dismissed",
+    "hunk_hint": "Pick which changes to apply",
+    "hunk_toggle": "Accept this change",
+    "insert_label": "Suggested insertion",
+    "keep_original": "Keep original",
+    "no_editor": "Open the chapter to apply this edit.",
+    "no_selection": "Select the text to replace, then Apply.",
+    "popout_no_rewrite": "Rewrites need to be applied from the docked editor — dock this window first.",
+    "popout_not_delivered": "Could not confirm the edit reached the docked editor — open the chapter in Studio and try again.",
+    "replace_label": "Suggested rewrite",
+    "selection_changed": "Your selection changed — re-select and Apply, or Dismiss.",
+    "wrong_chapter": "This suggestion was for a different chapter."
+  },
+  "taskGate": {
+    "cancelled": "Dismissed",
+    "confirm": "Confirm",
+    "defaultTitle": "Confirm this action?",
+    "dismiss": "Dismiss",
+    "done": "Confirmed ✓",
+    "error": "Could not confirm",
+    "label": "Confirm"
   }
 }

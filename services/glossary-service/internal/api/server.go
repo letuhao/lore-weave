@@ -378,6 +378,9 @@ func (s *Server) Router() http.Handler {
 
 		r.Route("/books/{book_id}", func(r chi.Router) {
 			r.Get("/extraction-profile", s.getExtractionProfile)
+			// Integrity report and safe repair operations for the book's lore data.
+			r.Get("/integrity", s.checkBookIntegrity)
+			r.Post("/integrity/repair", s.repairBookIntegrity)
 			r.Get("/export", s.exportGlossary)
 			// G3: book-tier ontology — adopt (copy-down from System standards,
 			// Manage-gated) + book-local single-tier read (View-gated) + book-tier

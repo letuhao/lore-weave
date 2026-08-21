@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Pencil, Download, Trash2, Upload, Sparkles, Languages } from 'lucide-react';
+import { Plus, Pencil, Download, Trash2, Upload, Sparkles, Languages, FileText } from 'lucide-react';
 import { useAuth } from '@/auth';
 import { booksApi, type Chapter } from '@/features/books/api';
 import { DataTable, type Column } from '@/components/data/DataTable';
@@ -13,6 +13,7 @@ import { Skeleton } from '@/components/shared/Skeleton';
 import { ImportDialog } from '@/components/import/ImportDialog';
 import { ExtractionWizard } from '@/features/extraction/ExtractionWizard';
 import { PdfImportWizard } from '@/features/pdf-import/PdfImportWizard';
+import { EpubImportWizard } from '@/features/epub-import/EpubImportWizard';
 
 interface ChaptersTabProps {
   bookId: string;
@@ -38,6 +39,7 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
 
   // PDF import wizard — docs/specs/2026-07-06-pdf-book-import.md
   const [pdfImportOpen, setPdfImportOpen] = useState(false);
+  const [epubImportOpen, setEpubImportOpen] = useState(false);
 
   // Extraction wizard
   const [extractChapterId, setExtractChapterId] = useState<string | null>(null);
@@ -212,6 +214,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
             {t('chapters.importPdf')}
           </button>
           <button
+            onClick={() => setEpubImportOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <FileText className="h-3.5 w-3.5" />
+            {t('chapters.importEpub')}
+          </button>
+          <button
             onClick={() => setCreateOpen(true)}
             data-testid="chapter-add-button"
             className="inline-flex items-center gap-2 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
@@ -348,6 +357,13 @@ export function ChaptersTab({ bookId }: ChaptersTabProps) {
         onOpenChange={setPdfImportOpen}
         bookId={bookId}
         onComplete={() => invalidate()}
+      />
+
+      <EpubImportWizard
+        open={epubImportOpen}
+        onOpenChange={setEpubImportOpen}
+        bookId={bookId}
+        onImported={() => invalidate()}
       />
 
       <ExtractionWizard

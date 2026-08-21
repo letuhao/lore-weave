@@ -14,7 +14,7 @@ import { getStudioPanelDef } from '../panels/catalog';
 // `tours.ts` are unaffected.
 import type { StudioTourId } from './tourCatalog';
 export type { StudioTourId, StudioTourCatalogEntry } from './tourCatalog';
-export { EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG } from './tourCatalog';
+export { EDITOR_TOUR_CATALOG, COMPOSE_TOUR_CATALOG, RESEARCH_TOUR_CATALOG } from './tourCatalog';
 
 export interface StudioTourStepDef {
   /** Panel to open before this step (host.openPanel is idempotent — open-or-focus). Omit for
@@ -117,6 +117,26 @@ export const STUDIO_TOURS: Record<StudioTourId, StudioTourStepDef[]> = {
     roleStep('sharing', 'manager.sharing'),
     roleStep('book-settings', 'manager.bookSettings'),
   ],
+  worldResearch: [
+    { panelId: 'world-setup', target: '[data-testid="studio-world-setup-panel"]', titleKey: 'intro.tour.worldResearch.setup.title', bodyKey: 'intro.tour.worldResearch.setup.body' },
+    { panelId: 'glossary', target: '[data-testid="studio-glossary-panel"]', titleKey: 'intro.tour.worldResearch.glossary.title', bodyKey: 'intro.tour.worldResearch.glossary.body' },
+    { panelId: 'kg-entities', target: '[data-testid="studio-kg-entities-panel"]', titleKey: 'intro.tour.worldResearch.entities.title', bodyKey: 'intro.tour.worldResearch.entities.body' },
+    { panelId: 'kg-timeline', target: '[data-testid="studio-kg-timeline-panel"]', titleKey: 'intro.tour.worldResearch.timeline.title', bodyKey: 'intro.tour.worldResearch.timeline.body' },
+    { panelId: 'kg-graph', target: '[data-testid="studio-kg-graph-panel"]', titleKey: 'intro.tour.worldResearch.graph.title', bodyKey: 'intro.tour.worldResearch.graph.body' },
+  ],
+  factChecking: [
+    { panelId: 'kg-evidence', target: '[data-testid="studio-kg-evidence-panel"]', titleKey: 'intro.tour.factChecking.evidence.title', bodyKey: 'intro.tour.factChecking.evidence.body' },
+    { panelId: 'kg-triage', target: '[data-testid="studio-kg-triage-panel"]', titleKey: 'intro.tour.factChecking.triage.title', bodyKey: 'intro.tour.factChecking.triage.body' },
+    { panelId: 'kg-gap', target: '[data-testid="studio-kg-gap-panel"]', titleKey: 'intro.tour.factChecking.gaps.title', bodyKey: 'intro.tour.factChecking.gaps.body' },
+    { panelId: 'glossary-unknown', target: '[data-testid="studio-glossary-unknown-panel"]', titleKey: 'intro.tour.factChecking.unknown.title', bodyKey: 'intro.tour.factChecking.unknown.body' },
+    { panelId: 'kg-proposals', target: '[data-testid="studio-kg-proposals-panel"]', titleKey: 'intro.tour.factChecking.proposals.title', bodyKey: 'intro.tour.factChecking.proposals.body' },
+  ],
+  glossaryWorkflow: [
+    { panelId: 'glossary', target: '[data-testid="studio-glossary-panel"]', titleKey: 'intro.tour.glossaryWorkflow.list.title', bodyKey: 'intro.tour.glossaryWorkflow.list.body' },
+    { panelId: 'glossary-ontology', target: '[data-testid="studio-glossary-ontology-panel"]', titleKey: 'intro.tour.glossaryWorkflow.ontology.title', bodyKey: 'intro.tour.glossaryWorkflow.ontology.body' },
+    { panelId: 'glossary-ai-suggestions', target: '[data-testid="studio-glossary-ai-suggestions-panel"]', titleKey: 'intro.tour.glossaryWorkflow.suggestions.title', bodyKey: 'intro.tour.glossaryWorkflow.suggestions.body' },
+    { panelId: 'glossary-merge-candidates', target: '[data-testid="studio-glossary-merge-candidates-panel"]', titleKey: 'intro.tour.glossaryWorkflow.merge.title', bodyKey: 'intro.tour.glossaryWorkflow.merge.body' },
+  ],
 
   // #19 Wave 3 — editor deep-dive tours. All steps open the 'editor' panel first (their anchors
   // live inside EditorPanel/its children); a step whose anchor is conditionally rendered (e.g.
@@ -159,6 +179,12 @@ export const STUDIO_TOURS: Record<StudioTourId, StudioTourStepDef[]> = {
   ],
   editorMediaAudio: [
     { panelId: 'editor', target: '[data-testid="format-toolbar-insert-audio"]', titleKey: 'intro.tour.editorMediaAudio.insert.title', bodyKey: 'intro.tour.editorMediaAudio.insert.body' },
+  ],
+  structureTemplates: [
+    { panelId: 'structure-templates', target: '[data-testid="structure-templates"]', titleKey: 'intro.tour.structureTemplates.panel.title', bodyKey: 'intro.tour.structureTemplates.panel.body' },
+    { panelId: 'structure-templates', target: '[data-testid="structtpl-list"]', titleKey: 'intro.tour.structureTemplates.list.title', bodyKey: 'intro.tour.structureTemplates.list.body' },
+    { panelId: 'structure-templates', target: '[data-testid="structtpl-new"]', titleKey: 'intro.tour.structureTemplates.create.title', bodyKey: 'intro.tour.structureTemplates.create.body' },
+    { panelId: 'structure-templates', target: '[data-testid="structtpl-detail"]', titleKey: 'intro.tour.structureTemplates.edit.title', bodyKey: 'intro.tour.structureTemplates.edit.body' },
   ],
 
   // #19 Wave 4 — composer deep-dive tours (docs/specs/2026-07-06-composer-feature-inventory.md).

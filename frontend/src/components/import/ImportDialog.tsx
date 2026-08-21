@@ -13,7 +13,7 @@ interface ImportDialogProps {
   onImported: () => void;
 }
 
-const ACCEPTED_EXTENSIONS = '.txt,.docx,.epub';
+const ACCEPTED_EXTENSIONS = '.txt,.docx,.epub,.fb2';
 const MAX_SIZE = 200 * 1024 * 1024; // 200 MB per doc file
 const BULK_BATCH = 100; // chapters per bulk request (sequential → order preserved)
 
@@ -22,7 +22,7 @@ type ImportState = 'idle' | 'reading' | 'uploading' | 'processing' | 'completed'
 export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportDialogProps) {
   // Plain-text chapters go through the paginated review + bulk endpoint.
   const [parsed, setParsed] = useState<ParsedChapter[]>([]);
-  // .docx/.epub keep the existing async per-file import-job flow.
+  // .docx/.epub/.fb2 keep the existing async per-file import-job flow.
   const [docFiles, setDocFiles] = useState<File[]>([]);
   const [importState, setImportState] = useState<ImportState>('idle');
   const [readProgress, setReadProgress] = useState({ done: 0, total: 0 });
@@ -35,9 +35,11 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
   const inputRef = useRef<HTMLInputElement>(null);
   const folderRef = useRef<HTMLInputElement | null>(null);
 
-  const resolveRef = useRef<(() => void) | null>(null);
+  const resolveRef = useRef<((job: ImportJob) => void) | null>(null);
   const rejectRef = useRef<((err: Error) => void) | null>(null);
   const activeJobIdRef = useRef<string | null>(null);
+  const currentJobRef = useRef<ImportJob | null>(null);
+  const jobPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const token = (() => {
     try {
@@ -50,13 +52,21 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
   const handleWSEvent = useCallback(
     (event: { job_id: string; status: string; chapters_created: number; error?: string }) => {
       if (event.job_id !== activeJobIdRef.current) return;
-      setCurrentJob((prev) =>
-        prev ? { ...prev, status: event.status as ImportJob['status'], chapters_created: event.chapters_created, error: event.error ?? null } : prev,
-      );
+      const updated = currentJobRef.current
+        ? { ...currentJobRef.current, status: event.status as ImportJob['status'], chapters_created: event.chapters_created, error: event.error ?? null }
+        : null;
+      if (updated) {
+        currentJobRef.current = updated;
+        setCurrentJob(updated);
+      }
       if (event.status === 'completed') {
-        resolveRef.current?.();
+        if (jobPollRef.current) clearInterval(jobPollRef.current);
+        jobPollRef.current = null;
+        if (updated) resolveRef.current?.(updated);
         resolveRef.current = null; rejectRef.current = null;
       } else if (event.status === 'failed') {
+        if (jobPollRef.current) clearInterval(jobPollRef.current);
+        jobPollRef.current = null;
         rejectRef.current?.(new Error(event.error || 'Import failed'));
         resolveRef.current = null; rejectRef.current = null;
       }
@@ -69,9 +79,17 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
     if (!fileList) return;
     const all = Array.from(fileList);
     const txt = filterTxtFiles(all);
-    const docs = all.filter((f) => /\.(docx|epub)$/i.test(f.name) && f.size <= MAX_SIZE);
+    const docs = all.filter((f) => /\.(docx|epub|fb2)$/i.test(f.name) && f.size <= MAX_SIZE);
     setError('');
-    if (docs.length) setDocFiles((prev) => [...prev, ...docs]);
+    if (docs.length) setDocFiles((prev) => {
+      const seen = new Set(prev.map((f) => `${f.name}:${f.size}:${f.lastModified}`));
+      return [...prev, ...docs.filter((f) => {
+        const key = `${f.name}:${f.size}:${f.lastModified}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })];
+    });
     if (txt.length) {
       setImportState('reading');
       setReadProgress({ done: 0, total: txt.length });
@@ -127,29 +145,38 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
       }
     }
 
-    // 2) .docx/.epub — existing async per-file import jobs.
+    // 2) .docx/.epub/.fb2 — existing async per-file import jobs.
     for (const file of docFiles) {
       try {
         setImportState('uploading');
         setUploadProgress(0);
         const job = await booksApi.startImport(token, bookId, file, 'auto', (pct) => setUploadProgress(pct));
         setCurrentJob(job);
+        currentJobRef.current = job;
         setImportState('processing');
         activeJobIdRef.current = job.id;
-        await new Promise<void>((resolve, reject) => {
+        const finalJob = await new Promise<ImportJob>((resolve, reject) => {
           resolveRef.current = resolve; rejectRef.current = reject;
-          const interval = setInterval(async () => {
+          jobPollRef.current = setInterval(async () => {
             try {
               const updated = await booksApi.getImportJob(token, bookId, job.id);
+              currentJobRef.current = updated;
               setCurrentJob(updated);
-              if (updated.status === 'completed') { clearInterval(interval); resolveRef.current?.(); resolveRef.current = null; rejectRef.current = null; }
-              else if (updated.status === 'failed') { clearInterval(interval); rejectRef.current?.(new Error(updated.error || 'Import failed')); resolveRef.current = null; rejectRef.current = null; }
+              if (updated.status === 'completed' || updated.status === 'completed_with_warnings') {
+                if (jobPollRef.current) clearInterval(jobPollRef.current);
+                jobPollRef.current = null;
+                resolveRef.current?.(updated); resolveRef.current = null; rejectRef.current = null;
+              } else if (updated.status === 'failed') {
+                if (jobPollRef.current) clearInterval(jobPollRef.current);
+                jobPollRef.current = null;
+                rejectRef.current?.(new Error(updated.error || 'Import failed')); resolveRef.current = null; rejectRef.current = null;
+              }
             } catch { /* keep polling */ }
           }, 5000);
-          setTimeout(() => { clearInterval(interval); rejectRef.current?.(new Error('Import timed out')); resolveRef.current = null; rejectRef.current = null; }, 10 * 60 * 1000);
         });
-        created += currentJob?.chapters_created ?? 0;
+        created += finalJob.chapters_created;
         activeJobIdRef.current = null;
+        currentJobRef.current = null;
       } catch (e) {
         errors.push(`${file.name}: ${(e as Error).message}`);
       }
@@ -167,6 +194,9 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
     setReadProgress({ done: 0, total: 0 }); setBulkProgress({ done: 0, total: 0 });
     setUploadProgress(0); setCurrentJob(null); setCreatedCount(0); setSkippedCount(0); setError('');
     activeJobIdRef.current = null;
+    currentJobRef.current = null;
+    if (jobPollRef.current) clearInterval(jobPollRef.current);
+    jobPollRef.current = null;
     onOpenChange(false);
   };
 
@@ -231,7 +261,7 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
                 <FolderOpen className="h-3.5 w-3.5" /> Choose folder
               </button>
             </div>
-            <p className="text-[10px] text-muted-foreground/60">.txt (bulk) · .docx · .epub — max 200 MB per doc</p>
+            <p className="text-[10px] text-muted-foreground/60">.txt (bulk) · .docx · .epub · .fb2 — max 200 MB per doc</p>
           </div>
         )}
 
@@ -251,12 +281,12 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
           />
         )}
 
-        {/* Doc files (docx/epub) */}
+        {/* Async document files (docx/epub/fb2) */}
         {importState !== 'completed' && docFiles.length > 0 && (
           <div className="space-y-1 rounded-lg border p-2">
             {docFiles.map((f, i) => (
               <div key={`${f.name}-${i}`} className="flex items-center gap-3 rounded px-3 py-1.5 text-xs">
-                <span>{f.name.endsWith('.epub') ? '📖' : '📄'}</span>
+                <span>{/\.(epub|fb2)$/i.test(f.name) ? '📖' : '📄'}</span>
                 <span className="min-w-0 flex-1 truncate">{f.name}</span>
                 {!isBusy && (
                   <button type="button" title="Remove" onClick={() => setDocFiles((p) => p.filter((_, j) => j !== i))}
@@ -275,8 +305,10 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
                 pct={(bulkProgress.done / bulkProgress.total) * 100} />
             )}
             {docFiles.length > 0 && (
-              <ProgressBar label={importState === 'uploading' ? `Uploading document… ${uploadProgress}%` : 'Converting document…'}
-                pct={importState === 'uploading' ? uploadProgress : 100} />
+              <ProgressBar
+                label={importProgressLabel(importState, uploadProgress, currentJob)}
+                pct={importProgressPercent(importState, uploadProgress, currentJob)}
+              />
             )}
           </div>
         )}
@@ -290,6 +322,20 @@ export function ImportDialog({ open, onOpenChange, bookId, onImported }: ImportD
       </div>
     </FormDialog>
   );
+}
+
+function importProgressLabel(state: ImportState, uploadProgress: number, job: ImportJob | null): string {
+  if (state === 'uploading') return `Uploading document… ${uploadProgress}%`;
+  if (job?.status === 'queued' || job?.status === 'pending') return 'Waiting for an import worker…';
+  if (job?.current_item?.title) return `Importing ${job.current_item.title}…`;
+  if (job?.progress_total) return `Importing chapters… ${job.progress_completed ?? 0}/${job.progress_total}`;
+  return 'Converting document…';
+}
+
+function importProgressPercent(state: ImportState, uploadProgress: number, job: ImportJob | null): number {
+  if (state === 'uploading') return uploadProgress;
+  if (!job?.progress_total) return 0;
+  return Math.min(100, Math.round(((job.progress_completed ?? 0) / job.progress_total) * 100));
 }
 
 function ProgressBar({ label, pct }: { label: string; pct: number }) {

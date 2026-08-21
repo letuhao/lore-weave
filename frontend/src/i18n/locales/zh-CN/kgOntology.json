@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "已移除",
       "modified": "已覆盖"
+    },
+    "templates": {
+      "general": {
+        "name": "通用（旧版本体）",
+        "description": "重现原始通用提取本体 —— 优先采用增量式的安全网。"
+      },
+      "general-legacy": {
+        "name": "通用（旧版本体）",
+        "description": "重现原始通用提取本体 —— 优先采用增量式的安全网。"
+      },
+      "xianxia-harem": {
+        "name": "仙侠 · 后宫",
+        "description": "针对修仙与后宫小说的类型模板，包含精选的实体与关系类型。"
+      },
+      "fantasy": {
+        "name": "奇幻",
+        "description": "奇幻世界架构，包含角色、地点、组织、物种、物品、能力与技能。"
+      },
+      "romance": {
+        "name": "言情",
+        "description": "以关系为核心的架构，包含角色、关系、情节弧、套路与社会背景。"
+      },
+      "drama": {
+        "name": "剧情",
+        "description": "剧情架构，包含角色、冲突、关系、组织、事件与情节弧。"
+      },
+      "historical": {
+        "name": "历史",
+        "description": "用于人物、地点、机构、事件、术语和社会秩序的历史虚构类模板。"
+      },
+      "mystery": {
+        "name": "悬疑",
+        "description": "用于角色、线索、物品、组织、事件、情节弧和套路的调查类模板。"
+      }
+    },
+    "scope": {
+      "system": "系统",
+      "user": "用户",
+      "project": "项目"
     }
   },
   "schema": {

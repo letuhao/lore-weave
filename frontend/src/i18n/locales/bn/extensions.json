@@ -9,7 +9,9 @@
     "permissions": "টুল পারমিশন",
     "proposals": "প্রস্তাবনা",
     "activity": "অ্যাক্টিভিটি লগ",
-    "ingest": "রেজিস্ট্রি সোর্স"
+    "ingest": "রেজিস্ট্রি সোর্স",
+    "bindings": "অটো-সেটআপ",
+    "workflows": "রেসিপি"
   },
   "quota": {
     "unavailable": "ব্যবহার অনুপলব্ধ",

@@ -7,6 +7,7 @@ RUN apk add --no-cache git
 # directive resolves inside the container. The compose file sets
 # context: .. and dockerfile: services/worker-infra/Dockerfile.
 COPY sdks/go/observability /src/sdks/go/observability
+COPY pkg/epubimport /src/pkg/epubimport
 COPY services/worker-infra /src/services/worker-infra
 
 WORKDIR /src/services/worker-infra

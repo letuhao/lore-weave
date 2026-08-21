@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 // S7-1 — the ONE home on the FE for the closed-set entity-authoring
 // vocabularies. Every picker (CreateEntityDialog kind grid, EntityEditDialog
 // kind select, CreateRelationDialog predicate select), the enum-badge map, and
@@ -53,3 +55,7 @@ export const RELATION_PREDICATES = [
 ] as const;
 
 export type RelationPredicate = (typeof RELATION_PREDICATES)[number];
+
+export function entityKindLabel(t: TFunction, kind: string): string {
+  return t('entities.kind.' + kind, { defaultValue: kind });
+}

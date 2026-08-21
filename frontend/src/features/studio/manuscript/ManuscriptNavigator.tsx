@@ -101,7 +101,10 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
     showToggle = false, lens = 'flat' as const, selectLens = (_l: 'parts' | 'outline') => {},
     partsUnavailable = false, // ML1 — a composition outage: surface it, don't silently flatten
     toggleExpand, loadMore, collapseAll, reload,
-    createAct, renameAct, trashAct, moveChapterToAct, moveAct, restoreAct,
+    createAct, renameAct, trashAct, moveChapterToAct,
+    // Chapter actions are optional in older test doubles; the real hook always supplies them.
+    renameChapter = async () => {}, trashChapter = async () => {}, restoreChapter = async () => {},
+    moveAct, restoreAct,
   } = useManuscriptTree(bookId, token);
   const jump = useManuscriptJump(bookId, token);
   const parentRef = useRef<HTMLDivElement>(null);
@@ -124,6 +127,7 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
   // of the act list; `editingActId` turns one act's title into an input in place.
   const [creatingAct, setCreatingAct] = useState(false);
   const [editingActId, setEditingActId] = useState<string | null>(null);
+  const [editingChapterId, setEditingChapterId] = useState<string | null>(null);
   // S-02c B6 — the act currently under a dragged chapter (drop-target highlight).
   const [dragOverPartId, setDragOverPartId] = useState<string | null>(null);
   // P2.1 (spec §4.5, no silent seams) — a part mutation that FAILS must SURFACE, not vanish + silently
@@ -150,6 +154,35 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
       action: { label: t('manuscript.undo', { defaultValue: 'Undo' }), onClick: () => runAct(restoreAct(id), t('manuscript.restoreFailed', { defaultValue: 'Could not restore the part' })) },
     });
   }, [trashAct, restoreAct, runAct, t]);
+
+  const runChapter = useCallback((p: Promise<unknown>, msg: string) => {
+    void p.catch((e) => toast.error(`${msg}: ${(e as Error)?.message ?? 'failed'}`));
+  }, []);
+  const commitChapterRename = useCallback((node: ManuscriptNode, val: string) => {
+    const title = val.trim();
+    if (!title) {
+      toast.error(t('manuscript.renameFailed', { defaultValue: 'Could not rename the chapter' }));
+      return;
+    }
+    if (node.chapterId && title !== node.title) {
+      runChapter(renameChapter(node.chapterId, title), t('manuscript.renameFailed', { defaultValue: 'Could not rename the chapter' }));
+    }
+    setEditingChapterId(null);
+  }, [renameChapter, runChapter, t]);
+  // Chapter deletion is a reversible soft-trash.  Keep the row calm by avoiding a blocking confirm,
+  // but make Undo prominent and durable through the same restore endpoint used by the trash views.
+  const onTrashChapter = useCallback((node: ManuscriptNode) => {
+    if (!node.chapterId) return;
+    setEditingChapterId((id) => (id === node.id ? null : id));
+    runChapter(trashChapter(node.chapterId), t('manuscript.trashFailed', { defaultValue: 'Could not trash the chapter' }));
+    toast(`${t('planHub.simple.delete', { defaultValue: 'Delete chapter' })}: ${node.title}`, {
+      duration: 10000,
+      action: {
+        label: t('manuscript.undo', { defaultValue: 'Undo' }),
+        onClick: () => runChapter(restoreChapter(node.chapterId!), t('manuscript.restoreFailed', { defaultValue: 'Could not restore the chapter' })),
+      },
+    });
+  }, [trashChapter, restoreChapter, runChapter, t]);
 
   // 1-based ordinal per top-level arc → roman numeral label (ARC I / II / …). Computed over the
   // full loaded row list (not the virtual window) so it's stable as you scroll.
@@ -537,9 +570,17 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                       onCommit={(v) => commitRename(node.id, v)}
                       onCancel={() => setEditingActId(null)}
                     />
+                  ) : isChapter && node.chapterId && editingChapterId === node.id ? (
+                    <ActNameInput
+                      testid={`manuscript-chapter-rename-input-${node.id}`}
+                      initial={node.title}
+                      placeholder={t('planHub.simple.rename', { defaultValue: 'Chapter name…' })}
+                      onCommit={(v) => commitChapterRename(node, v)}
+                      onCancel={() => setEditingChapterId(null)}
+                    />
                   ) : (
                     <span
-                      className="truncate"
+                      className="min-w-0 flex-1 truncate"
                       onDoubleClick={isPart && !isUnassigned ? ((e) => { e.stopPropagation(); setEditingActId(node.id); }) : undefined}
                     >
                       {node.title}
@@ -603,6 +644,32 @@ export function ManuscriptNavigator({ bookId, token, selectedId, onSelect, onNew
                         data-testid={`manuscript-part-trash-${node.id}`}
                         onClick={(e) => { e.stopPropagation(); onTrashAct(node.id, node.title); }}
                         title={t('manuscript.trashAct', { defaultValue: 'Trash act' })}
+                        className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-destructive"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </span>
+                  )}
+
+                  {/* Chapter affordances mirror the existing part actions.  They are shown only for
+                      book-service chapter rows (the outline lens has its own plan-node editor), so
+                      renaming never creates two competing titles for one planned node. */}
+                  {isChapter && node.chapterId && (
+                    <span className="ml-auto flex flex-shrink-0 items-center gap-0.5 opacity-0 group-hover/row:opacity-100 group-focus-within/row:opacity-100 [@media(pointer:coarse)]:opacity-100">
+                      <button
+                        type="button"
+                        data-testid={`manuscript-chapter-rename-${node.id}`}
+                        onClick={(e) => { e.stopPropagation(); setEditingChapterId(node.id); }}
+                        title={t('planHub.simple.rename', { defaultValue: 'Rename chapter' })}
+                        className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-foreground"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`manuscript-chapter-trash-${node.id}`}
+                        onClick={(e) => { e.stopPropagation(); onTrashChapter(node); }}
+                        title={t('planHub.simple.delete', { defaultValue: 'Delete chapter' })}
                         className="flex h-4 w-4 items-center justify-center rounded text-muted-foreground hover:text-destructive"
                       >
                         <Trash2 className="h-3 w-3" />

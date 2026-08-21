@@ -731,7 +731,7 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		skipped int
 	)
 
-	// Kind resolution (spec 2026-08-02-entity-kind-resolution.md). Loaded ONCE per request:
+	// Kind resolution (spec docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-02-entity-kind-resolution.md). Loaded ONCE per request:
 	// the hierarchy is book-local and tiny, and the inverse of kindMap is needed so the outbox
 	// event can carry the RESOLVED kind rather than the one this batch happened to propose.
 	kindParents, kperr := s.loadKindParents(ctx, tx, bookID)
@@ -1127,17 +1127,25 @@ func (s *Server) bulkExtractEntities(w http.ResponseWriter, r *http.Request) {
 		kindMoved := false
 		if kindOK && result.EntityID != "" && result.SkipReason != "tombstoned" {
 			if entID, perr := uuid.Parse(result.EntityID); perr == nil {
-				res, rerr := s.resolveEntityKind(ctx, tx, entID, kindID, mergeKindID, kindParents)
+				res, moved, rerr := s.resolveEntityKind(ctx, tx, entID, kindID, mergeKindID, kindParents)
 				if rerr != nil {
 					BulkExtractTotal.WithLabelValues(OutcomeQueryFailed).Inc()
 					writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL",
 						"kind resolution failed: "+rerr.Error())
 					return
 				}
-				if c, ok := codeByKind[res.Primary]; ok {
+				// Start with the matched entity's actual kind. A duplicate target can block
+				// a requested re-kind (the correct operation is then a merge), in which case
+				// ResolveKind's candidate must not leak into the response or the KG outbox.
+				if c, ok := codeByKind[mergeKindID]; ok {
 					resolvedKindCode = c
 				}
-				kindMoved = res.Changed
+				if moved {
+					if c, ok := codeByKind[res.Primary]; ok {
+						resolvedKindCode = c
+					}
+				}
+				kindMoved = moved
 				result.KindCode = resolvedKindCode
 			}
 		}

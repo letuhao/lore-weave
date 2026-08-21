@@ -271,7 +271,11 @@
       "unknown_error": "unknown error",
       "model_removed": "{{name}} removed",
       "model_delete_failed": "Failed to delete model"
-    }
+    },
+    "delete_blocked": "This model cannot be deleted: {{count}} active job(s). Stop them first.",
+    "delete_refs_none": "no references",
+    "delete_confirm": "Delete the model \"{{name}}\"?\n\nThese references will be removed: {{refs}}.",
+    "return_to_form": "Back to where you were"
   },
   "translation": {
     "heading": "Translation Defaults",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "User prompt template must contain {chapter_text}",
       "saved": "Translation defaults saved",
       "save_failed": "Failed to save translation preferences"
-    }
+    },
+    "models_load_failed": "Couldn't load your models. The provider service may be unavailable.",
+    "retry": "Retry"
   },
   "reading": {
     "app_theme": "App Theme",
@@ -344,7 +350,8 @@
     "auto_saved": "Changes are saved automatically.",
     "toast": {
       "preset_saved": "Preset \"{{name}}\" saved"
-    }
+    },
+    "voice_moved": "Voice & speech settings now live in Settings → Chat & AI → Voice."
   },
   "language": {
     "gui_language": "GUI Language",
@@ -473,7 +480,9 @@
       "notes_ph": "Optional notes about this model configuration...",
       "cancel": "Cancel",
       "adding": "Adding...",
-      "submit": "Add Model"
+      "submit": "Add Model",
+      "pricing_summary": "Cost: input ${{input}}/1M · output ${{output}}/1M",
+      "pricing_missing": "The provider does not publish pricing — add it by hand once the model is registered."
     },
     "edit": {
       "aria": "Edit model",
@@ -511,7 +520,16 @@
       "request_failed": "Request failed",
       "cancel": "Cancel",
       "saving": "Saving...",
-      "submit": "Save Changes"
+      "submit": "Save Changes",
+      "capabilities_refreshed": "Model capabilities refreshed",
+      "capabilities_refresh_failed": "Could not refresh the model capabilities",
+      "delete_blocked_active": "This model cannot be deleted: stop its active jobs first.",
+      "pricing_missing": "This model has no pricing — estimated job cost will be unavailable.",
+      "refresh_capabilities": "Refresh",
+      "delete_impact": "These references will be removed: {{refs}}. Press Delete again to confirm.",
+      "delete_impact_none": "none",
+      "delete_blocked_count": "Deletion is blocked: {{count}} active job(s). Stop them first.",
+      "verify_ok_rerank": "Ranked {{count}} docs · top {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "Failed to fetch models: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "Model deleted",
       "delete_failed": "Failed to delete"
     }
+  },
+  "defaultModels": {
+    "heading": "Default models",
+    "subtitle": "Your per-user fallback models (BYOK — your own). Used when no per-scope model is set.",
+    "chat": "Default chat model",
+    "chatHint": "Preselected when you start a new chat. Leave empty to default to your favorites.",
+    "rerank": "Default reranker",
+    "rerankHint": "Cross-encoder rerank for raw-search junk-rejection. Optional — applies when a project has no rerank model set.",
+    "planner": "Default planner",
+    "plannerHint": "The chat model the glossary assistant uses to build multi-step plans. Pick a strong, tool-capable model — otherwise planning falls back to an arbitrary chat model and often fails.",
+    "none": "None",
+    "empty": "No capable models configured.",
+    "saved": "Default updated"
+  },
+  "external_services": {
+    "delete_blocked": "This service cannot be removed: its model is in use by {{count}} active job(s). Stop them first.",
+    "delete_refs_none": "no references",
+    "delete_confirm": "Remove the service \"{{name}}\"?\n\nThese model references will be removed: {{refs}}."
   }
 }

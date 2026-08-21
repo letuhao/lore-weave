@@ -9,7 +9,9 @@
     "permissions": "工具權限",
     "proposals": "提案",
     "activity": "活動日誌",
-    "ingest": "註冊來源"
+    "ingest": "註冊來源",
+    "bindings": "自動設定",
+    "workflows": "配方"
   },
   "quota": {
     "unavailable": "用量無法使用",

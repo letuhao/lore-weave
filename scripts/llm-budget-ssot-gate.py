@@ -62,7 +62,42 @@ ROOT = Path(__file__).resolve().parents[1]
 #: detector's blind spot ratchets the blind spot.
 #: 2026-07-31 M2 — 59 → **29** after composition-service adopted its registry: 18 signature
 #: defaults resolved (`sigs` is now 0 repo-wide) and 12 of the call sites they feed followed.
-UNATTRIBUTED_BASELINE = 29
+#: 2026-08-02 DoD-3 — 29 -> 30 -> **26**. It went UP first, and that is the honest part: the
+#: raw-body shape (Form 3) was added before anything was drained, which made ONE new site
+#: visible (`composition/app/routers/engine.py` — a persisted job record whose `max_out`
+#: comes off the API request). Draining a backlog whose denominator is still incomplete is
+#: how a count reads DONE while the surface it did not scan stays broken. Then: three
+#: literal/default origins converted (`self_heal_rerank` 400, `plan_heal` 2000/700,
+#: `error_block_heal` 1200), one hand-rolled sizer folded into the registry
+#: (`succession_entailment`), and `_helper_params_by_call` taught the gate the
+#: attributed-caller-plus-private-helper shape it could not see.
+#: 2026-08-02 (cont.) — 26 -> **16**. knowledge-service got its first registry, and what it
+#: had instead was THREE hand-rolled sizers in three modules, two of them byte-identical
+#: copies of each other (`motif_tag`/`thread_tag`), none aware of the rest: a second sizing
+#: model with no floor, no reasoning allowance and no window clamp.
+#: 2026-08-02 (cont.) — 16 -> **13**. translation-service's FOURTH hand-rolled sizing model
+#: folded in: `min(_TRANSLATION_MAX_OUTPUT_TOKENS, max(2048, window - prompt - 2048))`,
+#: written out twice, is now the `translate_batch` row's per-call ceiling. Plus two rows
+#: where the CEILING is the length control rather than a safety net (`fold`,
+#: `resummarize` — both bounded by the glossary rune cap, neither prompt carrying a
+#: length directive).
+#: 2026-08-02 (final) — 13 -> **1**, after the author's ruling that a REQUIRED parameter is
+#: not an exemption: *"co bat buoc hay khong thi cung phai centralize de kiem soat"*. What
+#: that ruling changed, concretely: `structured_generate` now takes a `CallBudget` instead
+#: of a required int (a required INT still let every caller invent a number); the injected
+#: LLM seams in glossary_build/intent_fsm take a registry CODE, so they cannot be handed a
+#: number at all; and `body.max_output_tokens` may now only NARROW, never override, which
+#: was a real control hole — the deploy ceiling was only unreachable because three
+#: unrelated constants happened to be 32768.
+#: Detector work in the same pass: `_is_budget_param` (suffixed names — two signature
+#: defaults were hiding as `judge_max_tokens`/`edit_max_tokens`), an ITERATED helper
+#: binder (a four-hop chain resolved only its innermost layer in one pass), and a
+#: type-directed `.max_output_tokens` rule so an API can take the resolved OBJECT.
+#: THE ONE REMAINING: `self_heal.py:221` — `_chat`, whose budget arrives down a chain the
+#: binder resolves only partially. The value IS registry-derived at every origin; this is
+#: a detector limit, and it is left ON the ratchet rather than exempted, because an
+#: exemption is how a blind spot becomes permanent.
+UNATTRIBUTED_BASELINE = 1
 
 #: Budget calls that pass NO adaptive signal — no `target`, `language`, `reasoning` or
 #: `context_length`. Ratcheted, and it is a SECOND axis from the one above: a site here is
@@ -81,11 +116,63 @@ UNATTRIBUTED_BASELINE = 29
 #:
 #: Ratchet rather than hard-fail for the same reason as the line above: ~29 findings and no
 #: path to green helps nobody. It may not GROW.
-NO_SIGNAL_BASELINE = 28
+#:
+#: 2026-08-02 — **28 → 9**, and the number means something different now. The old count was
+#: "sites passing none of four kwargs"; this one is "sites passing none their KIND READS",
+#: with `signal_inert` rows excluded because no signal can reach them at all. The old 28 was
+#: clearable by adding `language=` to a STRUCTURED call, which `call_budget` discards.
+#:
+#: What the remaining 9 are, so nobody re-derives them: SIX plan-forge steps (the response is
+#: a whole planning package and its item count is what the step generates), `audit_promises`
+#: and `extract_tracked_promises` (the list length IS the output — any `target` would be
+#: invented), and `compress` (`target`/`language` are eaten by its ceiling; only
+#: `context_length` could move it and the call site does not know the model's window).
+#: Every one is a call whose size is genuinely undiscoverable before the call, NOT a site
+#: nobody got to — which is why this number should be expected to move slowly, or not at all.
+#: 2026-08-02 (cont.) — **9 → 13**, and the growth is a WIDENED DENOMINATOR, not new debt.
+#: This axis counts sites that ARE attributed and still resolve to a constant. Ten
+#: knowledge-service sites became attributed in the same change; four of them
+#: (`regenerate_summary`, `pdf_page_caption`, `wiki_article`, `working_memory_executive`)
+#: are PROSE/STRUCTURED rows whose call site does not yet hold a truthful target, so they
+#: land here the moment they stop being invisible. Passing `language=` to make the number
+#: go down would be the exact theatre this axis was redesigned to reject — the kind
+#: discards it and no resolved budget changes. They stay counted until a real signal
+#: exists, which is the honest state and the one that keeps costing something.
+#: 2026-08-02 (final) — **13 → 14**. Widened denominator again: the last drained sites
+#: became attributed and one of them (`session_translator`'s kernel default, which fires
+#: only when a caller supplies nothing) has no per-call fact to pass at that point.
+NO_SIGNAL_BASELINE = 14
 
 #: The kwargs that make a budget call adaptive. `floor`/`ceiling` are deliberately absent —
 #: they are per-call CONSTANTS from the registry, not per-call signal.
 ADAPTIVE_SIGNAL = frozenset({"target", "language", "reasoning", "context_length"})
+
+#: …but a kwarg only counts if the KIND actually reads it, and this is the correction that
+#: makes the axis above mean anything.
+#:
+#: MEASURED 2026-08-02, against `call_budget`: `language` is turned into a per-word rate and
+#: then consulted ONLY on the PROSE and VERDICT branches. STRUCTURED sizes on
+#: `target * _TOKENS_PER_ITEM` and EDIT on `target / 3`; neither looks at it. MIRROR returns
+#: the omit sentinel before the sizing model runs and reads NOTHING.
+#:
+#: So the first version of this ratchet was satisfiable with theatre: adding `language=` to a
+#: STRUCTURED call site cleared it from the backlog and changed no resolved budget, ever. A
+#: gate that can be turned green without changing behaviour is worse than no gate, because it
+#: reports the debt as paid. Verified by probe in each service's registry test.
+_KIND_READS: dict[str, frozenset[str]] = {
+    "PROSE": frozenset({"target", "language"}),
+    "VERDICT": frozenset({"target", "language"}),
+    "STRUCTURED": frozenset({"target"}),
+    "EDIT": frozenset({"target"}),
+    "MIRROR": frozenset(),
+}
+
+#: Read on every non-MIRROR branch regardless of kind: `reasoning` scales `need`, and
+#: `context_length` applies the window clamp AFTER the floor — which is why it can move even a
+#: row whose ceiling equals its floor. That last fact overturned a confident "this row is
+#: inert" claim during this slice; it is recorded here so the next reader does not re-derive
+#: the wrong version of it.
+_KIND_ALWAYS_READS = frozenset({"reasoning", "context_length"})
 
 #: Methods that submit an LLM request with a payload DICT. Structural, not name-based: what
 #: makes a budget an OUTPUT budget is that it rides in one of these payloads.
@@ -105,11 +192,39 @@ _STREAM = {"stream", "submit_and_await_event"}
 _PAYLOAD_KWARGS = ("input", "payload", "body")
 _BUDGET_KEYS = {"max_tokens", "max_output_tokens", "max_out", "max_completion_tokens"}
 
-#: A third shape this gate does NOT parse: a raw `POST /internal/llm/stream` with a JSON body
-#: (chat-service, lore-enrichment-service, video-gen-service). Named here, and named in the
-#: PASS line, because an unscanned surface that goes unmentioned is how "every one" becomes
-#: a false claim. Tracked for a follow-up rather than silently excluded.
-UNSCANNED_SURFACES = "raw POST /internal/llm/stream (chat, lore-enrichment, video-gen)"
+
+def _is_budget_param(name: str) -> bool:
+    """Is `name` a parameter carrying an OUTPUT budget?
+
+    Exact match, or a suffix of one. Deliberately NOT a substring match: `max_tokens_for` is
+    the resolver rather than a budget, and a hypothetical `prompt_max_tokens` would be an
+    INPUT packing budget — the different concept sharing a spelling that this gate's module
+    docstring says must not be swept in.
+    """
+    return name in _BUDGET_KEYS or any(name.endswith("_" + k) for k in _BUDGET_KEYS)
+
+#: The THIRD shape, now parsed: a raw `POST /internal/llm/stream` whose body is a plain dict
+#: literal, bypassing the SDK entirely. It was named as unscanned rather than silently
+#: excluded — and when the surface was finally measured the note itself turned out to be two
+#: thirds wrong. chat-service and video-gen-service do NOT post raw bodies; both go through
+#: `loreweave_llm.Client` and were already scanned (as `_STREAM` / `_SUBMIT` sites). Only
+#: lore-enrichment-service hand-rolls the body — two sites, and ONE OF THEM HAD NO `max_tokens`
+#: KEY AT ALL: `eval/judge_binding.py`, the eval judge, running uncapped. A surface excluded
+#: with an honest label still hides whatever is inside it.
+#:
+#: Recognised by shape, not by import: a dict literal carrying BOTH `"operation"` and
+#: `"messages"` constant keys IS a provider-registry request. Requiring both is what keeps the
+#: SDK's `input={…}` payload (whose `operation` is a sibling kwarg, not a dict key) from being
+#: counted twice.
+#:
+#: Stated as SHAPE and not as "an HTTP body" because that is what it actually matches, and the
+#: difference immediately mattered: the first run surfaced `composition/app/routers/engine.py`,
+#: which is not an outbound body at all but a job-record `input` — a request assembled now,
+#: PERSISTED, and submitted by a worker later. Its `max_out` comes straight off the API
+#: request, so an external caller sets that job's output budget. A comment claiming "raw POST
+#: body" would have described something narrower than the code and made the find look like a
+#: false positive.
+_RAW_BODY_KEYS = ("operation", "messages")
 
 _SKIP_PARTS = ("/tests/", "/build/", "/.venv/", "/node_modules/")
 
@@ -197,6 +312,68 @@ def _call_budget_names(tree: ast.AST) -> set[str]:
     return out
 
 
+def _ssot_local_names_by_call(tree: ast.AST, providers: set[str]) -> dict[int, set[str]]:
+    """{id(call node): names the ENCLOSING function assigned from an SSOT call}.
+
+    The sentinel-resolution shape:
+
+        def propose_cast(…, max_tokens: int | None = None):
+            max_tokens = max_tokens or max_tokens_for("propose_cast", target=…)
+            …
+            input={… "max_tokens": max_tokens}
+
+    This gate previously understood only two shapes: a name bound directly to `call_budget`,
+    and a parameter whose DEFAULT resolves through the SSOT. The second is what the sentinel
+    conversion deliberately removes — a default argument is evaluated once at import, so it
+    can never carry a per-call signal, which is the entire point of paying this rot down.
+
+    So without this the gate PUNISHES the migration it exists to drive: converting twelve
+    correct call sites to the adaptive shape moved them from `attributed` to `unattributed`
+    and the backlog went UP by eleven. That is the same failure the registry indirection hit
+    once already, recorded in `budget_provider_names` two functions above; it is the shape of
+    mistake this file keeps making, so it is now named twice.
+
+    Tighter than `_attributed` in TWO ways, and both were needed.
+
+    1. The assigned value must CONTAIN a real call to `call_budget` or a registry accessor. A
+       mere reference to an already-attributed name does not bind a new one, so
+       `later = round(mt * 0.5)` stays unattributed rather than laundering itself.
+    2. The binding is FUNCTION-SCOPED, unlike `_param_defaults_by_call` above. A module-wide
+       version of this cleared three sites that nothing in this slice touched — among them
+       `self_heal._chat`, a helper whose `max_tokens` comes from its CALLERS, one of which
+       passes a flat `400`. The name matched, so the literal would have been laundered into
+       `attributed` by an assignment four hundred lines away. Shrinking a backlog by widening
+       the detector is how a ratchet stops meaning anything.
+    """
+    out: dict[int, set[str]] = {}
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        bound: set[str] = set()
+        for n in ast.walk(fn):
+            if not isinstance(n, (ast.Assign, ast.AnnAssign)):
+                continue
+            value = getattr(n, "value", None)
+            if value is None:
+                continue
+            has_ssot_call = any(
+                isinstance(sub, ast.Call)
+                and ((sub.func.attr if isinstance(sub.func, ast.Attribute)
+                      else getattr(sub.func, "id", "")) in providers | {"call_budget"})
+                for sub in ast.walk(value)
+            )
+            if not has_ssot_call:
+                continue
+            targets = [n.target] if isinstance(n, ast.AnnAssign) else n.targets
+            bound.update(t.id for t in targets if isinstance(t, ast.Name))
+        if not bound:
+            continue
+        for sub in ast.walk(fn):
+            if isinstance(sub, ast.Call):
+                out.setdefault(id(sub), set()).update(bound)
+    return out
+
+
 def _attributed(node: ast.AST, names: set[str], providers: set[str]) -> bool:
     """Does this payload value trace to `call_budget` — directly, or via a service registry?"""
     for sub in ast.walk(node):
@@ -204,6 +381,14 @@ def _attributed(node: ast.AST, names: set[str], providers: set[str]) -> bool:
             fn = sub.func.attr if isinstance(sub.func, ast.Attribute) else getattr(sub.func, "id", "")
             if fn == "call_budget" or fn in providers:
                 return True
+        # `<anything>.max_output_tokens` — TYPE-directed, not a name guess. That attribute
+        # exists on exactly one class in this repo (`CallBudget`), so reading it is proof the
+        # value came through the seam no matter which variable holds it or how many function
+        # boundaries away it was resolved. This is what lets an API take the resolved OBJECT
+        # instead of an int: `structured_generate(budget: CallBudget)` cannot be handed a
+        # number at all, and the gate can still see that its payload is attributed.
+        if isinstance(sub, ast.Attribute) and sub.attr == "max_output_tokens":
+            return True
         if isinstance(sub, ast.Name) and (sub.id in names or sub.id in providers):
             return True
     return False
@@ -236,6 +421,77 @@ def _param_defaults_by_call(tree: ast.AST, names: set[str], providers: set[str])
         for sub in ast.walk(fn):
             if isinstance(sub, ast.Call):
                 out.setdefault(id(sub), set()).update(attributed)
+    return out
+
+
+def _helper_params_by_call(tree: ast.AST, names: set[str], providers: set[str],
+                           local_by_call: dict[int, set[str]]) -> dict[int, set[str]]:
+    """{id(call node inside helper H): H's budget params that EVERY caller passes attributed}.
+
+    The last shape this gate could not see, and after the literals were drained it was the
+    LARGEST remaining category — five of the twelve composition sites. The idiom:
+
+        async def _chat(llm, *, system, user, max_tokens, …):
+            job = await llm.submit_and_wait(… input={… "max_tokens": max_tokens})
+
+        async def score_promise_coverage(…, max_tokens: int | None = None):
+            max_tokens = max_tokens or max_tokens_for("score_promise_coverage", target=len(promises))
+            await _chat(llm, …, max_tokens=max_tokens)
+
+    The budget is attributed; it is attributed one function boundary away, in the caller, and
+    `submit_and_wait` lives in the callee. Neither existing binder crosses that: one reads
+    parameter DEFAULTS, the other is function-scoped precisely so a name cannot launder itself
+    from four hundred lines away.
+
+    Why this widening is not that laundering
+    ----------------------------------------
+    The binding requires **every** intra-module call site to pass an attributed argument for
+    that parameter. One caller with a flat literal and the helper stays unattributed — which
+    is exactly the case `_ssot_local_names_by_call`'s docstring names: `self_heal._chat` had a
+    caller passing a bare `400`. That literal is now a registry row, and had it still been
+    there this function would have refused the binding rather than swallowing it. It fails
+    CLOSED in every ambiguous direction too: a positional argument, a caller outside this
+    module, or a helper nobody calls all yield no binding.
+
+    Proven, not asserted: `guard-redability-gate` re-injects a flat literal at one caller and
+    checks the helper goes back to unattributed.
+    """
+    funcs = {n.name: n for n in ast.walk(tree)
+             if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
+    calls: dict[str, list[tuple[ast.Call, set[str]]]] = {}
+    for enclosing in ast.walk(tree):
+        if not isinstance(enclosing, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for sub in ast.walk(enclosing):
+            if not isinstance(sub, ast.Call):
+                continue
+            fname = getattr(sub.func, "id", "")
+            if fname in funcs and fname != enclosing.name:
+                calls.setdefault(fname, []).append((sub, local_by_call.get(id(sub), set())))
+
+    out: dict[int, set[str]] = {}
+    for fname, sites in calls.items():
+        helper = funcs[fname]
+        # `_is_budget_param`, not an exact-set intersection: `_compute_edits` names its two
+        # budgets `judge_max_tokens`/`edit_max_tokens`, so an exact match stopped the chain
+        # dead one hop from the top — the same blind spot that hid two signature defaults.
+        params = {a.arg for a in helper.args.args + helper.args.kwonlyargs
+                  if _is_budget_param(a.arg)}
+        bound = set()
+        for p in params:
+            ok = True
+            for call, locals_here in sites:
+                arg = next((kw.value for kw in call.keywords if kw.arg == p), None)
+                if arg is None or not _attributed(arg, names | locals_here, providers):
+                    ok = False
+                    break
+            if ok:
+                bound.add(p)
+        if not bound:
+            continue
+        for sub in ast.walk(helper):
+            if isinstance(sub, ast.Call):
+                out.setdefault(id(sub), set()).update(bound)
     return out
 
 
@@ -280,6 +536,50 @@ def scan() -> tuple[list[dict], list[dict]]:
             rel = p.relative_to(ROOT).as_posix()
             names = _call_budget_names(tree)
             param_budgets = _param_defaults_by_call(tree, names, providers)
+            local_budgets = _ssot_local_names_by_call(tree, providers)
+            for _cid, _bound in local_budgets.items():
+                param_budgets.setdefault(_cid, set()).update(_bound)
+            # ITERATED to a fixpoint. `_chat <- _judge <- _judge_vote <- _compute_edits <-
+            # run_self_heal` is four hops, and one pass can only resolve the innermost: each
+            # round teaches the binder one more layer, so a single pass leaves a correctly
+            # attributed budget looking like debt purely because of how deep its call chain is.
+            # Bounded by the number of functions, and it converges in 2-3 rounds in practice.
+            for _ in range(8):
+                grew = False
+                for _cid, _bound in _helper_params_by_call(
+                        tree, names, providers, local_budgets).items():
+                    before = len(param_budgets.get(_cid, ()))
+                    param_budgets.setdefault(_cid, set()).update(_bound)
+                    grew = grew or len(param_budgets[_cid]) != before
+                if not grew:
+                    break
+                # Feed what we learned back in, so the next round can see it.
+                for _cid, _bound in param_budgets.items():
+                    local_budgets.setdefault(_cid, set()).update(_bound)
+
+            # Form 3 — a RAW provider-registry body, hand-rolled as a dict and posted to
+            # `/internal/llm/stream` without the SDK. Same classification as the payload-dict
+            # shape; the only difference is how the site is recognised. See _RAW_BODY_KEYS for
+            # why both keys are required, and for what this surface was hiding while it was
+            # merely NAMED as unscanned.
+            for n in ast.walk(tree):
+                if not isinstance(n, ast.Dict):
+                    continue
+                keys = {k.value for k in n.keys if isinstance(k, ast.Constant)}
+                if not all(k in keys for k in _RAW_BODY_KEYS):
+                    continue
+                val = next((v for k, v in zip(n.keys, n.values)
+                            if isinstance(k, ast.Constant) and k.value in _BUDGET_KEYS), None)
+                if val is None:
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "ABSENT"})
+                elif _attributed(val, names, providers):
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "attributed"})
+                elif isinstance(val, ast.Constant) and val.value == 0:
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "attributed"})
+                elif isinstance(val, ast.Constant):
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "literal"})
+                else:
+                    sites.append({"file": rel, "line": n.lineno, "verdict": "unattributed"})
 
             for n in ast.walk(tree):
                 if not isinstance(n, ast.Call):
@@ -314,10 +614,20 @@ def scan() -> tuple[list[dict], list[dict]]:
                 for k, v in zip(payload.keys, payload.values):
                     if isinstance(k, ast.Constant) and k.value in _BUDGET_KEYS:
                         val = v
-                if val is None and any(k is None for k in payload.keys):
-                    # No explicit budget, but a spread COULD carry one — genuinely unknown.
-                    sites.append({"file": rel, "line": n.lineno, "verdict": "opaque"})
-                    continue
+                # …and the excuse for that dangerous half is now GONE, because a red-ability
+                # sweep fired the exact shot the comment above says the gate was "one
+                # `**kwargs` away from" taking. Deleting `"max_tokens": max_tokens,` from a
+                # real call site — leaving `**no_thinking_fields()` behind — left this gate
+                # GREEN. The site was identified as a call site BY the presence of the very
+                # key the HARD rule is about, so removing the key removed the finding: a
+                # check that cannot fail in the one direction that matters.
+                #
+                # "A spread COULD carry a budget" was true and irrelevant. Every spread in the
+                # repo today is `**no_thinking_fields()` (21 of 21 — `grep -rhoE '\*\*[a-z_]+
+                # \(\)' services/*/app`), which carries reasoning wire fields and no budget.
+                # So the honest reading of a spread with no budget key is ABSENT, and the fix
+                # for a genuine budget-in-a-spread is to make it explicit — not to grant every
+                # payload containing a `**` an exemption from the rule.
                 if val is None:
                     sites.append({"file": rel, "line": n.lineno, "verdict": "ABSENT"})
                 elif _attributed(val, names | param_budgets.get(id(n), set()), providers):
@@ -342,11 +652,109 @@ def scan() -> tuple[list[dict], list[dict]]:
                 pairs = list(zip(a.args[len(a.args) - len(a.defaults):], a.defaults))
                 pairs += list(zip(a.kwonlyargs, a.kw_defaults))
                 for arg, d in pairs:
-                    if arg.arg in _BUDGET_KEYS and isinstance(d, ast.Constant) \
+                    # SUFFIXED names too (`judge_max_tokens`, `edit_max_tokens`). The
+                    # exact-match set was the fourth blind spot this cycle found: a signature
+                    # default is the MOST common form of the defect, and naming the parameter
+                    # after WHICH call it sizes — the natural thing to do when one function
+                    # drives two — put it outside the check entirely. `run_self_heal` carried
+                    # 2200 and 1200 that way, and `sigs` read 0 repo-wide.
+                    if _is_budget_param(arg.arg) and isinstance(d, ast.Constant) \
                             and isinstance(d.value, int) and d.value != 0:
                         sigs.append({"file": rel, "line": n.lineno,
                                      "fn": n.name, "arg": arg.arg, "default": d.value})
     return sites, sigs
+
+
+#: The kinds on which `signal_inert=True` can be TRUE. One, and it is derivable rather than
+#: surveyed: MIRROR returns the omit sentinel before the sizing model and before every clamp,
+#: so no argument reaches anything. Every other kind is moved by `context_length`, because the
+#: window clamp runs after the floor and pushes DOWN — the fact this file already states two
+#: functions below, in `_KIND_ALWAYS_READS`.
+#:
+#: Checking it matters because `signal_inert` is not only a claim, it is an EXEMPTION: an inert
+#: row's call sites are excused from the no-signal ratchet. An exemption whose reason nothing
+#: verifies is exactly the escape hatch NV-6 names.
+#:
+#: Measured, not reasoned: marking composition's VERDICT row `judge_prose` inert left this gate
+#: GREEN while the service's own unit test went red. The repo-wide mechanism was accepting a
+#: claim the service-local one refuted — and the repo-wide one is the mechanism that runs in CI.
+_INERT_CAPABLE_KINDS = frozenset({"MIRROR"})
+
+
+def unsound_inert_claims(rows: dict[str, dict]) -> list[str]:
+    """Rows claiming `signal_inert` on a kind that demonstrably responds to signal."""
+    return [f"{r['service']}:{code} declares signal_inert on {r['kind']}"
+            for code, r in sorted(rows.items())
+            if r["signal_inert"] and (r["kind"] or "") not in _INERT_CAPABLE_KINDS]
+
+
+def load_registry_rows() -> dict[str, dict]:
+    """code -> {kind, signal_inert, service}, read STATICALLY from each service's registry.
+
+    Parsed rather than imported on purpose. CI runs this gate in the `lints` job, which is a
+    bare checkout with no `pip install` — importing `app.llm_budget` would need the service's
+    deps AND `loreweave_llm` on the path, so the gate would crash there while passing locally.
+    Wrapping that import in a `try/except` would be worse: every row would silently vanish,
+    every site would look exempt, and the gate would report PASS for the wrong reason. That is
+    the fail-open shape this repo keeps paying for, so the parse is the honest option.
+
+    A row this cannot read is simply absent, and an absent row makes its call sites fall back
+    to the kwarg-only rule below — narrower than the truth, never wider.
+    """
+    rows: dict[str, dict] = {}
+    for reg in sorted((ROOT / "services").glob("*/app/llm_budget.py")):
+        service = reg.relative_to(ROOT / "services").parts[0]
+        try:
+            tree = ast.parse(reg.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            target_names = (
+                [node.target] if isinstance(node, ast.AnnAssign)
+                else getattr(node, "targets", [])
+            )
+            if not any(getattr(t, "id", None) == "PROFILES" for t in target_names):
+                continue
+            if not isinstance(getattr(node, "value", None), ast.Dict):
+                continue
+            for key, val in zip(node.value.keys, node.value.values):
+                if not (isinstance(key, ast.Constant) and isinstance(key.value, str)):
+                    continue
+                if not isinstance(val, ast.Call):
+                    continue
+                kind = None
+                # `CallProfile(OutputKind.VERDICT, …)` — positional first, keyword otherwise.
+                for cand in list(val.args) + [k.value for k in val.keywords if k.arg == "kind"]:
+                    if isinstance(cand, ast.Attribute) and \
+                            getattr(cand.value, "id", None) == "OutputKind":
+                        kind = cand.attr
+                        break
+                inert = any(
+                    k.arg == "signal_inert" and isinstance(k.value, ast.Constant)
+                    and k.value.value is True
+                    for k in val.keywords
+                )
+                rows[key.value] = {"kind": kind, "signal_inert": inert, "service": service}
+    return rows
+
+
+def _codes_at(node: ast.Call) -> list[str]:
+    """Every profile code this budget call could resolve to.
+
+    A LIST, not a value, because `decoupled_translate` picks its row with a conditional —
+    `budget_for("compact_memo" if action[0] == "compact" else "translate_session_chunk")` —
+    and collapsing that to "unknown" would drop a real site into the fallback path. Both
+    branches are resolved and the site is exempt only if EVERY branch it can take is inert.
+    """
+    if not node.args:
+        return []
+    a = node.args[0]
+    if isinstance(a, ast.Constant) and isinstance(a.value, str):
+        return [a.value]
+    if isinstance(a, ast.IfExp):
+        return [b.value for b in (a.body, a.orelse)
+                if isinstance(b, ast.Constant) and isinstance(b.value, str)]
+    return []
 
 
 def scan_signal() -> list[dict]:
@@ -358,6 +766,7 @@ def scan_signal() -> list[dict]:
     first check is green.
     """
     out: list[dict] = []
+    rows = load_registry_rows()
     for py in (ROOT / "services").rglob("*.py"):
         posix = py.as_posix()
         if "/tests/" in posix or "/build/" in posix:
@@ -377,10 +786,33 @@ def scan_signal() -> list[dict]:
             if py.name == "llm_budget.py":
                 continue
             passed = {k.arg for k in node.keywords} & ADAPTIVE_SIGNAL
-            code = (node.args[0].value
-                    if node.args and isinstance(node.args[0], ast.Constant) else "?")
+            codes = _codes_at(node)
+            code = codes[0] if len(codes) == 1 else ("|".join(codes) if codes else "?")
+
+            # Score the kwargs against what the KIND reads, not against the kwarg set. A
+            # `language=` on a STRUCTURED row is discarded by `call_budget`, so counting it
+            # would let this ratchet be cleared without a single budget changing.
+            known = [rows[c] for c in codes if c in rows]
+            if known:
+                readable: set[str] = set()
+                for r in known:
+                    readable |= _KIND_READS.get(r["kind"] or "", ADAPTIVE_SIGNAL)
+                    if r["kind"] != "MIRROR":
+                        readable |= _KIND_ALWAYS_READS
+                effective = passed & readable
+                # Exempt only when EVERY row this site can resolve to declares itself inert —
+                # a conditional whose branches disagree is not exempt.
+                inert = all(r["signal_inert"] for r in known)
+            else:
+                # Unresolvable row: fall back to the raw kwarg test rather than guessing a
+                # kind. Narrower than the truth, never wider — an unknown row can never be
+                # granted an exemption it did not declare.
+                effective, inert = passed, False
+
             out.append({"file": posix.split("/services/")[-1], "line": node.lineno,
-                        "code": code, "signal": sorted(passed)})
+                        "code": code, "signal": sorted(effective),
+                        "declared": sorted(passed), "inert": inert,
+                        "kind": known[0]["kind"] if known else None})
     return out
 
 
@@ -429,8 +861,40 @@ def main() -> int:
                   f"{Path(__file__).name}.")
         rc = 1
 
+    unsound = unsound_inert_claims(load_registry_rows())
+    if unsound:
+        print("\nFAIL — a row claims signal_inert on a kind that DOES respond to signal:\n")
+        for u in unsound:
+            print(f"   {u}")
+        print("\n   Only MIRROR short-circuits before the sizing model and the clamps. Every")
+        print("   other kind moves with `context_length` at least, so the flag is false there")
+        print("   — and it is also an exemption from the no-signal ratchet below, which is why")
+        print("   a wrong one is worse than no flag: it excuses call sites from signal they")
+        print("   genuinely have.")
+        rc = 1
+
     signal_sites = scan_signal()
-    no_signal = [s for s in signal_sites if not s["signal"]]
+    # Three classes now, where there used to be two. A row that declares `signal_inert` is
+    # not backlog — no signal can reach it — and lumping it in with sites that DO have signal
+    # to give made the ratchet a number nobody could act on.
+    inert_sites = [s for s in signal_sites if s["inert"]]
+    no_signal = [s for s in signal_sites if not s["signal"] and not s["inert"]]
+
+    # A site passing a kwarg its kind discards. Reported explicitly because it is the exact
+    # move that would clear a site from the ratchet without changing a budget, and a reviewer
+    # reading a shrinking backlog cannot otherwise tell the difference.
+    theatre = [s for s in signal_sites
+               if not s["inert"] and s["declared"] and not s["signal"]]
+    if theatre:
+        print("\nFAIL — budget call passes a signal its KIND does not read:\n")
+        for s in theatre:
+            print(f"   {s['file']}:{s['line']}  {s['code']} ({s['kind']}) "
+                  f"passes {s['declared']} — discarded by call_budget")
+        print("\n   `language` is read only on PROSE and VERDICT; STRUCTURED and EDIT size on")
+        print("   `target` alone; MIRROR reads nothing. Pass what the kind consumes, or mark")
+        print("   the row `signal_inert=True` if genuinely nothing can size it.")
+        rc = 1
+
     if len(no_signal) != NO_SIGNAL_BASELINE:
         grew = len(no_signal) > NO_SIGNAL_BASELINE
         print(f"\n{'FAIL' if grew else 'NOTE'} — budget calls passing NO adaptive signal "
@@ -452,13 +916,15 @@ def main() -> int:
         # sites it scanned, printed as though it were true of the repo. The scanned surface
         # is now named, and so is the one that is not.
         print(f"llm-budget-ssot-gate: PASS — {len(sites)} LLM call site(s) scanned "
-              f"(payload-dict + request-object shapes); none leaves its budget undeclared.")
+              f"(payload-dict + request-object + raw-body shapes); none leaves its budget "
+              f"undeclared.")
         print(f"  {len(attributed)} traced to call_budget() · {backlog} held at baseline "
               f"({len(literal)} literal, {len(unattr)} unattributed, {len(sigs)} signature "
               f"defaults) · {len(opaque)} built off-site, not statically visible.")
-        print(f"  NOT scanned: {UNSCANNED_SURFACES}.")
-        print(f"  adaptive signal: {len(signal_sites) - len(no_signal)}/{len(signal_sites)} "
-              f"budget calls pass one ({len(no_signal)} held at baseline).")
+        carrying = len(signal_sites) - len(no_signal) - len(inert_sites)
+        print(f"  adaptive signal: {carrying}/{len(signal_sites)} budget calls carry one that "
+              f"their KIND reads · {len(inert_sites)} declared signal_inert "
+              f"(nothing can size them) · {len(no_signal)} held at baseline.")
     return rc
 
 

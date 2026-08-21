@@ -16,11 +16,11 @@ From repo root:
 
 ```bash
 docker compose --profile full up
-# Open http://localhost:5174/play
+# Open http://localhost:5176/play
 ```
 
 Boots all 3 services:
-- `frontend-game` (nginx :5174) — this app
+- `frontend-game` (host :5176 → nginx :5174) — this app
 - `tilemap-service` (Rust :8220) — procedural tilemaps (V0 only smokes `/livez`)
 - `game-server` (Node + Colyseus :2567) — WebSocket multiplayer (V0 only EchoRoom)
 
@@ -33,7 +33,7 @@ docker compose --profile full up tilemap-service game-server
 # Terminal 2 — start Vite dev server
 pnpm install
 pnpm --filter frontend-game dev
-# → http://localhost:5174
+# → http://localhost:5176
 ```
 
 ### Tests

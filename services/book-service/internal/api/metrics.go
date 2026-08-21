@@ -84,10 +84,33 @@ var ChapterFetchTotal = prometheus.NewCounterVec(
 	[]string{"outcome"},
 )
 
+// EPUB V2 operational metrics. Labels are bounded enums only; no source keys,
+// book IDs, filenames, or user data are ever exported.
+var EPUBImportJobsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "epub_import_jobs_total", Help: "EPUB import job outcomes.",
+}, []string{"outcome"})
+var EPUBImportItemsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "epub_import_items_total", Help: "EPUB import item outcomes.",
+}, []string{"outcome"})
+var EPUBImportAssetsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "epub_import_assets_total", Help: "EPUB asset persistence outcomes.",
+}, []string{"outcome"})
+var EPUBImportWarningsTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
+	Name: "epub_import_warnings_total", Help: "Durable EPUB import warnings by stage.",
+}, []string{"stage"})
+var EPUBImportDurationSeconds = prometheus.NewHistogram(prometheus.HistogramOpts{
+	Name: "epub_import_duration_seconds", Help: "EPUB finalize duration in seconds.",
+})
+var EPUBImportUncompressedBytes = prometheus.NewHistogram(prometheus.HistogramOpts{
+	Name: "epub_import_uncompressed_bytes", Help: "Uncompressed bytes inspected from EPUB archives.",
+})
+
 func init() {
 	metricsRegistry.MustRegister(ProjectionTotal)
 	metricsRegistry.MustRegister(ChaptersListTotal)
 	metricsRegistry.MustRegister(ChapterFetchTotal)
+	metricsRegistry.MustRegister(EPUBImportJobsTotal, EPUBImportItemsTotal, EPUBImportAssetsTotal,
+		EPUBImportWarningsTotal, EPUBImportDurationSeconds, EPUBImportUncompressedBytes)
 
 	// Pre-seed every (counter × outcome) pair so the series appears
 	// at zero on first scrape. rate() queries against new series
@@ -102,6 +125,14 @@ func init() {
 		} {
 			cv.WithLabelValues(oc)
 		}
+	}
+	for _, outcome := range []string{"success", "failure", "warning"} {
+		EPUBImportJobsTotal.WithLabelValues(outcome)
+		EPUBImportItemsTotal.WithLabelValues(outcome)
+		EPUBImportAssetsTotal.WithLabelValues(outcome)
+	}
+	for _, stage := range []string{"worker", "assets", "links", "composition", "rollback"} {
+		EPUBImportWarningsTotal.WithLabelValues(stage)
 	}
 }
 

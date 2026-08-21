@@ -208,7 +208,8 @@ class _Judge:
 
 
 async def _reflect_judged(monkeypatch, verdicts, *, status="completed",
-                          judge=("user_model", "critic-model")):
+                          judge=("user_model", "critic-model"),
+                          identity_verified=True):
     _stub_extractor(monkeypatch, events=[_Ev(_Eff("Tô Thanh Dao", "gone"))])
     llm = _Judge(verdicts, status=status)
     return await CR.run_canon_reflect(
@@ -225,6 +226,7 @@ async def _reflect_judged(monkeypatch, verdicts, *, status="completed",
         drafter_source="user_model", drafter_ref="drafter-model",
         judge_source=judge[0] if judge else None,
         judge_ref=judge[1] if judge else None,
+        identity_verified=identity_verified,
         prompt_estimate=0, max_output_tokens=100, max_iters=0,
     ), llm
 
@@ -442,3 +444,53 @@ def test_judge_plan_conflicts_reports_whether_it_actually_judged():
     from app.engine.canon_check import judge_plan_conflicts
     ret = str(inspect.signature(judge_plan_conflicts).return_annotation)
     assert "tuple" in ret and "bool" in ret, ret
+
+
+# ── the judge is a different ROW; is it a different MODEL? ────────────────────────────────
+
+@pytest.mark.asyncio
+async def test_an_UNVERIFIED_judge_identity_leaves_it_advisory(monkeypatch):
+    """The distinct-critic rule was fixed to compare the RESOLVED PROVIDER MODEL, because five
+    `user_model_id` rows on the dev box are one model. The router adopted that; the path that
+    decides whether a conflict BLOCKS A PUBLISH did not, and re-derived distinctness from the
+    refs — a comparison that cannot see two rows collapsing to one model.
+
+    `identity_verified=False` means provider-registry could not tell us which model either ref
+    is. That is not "they are the same" and not "they are different": it is unknown, and an
+    unknown must not be allowed to certify. Same direction the file already takes for a judge
+    that is down — a judge we cannot vouch for may not BLOCK a publish."""
+    (_t, r, _), llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": True, "why": "cô ấy chết thật"}],
+        identity_verified=False)
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is None, "an unverifiable judge must not promote a candidate to HARD"
+    assert r.resolved is True, "advisory must not block publish"
+    assert llm.calls == [], "and the judge must not even be asked — its verdict is unusable"
+
+
+@pytest.mark.asyncio
+async def test_a_VERIFIED_judge_identity_still_blocks(monkeypatch):
+    """The control. Without it, "never promote" passes the test above and the blocking tier
+    quietly stops existing — which is the exact failure this whole arc was written about."""
+    (_t, r, _), llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": True, "why": "cô ấy chết thật"}],
+        identity_verified=True)
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is True
+    assert r.resolved is False
+    assert llm.calls, "a verified-distinct judge IS asked"
+
+
+@pytest.mark.asyncio
+async def test_an_UNRESOLVED_identity_None_is_treated_as_usable(monkeypatch):
+    """`None` is not `False`. It means the caller never resolved identity at all (an older
+    path, or a worker that has no provider-registry client), and turning that into a silent
+    downgrade would disable the blocking tier everywhere the signal is simply absent —
+    the reverse false-green. Only an ATTEMPT that FAILED downgrades."""
+    (_t, r, _), llm = await _reflect_judged(
+        monkeypatch, [{"entity_id": DAO, "violated": True, "why": "cô ấy chết thật"}],
+        identity_verified=None)
+    hit = next(v for v in r.violations if v.kind == PLAN_CONFLICT_KIND)
+    assert hit.confirmed is True
+    assert r.resolved is False
+    assert llm.calls

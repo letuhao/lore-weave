@@ -59,7 +59,8 @@
     "noActive": "Tidak ada pekerjaan aktif.",
     "more": "Muat lebih banyak",
     "toggleChildren": "Tampilkan anak pekerjaan",
-    "noChildren": "Tidak ada anak pekerjaan."
+    "noChildren": "Tidak ada anak pekerjaan.",
+    "errorWithReason": "Tidak dapat memuat pekerjaan: {{error}}"
   },
   "row": {
     "ran": "berjalan {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Jeda",
     "resume": "Lanjutkan",
+    "resumeFromCheckpoint": "Lanjutkan dari titik simpan",
     "cancel": "Batal",
     "cancelConfirm": "Berhenti sekarang? Pekerjaan yang sedang berjalan akan dibuang; bagian yang sudah selesai akan tetap disimpan.",
     "cancelYes": "Ya",
@@ -95,7 +97,9 @@
     "retry": "Coba lagi",
     "retried": "Dikirim ulang sebagai pekerjaan baru.",
     "stale": "Status pekerjaan berubah — diperbarui.",
-    "actionFailed": "Tindakan gagal: {{error}}"
+    "actionFailed": "Tindakan gagal: {{error}}",
+    "retryBenchmarkMissing": "Ulangi tidak tersedia: model embedding tidak memiliki benchmark. Jalankan benchmark model, lalu periksa kembali.",
+    "retryBenchmarkFailed": "Ulangi tidak tersedia: model embedding gagal pada benchmark terakhir."
   },
   "monitor": {
     "back": "Semua pekerjaan",

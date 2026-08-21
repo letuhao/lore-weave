@@ -11,6 +11,8 @@ export interface GenerationParams {
   // Granular reasoning effort (takes precedence over `thinking`). 'off' disables hidden
   // thinking — the fix for an over-thinking model that loops without finishing.
   reasoning_effort?: ReasoningEffort | null;
+  /** Opt-in only: use the provider's stateful Responses API chain. */
+  use_stateful_responses?: boolean | null;
 }
 
 export interface ChatSession {
@@ -217,9 +219,43 @@ export interface ContextHistoryPoint {
 
 /** One Planner/Compiler decision (the compile-trace waterfall row). `delta` < 0 =
  *  tokens SAVED, > 0 = INCLUDED, 0 = neutral; `is_error` = a reject span. */
+/** S11 — the two closed sets, exported so a parity test can compare them against
+ *  `contracts/context-trace.contract.json` instead of trusting two hand-kept lists.
+ *
+ *  `TIERS` was previously not a union at all: `tier: string // T0..T6`. The comment carried
+ *  the constraint and the type carried none, so the Inspector would have rendered `"T9"` — or
+ *  any string — exactly as happily as a real tier. A closed-set value typed as `string` on
+ *  the consuming side is the defect the Frontend-Tool Contract exists to prevent, and it was
+ *  sitting in the contract-checked payload itself. */
+export const TRACE_PHASES = ['planner', 'compiler'] as const;
+export const TRACE_TIERS = ['T0', 'T1', 'T2', 'T3', 'T4', 'T5', 'T6'] as const;
+export type TracePhase = (typeof TRACE_PHASES)[number];
+export type TraceTier = (typeof TRACE_TIERS)[number];
+
+/** Compile-time proof that the two unions above are CLOSED — and it lives here, in a source
+ *  file, on purpose.
+ *
+ *  The obvious place for this is a `@ts-expect-error` in the test beside the parity checks.
+ *  That does not work: `tsconfig.json` carries
+ *  `"exclude": ["src/**\/__tests__", "src/**\/*.test.ts", "src/**\/*.test.tsx"]`, so no test
+ *  file is ever type-checked and a `@ts-expect-error` there can neither pass nor fail. It
+ *  reads exactly like enforcement and is inert — the check-that-cannot-fail shape, in the
+ *  slice about machine-checking a contract on both sides.
+ *
+ *  `string extends T` is only true when `T` IS `string`, so widening either alias back to a
+ *  bare `string` turns the assertion into the error tuple and `tsc --noEmit` fails on the
+ *  assignment below. Verified by doing exactly that. */
+type _Closed<T, Name extends string> = string extends T
+  ? ['S11: this union was widened to `string` and is no longer closed', Name]
+  : true;
+const _tracePhaseIsClosed: _Closed<TracePhase, 'TracePhase'> = true;
+const _traceTierIsClosed: _Closed<TraceTier, 'TraceTier'> = true;
+void _tracePhaseIsClosed;
+void _traceTierIsClosed;
+
 export interface TraceSpanFrame {
-  phase: 'planner' | 'compiler';
-  tier: string; // T0..T6
+  phase: TracePhase;
+  tier: TraceTier;
   category: string;
   action: string;
   delta: number;

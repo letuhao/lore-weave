@@ -11,12 +11,14 @@ export function StandardRow({
   name,
   code,
   tier,
+  description,
   children,
 }: {
   icon: string;
   name: string;
   code: string;
   tier: Tier;
+  description?: string | null;
   children?: ReactNode;
 }) {
   return (
@@ -33,6 +35,7 @@ export function StandardRow({
           <TierChip tier={tier} />
         </div>
         <code className="text-[11px] text-muted-foreground">{code}</code>
+        {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
       </div>
       <div className="flex shrink-0 items-center gap-1.5">{children}</div>
     </div>

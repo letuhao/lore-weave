@@ -98,5 +98,27 @@
     "branchAt": "bölüm {{ch}}'de dallanıyor",
     "orphan": "· bu dünyanın dışında bir kaynak",
     "edgeLabel": "böl. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Varlığı bağla",
+    "delete": "Sil",
+    "empty": "Henüz harita yok — hikayenizin geçtiği dünyayı çizin.",
+    "entityPlaceholder": "konum varlık kimliği",
+    "error": "Bu harita yüklenemedi.",
+    "label": "Etiket",
+    "marker": "İşaretçi",
+    "name": "İsim",
+    "newMap": "+ Yeni harita",
+    "newMapPrompt": "Yeni haritaya isim verin",
+    "pickWorld": "Haritalamak için bir dünya seçin.",
+    "region": "Bölge",
+    "save": "Kaydet",
+    "unbind": "Bağlantıyı Kes",
+    "uploadImage": "Temel görseli yükle",
+    "vertexCapNotice": "{{count}} köşe noktası — performans için {{max}} değerinin üzerindekilerde yeniden şekillendirme devre dışı."
+  },
+  "maps": {
+    "empty": "Henüz harita yok. Bir tane oluşturmak için asistana «bu dünyanın haritasını yap» de.",
+    "heading": "Haritalar"
   }
 }

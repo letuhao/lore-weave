@@ -85,7 +85,7 @@ AMAW uses an append-only `docs/audit/AUDIT_LOG.jsonl` as the single source of tr
 | 9. POST-REVIEW | Human checkpoint | **Scope Guard** | Final conservative gate; CLEAR or BLOCKED |
 | 10. SESSION | Main | Scribe | SESSION_PATCH + DEFERRED.md updates |
 | 11. COMMIT | Main | Main | Git commit; commit event in AUDIT_LOG |
-| 12. RETRO | Main | Audit Logger | `add_lesson` to ContextHub MCP (project_id=`mmo-rpg-zone-map-design-non-human-in-loop`); sprint_complete event |
+| 12. RETRO | Main | Audit Logger | Write the lesson into the repo (standard/spec/handoff); `sprint_complete` event in AUDIT_LOG |
 
 ---
 
@@ -104,17 +104,18 @@ Read ONLY:
 - The relevant code files for code-review variants
 
 Step 0 — Captured rules (PRE-LOADED — read them BEFORE finding 3 problems):
-- The orchestrator (main session) has already queried ContextHub and embedded the
-  relevant captured rules into the **`## Captured rules`** section near the end of
-  this prompt. **Do NOT run `search_lessons` yourself** — it is pre-loaded, and
-  agent-driven lookup over a young corpus was empirically inert (the search
-  returned `(none)` across a full task). Determinism beats discretion.
-- Read that section. Your "3 problems" MUST be informed by it. If a guardrail is
-  being violated by the proposed change, that's a BLOCK finding. If a prior
-  adversary REJECTED a similar pattern, frame your finding as "this regressed prior
-  fix X" or "this resembles the pattern that produced REJECTED finding Y".
-- Informational lessons (general_note, decision, preference) are CONTEXT — do NOT
-  auto-promote them to findings.
+- The orchestrator (main session) has already gathered the relevant rules FROM THE
+  REPO — `docs/standards/*`, the open `docs/deferred/DEFERRED.md` rows touching this
+  area, prior `docs/audit/findings-*.md` for this task — and embedded them into the
+  **`## Captured rules`** section near the end of this prompt. **Do NOT go looking
+  yourself.** Deterministic injection by the orchestrator beats agent-driven lookup,
+  which was measured to be inert (it returned nothing across a full task).
+- Read that section. Your "3 problems" MUST be informed by it. If an invariant or
+  standard is being violated by the proposed change, that's a BLOCK finding. If a
+  prior adversary REJECTED a similar pattern, frame your finding as "this regressed
+  prior fix X" or "this resembles the pattern that produced REJECTED finding Y".
+- Background context (a design note, a recorded decision, a preference) is CONTEXT —
+  do NOT auto-promote it to a finding.
 - If the `## Captured rules` section is absent or says "(none pre-loaded)", proceed
   on the files alone — do not block on it.
 
@@ -128,9 +129,10 @@ Adversarial lens (vary by review type):
 - Code review: typeerror/null cases, resource leaks, race conditions, error handling that silently swallows, off-by-one in pagination/iteration
 
 ## Captured rules
-<orchestrator: replace this block with the verbatim JSON / summary from the
-search_lessons + check_guardrails calls you ran before spawning this agent.
-If nothing relevant came back, write exactly: (none pre-loaded)>
+<orchestrator: replace this block with the verbatim text of the repo rules you
+gathered before spawning this agent — the applicable docs/standards/* rules, the
+open DEFERRED.md rows touching this area, and any prior findings-*.md for this
+task. If nothing relevant applies, write exactly: (none pre-loaded)>
 
 Output: append ONE JSON line to docs/audit/AUDIT_LOG.jsonl:
 {"ts":"<iso>","task":"<slug>","phase":"review-design","agent":"adversary","action":"review","round":<N>,"status":"APPROVED|APPROVED_WITH_WARNINGS|REJECTED","findings_count":3,"block_count":<n>,"warn_count":<n>,"note":"<one-liner summarizing the 3 findings>"}
@@ -169,19 +171,18 @@ Read ONLY:
 - Latest diff or relevant code files
 
 Step 0 — Captured-rules check (MUST run BEFORE rendering verdict):
-- The orchestrator pre-loaded relevant lessons into the `## Captured rules` block of
-  this prompt — read it. Do NOT run `search_lessons` yourself.
-- Run ONE live check: `python scripts/mcp-query.py check_guardrails "<the riskiest
-  concrete action this change enables — e.g. 'git push origin main', 'run a database
-  migration'>" --format json`. Pass a real action string, NOT a phrase like
-  "ready-to-commit" (no guardrail has that trigger — it always returns pass:true and
-  tells you nothing). If `check_guardrails` returns `pass:false` with a non-empty
-  `matched_rules`, your verdict MUST be BLOCKED, quoting the `prompt` field verbatim.
-- NOTE: `search_lessons --type guardrail` does NOT surface guardrails (it returns
-  `(none)` — guardrails are not indexed as searchable lessons). `check_guardrails`
-  is the only API that evaluates them. Use it; do not rely on `--type guardrail`.
+- The orchestrator pre-loaded the applicable repo rules into the `## Captured rules`
+  block of this prompt — read it. Do NOT go looking yourself.
+- Name the SINGLE riskiest concrete action this change enables — a real action
+  string ("push to main", "run migration 0042 against loreweave_book", "delete the
+  legacy glossary rows"), NOT a phrase like "ready-to-commit", which describes no
+  action and therefore cannot be evaluated against anything.
+- Check that action against the repo's hard invariants — the Gateway, Provider-gateway,
+  MCP-first, tenancy, and destructive-DB-ops rules in `AGENTS.md`, plus the applicable
+  `docs/standards/*`. If the action would violate one, your verdict MUST be BLOCKED,
+  quoting the violated rule verbatim.
 
-Your authority: conservative wins. If ANY prior agent finding is unresolved, OR any acceptance criterion uncovered, OR spec fingerprint shows unexplained drift, OR check_guardrails returned BLOCKED → BLOCKED. Otherwise → CLEAR.
+Your authority: conservative wins. If ANY prior agent finding is unresolved, OR any acceptance criterion uncovered, OR spec fingerprint shows unexplained drift, OR the Step-0 action violates an invariant → BLOCKED. Otherwise → CLEAR.
 
 Checklist:
 1. Compute current spec_hash and compare to design event's spec_hash in AUDIT_LOG — unexplained drift = BLOCKED
@@ -216,12 +217,9 @@ Task type — depends on when you were spawned:
 (a) CLARIFY session-start scan: read DEFERRED.md, list any items whose trigger
     condition is now met. Report each as a candidate "should we handle this now?"
     line for the main session.
-    Also run (derive <task intent> + <task area> from the spec or current task slug
-    — do NOT pass literal placeholder strings):
-      python scripts/mcp-query.py search_lessons "<actual task intent>" --limit 8 --format json
-      python scripts/mcp-query.py search_lessons "<actual task area>" --tags deferred --limit 10 --format json
-    Print top 3 most-relevant lesson titles for the main session to consider.
-    For each lesson tagged "deferred" with no matching DEFERRED.md row → flag as orphan.
+    Also grep docs/audit/AUDIT_LOG.jsonl for prior runs in this task area (by `task`
+    slug or by `action`), and skim docs/standards/ for rules this task will touch.
+    Print the 3 most-relevant prior findings or rules for the main session to consider.
 
 (b) PLAN validation: read the plan file. Check for: placeholders ("TBD",
     "TODO", "add error handling here"), tasks without exact file paths,
@@ -290,58 +288,42 @@ Beyond default v2.2:
 
 Nothing else changes structurally from v2.2.
 
-## Repo integration (lore-weave-zone-map-design)
+## Where AMAW's memory lives
 
-ContextHub MCP is already provisioned for this repo:
-- Server: `http://localhost:3000/mcp` (stack at `D:/Works/source/free-context-hub`, 8 containers via docker-compose)
-- Project: `mmo-rpg-zone-map-design-non-human-in-loop` (slash → dash slug normalization)
-- Workspace root: `/workspaces/source/lore-weave-zone-map-design` (mounted via `D:/Works:/workspaces` bind)
-- MCP tools available: `search_lessons`, `add_lesson`, `check_guardrails`, `search_code_tiered`, `index_project`, etc. (32 tools total)
+**`docs/audit/AUDIT_LOG.jsonl` — and nothing else.** Append-only, one JSON line per event,
+committed. Grep it by `task` slug or by `action` to recover what happened in a prior run.
 
-**RETRO phase action:** call `add_lesson` with `lesson_payload.project_id = "mmo-rpg-zone-map-design-non-human-in-loop"`. Lessons accumulate across AMAW runs as durable cross-session memory.
+`AMAW L3` originally paired that log with an external **ContextHub MCP** server
+(`http://localhost:3000/mcp`) holding lessons and guardrails, reached through
+`scripts/mcp-query.py` and three harness hooks. **On 2026-08-03 all of it was removed** —
+the server registration, `mcp-query.py`, `amaw-guardrail-gate.py`, `amaw-context-inject.py`,
+`seed-amaw-guardrails.py`, the `workflow-gate.py` bridge, and the `amaw-pre-commit` verb.
 
-**CLARIFY phase action:** call `search_lessons` with the same project_id at task start to load prior decisions/preferences before running the Scribe deferred-item scan.
+**Why, and the lesson worth keeping:** no agent ever actually called it. It was *configuration
+that looked like a capability* — a listed server, a permission allow-list, an "optional" section in
+the guide — and its own design notes recorded the tell: agent-driven `search_lessons` was
+"empirically inert", returning `(none)` across a full task, which is why step 3 had already moved to
+orchestrator-side pre-loading. Meanwhile every hook was fail-open, so a server that was never up
+gated nothing while costing a subprocess on every Bash call and a 75-second commit timeout.
 
----
+**A memory backend that is listed but unread is worse than none**, because it invites an agent to
+assume a lookup happened. If a persistent-memory layer is ever reintroduced, it needs a consumer
+that demonstrably reads it and a check that fails when it stops being read — see
+[`docs/standards/non-vacuity.md`](standards/non-vacuity.md).
 
-## L3 ContextHub integration (deepened 2026-05-15)
+**What survived, because it was carrying its weight:**
+- `AUDIT_LOG.jsonl` events, gated on `amaw_enabled` — `phase_complete` for every phase, plus a
+  second distinctly-actioned row for high-signal events: `sprint_complete` (on retro),
+  `adversary_rejection` (a REVIEW completed with "REJECTED" in its evidence), `pragmatic_stop`.
+- **Orchestrator-side pre-loading** of the `## Captured rules` block — now sourced from the repo
+  (`docs/standards/*`, open `DEFERRED.md` rows, prior `findings-*.md`) instead of a lesson store.
+  This was always the part that worked; only its source changed.
+- **Activation:** `/amaw` runs `bash scripts/workflow-gate.sh amaw-enable [task-slug]`, setting
+  `state['amaw_enabled']=True`. All L3 behaviors gate on this flag; default v2.2 stays silent.
 
-AMAW's MCP integration was deepened from shallow (~15-20%) to ~70-80% via 4 components:
-
-1. **`scripts/mcp-query.py`** — stdlib REST CLI wrapper for ContextHub. Sub-agents shell out to it via `python scripts/mcp-query.py <verb>` instead of relying on MCP-tool-inheritance.
-2. **AUDIT_LOG → ContextHub bridge** in `workflow-gate.py`: when `amaw_enabled=True`, `cmd_complete` writes events to `docs/audit/AUDIT_LOG.jsonl` AND selectively bridges high-signal events (sprint_complete, REJECTED reviews, pragmatic_stop) to `add_lesson`. Default v2.2 mode → silent.
-3. **Sub-agent prompts (Adversary / Scope Guard / Scribe)** — the **orchestrator
-   pre-loads** captured rules: before spawning a sub-agent the main session runs
-   `search_lessons` (for the task topic) + `check_guardrails` (for the riskiest
-   concrete action) and embeds the verbatim results into the prompt's
-   `## Captured rules` block. The sub-agent reads that block — it does **not** run
-   `search_lessons` itself (agent-driven lookup over a young corpus was empirically
-   inert; deterministic injection replaces discretion — the Kiro-steering pattern).
-4. **Harness hooks** (`.claude/settings.json`):
-   - `PreToolUse` (Bash) — `scripts/amaw-guardrail-gate.py`: cheap local pre-check,
-     then `check_guardrails` for risky actions (git push / force-push / `rm -r` /
-     `git reset --hard` / destructive docker / migration) → surfaces a permission
-     `ask`. Fail-open. Plus the existing `git commit` v2.2 phase gate.
-   - `SessionStart` — `scripts/amaw-context-inject.py`: injects the active guardrail
-     set + recent lessons into context once per session (steering). Fail-open.
-   - The canonical guardrail set is (re-)seeded idempotently by
-     `scripts/seed-amaw-guardrails.py`.
-   - Guardrail triggers use `/regex/` form (ContextHub does exact-match for plain
-     triggers); guardrails are evaluated via `check_guardrails`, NOT
-     `search_lessons --type guardrail` (which does not surface them).
-
-**Activation:** `/amaw` slash command runs `bash scripts/workflow-gate.sh amaw-enable [task-slug]` which sets `state['amaw_enabled']=True`. All L3 behaviors gate on this flag.
-
-**Selective bridge triggers** (low-noise design: ~3-5 lessons per task):
-- `complete retro <evidence>` → bridge as `general_note` with title `Sprint complete: <task>`
-- `complete review-design` or `complete review-code` with "REJECTED" in evidence → bridge as `general_note` with title `Adversary REJECTED: <task> <phase>`
-- `pragmatic-stop <task> <reason>` → bridge as `workaround` with title `Pragmatic stop: <task>`
-
-**Failure modes (best-effort):**
-- ContextHub down → bridge prints warning to stderr, workflow continues. Phase still marks complete.
-- `add_lesson` slow (embedding generation 15-60s) → 60s timeout in mcp-query.py; if exceeded, bridge emits warning but server may still complete the insert async (verify with `list_lessons`).
-
-**See:** `docs/specs/2026-05-15-amaw-l3-deepen.md` (spec) and `docs/plans/2026-05-15-amaw-l3-deepen.md` (implementation plan).
+**Historical record:** `docs/specs/2026-05-15-amaw-l3-deepen.md` and
+`docs/plans/2026-05-15-amaw-l3-deepen.md` describe the integration as built. They are kept as
+history — **do not treat them as current**.
 
 ---
 

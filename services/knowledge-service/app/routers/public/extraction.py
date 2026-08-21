@@ -1109,6 +1109,56 @@ async def resume_extraction_job(
     return updated
 
 
+class RetryExtractionRequest(BaseModel):
+    llm_model: str | None = Field(default=None, min_length=1, max_length=200)
+    embedding_model: str | None = Field(default=None, min_length=1, max_length=200)
+    max_spend_usd: Annotated[Decimal, Field(ge=0)] | None = None
+    reasoning_effort: str | None = None
+
+
+@router.post("/{project_id}/extraction/retry", response_model=ExtractionJob, status_code=status.HTTP_201_CREATED)
+async def retry_extraction_job(
+    project_id: UUID,
+    body: RetryExtractionRequest | None = None,
+    user_id: UUID = Depends(require_project_grant(GrantLevel.MANAGE)),
+    projects_repo: ProjectsRepo = Depends(get_projects_repo),
+    jobs_repo: ExtractionJobsRepo = Depends(get_extraction_jobs_repo),
+) -> ExtractionJob:
+    project = await projects_repo.get(user_id, project_id)
+    if project is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="project not found")
+    if await jobs_repo.list_active_for_project(user_id, project_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="cannot retry while an extraction job is active; cancel it first")
+    jobs = await jobs_repo.list_for_project(user_id, project_id, limit=50)
+    failed = next((j for j in jobs if j.status == "failed"), None)
+    if failed is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="no failed extraction job to retry")
+    overrides = body or RetryExtractionRequest()
+    data = ExtractionJobCreate(
+        project_id=project_id, scope=failed.scope, scope_range=failed.scope_range,
+        llm_model=overrides.llm_model or failed.llm_model,
+        embedding_model=overrides.embedding_model or failed.embedding_model,
+        max_spend_usd=overrides.max_spend_usd if overrides.max_spend_usd is not None else failed.max_spend_usd,
+        items_total=failed.items_total, campaign_id=failed.campaign_id,
+        billing_user_id=failed.billing_user_id, billing_embedding_model=failed.billing_embedding_model,
+        billing_llm_model=failed.billing_llm_model, targets=failed.targets,
+        concurrency_level=failed.concurrency_level, pinned_entity_ids=failed.pinned_entity_ids,
+        reasoning_effort=overrides.reasoning_effort or failed.reasoning_effort,
+        mcp_key_id=failed.mcp_key_id, spend_cap_usd=failed.spend_cap_usd,
+    )
+    new_id = await _create_and_start_job(user_id, project_id, data, projects_repo, trace_id_var.get())
+    retried = await jobs_repo.seed_retry_progress(user_id, new_id, cursor=failed.current_cursor, items_processed=failed.items_processed)
+    if retried is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="retry job disappeared")
+    try:
+        if extraction_wake is not None:
+            await extraction_wake(job_id=new_id, project_id=project_id)
+    except Exception:
+        logger.warning("retry wake failed job_id=%s", new_id, exc_info=True)
+    logger.info("extraction retry started new_job_id=%s previous_job_id=%s project_id=%s", new_id, failed.job_id, project_id)
+    return retried
+
+
 @router.post(
     "/{project_id}/extraction/cancel",
     response_model=ExtractionJob,

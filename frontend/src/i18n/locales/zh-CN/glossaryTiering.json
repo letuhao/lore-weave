@@ -120,7 +120,8 @@
     "no_active": "没有活跃流派。添加一个以构建矩阵。",
     "cell_inspector": "已选单元格",
     "no_cell": "点击单元格进行查看。",
-    "sort": "排序"
+    "sort": "排序",
+    "required": "必填"
   },
   "entity": {
     "title_new": "新 {{kind}} 实体",
@@ -238,5 +239,16 @@
     "links_saved": "流派链接已更新",
     "links_failed": "无法更新流派链接",
     "forbidden": "您需要拥有此书的“管理”权限才能进行更改"
+  },
+  "batch_translate": {
+    "apply": "应用翻译",
+    "count": "待翻译项目：{{n}} 个",
+    "loading": "正在加载…",
+    "none": "该语言暂无待翻译项目。",
+    "pick_lang": "请选择目标语言以开始。",
+    "result": "已完成 {{w}} 字 · 保留 {{v}} 字 (已验证) · 空项 {{e}} · 失败 {{f}}",
+    "select_lang": "选择…",
+    "target_lang": "目标语言",
+    "title": "批量翻译"
   }
 }

@@ -6434,6 +6434,11 @@ async def _emit_chat_turn(
                         current_model_ref=str(model_ref),
                         compacted_before_seq=_comp_seq,
                         effective_limit=_eff,
+                        # Missing/legacy rows intentionally resolve to False:
+                        # an OpenAI-compatible provider may not implement the
+                        # Responses tool-output protocol (DeepSeek is one such
+                        # case), which otherwise ends as "response incomplete".
+                        stateful_requested=(gen_params.get("use_stateful_responses") is True),
                     )
                     if _stateful and _prev_rid:
                         _last_user = next(

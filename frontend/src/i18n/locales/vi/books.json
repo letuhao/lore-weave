@@ -2,6 +2,39 @@
   "translateIntent": {
     "hint": "Chọn một cuốn sách để dịch — mở nó, rồi dùng tab Dịch để bắt đầu dịch."
   },
+  "help": {
+    "open": "Mở trợ giúp",
+    "tour": "Hướng dẫn tham quan",
+    "title": "Làm việc với sách",
+    "description": "Hướng dẫn nhanh về không gian làm việc của sách.",
+    "intro": "Quản lý sách của bạn tại đây, sau đó mở một cuốn sách để nghiên cứu, chỉnh sửa và xây dựng thế giới trong đó.",
+    "items": [
+      "Tạo một cuốn sách mới hoặc nhập bản thảo để bắt đầu.",
+      "Mở một cuốn sách để chỉnh sửa các chương, thuật ngữ và hệ thống khái niệm.",
+      "Sử dụng tìm kiếm và bộ lọc để tìm sách nhanh chóng."
+    ],
+    "startTour": "Bắt đầu hướng dẫn",
+    "back": "Quay lại",
+    "next": "Tiếp theo",
+    "done": "Hoàn tất",
+    "steps": [
+      {
+        "title": "Tìm sách",
+        "description": "Tìm kiếm và bộ lọc giúp bạn mở đúng cuốn sách một cách nhanh chóng.",
+        "body": "Sử dụng thanh tìm kiếm và bộ lọc ngôn ngữ để thu hẹp danh sách."
+      },
+      {
+        "title": "Tạo hoặc nhập",
+        "description": "Bắt đầu với một cuốn sách mới hoặc một bản thảo có sẵn.",
+        "body": "Chọn Sách mới, nhập thông tin chi tiết, hoặc chọn một tệp để nhập."
+      },
+      {
+        "title": "Mở không gian làm việc",
+        "description": "Tất cả các công cụ của sách đều được tập hợp trong không gian làm việc của nó.",
+        "body": "Trong một cuốn sách, bạn có thể làm việc với các chương, thuật ngữ, bản đồ khái niệm, bản dịch và nhiều hơn thế nữa."
+      }
+    ]
+  },
   "workspace": "Sách của tôi",
   "new_book": "Sách mới",
   "search_placeholder": "Tìm sách...",
@@ -21,6 +54,9 @@
     "book_description_placeholder": "Cuốn sách này nói về điều gì?",
     "cover": "Ảnh bìa",
     "cover_hint": "PNG, JPG tối đa 5MB",
+    "import_file": "Nhập tệp sách",
+    "import_file_hint": "Chọn tệp FB2 hoặc EPUB. Quy trình nhập phù hợp sẽ được mở ra.",
+    "import_metadata_hint": "Siêu dữ liệu nguồn sẽ thiết lập tiêu đề và thông tin chi tiết của sách.",
     "submit": "Tạo sách"
   },
   "empty": {
@@ -119,6 +155,7 @@
     "count_other": "{{count}} chương",
     "import": "Nhập",
     "importPdf": "Nhập PDF",
+    "importEpub": "Import EPUB",
     "new": "Chương mới",
     "col": {
       "title": "Tiêu đề",
@@ -151,6 +188,75 @@
       "title": "Chuyển chương vào thùng rác?",
       "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
       "confirm": "Chuyển vào thùng rác"
+    }
+  },
+  "epubImport": {
+    "title": "Import EPUB",
+    "description": "Inspect the book, choose chapters, then import asynchronously.",
+    "close": "Close",
+    "chooseFile": "Choose EPUB file",
+    "fileHint": "EPUB 2 and EPUB 3, up to 200 MiB",
+    "inspecting": "Inspecting {{percent}}%",
+    "unknownAuthor": "Unknown author",
+    "duplicateSource": "This source was imported previously. Merge by source key is available.",
+    "target": "Target",
+    "existingBook": "Add to this book",
+    "newBook": "Create a new book from EPUB metadata",
+    "metadataPolicy": "Metadata conflict policy",
+    "metadata": {
+      "title": "Title",
+      "description": "Description",
+      "language": "Language",
+      "subjects": "Subjects"
+    },
+    "keepExisting": "Keep existing",
+    "useSource": "Use EPUB source",
+    "mergeSource": "Merge with EPUB source",
+    "applyCover": "Apply source cover when policy allows",
+    "coverPreview": "Cover candidate: {{path}} ({{type}}, {{width}}×{{height}})",
+    "noCover": "No usable source cover was found.",
+    "selectedChapters": "{{count}} chapters selected",
+    "selectAll": "Select all",
+    "selectChapter": "Select {{title}}",
+    "ready": "Ready to import {{count}} selected chapters from {{title}}.",
+    "strategyLabel": "Existing-book strategy",
+    "importOptions": "Import options",
+    "options": {
+      "preserve_hierarchy": "Preserve EPUB hierarchy",
+      "import_images": "Import supported images",
+      "import_footnotes": "Import footnotes",
+      "retain_source": "Retain the source file for recovery"
+    },
+    "strategy": {
+      "append": "Append",
+      "merge_by_source_key": "Merge by source key",
+      "replace_all": "Replace all"
+    },
+    "replaceWarning": "Replace all is destructive. Starting import explicitly confirms this action.",
+    "replaceConfirmation": "I understand that this will archive the current chapters in this book.",
+    "queued": "queued",
+    "waiting": "Waiting for worker capacity",
+    "backgroundProgress": "You can close this dialog; the import continues on the server.",
+    "cancel": "Cancel import",
+    "resume": "Resume",
+    "rollback": "Rollback import",
+    "openBook": "Open imported book",
+    "back": "Back",
+    "continue": "Continue",
+    "start": "Start import",
+    "reportSummary": "{{chapters}} chapters created · {{warnings}} warnings",
+    "warningDetails": "Warnings",
+    "progress": "{{done}}/{{total}} chapters",
+    "errors": {
+      "extension": "Choose an .epub file."
+    },
+    "steps": {
+      "upload": "upload",
+      "metadata": "metadata",
+      "chapters": "chapters",
+      "confirm": "confirm",
+      "progress": "progress",
+      "report": "report"
     }
   },
   "glossary": {
@@ -220,6 +326,7 @@
       "selected": "Đã chọn {{count}}",
       "activate": "Kích hoạt",
       "deactivate": "Hủy kích hoạt",
+      "reject": "Từ chối",
       "clear": "Bỏ chọn",
       "done": "Đã đặt {{count}} thực thể sang {{status}}",
       "select_all_matching": "Chọn tất cả {{count}} mục khớp",
@@ -229,8 +336,7 @@
       "delete_confirm": {
         "title": "Xóa {{count}} thực thể?",
         "description": "{{count}} thực thể đã chọn sẽ được chuyển vào thùng rác."
-      },
-      "reject": "Từ chối"
+      }
     },
     "clear_filters": "Xóa tất cả bộ lọc",
     "deleted": "Đã xóa thực thể",
@@ -239,6 +345,7 @@
       "description": "Tạo thực thể thuật ngữ đầu tiên — nhân vật, địa điểm, vật phẩm và hơn thế."
     },
     "untitled": "Chưa đặt tên",
+    "scope_label_title": "Phạm vi — giúp phân biệt thực thể này với các thực thể khác có cùng tên",
     "alive_title": "Còn sống — nhấn để đánh dấu đã chết",
     "dead_title": "Đã chết — nhấn để hồi sinh",
     "alive": "còn sống",
@@ -255,7 +362,38 @@
       "description": "\"{{title}}\" sẽ được chuyển vào thùng rác.",
       "confirm": "Xóa"
     },
-    "scope_label_title": "Phạm vi — giúp phân biệt thực thể này với các thực thể khác có cùng tên"
+    "integrity": {
+      "button": "Kiểm tra",
+      "title": "Kiểm tra tính nhất quán của cốt truyện",
+      "description": "Kiểm tra chế độ chỉ đọc đối với hệ thống thuật ngữ, thực thể, thuộc tính, liên kết và bản dịch trong cuốn sách này.",
+      "run": "Chạy kiểm tra",
+      "runAgain": "Chạy lại",
+      "checking": "Đang kiểm tra tính nhất quán của cuốn sách…",
+      "close": "Đóng",
+      "unavailable": "Kiểm tra không khả dụng",
+      "issues": "{{count}} lỗi",
+      "status": {
+        "ok": "Ổn định",
+        "warning": "Cần lưu ý",
+        "error": "Lỗi tính nhất quán"
+      },
+      "repair": "Sửa tự động",
+      "repairing": "Đang sửa lỗi toàn vẹn&",
+      "repaired": "Đã hoàn tất sửa lỗi tự động: đã sửa {{count}} lỗi kiểm tra.",
+      "checks": {
+        "active_genres": "Các thể loại đang hoạt động phải thuộc về cuốn sách này.",
+        "kind_genres": "Liên kết từ loại đến thể loại phải trỏ đến các thể loại trong cuốn sách này.",
+        "attributes": "Thuộc tính sách phải trỏ đến một loại và thể loại sách hiện có.",
+        "entity_kinds": "Các thực thể phải trỏ đến một loại thuộc về cuốn sách này.",
+        "entity_names": "Các thực thể đang hoạt động nên có thuộc tính tên hoặc thuật ngữ.",
+        "entity_attributes": "Giá trị thuộc tính thực thể phải sử dụng định nghĩa thuộc tính từ cuốn sách và loại này.",
+        "chapter_links": "Liên kết chương phải trỏ đến các thực thể đang hoạt động trong cuốn sách này.",
+        "translations": "Bản dịch phải trỏ đến một giá trị thuộc tính hiện có.",
+        "kind_facets": "Các khía cạnh của loại thực thể phải trỏ đến các loại trong cuốn sách này."
+      }
+    },
+    "batch_translate": "Dịch hàng loạt",
+    "batch_translate_hint": "Nhập thủ công tên mục tiêu cho nhiều thực thể (bản nháp; không bao giờ ghi đè lên các mục đã xác minh)"
   },
   "sharing": {
     "title": "Hiển thị",
@@ -400,7 +538,10 @@
     "page_indicator": "Trang {{page}} / {{pages}}",
     "prev": "Trước",
     "next": "Sau",
-    "page": "Trang"
+    "page": "Trang",
+    "reasoning_enable": "Bật suy luận mô hình (thinking)",
+    "reasoning_hint": "Mặc định là Tắt — quá trình suy luận ẩn có thể làm tiêu tốn hạn mức đầu ra trên các mô hình cục bộ. Hãy bật tính năng này cho các đoạn văn khó khi sử dụng mô hình suy luận.",
+    "retranslate_selected": "Dịch lại phần đã chọn ({{count}})"
   },
   "kind_editor": {
     "modified": "đã sửa",
@@ -529,5 +670,12 @@
       "desc": "Đặt lại tên từ \"{{from}}\" về \"{{to}}\". Các trường khác không bị ảnh hưởng.",
       "confirm": "Khôi phục"
     }
+  },
+  "lore": {
+    "heading": "Thông tin cốt truyện đến hiện tại",
+    "noPosition": "Mở một chương để xem những gì đã được tiết lộ tính đến thời điểm đó.",
+    "nothingYet": "Chưa có thông tin nào được tiết lộ về phần này — hãy tiếp tục đọc.",
+    "search": "Tìm kiếm câu chuyện…",
+    "subtitle": "Những gì câu chuyện đã tiết lộ tính đến phần bạn đang đọc — không có nội dung tiết lộ trước từ các chương sau."
   }
 }

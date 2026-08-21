@@ -203,6 +203,11 @@
     "rescanPartial": "Imbasan semula selesai (resipi dilangkau — pengetahuan tidak membekalkan versi) — {{count}} baharu",
     "rescanPartial_other": "Imbasan semula selesai (resipi dilangkau — pengetahuan tidak membekalkan versi) — {{count}} baharu",
     "rescanFailed": "Imbasan semula gagal",
+    "rescanUnchecked": "Imbasan tidak lengkap — {{count}} artikel tidak dibandingkan",
+    "rescanUnchecked_other": "Imbasan tidak lengkap — {{count}} artikel tidak dibandingkan",
+    "coverageGap": "Imbasan terakhir tidak dapat membandingkan {{count}} artikel (pengetahuan tidak dapat dihubungi), jadi senarai ini mungkin tidak lengkap.",
+    "coverageGap_other": "Imbasan terakhir tidak dapat membandingkan {{count}} artikel (pengetahuan tidak dapat dihubungi), jadi senarai ini mungkin tidak lengkap.",
+    "coverageUnknown": "Imbasan ini tidak melaporkan berapa banyak yang dibandingkan, jadi senarai ini mungkin tidak lengkap.",
     "ledgerNote": "Perubahan pengetahuan direkodkan di sini secara automatik (lejar tertunda, bukan masa nyata). Tanda akan berubah tetapi tiada apa yang dijana semula secara automatik — token hanya digunakan apabila anda menekan Jana Semula.",
     "reason": {
       "entity_changed": "Entri glosari berubah",

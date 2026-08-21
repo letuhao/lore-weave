@@ -271,7 +271,11 @@
       "unknown_error": "未知错误",
       "model_removed": "已移除 {{name}}",
       "model_delete_failed": "删除模型失败"
-    }
+    },
+    "delete_blocked": "无法删除此模型：仍有 {{count}} 个正在运行的任务。请先停止这些任务。",
+    "delete_refs_none": "无引用",
+    "delete_confirm": "确定要删除模型「{{name}}」吗？\n\n这些引用将被移除：{{refs}}。",
+    "return_to_form": "返回原处"
   },
   "translation": {
     "heading": "翻译默认设置",
@@ -296,7 +300,9 @@
       "tpl_needs_chapter": "用户提示词模板必须包含 {chapter_text}",
       "saved": "翻译默认设置已保存",
       "save_failed": "保存翻译偏好设置失败"
-    }
+    },
+    "models_load_failed": "无法加载您的模型。提供商服务可能不可用。",
+    "retry": "重试"
   },
   "reading": {
     "app_theme": "应用主题",
@@ -344,7 +350,8 @@
     "auto_saved": "更改将自动保存。",
     "toast": {
       "preset_saved": "预设“{{name}}”已保存"
-    }
+    },
+    "voice_moved": "语音与朗读设置已移至“设置 → 聊天与 AI → 语音”。"
   },
   "language": {
     "gui_language": "界面语言",
@@ -473,7 +480,9 @@
       "notes_ph": "关于此模型配置的可选备注...",
       "cancel": "取消",
       "adding": "正在添加...",
-      "submit": "添加模型"
+      "submit": "添加模型",
+      "pricing_summary": "费用：输入 ${{input}}/1M · 输出 ${{output}}/1M",
+      "pricing_missing": "该供应商未公布价格 —— 请在模型注册后手动添加。"
     },
     "edit": {
       "aria": "编辑模型",
@@ -511,7 +520,16 @@
       "request_failed": "请求失败",
       "cancel": "取消",
       "saving": "正在保存...",
-      "submit": "保存更改"
+      "submit": "保存更改",
+      "capabilities_refreshed": "模型能力已刷新",
+      "capabilities_refresh_failed": "无法刷新模型能力",
+      "delete_blocked_active": "无法删除此模型：请先停止其正在运行的任务。",
+      "pricing_missing": "此模型未设置价格 —— 将无法估算任务成本。",
+      "refresh_capabilities": "刷新",
+      "delete_impact": "这些引用将被移除：{{refs}}。请再次点击“删除”进行确认。",
+      "delete_impact_none": "无",
+      "delete_blocked_count": "删除受阻：仍有 {{count}} 个正在运行的任务。请先停止这些任务。",
+      "verify_ok_rerank": "已对 {{count}} 个文档进行重排序 · 最高 {{score}} · {{ms}}ms"
     },
     "toast": {
       "fetch_failed": "获取模型失败: {{error}}",
@@ -524,5 +542,23 @@
       "deleted": "模型已删除",
       "delete_failed": "删除模型失败"
     }
+  },
+  "defaultModels": {
+    "heading": "默认模型",
+    "subtitle": "您的个人回退模型 (BYOK — 使用您自己的模型)。当未设置特定范围的模型时使用。",
+    "chat": "默认对话模型",
+    "chatHint": "开启新对话时预选。留空则默认使用您的收藏模型。",
+    "rerank": "默认重排序模型",
+    "rerankHint": "用于过滤原始搜索噪声的交叉编码器重排序。可选 —— 当项目未设置重排序模型时应用。",
+    "planner": "默认规划模型",
+    "plannerHint": "术语表助手用于构建多步计划的对话模型。请选择一个强大的、具备工具调用能力的模型 —— 否则规划功能将回退到随机的对话模型，且经常失败。",
+    "none": "无",
+    "empty": "未配置任何可用模型。",
+    "saved": "默认设置已更新"
+  },
+  "external_services": {
+    "delete_blocked": "无法移除此服务：其模型正被 {{count}} 个正在运行的任务使用。请先停止这些任务。",
+    "delete_refs_none": "无引用",
+    "delete_confirm": "确定要移除服务“{{name}}”吗？\n\n这将移除以下模型引用：{{refs}}。"
   }
 }

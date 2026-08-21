@@ -43,6 +43,7 @@ __all__ = [
     "EvalResult",
     "JudgeScore",
     "score_dump",
+    "metric_of_record_blockers",
     "EvalSink",
     "FileSink",
     # calibration (Q3.5) — pure, but lazy to keep import loreweave_eval cheap
@@ -58,6 +59,7 @@ _LAZY = {
     "EvalResult": ("scorer", "EvalResult"),
     "JudgeScore": ("scorer", "JudgeScore"),
     "score_dump": ("scorer", "score_dump"),
+    "metric_of_record_blockers": ("scorer", "metric_of_record_blockers"),
     "EvalSink": ("sinks", "EvalSink"),
     "FileSink": ("sinks", "FileSink"),
     "calibrate_judge": ("calibration", "calibrate_judge"),

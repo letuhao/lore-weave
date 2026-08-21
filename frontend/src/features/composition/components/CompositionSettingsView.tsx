@@ -8,6 +8,7 @@
 // the whole blob, so useSetWorkSettings merges) — the BE already consumes each.
 // Render-only; the merge-patch logic lives in useSetWorkSettings.
 import { useTranslation } from 'react-i18next';
+import { patchForRole, roleRef } from '../modelRoles';
 import { useSetWorkSettings } from '../hooks/useWork';
 import type { AssemblyMode } from '../types';
 
@@ -27,7 +28,16 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
 
   const ntEnabled = settings.narrative_thread_enabled === true;
   const assemblyMode = (settings.assembly_mode as AssemblyMode) || 'per_scene';
-  const defaultModel = typeof settings.default_model_ref === 'string' ? settings.default_model_ref : '';
+  // Read through `modelRoles`, which prefers `settings.model_roles` and falls back to the
+  // legacy scalar — so a book saved before the map still shows its model, and one saved after
+  // it shows the same value from the new key. Reading only the scalar here would make a
+  // freshly saved setting render as empty.
+  const defaultModel = roleRef(settings, 'chat');
+  const criticModel = roleRef(settings, 'critic');
+  // The state the server refuses, mirrored here so the author sees it BEFORE a generation
+  // silently runs ungraded. The backend's `critic_policy` is the authority — this is the
+  // affordance that lets the warning it returns be acted on.
+  const criticIsDrafter = criticModel !== '' && criticModel === defaultModel;
   const patch = (p: Record<string, unknown>) =>
     setSettings.mutate({ projectId, currentSettings: settings, patch: p });
 
@@ -44,13 +54,45 @@ export function CompositionSettingsView({ projectId, bookId, settings, models, t
           className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
           value={defaultModel}
           disabled={setSettings.isPending}
-          onChange={(e) => patch({ default_model_ref: e.target.value })}
+          onChange={(e) => patch(patchForRole(settings, 'chat', e.target.value))}
         >
           <option value="">{t('workSettings.noDefaultModel', { defaultValue: 'No default (pick per session)' })}</option>
           {models.map((m) => (
             <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
           ))}
         </select>
+      </label>
+
+      {/* critic model — S6. Until this row existed the ONLY way to configure a critic was to
+          hand-edit work.settings JSONB, so every book shipped with the blocking tier off and
+          nothing said so. `critic_model_source` is written alongside the ref because the
+          server treats a ref without its source as INCOMPLETE, not as configured. */}
+      <label className="flex flex-col gap-1">
+        <span className="font-medium">{t('workSettings.criticModel', { defaultValue: 'Critic model (independent judge)' })}</span>
+        <span className="text-xs text-neutral-500">
+          {t('workSettings.criticModelHint', { defaultValue: 'A DIFFERENT model grades each draft against your canon, and can block a chapter that contradicts it. Without one, nothing independently checks the prose — a model cannot grade its own work.' })}
+        </span>
+        <select
+          data-testid="composition-settings-critic-model"
+          className="rounded border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-600"
+          value={criticModel}
+          disabled={setSettings.isPending}
+          // Clearing must remove BOTH forms — the map entry AND the legacy pair. The reader
+          // falls back to the scalar, so dropping only the map entry would make the setting
+          // appear to un-clear itself on the next read. `patchForRole` owns that, once, for
+          // both sides.
+          onChange={(e) => patch(patchForRole(settings, 'critic', e.target.value))}
+        >
+          <option value="">{t('workSettings.noCritic', { defaultValue: 'No critic — drafts are not independently graded' })}</option>
+          {models.map((m) => (
+            <option key={m.user_model_id} value={m.user_model_id}>{m.alias || m.provider_model_name}</option>
+          ))}
+        </select>
+        {criticIsDrafter && (
+          <span data-testid="composition-settings-critic-same-as-drafter" className="text-xs text-amber-600">
+            {t('workSettings.criticSameAsDrafter', { defaultValue: 'This is the same model that writes the prose, so it would be grading its own work — the server will refuse it and skip the critique. Pick a different model.' })}
+          </span>
+        )}
       </label>
 
       {/* assembly mode — per_scene (granular) vs chapter (single-pass, more coherent long-form) */}

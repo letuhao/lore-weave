@@ -98,6 +98,11 @@ PROBE_ROUTES = [
     # SHA-drift, which requires the image to be SHA-stamped — see drift_note.)
     ("provider-registry-service", "PROVIDER_REGISTRY_URL_H", "http://localhost:8208",
      ["/internal/embed"]),
+    # FastMCP provider facade. A POST with an empty body is expected to return a
+    # validation/client error, not 404; a missing route means the running image
+    # predates the MCP facade or failed to mount it.
+    ("lore-enrichment-service", "LORE_ENRICHMENT_SERVICE_URL_H", "http://localhost:8221",
+     ["/mcp"]),
 ]
 
 

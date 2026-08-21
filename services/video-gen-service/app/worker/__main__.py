@@ -19,16 +19,22 @@ from app.db.migrate import run_migrations
 from app.db.pool import close_pool, create_pool
 from app.routers.generate import bootstrap_minio
 from app.worker.consumer import VideoGenTerminalConsumer
+from app.worker.heartbeat import heartbeat_loop
 
 setup_logging("video-gen-service")  # P2·A2a — shared JSON logging + dual trace ids
 logger = logging.getLogger("video-gen.worker")
 
 
 async def _main() -> None:
+    heartbeat = asyncio.create_task(heartbeat_loop())
     if not settings.video_gen_decouple_enabled:
         logger.info("VIDEO_GEN_DECOUPLE_ENABLED=false — worker idle")
-        while True:  # keep the container up but inert
-            await asyncio.sleep(3600)
+        try:
+            while True:  # keep the container up but inert
+                await asyncio.sleep(3600)
+        finally:
+            heartbeat.cancel()
+        return
 
     # The consumer downloads finished videos into MinIO — bootstrap the bucket
     # (best-effort; ensure_bucket_ready self-heals on the first store).
@@ -53,6 +59,7 @@ async def _main() -> None:
     try:
         await consumer_task
     finally:
+        heartbeat.cancel()
         await consumer.stop()
         for task in (consumer_task, sweeper_task):
             task.cancel()

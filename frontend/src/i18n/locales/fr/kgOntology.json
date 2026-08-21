@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "supprimé",
       "modified": "écrasé"
+    },
+    "templates": {
+      "general": {
+        "name": "Général (ontologie héritée)",
+        "description": "Reproduit l'ontologie d'extraction générique originale — le filet de sécurité basé sur l'addition."
+      },
+      "general-legacy": {
+        "name": "Général (ontologie héritée)",
+        "description": "Reproduit l'ontologie d'extraction générique originale — le filet de sécurité basé sur l'addition."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Modèle de genre pour les romans de cultivation et de harem avec des types d'entités et de relations sélectionnés."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Schéma de monde fantastique comprenant les personnages, les lieux, les organisations, les espèces, les objets, les pouvoirs et les techniques."
+      },
+      "romance": {
+        "name": "Romance",
+        "description": "Schéma centré sur les relations comprenant les personnages, les relations, les arcs narratifs, les tropes et les cadres sociaux."
+      },
+      "drama": {
+        "name": "Drame",
+        "description": "Schéma dramatique pour les personnages, les conflits, les relations, les organisations, les événements et les arcs narratifs."
+      },
+      "historical": {
+        "name": "Historique",
+        "description": "Schéma de fiction historique pour les personnes, les lieux, les institutions, les événements, la terminologie et l'ordre social."
+      },
+      "mystery": {
+        "name": "Mystère",
+        "description": "Schéma d'enquête pour les personnages, les indices, les objets, les organisations, les événements, les arcs narratifs et les tropes."
+      }
+    },
+    "scope": {
+      "system": "système",
+      "user": "Utilisateur",
+      "project": "Projet"
     }
   },
   "schema": {

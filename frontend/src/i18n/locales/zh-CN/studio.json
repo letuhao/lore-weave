@@ -719,7 +719,8 @@
     "conflict": "冲突: {{part}}",
     "format": "格式化",
     "revert": "还原",
-    "openAs": "作为 JSON 打开"
+    "openAs": "作为 JSON 打开",
+    "readOnly": "只读"
   },
   "planPasses": {
     "comingSoon": "七遍修订轨道即将上线。",
@@ -761,7 +762,18 @@
     "approveGated": "请先应用术语表种子 (PF-7)",
     "editAdd": "添加",
     "editRemove": "移除",
-    "editEmpty": "这里还没有内容 — 添加一行。"
+    "editEmpty": "这里还没有内容 — 添加一行。",
+    "batchSpends": "逐个运行已就绪的阶段，直至下一个检查点 —— 每个阶段消耗 1 次 LLM 调用。",
+    "chapterNoScenes": "无场景 —— 此章节无法进行草拟。",
+    "linkOutline": "关联弧线 + 章节 →",
+    "linkScenes": "关联场景 →",
+    "linkScenesBlocked": "请先运行场景阶段",
+    "noBeat": "（无节拍）",
+    "noScenes": "此场景计划中没有需要编辑的章节。",
+    "openEdit": "编辑…",
+    "runPicker": "选择一个计划运行",
+    "runToCheckpoint": "运行至下一个检查点",
+    "runningPass": "正在运行 {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "粘贴小说系统 Markdown…",
@@ -785,10 +797,49 @@
       "colRun": "运行",
       "colMode": "模式",
       "colStatus": "状态",
-      "colCreated": "创建时间"
+      "colCreated": "创建时间",
+      "archive": "归档",
+      "restore": "还原",
+      "showArchived": "显示已归档"
     },
     "grounded": "基于 {{chapters}} 个现有章节 + {{cast}} 位现有角色；延续 {{arcs}} 个现有篇章。",
-    "groundOnExisting": "继续创作本书 —— 基于现有的角色、篇章及近期章节"
+    "groundOnExisting": "继续创作本书 —— 基于现有的角色、篇章及近期章节",
+    "bootstrap": {
+      "apply": "在我的书籍中创建",
+      "applying": "正在创建…",
+      "approve": "批准",
+      "check": "检查所需内容",
+      "checking": "正在检查…",
+      "done": "完成 — 打开“章”查看已创建的内容。",
+      "idleHint": "检查此计划是否需要在您的书籍中创建新的章节或角色。",
+      "newChapters": "新章节",
+      "newGlossary": "新术语条目",
+      "nothingToDo": "此计划中的所有内容在您的书籍中均已存在 — 无需创建新内容。",
+      "reject": "晚点再说",
+      "rejected": "您已忽略此建议。",
+      "retry": "重试",
+      "title": "设置您的书籍"
+    },
+    "material": {
+      "applied": "已添加到计划：{{slots}}。已归档为笔记：{{notes}}。",
+      "askTitle": "文档中未提及 —— 值得决定一下",
+      "dropped": "{{n}} 条建议的行并未实际出现在您的文档中，已丢弃。",
+      "find": "检查我的计划",
+      "finding": "正在查找……",
+      "idleHint": "在向您提问之前，先为您寻找已写内容中缺失的部分。",
+      "noChange": "未发生变化 —— 您保留的所有内容已在计划中。",
+      "nothing": "没有缺失 —— 计划已涵盖所有部分。",
+      "readFailed": "您的文档无法被完整读取，因此下方的“缺失”项并非百分之百准确。",
+      "retry": "重新检查",
+      "reviewHint": "这些行已存在于您的文档中。请移除不属于的内容，然后添加其余部分。",
+      "stale": "自上次检查以来您的计划已发生变化 —— 请重新运行以获取最新结果。",
+      "title": "此计划缺失了什么？",
+      "unavailableHint": "未检查；请尝试重新检查，而非将其视为缺失",
+      "unavailableTitle": "无法检查",
+      "uncertain": "（您的文档未被完整读取，因此该内容可能已存在）",
+      "shrank": "本次运行读取的内容多于保留的内容 ({{detail}}) —— 在以此为基础进行创作前，请检查这些部分。"
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "在手稿导航器中选择一个章节以便在此编辑。",
@@ -808,7 +859,13 @@
     "merging": "正在合并…",
     "mergeDone": "已合并至正文 — 分支将保留其原有版本。",
     "mergeConflict": "正文已发生变动 — 请重新打开章节并再次合并。",
-    "mergeFailed": "合并失败 — 请重试。"
+    "mergeFailed": "合并失败 — 请重试。",
+    "askAiPrompt": "分析手稿中的这段文字并回答用户的问题：\n\n\"{{text}}\"\n\n有哪些需要考虑的关键点？",
+    "loadingChapter": "正在加载章节…",
+    "sceneSuggestionsHint": "选择手稿文本，使用 AI 生成场景建议",
+    "sceneSuggestionsReady": "在所选段落上方的 AI 工具栏中使用“建议场景”功能。",
+    "sceneSuggestionsSelect": "请先选择一段文字，然后使用上方的“建议场景”功能。",
+    "suggestScenes": "建议场景"
   },
   "sceneCompose": {
     "empty": "在手稿导航器中选择一个章节，在此起草其场景。",
@@ -994,7 +1051,11 @@
     "conformanceTitle": "一致性检查",
     "conformanceDesc": "正文是否实现了大纲计划？逐场景情节追踪",
     "pickModelRerun": "选择一个模型进行重新运行…",
-    "pickChapterConformanceHint": "在上方选择一个章节，以追踪其正文如何实现大纲计划。"
+    "pickChapterConformanceHint": "在上方选择一个章节，以追踪其正文如何实现大纲计划。",
+    "editRule": "编辑规则",
+    "healApplied": "已将选中的修正应用到本章。",
+    "healApplyError": "无法应用修正，请重试。",
+    "healStale": "自润色运行以来，本章内容已发生变化 —— 请重新运行润色，然后应用。"
   },
   "sidebar": {
     "collapse": "折叠",
@@ -1406,6 +1467,86 @@
           "title": "在独立窗口中弹出",
           "body": "在独立的操作系统窗口中打开“创作”模式 —— 非常适合双显示器用户。您在那里确认的修改仍会同步到本书的编辑器中。"
         }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "首先描述世界观",
+          "body": "书籍设置向导将创建稳定的世界结构和系统默认值，以便后续提取工作能够按预期进行。"
+        },
+        "glossary": {
+          "title": "构建术语表",
+          "body": "检查实体、类别和属性。从源文本开始，然后手动确认有歧义的记录。"
+        },
+        "entities": {
+          "title": "调查实体",
+          "body": "搜索角色、地点和物品，查看其证据，并检查哪些章节提到了它们。"
+        },
+        "timeline": {
+          "title": "查看时间线",
+          "body": "事件时间线有助于揭示章节之间的逻辑漏洞和矛盾。请将其视为一个工作假设。"
+        },
+        "graph": {
+          "title": "查看关联图谱",
+          "body": "图谱展示了实体之间的关系。寻找高连接度的节点，并返回查看支撑它们的原文。"
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "从主张的来源开始",
+          "body": "证据会带你直达相关的章节和文本段落。先核实引用内容，再决定是否需要修改实体或属性。"
+        },
+        "triage": {
+          "title": "处理审核队列",
+          "body": "分级系统按紧急程度对不确定的发现进行分组。在处理边缘案例之前，请先处理设定冲突和重复警告。"
+        },
+        "gaps": {
+          "title": "寻找缺失的细节",
+          "body": "缺漏报告会突出显示那些被频繁提及但描述不足的实体——它们是需要丰富内容的重点对象。"
+        },
+        "unknown": {
+          "title": "解决未知的提及",
+          "body": "将术语与现有实体匹配或创建新实体。在合并前请检查上下文和拼写变体。"
+        },
+        "proposals": {
+          "title": "由编辑决定",
+          "body": "仅在审查过 AI 建议的来源和影响后才予以接受。未经重新检查，请勿重新引入已被拒绝的候选项。"
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "实体列表",
+          "body": "按类型和状态筛选实体，打开记录，并跳转至包含其证据的章节。"
+        },
+        "ontology": {
+          "title": "书籍本体",
+          "body": "选择类型、种类和属性。可以从系统模板开始，然后仅添加此世界所需的字段。"
+        },
+        "suggestions": {
+          "title": "提取建议",
+          "body": "从选定章节中提取，审查候选项，并进行批量批准。在“任务”中跟踪耗时较长的操作。"
+        },
+        "merge": {
+          "title": "合并重复项",
+          "body": "在合并前对比名称、类型、属性和证据。操作完成后请检查链接。"
+        }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "结构模板工作区",
+          "body": "此面板包含内置及私有的故事结构。它们可以帮助您将章节映射到有序的叙事节奏序列中。"
+        },
+        "list": {
+          "title": "内置及个人模板",
+          "body": "内置模板为只读。请克隆其中一个或选择您自己的模板，以创建可编辑的副本进行编辑。"
+        },
+        "create": {
+          "title": "创建您自己的结构",
+          "body": "选择“新建结构”，命名并添加节奏点。您的自定义模板可以在您的多部作品中重复使用。"
+        },
+        "edit": {
+          "title": "编辑并应用",
+          "body": "重新排列节奏点，描述其用途，保存更改，然后从“分解”面板中使用该结构。"
+        }
       }
     }
   },
@@ -1413,7 +1554,38 @@
     "intro": "Writing Studio 提供的每项工具，其分组方式都与命令面板保持一致。",
     "toursGroup": "引导式教程",
     "toursEditor": "编辑器",
-    "toursComposer": "创作模式"
+    "toursComposer": "创作模式",
+    "open": "打开用户指南",
+    "toursResearch": "世界观设定研究",
+    "workflowsTitle": "工作流与实践",
+    "workflows": {
+      "setup": {
+        "title": "准备书籍",
+        "body": "先创建结构，然后导入章节并验证树状结构是否加载正常。",
+        "steps": "导入书籍 → 编辑器 → 在术语表中检查完整性。自动修复报告的问题，然后再次运行检查。"
+      },
+      "lore": {
+        "title": "世界观研究",
+        "body": "术语表存储世界观事实；知识库将这些事实与证据和事件关联起来。",
+        "steps": "本体论定义类别与属性 → 从选定章节中提取 → 实体与证据验证发现 → 图谱与时间线揭示关联。"
+      },
+      "factChecking": {
+        "title": "核查事实与设定",
+        "body": "切勿在未查看来源的情况下接受 AI 的发现：请先打开原文段落，然后再接受或拒绝该建议。",
+        "steps": "证据 → 跳转至章节 → 筛选待定队列 → 标记缺失描述的缺口。编辑后请重新运行完整性检查。"
+      },
+      "jobs": {
+        "title": "长时间运行的任务与恢复",
+        "body": "提取、翻译和丰富化任务作为后台作业运行，因此关闭面板不会丢失进度。",
+        "steps": "打开“任务”以查看批量/窗口进度及成本。若任务失败，请使用“从检查点恢复”；若参数变更，请使用“重新开始”。"
+      },
+      "translation": {
+        "title": "不破坏设定的翻译",
+        "body": "在翻译前先稳定术语表，以确保名称、术语和关系保持一致。",
+        "steps": "翻译显示覆盖范围与版本 → 丰富化填充设定空白 → 发布前，请检查章节、术语表及活动日志。"
+      }
+    },
+    "startPanelTour": "开始面板导览"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1647,22 @@
     "composerPopout": {
       "label": "弹出窗口",
       "desc": "将创作界面弹出为独立的操作系统窗口，以便在第二台显示器上使用。"
+    },
+    "worldResearch": {
+      "label": "世界观研究",
+      "desc": "从书籍设定到实体、时间线及关系图谱——一套可重复使用的设定研究工作流。"
+    },
+    "factChecking": {
+      "label": "事实核查",
+      "desc": "证据、分级、空白及未知实体：针对原文验证假设。"
+    },
+    "glossaryWorkflow": {
+      "label": "术语表工作流",
+      "desc": "本体论、提取、建议以及安全的重复项合并。"
+    },
+    "structureTemplates": {
+      "label": "结构模板",
+      "desc": "创建并调整故事结构，用于拆解章节。"
     }
   },
   "planHub": {
@@ -1513,7 +1701,14 @@
       "viewNarrative": "叙事视图",
       "viewTimeline": "时间轴",
       "viewWorldmap": "世界地图",
-      "viewSoon": "将在后续阶段推出"
+      "viewSoon": "将在后续阶段推出",
+      "addArc": "+ 弧线",
+      "addArcHint": "添加一个顶级弧线",
+      "addArcNoGrant": "您需要编辑权限才能添加弧线",
+      "addSubArc": "+ 子弧线",
+      "addSubArcHint": "在所选弧线下添加一个子弧线",
+      "addSubArcHint2": "选择一个弧线以在其下方嵌套子弧线",
+      "addingArc": "+ 弧线…"
     },
     "mode": {
       "simple": "简易模式",
@@ -1544,7 +1739,13 @@
       "legend": {
         "authored": "你创作的",
         "ai": "AI 灵感"
-      }
+      },
+      "importPlan": "从 CSV 导入计划",
+      "importingPlan": "正在导入计划...",
+      "aiPlan": "使用 AI 创建计划",
+      "csvEmpty": "CSV 文件中没有计划行。",
+      "csvNoMatches": "没有匹配该书籍的 CSV 行。请使用 chapter_id 或 sort_order。",
+      "csvFailed": "计划导入失败。"
     },
     "costHint": "编辑结构不会消耗模型调用次数。",
     "flow": {
@@ -1636,7 +1837,14 @@
       "mine": "我的",
       "archived": "已归档"
     },
-    "beatKey": "关键点"
+    "beatKey": "关键点",
+    "help": "结构模板帮助",
+    "startTour": "开始结构模板导览",
+    "useInDecompose": "在拆解中使用 →",
+    "beats_one": "节拍",
+    "beats_other": "节拍",
+    "kindPlaceholder": "通用",
+    "nameRequired": "需要名称"
   },
   "search": {
     "modeLabel": "搜索模式",
@@ -1664,5 +1872,60 @@
     "firstStructureTitle": "第一幕",
     "everything": "或完整设置本书",
     "everythingBusy": "正在设置…"
+  },
+  "panelsPicker": {
+    "title": "工作区面板",
+    "search": "查找面板…",
+    "hint": "选择要保持可见的面板。您的选择将随此工作区一并保存。"
+  },
+  "diagnostics": {
+    "unplannedChapter": "章节 {{title}} 已完成写作，但未包含在计划中",
+    "warning": {
+      "openThread": "无法读取未关闭的线程",
+      "deletedSpec": "无法检查已删除的计划节点",
+      "coverage": "无法计算手稿/计划覆盖率"
+    }
+  },
+  "checkpoints": {
+    "blocked_dirty": "请先保存您的编辑 —— 还原操作将覆盖这些内容",
+    "confirm_desc": "当前草稿将被首先创建快照，因此可以通过修订历史记录进行撤销。",
+    "confirm_title": "还原至本次 AI 编辑之前的状态？",
+    "dirty_warning": "在恢复检查点之前，请先保存您当前的编辑内容。",
+    "header": "AI 编辑检查点",
+    "insert": "已插入",
+    "no_restore": "没有可恢复的早期版本",
+    "replace": "已重写",
+    "restore": "恢复",
+    "restore_failed": "无法恢复此检查点。",
+    "restored": "已恢复至 AI 编辑前的状态"
+  },
+  "common": {
+    "close": "关闭"
+  },
+  "compose": {
+    "startDrafting": "开始起草 →",
+    "startDraftingTitle": "打开起草工作区，根据您的大纲编写章节"
+  },
+  "errorBlocks": {
+    "dismiss": "忽略",
+    "drifted": "文本已变更",
+    "remove": "移除标记",
+    "removed": "标记已移除。",
+    "reopen": "重新开启",
+    "resolve": "已修复",
+    "title": "标记的问题",
+    "undo": "撤销",
+    "undoFailed": "无法恢复标记。"
+  },
+  "revision": {
+    "blocked_dirty": "您有未保存的更改。在恢复修订版本之前，请先保存或舍弃这些更改。",
+    "confirm_desc": "当前草稿将被此修订版本替换。此操作无法撤销。",
+    "confirm_title": "恢复此修订版本？",
+    "current": "当前",
+    "empty": "暂无修订记录。",
+    "header": "修订历史",
+    "load_more": "加载更多",
+    "loading_more": "加载中…",
+    "restore": "还原"
   }
 }

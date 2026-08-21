@@ -1,0 +1,85 @@
+{
+  "loading": "Setting up your assistant…",
+  "openingJournal": "Opening your journal…",
+  "home": {
+    "welcome": "Welcome back{{name}}",
+    "subtitle": "Your private work assistant.",
+    "capturing": "Capturing your work notes",
+    "captureOff": "Capture is off",
+    "capturingDesc": "People & projects are noticed as you talk.",
+    "captureOffDesc": "Turn on to remember colleagues, projects and decisions.",
+    "refresh": "Refresh",
+    "capturedItems": "Captured items",
+    "endDay": "End my day",
+    "endingDay": "Ending your day…",
+    "journal": "Journal",
+    "memory": "Memory",
+    "practice": "Practice interview"
+  },
+  "timezone": {
+    "title": "Confirm your time zone",
+    "description": "Your journal groups each day by your local time. We detected {{zone}}.",
+    "saving": "Saving…",
+    "useThis": "Use this",
+    "pickAnother": "Pick another",
+    "save": "Save"
+  },
+  "capture": {
+    "title": "Today so far",
+    "live": "live",
+    "description": "Things I’m noticing as we talk. Nothing is saved to your diary until you review it tonight.",
+    "listening": "Listening…",
+    "nothingYet": "Nothing captured yet — tell me about your day.",
+    "turnOn": "Turn on capture to start noticing people and projects."
+  },
+  "autonomous": {
+    "title": "Let the assistant work on its own",
+    "description": "Off until you turn it on — these run in the background and use your models.",
+    "loading": "Loading…",
+    "on": "On",
+    "next": "On · next {{time}}",
+    "eod": "End my day automatically",
+    "eodDesc": "Journal the day each evening, even if you forget to.",
+    "weeklyReflection": "Weekly reflection",
+    "weeklyReflectionDesc": "A gentle weekly pattern + coaching note.",
+    "weeklySummary": "Weekly summary",
+    "weeklySummaryDesc": "A recap of your week.",
+    "reminders": "Reminders to journal",
+    "remindersDesc": "A nudge if you haven't ended your day.",
+    "proactive": "Proactive check-ins",
+    "proactiveOn": "On — I may reach out when it has been a while.",
+    "proactiveOff": "Let me open with a thought after a quiet stretch."
+  },
+  "review": {
+    "title": "Here’s your day",
+    "distilling": "Turning today’s conversation into a diary entry…",
+    "genericError": "Something went wrong.",
+    "words": "{{count}} words",
+    "kept": "kept",
+    "keep": "Keep today’s entry",
+    "keptButton": "Kept ✓",
+    "keeping": "Keeping…"
+  },
+  "inbox": {
+    "title": "Facts to remember",
+    "description": "From today’s conversations. Keep the ones worth remembering; dismiss the rest.",
+    "loading": "Loading…",
+    "error": "Couldn’t load facts.",
+    "keep": "Keep",
+    "dismiss": "Dismiss",
+    "quoted": "quoted"
+  },
+  "scorecard": {
+    "title": "Coaching scorecard",
+    "badge": "Not trended (in review)",
+    "badgeTitle": "This score is not yet calibrated against human ratings, so it is shown for reference but not plotted on a trend.",
+    "overall": "Overall:",
+    "notScored": "not scored"
+  },
+  "reflection": {
+    "defaultTitle": "Weekly reflection",
+    "dismissError": "couldn’t dismiss — try again",
+    "dismissing": "Dismissing…",
+    "dismiss": "Dismiss"
+  }
+}

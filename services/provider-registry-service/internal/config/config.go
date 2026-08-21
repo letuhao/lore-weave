@@ -11,6 +11,7 @@ type Config struct {
 	DatabaseURL            string
 	JWTSecret              string
 	UsageBillingServiceURL string
+	KnowledgeServiceURL    string
 	InternalServiceToken   string
 
 	// AdminJWTPublicKeyPEM (D-JWT-ROLE-GATE) — the RS256 public key that verifies
@@ -139,15 +140,16 @@ type Config struct {
 
 func Load() (*Config, error) {
 	c := &Config{
-		HTTPAddr:               getEnv("HTTP_ADDR", ":8085"),
-		DatabaseURL:            os.Getenv("DATABASE_URL"),
-		JWTSecret:              os.Getenv("JWT_SECRET"),
-		AdminJWTPublicKeyPEM:   os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
-		UsageBillingServiceURL: os.Getenv("USAGE_BILLING_SERVICE_URL"),
+		HTTPAddr:                  getEnv("HTTP_ADDR", ":8085"),
+		DatabaseURL:               os.Getenv("DATABASE_URL"),
+		JWTSecret:                 os.Getenv("JWT_SECRET"),
+		AdminJWTPublicKeyPEM:      os.Getenv("ADMIN_JWT_PUBLIC_KEY_PEM"),
+		UsageBillingServiceURL:    os.Getenv("USAGE_BILLING_SERVICE_URL"),
+		KnowledgeServiceURL:       getEnv("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
 		InternalServiceToken:      os.Getenv("INTERNAL_SERVICE_TOKEN"),
 		ConfirmTokenSigningSecret: os.Getenv("CONFIRM_TOKEN_SIGNING_SECRET"),
 		AuthServiceInternalURL:    os.Getenv("AUTH_SERVICE_INTERNAL_URL"),
-		RabbitMQURL:            os.Getenv("RABBITMQ_URL"),
+		RabbitMQURL:               os.Getenv("RABBITMQ_URL"),
 		// Phase 5e-β.2 — audio_gen URL-mode staging.
 		MinioEndpoint:    os.Getenv("MINIO_ENDPOINT"),
 		MinioAccessKey:   os.Getenv("MINIO_ACCESS_KEY"),

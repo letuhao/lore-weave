@@ -9,12 +9,14 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IDockviewPanelProps } from 'dockview-react';
 import { useTranslation } from 'react-i18next';
+import { CircleHelp, Compass } from 'lucide-react';
 
 import { ConfirmDialog } from '@/components/shared';
 import { useStudioPanel } from './useStudioPanel';
 import { useStudioHost } from '../host/StudioHostProvider';
 import { useStructureTemplates } from './useStructureTemplates';
 import type { Beat, StructureTemplate } from '@/features/composition/types';
+import { localizedBeat, localizedTemplateKind, localizedTemplateName } from '@/features/composition/structureTemplateLocalization';
 
 // S-01b slice 3 — a single generic pending-confirm shape drives both the discard-unsaved guard (C1)
 // and the archive confirmation (C4) through the app's own ConfirmDialog (never the OS confirm()).
@@ -26,7 +28,7 @@ type PendingConfirm = {
 // S-01b — the blank draft a "+ New structure" click authors from. Draft-first: this is local only;
 // nothing hits the server until Save (createTemplate), so an abandoned New never litters a row.
 const NEW_DRAFT: StructureTemplate = {
-  id: '', name: '', kind: 'generic', owner_user_id: '__me__',
+  id: '', name: '', kind: '', owner_user_id: '__me__',
   beats: [{ key: 'beat_1', label: '', purpose: '', order: 1 }],
 };
 
@@ -43,7 +45,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
   const host = useStudioHost();
   // S-13 — the "Use in decompose" EXIT: open the studio decompose panel pre-selected on this
   // structure. Closes the D-S01-USE-IN-DECOMPOSE loop (replaces S-01b's honest interim hint).
-  const useInDecompose = useCallback(
+  const openInDecompose = useCallback(
     (id: string) => host.openPanel('decompose', { params: { templateId: id }, focus: true }),
     [host],
   );
@@ -52,6 +54,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
   const dirtyRef = useRef(false);
   const trackDirty = useCallback((d: boolean) => { dirtyRef.current = d; }, []);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   // C1 — route a navigation (select another row / start create) through a discard-confirm IF the
   // editor has unsaved edits; otherwise go straight through.
   const guard = (action: () => void) => {
@@ -81,10 +84,25 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
         <span className="text-muted-foreground">
           {t('panels.structure-templates.title', { defaultValue: 'Structure Templates' })}
         </span>
-        <span className="text-muted-foreground/70">
+        <span className="min-w-0 flex-1 truncate text-muted-foreground/70">
           — {t('structTpl.subtitle', { defaultValue: 'story structures you decompose chapters against' })}
         </span>
+        <button type="button" data-testid="structtpl-help" aria-label={t('structTpl.help', { defaultValue: 'Structure templates help' })}
+          title={t('structTpl.help', { defaultValue: 'Structure templates help' })}
+          onClick={() => setHelpOpen((v) => !v)} className="rounded p-1 text-muted-foreground hover:bg-accent/40 hover:text-foreground">
+          <CircleHelp className="h-3.5 w-3.5" />
+        </button>
+        <button type="button" data-testid="structtpl-tour" aria-label={t('structTpl.startTour', { defaultValue: 'Start structure templates tour' })}
+          title={t('structTpl.startTour', { defaultValue: 'Start structure templates tour' })}
+          onClick={() => host.publish({ type: 'startGuidedTour', tourId: 'structureTemplates' })} className="rounded p-1 text-muted-foreground hover:bg-primary/10 hover:text-primary">
+          <Compass className="h-3.5 w-3.5" />
+        </button>
       </div>
+      {helpOpen && (
+        <div data-testid="structtpl-help-content" className="flex-shrink-0 border-b bg-secondary/20 px-3 py-2 text-xs text-muted-foreground">
+          {t('panels.structure-templates.guideBody', { defaultValue: 'Create private story structures from ordered beats, clone built-ins, and use them in Decompose to map beats to chapters.' })}
+        </div>
+      )}
 
       {/* D1 — the second track is `minmax(0,1fr)` (not `1fr`) so the detail can shrink BELOW its content
           instead of overflowing the panel; the list is a shrinkable 160–240px. With `min-w-0` on both
@@ -146,7 +164,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               tpl={NEW_DRAFT}
               t={t}
               saving={s.creating} saveError={s.saveError}
-              onSave={(patch) => s.create({ name: patch.name ?? '', kind: patch.kind, beats: patch.beats })}
+              onSave={(patch) => s.create({ name: patch.name ?? '', kind: patch.kind || 'generic', beats: patch.beats })}
               onCancel={s.cancelCreate}
               onDirty={trackDirty}
             />
@@ -154,7 +172,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
             <Hint>{t('structTpl.pickHint', { defaultValue: 'Pick a structure to view its beats — or create a new one.' })}</Hint>
           ) : s.selected.owner_user_id == null ? (
             <BuiltinDetail tpl={s.selected} t={t} cloning={s.cloning} onClone={() => s.clone(s.selected!.id)}
-              onUseInDecompose={() => useInDecompose(s.selected!.id)} />
+              onUseInDecompose={() => openInDecompose(s.selected!.id)} />
           ) : s.selected.is_archived ? (
             <ArchivedDetail tpl={s.selected} t={t} onRestore={() => s.restore(s.selected!.id)} />
           ) : (
@@ -164,7 +182,7 @@ export function StructureTemplatesPanel(props: IDockviewPanelProps) {
               saving={s.saving} saveError={s.saveError}
               onSave={(patch) => s.save(s.selected!.id, s.selected!.version ?? 1, patch)}
               onArchive={() => askArchive(s.selected!.id, s.selected!.name)}
-              onUseInDecompose={() => useInDecompose(s.selected!.id)}
+              onUseInDecompose={() => openInDecompose(s.selected!.id)}
               onDirty={trackDirty}
             />
           )}
@@ -191,24 +209,28 @@ type TFn = ReturnType<typeof useTranslation>['0'];
 function BuiltinDetail({ tpl, t, cloning, onClone, onUseInDecompose }: {
   tpl: StructureTemplate; t: TFn; cloning: boolean; onClone: () => void; onUseInDecompose?: () => void;
 }) {
+  const { t: tc } = useTranslation('composition');
   const beats = [...tpl.beats].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   return (
     <>
-      <DetailHead name={tpl.name} kind={tpl.kind} count={beats.length} badge="system" t={t} />
+      <DetailHead name={localizedTemplateName(tc, tpl)} kind={localizedTemplateKind(tc, tpl)} count={beats.length} badge="system" t={t} />
       <div data-testid="structtpl-readonly-note" className="mb-3 rounded-md border border-primary/30 bg-primary/10 px-2.5 py-2 text-[11px]">
         {t('structTpl.builtinNote', { defaultValue: 'This is a built-in structure. Clone it to customise — you edit your copy, the original stays intact for everyone.' })}
       </div>
       <ol className="flex flex-col gap-1.5">
-        {beats.map((b, i) => (
+        {beats.map((b, i) => {
+          const lb = localizedBeat(tc, tpl, b);
+          return (
           <li key={b.key || i} className="rounded-md border bg-card px-2.5 py-2">
             <div className="flex items-baseline gap-2">
               <span className="shrink-0 font-mono text-[10px] text-muted-foreground">{b.order ?? i + 1}</span>
-              <span className="min-w-0 flex-1 truncate text-xs font-medium">{b.label ?? b.key}</span>
+              <span className="min-w-0 flex-1 truncate text-xs font-medium">{lb.label ?? lb.key}</span>
               <span className="ml-auto shrink-0 font-mono text-[10px] text-muted-foreground">{b.key}</span>
             </div>
-            {b.purpose && <div className="mt-0.5 text-[11px] text-muted-foreground">{b.purpose}</div>}
+            {lb.purpose && <div className="mt-0.5 text-[11px] text-muted-foreground">{lb.purpose}</div>}
           </li>
-        ))}
+          );
+        })}
       </ol>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" data-testid="structtpl-clone" disabled={cloning} onClick={onClone}
@@ -252,7 +274,7 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
 }) {
   const sorted = (bs: Beat[]) => [...bs].sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const [name, setName] = useState(tpl.name);
-  const [kind, setKind] = useState(tpl.kind ?? 'generic');
+  const [kind, setKind] = useState(tpl.kind ?? '');
   const [beats, setBeats] = useState<Beat[]>(() => sorted(tpl.beats));
   // C1 — snapshot the mount state; `dirty` = the draft diverged. The panel reads this (via onDirty)
   // to gate navigation with a discard-confirm. `discard` resets the draft back to the snapshot.
@@ -260,7 +282,7 @@ function OwnEditor({ tpl, t, mode = 'edit', saving, saveError, onSave, onArchive
   const dirty = JSON.stringify({ name, kind, beats }) !== initial.current;
   useEffect(() => { onDirty?.(dirty); return () => onDirty?.(false); }, [dirty, onDirty]);
   const discard = () => {
-    setName(tpl.name); setKind(tpl.kind ?? 'generic'); setBeats(sorted(tpl.beats));
+    setName(tpl.name); setKind(tpl.kind ?? ''); setBeats(sorted(tpl.beats));
   };
   const setBeat = (i: number, patch: Partial<Beat>) =>
     setBeats((bs) => bs.map((b, j) => (j === i ? { ...b, ...patch } : b)));
@@ -412,13 +434,14 @@ function DetailHead({ name, kind, count, badge, t, onName, onKind }: {
       </div>
       <div className="mb-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
         {onKind ? (
-          <input data-testid="structtpl-kind" value={kind ?? 'generic'} onChange={(e) => onKind(e.target.value)}
+          <input data-testid="structtpl-kind" value={kind ?? ''} onChange={(e) => onKind(e.target.value)}
+            placeholder={t('structTpl.kindPlaceholder', { defaultValue: 'generic' })}
             aria-label={t('structTpl.kindLabel', { defaultValue: 'Kind (a free-text label)' })}
             className="w-32 min-w-0 rounded border bg-background px-1.5 py-0.5 font-mono text-[10px]" />
         ) : (
           <code>{kind ?? 'generic'}</code>
         )}
-        <span className="shrink-0">· {count} {t('structTpl.beats', { defaultValue: 'beats' })}</span>
+        <span className="shrink-0">· {count} {t('structTpl.beats', { count, defaultValue: 'beats' })}</span>
       </div>
     </>
   );
@@ -432,6 +455,7 @@ const Row = ({ tpl, active, onClick, badge }: {
   tpl: StructureTemplate; active: boolean; onClick: () => void; badge: 'system' | 'mine' | 'archived';
 }) => {
   const { t } = useTranslation('studio');
+  const { t: tc } = useTranslation('composition');
   // E3 — one name for one concept: a built-in reads "built-in" (matching the group header), not "system".
   const badgeLabel = badge === 'system'
     ? t('structTpl.badge.builtin', { defaultValue: 'built-in' })
@@ -448,7 +472,7 @@ const Row = ({ tpl, active, onClick, badge }: {
         (active ? 'border-primary bg-accent/50' : 'border-transparent')
       }
     >
-      <span className={'min-w-0 flex-1 truncate font-medium ' + (badge === 'archived' ? 'opacity-60' : '')}>{tpl.name}</span>
+      <span className={'min-w-0 flex-1 truncate font-medium ' + (badge === 'archived' ? 'opacity-60' : '')}>{localizedTemplateName(tc, tpl)}</span>
       <span className={
         'shrink-0 rounded-full px-1.5 py-0.5 text-[9px] uppercase ' +
         (badge === 'mine' ? 'bg-emerald-500/15 text-emerald-500' : 'bg-secondary text-muted-foreground')

@@ -28,7 +28,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +46,13 @@ class ProposedChar:
 
 #: A long-running book's roster can be large; the principals are what stop re-invention.
 _MAX_KNOWN_CAST = 40
+
+#: How many characters the model is expected to INVENT on top of the roster it was given —
+#: the budget signal's second term. Not a guess: the system prompt above enumerates the
+#: supporting roles it asks for ("antagonists, allies, mentors, rivals, foils"), so the count
+#: is read off the instruction the model actually receives. It is a SIZING input only; nothing
+#: enforces it, and the parser accepts whatever comes back.
+_INVENTED_CAST_ALLOWANCE = 5
 
 
 def build_propose_cast_messages(
@@ -199,11 +206,29 @@ async def propose_cast(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     premise: str, source_language: str = "auto", genre_tags: list[str] | None = None,
     known_cast: list[str] | None = None, canon: str = "",
-    max_tokens: int = max_tokens_for("propose_cast"), trace_id: str | None = None,  # a full cast JSON is verbose — undersizing truncates the array → parse fails
+    max_tokens: int | None = None, trace_id: str | None = None,  # a full cast JSON is verbose — undersizing truncates the array → parse fails
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> list[ProposedChar]:
     """Propose the cast (named + invented-supporting) from the premise. Returns [] on any
     LLM/parse failure (degrade-safe — the caller keeps the empty-roster path)."""
+    # The row this call site truncated on. The prompt asks the model to return EVERY existing
+    # cast member (marked is_new=false) plus the supporting cast it invents, so the roster
+    # actually sent — capped at `_MAX_KNOWN_CAST`, which is the number that reaches the model
+    # — is a real lower bound on the array's length, and `_INVENTED_CAST_ALLOWANCE` covers the
+    # five archetypes the system prompt names. Derived from the prompt rather than picked: an
+    # established book sends 40 names and used to get the same budget as a blank one.
+    # No `language`: STRUCTURED sizes on item count and never reads it (registry test pins it).
+    #
+    # `context_length` is threaded because the target above can get LARGE — an established
+    # book resolves to ~24k output tokens against the old flat 4096 — and a cap the model's
+    # window cannot honour is a worse failure than the under-budgeting this fixes. The window
+    # clamp (`_MAX_WINDOW_SHARE`) is the mechanism for that and it is unreachable unless the
+    # window is passed. Best-effort by design: `resolve_context_length` returns None rather
+    # than fabricating, and None simply means no clamp — the pre-existing behaviour.
+    max_tokens = max_tokens or max_tokens_for(
+        "propose_cast",
+        target=len((known_cast or [])[:_MAX_KNOWN_CAST]) + _INVENTED_CAST_ALLOWANCE,
+        context_length=await llm.resolve_context_length(model_source, model_ref))
     system, user = build_propose_cast_messages(
         premise, source_language, genre_tags, known_cast=known_cast, canon=canon)
     try:
@@ -221,7 +246,7 @@ async def propose_cast(
     except LLMError as exc:
         logger.warning("propose_cast LLM error: %s", exc)
         return []
-    if job.status != "completed":
+    if (why := unusable(job, "propose_cast")):
         logger.info("propose_cast status=%s → degraded", job.status)
         return []
     content = extract_judge_content(job.result)

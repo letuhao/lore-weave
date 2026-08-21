@@ -3,8 +3,8 @@
 #
 # ISOLATED from the foundation-dev stack (own compose, own volume, own network,
 # non-conflicting ports — foundation-dev pattern). The console default :3000
-# clashes with ContextHub MCP + the api-gateway-bff container, so it is moved to
-# 63000 here; both ports are env-overridable.
+# clashes with the api-gateway-bff container port, so it is moved to 63000 here;
+# both ports are env-overridable.
 #
 #   docker compose -f infra/bencher/docker-compose.yml up -d
 #   docker compose -f infra/bencher/docker-compose.yml down        # (no -v: keep data)

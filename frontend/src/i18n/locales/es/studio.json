@@ -146,6 +146,11 @@
       "desc": "Revisa las entidades redactadas por la IA",
       "guideBody": "Muestra las entradas de entidades que la IA ha redactado automáticamente a partir de tu manuscrito y que esperan tu revisión. Ábrelo para aceptar, editar o rechazar cada sugerencia antes de que pase a formar parte de tu glosario oficial."
     },
+    "world-setup": {
+      "title": "Configuración del mundo",
+      "desc": "Crea tu elenco, el mundo y sus relaciones a partir de una descripción",
+      "guideBody": "Convierte una descripción de tu historia en un lore real y organizado: el sistema planifica qué construir, tú apruebas o recortas la lista, y luego cada personaje, facción y término se redacta uno a uno (los más importantes reciben un perfil detallado) y se archiva para tu revisión. Finalmente, determina cómo se conectan todos y te pide que apruebes esas relaciones antes de guardarlas."
+    },
     "glossary-merge-candidates": {
       "title": "Candidatos a fusión",
       "desc": "Revisa y confirma entidades que podrían ser duplicados",
@@ -719,7 +724,8 @@
     "conflict": "conflicto: {{part}}",
     "format": "Formatear",
     "revert": "Revertir",
-    "openAs": "Abrir como JSON"
+    "openAs": "Abrir como JSON",
+    "readOnly": "solo lectura"
   },
   "planPasses": {
     "comingSoon": "El sistema de 7 pasajes se cargará aquí.",
@@ -761,7 +767,18 @@
     "approveGated": "Aplica primero la semilla del glosario (PF-7)",
     "editAdd": "Añadir",
     "editRemove": "Eliminar",
-    "editEmpty": "Aún no hay nada aquí: añade una fila."
+    "editEmpty": "Aún no hay nada aquí: añade una fila.",
+    "batchSpends": "Ejecuta cada pase listo hasta el siguiente punto de control; consume 1 llamada de LLM por pase.",
+    "chapterNoScenes": "Sin escenas: este capítulo no se puede redactar.",
+    "linkOutline": "Vincular arcos + capítulos →",
+    "linkScenes": "Vincular escenas →",
+    "linkScenesBlocked": "Ejecuta primero el pase de escenas",
+    "noBeat": "(sin beat)",
+    "noScenes": "No hay capítulos para editar en este plan de escenas.",
+    "openEdit": "editar…",
+    "runPicker": "Elegir una ejecución del plan",
+    "runToCheckpoint": "Ejecutar hasta el siguiente punto de control",
+    "runningPass": "ejecutando {{pass}}…"
   },
   "planner": {
     "sourcePlaceholder": "Pega el markdown del sistema de la novela…",
@@ -785,10 +802,49 @@
       "colRun": "Plan",
       "colMode": "Modo",
       "colStatus": "Estado",
-      "colCreated": "Creado"
+      "colCreated": "Creado",
+      "archive": "Archivar",
+      "restore": "Restaurar",
+      "showArchived": "Mostrar archivados"
     },
     "grounded": "Basado en {{chapters}} capítulo(s) existente(s) + {{cast}} miembro(s) del elenco; se continúa con {{arcs}} arco(s) existente(s).",
-    "groundOnExisting": "Continuar este libro: basarse en su elenco, arcos y capítulos recientes existentes"
+    "groundOnExisting": "Continuar este libro: basarse en su elenco, arcos y capítulos recientes existentes",
+    "bootstrap": {
+      "apply": "Crear en mi libro",
+      "applying": "Creando…",
+      "approve": "Aprobar",
+      "check": "Comprobar lo necesario",
+      "checking": "Comprobando…",
+      "done": "Listo — abre los Capítulos para ver lo que se ha creado.",
+      "idleHint": "Comprueba si este plan requiere la creación de nuevos capítulos o personajes en tu libro.",
+      "newChapters": "Nuevos capítulos",
+      "newGlossary": "Nuevas entradas de glosario",
+      "nothingToDo": "Todo lo que hay en este plan ya existe en tu libro; no hay nada nuevo que crear.",
+      "reject": "Ahora no",
+      "rejected": "Has descartado esta sugerencia.",
+      "retry": "Reintentar",
+      "title": "Configura tu libro"
+    },
+    "material": {
+      "applied": "Añadido al plan: {{slots}}. Guardado como notas: {{notes}}.",
+      "askTitle": "No está en tu documento; valdría la pena decidirlo",
+      "dropped": "Se han descartado {{n}} línea(s) sugerida(s) que no estaban realmente en tu documento.",
+      "find": "Revisar mi plan",
+      "finding": "Buscando...",
+      "idleHint": "Busca cualquier cosa que falte en lo que ya has escrito antes de pedírtelo.",
+      "noChange": "No ha habido cambios: todo lo que has mantenido ya estaba en el plan.",
+      "nothing": "No falta nada: el plan cubre cada parte.",
+      "readFailed": "No se pudo leer el documento por completo, por lo que lo «faltante» a continuación no es definitivo.",
+      "retry": "Volver a comprobar",
+      "reviewHint": "Estas líneas ya están en tu documento. Elimina las que no correspondan y añade el resto.",
+      "stale": "Tu plan ha cambiado desde esta comprobación; ejecútala de nuevo para obtener un resultado actualizado.",
+      "title": "¿Qué le falta a este plan?",
+      "unavailableHint": "no comprobado; intenta de nuevo en lugar de considerarlo como faltante",
+      "unavailableTitle": "No se pudo comprobar",
+      "uncertain": "(tu documento no se leyó por completo, por lo que esto podría estar ya presente)",
+      "shrank": "Esta pasada leyó más de lo que conservó ({{detail}}) — revisa esas partes antes de seguir construyendo sobre ellas."
+    },
+    "openPassRail": "Pass Rail →"
   },
   "editor": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para editarlo aquí.",
@@ -808,7 +864,13 @@
     "merging": "Fusionando…",
     "mergeDone": "Fusionado con el canon — la rama conserva su propia versión.",
     "mergeConflict": "El canon ha cambiado — vuelve a abrir el capítulo y fusiona de nuevo.",
-    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo."
+    "mergeFailed": "No se pudo fusionar — inténtalo de nuevo.",
+    "askAiPrompt": "Analiza este pasaje del manuscrito y responde a la pregunta del usuario:\n\n\"{{text}}\"\n\n¿Qué es importante tener en cuenta?",
+    "loadingChapter": "Cargando capítulo…",
+    "sceneSuggestionsHint": "Selecciona texto del manuscrito para generar propuestas de escenas con IA",
+    "sceneSuggestionsReady": "Usa «Sugerir escenas» en la barra de herramientas de IA sobre el pasaje seleccionado.",
+    "sceneSuggestionsSelect": "Selecciona primero un pasaje y luego usa «Sugerir escenas» sobre la selección.",
+    "suggestScenes": "Sugerir escenas"
   },
   "sceneCompose": {
     "empty": "Selecciona un capítulo en el navegador del manuscrito para redactar sus escenas aquí.",
@@ -994,11 +1056,20 @@
     "conformanceTitle": "Conformidad",
     "conformanceDesc": "¿Cumplió la prosa con el plan? Seguimiento de beats por escena",
     "pickModelRerun": "Elige un modelo para volver a ejecutar con…",
-    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan."
+    "pickChapterConformanceHint": "Elige un capítulo arriba para rastrear cómo su prosa cumplió con el plan.",
+    "editRule": "Regla de edición",
+    "healApplied": "Se han aplicado las correcciones seleccionadas al capítulo.",
+    "healApplyError": "No se pudieron aplicar las correcciones. Inténtalo de nuevo.",
+    "healStale": "Este capítulo ha cambiado desde que se ejecutó el Pulido; vuelve a ejecutar el Pulido y luego aplica los cambios."
   },
   "sidebar": {
     "collapse": "Contraer",
     "resize": "Cambiar tamaño de la barra lateral"
+  },
+  "panelsPicker": {
+    "title": "Paneles del espacio de trabajo",
+    "search": "Buscar un panel…",
+    "hint": "Elige qué paneles permanecerán visibles. Tu elección se guardará con este espacio de trabajo."
   },
   "layout": {
     "title": "Diseño de panel",
@@ -1016,6 +1087,14 @@
       "grid4x2": "Cuadrícula 4×2",
       "cols6": "Seis columnas",
       "cols8": "Ocho columnas"
+    }
+  },
+  "diagnostics": {
+    "unplannedChapter": "El capítulo {{title}} está escrito pero no figura en el plan",
+    "warning": {
+      "openThread": "No se pudieron leer las promesas abiertas",
+      "deletedSpec": "No se pudieron verificar los nodos del plan eliminados",
+      "coverage": "No se pudo calcular la cobertura entre el manuscrito y el plan"
     }
   },
   "bottom": {
@@ -1193,6 +1272,68 @@
         "knowledge": {
           "title": "El grafo de conocimiento",
           "body": "Para un desarrollo de mundo más profundo, el grafo de conocimiento rastrea cómo se conecta todo: entidades, eventos y relaciones."
+        }
+      },
+      "worldResearch": {
+        "setup": {
+          "title": "Describe el mundo primero",
+          "body": "El asistente de configuración del libro crea una estructura de mundo estable y valores predeterminados del sistema para que la extracción posterior se comporte de manera predecible."
+        },
+        "glossary": {
+          "title": "Crea el glosario",
+          "body": "Revisa entidades, tipos y atributos. Comienza con el texto fuente y luego confirma manualmente los registros ambiguos."
+        },
+        "entities": {
+          "title": "Investiga las entidades",
+          "body": "Busca personajes, lugares y objetos, abre sus evidencias y comprueba qué capítulos los mencionan."
+        },
+        "timeline": {
+          "title": "Consulta la línea de tiempo",
+          "body": "La línea de tiempo de los eventos ayuda a revelar lagunas y contradicciones entre capítulos. Trátala como una hipótesis de trabajo."
+        },
+        "graph": {
+          "title": "Visualiza las conexiones",
+          "body": "El gráfico muestra las relaciones entre entidades. Encuentra los nodos con mayor conectividad y regresa a sus pasajes de referencia."
+        }
+      },
+      "factChecking": {
+        "evidence": {
+          "title": "Comienza desde la fuente de la afirmación",
+          "body": "La evidencia te lleva al capítulo y al pasaje de texto. Verifica primero la cita y luego decide si una entidad o atributo requiere cambios."
+        },
+        "triage": {
+          "title": "Gestiona la cola de revisión",
+          "body": "El triaje agrupa los hallazgos inciertos por urgencia. Resuelve los conflictos de canon y las advertencias repetidas antes que los casos aislados."
+        },
+        "gaps": {
+          "title": "Encuentra detalles faltantes",
+          "body": "El informe de lagunas destaca entidades mencionadas con frecuencia pero mal descritas; son candidatas para enriquecer."
+        },
+        "unknown": {
+          "title": "Resuelve menciones desconocidas",
+          "body": "Vincula un término con una entidad existente o crea una nueva. Comprueba el contexto y las variantes ortográficas antes de fusionar."
+        },
+        "proposals": {
+          "title": "El editor decide",
+          "body": "Acepta las propuestas de la IA solo tras revisar su fuente e impacto. No vuelvas a introducir candidatos rechazados sin una nueva comprobación."
+        }
+      },
+      "glossaryWorkflow": {
+        "list": {
+          "title": "Lista de entidades",
+          "body": "Filtra entidades por tipo y estado, abre un registro y salta a los capítulos que contienen su evidencia."
+        },
+        "ontology": {
+          "title": "Ontología del libro",
+          "body": "Elige el género, los tipos y los atributos. Comienza con una plantilla del sistema y luego añade solo los campos que este mundo necesite."
+        },
+        "suggestions": {
+          "title": "Sugerencias de extracción",
+          "body": "Extrae información de los capítulos seleccionados, revisa los candidatos y apruébalos por lotes. Realiza un seguimiento de las tareas largas en «Jobs»."
+        },
+        "merge": {
+          "title": "Fusionar duplicados",
+          "body": "Compara nombres, tipos, atributos y evidencias antes de fusionar. Comprueba los enlaces después de la operación."
         }
       },
       "translator": {
@@ -1406,14 +1547,63 @@
           "title": "Abrir en una ventana independiente",
           "body": "Abre el modo Escritura en una ventana separada del sistema operativo; ideal para usar un segundo monitor. Los cambios que apruebes allí se guardarán en el editor de este libro."
         }
+      },
+      "structureTemplates": {
+        "panel": {
+          "title": "Espacio de trabajo de plantillas de estructura",
+          "body": "Este panel contiene estructuras narrativas integradas y privadas. Te ayudan a organizar los capítulos en una secuencia ordenada de puntos de giro."
+        },
+        "list": {
+          "title": "Plantillas integradas y personales",
+          "body": "Las plantillas integradas son de solo lectura. Clona una o selecciona tu propia plantilla para trabajar sobre una copia editable."
+        },
+        "create": {
+          "title": "Crea tu propia estructura",
+          "body": "Elige «Nueva estructura», ponle un nombre y añade los puntos de giro. Tus plantillas personalizadas se pueden reutilizar en todos tus libros."
+        },
+        "edit": {
+          "title": "Editar y aplicar",
+          "body": "Reordena los puntos de giro, describe su propósito, guarda los cambios y luego utiliza la estructura desde el panel Descomponer."
+        }
       }
     }
   },
   "userGuide": {
+    "open": "Abrir guía del usuario",
     "intro": "Cada herramienta que Writing Studio puede abrir, agrupada de la misma forma que en la Paleta de comandos.",
     "toursGroup": "Tours guiados",
     "toursEditor": "Editor",
-    "toursComposer": "Escritura"
+    "toursComposer": "Escritura",
+    "toursResearch": "Investigación del mundo",
+    "workflowsTitle": "Flujos de trabajo y prácticas",
+    "workflows": {
+      "setup": {
+        "title": "Preparar un libro",
+        "body": "Crea primero la estructura, luego importa los capítulos y verifica que el árbol se cargue correctamente.",
+        "steps": "Importación del libro → Editor → Comprobar integridad en el Glosario. Reparar automáticamente los problemas detectados y volver a ejecutar la comprobación."
+      },
+      "lore": {
+        "title": "Investiga el mundo",
+        "body": "El glosario almacena los hechos del mundo; la base de conocimientos los conecta con evidencias y eventos.",
+        "steps": "La ontología define tipos y atributos → Extraer de los capítulos seleccionados → Entidades y Evidencia verifican los hallazgos → El Gráfico y la Línea de tiempo revelan las conexiones."
+      },
+      "factChecking": {
+        "title": "Comprueba los hechos y el canon",
+        "body": "Nunca aceptes un hallazgo de la IA sin su fuente: abre primero el pasaje y luego acepta o rechaza la propuesta.",
+        "steps": "Evidencia → saltar al capítulo → Triaje de la cola de incertidumbre → Brechas para descripciones faltantes. Vuelve a ejecutar las comprobaciones de integridad tras las ediciones."
+      },
+      "jobs": {
+        "title": "Tareas prolongadas y recuperación",
+        "body": "La extracción, traducción y enriquecimiento se ejecutan como tareas, por lo que cerrar el panel no hará que se pierda el progreso.",
+        "steps": "Abre Tareas para supervisar el progreso y el coste de los lotes o ventanas. En caso de error, usa Reanudar desde el punto de control; si los parámetros cambian, usa Reiniciar."
+      },
+      "translation": {
+        "title": "Traduce sin perder el canon",
+        "body": "Estabiliza el glosario antes de traducir para que los nombres, términos y relaciones se mantengan consistentes.",
+        "steps": "La traducción muestra la cobertura y las versiones → El enriquecimiento rellena los huecos del lore → Antes de publicar, revisa los capítulos, el glosario y el registro de actividad."
+      }
+    },
+    "startPanelTour": "Iniciar recorrido por el panel"
   },
   "tourPicker": {
     "editorBasics": {
@@ -1475,6 +1665,22 @@
     "composerPopout": {
       "label": "Ventana emergente",
       "desc": "Saca el editor a su propia ventana del sistema operativo para usarlo en un segundo monitor."
+    },
+    "worldResearch": {
+      "label": "Investigación del mundo",
+      "desc": "Desde la configuración del libro hasta las entidades, la línea temporal y el gráfico de relaciones: un flujo de trabajo de investigación de lore repetible."
+    },
+    "factChecking": {
+      "label": "Verificación de hechos",
+      "desc": "Evidencia, triaje, lagunas y entidades desconocidas: verifica hipótesis frente al texto fuente."
+    },
+    "glossaryWorkflow": {
+      "label": "Flujo de trabajo del glosario",
+      "desc": "Ontología, extracción, sugerencias y fusión segura de duplicados."
+    },
+    "structureTemplates": {
+      "label": "Plantillas de estructura",
+      "desc": "Crea y ajusta estructuras narrativas para desglosar capítulos."
     }
   },
   "planHub": {
@@ -1513,7 +1719,14 @@
       "viewNarrative": "Narrativa",
       "viewTimeline": "Línea de tiempo",
       "viewWorldmap": "Mapa del mundo",
-      "viewSoon": "Próximamente en una fase posterior"
+      "viewSoon": "Próximamente en una fase posterior",
+      "addArc": "+ Arco",
+      "addArcHint": "Añadir un arco de nivel superior",
+      "addArcNoGrant": "Necesitas permisos de edición para añadir arcos",
+      "addSubArc": "+ Subarco",
+      "addSubArcHint": "Añadir un subarco bajo el arco seleccionado",
+      "addSubArcHint2": "Selecciona un arco para anidar un subarco debajo",
+      "addingArc": "+ Arco…"
     },
     "mode": {
       "simple": "Simple",
@@ -1541,6 +1754,12 @@
       "rename": "Renombrar",
       "delete": "Eliminar capítulo",
       "aiDraft": "O deja que la IA redacte uno →",
+      "importPlan": "Importar plan desde CSV",
+      "importingPlan": "Importando plan...",
+      "aiPlan": "Crear un plan con IA",
+      "csvEmpty": "El archivo CSV no contiene filas de planificación.",
+      "csvNoMatches": "Ninguna fila del CSV coincide con este libro. Usa chapter_id o sort_order.",
+      "csvFailed": "Error al importar la planificación.",
       "legend": {
         "authored": "tú lo escribiste",
         "ai": "Idea de IA"
@@ -1586,7 +1805,6 @@
     "mineEmpty": "Aún no tienes ninguna; clona una integrada para empezar.",
     "loading": "Cargando…",
     "pickHint": "Selecciona una estructura para ver sus beats.",
-    "beats": "beats",
     "builtinNote": "Esta es una estructura integrada. Clónala para personalizarla; tú editas tu copia y el original permanece intacto para todos.",
     "cloneBuiltin": "Clonar en mis estructuras",
     "duplicate": "Duplicar",
@@ -1636,7 +1854,15 @@
       "builtin": "integrada",
       "mine": "mía",
       "archived": "archivada"
-    }
+    },
+    "help": "Ayuda de plantillas de estructura",
+    "startTour": "Iniciar recorrido de plantillas de estructura",
+    "useInDecompose": "Usar en Descomponer →",
+    "beats_one": "latido",
+    "beats_other": "latidos",
+    "kindPlaceholder": "genérico",
+    "beats": "beats",
+    "nameRequired": "Nombre obligatorio"
   },
   "search": {
     "modeLabel": "Modo de búsqueda",
@@ -1664,5 +1890,47 @@
     "firstStructureTitle": "Primer acto",
     "everything": "O configura este libro por completo",
     "everythingBusy": "Configurando…"
+  },
+  "checkpoints": {
+    "blocked_dirty": "Guarda tus ediciones primero; restaurar sobrescribiría los cambios",
+    "confirm_desc": "Se creará una instantánea del borrador actual, por lo que esta acción es reversible desde el historial de revisiones.",
+    "confirm_title": "¿Restaurar al estado anterior a esta edición de IA?",
+    "dirty_warning": "Guarda tus ediciones actuales antes de restaurar un punto de control.",
+    "header": "Puntos de control de edición de IA",
+    "insert": "Insertado",
+    "no_restore": "No hay versiones anteriores para restaurar",
+    "replace": "Reescrito",
+    "restore": "Restaurar",
+    "restore_failed": "No se pudo restaurar este punto de control.",
+    "restored": "Restaurado al estado anterior a la edición de la IA"
+  },
+  "common": {
+    "close": "Cerrar"
+  },
+  "compose": {
+    "startDrafting": "Empezar a redactar →",
+    "startDraftingTitle": "Abre el espacio de trabajo de redacción para escribir los capítulos de tu plan"
+  },
+  "errorBlocks": {
+    "dismiss": "Dejarlo",
+    "drifted": "el texto ha cambiado",
+    "remove": "Eliminar marca",
+    "removed": "Marca eliminada.",
+    "reopen": "Reabrir",
+    "resolve": "Solucionado",
+    "title": "Problemas marcados",
+    "undo": "Deshacer",
+    "undoFailed": "No se pudo restaurar la marca."
+  },
+  "revision": {
+    "blocked_dirty": "Tienes cambios sin guardar. Guárdalos o descártalos antes de restaurar una revisión.",
+    "confirm_desc": "El borrador actual será reemplazado por esta revisión. Esta acción no se puede deshacer.",
+    "confirm_title": "¿Restaurar esta revisión?",
+    "current": "Actual",
+    "empty": "Aún no hay revisiones.",
+    "header": "Historial de revisiones",
+    "load_more": "Cargar más",
+    "loading_more": "Cargando…",
+    "restore": "Restaurar"
   }
 }

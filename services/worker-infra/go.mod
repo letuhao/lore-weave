@@ -5,6 +5,7 @@ go 1.25.0
 require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
+	github.com/loreweave/epubimport v0.1.0
 	github.com/loreweave/observability v0.1.0
 	github.com/minio/minio-go/v7 v7.2.1
 	github.com/rabbitmq/amqp091-go v1.13.0
@@ -14,6 +15,8 @@ require (
 )
 
 replace github.com/loreweave/observability => ../../sdks/go/observability
+
+replace github.com/loreweave/epubimport => ../../pkg/epubimport
 
 require (
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect

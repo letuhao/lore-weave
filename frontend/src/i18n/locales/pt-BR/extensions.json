@@ -9,7 +9,9 @@
     "permissions": "Permissões de ferramentas",
     "proposals": "Propostas",
     "activity": "Log de atividade",
-    "ingest": "Fontes do registro"
+    "ingest": "Fontes do registro",
+    "bindings": "Configuração automática",
+    "workflows": "Receitas"
   },
   "quota": {
     "unavailable": "Uso indisponível",

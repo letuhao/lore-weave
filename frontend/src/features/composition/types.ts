@@ -159,6 +159,8 @@ export type PlannerScenePreview = {
   synopsis: string;
   tension: number;
   present_entity_ids: string[];
+  /** Presentation-only names resolved by the planner; ids remain commit keys. */
+  present_entity_names?: Record<string, string>;
   present_entity_names_unresolved: string[];
   suggested_k: number;
 };
@@ -564,7 +566,7 @@ export type StreamEvent =
   | { type: 'done'; job_id: string; status: string; output_tokens?: number; measured?: boolean; capped?: boolean; replay?: boolean };
 
 // T3.2 — selection-scoped AI operations on highlighted prose.
-export type SelectionOperation = 'rewrite' | 'expand' | 'describe';
+export type SelectionOperation = 'rewrite' | 'expand' | 'describe' | 'scene_plan';
 
 // S-10 O3 — the book "problems panel" (studio Issues tab), the FE shape of the shared
 // build_book_diagnostics → diag.ranked(). Ranked error → warn → info; `counts`/`total` are EXACT

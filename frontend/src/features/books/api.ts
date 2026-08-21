@@ -796,7 +796,114 @@ export const booksApi = {
     return res.json();
   },
 
-  // ── Import (.docx/.epub/.pdf) ─────────────────────────────────────────
+  // ── Import (.docx/.epub/.fb2/.pdf) ────────────────────────────────────
+
+  inspectEpub(
+    token: string,
+    file: File,
+    targetBookId?: string,
+    onProgress?: (pct: number) => void,
+  ): Promise<EpubImportInspection> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (targetBookId) form.append('target_book_id', targetBookId);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base()}/v1/epub-imports/inspect`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.addEventListener('progress', (event) => {
+        if (onProgress && event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+      });
+      xhr.addEventListener('load', () => {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) resolve(body as EpubImportInspection);
+          else reject(Object.assign(new Error(body?.message || xhr.statusText), { status: xhr.status, code: body?.code }));
+        } catch { reject(new Error('Invalid response')); }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.send(form);
+    });
+  },
+
+  async startEpubImport(
+    token: string,
+    body: {
+      source_id: string;
+      target: { mode: 'existing_book'; book_id: string } | { mode: 'new_book' };
+      strategy: 'append' | 'replace_all' | 'merge_by_source_key';
+      metadata_policy: Record<string, string>;
+      selected_source_keys: string[];
+      title_overrides: Record<string, string>;
+      options: Record<string, unknown>;
+      destructive_confirmation: boolean;
+    },
+  ): Promise<{ job_id: string; book_id: string; status: string }> {
+    const res = await fetch(`${base()}/v1/epub-imports`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) throw Object.assign(new Error(data?.message || res.statusText), { status: res.status, code: data?.code });
+    return data;
+  },
+
+  getEpubImportJob(token: string, jobId: string) {
+    return apiJson<EpubImportJob>(`/v1/import-jobs/${jobId}`, { token });
+  },
+
+  getEpubImportReport(token: string, jobId: string) {
+    return apiJson<EpubImportReport>(`/v1/import-jobs/${jobId}/report`, { token });
+  },
+
+  async cancelEpubImport(token: string, jobId: string) {
+    return apiJson<{ job_id: string; status: string }>(`/v1/import-jobs/${jobId}/cancel`, { token, method: 'POST' });
+  },
+
+  async resumeEpubImport(token: string, jobId: string) {
+    return apiJson<{ job_id: string; status: string }>(`/v1/import-jobs/${jobId}/resume`, { token, method: 'POST' });
+  },
+
+  async rollbackEpubImport(token: string, jobId: string) {
+    return apiJson<{ job_id: string; status: string }>(`/v1/import-jobs/${jobId}/rollback`, {
+      token,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true }),
+    });
+  },
+
+  startNewFB2Import(
+    token: string,
+    file: File,
+    originalLanguage?: string,
+    onProgress?: (pct: number) => void,
+  ): Promise<ImportJob> {
+    return new Promise((resolve, reject) => {
+      const form = new FormData();
+      form.append('file', file);
+      if (originalLanguage) form.append('original_language', originalLanguage);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${base()}/v1/books/import/fb2`);
+      xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      if (onProgress) {
+        xhr.upload.addEventListener('progress', (event) => {
+          if (event.lengthComputable) onProgress(Math.round((event.loaded / event.total) * 100));
+        });
+      }
+      xhr.addEventListener('load', () => {
+        try {
+          const body = JSON.parse(xhr.responseText);
+          if (xhr.status >= 200 && xhr.status < 300) resolve(body);
+          else reject(Object.assign(new Error(body?.message || xhr.statusText), { status: xhr.status, code: body?.code }));
+        } catch { reject(new Error('Invalid response')); }
+      });
+      xhr.addEventListener('error', () => reject(new Error('Network error')));
+      xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+      xhr.send(form);
+    });
+  },
 
   startImport(
     token: string,
@@ -941,7 +1048,7 @@ export type ReadingHistoryEntry = {
 export type ImportJob = {
   id: string;
   book_id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'queued' | 'processing' | 'running' | 'import_staging' | 'completed' | 'completed_with_warnings' | 'failed' | 'cancelling' | 'cancelled';
   filename: string;
   file_format: string;
   file_size: number;
@@ -950,6 +1057,71 @@ export type ImportJob = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  /** Present for EPUB Import V2 jobs; absent on the legacy import route. */
+  progress_total?: number;
+  progress_completed?: number;
+  progress_failed?: number;
+  current_item?: { item_id: string; title: string | null; ordinal: number } | null;
+};
+
+export type EpubNavigationNode = {
+  source_key: string;
+  source_href?: string;
+  source_fragment?: string;
+  parent_source_key?: string;
+  ordinal: number;
+  depth: number;
+  role: string;
+  title: string;
+  linear: boolean;
+  selected: boolean;
+  warnings?: Array<{ code?: string; message?: string }>;
+  children?: EpubNavigationNode[];
+};
+
+export type EpubImportInspection = {
+  source_id: string;
+  sha256: string;
+  duplicate_source: boolean;
+  metadata: {
+    title?: string;
+    creators?: string[];
+    language?: string;
+    description?: string;
+    subjects?: string[];
+    series?: string;
+  };
+  cover?: { source_path?: string; media_type?: string; width?: number; height?: number } | null;
+  navigation_source: string;
+  structure: EpubNavigationNode[];
+  warnings: Array<{ code?: string; message?: string }>;
+};
+
+export type EpubImportJob = {
+  job_id: string;
+  book_id: string;
+  source_id: string;
+  status: string;
+  progress_total: number;
+  progress_completed: number;
+  progress_failed: number;
+  chapters_created: number;
+  current_item?: { item_id: string; title?: string | null; ordinal: number } | null;
+  warnings: unknown[];
+  errors: unknown[];
+  resumable: boolean;
+  cancellable: boolean;
+  rollback_available: boolean;
+};
+
+export type EpubImportReport = {
+  status: string;
+  chapters_detected: number;
+  chapters_selected: number;
+  chapters_created: number;
+  assets_imported?: number;
+  warnings: unknown[];
+  errors: unknown[];
 };
 
 // ── Types ───────────────────────────────────────────────────────────────

@@ -13,6 +13,7 @@ const createProviderMock = vi.fn();
 const createUserModelMock = vi.fn();
 const deleteProviderMock = vi.fn();
 const deleteUserModelMock = vi.fn();
+const deletionImpactMock = vi.fn();
 const patchActivationMock = vi.fn();
 const verifyUserModelMock = vi.fn();
 const patchProviderMock = vi.fn();
@@ -28,6 +29,7 @@ vi.mock('../api', async (orig) => {
       createUserModel: (...a: unknown[]) => createUserModelMock(...a),
       deleteProvider: (...a: unknown[]) => deleteProviderMock(...a),
       deleteUserModel: (...a: unknown[]) => deleteUserModelMock(...a),
+      getUserModelDeletionImpact: (...a: unknown[]) => deletionImpactMock(...a),
       patchActivation: (...a: unknown[]) => patchActivationMock(...a),
       verifyUserModel: (...a: unknown[]) => verifyUserModelMock(...a),
       patchProvider: (...a: unknown[]) => patchProviderMock(...a),
@@ -68,6 +70,7 @@ beforeEach(() => {
   createUserModelMock.mockReset();
   deleteProviderMock.mockReset();
   deleteUserModelMock.mockReset();
+  deletionImpactMock.mockReset();
   patchActivationMock.mockReset();
   verifyUserModelMock.mockReset();
   patchProviderMock.mockReset();
@@ -119,6 +122,8 @@ describe('AddServiceModal', () => {
 });
 
 describe('ExternalServicesCard', () => {
+  beforeEach(() => { vi.stubGlobal('confirm', () => true); });
+
   it('shows the empty state when no services are registered', () => {
     render(<ExternalServicesCard providers={[]} models={[]} onChanged={() => {}} />);
     expect(screen.getByText('services.empty')).toBeInTheDocument();
@@ -138,13 +143,14 @@ describe('ExternalServicesCard', () => {
 
   it('deletes the model then the credential when removing a service', async () => {
     deleteUserModelMock.mockResolvedValue(undefined);
+    deletionImpactMock.mockResolvedValue({ can_delete: true, active_tasks: [], references: [] });
     deleteProviderMock.mockResolvedValue(undefined);
     const onChanged = vi.fn();
     render(<ExternalServicesCard providers={[SERVICE_PROVIDER]} models={[SERVICE_MODEL]} onChanged={onChanged} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'services.delete_aria' }));
     await waitFor(() => expect(deleteProviderMock).toHaveBeenCalledWith('tok-test', 'pc1'));
-    expect(deleteUserModelMock).toHaveBeenCalledWith('tok-test', 'um1');
+    expect(deleteUserModelMock).toHaveBeenCalledWith('tok-test', 'um1', true);
     expect(onChanged).toHaveBeenCalled();
   });
 

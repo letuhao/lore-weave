@@ -19,15 +19,15 @@ type Config struct {
 	CleanupRetainDays int
 
 	// Import processor config
-	BookDBURL       string
-	PandocURL       string
-	MinioEndpoint   string
-	MinioAccessKey  string
-	MinioSecretKey  string
-	MinioBucket     string
-	BookServiceURL  string
-	InternalToken   string
-	RabbitMQURL     string
+	BookDBURL      string
+	PandocURL      string
+	MinioEndpoint  string
+	MinioAccessKey string
+	MinioSecretKey string
+	MinioBucket    string
+	BookServiceURL string
+	InternalToken  string
+	RabbitMQURL    string
 
 	// P1 (2026-05-23) — knowledge-service /internal/parse for structural decomposition.
 	KnowledgeServiceURL string
@@ -36,6 +36,8 @@ type Config struct {
 	// tail decompiles imported prose into spec scenes and writes back scenes.source_scene_id
 	// from the returned map (composition never writes book-service's DB, SCOPE-2).
 	CompositionServiceURL string
+	// GlossaryServiceURL owns automatic system Lore scaffolding for newly created EPUB books.
+	GlossaryServiceURL string
 
 	// D-C-PRODUCER-OUTBOX — where the outbox relay delivers notification-typed rows
 	// (the producers' durable notification path). Defaults to the compose service name.
@@ -60,6 +62,7 @@ func Load() *Config {
 		KnowledgeServiceURL: envOrDefault("KNOWLEDGE_SERVICE_URL", "http://knowledge-service:8092"),
 		// 26 IX-12 — default matches the compose service name/port.
 		CompositionServiceURL: envOrDefault("COMPOSITION_SERVICE_URL", "http://composition-service:8093"),
+		GlossaryServiceURL:    envOrDefault("GLOSSARY_SERVICE_URL", "http://glossary-service:8088"),
 		// D-C-PRODUCER-OUTBOX — default matches the compose service name/port.
 		NotificationServiceURL: envOrDefault("NOTIFICATION_SERVICE_URL", "http://notification-service:8091"),
 	}

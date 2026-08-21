@@ -49,6 +49,45 @@
     "lossChange": {
       "removed_upstream": "removido",
       "modified": "sobrescrito"
+    },
+    "templates": {
+      "general": {
+        "name": "Geral (ontologia legada)",
+        "description": "Reproduz a ontologia de extração genérica original — a rede de segurança de prioridade aditiva."
+      },
+      "general-legacy": {
+        "name": "Geral (ontologia legada)",
+        "description": "Reproduz a ontologia de extração genérica original — a rede de segurança de prioridade aditiva."
+      },
+      "xianxia-harem": {
+        "name": "Xianxia · Harem",
+        "description": "Template de gênero para romances de cultivo e harém com tipos de entidades e relações selecionados."
+      },
+      "fantasy": {
+        "name": "Fantasia",
+        "description": "Esquema de mundo de fantasia com personagens, lugares, organizações, espécies, itens, poderes e técnicas."
+      },
+      "romance": {
+        "name": "Romance",
+        "description": "Esquema centrado em relacionamentos com personagens, relações, arcos de enredo, tropos e cenários sociais."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Esquema de drama para personagens, conflitos, relacionamentos, organizações, eventos e arcos de enredo."
+      },
+      "historical": {
+        "name": "Histórico",
+        "description": "Esquema de ficção histórica para pessoas, lugares, instituições, eventos, terminologia e ordem social."
+      },
+      "mystery": {
+        "name": "Mistério",
+        "description": "Esquema de investigação para personagens, pistas, objetos, organizações, eventos, arcos de enredo e tropos."
+      }
+    },
+    "scope": {
+      "system": "sistema",
+      "user": "Usuário",
+      "project": "Projeto"
     }
   },
   "schema": {

@@ -203,6 +203,11 @@
     "rescanPartial": "Rescan done (recipe skipped — knowledge didn't supply versions) — {{count}} new",
     "rescanPartial_other": "Rescan done (recipe skipped — knowledge didn't supply versions) — {{count}} new",
     "rescanFailed": "Rescan failed",
+    "rescanUnchecked": "Rescan incomplete — {{count}} article was not compared",
+    "rescanUnchecked_other": "Rescan incomplete — {{count}} articles were not compared",
+    "coverageGap": "Last scan could not compare {{count}} article (knowledge unreachable), so this list may be incomplete.",
+    "coverageGap_other": "Last scan could not compare {{count}} articles (knowledge unreachable), so this list may be incomplete.",
+    "coverageUnknown": "This scan did not report how much it compared, so the list may be incomplete.",
     "ledgerNote": "Knowledge changes are recorded here automatically (a deferred ledger, not realtime). Flags flip but nothing regenerates on its own — tokens are spent only when you hit Regenerate.",
     "reason": {
       "entity_changed": "Glossary entry changed",

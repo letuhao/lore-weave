@@ -35,7 +35,8 @@ from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
 from app.engine.cowrite import build_selection_messages
 from app.packer.profile import BookProfile
-from app.llm_budget import max_tokens_for
+from app.engine.finding import Locator, SkipReason
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +50,23 @@ class Finding:
     fix: str
     located: tuple[int, int] | None = None  # (start, end) offsets in the ORIGINAL chapter
     edited: bool = False
-    skip_reason: str | None = None          # not_located | overlap | edit_failed | edit_expanded
+    #: One of `SkipReason` — a CLOSED vocabulary now (it used to be a free string whose
+    #: trailing-comment list omitted the two members a consumer actually reads).
+    skip_reason: str | None = None
+
+    @property
+    def locator(self) -> Locator:
+        """Where this finding is — including when the answer is NOWHERE.
+
+        `located=None` is not a missing value, it is an answer: the judge quoted text that
+        could not be found in the chapter. As an absent field it reached a human only by
+        making the `located` COUNT smaller, and the panel that reads that count said "the
+        prose is clean". `Locator.nowhere` makes the answer addressable, and it carries the
+        quote — which is the only handle a human has on a finding nothing could place.
+        """
+        if self.located is None:
+            return Locator.nowhere(quote=self.span, why=self.skip_reason or SkipReason.NOT_LOCATED)
+        return Locator.span(self.located[0], self.located[1], quote=self.span)
 
 
 @dataclass
@@ -209,7 +226,7 @@ def locate_span(span: str, text: str) -> tuple[int, int] | None:
 
 async def _chat(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
-    system: str, user: str, max_tokens: int, purpose: str,
+    system: str, user: str, max_tokens: int, purpose: str, code: str,
     trace_id: str | None, cancel_check: Callable[[], Awaitable[bool]] | None,
     temperature: float = 0.3,
 ) -> str | None:
@@ -229,7 +246,9 @@ async def _chat(
     except LLMError as exc:
         logger.warning("self_heal %s LLM error: %s", purpose, exc)
         return None
-    if job.status != "completed":
+    # `code` is the registry key; `purpose` is the billing label. Only the first can say
+    # whether a clipped response here is a failure or merely a short one.
+    if (why := unusable(job, code)):
         logger.info("self_heal %s status=%s → degraded", purpose, job.status)
         return None
     content = extract_judge_content(job.result)
@@ -245,7 +264,7 @@ async def _judge(
     as 'all clean')."""
     system, user = build_judge_messages(chapter, source_language, canon)
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_judge", temperature=temperature, **kw)
+                          purpose="self_heal_judge", code="self_heal_judge", temperature=temperature, **kw)
     if content is None:
         return None
     return parse_findings(content)
@@ -309,16 +328,22 @@ _VERIFY_SYSTEM = (
 
 async def _verify(
     llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None,
-    max_tokens: int = max_tokens_for("self_heal_verify"), **kw,
+    source_language: str = "auto", max_tokens: int | None = None, **kw,
 ) -> bool:
     """True ⇒ keep the finding (confirmed or verify degraded), False ⇒ drop (refuted).
     Fail-OPEN: a degraded/unparseable verify keeps the finding — the satellite edit is
     canon-grounded and localized, and a human/stronger-model gate follows; dropping a real
     fix on a transient verify failure is the worse error here."""
+    # Exactly ONE verdict per finding — the count is fixed, and `source_language` is what
+    # varies. It had to be threaded in to be passed at all: the budget was previously an
+    # import-time default, so this call could not have carried the book's language even
+    # though the pipeline two frames up has always known it.
+    max_tokens = max_tokens or max_tokens_for(
+        "self_heal_verify", target=1, language=source_language)
     system = _VERIFY_SYSTEM + ("\n\nSTORY BIBLE:\n" + canon.strip() if canon and canon.strip() else "")
     user = f"CHAPTER:\n\n{chapter}\n\nFINDING: {finding.issue}\nQUOTE: \"{finding.span}\""
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_verify", temperature=0.2, **kw)
+                          purpose="self_heal_verify", code="self_heal_verify", temperature=0.2, **kw)
     if content is None:
         return True  # degrade ⇒ fail-open
     m = re.search(r'"verdict"\s*:\s*"?\s*(CONFIRMED|REFUTED)', content, re.IGNORECASE)
@@ -330,7 +355,8 @@ async def _verify(
 
 
 async def _verify_vote(
-    llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None, k: int, **kw,
+    llm: LLMClient, chapter: str, finding: Finding, *, canon: str | None, k: int,
+    source_language: str = "auto", **kw,
 ) -> bool:
     """Vote the verify to RAISE recall — single-shot verify is stochastic + fail-toward-refute
     (it dropped the real CH01 'mẫu thân ngươi'). Because each `_verify` already DEFAULTS to
@@ -339,8 +365,8 @@ async def _verify_vote(
     the skeptical default) is enough to keep a finding; a true confab the model refutes every
     time still gets 0 confirms → dropped. k≤1 ⇒ single-shot."""
     if k <= 1:
-        return await _verify(llm, chapter, finding, canon=canon, **kw)
-    votes = await asyncio.gather(*[_verify(llm, chapter, finding, canon=canon, **kw) for _ in range(k)])
+        return await _verify(llm, chapter, finding, canon=canon, source_language=source_language, **kw)
+    votes = await asyncio.gather(*[_verify(llm, chapter, finding, canon=canon, source_language=source_language, **kw) for _ in range(k)])
     return any(votes)   # keep unless EVERY vote refutes (recall-biased; the human gate culls the rest)
 
 
@@ -416,6 +442,10 @@ async def _compute_edits(
     verify-vote → locate+snap → overlap-dedup → satellite-edit → merge mechanical edits.
     Returns the computed `EditProposal`s (offset-ascending, stable ids) + the report.
     `run_self_heal` splices all of them; `propose_self_heal` hands them to the review-gate."""
+    judge_max_tokens = judge_max_tokens or max_tokens_for(
+        "self_heal_judge", target=max(1, len(chapter) // 800))
+    edit_max_tokens = edit_max_tokens or max_tokens_for(
+        "self_heal_edit", target=len(chapter) // 20 or 1)
     findings = await _judge_vote(
         llm, chapter, source_language=source_language, max_tokens=judge_max_tokens,
         canon=canon, k=vote_k, min_votes=min_votes, temperature=vote_temperature, **kw) or []
@@ -427,10 +457,11 @@ async def _compute_edits(
     if verify and findings:
         survivors: list[Finding] = []
         for f in findings:
-            if await _verify_vote(llm, chapter, f, canon=canon, k=verify_k, **kw):
+            if await _verify_vote(llm, chapter, f, canon=canon, k=verify_k,
+                                  source_language=source_language, **kw):
                 survivors.append(f)
             else:
-                f.skip_reason = "refuted"
+                f.skip_reason = SkipReason.REFUTED
         findings = survivors
 
     # L1 — deterministic edits (no LLM): dup-word splice + full-recall pronoun findings.
@@ -449,7 +480,7 @@ async def _compute_edits(
     for f in findings:
         loc = f.located or locate_span(f.span, chapter)
         if loc is None:
-            f.skip_reason = "not_located"
+            f.skip_reason = SkipReason.NOT_LOCATED
             continue
         f.located = _snap_to_sentence(chapter, loc[0], loc[1])
         report.located += 1
@@ -462,7 +493,7 @@ async def _compute_edits(
     for f in located:
         s, e = f.located  # type: ignore[misc]
         if s < last_end:
-            f.skip_reason = "overlap"
+            f.skip_reason = SkipReason.OVERLAP
             continue
         chosen.append(f)
         last_end = e
@@ -481,13 +512,13 @@ async def _compute_edits(
         messages = build_selection_messages(original, profile, "rewrite", guide=guide,
                                             grounding=canon or "")
         new = await _chat(llm, system=messages[0]["content"], user=messages[1]["content"],
-                          max_tokens=edit_max_tokens, purpose="self_heal_edit", **kw)
+                          max_tokens=edit_max_tokens, purpose="self_heal_edit", code="self_heal_edit", **kw)
         if not new:
-            f.skip_reason = "edit_failed"
+            f.skip_reason = SkipReason.EDIT_FAILED
             continue
         new = new.strip()
         if len(new) > max(40, len(original)) * max_edit_expansion:
-            f.skip_reason = "edit_expanded"   # the satellite guard — a span edit must stay local
+            f.skip_reason = SkipReason.EDIT_EXPANDED   # the satellite guard — a span edit must stay local
             continue
         f.edited = True
         report.edits_applied += 1
@@ -626,8 +657,11 @@ async def _rerank_edit(
     proposal, so uncertainty should default to 'let the human tick it', not auto-tick."""
     system = _RERANK_SYSTEM + (("\n\nSTORY BIBLE:\n" + canon.strip()) if canon and canon.strip() else "")
     user = f"ORIGINAL: «{proposal.before}»\nPROPOSED: «{proposal.after}»\nISSUE: {proposal.issue}"
-    content = await _chat(llm, system=system, user=user, max_tokens=400,
-                          purpose="self_heal_rerank", temperature=0.3, **kw)
+    # `target=1`: one verdict for one proposal. The count this call expects, which is also
+    # exactly what the degrade path below fabricates when it fails.
+    content = await _chat(llm, system=system, user=user,
+                          max_tokens=max_tokens_for("self_heal_rerank", target=1),
+                          purpose="self_heal_rerank", code="self_heal_rerank", temperature=0.3, **kw)
     if content is None:
         return False, ""   # degrade → not pre-checked (human decides; nothing hidden)
     reason = ""
@@ -659,7 +693,7 @@ def _is_convention_fix(edit_type: str) -> bool:
 async def propose_edits_direct(
     llm: LLMClient, chapter: str, *, user_id: str, model_source: str, model_ref: str,
     canon: str | None = None, source_language: str = "auto", prefilter: bool = True,
-    rerank: bool = False, max_tokens: int = max_tokens_for("propose_edits_direct"), temperature: float = 0.4,
+    rerank: bool = False, max_tokens: int | None = None, temperature: float = 0.4,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
 ) -> tuple[list[EditProposal], SelfHealReport]:
@@ -668,11 +702,17 @@ async def propose_edits_direct(
     No vote/verify (the human gate filters). When `rerank`, a comparative re-ranker sets each
     semantic edit's `recommended` (pre-check) — it never drops. Returns offset-ascending
     `EditProposal`s + a report."""
+    # `None`, not `max_tokens_for(...)` as a default: a default argument is evaluated ONCE at
+    # import, so it can never see the chapter. The EDIT kind sizes on INPUT CHARACTERS and the
+    # chapter is the input — measured, the signal starts to bite above 4502 chars, which every
+    # real chapter clears. No `language=`: `call_budget` reads it only on the PROSE and VERDICT
+    # branches, so passing it here would satisfy the gate and change nothing.
+    max_tokens = max_tokens or max_tokens_for("propose_edits_direct", target=len(chapter))
     kw = dict(user_id=user_id, model_source=model_source, model_ref=model_ref,
               trace_id=trace_id, cancel_check=cancel_check)
     system, user = build_direct_judge_messages(chapter, source_language, canon)
     content = await _chat(llm, system=system, user=user, max_tokens=max_tokens,
-                          purpose="self_heal_direct", temperature=temperature, **kw)
+                          purpose="self_heal_direct", code="propose_edits_direct", temperature=temperature, **kw)
     raw = parse_direct_findings(content or "")
     report = SelfHealReport(rejudge_before=len(raw))
 
@@ -682,10 +722,10 @@ async def propose_edits_direct(
         report.findings.append(f)
         loc = locate_span(r["original"], chapter)
         if loc is None:
-            f.skip_reason = "not_located"   # must-quote: can't splice an unanchorable edit
+            f.skip_reason = SkipReason.NOT_LOCATED   # must-quote: can't splice an unanchorable edit
             continue
         if r["replacement"].strip() == chapter[loc[0]:loc[1]].strip():
-            f.skip_reason = "noop"   # the "fix" equals the text — the auditor emits ~25% of these;
+            f.skip_reason = SkipReason.NOOP   # the "fix" equals the text — the auditor emits ~25% of these;
             continue                 # drop them in CODE (free) so the human/re-ranker never sees a no-op
         f.located = loc
         report.located += 1
@@ -732,7 +772,7 @@ async def propose_edits_direct(
 async def propose_self_heal(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     chapter: str, source_language: str = "auto", canon: str | None = None,
-    prefilter: bool = True, rerank: bool = False, max_tokens: int = max_tokens_for("propose_self_heal"),
+    prefilter: bool = True, rerank: bool = False, max_tokens: int | None = None,
     trace_id: str | None = None,
     cancel_check: Callable[[], Awaitable[bool]] | None = None,
     **_legacy: object,   # absorbs the old vote_k/verify/verify_k/etc. knobs (no longer used here)
@@ -742,6 +782,10 @@ async def propose_self_heal(
     the filter, so there is NO verify/vote pre-filter that would mute real edits (the diagnosis
     that v2≈v3). When `rerank`, a comparative re-ranker sets each semantic edit's `recommended`
     pre-check (it never drops). `apply_self_heal_edits` splices the accepted subset."""
+    # Resolved HERE under its own registry code rather than left to `propose_edits_direct`'s.
+    # The two rows are separate on purpose, and forwarding `None` would silently retire this
+    # one — the budget would still be right today and the row would stop describing anything.
+    max_tokens = max_tokens or max_tokens_for("propose_self_heal", target=len(chapter))
     return await propose_edits_direct(
         llm, chapter, user_id=user_id, model_source=model_source, model_ref=model_ref,
         canon=canon, source_language=source_language, prefilter=prefilter, rerank=rerank,
@@ -751,8 +795,11 @@ async def propose_self_heal(
 async def run_self_heal(
     llm: LLMClient, *, user_id: str, model_source: str, model_ref: str,
     chapter: str, source_language: str = "auto", profile: BookProfile | None = None,
-    max_edit_expansion: float = 1.6, judge_max_tokens: int = 2200,
-    edit_max_tokens: int = 1200, rejudge: bool = True,
+    # `None`, not 2200/1200. A signature default is evaluated ONCE at import, so it can
+    # never see the chapter it is judging — and, being suffixed, neither of these was visible
+    # to the gate that exists to find exactly this.
+    max_edit_expansion: float = 1.6, judge_max_tokens: int | None = None,
+    edit_max_tokens: int | None = None, rejudge: bool = True,
     canon: str | None = None, vote_k: int = 1, min_votes: int = 2,
     verify: bool = False, verify_k: int = 1, prefilter: bool = False, vote_temperature: float = 0.7,
     trace_id: str | None = None,

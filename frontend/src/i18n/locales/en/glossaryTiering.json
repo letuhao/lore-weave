@@ -120,7 +120,8 @@
     "no_active": "No active genres. Add one to build the matrix.",
     "cell_inspector": "Selected cell",
     "no_cell": "Click a cell to inspect it.",
-    "sort": "sort"
+    "sort": "sort",
+    "required": "required"
   },
   "entity": {
     "title_new": "New {{kind}} entity",
@@ -179,7 +180,12 @@
     "est_cost": "~${{cost}}",
     "complete_summary": "Done — {{sources}} sources across {{entities}} entities",
     "failed_prefix": "Failed",
-    "action": { "pause": "Pause", "resume": "Resume", "retry": "Retry", "cancel": "Cancel" },
+    "action": {
+      "pause": "Pause",
+      "resume": "Resume",
+      "retry": "Retry",
+      "cancel": "Cancel"
+    },
     "modal": {
       "title": "Research all {{kind}} entities",
       "subtitle": "Each entity gets one web search; top sources attach as draft evidence.",
@@ -233,5 +239,16 @@
     "links_saved": "Genre links updated",
     "links_failed": "Couldn't update genre links",
     "forbidden": "You need Manage access on this book to make changes"
+  },
+  "batch_translate": {
+    "apply": "Apply translations",
+    "count": "{{n}} entities to translate",
+    "loading": "Loading…",
+    "none": "No untranslated entities for this language.",
+    "pick_lang": "Pick a target language to begin.",
+    "result": "{{w}} written · {{v}} kept (verified) · {{e}} empty · {{f}} failed",
+    "select_lang": "Select…",
+    "target_lang": "Target language",
+    "title": "Batch translate"
   }
 }

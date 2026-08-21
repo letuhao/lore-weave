@@ -1,3 +1,5 @@
+import { useTranslation } from 'react-i18next';
+
 // The ONE tier chip (spec 2026-07-05-chat-ai-settings.md §3.1, finding UX-5).
 //
 // Every settings row shows the tier that supplied its value. This is the whole
@@ -38,16 +40,17 @@ const TITLE: Record<string, string> = {
 };
 
 export function TierChip({ tier }: { tier: string | null | undefined }) {
+  const { t } = useTranslation('chatAiSettings');
   if (!tier) return null;
   return (
     <span
-      title={TITLE[tier] ?? tier}
+      title={t('tiers.' + tier + '.title', { defaultValue: TITLE[tier] ?? tier })}
       data-testid={`tier-chip-${tier}`}
       className={`ml-2 rounded border px-1.5 py-0.5 text-[10px] font-medium ${
         CLS[tier] ?? 'bg-muted text-muted-foreground border-border'
       }`}
     >
-      {LABEL[tier] ?? tier}
+      {t('tiers.' + tier + '.label', { defaultValue: LABEL[tier] ?? tier })}
     </span>
   );
 }
@@ -68,10 +71,11 @@ export function ClearOverride({
   onClear: () => void;
   testId: string;
 }) {
+  const { t } = useTranslation('chatAiSettings');
   if (!show) return null;
   const shown =
-    inherited === null || inherited === undefined ? 'the default'
-    : typeof inherited === 'boolean' ? (inherited ? 'on' : 'off')
+    inherited === null || inherited === undefined ? t('clear.default')
+    : typeof inherited === 'boolean' ? (inherited ? t('clear.on') : t('clear.off'))
     : String(inherited);
   return (
     <button
@@ -80,7 +84,7 @@ export function ClearOverride({
       onClick={onClear}
       className="ml-2 text-[10px] font-medium text-muted-foreground underline underline-offset-2 hover:text-foreground"
     >
-      clear · inherit {shown}
+      {t('clear.action')} · {t('clear.inherit')} {shown}
     </button>
   );
 }

@@ -9,6 +9,8 @@ import { HistoryPager } from './HistoryPager';
 import { useJobsDashboard } from '../hooks/useJobsDashboard';
 import { useJobsConnection } from '../context/JobsStreamProvider';
 import { jobKey, type Job } from '../types';
+import { findJobModelPricing } from '../modelPricing';
+import { useUserModels } from '@/components/model-picker/useUserModels';
 
 /** Desktop dashboard: live indicator + summary cards (quick-filters) + filter bar +
  *  Active table (live, unpaginated) + History table (offset+total, ORDER BY created).
@@ -19,6 +21,7 @@ export function JobsList({ onOpenDetail }: { onOpenDetail?: (service: string, jo
   const { t } = useTranslation('jobs');
   const d = useJobsDashboard();
   const conn = useJobsConnection();
+  const { models: pricingModels } = useUserModels({ includeInactive: true });
 
   const activeItems: Job[] = d.active.data?.pages.flatMap((p) => p.items) ?? [];
   const historyItems: Job[] = d.history.data?.items ?? [];
@@ -60,10 +63,14 @@ export function JobsList({ onOpenDetail }: { onOpenDetail?: (service: string, jo
           <JobTableHeader />
           {d.active.isLoading ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">{t('list.loading', { defaultValue: 'Loading…' })}</p>
+          ) : d.active.error ? (
+            <p className="px-4 py-6 text-sm text-destructive">
+              {t('list.errorWithReason', { defaultValue: 'Could not load jobs: {{error}}', error: (d.active.error as Error).message })}
+            </p>
           ) : activeItems.length === 0 ? (
             <p className="px-4 py-6 text-sm text-muted-foreground">{t('list.noActive', { defaultValue: 'No active jobs.' })}</p>
           ) : (
-            activeItems.map((j) => <JobRow key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
+            activeItems.map((j) => <JobRow key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} pricing={findJobModelPricing(j, pricingModels)} />)
           )}
           {d.active.hasNextPage && (
             <button
@@ -94,7 +101,7 @@ export function JobsList({ onOpenDetail }: { onOpenDetail?: (service: string, jo
         ) : historyItems.length === 0 ? (
           <p className="px-4 py-6 text-sm text-muted-foreground">{t('list.empty', { defaultValue: 'No jobs yet.' })}</p>
         ) : (
-          historyItems.map((j) => <JobRow key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} />)
+          historyItems.map((j) => <JobRow key={jobKey(j)} job={j} onOpenDetail={onOpenDetail} pricing={findJobModelPricing(j, pricingModels)} />)
         )}
       </div>
       <HistoryPager

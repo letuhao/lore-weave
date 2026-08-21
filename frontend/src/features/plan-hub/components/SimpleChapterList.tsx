@@ -5,6 +5,7 @@
 // unassigned ones sit in the UnplannedTray until you group them in Advanced.
 //
 // View-only (React-MVC): it renders; the hook owns the data and the panel owns the actions.
+import { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { SimpleChapter } from '../hooks/useSimpleChapters';
 import { SimpleChapterRow } from './SimpleChapterRow';
@@ -30,15 +31,20 @@ export interface SimpleChapterListProps {
   mutating: boolean;
   /** "Or let the AI draft one" — open the planner/co-writer. Null ⇒ unavailable. */
   onAiDraft: (() => void) | null;
+  onAiPlan: (() => void) | null;
   /** Switch to Advanced (the lane canvas) — used by the guide + empty-state hint. */
   onGoAdvanced: () => void;
+  onImportPlan: ((file: File) => void) | null;
+  importingPlan: boolean;
 }
 
 export function SimpleChapterList({
   chapters, total, loading, error, hasMore, loadMore, loadingMore,
   onOpenChapter, onWriteNew, writing, onRename, onDelete, mutating, onAiDraft, onGoAdvanced,
+  onImportPlan, importingPlan, onAiPlan,
 }: SimpleChapterListProps) {
   const { t } = useTranslation('studio');
+  const fileRef = useRef<HTMLInputElement>(null);
 
   return (
     <div data-testid="plan-hub-simple" className="flex h-full min-h-0 flex-col">
@@ -131,6 +137,18 @@ export function SimpleChapterList({
             {t('planHub.simple.goAdvanced', 'Organise into storylines →')}
           </button>
         </p>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" data-testid="plan-hub-plan-file"
+            onChange={(e) => { const file = e.target.files?.[0]; if (file) onImportPlan?.(file); e.currentTarget.value = ''; }} />
+          <button type="button" data-testid="plan-hub-import-plan" disabled={!onImportPlan || importingPlan}
+            onClick={() => fileRef.current?.click()} className="rounded border px-2.5 py-1.5 text-[11px] font-medium hover:bg-accent disabled:opacity-50">
+            {importingPlan ? t('planHub.simple.importingPlan', 'Importing plan...') : t('planHub.simple.importPlan', 'Import plan from CSV')}
+          </button>
+          {onAiPlan && <button type="button" data-testid="plan-hub-ai-plan" onClick={onAiPlan}
+            className="rounded border border-teal-500/40 px-2.5 py-1.5 text-[11px] font-medium text-teal-400 hover:bg-teal-500/10">
+            {t('planHub.simple.aiPlan', 'Create a plan with AI')}
+          </button>}
+        </div>
       </div>
     </div>
   );

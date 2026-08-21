@@ -80,6 +80,7 @@ from app.clients.llm_client import LLMClient
 from app.config import settings
 from app.db.models import Motif, MotifBeat, MotifCreateArgs, MotifRole
 from app.engine.critic import parse_critique_json
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -404,13 +405,14 @@ async def mine_motifs(
                     "json_schema": {"name": "motif_abstraction", "schema": _ABSTRACTION_SCHEMA},
                 },
                 "temperature": 0.3,
-                "max_tokens": 1024,
+                # `target=1`: one abstraction object per pattern.
+                "max_tokens": max_tokens_for("motif_abstraction", target=1),
             },
             job_meta={"extractor": "motif_mine", "pattern": list(pattern)},
         )
-        if getattr(job, "status", None) != "completed":
+        if (why := unusable(job, "motif_abstraction")):
             logger.warning("mine: abstraction not completed for pattern=%s: %s",
-                           pattern, getattr(job, "status", None))
+                           pattern, why)
             candidates.append({
                 "pattern": list(pattern), "mining_support": support,
                 "judge_score": 0.0, "passed_gate": False,
@@ -433,7 +435,7 @@ async def mine_motifs(
                 "messages": [{"role": "system", "content": sys_j},
                              {"role": "user", "content": usr_j}],
                 "response_format": {"type": "text"}, "temperature": 0.0,
-                "max_tokens": 256,
+                "max_tokens": max_tokens_for("motif_mine_judge", target=1),
             },
             job_meta={"extractor": "motif_mine_judge", "pattern": list(pattern)},
         )

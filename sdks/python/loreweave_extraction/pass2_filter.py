@@ -480,15 +480,14 @@ def compute_filter_kept(
     """Pure (modulo the on_decision callback): walk every input item → kept set +
     per-item decision emit + coverage. Identical to _filter_one_category's tail.
 
-    D-FILTER-KEPT-EMPTY-CATEGORY (2026-07-31): "identical to the tail" was the bug. The
-    empty-category guard lives in `_filter_one_category`'s HEAD — `if n_input == 0: return
-    (..., 1.0, [])`, with its docstring stating *"coverage = n_judged / n_input (1.0 if
-    n_input == 0)"*. Extracting only the tail inherited the division and left the guard
-    behind, so a caller that uses the extracted function directly (the DECOUPLED worker
-    path) raised ZeroDivisionError on a chapter that yielded no events — a common input,
-    not an edge case. Coverage of an empty set is vacuously complete."""
+    Empty categories are valid in a chapter. They have no items to judge and are
+    therefore fully covered, matching ``_filter_one_category``'s empty-input
+    contract. The explicit guard is required by the decoupled filter finalizer,
+    which calls this function directly after fan-in.
+    """
     if n_input == 0:
         return [], 1.0
+
     partial_resolved = _resolve_partial(config.partial_policy)
     kept_indices: list[int] = []
     for idx in range(n_input):

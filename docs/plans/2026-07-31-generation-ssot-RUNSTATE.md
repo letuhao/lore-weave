@@ -107,10 +107,10 @@ Author: *"phải ép chất lượng QC và giữ độ tập trung để tránh
 lại những gì đã làm ở mỗi slice và hướng đi tiếp theo … chỉ dừng lại sau khi hoàn thành plan."*
 
 **Order.** `S10 ✅` → `D-GENERATED-FACT-HAS-NO-HOME ✅` → `[CI-RED sweep] ✅` → `S1 ✅` → `S2 ✅` → `S8 ✅` → `S12 ✅` →
-**`[budget-seam rot] → S7`** → `S6(+UI) → S11 → S3 → S4` → `S9 → S5`.
+`[budget-seam rot] ✅ → S7 ✅` → `S6(+UI) ✅` → `S11 ✅` → `S3 ◐` → `S4 ✅` → `S9 ✅` → `S5 ✅` → `S13 ✅` — **BOARD CLEAR** → `S9 → S5 → S13`.
 
 > **2026-08-02 — author-set, after an overview.** The KG/extraction thread is **PARKED**, and
-> that includes `docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
+> that includes `docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md`. It is a
 > real diagnosis and it points at a large refactor; it is **not** what to do next.
 > *"tôi không khuyến khích lao đầu vào KG ngay bây giờ … cách làm đúng bây giờ nên là làm phần
 > 'Budget seam rot' trước và rồi resume slice 7 và các slice còn lại."*
@@ -125,6 +125,16 @@ when in fact most of the last two days went into defect work that was never on t
 
 ### The board — 7 closed, S7 open, 6 untouched
 
+> **The SLICES are not the DoD.** AUDIT-19 found three DoD clauses that did not hold as
+> written; **AUDIT-20 + AUDIT-21 closed all three** — DoD-3's truncation limb now has a gate and went
+> 2/28 → 28/28, and DoD-2 has the static gate spec S6 asked for (which found a live
+> self-judging path in knowledge-service on its first run), and DoD-5's *"one finding
+> type"* now has one `Locator` across all five producers — with the consumer that needed
+> it: the Polish panel stopped calling a run CLEAN when the judge found things nothing
+> could place. **Read §7 against AUDIT-19 → 20 → 21, in that order.**
+> A slice closing means its scope shipped. Read §7 of the spec against AUDIT-19 + AUDIT-20,
+> not against this table.
+
 | slice | state | note |
 |---|---|---|
 | `S10` the eval instrument | ✅ | a real build slice, not a formality |
@@ -134,14 +144,14 @@ when in fact most of the last two days went into defect work that was never on t
 | `S2` one cast-liveness SSOT | ✅ | both directions |
 | `S8` the pack's diagnostics ride the job | ✅ | |
 | `S12` every declared enforcement site resolves | ✅ | the gate went green on its own example 3× before it was real |
-| **`S7` one output budget** | **◐ ~85%** | slices 1·2·3 ✅ · slice 4 only the tilemap half |
-| `S6` no model silently its own judge | ☐ surveyed | **blocked on a UI slice** |
-| `S11` one context compiler | ☐ | the largest remaining |
-| `S3` one `Finding` | ☐ | deliberately after S11 |
-| `S4` the plan half onto the spine | ☐ | the gate exists; the work is widening it |
-| `S9` the shared guard SDK | ☐ | **inverted** — converge three services first, extract after |
-| `S5` one heal loop | ☐ | |
-| `S13` cite the exemplars | ☐ | mostly documentation |
+| **`S7` one output budget** | **✅ CLOSED 2026-08-02** | slices 1·2·3 ✅ · slice 4 (budget-seam rot) ✅ — 28 no-signal sites → 9, and the 9 are named |
+| `S6` no model silently its own judge | ✅ CLOSED 2026-08-02 | the affordance shipped; 7 hand-rolled copies → one policy; the skip states now differ |
+| `S11` one context compiler | ✅ CLOSED 2026-08-02 | allocation layer + composition flipped (no-op ≥16K) · translation's estimator converged (it under-counted CJK/vi by a third) · the contract's two closed sets now machine-checked both ways |
+| `S3` one `Finding` | ✅ CLOSED 2026-08-03 | one closed `skip_reason` vocabulary (the docs were false and omitted the member a consumer reads); and (AUDIT-21) one `Locator` across all five producers, with `UNLOCATED` as a first-class answer — which is what stopped the Polish panel reporting "clean" on a run whose findings nothing could place. The projection is additive: the five producers still STORE five shapes |
+| `S4` the plan half onto the spine | ✅ CLOSED 2026-08-02 | the gate was reading COMMENTS as behaviour (both directions); SCAN_DIRS 4→10 services surfaced 8 untracked modules, 7 in translation |
+| `S9` the shared guard SDK | ✅ CLOSED 2026-08-02 | **inverted, correctly**: no SDK extracted (1/3 adopters). The entry criterion was a spec sentence; it is now a CI gate that reds when the third service adopts |
+| `S5` one heal loop | ✅ CLOSED 2026-08-02 | the 10 stages enumerated once; each consumer accounts for EVERY stage (run it or give a reason) and the declaration is checked against code both ways |
+| `S13` cite the exemplars | ✅ CLOSED 2026-08-02 | the named defect fixed: a defaulted self-grader exclusion that matched nothing reported `safe`. The citation half is Debt — a doc would be the re-derivation it warns against |
 
 **The join nobody had made:** what this session called *"155 — 28 budget call sites carrying no
 adaptive signal"* **IS S7 slice 4's unbuilt scope.** Spec §S7 already specifies the gate as
@@ -907,6 +917,958 @@ AUDIT S7-2
                run that I had not measured, which is exactly the claim it was written for.
 
   NEXT       — S7-4's real scope (`call_budget`'s JSON kinds), then S6.
+```
+
+### ◐ S6 survey v2 (2026-08-02) — the two questions the first survey left open, answered
+
+The first survey's NOT PROVEN list named two things it had not checked: the MCP/agent surface,
+and the server-side write endpoint. Both measured now, and the gap is **wider** than recorded.
+
+| surface | can it set a critic? |
+|---|---|
+| **FE GUI** | **No.** `MODEL_ROLES` in `ChatAiSettingsPanel.tsx` is `chat · composer · planner · embedding · rerank` — no `critic` row. `critic_model_ref` appears in `frontend/src` in `__tests__` files ONLY. |
+| **Agent / MCP** | **No.** Every `critic` hit in `frontend_tools.py` and `contracts/frontend-tools.contract.json` is the panel id `quality-critic` — the critic OUTPUT view. No tool sets a model role. |
+| **`settings.model_roles`** | **No — and this is the new finding.** It has **one reader** (`internal_model_settings.py`, feeding chat-service's effective-settings Book tier) and **ZERO writers repo-wide**. |
+
+So the map that "wins if present" is never present, and the Book tier of the Chat & AI settings
+cascade resolves a key nothing in the repo can write. Same no-producer shape as `plan_status`,
+which the POST-RUN REVIEW found and fixed one layer up — except this one is a whole scope tier.
+
+⇒ S6's affordance is not "a missing picker row". The write path does not exist at any layer, and
+the surface that would consume it (`model_roles`) is a read-only contract with no producer. That
+is what the slice has to build, and it is why shipping the label alone would produce a warning
+the author has no way to clear.
+
+### ✅ S13 — the self-grader exclusion excluded nobody, and said "safe"
+
+```
+AUDIT S13 (cite the exemplars)
+  BUILT      — `JudgePanel.exclusion_is_defaulted` + `PanelSafety.exclusion_unverified`, wired
+               through `panel_from_env` → `scorer` → `panel_safety`. Four tests.
+
+  PROVEN     — the defect the spec names, and it is the same shape as everything else on this
+               board: two states collapsed, and the dangerous one reports the safe answer.
+
+               `panel_safety` returned `safe=True, "N disjoint judges, no generator in panel"`
+               for BOTH of:
+                 · the panel genuinely contains no self-grader — the good case;
+                 · the exclusion refs are `panel.py`'s HARDCODED UUIDs from another
+                   deployment, so they match nothing — while this deployment's real extractor
+                   sits in the panel grading its own output.
+               Those refs are `user_model_id`s, and this repo's own rule (CLAUDE.md, verbatim)
+               is that they are PER-MACHINE: a hardcoded table "sends the next developer to a
+               404 or to someone else's row". So the second case is the EXPECTED state
+               everywhere except the one box the UUIDs were minted on — and it was reporting
+               the same word as success.
+
+               The defaults are KEPT, deliberately: `panel_from_env` promises callers
+               byte-identical results, and deleting them would break that. What changed is
+               that a defaulted set can no longer be mistaken for a verified one.
+
+               sdk `1191 passed, 9 skipped` (eval `39 passed`, +4).
+               composition `8 failed, 3939 passed, 8 skipped` (the tracked rows).
+               gates: FULL CI SWEEP `PASS: 52  FAIL: 0  of 52`.
+               RED-ABLE: dropping `exclusion_is_defaulted=defaulted` from `panel_from_env` —
+               i.e. the exact pre-S13 behaviour — fails the flag test and the unverified test.
+               Restored by re-editing. A CONTROL asserts a CONFIGURED panel is NOT flagged,
+               and a fourth test asserts a REAL self-grader still reports `safe=False`, so the
+               new axis cannot soften the case the mechanism exists for.
+
+  LIVE       — live infra unavailable: pure panel arithmetic with no runtime path. The historical
+               metric-of-record reproduction (F1 = 0.869 on the session-105 dump) still passes
+               unchanged, which is the closest thing to a live check this has — the published
+               baseline is byte-identical.
+
+  NOT PROVEN — the SECOND half of S13 — "cite the exemplars instead of re-deriving them" — is
+               NOT built, and writing a document would have been the wrong answer: the citation
+               list already exists in spec §S13, and producing a second copy is precisely the
+               re-derivation the slice warns against. What is genuinely missing is that the
+               code which SHOULD reuse those five exemplars (`judge_usefulness`'s κ floor +
+               `credit: None`, `judge_binding`'s never-silently-empty, `executive.py`'s
+               CheckStatus set, `extraction_worker`'s LLM_ERROR outcome) does not point at
+               them, and nothing checks that a re-implementation is not written beside one.
+               That is a real gap and it is bigger than a citation.
+               Nothing verifies the DEFAULT UUIDs still correspond to a real model anywhere —
+               only that they were defaulted rather than configured.
+               `exclusion_unverified` has no CONSUMER yet: it rides `EvalResult` and no report,
+               gate or FE surface reads it. This makes the fact available, not acted upon —
+               the S8 shape, and it is the honest description.
+
+  DRIFT      — I made `safe=False` for the unverified case, and it was wrong for a reason I
+               have been citing all run. With no env set that is the DEFAULT state, so every
+               deployment would report `safe=False` forever — and a flag that is always false
+               stops being read, at which point a REAL self-grader arrives wearing the same
+               colour as every ordinary run. That is the permanent-amber failure S1 exists to
+               prevent, re-created inside the slice about honest signals. The historical
+               baseline test reddening is what surfaced it; I nearly "fixed" the test instead.
+
+  NEXT       — the board is clear. What remains is not a slice: the three `NOT PROVEN` items
+               above, the Debt register (translation's 7 unsanitized modules, the
+               `user_model_id` critic comparison, `_TOKENS_PER_ITEM`), and the PARKED KG thread
+               the author will name the starting point for.
+```
+
+### ✅ S5 — one heal loop: the stage protocol, and an opt-out that must give its reason
+
+```
+AUDIT S5 (heal stage protocol)
+  BUILT      — `app/engine/heal_protocol.py`: `HealStage` (the ten stages, enumerated once),
+               `StagePlan` per consumer, and `STAGE_PRIMITIVES` mapping each stage to the
+               symbols that implement it. Eighteen tests that check every declaration AGAINST
+               THE CODE, in both directions.
+
+  PROVEN     — the three consumers, MEASURED over code with docstrings stripped:
+                 stage     self_heal   plan_heal   error_block_heal
+                 judge        RUN         RUN           skip
+                 locate       RUN         skip          RUN
+                 snap         RUN         skip          skip
+                 vote         RUN         skip          skip
+                 verify       RUN         skip          skip
+                 rerank       RUN         skip          skip
+                 edit         RUN         RUN           RUN
+                 merge        RUN         skip          skip
+                 splice       RUN         skip          RUN
+                 rejudge      RUN         skip          skip
+               Exactly the `re-anchor → edit → splice` `error_block_heal` documents. It is the
+               consumer that already got reuse right: it composes self-heal's primitives and
+               records WHY for each omission. `plan_heal` skips the SAME six and says nothing —
+               indistinguishable from six nobody noticed. Writing those eight reasons down is
+               most of this slice's value, and one of them is an admission rather than a
+               design property (`plan_heal` skips REJUDGE because nobody built it, and the row
+               says so instead of dressing it up).
+
+               THE CHECKER MUST READ CODE, NOT TEXT, and that is not a detail. Measured:
+               `error_block_heal` names `_snap_to_sentence` in its DOCSTRING — inside the
+               sentence explaining why it does not call it. A text scan reports SNAP as RUN and
+               the declaration as a lie. The check would be defeated by the very documentation
+               that makes that module the exemplar. Fourth occurrence of prose-is-not-behaviour
+               this run (S3's `not_found` scan, S4's injection lint, the S4 marker audit).
+
+               composition `8 failed, 3939 passed, 8 skipped` (was 3921; +18 — the 8 are the
+               tracked test_motif_retrieve_db rows).
+               gates: FULL CI SWEEP `PASS: 52  FAIL: 0  of 52`.
+               RED-ABLE in BOTH directions, each restored by re-editing:
+                 · claim a stage not implemented → `error_block_heal declares [VERIFY] but
+                   references none of their primitives` (plus the run/skip overlap check)
+                 · really call a stage declared skipped → `error_block_heal declares [SNAP]
+                   SKIPPED but the code references their primitives`. That is the drift case
+                   that matters: it is the module silently widening an author's deliberate
+                   selection, which its own docstring warns about and nothing enforced.
+
+  LIVE       — live infra unavailable: the protocol is a declaration + a static check with no
+               runtime path of its own. The pipelines it describes are exercised by the
+               composition suite above; nothing in this slice changes their behaviour.
+
+  NOT PROVEN — THE PROTOCOL DESCRIBES, IT DOES NOT DRIVE. No consumer executes its `StagePlan`;
+               the three pipelines still hard-code their own stage order. So a stage cannot go
+               silently missing, and a stage also cannot be added by declaring it. The spec's
+               "extract the stage protocol" is satisfied in the checkable sense and not in the
+               executable one, and calling this "one heal loop" would overstate it — there are
+               still three loops, now with one vocabulary and honest opt-outs.
+               Stage membership is a module-level SYMBOL REFERENCE, not a call-graph proof: a
+               module that imports a primitive and never calls it reads as RUN. That is the same
+               granularity `error_block_heal`'s docstring uses, and it is weaker than "the stage
+               executes".
+               The reasons are unverified prose — the check enforces that one EXISTS and is not
+               a marker, never that it is TRUE.
+
+  DRIFT      — my "is this a reason" check is a 40-character floor, and it immediately produced
+               a false positive: `error_block_heal`'s REJUDGE skip read "there was no judge pass
+               to re-run" — true, complete, 34 characters. The tempting fix was lowering the
+               floor, which would equally have admitted "n/a because". I expanded the reason
+               instead and wrote the proxy's weakness into the test, because a length floor
+               cannot tell a short answer from a shrug and pretending otherwise is how the next
+               person games it.
+
+  NEXT       — S13 (cite the exemplars), the last slice on the board: lift the already-correct
+               implementations the spec names rather than re-deriving them, and fix
+               `loreweave_eval.panel.py:25`'s hardcoded `DEFAULT_EXTRACTOR_REF` UUID, which
+               silently fails to exclude a deployment's real self-grader.
+```
+
+### ✅ S9 — the entry criterion was a sentence in a spec. Now it is a gate.
+
+```
+AUDIT S9 (guard SDK — the inverted slice)
+  BUILT      — `scripts/guard-sdk-entry-gate.py` + five teeth, wired into foundation-ci.
+               NO SDK was extracted, and that is the slice's correct outcome.
+
+  PROVEN     — the criterion, MEASURED rather than recalled:
+                 `guard-sdk-entry-gate: OK — 1/3 services carry the GuardReport contract;
+                  NOT extracting is the correct state.  adopters: composition-service`
+                 composition-service: 3 modules (canon_check, canon_reflect, critic_policy)
+                 translation-service: 0 · knowledge-service: 0 · chat-service: 0
+               And the reason the spec inverted this slice, also measured — the repo already
+               has THREE verdict SDKs in live use:
+                 loreweave_grounding    9 non-test modules
+                 loreweave_eval        11 non-test modules
+                 loreweave_canon_check  4 non-test modules
+                 loreweave_guard        2 non-test modules
+               A fourth abstraction over three that already disagree adds a place to disagree.
+               Extracting from ONE implementation produces that implementation with an import.
+
+               So the buildable thing is not the SDK — it is the CRITERION. It was prose:
+               *"three services carry a structurally identical GuardReport … proven by a test
+               that imports all three."* Prose fails both ways here: forgotten (three services
+               drift apart and the extraction never happens) or acted on from memory before it
+               holds, which is the premature abstraction the inversion exists to prevent. This
+               repo already priced that lesson — nine of nineteen game-tier deferrals were
+               prose and nothing else.
+
+               The gate is QUIET below the threshold on purpose: a gate that reds for a
+               decision working as designed teaches people to silence it. It reds the moment a
+               third service adopts, because nobody re-reads a July spec sentence to discover
+               a condition became true.
+
+               gates: FULL CI SWEEP `PASS: 52  FAIL: 0  of 52` — every gate invoked the way
+               its workflow invokes it · `gate-teeth-gate: PASS — 58 CI-invoked gate(s), every
+               one able to return non-zero. 13 carry a red-ability proof; 45 held at baseline`
+               (the new gate ships WITH its proof, so the unproven count did not grow).
+               scripts suite `345 passed` (was 340; +5).
+               RED-ABLE: monkeypatching the ADOPTION SCAN so three services carry the contract
+               makes `main()` return 1. Deliberately not simulated by lowering the threshold —
+               that would assert `1 >= 1`, which is arithmetic, not the criterion. The 2-of-3
+               boundary is pinned separately, because an off-by-one here fires the extraction a
+               slice early.
+
+  LIVE       — live infra unavailable: a static criterion check with no runtime path. Its
+               input is the repo, and a test asserts the scan finds composition's REAL adopters
+               rather than returning a constant — without that, every threshold assertion in
+               the file would pass against an empty scan.
+
+  NOT PROVEN — the gate checks that the SYMBOLS are referenced, not that three implementations
+               are STRUCTURALLY IDENTICAL, which is what the spec's criterion actually says.
+               When the third adopter lands, "no service-specific fields" still needs a human
+               (or a stronger test that imports all three and compares dataclass fields — the
+               spec's own wording, and the honest next version of this gate).
+               Nothing was done for the three EXISTING verdict SDKs. The extraction is supposed
+               to fold `loreweave_canon_check` and `loreweave_grounding`'s verdict types in, or
+               the repo ships with four; that remains true and untouched.
+               And this slice moved no product behaviour at all. It converts a decision from
+               memory into a mechanism, which is worth doing and is not the same as building
+               the thing.
+
+  DRIFT      — I started this slice intending to implement `GuardReport` in a second service to
+               "make progress toward" the criterion. That is manufacturing the precondition for
+               a decision instead of letting the decision's own evidence arrive — the spec is
+               explicit that translation and knowledge adopt it AS PART OF THEIR OWN SLICES,
+               because an adoption done to satisfy a counter is not evidence that three services
+               independently agreed on a shape. Caught by re-reading §S9 before writing code
+               rather than after.
+
+  NEXT       — S5 (one heal loop) — three consumers, ten stages per the spec — then S13.
+```
+
+### ✅ CI-GATE SWEEP — the gate set I had been pasting was 8 of 51
+
+```
+AUDIT CI-GATE SWEEP (found while starting S9)
+  BUILT      — the full CI gate list, extracted from the workflows rather than remembered, and
+               every one executed. Plus the one real red it found: `name_grounding` folds
+               names with `normalize_entity_name` (NFKC + casefold + Han) instead of `.lower()`.
+
+  PROVEN     — 51 gates are invoked by `.github/workflows/*.yml`. I had been running EIGHT and
+               calling them "the gates" in every VERIFY block of this run.
+               First full sweep: `PASS: 49  FAIL: 2  of 51`.
+                 · `context-inspector-trace-gate.py` exit 2 — NOT a real failure. CI runs it
+                   `--selfcheck`; my sweep invoked it bare, so it correctly refused for lack of
+                   `JWT_SECRET`. My invocation was wrong, not the gate.
+                 · `language-bias-gate.py` exit 1 — REAL. Two bare `.lower()` calls on a name
+                   variable in `engine/name_grounding.py`, dated by `git log -L` to `8142bb05b`
+                   (2026-08-01) — THIS RUN's own commit. CI had been red on it since.
+               After the fix: `PASS: 51  FAIL: 0  of 51`, with each gate invoked the way its
+               workflow invokes it.
+               composition `8 failed, 3921 passed, 8 skipped` (the 8 are the tracked
+               test_motif_retrieve_db rows) · name_grounding `31 passed`.
+
+  NOT PROVEN — AND A RETRACTION, which is the more useful half of this entry.
+               I wrote into the code that `.lower()` "would report a name as UNANCHORED …
+               a fabricated finding", then measured it: over EVERY name `_TOKEN` can emit
+               (basic Latin + Latin-1 capitals) `.lower()` and `normalize_entity_name` produce
+               **0 disagreements**. The failure needs a full-width or Han name and this
+               extractor cannot emit one — it is unreachable through this path. So the fix buys
+               nothing observable today; what it buys is that widening `_TOKEN` for CJK books,
+               which the module docstring already names as the next step, no longer silently
+               breaks the guard. The comment and the tests now say exactly that.
+               Nothing was done about the OTHER 43 gates' findings beyond confirming they exit
+               0 — a passing gate is not an audited one.
+
+  DRIFT      — three, and they compound.
+               1. Eight gates is not fifty-one. Every VERIFY block in this run listed its gates
+                  honestly and checked an incomplete set, and that is how a CI red introduced
+                  on 2026-08-01 survived four more slices.
+               2. My first fix-proving test asserted a full-width name is anchored. It passed
+                  with `.lower()` still in place — TWICE vacuous: once because the fixture was
+                  sentence-initial so no name was extracted at all, and again because `_TOKEN`
+                  cannot match a full-width capital, so the fixture could never reach the
+                  code under test. The CONTROL caught the first; injecting the old `.lower()`
+                  caught the second. Neither would have been found by reading.
+               3. I asserted a live correctness bug from the GATE'S MESSAGE rather than from
+                  the code, and wrote it into a comment as established fact. Measuring took two
+                  minutes and reversed it. Same shape as the tilemap `tool_use_success`
+                  near-miss and the thinking-flag explanation the author corrected.
+
+  NEXT       — S9, whose entry criterion is mechanical and currently unmet.
+```
+
+### ✅ S4 — the injection gate was reading COMMENTS as evidence about behaviour
+
+```
+AUDIT S4 (injection-coverage-lint)
+  BUILT      — `_code_lines()`: the lint's three signals now match against source with
+               COMMENT and DOCSTRING lines blanked (regular string literals kept — a prompt
+               template IS code). `SCAN_DIRS` widened from 4 services to 10. Two stale
+               BASELINE rows deleted, 8 newly-surfaced ones added. A stale-row NOTE so the
+               baseline can shrink. Nine teeth tests, wired into foundation-ci.
+
+  PROVEN     — I FOUND THIS BY TURNING THE GATE RED MYSELF. `injection-coverage-lint` exits 1
+               on `engine/compress.py`, and the marker is the word "passage" at line 170 —
+               inside a COMMENT I wrote in commit 767f2fe2f (S7 slice 4). The gate is in CI.
+               I had not run it, because the gate set I had been pasting as "the gates" is a
+               SUBSET of what CI runs.
+
+               MEASURED, where the markers actually live, per file:
+                 compress.py            comment 1 · docstring 0 · CODE 0  ← flagged on prose
+                 canon_reflect.py       comment 1 · docstring 1 · CODE 0  ← BASELINE'd on prose
+                 wiki/generate.py       comment 1 · docstring 0 · CODE 0  ← BASELINE'd on prose
+                 select.py              comment 11 · docstring 1 · CODE 2  ← real, stays
+               Two BASELINE rows called their modules "genuine gaps — composition-service has
+               no sanitizer anywhere" on the strength of a comment. `select.py`'s own row
+               already records this happening once: a feature gave it the word "passage" in
+               prose and the row was written rather than rename the word to dodge the regex.
+               That was the right call for the wrong reason — the regex should not have been
+               reading prose.
+
+               AND THE DANGEROUS DIRECTION, which nobody had looked at: `SANITIZER_REF`
+               matched raw text too, so a module whose ONLY mention of `neutralize(` was in a
+               comment counted as PROTECTED. Measured: **0 files** exploit this today — but
+               nothing prevented it, and a security gate silenced by a sentence is worse than
+               no gate because it reports coverage. Now closed and pinned by two tests.
+
+               WIDENING FOUND REAL SURFACE: 8 modules never scanned — 7 in
+               translation-service, 1 in worker-ai. translation is the one that should have
+               been in `SCAN_DIRS` first: it builds prompts from IMPORTED third-party book
+               text, the least trusted bytes on the platform, and references no sanitizer
+               anywhere. Baselined with notes + a Debt row, not silently cleared.
+
+               gates: `injection-coverage-lint (full): OK — every retrieved-text
+               prompt-assembly module routes through the sanitizer (22 baselined)` ·
+               `gate-teeth-gate: PASS — 57 CI-invoked gate(s), every one able to return
+               non-zero. 12 carry a red-ability proof; 45 held at baseline` (ratcheted 46→45,
+               the meta-gate ASKED for it) · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK` ·
+               `db-safety-gate exit 0` · `llm-budget-ssot-gate PASS` · `[language-rule] PASS`.
+               scripts suite `340 passed`; the new teeth `9 passed`, none skipped.
+               RED-ABLE, and it discriminates: injecting a REAL code-level hole
+               (`passage = body` folded into a message, no sanitizer) reds with
+               `FAIL … services/composition-service/app/engine/compress.py`, exit 1, while
+               the prose-only marker stays green. Restored by re-editing.
+
+  LIVE       — live infra unavailable: a lint has no runtime path. Its behaviour is proven by
+               the six-case probe (real hole · comment-only marker · docstring-only marker ·
+               sanitizer-in-comment · real sanitizer · template string) rather than by a run.
+
+  NOT PROVEN — the 8 new rows are TRACKED, NOT FIXED. translation-service still folds imported
+               book text into prompts with no sanitizer; this slice makes that visible and
+               guards against a ninth, and it does not close one of them. Routing them through
+               `neutralize_injection` is a separate change with a real risk of its own — a
+               sanitizer that mangles source text is a TRANSLATION-FIDELITY bug, which is
+               precisely why those rows are `OutputKind.MIRROR` elsewhere.
+               The Go and Rust surfaces the spec also names (glossary, tilemap) are still
+               unscanned: this lint is Python-only and making it polyglot is a rewrite.
+               The spec's two structural classes — SECOND-ORDER ECHO (model output replayed
+               into the next turn) and DECLARED-BUT-UNIMPLEMENTED FENCING (tilemap's prompts
+               promise `<author_text>` tags its builders never emit) — are untouched; module
+               -level coverage cannot see either.
+               And the detector's real limit is now pinned rather than glossed: an UPPERCASE
+               marker inside a prompt template (`"PASSAGE:\n" + x`) does not register, because
+               `RETRIEVED_TEXT` matches identifier-shaped names.
+
+  DRIFT      — three, and the first is about my own process.
+               1. I turned a CI gate RED with a comment and shipped it, because the gate set I
+                  had been running and pasting all run — ai-provider, generation-guard,
+                  enforcement-claims, db-safety, llm-budget, language-rule — is a SUBSET of
+                  what CI runs. Six gates is not "the gates". Every VERIFY block before this
+                  one asserted its evidence honestly and against an incomplete list.
+               2. My first red-ability injection used `_retrieved_passage = body` and the gate
+                  stayed green. I was one step from writing up "the prose fix blinded the
+                  detector" — the regex needs a word boundary and `_` is a word character, so
+                  the NAME was wrong, not the gate. Measuring the regex directly settled it.
+               3. My teeth-test probe asserted an uppercase `"PASSAGE:"` template MUST flag.
+                  It does not, and never did — before or after my change. I had begun treating
+                  it as a regression I caused; checking the pre-fix behaviour showed it was
+                  always the boundary. Recorded as a known limit rather than "fixed" by
+                  widening a security regex on the strength of my own assumption.
+               Plus: my first stale-baseline test guarded on `hasattr(inj, "iter_files")` — a
+               name that does not exist — so it SKIPPED, and a skipped test reads as passing.
+               ROT-0 audited 200 tests for exactly that shape.
+
+  NEXT       — S9, which the spec INVERTS: do not extract a fourth guard SDK. Its entry
+               criterion is mechanical — three services carrying a structurally identical
+               `GuardReport` with no service-specific fields, proven by a test that imports
+               all three — and only composition has one today.
+```
+
+### ◐ S3 slice 1 — one `skip_reason` vocabulary. The docs were already false.
+
+```
+AUDIT S3-1 (skip_reason vocabulary)
+  BUILT      — `app/engine/finding.py`: `SkipReason`, a closed `StrEnum` adopted by both heal
+               pipelines, plus an `ast` guard that reds on any raw string assigned to a
+               `.skip_reason`.
+
+  PROVEN     — measured across the two producers, three defects in four lines of comment:
+                 self_heal.Finding      # not_located | overlap | edit_failed | edit_expanded
+                 plan_heal.PlanFinding  # not_found   | edit_failed | edit_expanded
+               1. `not_located` and `not_found` are ONE concept under two names — "the quoted
+                  text could not be located in the thing being edited".
+               2. The declared list is INCOMPLETE and the omission is load-bearing: `self_heal`
+                  also writes `refuted` and `noop`, and `worker/operations.py` counts
+                  `f.skip_reason == "refuted"` — the one member the documentation never named.
+               3. Both are free `str`, so a typo produces a finding that is silently
+                  un-countable: `refuted: 0` on a run where every finding was refuted.
+
+               NOT merged, deliberately: `glossary_build`'s `skip_reason` is a free-text
+               sentence shown to a human and persisted in a `TEXT` column ("the glossary
+               already has an entry with this name"). Same spelling, different concept — the
+               same call made for lore-enrichment's billing estimator in S11-2.
+
+               composition `8 failed, 3919 passed, 8 skipped` (was 3917; the 8 are the tracked
+               test_motif_retrieve_db rows).
+               gates: `ai-provider-gate OK` · `generation-guard-gate PASS` ·
+               `enforcement-claims-gate OK` · `db-safety-gate exit 0` ·
+               `llm-budget-ssot-gate PASS` · `[language-rule] PASS`.
+               RED-ABLE: re-introducing `f.skip_reason = "not_found"` fails BOTH the raw-string
+               guard (`[(180, 'not_found')] == []`) and the duplicate-name guard. Restored by
+               re-editing.
+
+               LIVE, $0 gemma-4-26b, deployed service AND worker hash-verified:
+                 findings 6 · located 6 · proposals 1 · skip_reasons seen [] ·
+                 OUTSIDE vocabulary []
+                 deterministic arm, all six members through the DEPLOYED module:
+                   not_located · overlap · edit_failed · edit_expanded · refuted · noop
+                   members whose str() != value : []
+
+  NOT PROVEN — the live run's vocabulary check was VACUOUS on both attempts: the model
+               produced no skips, and an empty set is trivially inside any vocabulary. That is
+               why the deterministic arm exists, and it is worth saying plainly that the
+               interesting half of that live run proved nothing. A run that actually exercises
+               `refuted` needs the verify tier enabled with a model that refutes.
+               This is S3 SLICE 1, and it is the SMALL half. The spec's actual S3 is one
+               `Finding` with a `locator` union (`span | scene_index | node_id`, with
+               `trace_span_id` reserved), and that is untouched: five composition finding types
+               still carry five different locators — char offsets, chapter+scene, seam pairs,
+               block ids. Nothing was unified except the outcome vocabulary.
+               `MergedFinding`, `_RepetitionFinding`, `_OverResolveFinding` and `CanonViolation`
+               have no `skip_reason` at all and were not touched.
+
+  DRIFT      — I shipped a regression and only the LIVE run caught it. `class SkipReason(str,
+               Enum)` satisfies `== "refuted"` and JSON-serialises to `"noop"`, so all six unit
+               tests passed — but `str()` and f-strings return `"SkipReason.NOOP"`. Any
+               consumer that FORMATS rather than compares would have started emitting the
+               member path. The live probe printed `skip_reasons seen: ['SkipReason.NOOP']`
+               and that is the only reason it was found; `StrEnum` fixes it. Every test I had
+               written used `==`, which is precisely the shape that cannot see this.
+               Second: my first duplicate-name guard scanned raw FILE TEXT for `not_found` and
+               reddened on my own comment explaining that `not_found` was removed. Prose is not
+               usage — the same distinction the deferral registry's stripper had to learn, met
+               from the other side. Rewritten over the AST's string constants.
+
+  NEXT       — S4 (the plan half onto the spine). Its gate already exists
+               (`scripts/injection-coverage-lint.py`); the work is widening `SCAN_DIRS` and
+               putting an expiry on the 15-row permanent baseline that today exempts every
+               composition engine module.
+```
+
+### ✅ S11 slice 3 — the contract's two closed sets were never checked. S11 CLOSES.
+
+```
+AUDIT S11-3 (context-trace contract)
+  BUILT      — `phases` and `tiers` added to `contracts/context-trace.contract.json`, sourced
+               from `loreweave_context` rather than restated; `TraceTier` closed on the TS side
+               (it was a bare `string`); bidirectional parity tests on both sides, mirroring
+               the discipline `breakdown_categories` already had; and a producer-side test that
+               every emitted span's phase/tier is IN the closed set.
+
+  PROVEN     — the spec's namespacing item was MEASURED FIRST and turned out not to be the
+               work. `chat.*`/`composition.*` namespacing exists to let composition extend the
+               category vocabulary — and composition emits NOTHING into the trace: the only
+               `TraceAccumulator` consumers in the repo are chat-service's `stream_service`,
+               `compact_service` and `token_budget`. Namespacing now would be a vocabulary
+               with no second surface to separate, i.e. the zero-consumer ceremony S8 and S12
+               both exist to reject. Recorded in Debt with what un-parks it.
+
+               What IS wrong today is the spec's other sentence, and it is worse than stated:
+                 · `phase` — closed on BOTH sides (`PHASES` in Python, `'planner' | 'compiler'`
+                   in `TraceSpanFrame`) and cross-checked by NOTHING. A rename on either side
+                   would not red the other.
+                 · `tier` — `TIERS` in Python, and in TypeScript the literal declaration
+                   `tier: string; // T0..T6`. The COMMENT carried the constraint and the type
+                   carried none, so the Inspector would render `"T9"`, or any string at all,
+                   exactly as happily as a real tier. A closed-set value typed `string` on the
+                   consuming side is the defect the Frontend-Tool Contract exists to prevent —
+                   sitting inside the contract-checked payload itself.
+               `breakdown_categories` had the both-ways parity test all along; these two had
+               none, because the contract did not carry them to compare against.
+
+               suites: chat-service `1963 passed` · chat FE `74 files, 656 passed` ·
+               `tsc --noEmit` exit=0 · context-trace contract `13 passed`.
+               gates: `context-inspector-trace-gate --selfcheck: SELFCHECK PASS — contract
+               parses (13 frame fields, 6 span fields), 5 turns declared` ·
+               `ai-provider-gate OK` · `generation-guard-gate PASS` ·
+               `enforcement-claims-gate OK` · `db-safety-gate exit 0` ·
+               `[language-rule] PASS` · `i18n-completeness-gate OK`.
+               RED-ABLE: widening `TraceTier` back to `string` fails `tsc --noEmit` with
+               `src/features/chat/types.ts(250,7): error TS2322: Type 'boolean' is not
+               assignable to type '["S11: this union was widened to `string` and is no longer
+               closed", "TraceTier"]'`. Restored by re-editing.
+
+  NOT PROVEN — no LIVE trace was captured. The gate's live half needs a stack on :8090 plus
+               `JWT_SECRET`, and it said so rather than pretending: `Live half NOT run here`.
+               So the vocabulary is proven consistent across three declarations and one
+               producer, not proven against a frame a real turn emitted.
+               The parity is over the SET, not the MEANING: nothing checks that FE `T5` renders
+               what BE `T5` intends. `category` and `action` remain free strings on both sides
+               and are deliberately untouched — `category` overlaps `breakdown_categories`
+               without being the same vocabulary, and reconciling them is its own measurement.
+               And composition still emits no trace, so "one context compiler" remains true of
+               the BUDGET math (slices 1-2) and not of the TELEMETRY.
+
+  DRIFT      — I wrote a `@ts-expect-error` test for the closed union and it was INERT.
+               `tsconfig.json` excludes `src/**/__tests__` and `*.test.tsx`, so no test file is
+               ever type-checked: the annotation could neither pass nor fail, and it reads
+               exactly like enforcement. I caught it only because I widened the type to prove
+               red-ability and `tsc` came back exit 0 — the injection I nearly skipped because
+               the change looked too simple to need one. The assertion now lives in `types.ts`,
+               which tsc does compile. Fifth check-that-cannot-fail this run, and the first one
+               I wrote INTO a test file rather than found in someone else's code.
+               Second, smaller: my first instinct was to build the `chat.*`/`composition.*`
+               namespacing because the spec listed it. Grepping for `TraceAccumulator` took a
+               minute and showed there is no second surface to namespace FOR.
+
+  NEXT       — S3 (one `Finding`). Deliberately sequenced after S11, and slice 3 sharpens why:
+               the repo has ≥9 finding/verdict types, and this slice just demonstrated the cost
+               of a vocabulary declared in three places with no machine check between them.
+```
+
+### ◐ S11 slice 2 — the estimators. "Four copies" was a hypothesis, and it was wrong.
+
+```
+AUDIT S11-2 (token estimators)
+  BUILT      — translation-service's `chunk_splitter.estimate_tokens` now IS the kernel's
+               (`loreweave_context.estimate_tokens`), and `split_chapter` derives its
+               chars-per-token from that same estimator instead of a separate pair of
+               constants. Three assertions that restated the old constants were rewritten
+               against tiktoken as ground truth.
+
+  PROVEN     — THE SLICE'S PREMISE WAS FALSIFIED FIRST. "Converge the four `estimate_tokens`
+               implementations" assumes four copies of one thing. Measured, they are four
+               DIFFERENT intents, and one of them must not be touched:
+                 · SDK `loreweave_context` — script-aware pre-send projection (the kernel).
+                 · knowledge-service — real tiktoken `o200k_base`. The most accurate, and the
+                   ground truth the others should be judged against.
+                 · lore-enrichment — a deliberate OVER-estimate mirroring provider-registry's
+                   billing math. Measured **3.05x** tiktoken on Vietnamese, by design, because
+                   a spend guardrail must err high. The spec already says the 2 billing
+                   conventions stay separate; merging it would be a BILLING correctness change.
+                 · translation — a two-class local heuristic, and the only genuine duplicate.
+               So this is the FOURTH spec bullet in this run falsified by measurement.
+
+               THE DUPLICATE WAS ALSO A LIVE BUG. translation's estimator, against tiktoken:
+                 text          chars   tiktoken   translation   ratio
+                 Vietnamese      205         73            51   0.70x
+                 Chinese          35         34            23   0.68x
+                 English         134         28            33   1.18x
+               Under-counting by a third, on the two scripts this service exists to translate.
+               Its docstring claimed to have fixed *"the ~2.3x underestimation bug for CJK
+               text that caused context window overflow and hallucination"* — it had closed
+               two thirds of that gap and stopped. A chunk it believed was 2000 tokens reached
+               the model at ~2900. Vietnamese was worse for a structural reason: the module had
+               no Vietnamese class at all, so it was counted at the LATIN ratio.
+
+               THREE TESTS WERE PINNING THE UNDER-COUNT, and the arithmetic is exact:
+                 fixture           tiktoken   OLD (asserted)   NEW
+                 "中" x150              150      100  (-33%)   158
+                 "中" x3000            3000     2000  (-33%)  3150
+               `test_estimate_tokens_cjk_3000_chars` even documented the history — v1's 857 was
+               "catastrophically underestimated", v2's 2000 was pinned as the answer — while
+               the real number was 3000 the whole time. `test_estimate_tokens_mixed` computed
+               its `expected` FROM the module's own constants, so it would have passed for any
+               value they produced.
+
+               suites: translation `1139 passed` (was 1136) · SDK `1187 passed, 9 skipped`.
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS` ·
+               `sdk-duplication-gate (full): OK — no new SDK-tier duplications`.
+               RED-ABLE: re-inlining the old two-class arithmetic fails FIVE tests, including
+               `test_the_estimator_IS_the_kernels_not_a_local_copy` (asserted by EFFECT across
+               scripts, so an edit that keeps the import and re-inlines the maths still reds)
+               and `test_vietnamese_is_no_longer_counted_at_the_LATIN_ratio`. Restored by
+               re-editing.
+
+               LIVE, deployed translation-service AND worker, both hash-verified (MATCH):
+                 text          chars  est tok  chunks  max chunk tok  OVER BUDGET
+                 Vietnamese     5800     1642       4            492            0
+                 Chinese        1400     1422       3            498            0
+                 English        5400     1350       3            490            0
+               budget 500/chunk, `chars_preserved=True` on every row. Zero over-budget chunks
+               is the property the old splitter could not hold.
+
+  NOT PROVEN — no live TRANSLATION was run. The chunking is proven on deployed code over real
+               prose; that smaller chunks produce better translations, or even that a
+               previously-overflowing chapter now succeeds, is not measured. The failure this
+               fixes (overflow → hallucination) is named in the module's own docstring, not
+               observed by me.
+               COST MOVED and nobody measured it: counting ~40% more tokens on CJK/Vietnamese
+               means ~40% more chunks, i.e. ~40% more LLM calls per chapter for exactly the
+               books this platform is for. That is the safe direction for correctness and the
+               expensive one for spend, and it is a real product consequence shipped without
+               a number.
+               The kernel estimator is itself 0.78x tiktoken on my Vietnamese sample — better
+               than 0.70x, still UNDER. The spec cites a 2026-07-07 eval claiming the
+               script-aware heuristic tracks o200k within 3-6%; my three-sentence sample
+               disagrees and is far too small to overturn a real corpus measurement, so I am
+               recording the tension rather than re-tuning the kernel on n=3.
+               knowledge-service and lore-enrichment are UNTOUCHED. The first is the ground
+               truth and needs no change; the second must not be changed. So "one estimator"
+               is not what shipped — what shipped is one PROJECTION estimator, with the
+               measurement and the billing convention deliberately beside it.
+
+  DRIFT      — I introduced a two-convention bug WHILE removing one, and it passed the suite.
+               Swapping `estimate_tokens` for the kernel left `split_chapter` sizing its
+               window from the old `_CJK_CHARS_PER_TOKEN = 1.5`, so a 100-token budget still
+               cut 150 CJK chars that the new estimator counts as 158 — 58% over the budget
+               the caller asked for, inside the module I was fixing for exactly this. The
+               suite stayed green because the test asserting chunk COUNT was itself derived
+               from the old constant. Caught by reading `split_chapter` after the swap, not by
+               a test.
+               Second: I ran the module docstring's claim ("CJK at ~1.5 chars/token") straight
+               past me twice while editing the function underneath it. Stale prose describing
+               behaviour that no longer exists is how the next reader re-derives the wrong
+               model — the same shape as the `cross_scene_check` row whose `why` describes a
+               call that does not exist.
+
+  NEXT       — S11 slice 3: the `context-trace.contract.json` `breakdown_categories`
+               namespacing (`chat.*` / `composition.*`). It is asserted on BOTH sides
+               (BE ⊆ FE and FE ⊆ BE), so extending it is a consumer-visible shape change and
+               cannot be done additively the way slices 1 and 2 were.
+```
+
+### ◐ S11 slice 1 — the allocation layer the spec said "does not exist and must be written"
+
+```
+AUDIT S11-1 (allocation layer)
+  BUILT      — `loreweave_context.allocate_context` → `ContextAllocation`, and composition's
+               `pack_budget_for` composing it with `scale_by_window`. Composition's three
+               pack-budget call sites now ask how much grounding FITS, not merely how much
+               they would like.
+
+  PROVEN     — the defect is arithmetic, and it was never a subtle one:
+                 `scale_by_window(6000, window)` as a share of the window it must fit inside
+                   window 4096 → 6000 = 146.5%   ← the block alone exceeds the whole context
+                   window 8192 → 6000 =  73.2%   ← before the prompt, and before any output
+               `scale_by_window`'s contract is *"Never smaller than flat_default … this only
+               ever grows"*, which is right for the flat-constant problem it was written for
+               and wrong for an allocator, whose entire job is being able to say LESS.
+
+               THE COMPOSITION IS THE POINT, and getting it wrong in the other direction was
+               the trap: `allocate_context` alone CAPS at the default, which would have
+               revoked `scale_by_window`'s growth for a 1M-window model — fixing a
+               small-window bug by introducing a large-window one. So `scale_by_window`
+               answers "how much would we like" and `allocate_context` answers "how much
+               fits", and a test pins the 1M case at 30000.
+
+               MEASURED, which is what RUN-STATE invariant 6 REQUIRES before a consumer may
+               switch — `no existing loreweave_context consumer changes behaviour until its
+               own measurement says it may`:
+                 window    before   after   effect
+                   None      6000    6000   unchanged  (unresolved window ⇒ caller's number)
+                   4096      6000     512   REDUCED
+                   8192      6000    1444   REDUCED
+                  16384      6000    6000   unchanged
+                 200000      6000    6000   unchanged
+                1000000     30000   30000   unchanged  (the growth survives)
+
+               LIVE, on deployed code, both images rebuilt + hash-verified (budget.py and
+               engine.py MATCH in service AND worker):
+                 resolve_context_length → 200000 (live provider-registry)
+                 THE MODEL THIS STACK SERVES: before 6000 · after 6000 · clamped=False ·
+                   fits=True · source=window  ⇒ NO-OP (identical)
+                 counterfactual on the same deployed code:
+                   window  4096 → 512  clamped=True  fits=False
+                   window  8192 → 1444 clamped=True  fits=True
+                   window 16384 → 6000 unchanged
+               and the clamp is NOT silent — the run printed
+               `pack budget CLAMPED to the model's window: grounding 512 (wanted 6000) ·
+                window=4096 · output_reserve=4700 · fits=False`.
+
+               suites: composition `8 failed, 3911 passed, 8 skipped` (was 3900; +11 — the 8
+               are the tracked test_motif_retrieve_db rows) · SDK `1187 passed, 9 skipped`
+               (was 1174; +13).
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK — 103 path(s)` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS` ·
+               `context-budget-defaults-lint` clean.
+               RED-ABLE: passing `None` as the window inside `pack_budget_for` (so every
+               allocation degrades to flat) fails exactly the three small-window tests and
+               leaves the no-op ones green — which is the right signature, because a
+               regression here should look like "the fix stopped working", not like
+               "everything changed". Restored by re-editing.
+
+  NOT PROVEN — `PACK_OUTPUT_RESERVE_TOKENS = 4700` is REASONED (1000 words × 2.6 vi
+               tokens/word × the PROSE headroom), NOT measured against real scene replies. It
+               is also used because the TRUE output budget cannot be known at allocation
+               time: `scene_output_budget` needs the profile's language, and the profile comes
+               out of the pack this budget is sizing. That ordering is worked around, not
+               resolved.
+               `DEFAULT_OVERHEAD_SHARE = 0.25` is likewise read off the packer's segment list
+               rather than measured against real prompts.
+               NO LIVE GENERATION on a small-window model. The 4096/8192 rows are the deployed
+               code computing against those numbers, not a draft produced by an 8K model — so
+               "the request now fits" is arithmetic, not an observed success. A BYOK model
+               with a small window is the case that matters and this stack has none.
+               And this is S11 SLICE 1 only. The slice's other parts are untouched: FOUR
+               `estimate_tokens` implementations still exist (SDK, knowledge, lore-enrichment,
+               translation), the `context-trace.contract.json` `breakdown_categories`
+               namespacing (`chat.*` / `composition.*`) is not started, and the plan half's
+               cl100k-calibrated budget in `plan_forge/existing_state.py` is unchanged.
+
+  DRIFT      — I nearly adopted `allocate_context` on its own at the three call sites. It
+               reads as the obvious switch, it passes every small-window test, and it would
+               have silently capped a 1M-context model at 6000 where it had been getting
+               30000 — a regression invisible to exactly the tests I had just written, because
+               they were all about windows being too SMALL. Caught by running the numbers at
+               1M before editing, not by a test.
+               Second: my first `pack_budget_for` returned a bare int. That would have thrown
+               away `clamped` and `fits` at the moment of use, which is the S8 defect verbatim
+               — a number the pack computed, documented, and handed to nobody — inside the
+               slice about composing budgets honestly.
+
+  NEXT       — S11 slice 2: the four `estimate_tokens` copies. The spec's crux is already
+               settled (the script-aware heuristic tracks o200k within 3-6%; cl100k is the
+               outlier and tiktoken cannot be a kernel dependency), so that slice is
+               convergence work, not a measurement.
+```
+
+### ✅ S6 — no model silently its own judge. The affordance shipped WITH the label.
+
+```
+AUDIT S6
+  BUILT      — `app/engine/critic_policy.py` (`resolve_critic` → `CriticResolution` carrying a
+               four-member `CriticStatus`), adopted at all SEVEN sites in `routers/engine.py`;
+               a per-status author-facing message map; and the UI row that makes any of it
+               reachable — a Critic model select in `CompositionSettingsView` writing
+               `critic_model_ref` + `critic_model_source` through the existing (merging) Work
+               PATCH, plus an inline warning when the chosen critic IS the drafter.
+
+  PROVEN     — the rule was hand-rolled SEVEN times: six copies of
+               `distinct = bool(c_ref and c_src and str(c_ref) != str(body.model_ref))` and a
+               seventh written INVERTED as the critique endpoint's guard. Six stayed in
+               lockstep; the seventh is where the defect grew — it collapsed TWO states into
+               one sentence, *"critique skipped: no distinct critic model configured"*,
+               returned both when no critic was ever set and when the author had set the model
+               already writing the prose. Different problems, different fixes, identical text.
+               The two existing route tests asserted `"skipped" in warning`, which is true of
+               BOTH, so nothing could see the conflation.
+
+               LIVE, on deployed code, both images rebuilt + hash-verified (critic_policy.py
+               and engine.py MATCH in service AND worker):
+                 no critic set      → not_configured  · "no critic model is set … Set one in
+                                                        Composition → Settings → Critic model."
+                 critic == drafter  → same_as_drafter · "the SAME model that wrote this
+                                                        passage … Choose a different model."
+                 ref without source → incomplete      · "a model was recorded without its
+                                                        provider … Re-select."
+                 DISTINCT critic    → configured      · the critique RUNS
+                 `distinct statuses across the four arms: 4 — PASS (they differ)`
+
+               suites: composition `8 failed, 3900 passed, 8 skipped` (was 3883; +17 — the 8
+               are the tracked test_motif_retrieve_db rows) · frontend composition
+               `155 files, 1057 passed` · `tsc --noEmit` exit=0.
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK — 103 path(s)` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS`.
+
+               RED-ABLE, restored by re-editing: pointing SAME_AS_DRAFTER's message at
+               NOT_CONFIGURED's text fails BOTH guards — the route test
+               (`both states still share one sentence`) and the uniqueness test
+               (`two statuses share a message — the conflation is back`).
+               An `ast` guard also reds if anyone re-inlines a critic identity comparison in
+               `engine.py`, and it carries a CONTROL proving the detector sees that pattern —
+               without it, an empty-list assertion passes just as well when the scan is broken.
+
+  NOT PROVEN — THE COMPARISON IS ON `user_model_id`, NOT ON THE RESOLVED PROVIDER MODEL. Two
+               BYOK rows can point at the SAME underlying model, so a user with two gemma
+               credentials gets `CONFIGURED` and a model grading its own prose — the precise
+               failure this slice is named for, one level below where it now looks. No route
+               exposes the underlying model for a `user_model_id` (provider-registry has
+               `/context-window` and nothing equivalent), so closing it needs a new
+               cross-service contract plus a caching decision on a per-generation hot path.
+               Tracked in Debt; deferred under gate #2, not waved through.
+               The live run is POLICY-level on deployed code, not a book-scoped HTTP run: the
+               four arms exercise the real deployed `resolve_critic` and the real message map,
+               while the endpoint's `critic_status` field is proven by route tests rather than
+               by a browser. No browser smoke on the new select at all, so the i18n keys are
+               asserted as chosen, not as rendering well in Vietnamese.
+               The FE `criticIsDrafter` warning compares against `default_model_ref`, the
+               book's DEFAULT drafter — a session that overrides the model per call can still
+               reach SAME_AS_DRAFTER without the UI predicting it. The server is the authority
+               and does refuse it; the UI is an early warning, not the check.
+               And `model_roles` still has ZERO writers: this slice writes the legacy scalars,
+               which the dual-read consumes, so the newer map remains a read-only contract with
+               no producer.
+
+  DRIFT      — I nearly shipped the UI row alone. The spec's requirement is the affordance, and
+               a select that writes `critic_model_ref` satisfies it literally — but the state
+               the author would most often land in is "I picked the model I already use", which
+               the server silently refuses. Shipping the picker without the same-as-drafter
+               warning would have produced a setting that looks applied and does nothing: the
+               permanent-amber shape S1 exists to end, re-created by the slice meant to close it.
+               Second: my first pass at replacing the six copies matched on `\r\n` and reported
+               `8-indent copies: 0 · 4-indent copies: 0` — a clean no-op that printed like a
+               successful run. Had I not printed the remaining count in the same breath I would
+               have moved on believing the refactor had landed.
+
+  NEXT       — S11 (one context compiler), the largest remaining slice. S6 hands it nothing
+               structural, but the `signal_inert`/`CriticStatus` pattern is now used twice in
+               two days — a row or a state DECLARING what it cannot do, checked by a probe
+               rather than trusted — and S11's additive-then-switch rule needs exactly that
+               shape to prove no existing `loreweave_context` consumer changed behaviour.
+```
+
+### ✅ S7 slice 4 — the budget-seam rot. The ratchet was measuring the wrong thing.
+
+```
+AUDIT S7-4 (budget-seam rot)
+  BUILT      — the 28 frozen budgets are gone, and the number that tracked them now means
+               something. Three parts:
+               1. `max_tokens: int = max_tokens_for("kind")` → `max_tokens: int | None = None`
+                  resolved AT THE CALL, at 20 sites. A default argument is evaluated once at
+                  IMPORT, so it could never see a roster, a chapter or a candidate list —
+                  which is the whole defect, independent of whether the number moves.
+               2. `CallProfile.signal_inert` in BOTH registries, for rows where NOTHING can
+                  size the call (translation's three MIRROR rows short-circuit before the
+                  sizing model runs). Declared, not assumed: a two-directional PROBE test in
+                  each service fails if the flag disagrees with `call_budget` either way.
+               3. `llm-budget-ssot-gate` now scores a kwarg only if the KIND READS it, and
+                  learned the sentinel shape so it stops punishing the migration it enforces.
+               Plus one production bug the live run found — see PROVEN.
+
+  PROVEN     — THE RATCHET WAS SATISFIABLE WITH THEATRE, and that is the finding. `language`
+               is consulted ONLY on the PROSE and VERDICT branches; STRUCTURED sizes on
+               `target * 220` and EDIT on `target / 3`, and neither reads it. So adding
+               `language=` to a STRUCTURED call site cleared it from the backlog and changed
+               no budget, ever. Injected exactly that into `propose_cast` — the OLD gate
+               counts `{language}` as signal and goes GREEN; the new one FAILs, naming the
+               site and its kind. Restored by re-editing.
+
+               `llm-budget-ssot-gate: PASS — 94 LLM call site(s) scanned …
+                 19 traced to call_budget() · 29 held at baseline (8 literal, 21
+                 unattributed, 0 signature defaults) · 46 built off-site
+                 adaptive signal: 18/31 budget calls carry one that their KIND reads ·
+                 4 declared signal_inert (nothing can size them) · 9 held at baseline`
+               28 → 9, and the attribution axis held at EXACTLY its 29 baseline — the
+               conversion is attribution-neutral, which is what says the drop is real work
+               and not a widened detector.
+
+               NON-VACUITY, measured per site (BEFORE = the old frozen default):
+                 propose_edits_direct  20k-char chapter   3000 → 13333   4.44x
+                 propose_cast          40-name roster     4096 → 24750   6.04x
+                 propose_world         full roster        4096 → 32768   8.00x
+                 score_promise_coverage 18 promises       4096 →  9900   2.42x
+                 judge_prose           30 rules, vi       1536 →  5202   3.39x
+                 plan_character_arcs   12 characters      4096 →  6600   1.61x
+               10 of 18 realistic cases resolve to a DIFFERENT number; 8 still land on the
+               floor and are LISTED as such rather than counted as wins.
+
+               suites: composition `8 failed, 3883 passed, 8 skipped` — the 8 are the tracked
+               `test_motif_retrieve_db` rows (earlier audits said 11; three were the
+               duck-typed stubs fixed in 9e346a439) · translation `1136 passed` · SDK
+               `1174 passed, 9 skipped` · gate teeth `19 passed`.
+               gates: `llm-budget-ssot-gate PASS` · `ai-provider-gate OK` ·
+               `generation-guard-gate PASS` · `enforcement-claims-gate OK — 103 path(s)` ·
+               `db-safety-gate exit 0` · `[language-rule] PASS`.
+
+               LIVE, $0 gemma-4-26b, both images rebuilt and hash-verified (7 files, MATCH in
+               service AND worker — the run before this one verified only the service and the
+               drift log already carries that mistake once):
+                 resolve_context_length → 200000, live from provider-registry
+                                    BLANK roster        ESTABLISHED roster
+                 propose_cast  wire       4096                24750
+                 propose_world wire       4950                32768
+                 cast parsed                 6                    7
+                 world parsed                9                   10
+               Same code, same model, same premise — only the roster differs. The budget
+               reaching the WIRE differs 6x. That is the control that makes this a statement
+               about the signal and not about the fixture.
+
+               …AND THE LIVE RUN FOUND A DEAD PRODUCTION PASS. `propose_world` parsed **0**
+               entities in both arms. Not truncation: `finish_reason=stop`, 2864 characters of
+               valid JSON. `_WORLD_SCHEMA` requires `{"items": [...]}` — added when WORLD_KINDS
+               moved to decoder enforcement — and `parse_world` still read a bare array, so
+               `isinstance(arr, list)` was False and the pass degraded to `[]` on every
+               grammar-honouring provider. Pass 3 returns `[]` on any failure, so a DEAD PASS
+               and a premise with no world in it were indistinguishable from outside. Fixed,
+               with an ambiguous-wrapper case refused rather than guessed; live after the fix:
+               0 → 9 and 0 → 10.
+
+  NOT PROVEN — the live run is NOT book-scoped. `propose_cast`/`propose_world` take a premise
+               and write nothing, so there is no throwaway book and no debris — but neither is
+               there evidence about the planning ORCHESTRATION, only about the two calls.
+               The window clamp is UNEXERCISED in production: the dev model reports a 200k
+               window, so its half-share (100000) is above every budget here. The clamp is
+               proven only by unit test (8192 → 4096, with the unclamped control). A
+               small-window BYOK model is the case that matters and it was not run.
+               `_INVENTED_CAST_ALLOWANCE = 5` and `_INVENTED_WORLD_PER_KIND = 3` are READ OFF
+               the prompts' own wording, not measured against what models return. And
+               `_TOKENS_PER_ITEM = 220` is the SDK's generic per-item cost; a world entity is
+               plausibly half that, which is why a full roster reaches the 32768 runaway
+               ceiling. Nobody has measured a real per-item cost.
+               The 9 remaining no-signal sites are argued, not proven, to be unsizable.
+               The `cross_scene_check` ROW is mislabelled: its `why` describes "a contradiction
+               list … each entry quotes both sides", and its only two call sites emit a cast
+               ROSTER. The row documents a call that no longer exists, and VERDICT's
+               `truncation_is_fatal=False` is wrong for a roster, where a clipped response
+               silently drops people. Recorded as debt, not fixed — changing the kind changes
+               the budget and needs its own measurement.
+
+  DRIFT      — four, and the first would have shipped inside the slice written to stop it.
+               1. I marked `compress` `signal_inert` on an argument that felt airtight —
+                  `ceiling == floor == 512`, ceiling applied last, therefore nothing can move
+                  it. The PROBE reddened immediately: the window clamp also runs after the
+                  floor and pushes DOWN, so `context_length=8` resolves it to 4. A ceiling
+                  bounds ONE direction. Marking it inert would have excused a call site from a
+                  signal it is entitled to — the exact rot this slice pays down, re-created by
+                  its own exemption mechanism, in the first row I applied it to.
+               2. My first `_ssot_local_names` bound names MODULE-wide, and quietly cleared
+                  three sites this slice never touched — including `self_heal._chat`, a helper
+                  fed a flat `400` by one of its callers. The name matched, so a literal would
+                  have been laundered into `attributed` by an assignment 400 lines away. I was
+                  looking at a backlog that had dropped 29 → 26 and had to stop and ask which
+                  three, rather than bank it.
+               3. I nearly deleted the explicit `max_tokens=max_tokens_for("plan_forge_chat")`
+                  from five repair sites as redundant restatement of a default. They are
+                  load-bearing overrides: `LMStudioClient.chat` declares 8000 against the
+                  row's 12000. Deleting them would have cut a plan JSON by a third, and the
+                  registry says a clipped plan comes back unparseable, not short. Checking the
+                  Protocol is what stopped it — and it turned up the real version of the same
+                  bug: `_parse_with_repair`'s own `8000` default, which only `materialize`
+                  overrode, so `analyze` and `refine_spec` had been running a third under the
+                  declared row all along.
+               4. I read `MISMATCH` on all seven image hash checks and had started treating it
+                  as a stale build. Git Bash was rewriting `/app/...` into
+                  `C:/Program Files/Git/app/...`. Host-env drift wearing a deployment bug's
+                  clothes — a lesson this repo already has written down, which I applied only
+                  after generating the false report.
+
+  NEXT       — S6 (no model silently its own judge). It is surveyed and BLOCKED on an
+               affordance, not on code: no surface sets a critic, `critic_model_ref` lives
+               only in `work.settings` JSONB, and the FE suite is green on a configuration no
+               user can produce. The spec is explicit that the UI ships in the same slice or
+               the label is noise. Nothing in S7-4 changes its shape; the one carry-over is
+               that `judge_plan_conflict` and `judge_canon` now size on candidate count, so a
+               critic that IS configured gets a budget that tracks its workload.
 ```
 
 ### ✅ POST-RUN REVIEW — the author-requested audit of S1/S2, and what it found
@@ -1681,6 +2643,8 @@ all wrong in ways the red team named.
 | 2026-07-31 | Order puts S11 **before** S4: migrating the plan half twice is the avoidable cost. |
 | 2026-08-02 | **KG/extraction identity is PARKED, not next.** Budget-seam rot → finish S7 → the rest of the board in sealed order. The entity-identity spec is a diagnosis to return to, not a work item to start. Author, verbatim: *"tôi không khuyến khích lao đầu vào KG ngay bây giờ."* |
 | 2026-08-02 | **The budget-seam rot and S7 slice 4 are the SAME work**, approached from two ends. Do not track them as two items. |
+| 2026-08-02 | **A budget kwarg counts as signal only if its KIND reads it.** `language` on a STRUCTURED or EDIT row is discarded by `call_budget`, so a gate that greps kwargs can be turned green without changing a single budget. Enforced by the gate; the per-kind read-set lives in `_KIND_READS`. |
+| 2026-08-02 | **A row where nothing can size the call DECLARES it (`signal_inert`) instead of accumulating fake signal at its call sites.** The declaration is probed against the mechanism in each service's registry test, two-directionally, so it cannot drift into a comment. Same move as `OutputKind.MIRROR`: make silence and intent distinguishable. |
 
 ## Measured facts (do not re-measure; cite these)
 
@@ -1711,16 +2675,1700 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 - ~~the provider path is genuinely single~~ → two POC files called Ollama directly over httpx
   (deleted), and the gate that was supposed to catch them enforced half its own rule.
 
+### ✅ AUDIT-1 — every guard this run wrote, asked with the real violation in front of it
+
+```
+AUDIT AUDIT-1 (guard red-ability — the audit's own first finding, generalised)
+  BUILT      — `scripts/guard-redability-gate.py`: 11 cases that inject each guard's REAL
+               violation into REAL source, run the REAL guard, and assert it exits non-zero —
+               then restore the file from saved bytes, sha256-verified. Wired into
+               foundation-ci (`--self-test`, then `--gates-only`).
+               Two defects it found in `llm-budget-ssot-gate.py` are FIXED, not recorded.
+               `gate-teeth-gate.py` now counts a sweep case as a red-ability proof, read off
+               the sweep's `CASES` AST — a text scan would have certified a gate on the
+               strength of the sweep's own DOCSTRING naming it, which is the false-proof that
+               file has already caught twice.
+
+  PROVEN     — first run, before any fix:
+                 6/11 guards proved RED-ABLE against a real on-disk violation
+               after fixing two probes that were under-powered and two gates that were wrong:
+                 guard-redability-gate: PASS — 11/11 guard(s) proved RED-ABLE against a
+                 real on-disk violation.
+               The two REAL gate defects, each measured, not argued:
+                 · deleting `"max_tokens": max_tokens,` from `cast_plan.py:241` left the gate
+                   GREEN. A payload with a `**spread` and no budget key was excused as
+                   `opaque` — so the site was identified as a call site BY the very key the
+                   HARD rule is about, and removing the key removed the finding.
+                 · marking composition's VERDICT row `judge_prose` `signal_inert=True` left
+                   the gate GREEN while the service's own unit test went red. `signal_inert`
+                   is also an EXEMPTION from the no-signal ratchet, so an unverified one
+                   excuses call sites from signal they genuinely have. Only MIRROR can be
+                   inert; every other kind is moved by `context_length`, a fact this gate
+                   already stated in `_KIND_ALWAYS_READS` and did not enforce.
+               And the sweep reproduces the founding defect. Re-injecting the literal 0x08
+               byte into `test_critic_policy.py`'s regex:
+                 S6 critic — an EIGHTH hand-rolled copy   STILL-GREEN   <<<
+                 FAIL — 1 of 11 guard(s) did not go red against a real on-disk violation.
+                 sweep exit code: 1        restored byte-identical: True
+               Suites, after: composition 3938 passed, 8 failed (the tracked
+               `test_motif_retrieve_db` rows, unchanged), 8 skipped, 123.87s ·
+               translation 46 passed · chat trace-contract 13 passed · SDK 1013 passed,
+               9 skipped. Gates: `CI gate sweep: PASS 54  FAIL 0`;
+               `gate-teeth-gate: PASS — 59 CI-invoked gate(s), every one able to return
+               non-zero. 14 carry a red-ability proof; 45 held at baseline.`
+
+  NOT PROVEN — the sweep covers the guards THIS RUN wrote. It says nothing about the other
+               45 CI gates that carry no red-ability proof, and the ratchet did not move.
+               `--gates-only` runs 4 of the 11 cases in CI; the other 7 need a service's deps
+               and run only locally, which the script prints rather than counting as covered.
+               I also did not re-audit the two remaining inline-restated controls outside
+               composition — I fixed the two in the files that had actually broken.
+
+  DRIFT      — three, and the first is the whole point of the slice.
+               · My first sweep reported 5 guards "STILL GREEN". Two of those were MY PROBE
+                 being wrong, not the guard: `motif_plan` is not a subject of the injection
+                 lint at all (`retrieved=False`), and the guard-SDK gate needs THREE adopters
+                 where I had injected one. Had I stopped at the first table I would have
+                 written up two defects that do not exist — the mirror image of the bug I was
+                 hunting, and the reason each case now asserts the guard is GREEN before the
+                 injection as well as RED after it.
+               · I nearly left the sweep in the scratchpad as evidence. It would have been
+                 prose: a number in a transcript, with nothing to re-run it. The repo's own
+                 deferral rule already says this and I had to be reminded of it by writing
+                 the word "sweep" into a filename that `gate-teeth-gate`'s `_IS_GATE` regex
+                 does not match — my new CI gate was, for about ten minutes, outside the very
+                 inventory that exists to catch unwired and toothless gates.
+               · The `--self-test` I first sketched asserted only that a case reports RED.
+                 That is satisfied by a `run_case` hardwired to return "RED" — the exact shape
+                 this file exists to refuse, inside this file. It now pins all three outcomes,
+                 including ANCHOR-GONE, because a case whose anchor has moved is testing
+                 nothing and must not be allowed to read as coverage.
+
+  NEXT       — the DoD gaps this audit measured but did NOT close (rows in Debt below):
+               Go/Rust `GuardReport` (4 tracked-unguarded generation paths), the resolved
+               provider model behind the distinct-critic rule, 29 baselined budget sites,
+               22 baselined injection modules, and the 4 estimators / 6 finding types.
+               Each is a slice, not a fix.
+```
+
+### ◐ AUDIT-2 · DoD-1 — the Go generation path. "Could not check" no longer reads as "clean".
+
+```
+AUDIT AUDIT-2 (generation paths — 1 of 4 closed)
+  BUILT      — the check-status vocabulary is now POLYGLOT, and glossary's KG-drift sweep is
+               the first non-Python path to use it.
+                 · contracts/guard-status.contract.json — generated FROM
+                   `loreweave_guard.CheckStatus` (Python stays SSOT), plus the rank order.
+                 · sdks/python/tests/test_guard_status_contract.py — the Python half of the
+                   lock. A member added or renamed reds until the contract is regenerated.
+                 · services/glossary-service/internal/guardstatus — the Go mirror: four
+                   members, machine-checked to be a SUBSET of the contract by a test that
+                   PARSES this package's consts rather than listing them, so a fifth added
+                   tomorrow is not invisible to it.
+                 · `sweepKgDrift` returns a `guardstatus.Report` instead of an int; both
+                   handlers emit `kg_status`/`kg_checked`/`kg_unchecked` beside `kg_flagged`.
+               NOT an SDK. The sealed S9 decision stands: what is shared here is a VOCABULARY
+               — eleven strings and an ordering — and a contract file plus a drift test is
+               exactly the mechanism for that.
+
+  PROVEN     — the defect, reproduced as a failing test before the fix and after reverting it:
+                 --- FAIL: TestSweepKgDrift_OmittedEntityIsNotDrift
+                     an uncompared entity must degrade the sweep, got "checked"
+                 --- FAIL: TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLongerIdenticalOutput
+                     a clean sweep and an outage still produce identical output:
+                     {Status:checked Flagged:0 Checked:1 Unchecked:0}
+               …that struct is the registry's claim, measured: both arms of the pair were the
+               same bytes. All nine sweep tests then run and pass — `-v`, because `ok` with no
+               names is also what a fully-skipped DB-gated package prints:
+                 --- PASS: TestSweepKgDrift_FlagsChangedNeighbourhoodAndIsIdempotent (0.29s)
+                 --- PASS: TestSweepKgDrift_DismissedSameHashNotResurrected (0.30s)
+                 --- PASS: TestSweepKgDrift_DismissedNewHashResurfaces (0.30s)
+                 --- PASS: TestSweepKgDrift_NoChangeNoRow (0.27s)
+                 --- PASS: TestSweepKgDrift_OmittedEntityIsNotDrift (0.24s)
+                 --- PASS: TestSweepKgDrift_ACleanSweepAndAnOUTAGEAreNoLongerIdenticalOutput
+                 --- PASS: TestSweepKgDrift_ABookWithNothingInScopeIsNotACleanSweep (0.24s)
+                 --- PASS: TestSweepKgDrift_NullStoredHashIsSkippedNotCrashed (0.26s)
+                 --- PASS: TestSweepKgDrift_KnowledgeDownDegradesToZero (0.32s)
+               Full glossary module: `go build ./...` + `go vet ./internal/...` clean, whole
+               `go test ./... -count=1` green against the real glossary DB.
+               `generation-guard-gate: PASS — 9 generation paths enumerated across 3
+               languages; 6 guarded, 3 tracked-unguarded.` (was 5/4.)
+               Sweep now 13 cases: `guard-redability-gate: PASS — 13/13`.
+
+  NOT PROVEN — three paths remain: the two composition SSE streams and the Rust zone
+               narration. Nothing here touched them. The Go `guardstatus.Report` is emitted
+               on the wire and NOTHING CONSUMES IT — same shape as `exclusion_unverified`
+               from S13, and it is a debt row rather than a claim. And the vocabulary lock is
+               one-directional today: Python→contract→Go. Rust has no mirror yet, so adding
+               one is a new test, not a free ride on this one.
+
+  DRIFT      — two.
+               · I wrote a bare `"not_applicable"` string into the handler for the branch
+                 where no owner id is supplied — a free-string closed-set value, in the change
+                 whose entire purpose is closing that hole, three files after declaring the
+                 rule. Caught on re-read, not by a check. It is a `guardstatus.NotApplicable`
+                 const now, which is what the parsing test can actually see.
+               · My first version of the mid-sweep error path computed a "checked" count as
+                 `inScope - flagged - unchecked`. That arithmetic is wrong (those are not
+                 disjoint) and, worse, it invents a coverage figure for a loop that did not
+                 finish — a confident number in the one field whose job is saying how much was
+                 verified. Replaced with `degradedSoFar`, which leaves `Checked` at zero.
+
+  NEXT       — the same shape in Rust (`l4_retry.rs`: honesty lives in an optional
+               `fallback_count`) and in the two composition SSE generators, which mention
+               `canon` zero times. The Rust one needs a `guardstatus` mirror crate reading the
+               same contract; the Python ones already have `canon_envelope` to hang off.
+```
+
+### ◐ AUDIT-3 · DoD-1 — the two SSE streams. Skipping a guard is a position; silence is a defect.
+
+```
+AUDIT AUDIT-3 (generation paths — 3 of 4 closed)
+  BUILT      — `CheckStatus.NOT_RUN` + `canon_check.unguarded_envelope(reason)`, emitted by
+               both composition SSE generators on the persisted job result AND the terminal
+               frame.
+               The distinction that made this worth a vocabulary change: `NOT_APPLICABLE`
+               renders as NOTHING by its own docstring, because it means "not in this run's
+               scope". Using it here would have rebuilt the silence under a new name. `NOT_RUN`
+               means the guard was never wired on this path and no retry will change that —
+               ranked ABOVE `UNPARSEABLE` for exactly that reason: a structural absence reads
+               the same on every future run, an unusable judge answer is one response away
+               from being fine.
+               Note what was NOT built: the streams still do not run a canon check. That is a
+               defensible design position on an interactive surface — a multi-second judge pass
+               between keystrokes is a different product — and turning it into a feature is a
+               plan, not a fix. What was never defensible is saying nothing.
+
+  PROVEN     — `generation-guard-gate: PASS — 9 generation paths enumerated across 3
+               languages; 8 guarded, 1 tracked-unguarded.` (5/4 → 6/3 → 8/1 across this run.)
+               composition unit suite `3486 passed in 89.34s`.
+               The new tests reddened when the declaration was taken back out of ONE stream:
+                 AssertionError: an SSE terminal frame streams a completed draft with no
+                 canon field — the reader cannot tell it from a checked one
+                 AssertionError: unguarded_envelope( is called 1x — both streams must use it
+                 2 failed, 6 passed          restored byte-identical: True
+               `guard-redability-gate: PASS — 14/14`.
+
+  NOT PROVEN — nothing CONSUMES `guard_status: not_run` yet. `chapter_scene_gate` reads
+               `guard_status` out of `generation_job.result`, so a co-write job now carries a
+               readable value where it carried none — but I did not trace what that gate does
+               with `not_run`, and no FE surface renders it. Third instance of the
+               emitted-but-unconsumed shape this run. Debt row, not a claim.
+               I also did not run either stream live; the evidence is unit-level plus an AST
+               scan of the emitting frames.
+
+  DRIFT      — two.
+               · I fabricated `CanonViolation(entity=…, rule=…, detail=…)` in the parity
+                 fixture. The real model is `CanonCandidateBase` — `entity_id`, `name`,
+                 `matched`. It failed for a reason with nothing to do with its subject, and
+                 this repo already carries the lesson: derive a fixture from the PRODUCER
+                 schema, never from memory of it. Second time this run.
+               · The red-ability probe reported ANCHOR-GONE on text I could see in the file.
+                 The working tree is CRLF and my multi-line anchor was written with `\n`. That
+                 is a hole in `guard-redability-gate` itself, not in the probe: a case whose
+                 anchor "moved" for a line-ending reason reports that it tested nothing, which
+                 is a false accusation from a gate — and a false accusation is how a gate gets
+                 switched off. `_mutate` now normalises before matching; restore is still from
+                 the saved bytes, so the round trip stays lossless.
+
+  NEXT       — one row left: `tilemap.l4.zone_narration`. Measured while scoping it, and it
+               changes the severity the registry claims: the narrations never leave the
+               harness — the only consumers are two report formatters, and BOTH already print
+               `fallback_count`. The real gap is type-level and future-facing (an
+               `L4Narration` carries no provenance, so a consumer that persists one cannot
+               tell a model's work from a canonical default) and it is present identically in
+               L3. Fix both or neither.
+```
+
+### ✅ AUDIT-4 · DoD-1 CLOSED — 9 of 9 generation paths guarded, across three languages.
+
+```
+AUDIT AUDIT-4 (generation paths — the last row, and the honest severity)
+  BUILT      — `harness::provenance::Provenance` (`llm` | `canonical_default`) on the ITEM:
+               `L4Narration.source` and `L3Classification.source`. `fallback_count` stays as
+               the aggregate; a test now pins the two against each other on a run producing
+               both kinds, so they cannot drift apart.
+               L3 was fixed in the same commit because the shape was identical there. Fixing
+               one consumer and leaving the other is a defect this run already recorded once,
+               with a name.
+               The serde default is a NAMED function (`provenance::from_tool_call`), not a
+               `Default` impl. A bare `Default` returning `Llm` is fail-OPEN: it would
+               silently attribute any future construction site that forgets the field to the
+               model. The name is there to say, at the point of use, that serde filling this
+               in IS the evidence a model produced it.
+
+  PROVEN     — `generation-guard-gate: PASS — 9 generation paths enumerated across 3
+               languages; 9 guarded, 0 tracked-unguarded.`  (5/4 at the start of this audit.)
+               Making the engine's own default claim a model wrote it:
+                 assertion failed: fallback_count=1 but 0 item(s) claim the engine made them
+                 assertion failed: the engine filled zone_b in and the item does not say so
+                 test result: FAILED. 7 passed; 2 failed        restored byte-identical: True
+               Full tilemap suite green: 467 + 13 + 16 + 10 + 9 + 8 + 5 + 5 + 4 + 3 + 13 = 553
+               tests, 0 failed, 1 ignored.
+               `guard-redability-gate: PASS — 15/15`.
+               The gate caught my OWN new file: `rust model-gateway callers grew 30 → 31`.
+               Raised with the reason, after reading it — `provenance.rs` declares one enum and
+               one function and makes no gateway call; it matches the detector on a word in its
+               module doc. One new file, zero new generation paths.
+
+  NOT PROVEN — **the severity the registry claimed for this row was wrong, and I checked
+               before building rather than after.** The narrations never leave the harness:
+               both consumers are report formatters and BOTH already print `fallback_count`.
+               So this closed a TYPE-LEVEL gap, not a live one — cheap precisely because it is
+               early, and it would be dishonest to describe it as a bug fix.
+               Rust still has no check-status vocabulary mirror. `Provenance` is a per-item
+               fact, not a `guard_status`, so the "every grading path returns a GuardReport"
+               reading of DoD-1 is satisfied in Python and Go and satisfied DIFFERENTLY here.
+               Recorded as debt rather than smoothed over.
+               And, as with the other three: nothing consumes `source` yet.
+
+  DRIFT      — one, and it is the same one three slices running.
+               I reached for `#[derive(Default)]` on `Provenance` first, because serde wanted a
+               default and the derive is one line. That default means `Llm` — the trusting
+               answer — for every construction site that ever forgets the field. It is the same
+               shape as the `!ok` branch I had just removed from the Go sweep and the silent
+               `done` frame I had just fixed in Python: when a value is missing, resolve to the
+               reassuring one. I keep having to catch this by re-reading rather than by a rule.
+
+  NEXT       — DoD-1 is closed. The remaining DoD gaps are 2 (resolved provider model), 3 (29
+               baselined budget sites + the unscanned raw-stream shape), 4 (22 baselined
+               injection modules) and 5 (4 estimators, 6 finding types). Item 4's translation
+               half is the only one with a live security surface behind it.
+```
+
+### ✅ AUDIT-5 · DoD-2 — the self-judge rule was checking the wrong thing, and the box proves it
+
+```
+AUDIT AUDIT-5 (distinctness on the RESOLVED provider model)
+  BUILT      — `LLMClient.resolve_model_identity` → `"<provider_kind>::<provider_model_name>"`,
+               and `critic_policy.resolve_critic_verified`, which all SEVEN router call sites
+               now go through via one `_resolved_critic` helper.
+               `CriticResolution.identity_verified: bool | None` — None (not attempted) /
+               True (both sides resolved and differ) / False (a resolver answered "unknown").
+               Identity deliberately EXCLUDES the endpoint: two hosts serving the same weights
+               are the same judge, because self-grading is a property of the model.
+
+  PROVEN     — the debt row was wrong TWICE, and checking the code rather than the note is
+               what found it: (a) it said "only `/context-window` exists" — `GET
+               /internal/models/{model_source}/{model_ref}/info` has been there since FD-27;
+               (b) it assumed the endpoint was needed for identity. So the whole slice cost a
+               client method, not a cross-service contract.
+               The defect is the DOMINANT state on this box, not a hypothetical:
+                 lm_studio::google/gemma-4-26b-a4b-qat   5 active user_models rows
+                 ollama::gemma3:12b                      5
+                 lm_studio::text-embedding-bge-m3        6
+               — and the first is what `scripts/dev-model.py` resolves for chat, i.e. the
+               default drafter. Any two of its five rows passed the old check.
+               LIVE, two real rows through the real route on the running stack:
+                 gemma row B (same weights) -> status=same_as_drafter distinct=False verified=True
+                 qwen3.6 (different)        -> status=configured      distinct=True  verified=True
+                 identities: lm_studio::google/gemma-4-26b-a4b-qat | lm_studio::google/gemma-4-26b-a4b-qat
+               composition `3953 passed, 8 failed (the tracked test_motif_retrieve_db rows,
+               unchanged), 8 skipped`; unit-only `3492 passed`.
+               `guard-redability-gate: PASS — 16/16`.
+
+  NOT PROVEN — no caching, on purpose and unmeasured: two extra internal HTTP calls per
+               generation, against an operation that costs seconds of LLM time. Adding a TTL
+               cache without measuring is the kind of thing this run keeps catching, so it is
+               named here rather than built.
+               `identity_verified` is a FOURTH emitted-but-unconsumed signal — no response
+               field, no FE surface. The pattern is now explicit in the Debt register.
+               And nothing verifies the two `provider_kind`s came from the same registry
+               instance; a multi-registry deployment could in principle mint colliding names.
+               Out of scope and, on a single-registry platform, not reachable.
+
+  DRIFT      — two.
+               · I wrote the URL as `/v1/model-registry/models/...` by pattern-matching the
+                 sibling `resolve_context_length`. The route lives in the OTHER chi group,
+                 `/internal/...`. A 404 there degrades to `identity_verified=False` silently
+                 and forever — the check would have shipped, passed its tests, and verified
+                 nothing. Caught by curling the real route, not by reading.
+               · Adding the method broke TWO test stubs, and I fixed the first one as it
+                 failed and re-ran, instead of sweeping for all of them. The repo already has
+                 the lesson row: audit ALL call sites when widening a contract. The second
+                 stub cost a full 90-second suite run to find.
+
+  NEXT       — DoD 3 (29 baselined budget sites + the unscanned raw-stream shape) and DoD 4
+               (22 baselined injection modules, 7 of them in translation-service, which is the
+               only remaining item with a live security surface behind it).
+```
+
+### ◐ AUDIT-6 · DoD-4 — translation cannot sanitize, so it detects; and the gate now says which
+
+```
+AUDIT AUDIT-6 (injection coverage — 2 of 22 rows cleared, and the OTHER 20 re-scoped)
+  BUILT      — `translation-service/app/workers/injection_report.py` +
+               `scan_untrusted_source`, wired into BOTH chapter paths (the legacy
+               `session_translator` and the decoupled worker), scanning once per chapter
+               where the untrusted bytes enter.
+               `injection-coverage-lint` now separates MUTATE coverage from DETECT coverage
+               and prints the detect-only set.
+
+  PROVEN     — the debt row said routing translation through `neutralize_injection` risks a
+               fidelity bug. Reading the sanitizers made that concrete and changed the shape
+               of the fix: in translation the untrusted text IS THE PRODUCT, so every
+               transformation corrupts it — escaping `<`/`>` changes characters the
+               translation must round-trip, bracketing a directive span writes editing marks
+               into the output ("you are now the head of this house" is dialogue), and even
+               the NFKC pre-normalisation is a silent rewrite of the author's text.
+               Composition had already learned half of this: `sanitize_prose_context` exists
+               because bracketing was wrong for prose it feeds itself.
+               So: DETECT, never mutate. The report has no return path carrying text, so a
+               caller CANNOT substitute a mutated chapter — the mistake is unavailable rather
+               than discouraged.
+                 injection-coverage-lint (full): OK — every retrieved-text prompt-assembly
+                 module routes through the sanitizer (20 baselined)
+                   2 module(s) are DETECT-only — the untrusted text is scanned and reported,
+                   NOT transformed, because it is the product
+               Stripping the scan back out:
+                 injection-coverage-lint: FAIL — prompt built from retrieved/external text
+                 with NO injection sanitizer (SEC-4 / ML-4)
+                   services/translation-service/app/workers/session_translator.py
+                 exit: 1        restored byte-identical: True
+               translation suite `1148 passed`; new file 9 tests.
+               `guard-redability-gate: PASS — 17/17`.
+
+  NOT PROVEN — **five of translation's seven rows are untouched** (`routers/translate.py`,
+               `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`,
+               `v3/corrector`). The two wired are the chapter paths, which carry the bulk of
+               imported text; the others need their own read, because "apply the same call"
+               is how a sweep gets something wrong. They stay baselined, which is a mechanism.
+               And DETECT is a WEAKER guarantee, stated as one: the payload still reaches the
+               model. Nothing yet ACTS on a non-zero `hits` — the report rides `resume_state`
+               and a log line. Fifth emitted-but-unconsumed signal this run.
+
+  DRIFT      — one, and it is about the gate rather than the code.
+               Adding `scan_untrusted_source` to `SANITIZER_REF` would have cleared two
+               baseline rows on its own — a weaker defence quietly satisfying a check written
+               for a stronger one, which is a ratchet cleared without the behaviour it tracks.
+               I nearly shipped exactly that: the first version of this slice added the name
+               to the regex and stopped. The DETECT/MUTATE split is the fix, and the PASS line
+               now names the count, because a gate that reports coverage without reporting
+               what KIND is the same two-states-collapsed-into-one defect it exists to catch.
+
+  NEXT       — DoD 3 (29 baselined budget sites + the unscanned raw-stream shape), DoD 5
+               (4 estimators / 6 finding types), DoD 7, and the five remaining translation
+               rows. Plus the pattern that is now five instances deep: signals emitted and
+               nothing reading them.
+```
+
+### ✅ AUDIT-7 — the pattern itself gets a mechanism: five debt rows nothing was counting
+
+```
+AUDIT AUDIT-7 (guard signals nobody reads)
+  BUILT      — `contracts/guard-signals.yaml` + `scripts/guard-signal-consumption-gate.py`,
+               wired into foundation-ci with a `--self-test`.
+               Every honesty signal a guard emits is registered with either a CONSUMER (code
+               that changes behaviour on the value) or an `unconsumed:` reason. The gate reds
+               on a phantom emitter/consumer, on a row declaring both or neither, and on the
+               unconsumed count GROWING. `UNCONSUMED_BASELINE = 4`.
+
+  PROVEN     — the reason this is a mechanism and not a sixth debt row: five of this cycle's
+               six closed gaps landed the same way — the HONESTY half shipped and the ACTING
+               half did not — and each was individually defensible, so nothing counted them.
+               A register is read one row at a time. It reached five before it was named.
+                 guard-signal-consumption-gate: PASS — 5 guard signal(s) registered;
+                 1 consumed, 4 held at baseline.
+               Injecting a sixth: RED. `guard-redability-gate: PASS — 18/18`.
+               `[guard-signals] SELFTEST PASS — a docstring + comment mention is NOT a use,
+               a real branch is (non-vacuous).`
+               `gate-teeth-gate: PASS — 60 CI-invoked gate(s), every one able to return
+               non-zero. 15 carry a red-ability proof.`
+
+  NOT PROVEN — the gate checks that a consumer file NAMES the field in code. It cannot prove
+               the reference is load-bearing — a consumer row is a claim a reviewer can check,
+               while an `unconsumed` row is honest by construction. That asymmetry is the
+               design: the direction that can lie is the one a human signs.
+               And the four held rows are still four unread signals. This gate does not fix
+               them; it stops the fifth from becoming a sixth and puts a number on the habit.
+
+  DRIFT      — one, and the gate caught it on its FIRST run, on my own row.
+               I registered the `guard_status` consumer as
+               `engine/chapter_scene_gate.py`. No such file. The name comes from a COMMENT in
+               `canon_check.py` describing the concept, and I copied it into a claim about the
+               filesystem — the same prose-read-as-behaviour defect this cycle has now hit six
+               times, committed while writing the gate against it. The real consumer is a SQL
+               fragment in `db/repositories/outline.py`.
+
+  NEXT       — the four held signals, each a small concrete step named in its row. Then DoD 3
+               (29 baselined budget sites), DoD 5 (4 estimators / 6 finding types), DoD 7, and
+               translation's remaining five modules.
+```
+
+### ✅ AUDIT-8 — auditing the six audit commits. Three defects, all mine, two in the gates.
+
+```
+AUDIT AUDIT-8 (review of AUDIT-1..7)
+  BUILT      — three fixes, and one claim upgraded from unverified to measured.
+               · `guard-redability-gate` gains MIN_PROVED — a per-mode floor on cases that
+                 actually RAN.
+               · …and an orphan check on REQUIRES_ENV keys.
+               · The `translation.injection_scan` registry row, corrected: it overstated.
+               · A 19th sweep case: the Go check-status mirror inventing a member.
+
+  PROVEN     — the method was to state falsifiable hypotheses and probe them, not to re-read
+               my own AUDIT blocks. Four hypotheses, two confirmed as defects:
+
+               1. **CONFIRMED — the gate written to catch checks-that-cannot-fail passes
+                  having verified nothing.** Forcing every case to skip:
+                    guard-redability-gate: PASS — 0/0 guard(s) proved RED-ABLE …  exit: 0
+                  `--gates-only` is what runs in CI, so retiering those cases to SUITE would
+                  have left CI green forever. Fixed; the floor is red-able:
+                    FAIL — only 0 case(s) actually ran in gates-only mode; the floor is 5.
+
+               2. **CONFIRMED — REQUIRES_ENV couples by case-name STRING.** A renamed case
+                  sheds its dependency requirement, its suite then SKIPS, and it is reported
+                  STILL-GREEN — the false accusation the mapping exists to prevent. Fixed:
+                    FAIL — REQUIRES_ENV names case(s) that do not exist
+
+               3. **REFUTED, and now measured rather than assumed.** AUDIT-3 recorded "I did
+                  not trace what `chapter_scene_gate` does with `not_run`". Evaluated against
+                  the REAL predicate on the real database:
+                    before: co-write job, NO canon key   -> no_envelope -> counted unchecked
+                    after:  co-write job, canon.not_run  -> not_run     -> counted unchecked
+                    control: a genuinely checked job     -> checked     -> NOT counted
+                  No behavioural change: the gate already treated a missing envelope as
+                  unchecked. The declaration changed what a READER can learn, not what the
+                  gate decides — which is exactly what it was supposed to do.
+
+               4. **CONFIRMED — my own registry row overstated.** It said the injection scan
+                  is "recorded on resume_state and logged". `resume_state` exists only on the
+                  DECOUPLED path and `translation_decouple_enabled` defaults to FALSE, so on
+                  the path that actually runs the report is a log line. An overstatement in
+                  the file whose entire purpose is not overstating. Corrected.
+
+               Also proved on disk for the first time: the Go polyglot lock.
+                 drift: Partial = "partial" is not in contracts/guard-status.contract.json
+               `guard-redability-gate: PASS — 19/19`; gates-only 7/7;
+               `gate-teeth-gate: PASS — 60 CI-invoked gate(s)`; signal gate SELFTEST PASS.
+
+  NOT PROVEN — I audited the GATES hardest because that is where I had least confidence, and
+               spot-checked the behaviour changes. I did not re-derive the Rust provenance
+               work or the Go sweep logic from scratch. And MIN_PROVED's floors (12 / 5) are
+               judgement, not measurement: low enough not to red on ordinary edits, and I have
+               no evidence about where the right line is.
+
+  DRIFT      — one, and it is mechanical rather than a misjudgement: writing Python source
+               INSIDE a `python - <<'PY'` heredoc double-escapes, so `\\n` and `\\t` land as
+               real characters and the file stops parsing. Third occurrence today. The fix is
+               to write the patch script to a scratchpad file and run it — which I did twice
+               and then forgot the third time.
+
+  NEXT       — unchanged: four unread signals, translation's five remaining modules, DoD 3,
+               DoD 5, DoD 7.
+```
+
+### ✅ AUDIT-9 — the first of the four held signals grows a reader. Ratchet 4 → 3.
+
+```
+AUDIT AUDIT-9 (guard-signals: glossary.kg_sweep_coverage — unconsumed → consumed)
+  WHY THIS  — the registry made four unread signals visible as a SET, which was the point of
+  ONE FIRST   writing it. But a ratchet only stops a FIFTH; it does not fix the four. Picked the
+              smallest so the shape of a real consumer gets established once, cheaply, before
+              the three harder ones (a gate on a published metric, a publish-gate surface, a
+              DB column with eight call sites) argue about their own designs.
+
+  BUILT      — `kg_unchecked` now changes what the user sees, in two places:
+                 · useWikiStaleness.rescan — a coverage gap downgrades `toast.success` to
+                   `toast.warning`. An incomplete answer is not a success, and the green tick
+                   is what made an outage look like a clean book.
+                 · KnowledgeUpdatesPanel — a standing amber banner, rendered ABOVE the feed
+                   and above the EMPTY state. Position is load-bearing: "all up to date" with
+                   the caveat below the fold is the same lie with an extra scroll.
+               THREE states, not two: compared-everything · compared-N-of-M · coverage-not-
+               reported-at-all. The third exists because the wire may omit the field (an older
+               glossary during a rolling deploy) and `undefined > 0` is false.
+               19 files: hook, panel, types, 18 locales x 3 keys, 2 test files.
+
+  PROVEN     — both halves mutated on disk against the real test files, restored from saved
+               bytes with a sha256 check (never `git checkout <file>` — that discards the real
+               edits living in the same file):
+                 A. hook  — the branch that reads kg_unchecked: green-before=True red-after=True -> PROVED
+                 B. panel — the standing banner that renders it: green-before=True red-after=True -> PROVED
+                 restored, sha256 verified for every file touched
+               Full FE suite 845 files / 6344 tests PASS · tsc --noEmit clean ·
+               i18n-completeness-gate OK, 20 locale-dirs x 35 namespaces at `en` parity ·
+               guard-signal-consumption-gate PASS — 5 registered, 2 consumed, 3 held.
+
+  DRIFT      — two, both mine, both the same family as everything else this run:
+               · I nearly shipped the toast ALONE and called it a consumer. The gate would
+                 have agreed — it can prove the field is referenced in code, not that the
+                 reference is load-bearing — and the registry row would have been true while
+                 the defect survived: step away for four seconds and the panel is empty, green
+                 and silent again. Only reading catches this. No mechanism I have does.
+               · I typed the three new fields OPTIONAL, then "fixed" it by making them
+                 REQUIRED — which fixes nothing, because the type is a declaration and the wire
+                 is not bound by it. Caught on self-review, one step after writing the drift
+                 row congratulating myself for the first half.
+
+  NEXT       — three held signals: `exclusion_unverified` (a gate on a published metric),
+               `identity_verified` (DoD 7's publish-gate surface — same slice), and
+               `injection_scan` (a column + a signature change). Then DoD 3, 4b, 4c, 5.
+```
+
+### ◐ AUDIT-10 · DoD-3 — widen the denominator FIRST, and it immediately found an uncapped judge.
+
+```
+AUDIT AUDIT-10 (budget seam — the unscanned surface, then the backlog)
+  ORDER      — the scanner was widened BEFORE anything was drained, on purpose. Draining a
+               backlog whose denominator is still incomplete is how a count reads DONE while
+               the surface nobody scanned stays broken; this run already has that lesson
+               written down twice. The cost was honest and visible: the backlog went UP first.
+
+  FOUND      — the gate's PASS line had named `raw POST /internal/llm/stream (chat,
+               lore-enrichment, video-gen)` as NOT scanned. Measured, that note was two thirds
+               WRONG: chat and video-gen go through the SDK and were already scanned. Only
+               lore-enrichment hand-rolls a body — and one of its two sites, the C15 EVAL
+               JUDGE, had **no `max_tokens` key at all**. Uncapped, on a call whose consumer
+               parses strict JSON. An excluded surface with an accurate label is still an
+               excluded surface.
+                 · Form 3 added: a dict literal carrying BOTH `"operation"` and `"messages"`
+                   IS a provider-registry request. Stated as SHAPE, not "an HTTP body",
+                   because that is what it matches — and the difference mattered on the first
+                   run, which surfaced `composition/app/routers/engine.py`: not an outbound
+                   body but a PERSISTED job record whose `max_out` comes off the API request.
+                 · services/lore-enrichment-service/app/llm_budget.py — the service's first
+                   registry. Two rows, and they are different SHAPES: `generate_gap_completion`
+                   is an adoption (`was=4000`, the no-downgrade test applies);
+                   `eval_judge_usefulness` is a NARROWING (`was=None`). A row recording `was=0`
+                   would satisfy `budget_for >= was` for every conceivable value — a test that
+                   cannot fail wearing the costume of coverage. `was=None` obliges
+                   `narrowing_why`, so the exemption has to state its own reason.
+                 · The judge's kind is STRUCTURED, not VERDICT, and that is the judgement in
+                   the row: `parse_judge_verdict` accepts a JSON object or nothing, so a
+                   clipped verdict is not a shorter answer, it is the proposal silently
+                   dropping out of that judge's denominator.
+                 · …which obliges the finish_reason check the contract requires of a fatal
+                   kind. The raw-SSE surface had no way to make one, so
+                   `collect_stream_finish_reason` was added — and rather than paste a THIRD
+                   copy of the SSE frame walker beside the two already in that file, all three
+                   now share `_iter_frames`.
+
+  DRAINED    — two detectors, two blind spots, and the union is what the backlog actually is:
+               · budget gate: **29 → 30 → 26**. Three literal/default origins converted
+                 (`self_heal_rerank` 400, `plan_heal` 2000/700, `error_block_heal` 1200) and
+                 one HAND-ROLLED SIZER folded into the registry — `succession_entailment`'s
+                 `128 + 24n` was a second sizing model with no floor and no window clamp.
+               · registry test's `_KNOWN_HELPER_LITERALS`: **3 → 0**. These are budgets handed
+                 to a helper that forwards, so they never reach the gate's payload scan.
+                 `chapter_beat_map` and `material_search` both had a target the caller already
+                 held (`len(chapters)`, `max_candidates`).
+               · `_helper_params_by_call` — the gate could not see an attributed caller feeding
+                 a private helper, which after the literals were drained was the LARGEST
+                 remaining category (5 of 12 composition sites). The budgets were already
+                 correct; the gate was calling them debt.
+
+  PROVEN     — the widening is the dangerous half, so it gets the sweep case:
+                 attributed-before=True  unattributed-after=True
+                 -> PROVED — one literal caller still defeats the binding
+                 restored, sha256 verified
+               That is the exact shape `_ssot_local_names_by_call`'s docstring names as the
+               reason NOT to widen: one caller of an otherwise-attributed helper passing a flat
+               number. It is now case 20 in `guard-redability-gate` (8/8 gates-only).
+               Suites: composition **3580 passed, 403 skipped**; lore-enrichment 50 targeted.
+               `llm-budget-ssot-gate: PASS — 97 sites scanned` (was 94).
+
+  DRIFT      — three:
+               · `target=len(result.scenes)` on a `DecomposeResult` that has no `.scenes` — it
+                 has `.chapters`. Parses fine; would have raised AttributeError on the first
+                 real plan-heal run. Caught only by reading the dataclass.
+               · The CRLF anchor trap AGAIN — a multi-line probe anchor written with LF reports
+                 ANCHOR-GONE on text plainly in the file. Already fixed once in
+                 `guard-redability-gate`; hit again in a new probe.
+               · The `python - <<'PY'` heredoc double-escape, FOURTH time today. Two of the
+                 four I solved correctly by writing the script to a file first, then reached
+                 for the heredoc again. Knowing the failure has not stopped me repeating it.
+
+  NEXT       — 26 held: knowledge-service (10, incl. TWO more hand-rolled `_max_tokens_for`
+               sizers and no registry at all), translation (4), worker-ai (1), SDK (2), and 9
+               composition sites whose budget originates in a router/settings/API field.
+```
+
+### ◐ AUDIT-11 · DoD-3 — knowledge-service had THREE sizing models and no registry. 26 → 16.
+
+```
+AUDIT AUDIT-11 (budget seam — knowledge-service)
+  FOUND      — not two sizers, three, and two of them byte-identical:
+                 passages.py   _rerank_max_tokens(n) = max(32, 8 + 5n)
+                 motif_tag.py  _max_tokens_for(n)    = 256 + 48n
+                 thread_tag.py _max_tokens_for(n)    = 256 + 48n   (a COPY)
+               Two modules carried the same formula and neither knew about the other. That is
+               the argument for a registry rather than for a shared helper: a helper would have
+               been a fourth place to look.
+
+  BUILT      — services/knowledge-service/app/llm_budget.py, ten rows. The per-item SHAPE each
+               sizer encoded survives as the row's `target`; what they were all missing is the
+               floor, the reasoning allowance and the window clamp around it.
+                 · `ceiling` is the row that proves the field earns its place. `rerank_passages`
+                   was tiny ON PURPOSE — the call runs under a 1.0s timeout, tighter than the L3
+                   timeout wrapping it, and the cap is what stops a rambling model spending that
+                   second. Adopting the STRUCTURED floor without a ceiling would have quietly
+                   deleted a LATENCY control while looking like a safe upgrade. It is passed
+                   PER CALL (`8 + 5n`), because the bound is a function of the batch.
+
+  CAUGHT     — `_MAX_OUTPUT_TOKENS` in regenerate_summaries is read TWICE: as the wire cap and
+               as the K20.6 `token_overflow` rejection threshold. Replacing only the cap would
+               have left the rejector policing 500 while the wire allowed 1024, so a legitimate
+               summary would come back rejected. It is now DERIVED from the same row instead of
+               restated. Textbook "an adjacent decision defeats it" (NV) — both edits
+               individually correct, the pair silently wrong.
+
+  PROVEN     — knowledge **4108 passed, 561 skipped** (`-n auto --dist loadgroup`).
+               `llm-budget-ssot-gate: PASS` — unattributed **26 → 16**, attributed 25 → 35.
+               One test failed first and it was the right one to fail:
+                 AttributeError: module 'app.extraction.thread_tag' has no attribute
+                 '_max_tokens_for'. Did you mean: 'max_tokens_for'?
+               `test_max_tokens_scales_above_the_old_fixed_cap` guarded the sizer's properties,
+               so it follows them onto the row rather than being deleted. Its monotonicity
+               assertion had to change shape: below the floor the budget is deliberately FLAT,
+               and asserting strict monotonicity from n=1 would assert against the safety net
+               rather than against the sizing model.
+
+  DECLARED   — the no-signal axis grew **9 → 13**, and it is a widened denominator, not new
+               debt: ten sites became ATTRIBUTED in this change and four of them land straight
+               on the second axis, because their call site holds no truthful `target` yet.
+               Passing `language=` to make the number go down is exactly the theatre that axis
+               was redesigned to reject — the kind discards it and no budget changes. They stay
+               counted.
+
+  NEXT       — 16 held: composition 6 (a router/settings/API-field origin each), translation 4,
+               worker-ai 1, SDK 2, motif_mine/motif_deconstruct 3.
+```
+
+### ◐ AUDIT-12 · DoD-3 — translation's window clamp was the FOURTH sizing model. 16 → 13.
+
+```
+AUDIT AUDIT-12 (budget seam — translation-service) · commit 30c20b1f9
+  FOUND      — `min(_TRANSLATION_MAX_OUTPUT_TOKENS, max(2048, window - prompt - 2048))`, in the
+               decoupled worker and again in the session translator. Counting composition's
+               `succession_entailment` and knowledge's three, that is FIVE independent sizing
+               models found in one day, in four services, none aware of the others.
+               It is a BETTER bound than the SDK's window share — it knows the actual prompt
+               size — so it survives as the `translate_batch` row's per-call ceiling (which can
+               only LOWER) rather than being replaced by a worse one.
+               PROSE, not MIRROR: the sibling rows send no cap because the source sets the
+               length; these two deliberately DO cap, and a MIRROR row short-circuits every
+               signal to return the omit sentinel.
+               Plus `fold` / `resummarize`, where the CEILING is the length control — both
+               bounded by the glossary rune cap, neither prompt carrying a length directive.
+
+  CAUGHT     — by a test, and it was a bug I introduced: `language=source_language` named a
+               variable that does not exist in that scope. The NameError was swallowed by the
+               best-effort try/except and every synthesis returned `failed` instead of
+               `synthesized`. Prompt and budget now share ONE resolved language.
+
+  PROVEN     — translation **1151 passed**. Gate PASS: unattributed 16 → 13, attributed 38.
+
+  BOARD      — 13 held, and the remainder is NOT more of the same:
+                 · composition motif_mine ×2 / motif_deconstruct ×1 — genuine literals, next.
+                 · composition select/self_heal/stitch/engine.py/glossary_build/intent_fsm — the
+                   budget originates in a ROUTER, a settings field, or the API request. A
+                   different category: not an undecided number, a number decided elsewhere.
+                 · `session_translator.translate_batch_with_retry` — a kernel with a caller in
+                   ANOTHER module, so the helper binder correctly refuses it.
+                 · `sdks/loreweave_llm/structured.py` — `max_output_tokens` is a REQUIRED
+                   parameter there ("no silent unbounded budget"). That IS the seam; it should
+                   be exempted by name rather than "drained".
+```
+
+### ✅ AUDIT-13 · DoD-3 — "required is not an exemption". 13 → 1, and 0 literals repo-wide.
+
+```
+AUDIT AUDIT-13 (budget seam — the author's ruling)
+  RULING     — I proposed exempting `sdks/loreweave_llm/structured.py` because its
+               `max_output_tokens` is a REQUIRED parameter, i.e. "that IS the seam".
+               Author: *"co bat buoc hay khong thi cung phai centralize de kiem soat"* —
+               required or not, it still has to be centralized to be controlled.
+               That was right, and the reason is sharper than my objection: a required INT
+               still lets every caller invent its own number. "Required" only guarantees that
+               SOMETHING was passed, never that it came from anywhere.
+
+  WHAT IT     · `structured_generate` takes a `CallBudget`, not an int. It cannot be handed a
+  CHANGED       number at all now, and the caller gets `truncation_is_fatal` for free instead
+                of re-deriving it.
+              · The injected LLM seams in `glossary_build` / `intent_fsm` take a registry
+                CODE. Same argument one level up: an engine that cannot be handed an integer
+                cannot re-introduce a literal.
+              · `body.max_output_tokens` may only NARROW. This was a REAL CONTROL HOLE, not a
+                tidiness issue: `body.max_output_tokens or min(computed, settings.<ceiling>)`
+                let the request beat the DEPLOY CEILING outright. Nothing had gone wrong only
+                because `SCENE_OUTPUT_CEILING` and both deploy ceilings are all 32768 today —
+                lower either for a small-context deployment, which is what a deploy ceiling is
+                FOR, and a request walks straight past it. `narrowed_by_request` is now the one
+                place a request field touches a budget, with a test that pins the 8192 case.
+
+  BLIND SPOTS FOUND (three more, on top of the raw-body surface in AUDIT-10)
+              · POSITIONAL budgets — `await llm(messages, 900)`. The gate reads payloads; the
+                registry test reads `max_tokens=` KEYWORDS. Seven literals in two services,
+                invisible to both. The seams are keyword-only now, so they cannot recur.
+              · SUFFIXED parameter names — `judge_max_tokens=2200`, `edit_max_tokens=1200`,
+                signature defaults sitting in the open while `sigs` read **0 repo-wide**.
+                Naming a parameter after WHICH call it sizes is the natural thing to do when
+                one function drives two, and it put both outside an exact-match check.
+              · A ONE-PASS helper binder. `_chat <- _judge <- _judge_vote <- _compute_edits <-
+                run_self_heal` is four hops; one pass resolves only the innermost, so a
+                correctly attributed budget reads as debt purely because its call chain is
+                deep. Iterated to a fixpoint.
+
+  ALSO       — `cowrite.scene_output_budget` was the SIXTH sizing model: its per-word table,
+               headroom factor and reasoning allowance were IDENTICAL to the SDK's, value for
+               value. Not a variant — a duplicate, missing only the floor and the window clamp.
+               It delegates now. Six independent sizing models, five services, one day.
+
+  PROVEN     — `llm-budget-ssot-gate: PASS — 97 sites scanned`
+                 50 traced to call_budget() · **1 held at baseline (0 literal, 1 unattributed,
+                 0 signature defaults)** · 46 built off-site, not statically visible.
+               composition **3608 passed** / 403 skipped · knowledge **4108** / 561 ·
+               translation **1151** · SDK **1017** / 9 · worker-ai **504**.
+               Widening re-proved red-able after every change:
+                 attributed-before=True  unattributed-after=True
+                 -> PROVED — one literal caller still defeats the binding
+               gate-teeth-gate PASS 60 · guard-redability-gate 8/8 gates-only.
+
+  THE ONE    — `self_heal.py:221`. Registry-derived at every origin; the binder resolves its
+               chain only partially. Left ON the ratchet rather than exempted — an exemption
+               is how a blind spot becomes permanent, which is the whole lesson of this block.
+
+  DRIFT      — I wrote `was=4000` for a row whose real constant was 3000, and inserted it
+               between another row and the comment explaining it. Both caught by re-reading
+               the file I had just written, not by any check.
+```
+
+### ◐ AUDIT-14 · DoD-5 + DoD-4b — measured, not refactored. **Header CORRECTED by AUDIT-19.**
+
+> **This block claimed DoD-5 closed and only addressed ONE of its four limbs.** The clause is
+> *"one context-budget estimator …; one heal-stage protocol; one finding type; one pass
+> registry"*, and **"one finding type" is S3, which this file's own board marks ◐** — the
+> `skip_reason` vocabulary landed, the `locator` union did not, five producers still carry five
+> locators. Estimators, heal protocol and pass registry hold as written below. Left in place
+> rather than rewritten, because a header that overclaimed and a body that measured honestly is
+> the more useful record of how the overclaim happened.
+
+```
+AUDIT AUDIT-14 (one estimator · an expiring baseline)
+
+  DoD-5, MEASURED FIRST — and my own NEXT note was stale on two of its three items:
+              · `PASS_REGISTRY` "in 6 files" is ONE definition with four importers. Already
+                converged; the note was describing consumers as copies.
+              · translation's `estimate_tokens` ALREADY delegates to the kernel (S11).
+              · So the real inventory is FIVE estimators across FOUR languages, and they do
+                not want to be one:
+                  loreweave_context/tokens.py        the script-aware KERNEL
+                  translation/chunk_splitter.py      a DELEGATOR to it
+                  knowledge/token_counter.py         tiktoken BPE — STRICTLY more accurate
+                  lore-enrichment/jobs/tokens.py     the BILLING convention
+                  provider-registry/billing/estimate.go   that convention itself, in Go
+              The DoD line already says the billing convention stays separate. And folding
+              knowledge INTO the kernel would make a context-window count WORSE — the kernel
+              measured ~0.78x tiktoken on Vietnamese this run. Converging the other way moves
+              chunk sizes and therefore per-chapter LLM cost everywhere: a decision with a
+              price tag, not a tidy-up.
+
+  SO         — `scripts/estimator-ssot-gate.py`. It cannot force four into one, and says so.
+               What it stops is the FIFTH: every estimator is registered with the reason it is
+               not the kernel, an unregistered one fails, an empty reason fails, and a STALE
+               row fails too (a registry that only grows stops describing the repo). Wired
+               into CI with `--self-test`.
+
+  DoD-4b     — the injection baseline now EXPIRES, and deliberately NOT on a calendar: a date
+               reds CI on an arbitrary Tuesday for whoever happens to push, which teaches
+               people to bump the date. It expires when its REASON stops being true.
+               Five of the twenty rows say "a sibling sanitizes this and per-file coverage
+               cannot see across the call". That is a real argument AND a standing exemption
+               whose justification lives in another file — the escape-hatch-outliving-its-
+               reason shape (NV-6) with a security payload. Each such row now NAMES its
+               upstream and the lint verifies that file still sanitizes, every run.
+               `BASELINE` is a `dict[str, BaselineRow]`: `kind` + a required `wakes_when` +
+               `upstream` required exactly for the SANITIZED_UPSTREAM kind. A row with no exit,
+               an unverifiable claim, or a GENUINE_GAP row claiming an upstream all fail.
+
+  PROVEN     — both mechanised, both proved against a REAL on-disk violation:
+                 DoD-4b injection — a baselined module's UPSTREAM stops sanitizing      RED
+                 DoD-5 estimators — a FIFTH token estimator appears in a production module RED
+               `guard-redability-gate: PASS — 10/10` · `gate-teeth-gate: PASS — 61`.
+               While writing the rows I checked the one claim I could not see: `glossary_build`
+               has no sanitize call in `service.py` — it is in `prompts.py`. The claim held,
+               but I only know that because the mechanism made me name the file.
+
+  NEXT       — DoD-4c (five translation modules, each read individually), DoD-7 (re-measure,
+               do not trust the note), and the three held signals.
+```
+
+### ✅ AUDIT-15 · DoD-7 measured CLOSED, and wiring its held signal found the real gap.
+
+```
+AUDIT AUDIT-15 (the acceptance test · identity_verified reaches the publish gate)
+
+  DoD-7, MEASURED — not trusted from my own note. The acceptance test exists, runs in CI, and
+              has its control:
+                tests/unit/test_plan_conflict.py::test_the_MI_DE_defect_is_a_conflict
+                tests/unit/test_plan_conflict.py::test_CONTROL_a_scene_that_kills_NOBODY_is_clean
+              plus the wiring and the blocking tier:
+                test_the_violation_reaches_the_envelope_the_FE_reads
+                test_a_CONFIRMED_conflict_is_HARD_and_blocks_publish
+                test_a_judge_that_CLEARS_it_does_not_block
+              37 tests green. The Mị Đế defect is caught by a gate, not by a human reading
+              prose. **DoD-7 detection is CLOSED.** (Prevention remains disproven — recorded.)
+
+  THE GAP    — reading the blocking tier is what exposed it. Commit 90f513632 fixed the
+              distinct-critic rule to compare the RESOLVED PROVIDER MODEL, because five
+              `user_model_id` rows on this box are ONE model. The router adopted it. The path
+              that decides whether a conflict BLOCKS A PUBLISH did not — it compared REFS,
+              which cannot see two rows collapsing to one model. The fix shipped and never
+              reached the place it was for.
+
+  BUILT      — `identity_verified` now gates the ADVISORY → HARD promotion. Unverifiable
+              identity ⇒ the conflict stays advisory, the same direction the file already
+              takes for a judge that is down: a judge we cannot vouch for must not BLOCK.
+              `None` is deliberately NOT `False` — only an ATTEMPT that FAILED downgrades;
+              treating an absent signal as failure would disable the blocking tier on every
+              path that does not resolve identity, which is the false-green in reverse. Three
+              tests: the downgrade, the CONTROL that still blocks, and the None case.
+              `UNCONSUMED_BASELINE` 3 → 2.
+
+  DRIFT      — two, and the first is the serious one:
+              · **I nearly deleted a live guard by reading one caller.** I called
+                `canon_reflect`'s `resolve_critic_refs` a redundant NINTH copy and removed it,
+                reasoning that the caller blanks the refs when they are not distinct. True of
+                the ROUTER — the caller I had read. `app/worker/operations.py` passes
+                `judge_source=critic_source or model_source`: with no critic configured, the
+                DRAFTER's own refs arrive. Removing it would have let a model certify its own
+                death on every background generation — invariant 2, on the unattended path.
+                A pre-existing test caught it, not me. It is defence in depth, not duplication.
+              · I named the parameter `judge_identity_verified`, so the file never contained
+                the string `identity_verified` and the consumption gate correctly refused the
+                row: a consumer that does not name the field is not one. Renamed — one name
+                for one concept, which is the rule the gate is enforcing.
+
+  NEXT       — DoD-4c (five translation modules) and two held signals
+               (`exclusion_unverified`, `injection_scan`).
+```
+
+### ✅ AUDIT-16 · DoD-4c — the five translation modules, read one at a time. DETECT 2 → 6.
+
+```
+AUDIT AUDIT-16 (translation's remaining unsanitized prompt assemblies)
+
+  WHY ONE AT A TIME — the Debt row said it: "apply the same call across five modules" is how a
+              sweep gets one wrong, and two of them fold a TRANSLATION as well as a source.
+              Read individually, the placements are NOT uniform:
+
+              · `v3/corrector.py` — folds TWO untrusted strings, and they are untrusted
+                DIFFERENTLY. The source is imported third-party text; the draft is model output
+                that may carry a directive the source planted OR one the model invented.
+                Separate `where` labels, so a hit names the side. Scanning only the source
+                would miss the second; one label would read as the same finding twice.
+              · `v3/bilingual_extractor.py` — same two-string shape, and the interesting part
+                is that its OUTPUT is JSON, not prose, so "the untrusted text is the product"
+                looks inapplicable. It is not: the extractor must return EXACT source
+                substrings as each pair's `source`, so a neutralised chapter would make every
+                harvested name fail to match the book. Same fidelity argument, different
+                product. DETECT.
+              · both scan inside `_build_messages`, the choke point reached by the sync path
+                AND the decoupled submit-kwargs path — a placement a new caller cannot bypass.
+              · `routers/translate.py` — scans `body.text` where the REQUEST's bytes enter.
+              · `decoupled_block_translate.py` — scans per BATCH, not per chapter, because the
+                batch is the unit this worker sees; the `where` carries the block range so two
+                hits are two findings rather than one repeated.
+              · `extraction_worker.py` — its two prompt sites BOTH reach the chapter through
+                `build_user_prompt`, so the scan goes there, before the `⟦B#⟧` block-hint
+                rewrite (scanning after would report the platform's own brackets as findings).
+
+  A THIRD KIND — that last placement means `extraction_worker.py` is covered by a file the
+              per-file lint cannot see, i.e. exactly the upstream case AUDIT-14 mechanised. But
+              its upstream DETECTS rather than mutates, so folding it into SANITIZED_UPSTREAM
+              would let a weaker promise wear a stronger label — the thing the MUTATE/DETECT
+              split exists to prevent. `DETECT_UPSTREAM` is its own kind, verified against the
+              detect-only references.
+
+  RESULT     — DETECT-covered **2 → 6**; four baseline rows deleted, one converted.
+               `injection-coverage-lint: OK (16 baselined)` · translation **1151 passed** ·
+               guard-redability 10/10 · gate-teeth 61.
+
+  HONEST     — this adds four more emitters to a signal nobody reads. `injection_scan` is the
+               last held row and its hits still change nothing: DETECT is only a defence if
+               somebody is TOLD. The scans are worth having anyway — they are what makes the
+               telling possible — but the count of unread signals did not go down here, and
+               calling this slice "translation is defended" would be the overstatement the
+               registry caught me making once already.
+```
+
+### ✅ AUDIT-17 · `exclusion_unverified` gets a reader — and it was not merely unread.
+
+```
+AUDIT AUDIT-17 (the fourth held signal · and where the fifth genuinely stops)
+
+  FOUND      — the same shape as `identity_verified`, and that is now two for two: wiring a
+              signal did not just give it a reader, it revealed that the producer was broken.
+              `exclusion_unverified` was DROPPED at the `EvalResult` boundary. `score_dump`
+              read it off `PanelSafety` and threw it away, so the structure whose own docstring
+              says "for persistence" could not carry the fact at all. Not an unread signal — a
+              LOST one.
+
+  BUILT      — `metric_of_record_blockers(result)`, the ONE place that answers whether a number
+              may be quoted as the metric of record. The rule it encodes could not be expressed
+              by the boolean that existed: `panel_safety` keeps `safe=True` for a defaulted
+              exclusion that matched nothing — deliberately, since otherwise every unconfigured
+              deployment reports unsafe — so `panel_safe` covers BOTH a genuinely clean panel
+              and one whose exclusion refs belong to another machine, with a self-grader
+              possibly sitting in it ungraded. `user_model_id`s are per-machine; that is
+              exactly what a panel from another deployment looks like.
+              Forwarded to `EvalResult`, persisted to `eval_runs.exclusion_unverified` (its own
+              column, NOT folded into `panel_safe`), so the question is answerable from a
+              stored run rather than only from the in-memory result that computed it.
+              Three tests: the block, the CONTROL that still certifies, and one pinning the
+              field's survival across the boundary it used to die at.
+              `UNCONSUMED_BASELINE` 2 → 1.
+
+  WHERE THE LAST ONE STOPS — `injection_scan`, and this is a slice rather than a wire. The
+              Debt row's step is "a column on `chapter_translations` plus a return from
+              `translate_chapter`". Checked: **`chapter_translations` belongs to BOOK-SERVICE**,
+              not translation — translation reaches it through `book_client`. So telling the
+              importer means a Go migration, an API field, and an FE surface across two
+              services. Not started rather than half-built: four more emitters were added to
+              this signal today (DoD-4c) and a partial consumer would make the count look
+              better while the importer still hears nothing.
+
+  SCORE      — 5 signals: 4 consumed, 1 held. The registry started this run at 5 held.
+```
+
+### ✅ AUDIT-18 · the last held signal. Registry 5 held → **0**.
+
+```
+AUDIT AUDIT-18 (translation.source_injection_hits reaches the importer)
+
+  CORRECTION — I closed the previous turn saying this was a cross-service slice because
+              `chapter_translations` belongs to book-service. It does not. The table is
+              defined in **translation-service's own `migrate.py`**, and I had inferred the
+              owner from a COMMENT in `book_client.py` that mentions the name. Prose read as
+              behaviour — the defect this cycle has now hit seven times, and this one cost a
+              turn of not-doing-the-work on a wrong premise.
+
+  BUILT      — the shape was already in this table end to end, so it is mirrored rather than
+              invented: `is_glossary_stale` has a column, a model field, an API field, a
+              badge in `TranslationViewer`, and a BRANCH in `routers/actions.py`.
+                · `chapter_translations.source_injection_hits`, written by BOTH chapter paths.
+                  It previously lived only in `resume_state` — which `_clear_resume_state`
+                  wipes the moment the chapter finishes, i.e. exactly when the translation
+                  becomes readable. The record of the scan vanished at the moment it became
+                  useful.
+                · NULLABLE, and the badge tests `> 0` rather than truthiness. `null` (nobody
+                  looked) and `0` (looked, clean) are different answers, both falsy, and only
+                  one is an answer. A `DEFAULT 0` would have written "clean" over every
+                  historical row — the false-green this whole run is about, in a schema default.
+                · 18 locales; the title says plainly that this is a heads-up and not a block,
+                  because translation never rewrites its source.
+
+  THE NAME   — the gate refused the row twice and was right both times. First the FE named
+              the field `source_injection_hits` while the registry said `injection_scan`: two
+              names for one concept, across the exact boundary the registry exists to watch.
+              The in-memory report is `injection_scan`; what CROSSES is the count. Registered
+              under the name that crosses.
+
+  ALSO       — the gate's own PASS line claimed something about "held signals" unconditionally,
+              so at zero it described a set that no longer existed. Small, and exactly the
+              thing this gate is for.
+
+  SCORE      — **5 registered, 5 consumed, 0 held.** The registry opened this run at 5 held.
+              Three of the four wired today turned out to be BROKEN AT THE PRODUCER rather
+              than merely unread: a fix that never reached the publish gate, a field dropped
+              at a boundary, and a scan wiped the instant it mattered. That is the argument
+              for the mechanism, and none of it was visible from the emitting side.
+
+  PROVEN     — translation **1151 passed** · FE translation suite **52 passed** ·
+              `tsc --noEmit` clean · i18n parity 20 locale-dirs × 35 namespaces ·
+              guard-signal-consumption **5/5 consumed** + SELFTEST · guard-redability 10/10 ·
+              gate-teeth 61 · llm-budget PASS · estimator-ssot PASS · injection-coverage OK.
+
+  DRIFT      — a test asserted `pool.execute.call_count == num_chunks` as a proxy for "one
+              UPDATE per chunk". It held only while chunk rows were the ONLY write, so adding
+              a per-chapter write broke a test about chunk rows. Tightened to count by SQL,
+              and it now also asserts the scan is persisted exactly once with 0 for clean
+              text — the write I added is covered by the test my change broke.
+```
+
+### ⛔ AUDIT-19 · THE COMPLETENESS AUDIT — author-requested. The live run falsified a closed clause.
+
+```
+AUDIT AUDIT-19 (audit the whole spec + live-test what this run changed)
+
+  ASKED      — *"nếu đã xong hết todo list thì chúng ta cần audit compleness lại toàn bộ …
+               rồi đi làm live test toàn diện những gì chúng ta đã sửa."* So: re-derive every
+               DoD clause from CODE, not from this file's own ✅ marks, and then run the
+               things that only a live stack can answer.
+
+  BUILT      — three defects fixed, all found by the audit and none by the suite:
+
+               1. **DoD-4 was FALSE on the path this platform actually runs.** A real
+                  translation of a chapter carrying `Ignore all previous instructions …`
+                  finished with
+                      WARNING untrusted source carries 1 directive-looking span(s)
+                              at block_translate:blocks[0..3]
+                      chapter_translations.source_injection_hits = NULL
+                  The detector fired and the row said NOBODY LOOKED. AUDIT-18's commit
+                  message says "written by both chapter paths"; deriving the set from
+                  `chapter_worker`'s dispatch gives **SEVEN**, and the two that recorded were
+                  the two TEXT paths. `TRANSLATION_DECOUPLE_ENABLED=true` on this stack, and a
+                  structured chapter takes the DECOUPLED BLOCK pipeline — which scanned inside
+                  a PURE message builder with no pool and no `chapter_translation_id`, so the
+                  most it could ever do was log. The sync BLOCK path had no scan at all.
+                  FIX: `record_source_injection(pool, ct_id, text)` — scan and telling are ONE
+                  call, so a path cannot take one without the other. Both BLOCK paths record;
+                  the two v3 entry points delegate; the dirty-only re-translate re-scans the
+                  WHOLE source after the delegate, because the inner scan sees only the dirty
+                  slice and would stamp `0` ("screened, clean") on a chapter whose directive
+                  sits in an untouched block.
+
+               2. **`foundation-ci`'s gate-test batch was RED at HEAD and had been for a
+                  while.** `test_injection_coverage_lint.py` failed at COLLECTION — it loads a
+                  hyphenated module by spec without registering it in `sys.modules`, and the
+                  lint's `@dataclass` under `from __future__ import annotations` makes
+                  `dataclasses._is_type` dereference that missing entry. Collection abort =
+                  **all fifteen files skipped**, which is the state the same workflow's own
+                  comment describes: *"148 tests across 8 files, and not one of them ran"*.
+
+               3. …and behind it, **a stale test nobody could see fail.** `d214ddbd5`
+                  deliberately narrowed the gate so a `**spread` no longer buys `opaque` (that
+                  behaviour was hiding 27 sites, 46% of the backlog). `test_a_spread_payload_
+                  is_opaque` still pinned the old verdict. It has asserted the wrong thing for
+                  a day, invisibly, because the batch never got past collection.
+
+  PROVEN     — CI gate sweep **57 gates, 57 PASS**, each invoked the way its workflow invokes
+               it. One read FAIL(124) — `meta-write-discipline-lint.sh` hitting MY harness's
+               900s timeout; re-run unbounded it prints `[meta-write-discipline] PASS`. My
+               invocation, not the gate, same shape as the `--selfcheck` mistake in the first
+               sweep.
+               translation **1161 passed** (`-n auto --dist loadgroup`) · CI gate-test batch
+               **238 passed** (was: collection error, 0 run) · injection-coverage OK, 6
+               DETECT-only · llm-budget PASS · new `test_injection_persist.py` 9 passed.
+               RED-ABLE, against the real on-disk defect, restored from saved bytes + sha256
+               (`RESTORED: sha256 MATCHES`):
+                 drop the persist from `start_chapter_blocks` -> RED ("never records its scan")
+                 put a bare `scan_untrusted_source` back        -> RED ("scan-without-persist")
+
+               LIVE, deployed images hash-verified against source first — they were **STALE**
+               by ~14h, so an unverified live run would have tested yesterday's code:
+                 LIVE-2 · DoD-2  PASS. Two `user_model_id`s on this box resolve to ONE model
+                   (`lm_studio::google/gemma-4-26b-a4b-qat`); the rule refuses them
+                   (SAME_AS_DRAFTER, identity_verified=True), configures two genuinely
+                   different models, and keeps the tier ON with `identity_verified=False`
+                   when the registry cannot answer. A mock cannot produce this case.
+                 LIVE-4 · DoD-4  FAIL -> fixed -> PASS. DIRTY `source_injection_hits=1`,
+                   CLEAN `=0` (not NULL), in the DB **and** through the API the FE reads;
+                   `output_tokens=105`, so the model really ran. Throwaway book; all 8 debris
+                   chapters trashed afterwards.
+                 LIVE-1 · DoD-7 + DoD-3  PASS. The Mị Đế defect on a real ~500-word Vietnamese
+                   draft: 1 conflict, 0 unlinked; a draft that kills nobody -> clean; a plan
+                   that AGREES -> not a conflict. Budget `CallBudget(max_output_tokens=1536,
+                   source='default')` from the registry, not an int. Real gemma judge:
+                   `judged=True`, `confirmed=True` — the HARD tier is reachable, and it did NOT
+                   truncate at 500 words in Vietnamese, which is the case that killed it once.
+
+  NOT PROVEN — and this is the half that matters, because three DoD clauses do NOT hold as
+               written and the board says otherwise:
+
+               · **DoD-3 has three limbs and the gate enforces two.** "…an absent cap, or a
+                 **missing truncation check**". `finish_reason` appears in
+                 `llm-budget-ssot-gate.py` exactly once — in a DOCSTRING, describing the
+                 incident. Nothing counts it. Measured with the gate's own scanner, on the
+                 GENEROUS module-level reading (a module credited if it mentions
+                 `finish_reason` anywhere): **28 of 97 call sites**. The spec's §S7 asked for
+                 this explicitly — *"and on a missing `finish_reason == "length"` check"*.
+               · **DoD-5's "one finding type" is S3, and S3 is ◐.** Only the `skip_reason`
+                 vocabulary landed; the spec's actual S3 — one `Finding` with a
+                 `locator` union — is untouched, five producers still carry five locators.
+                 AUDIT-14's header says "DoD-5 … closed" and never addresses that limb.
+                 The other three limbs DO hold (heal protocol ✅, `PASS_REGISTRY` one
+                 definition ✅, estimator: 2 context-budget estimators — kernel + knowledge's
+                 tiktoken — argued, gated, and not "one").
+               · **DoD-2 holds today and nothing keeps it holding.** The spec's S6 asked for a
+                 static gate — *"every grading call site resolves through `resolve_judge`"* —
+                 plus a `purpose` discriminator and enforcement moved to provider-registry.
+                 None of the three exists. The rule had EIGHT hand-rolled copies and the
+                 eighth was found by an audit, not by a guard; a ninth would be found the same
+                 way.
+               Also unmeasured: the FE badge was verified through the API payload, not by
+               rendering; DoD-1's Rust half is a different mechanism (parked row, still true);
+               `guard-redability` is 21/21 of the guards THIS RUN wrote, 45 of 61 CI gates
+               still carry no red-ability proof.
+
+  DRIFT      — four, and the first is the one to keep.
+               · **My first LIVE-1 run reported three FAILs that were all MY PROBE.** The
+                 seed arm produced zero conflicts while both controls were clean — seed and
+                 control agreeing, which is the theatre shape I have a note about. Cause: I
+                 wrote `{"id", "aliases"}` and `{"kind": "entity_gone"}` from memory;
+                 `name_index` wants `entity_id`/`cached_aliases` and `asserted_gone` reads
+                 `status_effects[].{status,entity_ref}`. Had I not run the controls I would
+                 have filed "the deployed detector is dead" against working code.
+               · I called `budget_for(...) > 0` on an INT. It returns a `CallBudget` — the
+                 seam's entire point is that a call site cannot be handed a bare number, and I
+                 tested it as though it could.
+               · I nearly recorded the injection scan BEFORE delegating in the partial
+                 re-translate. The inner record is unconditional and would have overwritten
+                 it — the fix would have been present, ordered wrong, and green. The test
+                 asserts the ORDER for that reason.
+               · The CRLF anchor bit again (third time this run), and the heredoc
+                 double-escape (fourth). Both now cost a turn each, every time.
+
+  NEXT       — the three open DoD limbs above are REAL work, not bookkeeping: a truncation
+               axis on the budget gate (69 of 97 sites uncovered), S3's locator union, and a
+               static gate for the judge rule. None is blocked; each is a slice.
+```
+
+### ✅ AUDIT-20 · TWO OF AUDIT-19'S THREE OPEN LIMBS CLOSED — and the new gate found a bug on day one
+
+```
+AUDIT AUDIT-20 (DoD-2 + DoD-3's truncation limb)
+
+  ASKED      — the author, after AUDIT-19: clear what the audit found, then build and test
+               again. AUDIT-19 named three DoD limbs that did not hold. Two are now closed
+               with a mechanism; the third is measured and NOT started, said plainly below
+               rather than implied by an unqualified ✅.
+
+  BUILT      — **DoD-2. `scripts/judge-resolution-gate.py`** — the static gate spec S6 asked
+               for and nobody built. Two checks: no module outside `critic_policy` may compare
+               one model ref against another, and every judge-carrying module must resolve or
+               name the module that resolved for it. The denominator is derived from
+               `build_judge_request` calls, `judge_ref`-shaped parameters, AND judges passed by
+               KEYWORD — that last clause is the only reason `worker/operations.py`, the
+               unattended path, appears at all.
+
+               **It found a live violation on the day it was written.** knowledge-service's
+               extraction canon judge IS the extraction model: `pass2_orchestrator` hands
+               `_maybe_run_canon_check_gate` the extraction `model_ref`, which becomes the
+               judge's — so the model that produced the assertions was confirming the
+               contradictions in them, unlabelled, since 2026-07-06. Composition's copy of this
+               rule had been audited eight times and nobody had asked whether a SECOND service
+               had a judge at all.
+               Labelled, not refused, following the sealed S6 decision: a day-one refusal makes
+               every default-configured extraction unjudged, and this service has no critic
+               setting to clear a refusal with. `judged_by_self` rides the candidate, the
+               quarantine row a human reviews carries it in its message and its context, and it
+               is registered in `guard-signals.yaml` with that consumer.
+               `judge_is_self` lives in the SDK and documents what it CANNOT see — two
+               `user_model` rows that are one model — so the weaker test is visible at the call
+               site instead of being mistaken for the strong one.
+
+               **DoD-3's third limb. `scripts/truncation-check-gate.py`** — "a missing
+               `finish_reason == 'length'` check", which had no gate at all and which spec S7
+               asked for by name. The denominator comes from the SSOT rather than from what I
+               happened to look at: every `budget_for(code)` call whose registry row is
+               STRUCTURED, because the SDK already decides which kinds care.
+               **2 of 28 → 28 of 28.** Not 26 judgements — one helper, `unusable(job, code)`,
+               in the module that owns the per-operation facts, folding the truncation question
+               into the `status != "completed"` branch every site already had. 13 sites
+               rewritten mechanically · 6 shared helpers given the registry CODE they spend
+               (they carried a `purpose` LOG label, which is a different vocabulary) · 5
+               plan_forge sites covered by making `client.chat` RAISE · 4 delegated to a helper
+               whose contract already fixes the answer.
+               The plan_forge five are the ones that mattered: `_parse_with_repair` catches a
+               JSONDecodeError and spends a SECOND call asking the model to repair its own
+               output, so a clipped response was being handed to a repairer that returns
+               something well-formed and WRONG. Parseable-and-wrong is worse than unparseable.
+
+  PROVEN     — composition **3611 passed** · knowledge **4113 passed** · SDK **1020 passed** ·
+               CI gate-test batch **252 passed** (now including `test_judge_resolution_gate`) ·
+               gate-teeth **63** · llm-budget PASS · ai-provider OK · generation-guard 9/9 ·
+               enforcement-claims OK · estimator PASS · injection-coverage OK ·
+               guard-signal-consumption **6 registered, 6 consumed, 0 held**.
+
+               RED-ABLE, both, against the real on-disk defect, restored from saved bytes
+               (`sha256 matches`, gate green again):
+                 re-introduce the EIGHTH ref comparison in `canon_reflect`
+                     -> judge-resolution RED, and it names the comparison
+                 drop `unusable(...)` from `motif_tag`
+                     -> truncation RED, and it names the site
+
+               LIVE, deployed images hash-verified against source FIRST:
+                 LIVE-1 (the Mị Đế acceptance test) PASS and LIVE-2 (two rows, one model) PASS,
+                 both re-run on the rebuilt stack.
+                 LIVE-5 NEW: a 24-token `CallBudget` against a 40-item ask comes back
+                 `finish_reason=length` and now RAISES — "the response was TRUNCATED at the
+                 24-token cap" — where it used to return the clipped body. CONTROL at 1024
+                 tokens: `finish_reason=stop`, 646 chars, no raise.
+                 LIVE-6 NEW: knowledge's canon judge, run with a real gemma, reports
+                 `judged_by_self=True` when it is the extraction model and `False` for a
+                 different one.
+
+  NOT PROVEN — **DoD-5's "one finding type" is untouched.** That limb IS S3, whose scope is one
+               `Finding` with a `locator` union (`span | scene_index | node_id`, with
+               `trace_span_id` reserved). Five composition producers still carry five locators —
+               char offsets, chapter+scene, seam pairs, block ids — and `MergedFinding`,
+               `_RepetitionFinding`, `_OverResolveFinding` and `CanonViolation` were not
+               touched. It is a cross-cutting refactor of five producers AND their consumers,
+               not a gate, and starting it at the end of this stretch would half-land it.
+               Also unmeasured: `judged_by_self` is proven through the candidate and the log
+               line, not through a rendered review surface; and the truncation gate's DELEGATED
+               rows verify that the named module checks, not that each site actually reaches it.
+
+  DRIFT      — four.
+               · **My first judge-resolution detector could not catch the defect it was written
+                 for.** It keyed on the words "critic"/"judge" appearing in a comparison
+                 operand; the real historical copy reads `str(c_ref) != str(body.model_ref)`,
+                 and `c_ref` contains neither word. It passed my own review and failed the
+                 instant it met the source. Rewritten structurally — both operands look like a
+                 model ref — with the two legitimate comparisons named individually.
+               · **The truncation gate silently dropped a whole file from its denominator.** It
+                 prose-stripped before parsing; blanking a docstring leaves `if ...:` with an
+                 empty body, `ast.parse` raised `IndentationError`, and the loop `continue`d —
+                 so `self_heal.py` was skipped and its site reported unchecked while the check
+                 sat two functions away. Every signal it looks for is an AST node, which prose
+                 cannot produce, so it parses RAW source now.
+               · **LIVE-5's first run reported a PASS on arm A for the wrong reason.** I passed
+                 the raw SDK Client instead of the service client, `submit_and_wait` did not
+                 exist, and "it raised" was true of the wrong exception. The second check —
+                 does the message say TRUNCATED — is the only thing that caught it. The same
+                 shape as LIVE-1, an hour earlier.
+               · I nearly gave `call_json` a `code` parameter to satisfy the gate. Two of its
+                 three callers have no registry row, so satisfying it would have meant
+                 INVENTING rows: the gate shaping the code instead of checking it. The
+                 function's contract already fixes the answer — it exists to get JSON back.
+
+  NEXT       — DoD-5's locator union (S3): the one limb left, and the only one that is a
+               refactor rather than a gate.
+```
+
+### ✅ AUDIT-21 · S3 / DoD-5's LAST LIMB — and the panel was reporting "clean" on a run that found things
+
+```
+AUDIT AUDIT-21 (one locator, five producers, and the consumer that needed it)
+
+  BUILT      — `Locator` + `LocatorKind` in `app/engine/finding.py`, and a projection on every
+               one of the five producers: `self_heal.Finding`, `plan_heal.PlanFinding`,
+               `stitch._RepetitionFinding` / `_OverResolveFinding`,
+               `error_block_heal.MergedFinding`, `canon_check.CanonViolation`.
+               ADDITIVE, not a re-cut: every producer keeps the storage it has and gains a
+               read-only view. The spec's own note says a naive `span | scene_index | node_id`
+               union is not expressive enough (it cannot say WHICH LENS produced a finding),
+               so re-cutting the storage now would be re-cutting it twice — `trace_span_id` is
+               reserved on every kind and deliberately unused, because composition emits no
+               trace spans yet.
+
+               **The member the union is worth building for is `UNLOCATED.`** I did not set out
+               to add it — I went looking for the consumer first, because a union nobody reads
+               is the S8 ceremony this whole run has been deleting. What the search found:
+
+                 `PolishPanel` renders `"{{edits}} edits · {{refuted}} dropped by verify"`.
+                 It never renders `findings` or `located`. And with no proposals it falls
+                 through to **"No issues found — the prose is clean."**
+
+               A self-heal finding whose quoted span cannot be located in the chapter produces
+               no proposal. So a run that found six problems and placed none was
+               pixel-identical to a clean chapter. `located=None` is an ANSWER — the judge
+               quoted text that is not there — and as an absent field it reached a human only
+               by making a COUNT smaller. `plan_heal` has the same defect from the other side:
+               on a not-located finding it leaves `chapter`/`scene` populated with numbers that
+               address nothing, so a consumer reading them sends a human to a scene that does
+               not exist.
+
+               So the acting half, not just the shape: `stats.unplaced` carries those findings'
+               locators (each with the quote), the panel says how many could not be located and
+               lists them, and "clean" is now claimed only when there is nothing unplaced.
+               REFUTED findings are excluded — a skeptical verify decided that one was not a
+               problem, which is an answered question, not a hole.
+
+  PROVEN     — composition **3635 passed** (was 3611; +24 across `test_locator`,
+               `test_finding_locator_gate`, and the new worker-payload test) ·
+               FE composition **1060 passed / 155 files** · `tsc --noEmit` clean ·
+               gates: truncation-check · judge-resolution · llm-budget · guard-signal-consumption
+               · gate-teeth · generation-guard · enforcement-claims · estimator ·
+               injection-coverage · ai-provider — all PASS · i18n parity 20 × 35.
+               RED-ABLE against the real on-disk defect, restored from saved bytes
+               (`sha256 matches`, green again): drop `_OverResolveFinding.locator` →
+               `test_finding_locator_gate` REDs and names the class.
+               LIVE-7, in the DEPLOYED worker, through the real `run_self_heal_propose`:
+                 placed finding      -> `unplaced: []`
+                 unplaceable finding -> ONE locator, `placed:false`, quote preserved
+                 refuted finding     -> `unplaced: []`
+
+  NOT PROVEN — the panel is proven by component test and by the payload shape, NOT by a browser
+               smoke: I did not click through a real Polish run and look at the amber block.
+               The locator is carried into the plan-pass artifact alongside the raw
+               `chapter`/`scene`, and no consumer reads it there yet — additive by design, and
+               the honest name for that today is an unread field. `trace_span_id` likewise.
+               And the union covers composition only: knowledge-service's
+               `ExtractionCanonCandidate` is finding-shaped and has no projection, because the
+               gate that would demand one is scoped to composition's `app/engine`.
+
+  DRIFT      — three.
+               · **My own "does not claim clean" assertion was VACUOUS.** I wrote
+                 `queryByText(/prose is clean/)` and it passed — because `t()` returns the KEY
+                 in this test environment, so that copy never renders in ANY state, including
+                 the one the test was written to catch. It matched nothing and reported
+                 success. Rewritten against a `data-testid`, which is also the file's existing
+                 convention and the language-coupling lesson this repo already has.
+               · **The first EXEMPT row in the new gate was unnecessary**, and the staleness
+                 check I had just written is what said so. Left the registry empty and added
+                 `test_the_staleness_check_can_FAIL`, because at zero rows the staleness test
+                 cannot fail and would quietly become decoration.
+               · I started to unify the five locators before finding a consumer for them. The
+                 measurement that stopped it — no shared surface reads two producers' findings —
+                 is the same one that then found the "clean" claim. Building the union first
+                 and looking for a reader afterwards would have shipped exactly the
+                 emitted-and-unread shape the guard-signal registry exists to count.
+
+  NEXT       — **all three DoD limbs AUDIT-19 opened are now closed.** What remains on the
+               board is S3's own remainder, which is smaller than the limb: the locator is a
+               projection, so the five producers still STORE five shapes, and the plan-pass
+               artifact carries a locator nothing reads.
+```
+
+### ✅ AUDIT-22 · THE RUN'S OWN REGISTERS HAD GONE STALE — nine rows, and now a gate
+
+```
+AUDIT AUDIT-22 (the Debt register, audited against the code)
+
+  FOUND      — with the board clean I read the Debt register against the repo instead of
+               against memory, and **9 of 26 rows described a state that no longer exists.**
+               Six were claims about guard signals — `exclusion_unverified has no consumer`,
+               `guard_status: not_run … nothing consumes it`, `identity_verified is the FOURTH
+               emitted-but-unconsumed signal`, and three about the injection scan — all
+               already closed, three of them by the very audits sitting a few hundred lines
+               above in this same file.
+
+               This is the failure this run has been fixing everywhere ELSE. Its own history
+               records `D-PUBLISHER-DROPS-RULESET-PIN` cited as an open blocker in FOUR places
+               after it was fixed, including in the row of the task that fixed it. A register
+               read one row at a time cannot notice that it has stopped describing the repo.
+
+               The root cause is narrower than "rows go stale": **six of the nine restated a
+               fact that a machine already tracks.** `contracts/guard-signals.yaml` plus its
+               consumption gate is the SSOT for whether a signal has a reader, and the Debt
+               table was keeping a second copy of that state — so it could disagree with it,
+               and it did.
+
+  BUILT      — the nine rows struck through with what cleared each (struck, not deleted: what
+               a row SAID and what closed it is the useful record), plus a mechanism in the
+               gate that already owns the registry.
+
+               `stale_prose_claims` reds when a REGISTER ROW still calls a signal unconsumed
+               that `guard-signals.yaml` lists as consumed. Two scoping decisions, both
+               load-bearing:
+                 · only lines that start with `|` — a table ROW is a claim about NOW, an AUDIT
+                   paragraph is dated narrative about THEN. The first version reddened on three
+                   AUDIT blocks that correctly recorded a signal as unconsumed *on the day they
+                   were written*; reddening there would force rewriting the record to satisfy a
+                   gate, and a register that edits its own history is worth less than none.
+                 · `~~struck~~` spans stripped PER LINE. A document-wide `re.DOTALL` sub renamed
+                   every line number after the first strike, so the gate reported hits at lines
+                   whose text did not contain them.
+
+               Also: `test_finding_locator_entry.py` in knowledge-service. AUDIT-21 left
+               "knowledge has no locator projection" as a NOT PROVEN, and the right answer is
+               that it does not need one — it has ONE finding type, whose position already
+               reaches a human in the quarantine row. A union of one is ceremony, and the
+               argument for building it would be symmetry, which is not a consumer. So the
+               criterion is ASSERTED rather than remembered, exactly as S9 did with the
+               SDK-extraction criterion: the moment a SECOND finding type appears there, the
+               test reds and points at the union that already exists.
+
+  PROVEN     — the gate caught **two rows my own eye had missed**: I struck the head of a row
+               and left the stale claim in its second cell. That is the mechanism earning its
+               keep before it was even committed.
+               knowledge **4115 passed** · guard-signal-consumption PASS (6 registered, 6
+               consumed, 0 held) + SELFTEST · truncation-check · judge-resolution · llm-budget
+               · gate-teeth · generation-guard · enforcement-claims · estimator ·
+               injection-coverage · ai-provider · deferral-gate — all PASS.
+               The self-test proves all three cases at once: a live row REDS, a struck-through
+               row does NOT, and an AUDIT paragraph does NOT.
+
+  NOT PROVEN — the check covers ONE claim shape ("has no consumer" / "nothing consumes it")
+               about ONE registry. A row that goes stale about anything else — a count, a
+               file, a flag's default — is still only caught by someone reading. Three rows I
+               verified BY HAND this pass (`cross_scene_check` mislabelled, `_TOKENS_PER_ITEM`,
+               `model_roles` has no writer) are still open and still unmechanised.
+               And the numeric row I rewrote to cite `gate-teeth-gate` instead of freezing
+               "45 of 59" is a convention, not an enforced one: nothing stops the next row
+               from freezing a number.
+
+  DRIFT      — three.
+               · **My first predicate for the knowledge criterion counted the wrong classes.**
+                 I matched "Candidate" by NAME and got `CandidatePair` (two mentions considered
+                 for coreference) and `EntityCandidate` (a name the pattern detector surfaced).
+                 Neither is a finding about a position. The criterion would have fired on the
+                 day it was written, for the wrong reason — a false alarm that teaches people
+                 to raise the threshold. Judged by what the class IS now (`CanonCandidateBase`).
+               · I nearly built the locator union in knowledge for symmetry with composition.
+                 The composition slice earned its union by finding a consumer FIRST; copying
+                 the shape without repeating that step is how the emitted-and-unread pattern
+                 gets re-created in a second service.
+               · I wrote the stale-claim check before deciding what it should NOT match, and
+                 the first run's three AUDIT-block hits were the answer arriving as a failure
+                 rather than as a design. It cost one iteration; had I not looked at what the
+                 lines actually said, "fixing" them would have meant editing the record.
+
+  NEXT       — the register is current and one of its shapes is mechanised. What is left in it
+               is genuinely open work, not bookkeeping.
+```
+
+### ✅ AUDIT-23 · A DEBT ROW SAID "MISLABELLED". MEASURING IT FOUND A LIVE FALSE CLEAN.
+
+```
+AUDIT AUDIT-23 (cross_scene_check — the measurement two Debt rows were waiting on)
+
+  WHY NOW    — the register is current after AUDIT-22, so what is left in it is real work. The
+               `cross_scene_check` row said the fix was blocked on a measurement, and the
+               repo's own rule is that a missing MEASUREMENT is not "blocked" — it is a
+               measurement somebody has to run. This box has a free local model. So: run it.
+
+  MEASURED   — live, deployed image, real gemma, on a 14-person Vietnamese passage:
+                 499 output tokens · 14 rows parsed · **35.6 tokens per roster row**
+                 the extractor's own 40-row cap therefore needs **~1424**, and the row's 2048
+                 already holds. **The budget was never the bug.**
+               And, at a deliberately squeezed 120-token cap:
+                 `finish_reason=length` · `extract_people` parsed **0 rows**
+
+  FOUND      — that zero is the defect, and it is worse than the row claimed. The row said a
+               clipped roster "silently DROPS PEOPLE". It does not: the JSON never closes, the
+               tolerant parser returns `{}`, and the call yields an EMPTY roster. Empty is not
+               the `None` both callers degrade on — so `compare_people` turned it into
+               `status="checked"`, zero contradictions: **a CLEAN verdict on a seam whose cast
+               was never read.** The continuity guard's own false-green, reached through the
+               budget rather than through its logic.
+               `compress._cast_state` had the mirror of it: an empty roster builds an empty
+               "WHO IS IN THIS" block — a positive claim that the passage contains nobody —
+               and hands it to the next scene's drafter.
+
+  BUILT      — the KIND was the mislabel, not the number. `truncation_is_fatal` is a property
+               of the output SHAPE; `kind` is a sizing model; this row separates them — it
+               sizes like a VERDICT (short, bounded) and truncates like a LIST (unparseable).
+               Forcing it to STRUCTURED for the fatality would drag in that kind's 4096 floor
+               for a call measured at 499 tokens.
+                 · SDK: `call_budget(..., truncation_is_fatal=False)` — ESCALATE ONLY.
+                   `or`, never a replacement, so `False` can never switch a STRUCTURED row's
+                   fatality off. That direction is the caller-supplied-value-defeats-a-
+                   capability-default shape this repo has already paid for.
+                 · registry: `CallProfile.truncation_fatal`, and the row's `why` rewritten to
+                   describe the call that exists.
+                 · the gate's denominator now reads the RESOLVED budget instead of the kind —
+                   the kind was a proxy for the fact when the fact is one call away.
+                 · both call sites degrade instead of certifying.
+
+  PROVEN     — composition **3639 passed** (was 3635) · knowledge **4115** · SDK **1020** ·
+               truncation-check-gate **30 sites, 30 checking** (28 before — the two this found).
+               RED-ABLE in BOTH directions, restored from saved bytes (sha256 matches):
+                 drop the check                  -> gate REDs and names the site
+                 un-declare `truncation_fatal`   -> gate goes GREEN with the site now
+                                                    unchecked… and the registry test REDs,
+                                                    because it pins the escalating SET. Neither
+                                                    mechanism is sufficient alone; the second
+                                                    injection is what showed that.
+               LIVE-8, deployed image, real model, cap squeezed to force the state:
+                 truncated seam   -> `degraded`  (was: `checked`, clean)
+                 CONTROL real budget -> `checked`, linked=7, unlinked=2 — it really read the cast
+                 CONTROL empty passage -> `checked` with an empty roster, because "nobody is
+                                          here" is an ANSWER and must not become an outage
+
+  NOT PROVEN — 35.6 tokens/row is ONE item shape on ONE model in ONE language. It is not a
+               correction to the SDK's generic `_TOKENS_PER_ITEM = 220`, and that Debt row
+               stays open: changing a constant every STRUCTURED budget multiplies by, on n=1,
+               is the generalised-from-one-prompt mistake this run has recorded twice. What
+               the number DOES support is the local claim — this row's 2048 is adequate — and
+               it is recorded as such.
+               The escalation set has exactly one member, so the "only escalates" rule is
+               proved by unit test rather than by a second real user.
+
+  DRIFT      — three.
+               · **I changed the registry and forgot the reader.** `unusable` still asked
+                 `profile_for(code).kind is STRUCTURED` after the row had already declared the
+                 fatality — one rule in two places, disagreeing within the hour. The test I
+                 had just written is what caught it, on its first run.
+               · I nearly wrote the row as `OutputKind.STRUCTURED` and moved on. That would
+                 have been correct about the fatality and wrong about the budget — 4096 floor
+                 for a 499-token call — and nothing would have complained, because a budget
+                 that is too big never fails.
+               · The Debt row's stated mechanism ("drops people") was wrong, and I had carried
+                 it forward twice without checking. Measuring took one command. A register row
+                 is a hypothesis with a date on it, not a finding.
+
+  NEXT       — two Debt rows remain unmechanised and were verified open by hand this pass:
+               `_TOKENS_PER_ITEM = 220` (needs a multi-shape measurement, not this one) and
+               `settings.model_roles` has zero writers.
+```
+
+### ✅ AUDIT-24 · MEASURED `_TOKENS_PER_ITEM`, AND THE ANSWER WAS "LEAVE IT" — with the reason
+
+```
+AUDIT AUDIT-24 (the per-item cost, and the runaway guard that was not a bug report)
+
+  ASKED      — the Debt row: *"Every STRUCTURED budget is sized off a per-item cost nobody has
+               measured against a real completion. The right number is `output_tokens / items`
+               from a live run; until then the big-roster budgets are over-generous rather than
+               wrong."* AUDIT-23 produced ONE number and refused to act on it. So: more shapes.
+
+  MEASURED   — four, live, local gemma, item counts from each site's PRODUCTION parser so the
+               denominator is what the code would have seen:
+                 cross_scene_check roster row     35.6
+                 propose_world entity             97.4 · 103.5   (two roster shapes)
+                 propose_cast character          125.8
+               **220 sits 1.7x-6x above every shape measured.**
+
+  DECIDED    — **leave it, and say why in the file.** The direction of error is the whole
+               argument: over-budget never fails, while under-budget on a STRUCTURED call is
+               FATAL — the response cannot stop in a valid place. Retuning a constant that
+               every STRUCTURED budget multiplies by, from n=4, trades a harmless
+               over-budget for an unrecoverable one on an unmeasured shape. That is the
+               generalised-from-one-prompt mistake this run has recorded twice, and the
+               correct output of a measurement is sometimes "the number stays".
+               So the constant is now DOCUMENTED FROM DATA rather than asserted: the four
+               measurements sit next to it, and it is named a safety net instead of an estimate.
+
+  AND FOUND  — the cost of the generosity, which is not spend. `DEFAULT_CEILING` documents
+               itself as *"sized so no legitimate call can reach it, so hitting it is a bug
+               report rather than a quiet truncation"*. **It was a quiet truncation.**
+               `min(ceiling, resolved)` clamped and said nothing, so that sentence described
+               the intent and not the code — the same prose-is-not-behaviour shape this run
+               keeps finding, in the module that defines the seam.
+               Measured: `propose_world` reaches the guard from `target ≈ 60`, and an
+               established book passes that easily — its target is `known + invented`, up to
+               129. At the measured rate it would not clamp until ~105.
+
+  AND CHECKED THE PREMISE — the call site claims the known roster is "the LOWER BOUND on the
+               array coming back", which is a claim about model behaviour and the reason the
+               target is that large. I expected it to be false (a model shown a roster usually
+               proposes NEW things) and it is **SUPPORTED**: handed 9 known entities, the
+               response returned all 9 plus 5 new. So the target is CORRECT and the clamp is a
+               consequence of the constant, not of a mis-sized target. One run, and it
+               reversed the fix I was about to write.
+
+  BUILT      — `CallBudget.clamped_to_ceiling`, mirroring `clamped_to_window`, plus the
+               consumer that stops it being a sixth emitted-and-unread field:
+               `test_exactly_the_rows_that_reach_the_runaway_guard_are_the_declared_ones` pins
+               the SET, computed from each call site's OWN cap constants (`_MAX_KNOWN_WORLD`,
+               `WORLD_KINDS`, `_INVENTED_WORLD_PER_KIND`, `_MAX_KNOWN_CAST`) rather than from
+               numbers I chose. It reds in both directions: a new row that starts clamping is a
+               bug report by the ceiling's own definition, and a row that stops clamping cannot
+               leave a stale entry behind — which is exactly how the register audited in
+               AUDIT-22 went stale.
+
+  PROVEN     — composition **3641 passed** · SDK **1020 passed**.
+               RED-ABLE: force `hit_ceiling = False` in the SDK and the registry test REDs,
+               naming `propose_world`; restored from saved bytes, sha256 matches, green again.
+               A companion assertion pins that a row well inside its budget reports NO clamp,
+               so the check cannot pass on a flag that is never set.
+
+  NOT PROVEN — four shapes on ONE model in ONE language. Nothing here says what an English
+               book or a cloud model costs per item, and the spread (35.6 to 125.8) is wide
+               enough that a fifth shape could sit outside it. The claim made is deliberately
+               local: 220 is above everything measured, and it is not being lowered.
+               `clamped_to_window` still has no reader — a sibling of the field this entry
+               gave one to, and now the more visible for it.
+
+  DRIFT      — three.
+               · **I had the fix half-written before I checked its premise.** I was going to
+                 cut `propose_world`'s target on the reasoning that a model shown a roster
+                 proposes new things rather than repeating it. Measuring took one run and said
+                 the opposite. Had I skipped it I would have under-budgeted a STRUCTURED call
+                 — the one direction of error this seam exists to prevent.
+               · A probe named `/tmp/re.py` shadowed the stdlib `re` and produced a circular-
+                 import traceback that looked like a service defect. Removing the file fixed
+                 it; the wasted turn was mine.
+               · My first instinct on seeing 220-vs-126 was to change 220. The whole reason
+                 that number is dangerous to touch is written two lines above it in the same
+                 file, and I read it only after wanting to edit it.
+
+  NEXT       — one Debt row left from the pre-audit set: `settings.model_roles` has zero
+               writers.
+```
+
+### ✅ AUDIT-25 · `model_roles` had no writer — and the register had the reason wrong
+
+```
+AUDIT AUDIT-25 (the Book tier of a six-role cascade could hold two roles)
+
+  THE ROW    — *"`settings.model_roles` still has ZERO writers. S6 writes the legacy
+               `critic_model_ref`/`_source` scalars, which the dual-read consumes. … the map is
+               dead weight until something writes it or it is retired."*
+
+  VERIFIED   — the writer half is exactly right: the S6 settings affordance, the ONLY UI that
+               sets a critic, writes the scalars. So the branch the backend declares it
+               prefers was dead in production, exercised by unit tests alone.
+
+  BUT the reason was wrong. "Dead weight" implies the map is redundant with the scalars, and
+               it is not. `ModelRole` (chat-service `settings_resolution.py`) is *"the one
+               canonical closed set of model roles … shared as the key vocabulary across all
+               three model stores"* and has **six** members: chat, composer, planner,
+               embedding, rerank, critic. Two scalars can express **two** of them. So the Book
+               tier of a six-role cascade could hold two roles, and the shape designed to hold
+               all six was the thing never written. That is a capability gap wearing a
+               contract, not dead weight — and retiring the map would have made the limit
+               permanent.
+
+  AND FOUND  — a second reader had already drifted. `critic_policy.resolve_critic` read
+               `settings["critic_model_ref"]` DIRECTLY, so the moment anything wrote the map
+               a critic set through the UI would resolve to NOT_CONFIGURED — **the blocking
+               tier silently off** — while the internal endpoint reported the same critic
+               correctly. One concept, two readers, one of them out of date. The judge-
+               resolution gate written in AUDIT-20 does not catch this: it guards who may
+               JUDGE, not which KEY the setting was read from.
+
+  BUILT      — `engine/model_roles.py`: one reader, imported by both the internal endpoint and
+               `critic_policy`. The FE gets its mirror (`features/composition/modelRoles.ts`)
+               and the settings affordance now writes the map, reading through the same
+               fallback so a book saved before it still renders its model.
+               Clearing removes BOTH forms — the map entry and the legacy pair — because the
+               reader falls back to the scalar, so dropping only the map entry would make the
+               setting appear to un-clear itself on the next read.
+
+  PROVEN     — composition **3646 passed** (was 3641) · FE composition **1062 passed** ·
+               `tsc --noEmit` clean · judge-resolution, truncation-check, llm-budget,
+               guard-signal-consumption, gate-teeth, enforcement-claims, ai-provider, deferral
+               all PASS.
+               LIVE-9, deployed image, real provider-registry:
+                 critic in the MAP, different model      -> CONFIGURED, identity_verified True
+                 critic in the MAP, same MODEL two rows  -> refused, and the refusal verified
+                 CONTROL legacy scalar                   -> still CONFIGURED (old books work)
+                 CONTROL half-written map entry          -> INCOMPLETE, not CONFIGURED
+
+  NOT PROVEN — the map is now WRITTEN for two roles, and still nothing writes composer,
+               planner, embedding or rerank at the Book tier. The capability gap is now
+               expressible rather than closed; adding four selectors is a product decision, not
+               a refactor, and I did not make it.
+               No browser smoke: the write shape is proven by component test and the read by a
+               live engine call, not by clicking the panel.
+               And the `model_roles` NAME is used for an unrelated concept in
+               knowledge-service (`app/extraction/model_roles.py`, per-extractor role models).
+               Same spelling, different vocabulary — noticed, not merged, and not renamed.
+
+  DRIFT      — three.
+               · **My first shared reader silenced INCOMPLETE.** I routed the policy through
+                 the same normaliser the endpoint uses, which defaults a missing
+                 `model_source` to `user_model` — so a ref recorded without its source became
+                 CONFIGURED, a provider nobody selected. TWO pre-existing tests refused it.
+                 The endpoint wants a normalised map and the policy wants the raw truth; one
+                 function answering both had to answer one of them wrongly, and `role_ref`
+                 exists because of that.
+               · I nearly retired the map instead of writing it — the register's own framing
+                 ("dead weight") is what pointed that way, and it took reading the ROLE ENUM in
+                 another service to see the map was the only shape that could express four of
+                 the six. Second time this stretch a register row's stated reason was wrong
+                 while its observation was right.
+               · A `.format()` call over a TSX snippet containing `{ patchForRole, roleRef }`
+                 read the braces as format fields and raised. My tooling, not the code, but it
+                 is the third string-escaping accident of this run.
+
+  NEXT       — the pre-audit Debt set is now empty of rows that were verifiable-and-actionable.
+               What remains is either measured-and-recorded, parked by the author, or genuinely
+               external.
+```
+
 ## Parked
 
 | date | item | why parked, and what un-parks it |
 |---|---|---|
-| 2026-08-02 | **The whole KG/extraction identity thread** — [`docs/specs/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-01-entity-identity-under-qualitative-extraction.md) | **Author's call**, explicit: do not dive into KG now. The diagnosis stands (all 21 `:EntityStatus` rows in the graph are unreachable by the guard's FK lookup; identity is `hash(name, kind)` over LLM output), and its own §5 says step **C — measure the fork** must come before anything else. Un-parked when the board reaches a natural stop, or when the author calls it. **Consequence to state plainly: the dead-character feature does NOT work end-to-end while this is parked.** The store fills; nothing reads it. |
+| 2026-08-02 | **The whole KG/extraction identity thread** — [`docs/specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md`](../specs/2026-08-03-glossary-kg-entity-refactor/2026-08-01-entity-identity-under-qualitative-extraction.md) | **Author's call**, explicit: do not dive into KG now. The diagnosis stands (all 21 `:EntityStatus` rows in the graph are unreachable by the guard's FK lookup; identity is `hash(name, kind)` over LLM output), and its own §5 says step **C — measure the fork** must come before anything else. Un-parked when the board reaches a natural stop, or when the author calls it. **Consequence to state plainly: the dead-character feature does NOT work end-to-end while this is parked.** The store fills; nothing reads it. — **2026-08-03: promoted out of this register** to `D-ENTITY-IDENTITY-HASH` (Deferred Items + [`DEBT-REGISTER.md` `2026-08-01-01`](../specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md)), because a Parked row inside a finished run's RUNSTATE would have vanished with the run. Still parked; now it survives. |
 | 2026-08-02 | **`:EntityStatus` / dead-cast guard, end-to-end** | **Author, 2026-08-02: the root is that there has never been a real ENTITY LIFECYCLE** — *"ngay từ đầu chúng ta đã sai vì không có lifecycle thực sự cho entity"*. So this is not "correct code blocked by a parked join": `alive`/gone was built on a model that was never designed, and the FK unreachability documented in the entity-identity spec is a symptom, not the disease. **Do not attempt to fix it by repairing the join.** It belongs to a larger refactor that **already has its own document**; the author will name the starting point when it begins. Nothing to look up or design in the meantime. |
 | 2026-08-02 | **Backfill of the 15 already-written dogfood chapters** | The canon flywheel catches from the next approval forward. Backfilling is a separate decision (irreversible-into-canon, unmeasured per-chapter cost) and is not blocking the board. |
 | 2026-08-01 | **Test-suite restoration execution** — [`docs/plans/2026-08-01-test-suite-restoration.md`](2026-08-01-test-suite-restoration.md) | Plan written and every number in it measured; execution is a separate run. knowledge's 561 skips are a *local-dev* gap, not a CI coverage hole (CI arms every gated suite), which is why it does not block. |
 
 ## Debt taken on
+
+> **2026-08-03 — this register is authoritative for the rows below and is NOT copied elsewhere.**
+> It is now pointed at from
+> [`docs/specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md` §C1](../specs/2026-08-03-glossary-kg-entity-refactor/DEBT-REGISTER.md#c1--already-homed--pointer-only),
+> which carries **§C2: 8 further items this register never held** — §3.1 carry-forward rows of the
+> spec whose owning slice closed without discharging them (B1→S11, S12-widen, B4→S9, B4→S6), plus
+> §5's whole migration surface, which was never a slice. Those have no other home.
 
 | date | debt | the honest cost |
 |---|---|---|
@@ -1728,6 +4376,27 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | The dogfood book carries **16 scenes on a second `story_order` convention** (book slots 11-15, numbered 1,2,3 — so on the global axis they sort *before chapter 1*). Written by this session's own eval/POC runs via the authored `create_node` path. | Position-gated lenses under-serve those 5 chapters. `resync_reading_order` is the right repair but is parent-keyed and those scenes are parentless, and its only caller is the chapter-reorder route. 16 rows. |
 | 2026-08-01 | The authored `create_node` path takes a caller-supplied `story_order` and never derives it from the chapter's slot. | This is the *writer* that produced the debt above; not fixing it means the drift recurs. |
 | 2026-08-01 | Smoke debris: throwaway book `019fbd8f-008c-7cef-bf81-1d53a808361d` and its knowledge project `019fbd90-…` | Deliberately a throwaway (never the dogfood book), but it is real rows in the dev stack awaiting purge. |
+| 2026-08-02 | ~~The `cross_scene_check` registry row is MISLABELLED.~~ — **CLEARED 2026-08-03** (AUDIT-23), and measuring it found worse than a label: a clipped roster parses to ZERO rows, which `compare_people` reported as `checked` and clean. The row now declares `truncation_fatal=True` (escalating above its kind, since it sizes like a verdict and truncates like a list), both call sites degrade, and the truncation gate reads the RESOLVED budget instead of the kind. Measured: 35.6 tokens/roster row, so the existing 2048 was never the problem. Original row:  Its `why` describes "a contradiction list across one scene seam"; its only two call sites (`compress._cast_state`, `cross_scene_check._extract_one`) emit a cast ROSTER. | The row documents a call that does not exist, and the kind is wrong in a way that matters: VERDICT carries `truncation_is_fatal=False`, but a clipped roster silently DROPS PEOPLE — the same class as the `propose_world` dead pass. Not fixed here because changing the kind changes the budget (VERDICT 2048 → STRUCTURED 4096) and needs its own measurement. |
+| 2026-08-02 | ~~`_TOKENS_PER_ITEM = 220` (SDK, generic) is what makes a full-roster `propose_world` reach the 32768 runaway ceiling.~~ — **MEASURED 2026-08-03** (AUDIT-24), and the answer is that the number STAYS: four shapes measured live at 35.6 / 97.4 / 103.5 / 125.8, so 220 is a safety net 1.7-6x above the data, and lowering it on n=4 would trade a harmless over-budget for a FATAL under-budget on an unmeasured shape. The measurements now sit beside the constant. What the row was right about is pinned by a test instead: `propose_world` DOES reach the runaway guard, `clamped_to_ceiling` makes that visible where it was a silent clamp, and the call site's premise (the known roster is re-emitted) was CHECKED and holds — 9 of 9 came back. Original row:  A world entity is plausibly half that. | Every STRUCTURED budget is sized off a per-item cost nobody has measured against a real completion. The right number is `output_tokens / items` from a live run; until then the big-roster budgets are over-generous rather than wrong. |
+| 2026-08-02 | ~~**`exclusion_unverified` has no consumer.**~~ — **CLEARED 2026-08-02** (AUDIT-17). `metric_of_record_blockers` in `loreweave_eval/scorer.py` refuses to certify a number computed with a defaulted exclusion, and the row is in `contracts/guard-signals.yaml` with that consumer. Wiring it found worse than an unread field: it was DROPPED at the `EvalResult` boundary, so the structure built for persistence never carried it. It rides `EvalResult` and no report, gate or FE surface reads it. | The S8 shape: a fact made available rather than acted upon. The honest next step is a scored-run report line or a gate that reds when a published metric-of-record was computed with an unverified exclusion — at which point the distinction starts costing something and therefore starts being fixed. |
+| 2026-08-02 | **S13's "cite the exemplars" half is not built**, and a document would have been the wrong answer — the list already exists in spec §S13 and a second copy is the re-derivation the slice warns against. | What is genuinely missing: the code that SHOULD reuse the five named exemplars does not point at them, and nothing detects a re-implementation written beside one. Bigger than a citation, and it needs a mechanism rather than prose. |
+| 2026-08-02 | ~~**5 of translation's 7 unsanitized modules remain**~~ — **CLEARED 2026-08-02** (AUDIT-16, DoD-4c). Each of the five was read individually rather than swept; `injection-coverage-lint` now reports **6 DETECT-only modules** and OK. (`routers/translate.py`, `decoupled_block_translate`, `extraction_worker`, `v3/bilingual_extractor`, `v3/corrector`). The two CHAPTER paths now DETECT-scan. | Each needs its own read: "apply the same call" across five modules is how a sweep gets one wrong, and two of them fold a translation as well as a source. They stay baselined, which is a mechanism rather than a note. |
+| 2026-08-02 | ~~**The injection scan PERSISTS only on the flag-off-by-default path.**~~ — **CLEARED 2026-08-03.** The row was also WRONG about which path is live: this stack runs `TRANSLATION_DECOUPLE_ENABLED=true`. `record_source_injection` does the scan and the write in ONE call, so a chapter path cannot take one without the other, and `test_injection_persist` derives the path set from `chapter_worker`'s dispatch — SEVEN, not the two the previous fix counted. `translation_decouple_enabled` is False, so the live path logs and does not store. | Found by auditing my own registry row, which claimed otherwise. The real fix is a column on `chapter_translations` plus a return from `translate_chapter` — a signature change with one production caller and eight test call sites. A slice, not a line. |
+| 2026-08-02 | ~~**A non-zero `injection_scan.hits` changes nothing.**~~ — **CLEARED 2026-08-02** (AUDIT-18). `chapter_translations.source_injection_hits` is nullable, written by every chapter path, and rendered as an amber badge on the version the importer reads; the badge tests `> 0`, not truthiness, so `null` (nobody looked) and `0` (looked, clean) stay different answers. | ~~The report rides `resume_state` and a log line; no UI, no job field a human reads, no metric. FIFTH emitted-but-unconsumed signal this run — DETECT is only a defence if somebody is told.~~ The smallest real step it named is the one that shipped: the chapter's translation record carries it, and the importer sees it. |
+| ~~2026-08-02~~ | ~~translation-service folds IMPORTED third-party book text into prompts with no sanitizer~~ — 7 modules, surfaced by widening `injection-coverage-lint`'s SCAN_DIRS in S4. Plus 1 in worker-ai. | The least-trusted bytes on the platform, in the service that exists to process them, never scanned until now. Baselined with notes rather than fixed: routing them through `neutralize_injection` risks a TRANSLATION-FIDELITY bug (a sanitizer that mangles source text), which is the same reason those rows are `OutputKind.MIRROR`. Needs its own measurement, not a sweep. |
+| 2026-08-02 | **The `chat.*` / `composition.*` trace namespacing is NOT built** — composition emits nothing into the context trace (the only `TraceAccumulator` consumers are chat-service's `stream_service`, `compact_service`, `token_budget`). | Namespacing a vocabulary with no second surface to separate would be zero-consumer ceremony. **Un-parks when composition first emits a trace span** — at that moment `breakdown_categories` becomes a shared vocabulary asserted BOTH ways on the chat side, so extending it is a consumer-visible shape change and must be namespaced in the same commit. |
+| 2026-08-02 | **S11-2 moved COST and nobody measured it.** Counting ~40% more tokens on CJK/Vietnamese means ~40% more chunks per chapter, i.e. ~40% more LLM calls — for exactly the books this platform is for. | The safe direction for correctness (no window overflow) and the expensive one for spend. Shipped without a number. A real per-chapter cost delta needs one translation run before/after on a real chapter. |
+| 2026-08-02 | **The kernel estimator is itself ~0.78× tiktoken on Vietnamese** (my n=3 sample), where the spec cites a 2026-07-07 eval claiming the script-aware heuristic tracks o200k within 3-6%. | Under-counting is the direction that overflows a window. My sample is far too small to overturn a real-corpus measurement, so the tension is recorded rather than acted on — re-tuning the kernel's `_F_VIETNAMESE` on n=3 would be the "generalised from one prompt formulation" mistake this run already has twice. Needs the eval corpus re-run. |
+| ~~2026-08-02~~ | ~~The distinct-critic rule compares `user_model_id`~~ — **CLEARED 2026-08-02.** `resolve_critic_verified` compares `(provider_kind, provider_model_name)` via the already-shipped `/internal/models/{source}/{ref}/info`. The row was wrong twice: that route existed, and the endpoint was never needed for identity. | Verified live against two real gemma rows on this box, where FIVE `user_model_id`s share one model. |
+| 2026-08-02 | ~~**`identity_verified` is the FOURTH emitted-but-unconsumed signal**~~ — **CLEARED 2026-08-02** (AUDIT-15). It gates the ADVISORY→HARD promotion in `canon_reflect`, and wiring it is what exposed that the distinct-critic fix had never reached the path that decides whether a conflict blocks a publish. The pattern this row named produced `contracts/guard-signals.yaml` + its consumption gate, which is now at **0 held**. this run, after `exclusion_unverified`, `kg_status`/`kg_unchecked` and `guard_status:not_run`. | The pattern is the finding: I keep closing the HONESTY half of a gap and leaving the ACTING half. Each is individually small — a response field, a badge, a gate condition — and together they are a habit. Worth one deliberate slice that wires all four, rather than four more rows. |
+| 2026-08-02 | **The identity resolve is uncached**: two extra internal HTTP calls per generation. | Against an operation costing seconds of LLM time, plausibly irrelevant — but that is a guess. Measure a generation's wall clock before and after adding a TTL cache; adding one now would be an unmeasured optimisation of exactly the kind this run keeps catching. |
+| 2026-08-02 | ~~`settings.model_roles` still has ZERO writers.~~ — **CLEARED 2026-08-03** (AUDIT-25). The observation was right and the REASON was wrong: not dead weight, but the only shape that can express four of the six roles in `ModelRole`, so retiring it would have made the Book tier permanently 2-role. The settings affordance now writes the map, one reader (`engine/model_roles.py`) serves both the endpoint and `critic_policy` — which had already drifted to reading the legacy scalar directly, and would have resolved a map-written critic to NOT_CONFIGURED with the blocking tier silently off. Original row:  S6 writes the legacy `critic_model_ref`/`_source` scalars, which the dual-read consumes. | The newer map remains a read-only contract with no producer, so the Book tier of the Chat & AI cascade still resolves a key nothing writes. Not blocking — the dual-read means the critic setting works — but the map is dead weight until something writes it or it is retired. |
+| ~~2026-08-02~~ | ~~**`guardstatus.Report` is emitted and nothing consumes it.**~~ — **CLEARED 2026-08-02.** `useWikiStaleness.rescan` branches on `kg_unchecked` *and* on an explicit `kg_status === 'degraded'`: a gap downgrades `toast.success` to `toast.warning` and sets a `coverage` state the panel renders as a standing amber banner **above the empty state** — the exact spot where "0 findings" read as a clean book. `UNCONSUMED_BASELINE` 4 → 3. | Both halves proved red-able against the real files (`green-before=True red-after=True`), restored from saved bytes + sha256. Two fields read, not one, on purpose: today `degraded ⟺ unchecked > 0` only because `degradedSoFar` — the report that CAN be degraded with a zero count — never reaches the wire, its caller 500s instead. That is a coupling across two files, not an invariant, and the UI must not inherit it. |
+| 2026-08-02 | ~~**`guard_status: not_run` is emitted by both SSE streams and nothing consumes it.**~~ — **CLEARED 2026-08-02.** Registered as `composition.unguarded_stream` with `db/repositories/outline.py` as its consumer; the consumption gate verifies the consumer names the field in CODE, with comments and docstrings stripped. `chapter_scene_gate` reads `guard_status` out | ~~Third instance of the emitted-but-unconsumed shape this run. The pattern: I keep closing the HONESTY half of a gap and leaving the ACTING half.~~ That pattern is what produced `contracts/guard-signals.yaml` and its consumption gate — which now also reds when a REGISTER row like this one still calls a consumed signal unconsumed. Genuinely still open, and narrower than the row claimed: no FE surface renders the reason, so an author sees an unguarded stream without being told why. |
+| 2026-08-02 | **Rust has no check-status VOCABULARY mirror**, though the row it was blocking is closed. `L4Narration`/`L3Classification` now carry a per-item `Provenance`, which is a different fact from a `guard_status`: it says who made THIS item, not what the check could and could not verify. | So DoD-1 is satisfied in Python and Go by one mechanism and in Rust by another. Defensible — a narration has no corpus to be partially-checked over — but it means `contracts/guard-status.contract.json` is a two-language lock, and a future Rust path that DOES run a check has no mirror to reach for. Un-parks the first time a Rust path needs to say "I could not verify this" rather than "the engine wrote this". |
+| 2026-08-02 | **Most CI gates carry no red-ability proof** — `gate-teeth-gate.py` prints the live split (63 gates / 18 proved as of 2026-08-03; it was 45 of 59 when this row was written). The NUMBER is deliberately not frozen here: the first version of this row was stale within a day, and a register that restates a number a command already prints is a second source of truth that drifts., and `guard-redability-gate.py` did not move that number — it covers the guards this run wrote. | The ratchet's own PASS line says it out loud, so it is visible rather than implied. The gates it does cover are now proved against the real violation, which is a strictly stronger proof than the selftest convention the other 14 use. Un-parks one gate at a time: every new gate gets a sweep case. |
+| 2026-08-02 | **7 of the 11 sweep cases do not run in CI** — they drive service pytest suites and the `lints` job installs no service deps. | `--gates-only` prints what it skipped, so a partial sweep cannot read as a complete one. The real fix is a CI job that installs composition + chat + translation deps; that job would also un-skip work `python-integration-tests.yml` already does, so the honest move is to add the sweep there rather than build a third job. |
+| 2026-08-02 | The output-budget window clamp is unexercised in production. | The dev model reports a 200k window, so the half-share never binds. It is proven only by unit test. The case that matters — a small-window BYOK model getting a 24750-token cap — has never been run. |
 
 ## Drift log — near-misses, wrong turns, bars I nearly lowered
 
@@ -1780,7 +4449,31 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
 | 2026-08-01 | **Wrote a check that answered a different question from the one I asked.** Verified `_uuid` was imported by grepping for the string — it matched, at line 277, INSIDE another method where it is a local. The new eval seeder would have died on `NameError` at its first live run, and no test drives a seeder without a stack. |
 | 2026-08-01 | **Nearly committed a WORSE baseline and blamed the engine for my shell.** Recorded `gone_cast = error/error` twice — once because my shell had no `INTERNAL_SERVICE_TOKEN`, once because the seeder's internal URLs default to docker hostnames that do not resolve from the host. Both times the honest reading was *my environment*; the committed file would have said *the engine*. |
 | 2026-08-01 | **Trusted a local green that could not have been the CI green.** 3303 tests passed on my box while CI was red on the same commit, because the dev box is on fastapi 0.136 and CI installs `>=0.139`. I only found it by reading the CI log, not by running anything. A suite is only evidence for the environment it ran in, and I never checked that mine matched. |
+| 2026-08-02 | **My S6 guard scanned ONE FILE and an audit found the EIGHTH copy it could not see.** S6's audit block says "SEVEN copies -> one policy": true of `routers/engine.py`, false of the repo. `engine/canon_reflect.py:256` still re-derived `bool(judge_ref and judge_source and str(judge_ref) != str(drafter_ref))`. An enumerated scope is DEFAULT-UNCOVERED — NV-2 verbatim — and the question it never answers is "what about a file created tomorrow?". Guard now scans the app tree. |
+| 2026-08-02 | **I shipped a guard that could not fail, during the audit for guards that cannot fail — SIXTH this run, and the first from an ESCAPING bug.** The widened critic guard was written by a generator script and `\b` became a literal BACKSPACE (0x08). The regex then required a control character no source contains, matched nothing, and reported PASS with the eighth copy directly in front of it. Standalone the same logic found it; only `cat -A` on the file showed `^H`. Found by injecting the copy back and watching the test stay green — never by reading it. Swept every file touched this session for the same corruption: none in committed code. |
+| 2026-08-02 | **Re-created the permanent-amber failure inside the slice about honest signals.** I made `panel_safety` return `safe=False` when the exclusion set was defaulted and matched nothing. With no env configured that is the DEFAULT state, so every deployment would report `safe=False` forever — and a flag that is always false stops being read, at which point a REAL self-grader arrives wearing the same colour as every ordinary run. Exactly the failure S1 exists to prevent, which I have cited in four audits. The historical F1=0.869 baseline test reddening is what surfaced it, and I nearly "fixed" the test instead of the design. |
+| 2026-08-02 | **My "is this a real reason" check is a 40-character floor, and it false-positived immediately.** `error_block_heal`'s REJUDGE skip read "there was no judge pass to re-run" — true, complete, 34 characters. The tempting fix was lowering the floor, which would equally have admitted "n/a because". Expanded the reason instead and wrote the proxy's weakness into the test: a length floor cannot tell a short answer from a shrug, and pretending it can is how the next person games it. |
+| 2026-08-02 | **Prose-is-not-behaviour, for the FOURTH time in one run, and this time it would have been self-defeating.** My first S5 stage scan read raw text and reported `error_block_heal` as RUNNING `snap` — the reference is in its DOCSTRING, inside the sentence explaining why it does not call it. The declaration check would have been defeated by the very documentation that makes that module the exemplar. Same root as S3's `not_found` text scan and S4's injection lint. I now strip docstrings by reflex, four occurrences too late. |
+| 2026-08-02 | **Nearly manufactured the precondition for a sealed decision.** I started S9 intending to implement `GuardReport` in a second service to "make progress toward" the three-adopter criterion. That is fabricating evidence for a decision rather than letting its evidence arrive — the spec is explicit that translation and knowledge adopt it AS PART OF THEIR OWN SLICES, because an adoption performed to satisfy a counter proves nothing about three services independently converging. Caught by re-reading §S9 before writing code instead of after. |
+| 2026-08-02 | **Wrote a live correctness bug into a code comment on the strength of a GATE'S MESSAGE, then measured it and had to retract.** `language-bias-gate` flags `.lower()` on a name var (ML-2), so I wrote that this guard would report an equivalent name as UNANCHORED — "a fabricated finding". Measured across every name `_TOKEN` can emit: **0 disagreements** between `.lower()` and the fold. The failure needs a full-width or Han name the extractor cannot produce. The fix is still right (it stops a future `_TOKEN` widening from silently breaking the guard) but the justification I shipped was fiction. |
+| 2026-08-02 | **A fix-proving test that was vacuous TWICE, in two different ways.** It asserted a full-width name reads as anchored: first vacuous because the fixture was sentence-initial so `_is_name` never extracted it; then STILL vacuous because `_TOKEN` cannot match a full-width capital at all, so the fixture could never reach the code under test. The control caught the first. Injecting the old `.lower()` back caught the second — the test passed with the bug restored. Neither was findable by reading it. |
+| 2026-08-02 | **I turned a CI gate RED with a comment, shipped it, and did not notice for four slices — because the gate set I kept pasting as "the gates" is a SUBSET of what CI runs.** The word "passage" in a comment I added in S7-4 made `injection-coverage-lint` exit 1 on `compress.py`. Six gates (ai-provider, generation-guard, enforcement-claims, db-safety, llm-budget, language-rule) is not the CI gate set. Every VERIFY block before S4 asserted its evidence honestly against an incomplete list. |
+| 2026-08-02 | **Nearly wrote up "the prose fix blinded the detector" when my injected NAME was wrong.** `_retrieved_passage = body` did not red the gate; the regex needs a word boundary and `_` is a word character. Measuring the regex directly settled it in a minute. Same reach-for-the-dramatic-reading shape as the tilemap `tool_use_success` near-miss. |
+| 2026-08-02 | **Asserted a security detector MUST catch something, on my own assumption, and started treating the mismatch as a regression I had caused.** An uppercase `"PASSAGE:"` inside a prompt template does not register — before or after my change. Checking the pre-fix behaviour showed it was always the boundary. Recorded as a known limit instead of widening a security regex to match what I had guessed. |
+| 2026-08-02 | **Shipped a regression six unit tests could not see, and only the LIVE run caught it.** `class SkipReason(str, Enum)` satisfies `== "refuted"` and JSON-serialises correctly, so every test passed — but `str()` and f-strings return `"SkipReason.NOOP"`, so any consumer that FORMATS a skip_reason would emit the member path. The live probe printed `skip_reasons seen: ['SkipReason.NOOP']`. Every test I wrote used `==`, which is exactly the shape blind to it. `StrEnum` fixes it; the lesson is that comparison-only tests do not cover a value that leaves the process by three different routes. |
+| 2026-08-02 | **A guard that reddened on the comment explaining what it forbids.** My duplicate-name check scanned raw file text for `not_found` and failed on my own note recording that `not_found` had been removed. Prose is not usage — the distinction the deferral registry's stripper had to learn, met from the other side. Rewritten over the AST's string constants, where comments do not exist. |
+| 2026-08-02 | **I wrote a check that could not fail, into a test file, in the slice about machine-checking a contract.** A `@ts-expect-error` asserting `TraceTier` rejects `"T9"` — inert, because `tsconfig.json` excludes `src/**/__tests__` and `*.test.tsx`, so no test file is ever type-checked. It reads exactly like enforcement. Found ONLY because I widened the type to prove red-ability and `tsc` returned exit 0 — the injection I nearly skipped as unnecessary for a change this simple. Fifth check-that-cannot-fail this run, and the first I authored rather than found. |
+| 2026-08-02 | **Introduced a two-convention bug WHILE removing one — and the suite stayed green.** Swapping translation's `estimate_tokens` for the kernel left `split_chapter` still sizing its window from the old `_CJK_CHARS_PER_TOKEN = 1.5`, so a 100-token budget cut 150 CJK chars the new estimator counts as 158: 58% over, inside the module I was fixing for exactly that. It passed because the test asserting chunk COUNT was itself derived from the old constant. Caught by reading the function below the one I edited, not by a test. |
+| 2026-08-02 | **Edited a function twice while its module docstring described the behaviour I had just removed.** `chunk_splitter`'s header still advertised "CJK at ~1.5 chars/token" after the body became the kernel's. Stale prose is how the next reader re-derives the wrong model — the same shape as the `cross_scene_check` row whose `why` describes a call that no longer exists. |
+| 2026-08-02 | **Nearly shipped the S6 picker without the warning that makes it honest.** The spec asks for an affordance, and a select writing `critic_model_ref` satisfies that literally. But the state an author most often lands in is "I picked the model I already use", which the server silently refuses — so the setting would look applied and do nothing. That is the permanent-amber shape S1 exists to end, re-created by the slice written to close it. |
+| 2026-08-02 | **A refactor that did nothing, reported like a run that worked.** My first replacement of the six hand-rolled `distinct` copies matched on `\r\n` and printed `8-indent copies: 0 · 4-indent copies: 0` — a clean no-op with a tidy summary. Only because the same command also printed the REMAINING count did I see it had changed nothing. A script that reports what it looked for, not what it changed, reads as success. |
+| 2026-08-02 | **Applied the new exemption to the wrong row, first try, inside the slice written to stop exactly that.** I marked `compress` `signal_inert` because `ceiling == floor == 512` and the ceiling is applied last. The probe reddened at once: the window clamp ALSO runs after the floor and pushes DOWN, so `context_length=8` gives 4. A ceiling bounds one direction. The flag would have excused a call site from a signal it is entitled to — the rot this slice pays down, re-created by its own exemption mechanism. Only the two-directional assert caught it; a one-directional one would have passed. |
+| 2026-08-02 | **Widened the detector and nearly banked the smaller number.** My first `_ssot_local_names` bound names module-wide, and the unattributed backlog fell 29 → 26 — three sites this slice never touched, including `self_heal._chat`, a helper one of whose callers passes a flat `400`. The name matched, so a literal would have been laundered into `attributed` by an assignment four hundred lines away. Shrinking a backlog by loosening the thing that measures it is how a ratchet stops meaning anything, and it presents as progress. |
+| 2026-08-02 | **Nearly deleted five load-bearing overrides as redundancy.** The plan-forge repair sites restate `max_tokens_for("plan_forge_chat")`, which looked like duplication of the client default — but `LMStudioClient.chat` declares **8000** against the row's **12000**, so removing them would have cut a plan JSON by a third, and a clipped plan comes back unparseable rather than short. Reading the Protocol before editing is what stopped it, and it exposed the genuine version of the bug: `_parse_with_repair`'s own `8000` default, overridden only by `materialize`, so `analyze` and `refine_spec` had been running a third under the declared row. |
+| 2026-08-02 | **Reported a deployment failure that was my shell.** Seven image hash checks came back `MISMATCH` and I had begun treating the build as stale. Git Bash rewrites `/app/...` into `C:/Program Files/Git/app/...`; with `MSYS_NO_PATHCONV=1` all seven MATCH. The repo already has this lesson written down. I applied it only after producing the false report — which is the failure mode, not the path mangling. |
 | 2026-08-01 | **Built the fix list from a TRUNCATED terminal, then called it complete.** The failure list printed 20 of 33 rows; I swept the 6 files I could see and reported "one root, six files". The other 13 rows held two more files with the same root — and one of them was a PRODUCTION bug (`retrieve_arcs` selecting a dropped column, 500 on the shipped schema). Same shape as the ROT-1 miss: a denominator taken from what I happened to see rather than from the full set. |
+| 2026-08-02 | **Nearly called a toast a consumer.** My first sketch of the `kg_unchecked` wiring was a branch on the rescan toast and nothing else — which reads as satisfying the ratchet, since the gate can only prove the field is referenced in code, not that the reference is load-bearing. But a toast is gone in four seconds and the thing it warns about (a feed that may be missing rows) is not, so a user who steps away sees an empty "all up to date" panel with no trace that the scan was incomplete. The registry row would have been true and the defect would have survived. Fixed by holding the coverage in state and rendering it ABOVE the empty state. **The gate I wrote for this pattern cannot catch this; only reading can.** |
+| 2026-08-02 | **Typed the three new response fields OPTIONAL, which is the fail-open default in a new coat** — and then "fixed" it by making them REQUIRED, which fixes nothing. `kg_unchecked?: number` makes `undefined > 0` false, so a missing coverage report reads as full coverage: precisely the bug being closed, re-introduced through a `?`. Dropping the `?` is a *declaration*; the wire is still free to omit the field, and a rolling deploy against an older glossary is exactly when it would. Only caught on the self-review pass, one step after I had already written this row congratulating myself for the first half. The real fix is a runtime `typeof` and a THIRD state — coverage unknown ≠ coverage zero. Fourth reach for the trusting default this run (`#[derive(Default)]`, `!ok → continue`, the silent `done` frame, now this), and the first where my own correction was also fail-open. |
 
 
 - **2026-07-31 · caught in review of my own proposal.** My first S1–S5 proposal was scoped to
@@ -1825,3 +4518,102 @@ gap is real — Vietnamese tokenizes denser — and is a product question, not a
   honesty states. The real gaps were narrower and different: one missing *direction*, one missing
   *status*, and the checker pointed at the empty SSOT. Reading the code before proposing the fix
   changed the fix.
+- **2026-08-02 · a guard that could not fail, and its own control certified the silence.** The S6
+  distinct-critic guard was written by a generator script, and `\b` became a literal **0x08**
+  byte — so its regex required a control character no source file contains, matched nothing, and
+  reported PASS with an eighth copy of the rule on the line above. Its control was green because
+  it re-stated the pattern by hand instead of calling the detector. Only `cat -A` showed the `^H`.
+  **A control that re-implements the thing it controls tests the author's intent, not the code.**
+- **2026-08-02 · my first red-ability sweep accused two innocent guards.** Five reported "STILL
+  GREEN"; two of those were my PROBE being wrong — `motif_plan` is not a subject of the injection
+  lint at all, and the guard-SDK gate needs three adopters where I injected one. Writing that
+  table up as-is would have produced two defects that do not exist, hunting the exact bug class I
+  was hunting. Every case now asserts GREEN-before as well as RED-after.
+- **2026-08-02 · a gate whose call sites are found BY the thing it checks for.** Deleting
+  `"max_tokens": max_tokens,` from a real call site left `llm-budget-ssot-gate` green: a payload
+  with a `**spread` and no budget key was excused as `opaque`. The gate's own comment said it was
+  "one `**kwargs` away from being live" and treated that as a note. It was a hole.
+- **2026-08-02 · an exemption nothing verified, in the gate that exists to reject unverified
+  claims.** `signal_inert=True` excuses a row's call sites from the no-signal ratchet, and the
+  gate accepted the flag at face value — marking a VERDICT row inert kept CI green while the
+  service's own unit test went red. The fact that refutes it (`_KIND_ALWAYS_READS`: every
+  non-MIRROR kind reads `context_length`) was already written in the same file, two functions up.
+- **2026-08-02 · I nearly left the proof in the scratchpad.** A sweep run once, with its numbers
+  pasted into a transcript, is prose. Turning it into a file was not enough either: I named it
+  `…-sweep.py`, which `gate-teeth-gate`'s `_IS_GATE` regex does not match, so my new CI gate spent
+  ten minutes outside the inventory that exists to catch unwired and toothless gates.
+- **2026-08-02 · wrote a free string into a closed set, inside the change that closes it.** The
+  handler branch with no owner id got `guardstatus.Report{Status: "not_applicable"}` — a bare
+  literal, three files after declaring that a Go path may implement a subset of the vocabulary
+  but never invent a member. Caught by re-reading, not by the test I had just written, because
+  the test parses CONSTS and a literal at a call site is not one.
+- **2026-08-02 · invented a coverage number for a loop that did not finish.** My first
+  mid-sweep error path computed `checked = inScope - flagged - unchecked`. Those sets are not
+  disjoint, so the arithmetic was wrong — but the real problem was shipping any figure at all in
+  the one field whose entire job is saying how much was actually verified.
+- **2026-08-02 · `ok` from a DB-gated Go package is also what "everything skipped" prints.** I
+  had the green and was about to move on; re-running with `-v` is what turned it into nine named
+  PASS lines. The repo already has this lesson written down for Python suites.
+- **2026-08-02 · invented a pydantic model's fields for the second time this run.** The
+  envelope-parity fixture built `CanonViolation(entity=…, rule=…, detail=…)`; the real base is
+  `entity_id` / `name` / `matched`. It failed for a reason with nothing to do with its subject.
+  The lesson row for this already exists and I still wrote the shape I expected.
+- **2026-08-02 · my own red-ability gate made a false accusation, and the cause was CRLF.** A
+  multi-line anchor written with `\n` matches nothing in this repo's working tree, so the case
+  reported ANCHOR-GONE — "this tested nothing" — about text plainly present in the file. A gate
+  that cries wolf for an environment reason is how a gate gets switched off. `_mutate`
+  normalises before matching now.
+- **2026-08-02 · reached for the fail-OPEN default, three slices in a row.** `#[derive(Default)]`
+  on `Provenance` is one line and serde wanted a default — and it means `Llm`, the trusting
+  answer, for every construction site that ever forgets the field. Identical in shape to the
+  `!ok` branch I had just deleted from the Go sweep and the silent `done` frame I had just fixed
+  in Python: when a value is missing, resolve to the reassuring one. Caught by re-reading each
+  time, never by a rule, which is the part worth recording.
+- **2026-08-02 · the registry overstated a severity and I checked before building.** The Rust row
+  said "nothing obliges a consumer to read `fallback_count` before treating the set as generated
+  content". True of the type system; the two actual consumers are report formatters and both
+  already print it. The gap was type-level and future-facing. Closing it was still right — it is
+  cheap now and not later — but writing it up as a live bug would have been fiction.
+- **2026-08-02 · wrote a URL by pattern-matching its sibling, into a check that fails silently.**
+  `resolve_model_identity` first pointed at `/v1/model-registry/models/...` because
+  `resolve_context_length` two functions above does. The route lives in the other chi group,
+  `/internal/...`. A 404 there degrades to `identity_verified=False` — permanently, quietly, and
+  with every test still green. Found by curling the real route on the running stack.
+- **2026-08-02 · fixed one broken test stub, re-ran, found the second.** Widening the LLM client
+  contract broke two `SimpleNamespace` stubs. I patched the one in the failure I was looking at
+  instead of grepping for every stub of that dependency, and paid a full 90-second suite run to
+  discover the other. The lesson row for this already exists: audit ALL call sites.
+- **2026-08-02 · a debt row I wrote was wrong in both of its claims.** It said closing the
+  identity gap needed a new provider-registry route and a caching decision. The route had existed
+  since FD-27, and identity never needed the endpoint. A row re-read at every PLAN, asserting
+  work that was already done — which is the same staleness the "verify the claim against code,
+  don't trust the handoff note" rule exists for, this time in a note I authored myself.
+- **2026-08-02 · nearly cleared a ratchet with a weaker defence than it was tracking.** The
+  first version of the translation fix added `scan_untrusted_source` to the lint's
+  `SANITIZER_REF` and stopped — which would have cleared two baseline rows written for
+  NEUTRALISATION using a check that only LOOKS. A gate cleared by a defence weaker than the one
+  it tracks is a ratchet cleared without the behaviour. The DETECT/MUTATE split is the fix, and
+  the PASS line names the count so the two promises never read as one.
+- **2026-08-02 · read a comment as a filename, in the gate written to catch that.** The
+  signal registry's first `guard_status` consumer row named `engine/chapter_scene_gate.py`. No
+  such file: the name is a CONCEPT used in a comment in `canon_check.py`, and I copied it into
+  a claim about the filesystem. `guard-signal-consumption-gate` reddened on it on its first
+  run, which is the whole argument for the gate — but it is also the sixth time this cycle that
+  prose was read as behaviour, and this one I committed while building the defence against it.
+- **2026-08-02 · the gate against checks-that-cannot-fail could not fail.** With every case
+  skipped, `guard-redability-gate` printed `PASS — 0/0 guard(s) proved RED-ABLE` and exited 0.
+  `--gates-only` is the mode CI runs, so retiering those cases would have left CI green
+  forever. Same shape as the 0x08 bug the file was written for, in the file written for it.
+  Found by probing my own gate rather than re-reading it.
+- **2026-08-02 · a mapping keyed by a display string.** `REQUIRES_ENV` couples a case to its
+  dependency by the case NAME. Rename the case and the requirement detaches silently — the
+  suite then skips and the case is reported inert, which is the false accusation the mapping
+  exists to prevent. An orphan check now reds.
+- **2026-08-02 · I overstated in the honesty registry.** The `injection_scan` row said the
+  report is "recorded on resume_state and logged". `resume_state` belongs to the decoupled
+  path, whose flag defaults to FALSE — so on the path that runs, it is a log line. Writing a
+  register whose purpose is not overstating, and overstating in it.
+- **2026-08-02 · third time in one day: Python source written inside a `python - <<'PY'`
+  heredoc double-escapes.** `\n` and `\t` land as real characters and the target stops parsing.
+  I solved it twice by writing the patch to a scratchpad file, then reached for the heredoc
+  again.

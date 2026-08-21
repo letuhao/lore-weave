@@ -5,11 +5,11 @@ import { StudioTopBar } from '../StudioTopBar';
 import { StudioHostProvider } from '../../host/StudioHostProvider';
 
 // StudioTopBar now hosts the layout-preset button (uses useStudioHost), so the provider is required.
-const setup = (bookTitle = 'My Book', onOpenQuickOpen = vi.fn()) =>
+const setup = (bookTitle = 'My Book', onOpenQuickOpen = vi.fn(), onOpenGuide = vi.fn()) =>
   render(
     <MemoryRouter>
       <StudioHostProvider bookId="b1">
-        <StudioTopBar bookId="b1" bookTitle={bookTitle} onOpenQuickOpen={onOpenQuickOpen} />
+        <StudioTopBar bookId="b1" bookTitle={bookTitle} onOpenQuickOpen={onOpenQuickOpen} onOpenGuide={onOpenGuide} />
       </StudioHostProvider>
     </MemoryRouter>,
   );
@@ -38,5 +38,12 @@ describe('StudioTopBar', () => {
     expect(palette.disabled).toBe(false);
     fireEvent.click(palette);
     expect(onOpenQuickOpen).toHaveBeenCalledOnce();
+  });
+
+  it('opens the user guide from the main studio toolbar', () => {
+    const onOpenGuide = vi.fn();
+    setup('My Book', vi.fn(), onOpenGuide);
+    fireEvent.click(screen.getByTestId('studio-help-button'));
+    expect(onOpenGuide).toHaveBeenCalledOnce();
   });
 });

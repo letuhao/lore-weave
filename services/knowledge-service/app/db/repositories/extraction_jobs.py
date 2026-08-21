@@ -169,6 +169,7 @@ _SELECT_COLS = """
   job_id, user_id, project_id, scope, scope_range, status,
   llm_model, embedding_model, max_spend_usd,
   items_total, items_processed, current_cursor, cost_spent_usd,
+  tokens_in, tokens_out,
   started_at, paused_at, completed_at, created_at, updated_at,
   error_message, campaign_id,
   billing_user_id, billing_embedding_model, billing_llm_model,
@@ -244,6 +245,8 @@ class ExtractionJob(BaseModel):
     # section only when this field is populated.
     current_chapter_title: str | None = None
     cost_spent_usd: Decimal = Decimal("0")
+    tokens_in: int = 0
+    tokens_out: int = 0
 
     started_at: datetime | None = None
     paused_at: datetime | None = None
@@ -423,6 +426,16 @@ class ExtractionJobsRepo:
         return job
 
     # ─── reads ───────────────────────────────────────────────────────
+
+    async def seed_retry_progress(self, user_id: UUID, job_id: UUID, *, cursor: dict[str, Any] | None, items_processed: int) -> ExtractionJob | None:
+        query = f"""
+        UPDATE extraction_jobs SET current_cursor=$3::jsonb, items_processed=$4, updated_at=now()
+        WHERE user_id=$1 AND job_id=$2 AND status='running'
+        RETURNING {_SELECT_COLS}
+        """
+        async with self._pool.acquire() as conn:
+            row = await conn.fetchrow(query, user_id, job_id, json.dumps(cursor) if cursor is not None else None, max(0, items_processed))
+        return _row_to_job(row) if row else None
 
     async def get(self, user_id: UUID, job_id: UUID) -> ExtractionJob | None:
         query = f"""

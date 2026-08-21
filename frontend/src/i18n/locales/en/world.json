@@ -98,5 +98,27 @@
     "branchAt": "branches at ch. {{ch}}",
     "orphan": "· source outside this world",
     "edgeLabel": "ch. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Bind entity",
+    "delete": "Delete",
+    "empty": "No maps yet — draw the world your story lives in.",
+    "entityPlaceholder": "location entity id",
+    "error": "Could not load this map.",
+    "label": "Label",
+    "marker": "Marker",
+    "name": "Name",
+    "newMap": "+ New map",
+    "newMapPrompt": "Name the new map",
+    "pickWorld": "Pick a world to map.",
+    "region": "Region",
+    "save": "Save",
+    "unbind": "Unbind",
+    "uploadImage": "Upload base image",
+    "vertexCapNotice": "{{count}} vertices — reshape disabled above {{max}} for performance."
+  },
+  "maps": {
+    "empty": "No maps yet. Ask the assistant to “make a map of this world” to create one.",
+    "heading": "Maps"
   }
 }

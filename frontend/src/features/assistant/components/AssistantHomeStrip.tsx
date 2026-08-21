@@ -3,6 +3,7 @@
 // context + the two controller hooks (CLAUDE.md MVC).
 import { BookText, Brain, GraduationCap } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuth } from '@/auth';
 import { cn } from '@/lib/utils';
 import { useSheetRoute } from '@/components/shared/Sheet';
@@ -25,6 +26,7 @@ import { MobileJournalSheet, JOURNAL_SHEET_ID } from './mobile/MobileJournalShee
 import { MobileMemorySheet, MEMORY_SHEET_ID } from './mobile/MobileMemorySheet';
 
 export function AssistantHomeStrip() {
+  const { t } = useTranslation('assistant');
   const { user } = useAuth();
   const { bookId, projectId, consentEnabled, consentSaving, setConsent, endOfDay: eod, captureRail: rail } = useAssistant();
   const inbox = useDiaryFactInbox();
@@ -50,9 +52,9 @@ export function AssistantHomeStrip() {
     <aside className="flex h-full w-full flex-col gap-4 overflow-y-auto p-4">
       <div>
         <h2 className="text-lg font-semibold" data-testid="assistant-greeting">
-          Welcome back{firstName ? `, ${firstName}` : ''}
+          {t('home.welcome', { name: firstName ? ', ' + firstName : '' })}
         </h2>
-        <p className="text-sm text-muted-foreground">Your private work assistant.</p>
+        <p className="text-sm text-muted-foreground">{t('home.subtitle')}</p>
       </div>
 
       {/* F2 — confirm the local time zone (once) so the distiller buckets each day correctly. */}
@@ -62,12 +64,12 @@ export function AssistantHomeStrip() {
       <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card p-3">
         <div className="min-w-0">
           <div className="text-sm font-medium">
-            {consentEnabled ? 'Capturing your work notes' : 'Capture is off'}
+            {consentEnabled ? t('home.capturing') : t('home.captureOff')}
           </div>
           <div className="text-xs text-muted-foreground">
             {consentEnabled
-              ? 'People & projects are noticed as you talk.'
-              : 'Turn on to remember colleagues, projects and decisions.'}
+              ? t('home.capturingDesc')
+              : t('home.captureOffDesc')}
           </div>
         </div>
         <button
@@ -92,14 +94,14 @@ export function AssistantHomeStrip() {
       </div>
 
       <div className="flex items-center justify-between">
-        <span className="sr-only">Captured items</span>
+        <span className="sr-only">{t("home.capturedItems")}</span>
         <button
           type="button"
           data-testid="assistant-refresh-rail"
           onClick={() => void rail.refresh()}
           className="ml-auto text-xs text-muted-foreground underline-offset-2 hover:underline"
         >
-          Refresh
+          {t('home.refresh')}
         </button>
       </div>
       <CaptureRail entities={rail.entities} loading={rail.loading} captureOn={consentEnabled} />
@@ -115,7 +117,7 @@ export function AssistantHomeStrip() {
         }}
         className="rounded-md border border-border bg-secondary px-4 py-2 text-sm font-medium disabled:opacity-50"
       >
-        {eod.status === 'distilling' ? 'Ending your day…' : 'End my day'}
+        {eod.status === 'distilling' ? t('home.endingDay') : t('home.endDay')}
       </button>
 
       <EndOfDayReview
@@ -138,7 +140,7 @@ export function AssistantHomeStrip() {
           }}
           className="flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border text-sm font-medium hover:bg-secondary"
         >
-          <BookText className="h-4 w-4" aria-hidden="true" /> Journal
+          <BookText className="h-4 w-4" aria-hidden="true" /> {t('home.journal')}
         </button>
         <button
           type="button"
@@ -149,7 +151,7 @@ export function AssistantHomeStrip() {
           }}
           className="flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border text-sm font-medium hover:bg-secondary"
         >
-          <Brain className="h-4 w-4" aria-hidden="true" /> Memory
+          <Brain className="h-4 w-4" aria-hidden="true" /> {t('home.memory')}
         </button>
       </div>
 
@@ -160,7 +162,7 @@ export function AssistantHomeStrip() {
         data-testid="assistant-practice-link"
         className="flex min-h-[44px] items-center justify-center gap-2 rounded-md border border-border text-sm font-medium hover:bg-secondary"
       >
-        <GraduationCap className="h-4 w-4" aria-hidden="true" /> Practice interview
+        <GraduationCap className="h-4 w-4" aria-hidden="true" /> {t('home.practice')}
       </Link>
 
       {/* A3 — arm the (previously dormant) autonomous jobs. Fail-closed OFF; server is SoT. */}

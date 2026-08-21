@@ -61,6 +61,34 @@ class EvalResult:
     # metric-of-record panel has <2 disjoint judges or a generator self-grades.
     panel_safe: bool = False
     panel_safety_reason: str = ""
+    #: S13 — whether the exclusion set was DEFAULTED and matched nothing. It used to stop at
+    #: `PanelSafety` and never reach here, so the one structure built "for persistence" could
+    #: not carry the fact at all. `panel_safe` stays True in that case on purpose (see
+    #: `panel_safety`), which is exactly why this needs its own field rather than being folded
+    #: into it: the panel is safe AS FAR AS ANYONE CAN TELL, and that qualifier is the whole
+    #: point.
+    exclusion_unverified: bool = False
+
+
+def metric_of_record_blockers(result: "EvalResult") -> list[str]:
+    """Why this number may NOT be quoted as the metric of record. Empty ⇒ it may.
+
+    One place answers the question, because it was previously answered by reading
+    `panel_safe` and nothing else — and `panel_safe` is deliberately True for a panel whose
+    exclusion set matched nothing. That combination reads as "clean" and means "clean, or a
+    self-grader is sitting in this panel ungraded and we cannot tell". A caller checking one
+    boolean cannot distinguish them; this function is what makes the distinction reachable.
+    """
+    blockers: list[str] = []
+    if not result.panel_safe:
+        blockers.append(result.panel_safety_reason or "panel not safe")
+    if result.exclusion_unverified:
+        blockers.append(
+            "the exclusion set came from defaults and matched NO judge in this run: "
+            "`user_model_id`s are per-machine, so this is what a panel from another "
+            "deployment looks like — a generator may be self-grading here, unexcluded"
+        )
+    return blockers
 
 
 def _read_fleiss(dump_root: Path) -> float | None:
@@ -106,7 +134,13 @@ def score_dump(
     disjoint = [j for j in judges if j["uuid"] not in panel.excluded]
     res = disjoint_median_with_ci(disjoint, n_boot=n_boot)
 
-    safety = panel_safety(panel.excluded, [j["uuid"] for j in judges])
+    # S13 — forward whether the exclusion set was DEFAULTED. Without it, a panel whose refs
+    # came from another deployment's hardcoded UUIDs reports `safe=True, no generator in
+    # panel`, which is exactly what a genuinely clean panel reports.
+    safety = panel_safety(
+        panel.excluded, [j["uuid"] for j in judges],
+        exclusion_is_defaulted=panel.exclusion_is_defaulted,
+    )
 
     return EvalResult(
         variant_label=variant_label or dump_root.name,
@@ -121,4 +155,5 @@ def score_dump(
         n_judges_total=len(judges),
         panel_safe=safety.safe,
         panel_safety_reason=safety.reason,
+        exclusion_unverified=safety.exclusion_unverified,
     )

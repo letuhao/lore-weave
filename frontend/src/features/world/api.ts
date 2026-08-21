@@ -28,7 +28,13 @@ export const worldsApi = {
     if (params?.limit != null) qs.set('limit', String(params.limit));
     if (params?.offset != null) qs.set('offset', String(params.offset));
     const q = qs.toString();
-    return apiJson<WorldListResponse>(`${WORLDS}${q ? `?${q}` : ''}`, { token });
+    return apiJson<WorldListResponse>(`${WORLDS}${q ? `?${q}` : ''}`, { token }).then((response) => ({
+      ...response,
+      // Rolling deployments and older book-service responses may omit `items` or
+      // return null. Keep every picker/list consumer on a total array contract.
+      items: Array.isArray(response?.items) ? response.items : [],
+      total: typeof response?.total === 'number' ? response.total : 0,
+    }));
   },
 
   getWorld(token: string, worldId: string): Promise<World> {

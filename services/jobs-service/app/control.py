@@ -37,6 +37,9 @@ _CONTROL: dict[str, tuple[str, str]] = {
     # translation uses a DISTINCT control prefix (its /internal/translation/jobs/{id}/cancel
     # is the campaign cancel with a different body) — cancel-only (P3-4).
     "translation": (settings.translation_service_internal_url, "/internal/translation/job-control"),
+    # Book imports retain their source and have a job-scoped resume command. The
+    # Book endpoint verifies the projection owner again before it requeues work.
+    "book": (settings.book_service_internal_url, "/internal/epub-import-jobs"),
 }
 
 

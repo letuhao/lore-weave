@@ -85,7 +85,13 @@ export function ChatInputBar({
   placeholder,
 }: ChatInputBarProps) {
   const { t } = useTranslation('chat');
-  const [value, setValue] = useState('');
+  const [value, setValue] = useState(() => {
+    try {
+      const saved = localStorage.getItem('loreweave.chat.prefill');
+      if (saved) localStorage.removeItem('loreweave.chat.prefill');
+      return saved ?? '';
+    } catch { return ''; }
+  });
   // W4 — the effort dropdown state (replaces the Think/Fast boolean pill).
   // 'fast' ≙ thinking:false, 'standard' ≙ thinking:true, 'deep' additionally
   // sends reasoning_effort:"deep". Initialized from the session default and
@@ -104,6 +110,16 @@ export function ChatInputBar({
   // Which composer dropdown is open (the effort dropdown moved to the shared
   // EffortSelect, which self-manages; only the mode dropdown uses this now).
   const [openMenu, setOpenMenu] = useState<'mode' | null>(null);
+  useEffect(() => {
+    const onPrefill = (event: Event) => {
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (!text) return;
+      setValue(text);
+      textareaRef.current?.focus();
+    };
+    window.addEventListener('lw-chat-prefill', onPrefill);
+    return () => window.removeEventListener('lw-chat-prefill', onPrefill);
+  }, []);
   const menusRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 

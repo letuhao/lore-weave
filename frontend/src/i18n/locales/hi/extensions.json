@@ -9,7 +9,9 @@
     "permissions": "टूल अनुमतियाँ",
     "proposals": "प्रस्ताव",
     "activity": "गतिविधि लॉग",
-    "ingest": "रजिस्ट्री स्रोत"
+    "ingest": "रजिस्ट्री स्रोत",
+    "bindings": "स्वचालित सेटअप",
+    "workflows": "नुस्खे"
   },
   "quota": {
     "unavailable": "उपयोग अनुपलब्ध",

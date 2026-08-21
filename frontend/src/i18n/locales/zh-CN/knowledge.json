@@ -458,7 +458,11 @@
       "replaceFactSave": "保存替换",
       "replaceFactSuccess": "事实已替换",
       "markWrongUndo": "撤销",
-      "markWrongUndoFailed": "无法撤销：{{error}}"
+      "markWrongUndoFailed": "无法撤销：{{error}}",
+      "tabs": {
+        "current": "当前",
+        "temporal": "时间线"
+      }
     },
     "edit": {
       "title": "编辑实体",
@@ -521,7 +525,28 @@
       "location": "地点",
       "organization": "组织",
       "concept": "概念",
-      "item": "物品"
+      "item": "物品",
+      "unknown": "未知类型",
+      "person": "人物",
+      "artifact": "器物",
+      "event_ref": "事件引用",
+      "preference": "偏好",
+      "event": "事件",
+      "terminology": "术语",
+      "power_system": "力量体系",
+      "species": "物种",
+      "relationship": "关系",
+      "plot_arc": "情节弧",
+      "social_setting": "社会设定",
+      "trope": "梗",
+      "technique": "技巧",
+      "colleague": "同事",
+      "decision": "决策",
+      "jargon": "术语",
+      "meeting": "会议",
+      "org": "组织",
+      "project": "项目",
+      "task": "任务"
     },
     "archive": {
       "action": "归档",
@@ -707,7 +732,32 @@
         "errorProviderFlake": "嵌入服务提供商在运行中发生故障。请重试。",
         "errorGeneric": "基准测试失败: {{message}}"
       },
-      "bookIdPlaceholder": "uuid"
+      "bookIdPlaceholder": "uuid",
+      "benchmarkNoRun": "⋯ 尚未进行基准测试 — 请运行黄金集基准测试以启用提取功能。",
+      "bookIdLocked": "本书（已锁定）",
+      "canonCapture": "从对话中自动捕获新名称",
+      "canonCaptureCeilingOff": "此部署已关闭 — 您的选择已保存，但在管理员重新启用之前，不会进行捕获。",
+      "canonCaptureHint": "对话中出现的名称每隔几轮会被添加至本书的术语表审核收件箱中作为建议 — 绝不会直接作为正典。每次捕获会额外消耗一次 AI 调用，费用由您自己的模型承担。",
+      "canonCaptureNoBook": "关联一本书籍到此项目，以便将名称捕获到其术语表中。",
+      "embeddingModel": "嵌入模型",
+      "embeddingModelEmpty": "未配置具备嵌入能力的模型 — 提取功能需要该模型。",
+      "embeddingModelHint": "决定本项目使用哪个向量空间进行语义段落检索。",
+      "embeddingModelNone": "无（无语义段落）",
+      "genre": "类型",
+      "genrePlaceholder": "例如：仙侠、修真、奇幻……",
+      "memoryConfirm": "保存记忆前进行确认",
+      "memoryConfirmHint": "AI 想要记住的事实将等待您的批准，而不会自动保存。",
+      "rerankDiscoveryHint": "是否为自托管？请在“AI 模型”中添加本地重排序（兼容 Cohere）的凭据，然后点击“刷新”——重排序模型将被自动发现。",
+      "rerankModel": "重排序模型 (可选)",
+      "rerankModelEmpty": "未配置具备重排序能力的模型。请注册一个模型以启用垃圾信息过滤。",
+      "rerankModelHint": "用于原始搜索垃圾信息过滤的交叉编码器重排序。可选 —— 若留空，搜索将保持融合顺序。",
+      "rerankModelNone": "无 (跳过重排序 —— 保持融合顺序)",
+      "toolCalling": "对话中的记忆工具",
+      "toolCallingHint": "允许 AI 在此项目的对话过程中进行搜索、检索和记录记忆。",
+      "benchmarkFailed": "✗ 基准测试未通过 (recall@3 {{recall}}) — 该模型的提取质量低于标准；请尝试使用不同的嵌入模型。",
+      "benchmarkInconclusive": "⋯ 基准测试结果不确定 (recall@3 {{recall}}) — 需要 ≥3 次通过才能验证此模型。请重新运行。",
+      "benchmarkPassed": "✓ 基准测试通过 (recall@3 {{recall}})。",
+      "genreError": "类型名称长度不能超过 {{max}} 个字符。"
     },
     "archiveDialog": {
       "title": "归档项目？",
@@ -910,6 +960,32 @@
         "unpin": "取消固定",
         "budget": "每个窗口消耗 {{tokens}} 个 token ({{count}} 个已固定 × ~50)。",
         "noBook": "固定功能需要关联书籍。请先为该项目添加书籍。"
+      },
+      "disabled": {
+        "benchmarkRequired": "请运行黄金集基准测试并使其通过，以启用提取功能（见上文）。",
+        "checkingBenchmark": "正在检查嵌入基准测试…",
+        "fixConcurrency": "并行调用次数必须在 1–64 之间。",
+        "fixMaxSpend": "请输入有效的支出上限。",
+        "fixRange": "请修正章节范围。",
+        "pickEmbedding": "请选择一个嵌入模型。",
+        "pickLlm": "请选择一个用于提取的 LLM 模型。"
+      },
+      "embedding": {
+        "changeViaDialog": "该项目已配置嵌入模型。请使用“更换模型”进行切换 —— 这将重新构建图谱。",
+        "saveFailed": "无法保存嵌入模型：{{error}}",
+        "saved": "嵌入模型已保存 —— 请运行下方的基准测试以启用提取功能。"
+      },
+      "prereq": {
+        "benchmarkChecking": "正在检查嵌入基准测试……",
+        "benchmarkPassed": "嵌入基准测试通过",
+        "benchmarkPending": "等待嵌入基准测试通过（请先选择模型）",
+        "benchmarkRequired": "嵌入基准测试通过 —— 请从下方的模型选择器中运行测试",
+        "embedding": "已选择嵌入模型",
+        "llm": "已选择提取 LLM 模型"
+      },
+      "reasoning": {
+        "hint": "默认关闭 —— 提取结果为 JSON 格式，开启隐藏思考过程可能会消耗额外的输出额度。仅在针对推理模型处理复杂内容时开启。",
+        "label": "启用模型推理 (思考)"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "正在保存…",
       "cancel": "取消",
       "saved": "提取设置已保存。",
-      "failed": "保存失败：{{error}}"
+      "failed": "保存失败：{{error}}",
+      "filterModel": "过滤模型 (可选)",
+      "filterModelDefault": "使用提取模型 (默认)",
+      "filterModelHint": "用于判断关系精确度的 LLM。若保持默认，过滤过程将复用您的提取模型 (按用户计费，BYOK)。若需更高精度的过滤，请选择更强大的模型。"
     },
     "confirmDestructive": {
       "cancel": "取消",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "最后的机会 —— 确定重建吗？",
-        "description": "点击“重建”后将立即开始销毁并重建流程。一旦新任务开始运行，操作将无法撤销。"
+        "description": "点击“重建”后将立即开始销毁并重建流程。一旦新任务开始运行，操作将无法撤销。",
+        "descriptionCount": "此操作将永久删除 {{entities}} 个实体、{{events}} 个事件和 {{facts}} 个事实，然后从头开始重建。此操作无法撤销。",
+        "typePrompt": "请输入项目名称以确认"
       },
       "disable": {
         "title": "禁用提取？",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "显示与当前版本的差异",
       "diffEmpty": "无差异。"
-    }
+    },
+    "loading": "加载中…"
   },
   "indicator": {
     "label": "知识指示器",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "全局",
       "project": "项目",
-      "degraded": "降级"
+      "degraded": "降级",
+      "multi": "{{count}} 个知识图谱"
     },
     "popover": {
       "projectHeading": "项目记忆",
@@ -1100,7 +1183,8 @@
       "projectBody": "本会话已关联 <strong>{{name}}</strong>。AI 在每次对话时都会查看您的全局个人简介以及该项目的摘要和术语表条目。",
       "globalBody": "本会话未关联项目。AI 仅能查看您的全局个人简介。请在会话设置中关联项目，以便其访问特定书籍的记忆。",
       "degradedBody": "上一轮对话时无法连接知识服务。AI 已回退至仅参考近期消息——您的项目记忆暂时未包含在提示词中。服务恢复后，将在下一轮对话中自动恢复。",
-      "manage": "管理知识"
+      "manage": "管理知识",
+      "multiBody": "此对话同时基于 {{count}} 个知识图谱进行处理 —— 事实已标记其来源。"
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "映射"
     },
     "emptyHint": "Triage 会收集所有尚未符合您模式的提取内容——队列清空意味着一切都已归位。"
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "截至第 {{ordinal}} 章",
+      "current": "当前",
+      "loadFailed": "无法加载故事此时间点的正典内容。",
+      "sourceCanonContent": "作者正典",
+      "sourceCanonContentHint": "正在显示作者正典（此时间点没有折叠快照）。",
+      "status": {
+        "current": "当前",
+        "stale": "陈旧",
+        "unbuildable": "不可用"
+      },
+      "unbuildable": "此处无法进行合成 — 已降级处理。"
+    },
+    "retrieval": {
+      "chapter": "第 {{chapter}} 章",
+      "ariaLabel": "搜索检索",
+      "currentStateNote": "结果为当前状态（暂不支持时序检索）。",
+      "error": "搜索失败：{{error}}",
+      "noResults": "未找到匹配的上下文。",
+      "noText": "（无预览文本）",
+      "placeholder": "搜索本书上下文……",
+      "typeToSearch": "输入以搜索该实体的上下文。"
+    },
+    "slider": {
+      "atChapter": "第 {{ordinal}} 章",
+      "aria": "拖动以跳转至章节时间顺序",
+      "head": "末尾（最新）",
+      "headButton": "末尾（最新）",
+      "label": "故事时间线",
+      "loadFailed": "无法加载变更时间线。",
+      "noChanges": "暂无故事时间线变更。"
+    },
+    "translation": {
+      "asOfChapter": "第 {{n}} 章",
+      "asOfLabel": "截至 {{label}}",
+      "error": "加载上下文失败：{{error}}",
+      "asAuthored": "按原著",
+      "asOfHead": "最新",
+      "badgeCached": "已翻译 · 已缓存",
+      "badgeFresh": "已翻译",
+      "empty": "此故事节点暂无对应上下文。",
+      "failNoModel": "未设置翻译模型。请在“翻译设置”中选择一个模型以查看翻译后的上下文。",
+      "failProvider": "翻译失败。目前显示原文上下文。",
+      "failQuota": "翻译不可用 —— 服务商配额已耗尽。",
+      "langOriginal": "原文 ({{lang}})",
+      "languageLabel": "显示语言",
+      "title": "单章上下文",
+      "translating": "正在翻译……首次查看可能需要一点时间"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "截至第 {{asOf}} 章",
+      "current": "当前",
+      "hint": "拖动时间滑块，将过去的章节与当前状态进行对比。",
+      "loadFailed": "无法加载差异：{{error}}",
+      "loading": "正在加载差异…",
+      "noChanges": "第 {{asOf}} 章与当前版本之间没有单值变更。",
+      "title": "差异视图"
+    },
+    "timeline": {
+      "chapter": "第 {{chapter}} 章",
+      "empty": "该实体暂无记录的变更。",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → 开)"
+      },
+      "kind": {
+        "invalidated": "已失效",
+        "open": "进行中",
+        "superseded": "已被取代"
+      },
+      "loadFailed": "无法加载变更时间线：{{error}}",
+      "loadMore": "加载更多",
+      "loading": "正在加载变更…",
+      "title": "变更时间线"
+    }
   }
 }

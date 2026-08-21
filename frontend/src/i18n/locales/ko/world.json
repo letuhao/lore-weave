@@ -98,5 +98,27 @@
     "orphan": "· 외부 월드 소스",
     "branchBadge": "만약에",
     "edgeLabel": "제 {{ch}}장"
+  },
+  "mapEditor": {
+    "bind": "엔티티 연결",
+    "delete": "삭제",
+    "empty": "아직 생성된 지도가 없습니다 — 당신의 이야기가 펼쳐질 세계를 그려보세요.",
+    "entityPlaceholder": "위치 엔티티 ID",
+    "error": "이 지도를 불러올 수 없습니다.",
+    "label": "라벨",
+    "marker": "마커",
+    "name": "이름",
+    "newMap": "+ 새 지도",
+    "newMapPrompt": "새 지도의 이름을 입력하세요",
+    "pickWorld": "지도를 그릴 세계를 선택하세요.",
+    "region": "지역",
+    "save": "저장",
+    "unbind": "연결 해제",
+    "uploadImage": "베이스 이미지 업로드",
+    "vertexCapNotice": "{{count}}개의 정점 — 성능을 위해 {{max}}개 초과 시 모양 변경이 비활성화됩니다."
+  },
+  "maps": {
+    "empty": "아직 생성된 지도가 없습니다. 어시스턴트에게 “이 세계의 지도를 만들어줘”라고 요청하여 지도를 생성해 보세요.",
+    "heading": "지도"
   }
 }

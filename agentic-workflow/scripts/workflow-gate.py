@@ -22,16 +22,17 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 
 STATE_FILE = Path(".workflow-state.json")
-AUDIT_LOG = Path("docs/audit/AUDIT_LOG.jsonl")
-# MCP_QUERY resolved relative to THIS script's location so the bridge works
-# regardless of cwd (commit hooks may invoke from worktrees, CI runners, etc.).
-# Phase 7 review-impl MED-3 fix: was Path("scripts/mcp-query.py") cwd-relative,
-# silently no-op'd when invoked outside repo root.
-MCP_QUERY = Path(__file__).parent / "mcp-query.py"
+# NOTE (2026-08-03): AMAW was retired here. Its L3 layer used to bridge events to a ContextHub MCP
+# server via scripts/mcp-query.py. That integration was never actually exercised —
+# the server was listed in config but no agent called it — so it has been removed
+# along with mcp-query.py, amaw-guardrail-gate.py, amaw-context-inject.py and
+# seed-amaw-guardrails.py. AUDIT_LOG.jsonl stays as committed history — the writer
+# that was carrying its weight. Do not re-add an MCP bridge here without a
+# consumer that demonstrably reads it.
 
 PHASES = [
     "clarify", "design", "review-design", "plan", "build",
@@ -55,150 +56,90 @@ INITIAL_STATE = {
     "verify_evidence": None,
     "started_at": None,
     "last_transition": None,
-    # AMAW v3.0 L3 deepen — flag set by `amaw-enable` verb (called by /amaw slash cmd).
-    # When True, cmd_complete writes events to AUDIT_LOG.jsonl and selectively bridges
-    # high-signal events (sprint_complete, pragmatic_stop, REJECTED reviews) to
-    # ContextHub via mcp-query.py add_lesson. Default v2.2 mode → flag stays False,
-    # no MCP autocalls, no AUDIT_LOG entries.
-    "amaw_enabled": False,
-    "amaw_enabled_at": None,
 }
 
 
-# ── AMAW L3 helpers (no-op when amaw_enabled=False) ─────────────────
+def _check_live_smoke_evidence(evidence: str) -> None:
+    """Emit a soft WARN (stderr only, never blocks) when VERIFY evidence on a
+    cross-service change lacks a live-smoke acknowledgement token.
 
+    Motivation — recurring pattern caught 4 times in sessions 58-59:
+    a feature ships across two service boundaries, the unit suite is green
+    against mocks, but the actual cross-service contract is broken (timeout
+    drift, header omission, UUID-vs-name drift, env mismatch). The bug surfaces
+    only when the full stack runs. Mock-only coverage hides it for months.
 
-def _log_audit(event: dict) -> None:
-    """Append event to AUDIT_LOG.jsonl. Caller MUST gate on amaw_enabled."""
-    AUDIT_LOG.parent.mkdir(parents=True, exist_ok=True)
-    with AUDIT_LOG.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(event, ensure_ascii=False) + "\n")
+    Soft signal: this prompts the agent / human to either:
+      - paste a one-liner of live-smoke evidence, or
+      - acknowledge the deferral (D-<NAME>-LIVE-SMOKE), or
+      - acknowledge live infra unavailable (legitimate at dev time).
 
-
-def _parse_ts(raw) -> datetime | None:
-    """Parse an ISO-8601 timestamp to a timezone-AWARE UTC datetime.
-
-    /review-impl HIGH-1: AUDIT_LOG timestamps are heterogeneous — the main
-    agent writes naive local time (`datetime.now().isoformat()`), while the
-    Adversary/Scope-Guard sub-agents (separate LLM agents) emit a mix of naive,
-    `+offset`, and `Z` forms. Lexical string comparison of those is wrong: a
-    UTC `Z` timestamp on a UTC+7 machine sorts BEFORE the naive local string
-    of the same instant. Compare parsed datetimes, never raw strings.
-
-    Naive input is assumed local (correct for `amaw_enabled_at` and for naive
-    sub-agent timestamps written against the same wall clock). Unparseable
-    input returns None — the caller decides how to treat it.
+    "Cross-service" = git diff (HEAD baseline = staged + unstaged + working tree)
+    touches ≥ 2 distinct ``services/<name>/`` prefixes. frontend/, contracts/,
+    infra/, docs/ are NOT counted (service boundary risk lives in BE-to-BE
+    contracts). Git failure → silent skip (workflow-gate must never break on
+    infra failure).
     """
-    if not raw:
-        return None
-    s = str(raw).strip()
-    if s.endswith("Z"):
-        s = s[:-1] + "+00:00"
     try:
-        dt = datetime.fromisoformat(s)
-    except ValueError:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.astimezone()  # naive → assume local tz
-    return dt.astimezone(timezone.utc)
-
-
-def _had_rejected_review(task_slug: str, phase: str, since: str | None = None) -> bool:
-    """True if an adversary review event for this task AND this phase logged
-    status REJECTED (DEFERRED #002).
-
-    The bridge previously inferred rejection from a substring match on the
-    main agent's free-text evidence (`"REJECTED" in evidence.upper()`) — which
-    false-positives on "NOT REJECTED", "non-rejected", etc. This reads the
-    structured `status` field that the Adversary sub-agent writes to
-    AUDIT_LOG.jsonl, the authoritative signal. A rejected round is worth a
-    cross-session lesson even if a later round APPROVED — the rejection
-    captured a real defect pattern future Adversaries should be able to find.
-
-    `phase` is matched (Adversary r1 WARN-1): a REJECTED in `review-design`
-    must NOT cause `complete review-code` to file a lesson mislabeled
-    "...review-code". Each review phase reports its own rejections.
-
-    `since` scopes the scan to the CURRENT run (human-review finding A1):
-    AUDIT_LOG.jsonl is ONE append-only file shared by every task ever run.
-    Matching on task slug alone means a slug REUSED in a later sprint would
-    inherit an earlier sprint's REJECTED verdict and mis-fire an
-    adversary-rejection lesson. Passing the run's `amaw_enabled_at` as `since`
-    excludes events from prior runs. Timestamps are compared as PARSED
-    datetimes via `_parse_ts`, never as raw strings — /review-impl HIGH-1
-    found that lexical compare of mixed naive/`Z`/`+offset` forms silently
-    excludes genuine in-run events on non-UTC machines. An event whose `ts`
-    is missing or unparseable is excluded (consistent with A1's conservative
-    anti-false-positive intent). If `since` is None the scan is unscoped
-    (legacy behaviour).
-
-    Note (Adversary r1 WARN-3): this re-parses the whole append-only
-    AUDIT_LOG.jsonl per bridge call. Accepted — bridge calls happen only on
-    review-phase completion (rare), and the log is per-repo small. Correctness
-    relies on the Adversary's review event being flushed before cmd_complete
-    runs, which the AMAW orchestration guarantees (sub-agent completes, then
-    main calls `complete`).
-    """
-    if not AUDIT_LOG.exists():
-        return False
-    since_dt = _parse_ts(since) if since else None
-    for line in AUDIT_LOG.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            ev = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if since_dt is not None:
-            ev_dt = _parse_ts(ev.get("ts"))
-            if ev_dt is None or ev_dt < since_dt:
-                continue  # event predates this run (or unparseable) — A1 cross-run guard
-        if (ev.get("task") == task_slug
-                and ev.get("action") == "review"
-                and ev.get("phase") == phase
-                and str(ev.get("status", "")).strip().upper() == "REJECTED"):
-            return True
-    return False
-
-
-def _bridge_to_contexthub(lesson_type: str, title: str, content: str, tags: list[str]) -> None:
-    """Best-effort: shell out to mcp-query.py add_lesson. Never raises.
-
-    Bridge failures are logged to stderr but do NOT block phase completion —
-    the workflow state machine must remain deterministic regardless of MCP
-    availability.
-    """
-    if not MCP_QUERY.exists():
-        print(f"WARN: bridge skipped — {MCP_QUERY} not found", file=sys.stderr)
-        return
-    try:
-        # Subprocess timeout MUST exceed mcp-query.py's internal HTTP timeout (60s)
-        # so we don't kill an in-flight add_lesson whose embedding is still generating.
-        # Phase 7 review fix: was 45s → 75s. 60s HTTP + 15s safety buffer.
         result = subprocess.run(
-            [
-                sys.executable, str(MCP_QUERY), "add_lesson",
-                "--type", lesson_type,
-                "--title", title,
-                "--content", content,
-                "--tags", ",".join(tags),
-            ],
-            capture_output=True, text=True, timeout=75,
+            ["git", "diff", "--name-only", "HEAD"],
+            capture_output=True, text=True, timeout=10,
         )
-        if result.returncode == 0:
-            print(f"OK: bridged lesson {result.stdout.strip()}", file=sys.stderr)
-        else:
-            stderr_tail = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "(no stderr)"
-            print(f"WARN: bridge exit {result.returncode}: {stderr_tail}", file=sys.stderr)
-    except (subprocess.SubprocessError, OSError) as e:
-        print(f"WARN: bridge exception: {e}", file=sys.stderr)
+        if result.returncode != 0:
+            return
+        files = [line.strip() for line in result.stdout.splitlines() if line.strip()]
+    except (subprocess.SubprocessError, OSError, FileNotFoundError):
+        return
+
+    services = set()
+    for path in files:
+        m = re.match(r"^services/([^/]+)/", path)
+        if m:
+            services.add(m.group(1))
+
+    if len(services) < 2:
+        return
+
+    # Acknowledgement tokens — any one in evidence satisfies the gate.
+    ev_lower = evidence.lower()
+    tokens = ("live smoke", "live-smoke", "live infra unavailable")
+    if any(t in ev_lower for t in tokens):
+        return
+
+    services_list = ", ".join(sorted(services))
+    print(
+        f"WARN: VERIFY evidence does not acknowledge live-smoke for a cross-service\n"
+        f"      change ({len(services)} services touched: {services_list}).\n"
+        f"      Memory pattern feedback_mock_only_coverage_hides_crossservice_bugs:\n"
+        f"      a feature green-on-mocks across a service boundary has ~40% chance\n"
+        f"      of broken-at-birth on the first live smoke (4 hits sessions 58-59).\n"
+        f"      Acknowledge by including ONE of these tokens in your evidence:\n"
+        f"        - 'live smoke: <one-liner>' — confirm a real cross-service call ran\n"
+        f"        - 'LIVE-SMOKE deferred to D-<NAME>-LIVE-SMOKE' — track the deferral\n"
+        f"        - 'live infra unavailable: <reason>' — legitimate dev-time skip\n"
+        f"      This is a soft warning only; the verify phase IS marked complete.",
+        file=sys.stderr,
+    )
 
 
 def load_state() -> dict:
     if not STATE_FILE.exists():
         save_state(dict(INITIAL_STATE))
-    return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    try:
+        return json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, ValueError, OSError) as exc:
+        # DEFERRED-008: a corrupt / empty .workflow-state.json (manual edit, disk
+        # corruption, an interrupted non-atomic write before #003) must NOT make
+        # every gate command — including the pre-commit hook — die with a traceback
+        # that blocks the commit. Reset to a clean initial state and warn loudly so
+        # the operator knows the prior phase progress was lost (re-classify if needed).
+        print(
+            f"WARN: {STATE_FILE} is unreadable/corrupt ({exc}); resetting to initial state.",
+            file=sys.stderr,
+        )
+        fresh = dict(INITIAL_STATE)
+        save_state(fresh)
+        return fresh
 
 
 def save_state(state: dict) -> None:
@@ -250,45 +191,88 @@ def fail(msg: str) -> None:
 # ── Commands ─────────────────────────────────────────────────────────
 
 
+SIZES = ["XS", "S", "M", "L", "XL"]
+
+
+def _expected_size(files: int, logic: int, side_effects: int) -> tuple[str, int]:
+    """Return (expected_size, risk_floor_index).
+
+    Sizing is by COMPLEXITY + RISK, not file count (2026-06-12 redesign — file count
+    over-sized wide-but-shallow changes, e.g. one param added across N files, forcing
+    needless ceremony). `logic` (distinct SEMANTIC changes) is the primary axis; `files`
+    is only a BREADTH signal that can bump one tier — and ONLY when the change is genuinely
+    deep across that breadth (logic ≳ files), so a mechanical sweep (low logic-per-file)
+    never escalates. `side_effects` (API/DB/config/migration/auth — real risk) set a hard
+    floor that undersizing cannot cross."""
+    if logic <= 1:
+        base = 0   # XS
+    elif logic <= 3:
+        base = 1   # S
+    elif logic <= 6:
+        base = 2   # M
+    elif logic <= 12:
+        base = 3   # L
+    else:
+        base = 4   # XL
+    # Breadth bump: a deep change spread across many files (NOT a mechanical sweep —
+    # logic-per-file is substantial) is genuinely larger → +1 tier.
+    if files >= 6 and logic >= files:
+        base = min(4, base + 1)
+    # Risk floor (load-bearing — undersizing below this BLOCKS): real side effects can't be XS.
+    floor = 0
+    if side_effects >= 1:
+        floor = max(floor, 1)   # ≥ S
+    if side_effects >= 2:
+        floor = max(floor, 2)   # ≥ M
+    base = max(base, floor)
+    return SIZES[base], floor
+
+
 def cmd_size(args: list[str]) -> None:
     if len(args) < 4:
-        fail("Usage: workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <side_effects>")
+        fail("Usage: workflow-gate.py size <XS|S|M|L|XL> <files> <logic> <side_effects> [context_pct]")
 
     size = args[0].upper()
-    if size not in ("XS", "S", "M", "L", "XL"):
+    if size not in SIZES:
         fail(f"Invalid size '{size}'. Must be XS, S, M, L, or XL.")
 
     files, logic, side_effects = int(args[1]), int(args[2]), int(args[3])
+    context_pct = int(args[4]) if len(args) > 4 else None
 
-    # Determine expected size from counts
-    if files <= 1 and logic <= 1 and side_effects == 0:
-        expected = "XS"
-    elif files <= 2 and logic <= 3 and side_effects == 0:
-        expected = "S"
-    elif files <= 5:
-        expected = "M"
-    elif files <= 9:
-        expected = "L"
-    else:
-        expected = "XL"
+    expected, floor = _expected_size(files, logic, side_effects)
+    chosen_idx = SIZES.index(size)
 
-    sizes = ["XS", "S", "M", "L", "XL"]
-    if sizes.index(size) < sizes.index(expected):
+    # Undersizing is now ADVISORY (your complexity judgment on breadth wins) — EXCEPT the
+    # risk floor: real side effects keep a hard minimum. So a 20-file/1-logic sweep can be S,
+    # but a schema migration can never be XS.
+    if chosen_idx < floor:
         fail(
-            f"Cannot undersize: you said {size} but counts suggest {expected} "
-            f"({files} files, {logic} logic, {side_effects} side effects). "
-            f"Use '{expected}' or larger."
+            f"Cannot undersize below the RISK floor: {side_effects} side effect(s) require "
+            f"at least {SIZES[floor]} — you said {size}. (Breadth can be discounted; risk cannot.)"
         )
 
     state = load_state()
     state["size"] = size
     state["size_counts"] = {"files": files, "logic": logic, "side_effects": side_effects}
+    if context_pct is not None:
+        state["context_pct"] = context_pct
     save_state(state)
 
     skips = SKIPPABLE.get(size, set())
     skip_msg = f"  Allowed skips: {', '.join(sorted(skips))}" if skips else "  No phases may be skipped"
     print(f"OK: Task classified as {size} (files={files}, logic={logic}, side_effects={side_effects})")
+    if chosen_idx < SIZES.index(expected):
+        print(f"  NOTE: complexity suggests ~{expected}; you sized down to {size} (breadth-discounted — OK).")
     print(skip_msg)
+    # Context-budget guidance (2026-06-12) — let budget, not file count, drive checkpoint cadence.
+    if context_pct is not None:
+        if context_pct < 60:
+            print(f"  BUDGET: context at {context_pct}% — ample. Prefer ONE continuous run over "
+                  f"many small tasks; checkpoint/commit at RISK boundaries (contract, migration, "
+                  f"cross-service seam), not at file-count thresholds.")
+        elif context_pct >= 80:
+            print(f"  BUDGET: context at {context_pct}% — filling. Checkpoint/commit + /compact at "
+                  f"the next risk boundary.")
 
 
 def cmd_phase(args: list[str]) -> None:
@@ -357,216 +341,9 @@ def cmd_complete(args: list[str]) -> None:
 
     print(f"OK: Phase '{phase}' marked complete")
 
-    # AMAW L3 — log to AUDIT_LOG and selectively bridge to ContextHub.
-    # No-op for default v2.2 (amaw_enabled=False).
-    if state.get("amaw_enabled"):
-        # Defensive re-normalize (DEFERRED #001, Adversary r1 WARN-2): state["task"]
-        # may have been set before _normalize_slug existed, or via a path that
-        # bypassed cmd_amaw_enable. _normalize_slug is idempotent so this is free
-        # insurance — the slug becomes a tag below and MUST be comma-free.
-        raw_task = state.get("task")
-        task_slug = _normalize_slug(raw_task) if raw_task else "unnamed-task"
-        _log_audit({
-            "ts": completed_at,
-            "task": task_slug,
-            "phase": phase,
-            "agent": "main",
-            "action": "phase_complete",
-            "evidence": evidence,
-        })
-        # Selective bridge — only high-signal events become lessons.
-        if phase == "retro":
-            _log_audit({
-                "ts": completed_at,
-                "task": task_slug,
-                "phase": phase,
-                "agent": "main",
-                "action": "sprint_complete",
-                "evidence": evidence,
-            })
-            _bridge_to_contexthub(
-                lesson_type="general_note",
-                title=f"Sprint complete: {task_slug}",
-                content=f"Phase: retro\nCompleted: {completed_at}\nEvidence: {evidence}",
-                tags=["amaw", "sprint", task_slug],
-            )
-        elif phase in ("review-design", "review-code") and _had_rejected_review(task_slug, phase, state.get("amaw_enabled_at")):
-            _bridge_to_contexthub(
-                lesson_type="general_note",
-                title=f"Adversary REJECTED: {task_slug} {phase}",
-                content=f"Phase: {phase}\nCompleted: {completed_at}\nEvidence: {evidence}",
-                tags=["amaw", "adversary-rejection", task_slug],
-            )
-
-
-def _normalize_slug(raw: str) -> str:
-    """Slugify a task slug (DEFERRED #001): lowercase, collapse any run of
-    non-[a-z0-9] characters to a single dash, strip leading/trailing dashes.
-    Idempotent — normalizing an already-normalized slug is a no-op.
-
-    The slug flows into the downstream tag list as `["amaw", "sprint", slug]`,
-    which `_bridge_to_contexthub` comma-joins and `mcp-query.py` comma-splits
-    back — so an un-normalized slug containing a comma (or space, slash, etc.)
-    would silently fragment into extra tags. EVERY entry point that lets a
-    user supply a slug must call this: `cmd_amaw_enable` (write side) and
-    `cmd_pragmatic_stop` (independent arg), plus `cmd_complete` re-normalizes
-    defensively on the read side (Adversary r1 BLOCK + WARN-2).
-
-    Empty/all-punctuation input falls back to the tag-safe string
-    'unnamed-task'. NOTE: this is distinct from the '(unnamed)' DISPLAY
-    sentinel used in print messages (cmd_amaw_enable / cmd_pragmatic_stop) —
-    the parens make '(unnamed)' deliberately NOT a valid slug, so it can never
-    be mistaken for or collide with a real normalized slug. 'unnamed-task' is
-    the value layer (a usable tag); '(unnamed)' is the display layer.
-    """
-    # str() guard (Adversary r2 WARN-2): a hand-edited state file could carry a
-    # non-string `task` (int, null); str() keeps this total instead of raising
-    # AttributeError deep in the bridge path.
-    slug = re.sub(r"[^a-z0-9]+", "-", str(raw).lower()).strip("-")
-    # 64-char cap (human-review finding A2): the slug becomes a ContextHub tag
-    # and a lesson title; a pathologically long task name should not produce an
-    # unbounded tag. Re-strip in case the cut landed mid-dash.
-    slug = slug[:64].strip("-")
-    return slug or "unnamed-task"
-
-
-def cmd_amaw_enable(args: list[str]) -> None:
-    """Enable AMAW mode for the current task. Optionally accepts task slug."""
-    state = load_state()
-    if state.get("amaw_enabled"):
-        slug = state.get("task") or "(unnamed)"
-        print(f"OK: AMAW mode already enabled for task '{slug}' (no-op)")
-        return
-    state["amaw_enabled"] = True
-    state["amaw_enabled_at"] = datetime.now().isoformat()
-    if args:
-        normalized = _normalize_slug(args[0])
-        if normalized != args[0]:
-            print(f"  NOTE: task slug normalized '{args[0]}' -> '{normalized}'")
-        state["task"] = normalized
-    save_state(state)
-    slug = state.get("task") or "(unnamed)"
-    print(f"OK: AMAW mode enabled for task '{slug}'")
-    print(f"  AUDIT_LOG: {AUDIT_LOG}")
-    print(f"  Bridge target: ContextHub via {MCP_QUERY}")
-    print(f"  Triggers: retro→sprint_complete; REJECTED reviews; pragmatic-stop")
-
-
-def cmd_amaw_pre_commit(_args: list[str]) -> None:
-    """AMAW-mode addition to pre-commit hook. No-op for default v2.2.
-
-    Calls mcp-query.py check_guardrails when amaw_enabled. If guardrails
-    return BLOCKED → exit 1 (block commit). If MCP unreachable → warn + exit 0
-    (don't block commits on infra failures).
-    """
-    # No state file = no task in flight = nothing to gate (DEFERRED #004).
-    # MUST check before load_state(), which auto-creates .workflow-state.json
-    # from INITIAL_STATE — an agent committing outside any tracked task would
-    # otherwise leave a stale state file behind (confusing [ ] markers on the
-    # next `status`).
-    #
-    # Exit SILENTLY here — unlike cmd_pre_commit, which prints a visible
-    # "No workflow state found" warning (Adversary r1 WARN-2). In the hook
-    # chain `pre-commit && amaw-pre-commit`, cmd_pre_commit runs first and
-    # already surfaces that warning; a second one here would just be noise.
-    #
-    # Single-threaded assumption (Adversary r1 WARN-3): a concurrent `reset`
-    # racing between this exists() check and load_state() is out of scope for
-    # a local single-user dev tool.
-    if not STATE_FILE.exists():
-        sys.exit(0)
-    state = load_state()
-    if not state.get("amaw_enabled"):
-        # Default v2.2 mode — no-op
-        sys.exit(0)
-    if not MCP_QUERY.exists():
-        print(f"WARN: amaw-pre-commit skipped — {MCP_QUERY} not found", file=sys.stderr)
-        sys.exit(0)
-    # Phase 7 review-impl MED-1 fix: call helper with --format json so we parse
-    # structured response instead of scraping summary-mode strings (fragile).
-    # MED-2 fix: 4xx response → exit 1 (block commit) — wrong shape = something
-    # broken at rule layer, safer to block than fail-open.
-    try:
-        # Note: --format MUST follow the subcommand. argparse subparser default
-        # overrides top-level if --format is placed before the verb.
-        result = subprocess.run(
-            [sys.executable, str(MCP_QUERY), "check_guardrails", "git commit", "--format", "json"],
-            capture_output=True, text=True, timeout=15,
-        )
-    except (subprocess.SubprocessError, OSError) as e:
-        print(f"WARN: amaw-pre-commit guardrail check skipped (exception: {e})", file=sys.stderr)
-        sys.exit(0)
-
-    if result.returncode == 2:
-        # Server down / 5xx — don't block commit on infrastructure failure
-        print(f"WARN: amaw-pre-commit guardrail check skipped — ContextHub unreachable (exit 2)", file=sys.stderr)
-        sys.exit(0)
-    if result.returncode == 1:
-        # 4xx / user-input error — BLOCK commit. Something structurally broken
-        # with the rule layer or the request; safer to block until investigated.
-        print(f"BLOCKED: amaw-pre-commit guardrail check returned 4xx (structural error — investigate before commit):", file=sys.stderr)
-        print(result.stdout, file=sys.stderr)
-        print(result.stderr, file=sys.stderr)
-        sys.exit(1)
-
-    # returncode == 0 — parse JSON verdict
-    try:
-        verdict = json.loads(result.stdout) if result.stdout.strip() else {}
-    except json.JSONDecodeError:
-        print(f"WARN: amaw-pre-commit got non-JSON response from check_guardrails — passing through:\n{result.stdout}", file=sys.stderr)
-        sys.exit(0)
-
-    # Verdict source is `pass: bool`. Treat absence as CLEAR (no rule layer = no block).
-    # Matched rules live in `matched_rules` (verified against live ContextHub response
-    # 2026-05-15); `violated`/`rules` kept as fallback for other server versions.
-    pass_field = verdict.get("pass")
-    matched = verdict.get("matched_rules") or verdict.get("violated") or verdict.get("rules") or []
-    if pass_field is False or (isinstance(matched, list) and len(matched) > 0 and pass_field is not True):
-        prompt = verdict.get("prompt", "")
-        print(f"BLOCKED by guardrails: pass={pass_field}, matched_rules={len(matched) if isinstance(matched, list) else matched}", file=sys.stderr)
-        if prompt:
-            print(f"  {prompt}", file=sys.stderr)
-        for rule in (matched if isinstance(matched, list) else []):
-            req = rule.get("requirement") if isinstance(rule, dict) else rule
-            print(f"  - {req}", file=sys.stderr)
-        sys.exit(1)
-
-    rules_checked = verdict.get("rules_checked", "unknown")
-    print(f"OK: amaw-pre-commit guardrails CLEAR (pass={pass_field}, rules_checked={rules_checked})")
-    sys.exit(0)
-
-
-def cmd_pragmatic_stop(args: list[str]) -> None:
-    """Record a pragmatic stop event with reason. Only meaningful in AMAW mode."""
-    if len(args) < 2:
-        fail("Usage: workflow-gate.py pragmatic-stop <task-slug> <reason>")
-    # Normalize the slug (DEFERRED #001, Adversary r1 BLOCK): this is a SECOND
-    # entry point — independent of cmd_amaw_enable — that feeds task_slug into a
-    # comma-joined tag list below. An un-normalized slug here re-introduces the
-    # exact comma-fragmentation defect #001 set out to close.
-    task_slug, reason = _normalize_slug(args[0]), args[1]
-    state = load_state()
-    if not state.get("amaw_enabled"):
-        print("WARN: pragmatic-stop has no effect in default v2.2 mode (amaw_enabled=False).", file=sys.stderr)
-        print("      Run `workflow-gate.py amaw-enable` first to enable AMAW logging.", file=sys.stderr)
-        sys.exit(1)
-
-    ts = datetime.now().isoformat()
-    _log_audit({
-        "ts": ts,
-        "task": task_slug,
-        "phase": state.get("current_phase") or "unknown",
-        "agent": "main",
-        "action": "pragmatic_stop",
-        "reason": reason,
-    })
-    _bridge_to_contexthub(
-        lesson_type="workaround",
-        title=f"Pragmatic stop: {task_slug}",
-        content=f"Phase: {state.get('current_phase')}\nTimestamp: {ts}\nReason: {reason}",
-        tags=["amaw", "pragmatic-stop", task_slug],
-    )
-    print(f"OK: pragmatic stop recorded for task '{task_slug}'")
+    # Soft cross-service live-smoke check (debt-prevention; never blocks).
+    if phase == "verify":
+        _check_live_smoke_evidence(evidence)
 
 
 def cmd_check(args: list[str]) -> None:
@@ -646,14 +423,8 @@ def cmd_status(_args: list[str]) -> None:
     size = state.get("size", "NOT SET")
     counts = state.get("size_counts", {})
 
-    amaw_enabled = state.get("amaw_enabled", False)
-    amaw_label = "ENABLED" if amaw_enabled else "disabled (default v2.2)"
-
     print(f"Task: {state.get('task') or '(unnamed)'}")
     print(f"Size: {size} (files={counts.get('files', 0)}, logic={counts.get('logic', 0)}, side_effects={counts.get('side_effects', 0)})")
-    print(f"AMAW: {amaw_label}")
-    if amaw_enabled and state.get("amaw_enabled_at"):
-        print(f"  enabled at: {state['amaw_enabled_at']}")
     print(f"Current phase: {current or 'none'}")
     print()
 
@@ -685,6 +456,43 @@ def cmd_reset(_args: list[str]) -> None:
     print(msg)
 
 
+def cmd_check_stack(args: list[str]) -> None:
+    """ADVISORY stale-image guard (F-LIVE-1). Runs scripts/check_stack_freshness.py
+    and surfaces drift / missing H0 routes — but NEVER blocks (always exits 0),
+    mirroring the cross-service live-smoke soft-warning. Pass-through args (e.g.
+    --probe-only, --drift-only, --services) are forwarded."""
+    script = Path(__file__).resolve().parent / "check_stack_freshness.py"
+    if not script.exists():
+        print("WARN: check_stack_freshness.py not found — skipping stack-freshness check")
+        return
+    result = subprocess.run([sys.executable, str(script), *args])
+    if result.returncode == 1:
+        print("⚠️  WARN (advisory): a running image is STALE or an H0 route is "
+              "missing — rebuild with scripts/build-stack.sh before a live run. "
+              "(not blocking)")
+    elif result.returncode == 3:
+        print("note: docker/git unavailable — stack-freshness check skipped")
+    # Advisory: never propagate a non-zero exit.
+
+
+def cmd_slices(args: list[str]) -> None:
+    """Validate a /warp slice manifest's independence invariants before fan-out.
+
+    Thin wrapper over scripts/warp/slice-manifest-validate.py — the pairwise
+    disjoint-write-set guarantee that makes parallel slice execution safe (see
+    docs/specs/2026-06-12-warp-parallel-mode.md §6). Unlike check-stack this is a
+    HARD gate: it propagates the validator's exit code (0 = clean / WARN-only,
+    1 = BLOCK) so /warp can gate the DESIGN→REVIEW (PT-verdict) boundary — a
+    BLOCK means the slicing is unsafe to fan out, fall back to serial /loom."""
+    if not args:
+        fail("Usage: workflow-gate.py slices <manifest.yaml|.json>")
+    script = Path(__file__).resolve().parent / "warp" / "slice-manifest-validate.py"
+    if not script.exists():
+        fail(f"slice-manifest validator not found: {script}")
+    result = subprocess.run([sys.executable, str(script), *args])
+    sys.exit(result.returncode)
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 
@@ -693,20 +501,18 @@ COMMANDS = {
     "phase": cmd_phase,
     "complete": cmd_complete,
     "check": cmd_check,
+    "check-stack": cmd_check_stack,
+    "slices": cmd_slices,
     "skip": cmd_skip,
     "pre-commit": cmd_pre_commit,
     "status": cmd_status,
     "reset": cmd_reset,
-    # AMAW v3.0 L3 deepen
-    "amaw-enable": cmd_amaw_enable,
-    "amaw-pre-commit": cmd_amaw_pre_commit,
-    "pragmatic-stop": cmd_pragmatic_stop,
 }
 
 
 def main() -> None:
     if len(sys.argv) < 2 or sys.argv[1] not in COMMANDS:
-        print("Usage: workflow-gate.py {size|phase|complete|check|skip|pre-commit|status|reset|amaw-enable|amaw-pre-commit|pragmatic-stop} [args]")
+        print("Usage: workflow-gate.py {size|phase|complete|check|slices|skip|pre-commit|status|reset} [args]")
         print()
         print("Commands:")
         print("  size <XS|S|M|L|XL> <files> <logic> <effects>  Classify task size")
@@ -715,13 +521,10 @@ def main() -> None:
         print("  check <name>                                   Check if phase done")
         print("  skip <name> <reason>                           Skip with reason")
         print("  pre-commit                                     Gate check for commits")
+        print("  check-stack [--probe-only|--drift-only]        ADVISORY: warn if a running image is stale (F-LIVE-1)")
+        print("  slices <manifest.yaml|.json>                   /warp: assert slice write-sets are disjoint (gate before fan-out)")
         print("  status                                         Show current state")
         print("  reset                                          Reset for new task")
-        print()
-        print("AMAW v3.0 L3 (opt-in, fired by /amaw slash command):")
-        print("  amaw-enable [task-slug]                        Enable AMAW mode + AUDIT_LOG + bridge")
-        print("  amaw-pre-commit                                Hook: check_guardrails (no-op default v2.2)")
-        print("  pragmatic-stop <task-slug> <reason>            Record pragmatic stop + bridge to lesson")
         sys.exit(1)
 
     cmd = sys.argv[1]

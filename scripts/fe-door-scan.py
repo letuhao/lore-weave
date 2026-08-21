@@ -19,7 +19,12 @@ import collections
 import pathlib
 import re
 
-ROOT = pathlib.Path(__file__).resolve().parents[1] / "frontend" / "src"
+# Derived from __file__, not hardcoded. The literal that was here pointed at
+# `d:/Works/source/lore-weave/frontend/src` — a DIFFERENT checkout that happens to exist
+# on this machine, so the scan silently reported on a sibling repo rather than this one.
+# It went unnoticed because the gate that catches exactly this had never run here:
+# `core.hooksPath` was unset, so the hook chain was inert.
+ROOT = pathlib.Path(__file__).resolve().parent.parent / "frontend" / "src"
 FEATURES = ROOT / "features"
 
 NAME_HINT = re.compile(r"(Editor|Panel|Dialog|Drawer|Modal|Form|Review|Picker|Manager|List|View)$")

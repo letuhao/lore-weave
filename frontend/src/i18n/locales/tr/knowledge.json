@@ -458,7 +458,11 @@
       "replaceFactSave": "Değişikliği kaydet",
       "replaceFactSuccess": "Bilgi değiştirildi",
       "markWrongUndo": "Geri al",
-      "markWrongUndoFailed": "Geri alınamadı: {{error}}"
+      "markWrongUndoFailed": "Geri alınamadı: {{error}}",
+      "tabs": {
+        "current": "Mevcut",
+        "temporal": "Zamansal"
+      }
     },
     "edit": {
       "title": "Varlığı düzenle",
@@ -517,11 +521,32 @@
       "discoveredHint": "Yeni varlıklar «keşfedildi» olarak başlar. Sözlüğe sabitlenerek «kanonik» statüsü kazanılır."
     },
     "kind": {
+      "unknown": "Bilinmeyen tür",
+      "person": "Kişi",
+      "artifact": "Eser",
       "character": "Karakter",
       "location": "Mekan",
       "organization": "Organizasyon",
       "concept": "Kavram",
-      "item": "Eşya"
+      "item": "Eşya",
+      "event_ref": "Olay",
+      "preference": "Tercih",
+      "event": "Olay",
+      "terminology": "Terminoloji",
+      "power_system": "Güç sistemi",
+      "species": "Tür",
+      "relationship": "İlişki",
+      "plot_arc": "Olay örgüsü arkı",
+      "social_setting": "Sosyal ortam",
+      "trope": "Motive",
+      "technique": "Teknik",
+      "colleague": "Meslektaş",
+      "decision": "Karar",
+      "jargon": "Jargon",
+      "meeting": "Toplantı",
+      "org": "Organizasyon",
+      "project": "Proje",
+      "task": "Görev"
     },
     "archive": {
       "action": "Arşivle",
@@ -707,7 +732,32 @@
         "errorAlreadyRunning": "Bu proje için zaten çalışan bir benchmark var. Bekleyin ve tekrar deneyin.",
         "errorProviderFlake": "Embedding sağlayıcısı çalışma sırasında hata verdi. Lütfen tekrar deneyin.",
         "errorGeneric": "Benchmark başarısız oldu: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Henüz bir kıyaslama yok — veri çıkarma işlemini etkinleştirmek için altın set kıyaslamasını çalıştırın.",
+      "bookIdLocked": "Bu kitap (kilitli)",
+      "canonCapture": "Sohbetten yeni isimleri otomatik yakala",
+      "canonCaptureCeilingOff": "Bu dağıtım için kapatıldı — seçiminiz kaydedildi, ancak bir yönetici tekrar etkinleştirene kadar yakalama işlemi çalıştırılmayacaktır.",
+      "canonCaptureHint": "Her birkaç turda bir, sohbetinizde geçen isimler, öneri olarak bu kitabın sözlük inceleme gelen kutusuna eklenir — asla kesinleşmiş (canon) olarak değil. Her yakalama işlemi için bir ek yapay zeka çağrısı kullanılır ve kendi modeliniz üzerinden ücretlendirilir.",
+      "canonCaptureNoBook": "İsimleri kitabın sözlüğüne yakalamak için bu projeye bir kitap bağlayın.",
+      "embeddingModel": "Gömme modeli",
+      "embeddingModelEmpty": "Yapılandırılmış gömme yeteneğine sahip model yok — veri çıkarma işlemi için bir model gereklidir.",
+      "embeddingModelHint": "Bu projenin anlamsal pasaj geri çağırma için hangi vektör uzayını kullanacağını belirler.",
+      "embeddingModelNone": "Yok (anlamsal pasaj yok)",
+      "genre": "Tür",
+      "genrePlaceholder": "ör. Tiên hiệp, Cultivation, Fantezi…",
+      "memoryConfirm": "Bellekleri kaydetmeden önce onaylayın",
+      "memoryConfirmHint": "Yapay zekanın hatırlamak istediği gerçekler, otomatik olarak kaydetmek yerine sizin onayınızı bekler.",
+      "rerankDiscoveryHint": "Kendi sunucunuzda mı barındırıyorsunuz? Yapay Zeka Modelleri kısmına yerel bir rerank (Cohere uyumlu) kimliği ekleyin ve ardından Yenile'ye tıklayın — rerank modelleri otomatik olarak keşfedilir.",
+      "rerankModel": "Rerank modeli (isteğe bağlı)",
+      "rerankModelEmpty": "Yapılandırılmış rerank yeteneğine sahip model bulunamadı. Gereksiz sonuçları elemek için bir model kaydedin.",
+      "rerankModelHint": "Ham arama sonuçlarındaki gereksiz verileri elemek için cross-encoder rerank. İsteğe bağlı — boş bırakılırsa arama birleştirme sırasını korur.",
+      "rerankModelNone": "Yok (rerank atla — birleştirme sırasını koru)",
+      "toolCalling": "Sohbet içinde bellek araçları",
+      "toolCallingHint": "Bu projede sohbet ederken yapay zekanın bellek araması, hatırlaması ve not almasına izin verin.",
+      "benchmarkFailed": "✗ Karşılaştırma başarısız (recall@3 {{recall}}) — bu model çıkarma işlemi için kalite eşiğinin altında kaldı; farklı bir embedding modeli deneyin.",
+      "benchmarkInconclusive": "⋯ Karşılaştırma sonuçsuz (recall@3 {{recall}}) — bu modeli doğrulamak için ≥3 başarılı deneme gerekiyor. Tekrar çalıştırın.",
+      "benchmarkPassed": "✓ Karşılaştırma başarılı (recall@3 {{recall}}).",
+      "genreError": "Tür, en fazla {{max}} karakter olmalıdır."
     },
     "archiveDialog": {
       "title": "Proje arşivlensin mi?",
@@ -910,6 +960,32 @@
         "unpin": "Sabitlemeyi kaldır",
         "budget": "Pencere başına +{{tokens}} token ({{count}} sabitlenmiş × ~50).",
         "noBook": "Sabitleme işlemi için bir kitabın bağlı olması gerekir. Lütfen önce bu projeye bir kitap ekleyin."
+      },
+      "disabled": {
+        "benchmarkRequired": "Ayıklamayı (yukarıdaki) etkinleştirmek için altın set (golden-set) kıyaslamasını çalıştırın ve başarıyla tamamlayın.",
+        "checkingBenchmark": "Gömme (embedding) kıyaslaması kontrol ediliyor…",
+        "fixConcurrency": "Paralel çağrılar 1–64 arasında olmalıdır.",
+        "fixMaxSpend": "Geçerli bir harcama sınırı girin.",
+        "fixRange": "Bölüm aralığını düzeltin.",
+        "pickEmbedding": "Bir gömme (embedding) modeli seçin.",
+        "pickLlm": "Bir veri çıkarma LLM modeli seçin."
+      },
+      "embedding": {
+        "changeViaDialog": "Bu projenin zaten bir gömme modeli var. Değiştirmek için «Modeli değiştir» seçeneğini kullanın — bu işlem grafiği yeniden oluşturur.",
+        "saveFailed": "Gömme modeli kaydedilemedi: {{error}}",
+        "saved": "Gömme modeli kaydedildi — veri çıkarmayı etkinleştirmek için aşağıdaki testi çalıştırın."
+      },
+      "prereq": {
+        "benchmarkChecking": "Gömme testi kontrol ediliyor…",
+        "benchmarkPassed": "Gömme testi başarılı",
+        "benchmarkPending": "Gömme testi başarılı (önce bir model seçin)",
+        "benchmarkRequired": "Gömme testi başarılı — aşağıdaki model seçiciden testi çalıştırın",
+        "embedding": "Gömme modeli seçildi",
+        "llm": "Çıkarım LLM modeli seçildi"
+      },
+      "reasoning": {
+        "hint": "Varsayılan olarak kapalıdır — çıkarım JSON döndürür ve gizli düşünme süreci çıktı bütçesini tüketebilir. Yalnızca akıl yürütme modeli gerektiren zor içerikler için etkinleştirin.",
+        "label": "Model akıl yürütmesini (düşünme) etkinleştir"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "Kaydediliyor…",
       "cancel": "İptal",
       "saved": "Çıkarım ayarları kaydedildi.",
-      "failed": "Kaydetme başarısız oldu: {{error}}"
+      "failed": "Kaydetme başarısız oldu: {{error}}",
+      "filterModel": "Filtreleme modeli (isteğe bağlı)",
+      "filterModelDefault": "Çıkarım modelini kullan (varsayılan)",
+      "filterModelHint": "İlişki hassasiyetini değerlendiren LLM. Varsayılan olarak bırakılırsa, filtreleme işlemi çıkarım modelinizi yeniden kullanır (kullanıcı başına, BYOK). Daha yüksek hassasiyetli filtreleme için daha güçlü bir model seçin."
     },
     "confirmDestructive": {
       "cancel": "İptal",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "Son şans — gerçekten yeniden oluşturulsun mu?",
-        "description": "Şu an Yeniden Oluştur'a tıklamak, yıkma ve yeniden oluşturma sürecini başlatır. Yeni işlem çalışmaya başladıktan sonra geri dönüş yoktur."
+        "description": "Şu an Yeniden Oluştur'a tıklamak, yıkma ve yeniden oluşturma sürecini başlatır. Yeni işlem çalışmaya başladıktan sonra geri dönüş yoktur.",
+        "descriptionCount": "Bu işlem {{entities}} varlığı, {{events}} olayı ve {{facts}} bilgiyi kalıcı olarak SİLER ve ardından her şeyi sıfırdan yeniden oluşturur. Bu işlem geri alınamaz.",
+        "typePrompt": "Onaylamak için proje adını yazın"
       },
       "disable": {
         "title": "Çıkarım devre dışı bırakılsın mı?",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "Mevcutla farkları göster",
       "diffEmpty": "Fark yok."
-    }
+    },
+    "loading": "Yükleniyor…"
   },
   "indicator": {
     "label": "Bilgi göstergesi",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "Global",
       "project": "Proje",
-      "degraded": "Kısıtlı"
+      "degraded": "Kısıtlı",
+      "multi": "{{count}} bilgi grafiği"
     },
     "popover": {
       "projectHeading": "Proje belleği",
@@ -1100,7 +1183,8 @@
       "projectBody": "Bu oturum <strong>{{name}}</strong> ile bağlantılıdır. Yapay zeka, her adımda genel biyografinizi, projenin özetini ve sözlük girişlerini görür.",
       "globalBody": "Bu oturuma bağlı bir proje yok. Yapay zeka yalnızca genel biyografinizi görür. Kitaba özel belleğe erişim sağlamak için oturum ayarlarından bir proje bağlayın.",
       "degradedBody": "Son adımda bilgi servisine ulaşılamadı. Yapay zeka yalnızca son mesajlara geri döndü — proje belleğiniz geçici olarak istemciye dahil edilmedi. Servis geri geldiğinde bir sonraki adımda otomatik olarak düzelecektir.",
-      "manage": "Bilgiyi yönet"
+      "manage": "Bilgiyi yönet",
+      "multiBody": "Bu sohbet aynı anda {{count}} bilgi grafiğine dayanmaktadır — gerçekler kaynaklarıyla etiketlenmiştir."
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "Eşleştir"
     },
     "emptyHint": "Triage, henüz şemanıza uymayan tüm çıkarılan verileri toplar — temiz bir kuyruk, her şeyin yerli yerine oturduğu anlamına gelir."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "{{ordinal}} . bölüm itibarıyla",
+      "current": "mevcut",
+      "loadFailed": "Hikayenin bu noktasındaki kanon yüklenemedi.",
+      "sourceCanonContent": "yazarı tarafından oluşturulmuş kanon",
+      "sourceCanonContentHint": "Yazarı tarafından oluşturulmuş kanon gösteriliyor (bu nokta için katlanmış bir anlık görüntü yok).",
+      "status": {
+        "current": "mevcut",
+        "stale": "güncelliğini yitirmiş",
+        "unbuildable": "kullanılamaz"
+      },
+      "unbuildable": "Sentez burada kullanılamıyor — güvenli modda devam ediliyor."
+    },
+    "retrieval": {
+      "chapter": "{{chapter}}. Bölüm",
+      "ariaLabel": "Arama geri çağırma",
+      "currentStateNote": "Sonuçlar mevcut durumdur (zamansal geri çağırma henüz kullanılamıyor).",
+      "error": "Arama başarısız oldu: {{error}}",
+      "noResults": "Eşleşen bağlam bulunamadı.",
+      "noText": "(önizleme metni yok)",
+      "placeholder": "Bu kitabın bağlamında ara…",
+      "typeToSearch": "Bu varlığın bağlamında arama yapmak için yazın."
+    },
+    "slider": {
+      "atChapter": "{{ordinal}}. Bölüm",
+      "aria": "Hikaye zamanı bölüm sırasını kaydır",
+      "head": "Baş (en son)",
+      "headButton": "Baş (en son)",
+      "label": "Hikaye zamanı",
+      "loadFailed": "Değişim zaman çizelgesi yüklenemedi.",
+      "noChanges": "Henüz hikaye zamanı değişikliği yok."
+    },
+    "translation": {
+      "asOfChapter": "{{n}}. bölüm",
+      "asOfLabel": "{{label}} itibarıyla",
+      "error": "Bağlam yüklenemedi: {{error}}",
+      "asAuthored": "yazarın yazdığı haliyle",
+      "asOfHead": "en güncel",
+      "badgeCached": "çevrildi · önbelleğe alındı",
+      "badgeFresh": "çevrildi",
+      "empty": "Hikayenin bu noktasında mevcut bir bağlam yok.",
+      "failNoModel": "Çeviri modeli ayarlanmadı. Çevrilmiş bağlamı görmek için Çeviri Ayarları'ndan bir model seçin.",
+      "failProvider": "Çeviri başarısız oldu. Şimdilik orijinal bağlam gösteriliyor.",
+      "failQuota": "Çeviri kullanılamıyor — sağlayıcı kotası doldu.",
+      "langOriginal": "Orijinal ({{lang}})",
+      "languageLabel": "Görüntüleme dili",
+      "title": "Bölüm bazlı bağlam",
+      "translating": "Çevriliyor… ilk görüntüleme biraz zaman alabilir"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "{{asOf}} numaralı bölümde",
+      "current": "Güncel",
+      "hint": "Geçmiş bir bölümü mevcut durumla karşılaştırmak için zaman sürgüsünü hareket ettirin.",
+      "loadFailed": "Fark yüklenemedi: {{error}}",
+      "loading": "Fark yükleniyor…",
+      "noChanges": "{{asOf}} numaralı bölüm ile şu an arasında tek değerli bir değişiklik yok.",
+      "title": "Fark görünümü"
+    },
+    "timeline": {
+      "chapter": "böl. {{chapter}}",
+      "empty": "Bu varlık için henüz kaydedilmiş bir değişiklik bulunmuyor.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → açık)"
+      },
+      "kind": {
+        "invalidated": "geçersiz kılındı",
+        "open": "açık",
+        "superseded": "yerine geçildi"
+      },
+      "loadFailed": "Değişiklik zaman çizelgesi yüklenemedi: {{error}}",
+      "loadMore": "Daha fazla yükle",
+      "loading": "Değişiklikler yükleniyor…",
+      "title": "Değişiklik zaman çizelgesi"
+    }
   }
 }

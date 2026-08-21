@@ -26,6 +26,7 @@ seam is a single streaming call; retry/backoff is the caller's (demo) concern.
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from typing import Any
 
 import httpx
@@ -34,6 +35,7 @@ from loreweave_internal_client import build_internal_client
 from loreweave_llm import no_thinking_fields
 
 from app import metrics
+from app.llm_budget import max_tokens_for
 from app.logging_config import trace_id_var
 from app.jobs.tokens import TokenUsage, UsageMeter, estimate_tokens
 from app.strategies.base import StrategyContext
@@ -43,6 +45,7 @@ __all__ = [
     "MODEL_SOURCE",
     "make_complete_fn",
     "collect_stream_text",
+    "collect_stream_finish_reason",
     "collect_stream_usage",
 ]
 
@@ -53,6 +56,10 @@ MODEL_SOURCE: str = "user_model"
 #: Output-token ceiling for one enrichment completion (AI-Task Standard —
 #: D-ENRICH-COMPLETE-BUDGET). Was UNBOUNDED. Generous for a single entity's
 #: profile/bio prose (matches wiki's per-article budget) but caps a runaway.
+#:
+#: The number now lives in `app/llm_budget.py` as `generate_gap_completion`, resolved per call
+#: so the book's language can move it — a module constant is evaluated once at import and can
+#: never read anything. Kept as a name only for the tests that assert the floor did not drop.
 _MAX_OUTPUT_TOKENS: int = 4000
 
 
@@ -64,27 +71,58 @@ class CompletionSeamError(RuntimeError):
         self.retryable = retryable
 
 
-def collect_stream_text(sse_text: str) -> str:
-    """Collect the ``token`` deltas from a provider-registry SSE body into text.
+def _iter_frames(sse_text: str) -> Iterator[tuple[str | None, dict[str, Any]]]:
+    """Yield ``(event_name, payload)`` for each ``event: <name>\\ndata: <json>\\n\\n`` frame.
 
-    Parses ``event: <name>\\ndata: <json>\\n\\n`` frames. Concatenates the
-    ``delta`` of every ``token`` frame in order; ignores ``reasoning`` (thinking
-    output, not the answer) and ``usage`` frames; raises on an ``error`` frame.
-    Tolerant of blank lines + multi-line frames."""
-    parts: list[str] = []
+    ONE walker. There were two byte-identical copies of this loop — one in
+    ``collect_stream_text``, one in ``collect_stream_usage`` — and adding a THIRD for
+    ``finish_reason`` is what made the duplication worth removing rather than tolerating:
+    three copies of a parser is three places for a frame shape to drift apart, on a transport
+    whose whole job is to be read consistently.
+
+    Tolerant of blank lines, multi-line ``data:``, and a final frame with no trailing blank
+    line. A malformed JSON payload yields ``{}`` rather than raising — a bad frame must not
+    take down a stream that is otherwise readable.
+    """
     event_name: str | None = None
     data_lines: list[str] = []
 
-    def _flush() -> None:
+    def _parse() -> tuple[str | None, dict[str, Any]] | None:
         nonlocal event_name, data_lines
         if event_name is None and not data_lines:
-            return
+            return None
         raw = "\n".join(data_lines).strip()
         try:
             payload: dict[str, Any] = json.loads(raw) if raw else {}
         except json.JSONDecodeError:
             payload = {}
-        kind = event_name or payload.get("event")
+        name = event_name or payload.get("event")
+        event_name = None
+        data_lines = []
+        return name, payload
+
+    for line in sse_text.splitlines():
+        if line == "":
+            frame = _parse()
+            if frame is not None:
+                yield frame
+            continue
+        if line.startswith("event:"):
+            event_name = line[len("event:"):].strip()
+        elif line.startswith("data:"):
+            data_lines.append(line[len("data:"):].lstrip())
+    frame = _parse()  # final frame without a trailing blank line
+    if frame is not None:
+        yield frame
+
+
+def collect_stream_text(sse_text: str) -> str:
+    """Collect the ``token`` deltas from a provider-registry SSE body into text.
+
+    Concatenates the ``delta`` of every ``token`` frame in order; ignores ``reasoning``
+    (thinking output, not the answer) and ``usage`` frames; raises on an ``error`` frame."""
+    parts: list[str] = []
+    for kind, payload in _iter_frames(sse_text):
         if kind == "token":
             delta = payload.get("delta")
             if isinstance(delta, str):
@@ -92,19 +130,26 @@ def collect_stream_text(sse_text: str) -> str:
         elif kind == "error":
             msg = payload.get("message") or payload.get("code") or "stream error"
             raise CompletionSeamError(f"LLM stream error: {msg}")
-        event_name = None
-        data_lines = []
-
-    for line in sse_text.splitlines():
-        if line == "":
-            _flush()
-            continue
-        if line.startswith("event:"):
-            event_name = line[len("event:"):].strip()
-        elif line.startswith("data:"):
-            data_lines.append(line[len("data:"):].lstrip())
-    _flush()  # final frame without a trailing blank line
     return "".join(parts)
+
+
+def collect_stream_finish_reason(sse_text: str) -> str | None:
+    """The terminal ``done`` frame's ``finish_reason``, or ``None`` when absent.
+
+    ``"length"`` means the OUTPUT BUDGET STOPPED THE MODEL. For a truncation-fatal call
+    (``OutputKind.STRUCTURED``) that is not a shorter answer, it is no answer — and without
+    this the caller cannot tell a clipped response from one the model chose not to give. The
+    contract requires a fatal kind to inspect it (contracts/llm-budget.contract.json,
+    ``fatal_kinds_must_check_finish_reason``); until now the raw-SSE surface had no way to.
+
+    ``None`` on a stream that ended without a ``done`` frame (a disconnect) is honest: the
+    reason is unknown, which is not the same as "it finished normally".
+    """
+    for kind, payload in _iter_frames(sse_text):
+        if kind == "done":
+            reason = payload.get("finish_reason")
+            return reason if isinstance(reason, str) and reason else None
+    return None
 
 
 def collect_stream_usage(sse_text: str) -> TokenUsage | None:
@@ -115,41 +160,18 @@ def collect_stream_usage(sse_text: str) -> TokenUsage | None:
     metering, DEFERRED-052). Reasoning tokens FOLD INTO output — matching how the
     platform bills reasoning at the output rate (provider-registry stream_billing).
     Returns ``None`` when no usage frame is present (provider omitted it) so the
-    caller can fall back to a char-based estimate. Tolerant of blank/partial lines.
+    caller can fall back to a char-based estimate.
     """
     found: TokenUsage | None = None
-    event_name: str | None = None
-    data_lines: list[str] = []
-
-    def _flush() -> None:
-        nonlocal event_name, data_lines, found
-        if event_name is None and not data_lines:
-            return
-        raw = "\n".join(data_lines).strip()
-        try:
-            payload: dict[str, Any] = json.loads(raw) if raw else {}
-        except json.JSONDecodeError:
-            payload = {}
-        kind = event_name or payload.get("event")
-        if kind == "usage":
-            # Clamp to >= 0: a buggy/hostile upstream must never REDUCE metered
-            # spend with negative counts (the cap is a safety control).
-            inp = max(0, int(payload.get("input_tokens", 0) or 0))
-            out = max(0, int(payload.get("output_tokens", 0) or 0))
-            reasoning = max(0, int(payload.get("reasoning_tokens", 0) or 0))
-            found = TokenUsage(input_tokens=inp, output_tokens=out + reasoning)
-        event_name = None
-        data_lines = []
-
-    for line in sse_text.splitlines():
-        if line == "":
-            _flush()
+    for kind, payload in _iter_frames(sse_text):
+        if kind != "usage":
             continue
-        if line.startswith("event:"):
-            event_name = line[len("event:"):].strip()
-        elif line.startswith("data:"):
-            data_lines.append(line[len("data:"):].lstrip())
-    _flush()
+        # Clamp to >= 0: a buggy/hostile upstream must never REDUCE metered
+        # spend with negative counts (the cap is a safety control).
+        inp = max(0, int(payload.get("input_tokens", 0) or 0))
+        out = max(0, int(payload.get("output_tokens", 0) or 0))
+        reasoning = max(0, int(payload.get("reasoning_tokens", 0) or 0))
+        found = TokenUsage(input_tokens=inp, output_tokens=out + reasoning)
     return found
 
 
@@ -228,7 +250,8 @@ def make_complete_fn(
             # drops `event: reasoning` frames (see the SSE contract above), so a
             # reasoning model would burn the budget on thinking we discard →
             # empty/truncated answer (the empty-prose footgun).
-            "max_tokens": _MAX_OUTPUT_TOKENS,
+            "max_tokens": max_tokens_for(
+                "generate_gap_completion", language=context.profile.language),
             **no_thinking_fields(),
         }
         # ensure_ascii=False so the Chinese prompt travels as genuine UTF-8.

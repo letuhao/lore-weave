@@ -66,7 +66,7 @@ async def _parse_with_repair(
     repair_step: str,
     *,
     temperature: float = 0.2,
-    max_tokens: int = 8000,
+    max_tokens: int | None = None,
     schema: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """One step, then ONE repair on a parse failure.
@@ -76,6 +76,13 @@ async def _parse_with_repair(
     cost of asking a model for JSON in prose. The repair deliberately drops the schema: repeating a
     grammar-constrained call that came back unparseable fails the same way, because the model is not
     disagreeing about the format."""
+    # This default used to be a bare `8000`, and only the `materialize` caller overrode it —
+    # so `analyze` and `refine_spec` ran a THIRD under the 12000 the registry declares for
+    # this row, on a call whose truncation the registry describes as coming back unparseable
+    # rather than short. A flat literal in a helper's signature is exactly the shape the
+    # budget seam exists to remove, and it survived because the helper is one hop from the
+    # LLM call and the gate's payload scan does not reach it.
+    max_tokens = max_tokens or max_tokens_for("plan_forge_chat")
     content = await client.chat(
         step=step, system=system, user=user, temperature=temperature, max_tokens=max_tokens,
         schema=schema,
@@ -170,7 +177,9 @@ async def materialize_from_analyze_async(
         MATERIALIZE_SYSTEM,
         materialize_user_prompt(analyze_json, source_checksum, block),
         "materialize_repair",
-        max_tokens=max_tokens_for("plan_forge_chat"),
+        # No explicit budget: the helper now resolves the same row for every step, so this
+        # override existed only to rescue materialize from a default the other two steps were
+        # silently left on. One place decides.
         schema=SPEC_SCHEMA,
     )
     spec = normalize_spec(spec, source_checksum, analyze=analyze)

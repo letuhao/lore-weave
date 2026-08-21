@@ -36,7 +36,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.db.repositories.structure import StructureConflictError
-from app.deps import get_grant_client_dep, get_structure_repo
+from app.db.repositories.epub_import_hierarchy import EpubHierarchyInput
+from app.deps import (
+    get_epub_import_hierarchy_repo,
+    get_grant_client_dep,
+    get_structure_repo,
+)
 from app.middleware.internal_auth import require_internal_token
 
 router = APIRouter(
@@ -134,6 +139,132 @@ class _PartRenameBody(BaseModel):
 
 class _PartReorderBody(BaseModel):
     ordered_ids: list[UUID]
+
+
+# ── EPUB Import V2 ToC hierarchy ─────────────────────────────────────────────
+#
+# The navigation tree belongs to Composition, which owns manuscript structure.
+# Book Service remains the chapter/provenance owner: after this endpoint returns
+# mappings the worker forwards them to Book's job-scoped internal write boundary.
+# Keeping that return seam explicit avoids either service writing the other's DB.
+
+
+class _EpubHierarchyNode(BaseModel):
+    source_key: str = Field(min_length=1, max_length=2000)
+    parent_source_key: str | None = Field(default=None, max_length=2000)
+    role: str = Field(min_length=1, max_length=64)
+    title: str = Field(default="", max_length=500)
+    ordinal: int = Field(ge=1)
+    depth: int = Field(ge=0, le=10_000)
+    chapter_id: UUID | None = None
+
+
+class _EpubHierarchyBody(BaseModel):
+    import_job_id: UUID
+    nodes: list[_EpubHierarchyNode] = Field(min_length=1, max_length=10_000)
+
+
+def _validate_epub_hierarchy_nodes(nodes: list[_EpubHierarchyNode]) -> None:
+    keys = {node.source_key for node in nodes}
+    if len(keys) != len(nodes):
+        raise HTTPException(status_code=422, detail="source_key values must be unique")
+    for node in nodes:
+        if node.parent_source_key and node.parent_source_key not in keys:
+            raise HTTPException(status_code=422, detail="parent_source_key must be in the submitted hierarchy")
+        if node.parent_source_key == node.source_key:
+            raise HTTPException(status_code=422, detail="source_key cannot parent itself")
+
+
+@router.post("/books/{book_id}/epub-import-hierarchy")
+async def materialize_epub_import_hierarchy(
+    book_id: UUID,
+    body: _EpubHierarchyBody,
+    caller_user_id: UUID = Query(...),
+    hierarchy=Depends(get_epub_import_hierarchy_repo),
+    grant=Depends(get_grant_client_dep),
+) -> dict:
+    """Persist a selected EPUB ToC closure and project part/section groups.
+
+    The stable uniqueness key is ``(book_id, import_job_id, source_key)``;
+    Redis redelivery and a worker retry therefore return the same mapping rather
+    than duplicate a composition part.  The endpoint intentionally accepts no
+    mutable chapter content and does not call Book Service.
+    """
+    if await grant.resolve_owner(book_id, caller_user_id) is None:
+        raise HTTPException(status_code=404, detail="book not found or no access")
+    _validate_epub_hierarchy_nodes(body.nodes)
+    mappings = await hierarchy.materialize(
+        book_id=book_id,
+        import_job_id=body.import_job_id,
+        created_by=caller_user_id,
+        nodes=[
+            EpubHierarchyInput(
+                source_key=node.source_key,
+                parent_source_key=node.parent_source_key,
+                role=node.role,
+                title=node.title.strip(),
+                ordinal=node.ordinal,
+                depth=node.depth,
+                chapter_id=node.chapter_id,
+            )
+            for node in body.nodes
+        ],
+    )
+    return {
+        "mappings": [
+            {
+                "source_key": item.source_key,
+                "hierarchy_node_id": str(item.hierarchy_node_id),
+                "structure_node_id": str(item.structure_node_id) if item.structure_node_id else None,
+                "chapter_id": str(item.chapter_id) if item.chapter_id else None,
+            }
+            for item in mappings
+        ]
+    }
+
+
+@router.get("/books/{book_id}/epub-import-hierarchy/{import_job_id}")
+async def get_epub_import_hierarchy(
+    book_id: UUID,
+    import_job_id: UUID,
+    caller_user_id: UUID = Query(...),
+    hierarchy=Depends(get_epub_import_hierarchy_repo),
+    grant=Depends(get_grant_client_dep),
+) -> dict:
+    """Read the lossless ToC tree for a completed EPUB import."""
+    if await grant.resolve_owner(book_id, caller_user_id) is None:
+        raise HTTPException(status_code=404, detail="book not found or no access")
+    nodes = await hierarchy.list_nodes(book_id=book_id, import_job_id=import_job_id)
+    return {
+        "items": [
+            {
+                "hierarchy_node_id": str(node["id"]),
+                "source_key": node["source_key"],
+                "parent_source_key": node["parent_source_key"],
+                "role": node["role"],
+                "title": node["title"],
+                "ordinal": node["ordinal"],
+                "depth": node["depth"],
+                "structure_node_id": str(node["structure_node_id"]) if node["structure_node_id"] else None,
+            }
+            for node in nodes
+        ]
+    }
+
+
+@router.delete("/books/{book_id}/epub-import-hierarchy/{import_job_id}")
+async def rollback_epub_import_hierarchy(
+    book_id: UUID,
+    import_job_id: UUID,
+    caller_user_id: UUID = Query(...),
+    hierarchy=Depends(get_epub_import_hierarchy_repo),
+    grant=Depends(get_grant_client_dep),
+) -> dict:
+    """Idempotently clean Composition-owned hierarchy effects for one import."""
+    if await grant.resolve_owner(book_id, caller_user_id) is None:
+        raise HTTPException(status_code=404, detail="book not found or no access")
+    removed = await hierarchy.rollback(book_id=book_id, import_job_id=import_job_id)
+    return {"import_job_id": str(import_job_id), "status": "rolled_back", "nodes_removed": removed}
 
 
 @router.post("/books/{book_id}/parts", status_code=201)

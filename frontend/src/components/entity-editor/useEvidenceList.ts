@@ -67,13 +67,13 @@ export function useEvidenceList(
       if (language) params.language = language;
 
       const resp = await glossaryApi.listEntityEvidences(bookId, entityId, params, accessToken);
-      setItems(resp.items);
-      setTotal(resp.total);
+      setItems(resp.items ?? []);
+      setTotal(resp.total ?? 0);
       // Only update filter options when returned (first page)
-      if (resp.available_attributes.length > 0 || !filterOptionsLoaded.current) {
-        setAvailAttrs(resp.available_attributes);
-        setAvailChapters(resp.available_chapters);
-        setAvailLanguages(resp.available_languages);
+      if ((resp.available_attributes ?? []).length > 0 || !filterOptionsLoaded.current) {
+        setAvailAttrs(resp.available_attributes ?? []);
+        setAvailChapters(resp.available_chapters ?? []);
+        setAvailLanguages(resp.available_languages ?? []);
         filterOptionsLoaded.current = true;
       }
     } catch (e) {

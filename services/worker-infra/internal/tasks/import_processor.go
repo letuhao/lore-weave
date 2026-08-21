@@ -9,6 +9,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 
+	"github.com/loreweave/epubimport"
 	"github.com/loreweave/observability"
 	"github.com/loreweave/worker-infra/internal/config"
 )
@@ -33,14 +35,14 @@ type amqpPublisher interface {
 }
 
 type ImportProcessor struct {
-	Cfg     *config.Config
-	Redis   *redis.Client
-	BookDB  *pgxpool.Pool
-	Minio   *minio.Client
+	Cfg    *config.Config
+	Redis  *redis.Client
+	BookDB *pgxpool.Pool
+	Minio  *minio.Client
 
 	amqpCh            amqpPublisher
-	parseClient       *ParseClient        // P1 — initialised lazily in Run()
-	materializeClient *MaterializeClient  // 26 IX-12 — initialised lazily in Run()
+	parseClient       *ParseClient       // P1 — initialised lazily in Run()
+	materializeClient *MaterializeClient // 26 IX-12 — initialised lazily in Run()
 }
 
 func (t *ImportProcessor) Name() string { return "import-processor" }
@@ -49,6 +51,13 @@ const (
 	importStream   = "loreweave:events:chapter" // outbox-relay publishes here with event_type=import.requested
 	importGroup    = "import-processor"
 	importConsumer = "worker-1"
+
+	// A claimed message represents a whole import job, so it is deliberately
+	// longer than the reference 500-chapter import target. A restarted worker
+	// reclaims only genuinely stale deliveries; concurrent healthy workers do
+	// not steal one another's in-flight job.
+	importPendingClaimIdle  = 15 * time.Minute
+	importPendingClaimCount = 4
 )
 
 func (t *ImportProcessor) Run(ctx context.Context) error {
@@ -80,8 +89,14 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 		}
 	}
 
-	// Create consumer group (ignore error if already exists)
-	t.Redis.XGroupCreateMkStream(ctx, importStream, importGroup, "0").Err()
+	// Create consumer group (ignore BUSYGROUP when another replica got there
+	// first). Each process gets its own consumer name so Redis can identify
+	// stale PENDING ownership after a restart.
+	if err := t.Redis.XGroupCreateMkStream(ctx, importStream, importGroup, "0").Err(); err != nil && !strings.Contains(err.Error(), "BUSYGROUP") {
+		return fmt.Errorf("create import consumer group: %w", err)
+	}
+	consumer := importConsumerID()
+	pendingClaimStart := "0-0"
 
 	for {
 		select {
@@ -91,68 +106,119 @@ func (t *ImportProcessor) Run(ctx context.Context) error {
 		default:
 		}
 
-		results, err := t.Redis.XReadGroup(ctx, &redis.XReadGroupArgs{
-			Group:    importGroup,
-			Consumer: importConsumer,
-			Streams:  []string{importStream, ">"},
-			Count:    1,
-			Block:    5 * time.Second,
+		messages, nextStart, claimErr := t.Redis.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+			Stream: importStream, Group: importGroup, Consumer: consumer,
+			MinIdle: importPendingClaimIdle, Start: pendingClaimStart, Count: importPendingClaimCount,
 		}).Result()
-		if err != nil {
-			if err == redis.Nil || strings.Contains(err.Error(), "context") {
+		if claimErr != nil && claimErr != redis.Nil {
+			slog.Warn("import-processor XAUTOCLAIM", "error", claimErr)
+			messages = nil
+		} else if nextStart != "" {
+			pendingClaimStart = nextStart
+		}
+		if len(messages) == 0 {
+			results, err := t.Redis.XReadGroup(ctx, &redis.XReadGroupArgs{
+				Group: importGroup, Consumer: consumer, Streams: []string{importStream, ">"},
+				Count: 1, Block: 5 * time.Second,
+			}).Result()
+			if err != nil {
+				if err == redis.Nil || strings.Contains(err.Error(), "context") {
+					continue
+				}
+				slog.Error("import-processor XREADGROUP", "error", err)
+				time.Sleep(2 * time.Second)
 				continue
 			}
-			slog.Error("import-processor XREADGROUP", "error", err)
-			time.Sleep(2 * time.Second)
-			continue
-		}
-
-		for _, stream := range results {
-			for _, msg := range stream.Messages {
-				eventType, _ := msg.Values["event_type"].(string)
-				if eventType != "import.requested" {
-					t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
-					continue
-				}
-
-				payloadStr, _ := msg.Values["payload"].(string)
-				var payload importRequestedPayload
-				if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
-					slog.Error("import-processor bad payload", "error", err, "msg_id", msg.ID)
-					t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
-					continue
-				}
-
-				slog.Info("import-processor processing", "job_id", payload.JobID, "format", payload.FileFormat)
-				t.updateJobStatus(ctx, payload.JobID, "processing", 0, nil)
-				t.publishWSEvent(ctx, payload.UserID, payload.JobID, "processing", 0, nil)
-
-				var chaptersCreated int
-				var procErr error
-				if payload.FileFormat == "pdf" {
-					// docs/specs/2026-07-06-pdf-book-import.md — dedicated
-					// per-chunk pipeline (L6): skips pandoc, loops chunks
-					// against knowledge-service /internal/parse/pdf-chunk
-					// instead of one whole-book /internal/parse call.
-					chaptersCreated, procErr = t.processPdfImport(ctx, payload)
-				} else {
-					chaptersCreated, procErr = t.processImport(ctx, payload)
-				}
-				if procErr != nil {
-					slog.Error("import-processor failed", "job_id", payload.JobID, "error", procErr)
-					errMsg := procErr.Error()
-					t.updateJobStatus(ctx, payload.JobID, "failed", chaptersCreated, &errMsg)
-					t.publishWSEvent(ctx, payload.UserID, payload.JobID, "failed", chaptersCreated, &errMsg)
-				} else {
-					slog.Info("import-processor completed", "job_id", payload.JobID, "chapters", chaptersCreated)
-					t.updateJobStatus(ctx, payload.JobID, "completed", chaptersCreated, nil)
-					t.publishWSEvent(ctx, payload.UserID, payload.JobID, "completed", chaptersCreated, nil)
-				}
-
-				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+			for _, stream := range results {
+				messages = append(messages, stream.Messages...)
 			}
 		}
+
+		for _, msg := range messages {
+			eventType, _ := msg.Values["event_type"].(string)
+			if eventType != "import.requested" {
+				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+				continue
+			}
+
+			payloadStr, _ := msg.Values["payload"].(string)
+			var payload importRequestedPayload
+			if err := json.Unmarshal([]byte(payloadStr), &payload); err != nil {
+				slog.Error("import-processor bad payload", "error", err, "msg_id", msg.ID)
+				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+				continue
+			}
+
+			slog.Info("import-processor processing", "job_id", payload.JobID, "format", payload.FileFormat)
+			if payload.PipelineVersion == epubImportPipelineVersion {
+				if err := t.processEPUBV2(ctx, payload); err != nil {
+					slog.Error("epub v2 staging failed", "job_id", payload.JobID, "error", err)
+					// The item status is owned by Book Service. Do not overwrite it
+					// through the legacy job endpoint or acknowledge a retryable
+					// transport failure as if it had completed.
+					continue
+				}
+				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+				continue
+			}
+			// Serialize redeliveries for one job and skip already completed jobs.
+			jobLock, locked, lockErr := t.acquireImportJobLock(ctx, payload.JobID)
+			if lockErr != nil {
+				continue
+			}
+			if !locked {
+				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+				continue
+			}
+			if t.importJobCompleted(ctx, payload.JobID) {
+				t.releaseImportJobLock(ctx, jobLock, payload.JobID)
+				t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+				continue
+			}
+			t.updateJobStatus(ctx, payload.JobID, "processing", 0, nil)
+			t.publishWSEvent(ctx, payload.UserID, payload.JobID, "processing", 0, nil)
+
+			var chaptersCreated int
+			var procErr error
+			if payload.FileFormat == "pdf" {
+				// docs/specs/2026-07-06-pdf-book-import.md — dedicated
+				// per-chunk pipeline (L6): skips pandoc, loops chunks
+				// against knowledge-service /internal/parse/pdf-chunk
+				// instead of one whole-book /internal/parse call.
+				chaptersCreated, procErr = t.processPdfImport(ctx, payload)
+			} else {
+				chaptersCreated, procErr = t.processImport(ctx, payload)
+			}
+			if procErr != nil {
+				slog.Error("import-processor failed", "job_id", payload.JobID, "error", procErr)
+				errMsg := procErr.Error()
+				t.updateJobStatus(ctx, payload.JobID, "failed", chaptersCreated, &errMsg)
+				t.publishWSEvent(ctx, payload.UserID, payload.JobID, "failed", chaptersCreated, &errMsg)
+			} else {
+				slog.Info("import-processor completed", "job_id", payload.JobID, "chapters", chaptersCreated)
+				t.updateJobStatus(ctx, payload.JobID, "completed", chaptersCreated, nil)
+				t.publishWSEvent(ctx, payload.UserID, payload.JobID, "completed", chaptersCreated, nil)
+			}
+
+			t.releaseImportJobLock(ctx, jobLock, payload.JobID)
+			t.Redis.XAck(ctx, importStream, importGroup, msg.ID)
+		}
 	}
+}
+
+func importConsumerID() string {
+	hostname, err := os.Hostname()
+	if err != nil {
+		hostname = ""
+	}
+	return importConsumerIDForHostname(hostname)
+}
+
+func importConsumerIDForHostname(hostname string) string {
+	if strings.TrimSpace(hostname) == "" {
+		return importConsumer
+	}
+	return importConsumer + "-" + strings.ReplaceAll(strings.TrimSpace(hostname), " ", "-")
 }
 
 // importRequestedPayload mirrors book-service's import.requested outbox
@@ -166,10 +232,15 @@ type importRequestedPayload struct {
 	FileStorageKey   string `json:"file_storage_key"`
 	OriginalLanguage string `json:"original_language"`
 
-	PagesPerChunk     int    `json:"pages_per_chunk"`
-	CaptionImages     bool   `json:"caption_images"`
-	VisionModelSource string `json:"vision_model_source"`
-	VisionModelRef    string `json:"vision_model_ref"`
+	PagesPerChunk          int      `json:"pages_per_chunk"`
+	CaptionImages          bool     `json:"caption_images"`
+	VisionModelSource      string   `json:"vision_model_source"`
+	VisionModelRef         string   `json:"vision_model_ref"`
+	CreateBookFromMetadata bool     `json:"create_book_from_metadata"`
+	SourceID               string   `json:"source_id"`
+	PipelineVersion        string   `json:"pipeline_version"`
+	TargetMode             string   `json:"target_mode"`
+	LoreGenres             []string `json:"lore_genres"`
 }
 
 func (t *ImportProcessor) processImport(ctx context.Context, payload importRequestedPayload) (int, error) {
@@ -184,10 +255,52 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 		return 0, fmt.Errorf("minio read: %w", err)
 	}
 
-	// 2. Convert via pandoc-server
-	html, err := t.callPandoc(ctx, fileData, payload.FileFormat)
-	if err != nil {
-		return 0, fmt.Errorf("pandoc: %w", err)
+	// 2. Convert to HTML. EPUB navigation nodes are parsed independently: their
+	// boundaries are authoritative and must never be reconstructed from headings.
+	var html string
+	var tree *StructuralTree
+	var fb2 *fb2Document
+	if payload.FileFormat == "epub" {
+		epubChapters, epubErr := extractEPUBChapters(fileData)
+		if epubErr != nil {
+			return 0, fmt.Errorf("epub structure: %w", epubErr)
+		}
+		lang := payload.OriginalLanguage
+		if lang == "" {
+			lang = "auto"
+		}
+		tree = &StructuralTree{SourceFormat: "html", WalkerPath: "epub-navigation"}
+		for i, ch := range epubChapters {
+			sanitized, _, sanitizeErr := epubimport.SanitizeHTML(ch.HTML)
+			if sanitizeErr != nil {
+				return 0, fmt.Errorf("sanitize EPUB chapter %q: %w", ch.SourceKey, sanitizeErr)
+			}
+			chapterTree, parseErr := t.parseClient.CallChapter(ctx, sanitized, lang, ch.Title, ch.SourceKey)
+			if parseErr != nil {
+				return 0, fmt.Errorf("parse EPUB chapter %q: %w", ch.SourceKey, parseErr)
+			}
+			if len(chapterTree.Parts) != 1 || len(chapterTree.Parts[0].Chapters) != 1 {
+				return 0, fmt.Errorf("parse EPUB chapter %q: parser returned invalid chapter count", ch.SourceKey)
+			}
+			parsed := chapterTree.Parts[0].Chapters[0]
+			parsed.Path = fmt.Sprintf("book/epub-chapter-%d", i+1)
+			tree.Parts = append(tree.Parts, Part{
+				SortOrder: i + 1,
+				Path:      fmt.Sprintf("book/epub-part-%d", i+1),
+				Chapters:  []ParsedChapter{parsed},
+			})
+		}
+	} else if payload.FileFormat == "fb2" {
+		fb2, err = extractFB2Document(fileData)
+		if err != nil {
+			return 0, err
+		}
+		html = fb2.HTML
+	} else {
+		html, err = t.callPandoc(ctx, fileData, payload.FileFormat)
+		if err != nil {
+			return 0, fmt.Errorf("pandoc: %w", err)
+		}
 	}
 
 	// 3. P1 — structural decomposition via knowledge-service /internal/parse
@@ -197,9 +310,20 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 	if lang == "" {
 		lang = "auto"
 	}
-	tree, err := t.parseClient.Call(ctx, "html", html, lang, "")
-	if err != nil {
-		return 0, fmt.Errorf("parse: %w", err)
+	if tree == nil {
+		tree, err = t.parseClient.Call(ctx, "html", html, lang, "")
+		if err != nil {
+			return 0, fmt.Errorf("parse: %w", err)
+		}
+	}
+	// Metadata is durable source provenance, not a post-processing decoration.
+	// Persist it before the independently committed chapter loop so a later
+	// partial chapter failure does not discard the title, annotation, or cover
+	// that identifies the newly created book.
+	if fb2 != nil {
+		if err := t.persistFB2Metadata(ctx, payload, fb2); err != nil {
+			return 0, err
+		}
 	}
 
 	// 4. Find current max sort_order ONCE — we apply chapterGlobalSort
@@ -213,15 +337,11 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 	// L3 fix: multi-part filename pattern when len(parts) > 1.
 	multiPart := len(tree.Parts) > 1
 
-	// 5. Write parts + chapters + scenes per spec D7 3-level Tx scoping.
+	// 5. Write chapters + scenes. Manuscript parts were moved from book-service
+	// into composition (C-merge/C4); imported chapters start flat and can be
+	// grouped later by the composition structure tools.
 	count := 0
 	for partIdx, part := range tree.Parts {
-		// (a) Per-part Tx: insert ONE parts row.
-		partID, err := t.insertPart(ctx, payload.BookID, partIdx+1, part.Title, part.Path)
-		if err != nil {
-			return count, fmt.Errorf("insert part: %w", err)
-		}
-
 		for chIdxInPart, ch := range part.Chapters {
 			tiptapJSON := htmlToTiptapJSON(ch.HTML)
 
@@ -247,13 +367,13 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 			// import-job UUID + per-part counter).
 			var origFilename, storageKey string
 			if multiPart {
-				origFilename = fmt.Sprintf("import-pt%02d-ch%03d.epub", partIdx+1, chIdxInPart+1)
+				origFilename = fmt.Sprintf("import-pt%02d-ch%03d.%s", partIdx+1, chIdxInPart+1, importSourceExtension(payload.FileFormat))
 				storageKey = fmt.Sprintf(
 					"chapters/%s/import-%s-pt%d-ch%d",
 					payload.BookID, payload.JobID, partIdx+1, chIdxInPart+1,
 				)
 			} else {
-				origFilename = fmt.Sprintf("import-ch%03d.epub", chapterGlobalSort)
+				origFilename = fmt.Sprintf("import-ch%03d.%s", chapterGlobalSort, importSourceExtension(payload.FileFormat))
 				storageKey = fmt.Sprintf(
 					"chapters/%s/import-%s-%d",
 					payload.BookID, payload.JobID, chapterGlobalSort-1,
@@ -272,12 +392,12 @@ func (t *ImportProcessor) processImport(ctx context.Context, payload importReque
 				chapterTitle = *ch.Title
 			}
 			err = tx.QueryRow(ctx, `
-INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, part_id, structural_path)
-VALUES($1, $2, $3, $4, 'application/json', $5, $6, $7, 'active', now(), now(), $8, $9)
+INSERT INTO chapters(book_id, title, original_filename, original_language, content_type, byte_size, sort_order, storage_key, lifecycle_state, draft_updated_at, updated_at, structural_path)
+VALUES($1, $2, $3, $4, 'application/json', $5, $6, $7, 'active', now(), now(), $8)
 RETURNING id
 `, payload.BookID, nullIfEmpty(chapterTitle), origFilename, lang,
 				len(tiptapJSON), chapterGlobalSort, storageKey,
-				partID, ch.Path,
+				ch.Path,
 			).Scan(&chapterID)
 			if err != nil {
 				tx.Rollback(ctx)
@@ -365,6 +485,73 @@ RETURNING id
 	return count, nil
 }
 
+func importSourceExtension(format string) string {
+	switch format {
+	case "markdown":
+		return "md"
+	case "docx", "epub", "fb2":
+		return format
+	default:
+		return "import"
+	}
+}
+
+// persistFB2Metadata retains the structured source data for every FB2 job.
+// Only create-mode jobs project it onto books and cover assets: an editor who
+// imports chapters into an existing book must never have their own metadata
+// silently overwritten by an unrelated source file.
+func (t *ImportProcessor) persistFB2Metadata(ctx context.Context, payload importRequestedPayload, doc *fb2Document) error {
+	metadata, err := json.Marshal(doc.Metadata)
+	if err != nil {
+		return fmt.Errorf("fb2: marshal metadata: %w", err)
+	}
+	tx, err := t.BookDB.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("fb2: begin metadata transaction: %w", err)
+	}
+	defer tx.Rollback(ctx)
+	if _, err := tx.Exec(ctx, `
+INSERT INTO book_import_metadata(import_job_id,book_id,source_format,metadata,applied_to_book)
+VALUES($1,$2,'fb2',$3,$4)
+ON CONFLICT(import_job_id) DO UPDATE SET metadata=EXCLUDED.metadata, applied_to_book=EXCLUDED.applied_to_book
+`, payload.JobID, payload.BookID, metadata, payload.CreateBookFromMetadata); err != nil {
+		return fmt.Errorf("fb2: store metadata: %w", err)
+	}
+	if !payload.CreateBookFromMetadata {
+		if err := tx.Commit(ctx); err != nil {
+			return fmt.Errorf("fb2: commit metadata: %w", err)
+		}
+		slog.Info("fb2: retained metadata for existing book", "job_id", payload.JobID, "book_id", payload.BookID)
+		return nil
+	}
+	language := payload.OriginalLanguage
+	if language == "" {
+		language = doc.Language
+	}
+	if _, err := tx.Exec(ctx, `UPDATE books SET title=$2,description=$3,original_language=$4,genre_tags=$5,updated_at=now() WHERE id=$1`, payload.BookID, doc.Title, nullIfEmpty(doc.Summary), nullIfEmpty(language), doc.Genres); err != nil {
+		return fmt.Errorf("fb2: apply book metadata: %w", err)
+	}
+	if doc.Cover != nil {
+		contentType := http.DetectContentType(doc.Cover.Data)
+		if strings.HasPrefix(contentType, "image/") {
+			if _, err := tx.Exec(ctx, `
+INSERT INTO book_cover_assets(book_id,content_type,byte_size,storage_key,data,updated_at)
+VALUES($1,$2,$3,$4,$5,now())
+ON CONFLICT(book_id) DO UPDATE SET content_type=EXCLUDED.content_type,byte_size=EXCLUDED.byte_size,storage_key=EXCLUDED.storage_key,data=EXCLUDED.data,updated_at=now()
+`, payload.BookID, contentType, len(doc.Cover.Data), fmt.Sprintf("covers/%s", payload.BookID), doc.Cover.Data); err != nil {
+				return fmt.Errorf("fb2: store cover: %w", err)
+			}
+		} else {
+			slog.Warn("fb2: skipped cover with non-image signature", "job_id", payload.JobID, "declared_content_type", doc.Cover.ContentType, "detected_content_type", contentType)
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("fb2: commit metadata: %w", err)
+	}
+	slog.Info("fb2: applied metadata to created book", "job_id", payload.JobID, "book_id", payload.BookID, "genres", len(doc.Genres), "cover_present", doc.Cover != nil)
+	return nil
+}
+
 // writeBackSceneLinks runs the 26 IX-12 loop: decompile via composition, then write the
 // returned mappings onto scenes.source_scene_id. book-service (this worker's book DB) is
 // the sole writer of source_scene_id (SCOPE-2 / DA-8 index-owner role). Only fills a leaf
@@ -434,11 +621,11 @@ func (t *ImportProcessor) writeBackSceneLinks(ctx context.Context, bookID, owner
 // inside the caller's tx (INV-O12: an emit that cannot be written must roll the mutation back).
 //
 // THE CENSUS THAT WAS WRONG TWICE. `scenes.source_scene_id` is written in FIVE places, not three:
-//   1. book-service parse.go        — the .txt import INSERT
-//   2. book-service reparse.go      — via FOUR emit sites (publish, kg-index, mcp-publish, sweeper)
-//   3. worker-infra import (here)   — the HTML/txt import INSERT      <- emitted NOTHING
-//   4. worker-infra import_pdf      — the PDF import INSERT           <- emitted NOTHING
-//   5. worker-infra IX-12 write-back— the decompile back-link fill    <- emitted NOTHING
+//  1. book-service parse.go        — the .txt import INSERT
+//  2. book-service reparse.go      — via FOUR emit sites (publish, kg-index, mcp-publish, sweeper)
+//  3. worker-infra import (here)   — the HTML/txt import INSERT      <- emitted NOTHING
+//  4. worker-infra import_pdf      — the PDF import INSERT           <- emitted NOTHING
+//  5. worker-infra IX-12 write-back— the decompile back-link fill    <- emitted NOTHING
 //
 // (3) and (4) matter because they set the link from a parser-recovered anchor, and the IX-12
 // write-back at (5) only fills NULLs — so a scene that arrives ALREADY ANCHORED is never touched
@@ -641,6 +828,47 @@ func (t *ImportProcessor) publishWSEvent(ctx context.Context, userID, jobID, sta
 		span.RecordError(err)
 		slog.Warn("import-processor: AMQP publish failed", "error", err)
 	}
+}
+
+// acquireImportJobLock serializes delivery redeliveries for one import job while retaining
+// the same pooled connection. PostgreSQL advisory locks are session-scoped, so releasing
+// through a different pool connection would leak the lock.
+func (t *ImportProcessor) acquireImportJobLock(ctx context.Context, jobID string) (*pgxpool.Conn, bool, error) {
+	if t.BookDB == nil {
+		return nil, true, nil
+	}
+	conn, err := t.BookDB.Acquire(ctx)
+	if err != nil {
+		return nil, false, err
+	}
+	var acquired bool
+	if err := conn.QueryRow(ctx, `SELECT pg_try_advisory_lock(hashtext($1))`, jobID).Scan(&acquired); err != nil {
+		conn.Release()
+		return nil, false, err
+	}
+	if !acquired {
+		conn.Release()
+		return nil, false, nil
+	}
+	return conn, true, nil
+}
+func (t *ImportProcessor) releaseImportJobLock(ctx context.Context, conn *pgxpool.Conn, jobID string) {
+	if conn == nil {
+		return
+	}
+	_, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock(hashtext($1))`, jobID)
+	conn.Release()
+}
+
+func (t *ImportProcessor) importJobCompleted(ctx context.Context, jobID string) bool {
+	if t.BookDB == nil {
+		return false
+	}
+	var status string
+	if err := t.BookDB.QueryRow(ctx, `SELECT status FROM import_jobs WHERE id=$1`, jobID).Scan(&status); err != nil {
+		return false
+	}
+	return status == "completed" || status == "completed_with_warnings"
 }
 
 // updateJobStatus calls book-service internal API to update import job status.

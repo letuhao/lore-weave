@@ -1536,11 +1536,20 @@ async def promote_entity(
             if a and canonicalize_entity_name(a) != entity.canonical_name
         ]
         attributes: dict = {"aliases": aliases} if aliases else {}
+        kind_code = normalize_kind_for_anchor_lookup(entity.kind)
+        # A project may have a knowledge graph before its glossary book tier was
+        # scaffolded.  The glossary writeback endpoint intentionally rejects that
+        # state with GLOSS_BOOK_NOT_SCAFFOLDED; make the missing, idempotent
+        # copy-down here so the user action is self-contained and retryable.
+        adopt_kinds = getattr(glossary_client, "adopt_book_kinds", None)
+        if callable(adopt_kinds):
+            await adopt_kinds(book_id, user_id, [kind_code])
+
         propose_resp = await glossary_client.propose_entities(
             book_id,
             entities=[
                 {
-                    "kind_code": normalize_kind_for_anchor_lookup(entity.kind),
+                    "kind_code": kind_code,
                     "name": entity.canonical_name,
                     "attributes": attributes,
                 }

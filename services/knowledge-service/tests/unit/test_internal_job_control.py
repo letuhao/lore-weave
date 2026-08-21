@@ -23,6 +23,9 @@ USER = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 OTHER = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
 JOB = UUID("dddddddd-dddd-dddd-dddd-dddddddddddd")
 PROJ = UUID("99999999-9999-9999-9999-999999999999")
+# reconcile projects the extraction row's model identity (embedding_model) so the
+# projection survives a provider model being deleted and re-added under a new UUID.
+EMB = UUID("eeeeeeee-eeee-eeee-eeee-eeeeeeeeeeee")
 
 
 def _job(status="running"):
@@ -262,6 +265,7 @@ async def test_reconcile_jobs_maps_complete_to_completed():
     row = SimpleNamespace(
         job_id=JOB, user_id=USER, status="complete", items_processed=3, items_total=5,
         error_message=None, updated_at=updated, cost_spent_usd=2.74,
+        tokens_in=0, tokens_out=0, embedding_model=EMB,
     )
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[row])
@@ -279,11 +283,11 @@ async def test_reconcile_skips_noncanonical_summarizing():
     updated = datetime(2026, 6, 15, tzinfo=timezone.utc)
     good = SimpleNamespace(job_id=JOB, user_id=USER, status="running", items_processed=0,
                            items_total=0, error_message=None, updated_at=updated,
-                           cost_spent_usd=0)
+                           cost_spent_usd=0, tokens_in=0, tokens_out=0, embedding_model=EMB)
     # 'summarizing' has no canonical JobStatus → must be skipped, not shipped unparseable.
     summ = SimpleNamespace(job_id=JOB, user_id=USER, status="summarizing", items_processed=0,
                            items_total=0, error_message=None, updated_at=updated,
-                           cost_spent_usd=0)
+                           cost_spent_usd=0, tokens_in=0, tokens_out=0, embedding_model=EMB)
     repo = AsyncMock()
     repo.list_since = AsyncMock(return_value=[good, summ])
     out = await reconcile_jobs(since=updated, limit=1000, jobs_repo=repo)
@@ -298,7 +302,8 @@ async def test_reconcile_unions_wiki_gen_and_merges_oldest_first(monkeypatch):
     t_ext = datetime(2026, 6, 16, tzinfo=timezone.utc)   # newer
     t_wiki = datetime(2026, 6, 15, tzinfo=timezone.utc)  # older
     ext_row = SimpleNamespace(job_id=JOB, user_id=USER, status="running", items_processed=1,
-                              items_total=4, error_message=None, updated_at=t_ext, cost_spent_usd=0)
+                              items_total=4, error_message=None, updated_at=t_ext, cost_spent_usd=0,
+                              tokens_in=0, tokens_out=0, embedding_model=EMB)
     wiki_row = {
         "job_id": UUID("11111111-1111-1111-1111-111111111111"), "user_id": USER,
         "status": "completed",       # list_since already mapped complete→completed
@@ -323,7 +328,8 @@ async def test_reconcile_merge_caps_at_limit_keeping_oldest(monkeypatch):
     t1 = datetime(2026, 6, 15, tzinfo=timezone.utc)  # oldest (extraction)
     t2 = datetime(2026, 6, 16, tzinfo=timezone.utc)  # newest (wiki) — must be dropped at limit=1
     ext_row = SimpleNamespace(job_id=JOB, user_id=USER, status="running", items_processed=0,
-                              items_total=0, error_message=None, updated_at=t1, cost_spent_usd=0)
+                              items_total=0, error_message=None, updated_at=t1, cost_spent_usd=0,
+                              tokens_in=0, tokens_out=0, embedding_model=EMB)
     wiki_row = {
         "job_id": UUID("33333333-3333-3333-3333-333333333333"), "user_id": USER,
         "status": "completed", "native_status": "complete", "cost_spent_usd": 0.0,

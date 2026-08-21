@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '@/auth';
-import { aiModelsApi, type UserModel } from '@/features/ai-models/api';
+import { aiModelsApi, getUserModelMeta, type UserModel } from '@/features/ai-models/api';
 
 /**
  * THE consolidated user-models fetch (W5) — every model picker goes through
@@ -40,6 +40,16 @@ function fetchModels(token: string, capability?: string, includeInactive?: boole
   const promise = aiModelsApi.listUserModels(token, {
     include_inactive: includeInactive ?? false,
     ...(capability ? { capability } : {}),
+  }).then(async (response) => {
+    // Fallback for legacy registries that do not classify embedding models.
+    if (capability !== 'embedding' || response.items.length > 0) return response;
+    const all = await aiModelsApi.listUserModels(token, { include_inactive: includeInactive ?? false });
+    const embedding = all.items.filter((model) => {
+      const meta = getUserModelMeta(model);
+      if (meta.capabilities.includes('embedding')) return true;
+      return /(?:embedding|embed|bge[-_]?m3|bge[-_]|e5[-_]|gte[-_]|jina[-_]embeddings)/i.test(model.provider_model_name);
+    });
+    return { items: embedding };
   });
   cache.set(key, { ts: Date.now(), promise });
   // A failed fetch must not poison the cache window.

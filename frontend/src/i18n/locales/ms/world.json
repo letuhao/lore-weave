@@ -98,5 +98,27 @@
     "branchAt": "bercabang pada bab {{ch}}",
     "orphan": "· sumber di luar dunia ini",
     "edgeLabel": "bab {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Pautkan entiti",
+    "delete": "Padam",
+    "empty": "Belum ada peta — lukis dunia tempat cerita anda bermula.",
+    "entityPlaceholder": "id entiti lokasi",
+    "error": "Tidak dapat memuatkan peta ini.",
+    "label": "Label",
+    "marker": "Penanda",
+    "name": "Nama",
+    "newMap": "+ Peta Baharu",
+    "newMapPrompt": "Namakan peta baharu",
+    "pickWorld": "Pilih dunia untuk dipetakan.",
+    "region": "Wilayah",
+    "save": "Simpan",
+    "unbind": "Nyahikat",
+    "uploadImage": "Muat naik imej asas",
+    "vertexCapNotice": "{{count}} bucu — pembentukan semula dinyahaktifkan melebihi {{max}} untuk prestasi."
+  },
+  "maps": {
+    "empty": "Belum ada peta. Minta pembantu untuk “buatkan peta dunia ini” untuk mencipta satu.",
+    "heading": "Peta"
   }
 }

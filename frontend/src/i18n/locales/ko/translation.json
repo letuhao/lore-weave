@@ -66,7 +66,10 @@
     "publish_anyway": "그대로 게시",
     "cancel": "취소",
     "glossary_stale": "용어집 업데이트됨",
-    "glossary_stale_title": "이 번역 이후 용어집이 변경되었습니다 — 내용이 최신이 아닐 수 있습니다."
+    "glossary_stale_title": "이 번역 이후 용어집이 변경되었습니다 — 내용이 최신이 아닐 수 있습니다.",
+    "source_injection": "원문 플래그 ({{count}})",
+    "source_injection_other": "원문 플래그 ({{count}})",
+    "source_injection_title": "가져온 원문에 지시문처럼 보이는 구간이 있습니다. 번역은 원문을 고치지 않으므로 차단이 아니라 알림입니다."
   },
   "confirm_name": {
     "button": "이름 수정",

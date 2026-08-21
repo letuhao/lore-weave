@@ -172,5 +172,10 @@
     "saved": "已儲存模型排序",
     "saveFailed": "無法儲存排序。",
     "loadFailed": "無法載入模型清單。"
+  },
+  "errorBoundary": {
+    "title": "無法顯示此頁面",
+    "description": "發生介面錯誤。錯誤已儲存至診斷日誌；請再試一次。",
+    "retry": "再試一次"
   }
 }

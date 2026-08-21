@@ -211,7 +211,10 @@
     "feedback_up": "Boa resposta",
     "feedback_down": "Resposta ruim",
     "feedback_thanks": "Obrigado pelo feedback",
-    "feedback_error": "Não foi possível salvar o feedback"
+    "feedback_error": "Não foi possível salvar o feedback",
+    "incomplete_error": "Erro — resposta incompleta",
+    "incomplete_interrupted": "Interrompido — resposta incompleta",
+    "insert_into_chapter": "Inserir no capítulo"
   },
   "tools": {
     "title": "Ferramentas usadas nesta resposta",
@@ -243,7 +246,9 @@
     "cancelled": "Cancelado",
     "reprice": "O custo subiu para {{cost}} desde a estimativa — peça novamente para confirmar o novo preço.",
     "reprice_title": "Custo alterado — não aplicado",
-    "reprice_detail": "Estimado {{old}}, agora {{new}}. Nada foi gasto — peça novamente para confirmar o novo preço."
+    "reprice_detail": "Estimado {{old}}, agora {{new}}. Nada foi gasto — peça novamente para confirmar o novo preço.",
+    "advisory_items": "Solicitado (informativo) — o servidor confirmará o conjunto exato ao aplicar",
+    "awaiting_preview": "Carregando a prévia do servidor..."
   },
   "batchConfirm": {
     "title": "Confirmar {{count}} ações de uma só vez",
@@ -446,5 +451,120 @@
     "worldbuilder": "Criador de Mundo",
     "editor": "Editor",
     "analyst": "Analista"
+  },
+  "sessionSettings": {
+    "description": "Configurações para este chat. Qualquer coisa que você não definir aqui será herdada do livro, depois da sua conta e, por fim, do padrão do sistema.",
+    "saving": "salvando...",
+    "close": "Fechar",
+    "voice": "Voz",
+    "messages": "Mensagens",
+    "status": {
+      "label": "Status",
+      "active": "Ativo",
+      "archived": "Arquivado",
+      "closed": "Fechado"
+    },
+    "models": {
+      "title": "Modelos",
+      "composer": "Modelo de composição (opcional)",
+      "planner": "Modelo de planejamento (opcional)",
+      "composerNone": "Nenhum — modelo único",
+      "plannerNone": "Usar meu planejador padrão",
+      "composerHint": "Quando definido, a IA pode delegar a escrita da prosa para este modelo.",
+      "plannerHint": "O modelo usado para o planejamento de múltiplas etapas nesta sessão."
+    },
+    "behavior": {
+      "title": "Comportamento",
+      "systemPrompt": "Prompt do sistema",
+      "promptPlaceholder": "Herdado do padrão da sua conta, a menos que você defina um aqui.",
+      "reasoning": {
+        "label": "Esforço de raciocínio",
+        "off": "Desativado",
+        "low": "Baixo",
+        "medium": "Médio",
+        "high": "Alto"
+      },
+      "statefulTitle": "Usar API de Respostas com estado",
+      "statefulHint": "Reutilização opcional de contexto no lado do servidor. Deixe desativado, a menos que seu provedor suporte chamadas de ferramentas de Respostas.",
+      "temperature": "Temperatura",
+      "temperatureHint": "Valores mais altos geram respostas mais surpreendentes; valores mais baixos, mais previsíveis.",
+      "topP": "Top P",
+      "maxTokens": "Tokens máximos de resposta",
+      "maxTokensHint": "Não definido significa o limite próprio do modelo."
+    },
+    "grounding": {
+      "title": "Aprimoramento e memória",
+      "label": "Basear respostas no universo deste livro",
+      "on": "Ativado — a recuperação é executada a cada turno",
+      "off": "Desativado — sem recuperação neste chat",
+      "onHint": "Glossários, fatos do grafo de conhecimento e passagens são extraídos em cada turno.",
+      "offHint": "O assistente responde apenas com base na conversa e pode inventar detalhes do universo.",
+      "multiHint": "Baseado em todos os grafos de conhecimento selecionados simultaneamente — os fatos são marcados com sua fonte."
+    },
+    "context": {
+      "title": "Gerenciamento de contexto",
+      "label": "Modo de contexto para obras longas",
+      "auto": "Automático",
+      "on": "Sempre ativado",
+      "off": "Desativado",
+      "autoHint": "Ativa os níveis de contexto para obras longas apenas quando o livro for grande o suficiente para precisar deles.",
+      "onHint": "Sempre utiliza os níveis de contexto para obras longas.",
+      "offHint": "Nunca — o contexto mais simples e econômico."
+    }
+  },
+  "dock": {
+    "close": "Fechar",
+    "label": "Perguntar à IA",
+    "open": "Perguntar ao assistente de glossário",
+    "title": "Assistente de glossário"
+  },
+  "glossaryEdit": {
+    "applied": "Aplicado ✓",
+    "apply": "Aplicar",
+    "conflict": "Esta entidade foi alterada desde que foi proposta — peça novamente para ver a versão mais recente.",
+    "conflict_short": "Alterado desde a proposta — reenviar",
+    "dismiss": "Descartar",
+    "dismissed": "Descartado",
+    "empty": "(vazio)",
+    "error": "Não foi possível salvar a alteração.",
+    "error_short": "Falha ao salvar",
+    "field": "Campo",
+    "fields": "{{count}} campos",
+    "label": "Edição do glossário"
+  },
+  "planner": {
+    "destructive": "destrutivo",
+    "enable": "Ativar esta etapa destrutiva",
+    "heading": "Planejamento",
+    "notes": "Notas do planejador",
+    "steps": "{{count}} etapa(s)"
+  },
+  "propose": {
+    "applied": "Aplicado ✓",
+    "apply": "Aplicar",
+    "apply_failed": "Não foi possível aplicar a edição.",
+    "apply_n": "Aplicar {{count}}",
+    "dismiss": "Descartar",
+    "dismissed": "Descartado",
+    "hunk_hint": "Escolha quais alterações aplicar",
+    "hunk_toggle": "Aceitar esta alteração",
+    "insert_label": "Inserção sugerida",
+    "keep_original": "Manter original",
+    "no_editor": "Abra o capítulo para aplicar esta edição.",
+    "no_selection": "Selecione o texto para substituir e, em seguida, clique em Aplicar.",
+    "popout_no_rewrite": "As reescritas precisam ser aplicadas a partir do editor fixado — fixe esta janela primeiro.",
+    "popout_not_delivered": "Não foi possível confirmar que a edição chegou ao editor fixado — abra o capítulo no Studio e tente novamente.",
+    "replace_label": "Reescrita sugerida",
+    "selection_changed": "Sua seleção foi alterada — selecione novamente e clique em Aplicar ou Descartar.",
+    "wrong_chapter": "Esta sugestão era para um capítulo diferente."
+  },
+  "taskGate": {
+    "cancelled": "Descartado",
+    "confirm": "Confirmar",
+    "defaultTitle": "Confirmar esta ação?",
+    "dismiss": "Descartar",
+    "done": "Confirmado ✓",
+    "error": "Não foi possível confirmar",
+    "label": "Confirmar"
   }
 }

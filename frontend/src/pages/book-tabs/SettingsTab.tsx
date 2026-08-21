@@ -72,16 +72,20 @@ export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
   // Fetch genres for this book — the tiered ontology read (G4e retired the old flat
   // genre_groups /genres route; this book's genre CATALOG for the tag picker now
   // comes from GET .../ontology, same source useBookOntology/Manage use).
-  const { data: genres = [] } = useQuery({
-    queryKey: ['glossary-ontology', bookId],
-    queryFn: () => tieringApi.getOntology(bookId, accessToken!).then((o) => o.genres),
+  const { data: genresData } = useQuery({
+    // Keep the transformed genre list separate from useBookOntology's full
+    // BookOntology cache. Sharing the key stores an object where this component
+    // expects an array, so a tab switch later crashes at `genres.find`.
+    queryKey: ['glossary-ontology-genres', bookId],
+    queryFn: () => tieringApi.getOntology(bookId, accessToken!).then((o) => (Array.isArray(o?.genres) ? o.genres : [])),
     enabled: !!accessToken,
   });
+  const genres = Array.isArray(genresData) ? genresData : [];
 
   // Fetch kinds for genre impact preview
   const { data: kinds = [] } = useQuery({
     queryKey: ['glossary-kinds'],
-    queryFn: () => glossaryApi.getKinds(accessToken!),
+    queryFn: () => glossaryApi.getKinds(accessToken!).then((items) => (Array.isArray(items) ? items : [])),
     enabled: !!accessToken,
     staleTime: 10 * 60 * 1000,
   });
@@ -100,7 +104,7 @@ export function SettingsTab({ bookId, book, onReload, onOpenWorld }: Props) {
     for (const g of genreTags) {
       const attrs: string[] = [];
       for (const k of kinds) {
-        for (const a of k.default_attributes) {
+        for (const a of (k.default_attributes ?? [])) {
           if ((a.genre_tags ?? []).includes(g)) attrs.push(a.name);
         }
       }

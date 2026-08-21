@@ -67,3 +67,17 @@ groups:
       # Migration failure rate (rate of migration_failed events)
       - record: lw:migration_failed:rate5m
         expr: rate(pg_stat_user_tables_n_tup_ins{relname="reality_migration_audit"}[5m])
+
+  - name: lw_epub_import_rollups
+    interval: 30s
+    rules:
+      # Book Service exports only bounded outcome/stage labels; these rollups
+      # deliberately introduce no book, user, filename, or source dimensions.
+      - record: lw:epub_import_jobs:rate5m_by_outcome
+        expr: sum by (outcome) (rate(epub_import_jobs_total[5m]))
+      - record: lw:epub_import_items:rate5m_by_outcome
+        expr: sum by (outcome) (rate(epub_import_items_total[5m]))
+      - record: lw:epub_import_warnings:rate5m_by_stage
+        expr: sum by (stage) (rate(epub_import_warnings_total[5m]))
+      - record: lw:epub_import_finalize_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum by (le) (rate(epub_import_duration_seconds_bucket[5m])))

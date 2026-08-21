@@ -30,7 +30,13 @@
     "allOverwrite": "Tümünü Üzerine Yaz",
     "required": "zorunlu",
     "thinkingEnabled": "Düşünme / Akıl yürütmeyi etkinleştir",
-    "thinkingHint": "JSON çıkarımı için kapalı tutulması önerilir. Gemma gibi düşünme aşamasında farklı akıl yürüten modeller için açın."
+    "thinkingHint": "JSON çıkarımı için kapalı tutulması önerilir. Gemma gibi düşünme aşamasında farklı akıl yürüten modeller için açın.",
+    "addDefaults": "Varsayılan türleri ekle",
+    "addingDefaults": "Ekleniyor…",
+    "defaultsError": "Varsayılan varlık türleri eklenemedi.",
+    "loadError": "Çıkarım profili yüklenemedi.",
+    "noKindsDescription": "Çıkarım işlemi için en az bir tür belirlenmelidir. Başlamak için varsayılanları ekleyin veya sözlükte kendi türlerinizi tanımlayın.",
+    "noKindsTitle": "Bu kitapta henüz varlık türü bulunmuyor"
   },
   "batch": {
     "title": "Toplu İşlem Yapılandırması",
@@ -65,7 +71,19 @@
     "thinkingOn": "Düşünme: açık (akıl yürütme etkin)",
     "thinkingOff": "Düşünme: kapalı (daha hızlı, daha iyi JSON)",
     "startExtraction": "Çıkarımı Başlat",
-    "editProfile": "Profili Düzenle"
+    "editProfile": "Profili Düzenle",
+    "cacheAuto": "Herhangi bir değişiklik olduğunda yeniden çalıştır (varsayılan)",
+    "cacheForce": "Her zaman yeniden çıkar — önbelleği yoksay",
+    "cacheHint": "Bir tür tanımı mı düzenlediniz? Varsayılan ayar zaten yeniden çalıştırır.",
+    "cachePolicy": "Önbelleğe alınmış sonuçlar",
+    "cacheReuse": "Mümkün olan yerlerde önbelleğe alınmış sonuçları yeniden kullan",
+    "concurrency": "Paralel LLM çağrıları",
+    "concurrencyHint": "1 = sıralı. Modeliniz eşzamanlı istekleri karşılıyorsa bu değeri artırın.",
+    "strategy": "Prompt yapısı",
+    "strategyBatched": "Toplu — en kapsamlı (varsayılan)",
+    "strategyDelta": "Tek çağrı + farklar — en ucuz",
+    "strategyEdc": "Tarama ve ardından yazma — ~%56 daha ucuz, en iyi temellendirme",
+    "strategySingle": "Tek çağrı — ~%66 daha ucuz, nadir türleri kaçırır"
   },
   "progress": {
     "title": "Sözlük Çıkarılıyor",
@@ -107,7 +125,11 @@
     "draftNote": "Tüm yeni varlıklar taslak olarak oluşturuldu — Sözlük sekmesinden inceleyin",
     "viewGlossary": "Sözlükten İncele",
     "runAgain": "Tekrar Çıkar",
-    "close": "Kapat"
+    "close": "Kapat",
+    "cacheAllFresh": "Tüm {{n}} grup yeni baştan çıkarıldı.",
+    "cacheForced": "(istek nedeniyle önbellek atlandı)",
+    "cacheRerunHint": "Eğer o zamandan bu yana bir tür tanımını değiştirdiyseniz, «Her zaman yeniden çıkar» seçeneğiyle tekrar çalıştırın.",
+    "cacheServed": "Bu çalıştırmanın %{{pct}}'si ({{cached}} / {{total}} grup), yeniden okunmak yerine önceki bir çıkarımdan YENİDEN KULLANILDI."
   },
   "button": {
     "extract": "Sözlüğü Çıkar",

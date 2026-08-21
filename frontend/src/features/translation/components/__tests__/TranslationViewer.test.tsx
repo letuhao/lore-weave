@@ -83,6 +83,35 @@ describe('TranslationViewer needs-review badge', () => {
     expect(await screen.findByTitle('viewer.glossary_stale_title')).toBeInTheDocument();
   });
 
+  // ── the imported source carried directive-looking spans ─────────────────────────────
+  it('warns the importer when the SOURCE text was flagged', async () => {
+    getChapterVersion.mockResolvedValue(
+      { ...baseVersion, unresolved_high_count: 0, source_injection_hits: 3 });
+    renderViewer();
+    expect(await screen.findByTestId('source-injection-badge')).toBeInTheDocument();
+  });
+
+  it('stays silent when the source was scanned and found CLEAN (0)', async () => {
+    getChapterVersion.mockResolvedValue(
+      { ...baseVersion, unresolved_high_count: 0, source_injection_hits: 0 });
+    renderViewer();
+    await screen.findByText('Hello world');
+    expect(screen.queryByTestId('source-injection-badge')).toBeNull();
+  });
+
+  it('also stays silent when the source was NEVER scanned (null) — and that is not "clean"', async () => {
+    // A chapter translated before the scan existed. Both this and 0 are falsy, and only one
+    // of them is an answer; the badge must not claim clean for text nobody looked at, and it
+    // must not cry wolf for it either. The distinction is carried by the FIELD, which is
+    // nullable for exactly this reason — collapsing null into 0 in the column would have
+    // written "clean" over every historical row.
+    getChapterVersion.mockResolvedValue(
+      { ...baseVersion, unresolved_high_count: 0, source_injection_hits: null });
+    renderViewer();
+    await screen.findByText('Hello world');
+    expect(screen.queryByTestId('source-injection-badge')).toBeNull();
+  });
+
   it('M5c: hides the glossary-stale badge when not stale', async () => {
     getChapterVersion.mockResolvedValue(
       { ...baseVersion, unresolved_high_count: 0, is_glossary_stale: false });

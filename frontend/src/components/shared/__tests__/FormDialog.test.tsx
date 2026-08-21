@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { FormDialog } from '../FormDialog';
 
 describe('FormDialog', () => {
@@ -75,6 +75,45 @@ describe('FormDialog', () => {
   // The dialog caps its height and scrolls the BODY only; the footer is pinned
   // and a SIBLING of the scroll region (adversary: must not be nested inside it,
   // else the action scrolls away or overlaps content on tall forms).
+  // A form may hold partially completed work, so a stray click on the backdrop must
+  // not discard it. Asserted through Radix's real dismissal path — a pointerdown
+  // OUTSIDE the content, which is what `onInteractOutside` intercepts. (An earlier
+  // version of this test looked up `[data-radix-dialog-overlay]`, an attribute Radix
+  // does not emit: the query returned null and the test failed before it could
+  // exercise anything.)
+  it('does not close when the backdrop is clicked', async () => {
+    const onOpenChange = vi.fn();
+    render(
+      <FormDialog {...defaultProps} onOpenChange={onOpenChange}>
+        <div>content</div>
+      </FormDialog>,
+    );
+    // Two details decide whether this test can fail at all, and both were got wrong
+    // before: Radix's DismissableLayer registers its outside-pointer listener inside a
+    // `setTimeout`, so a synchronous fire lands before the listener exists; and the
+    // dismissal needs the full press+release, not `pointerDown` alone. Miss either and
+    // the assertion below is green even with `onInteractOutside` deleted.
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+    fireEvent.pointerDown(document.body);
+    fireEvent.click(document.body);
+
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  // The other half of the same decision: suppressing outside-dismissal must not
+  // strip the deliberate ways out, or the dialog becomes a trap.
+  it('still closes on Escape', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <FormDialog {...defaultProps} onOpenChange={onOpenChange}>
+        <div>content</div>
+      </FormDialog>,
+    );
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
+
   it('caps height and makes the body scrollable (C0)', () => {
     render(
       <FormDialog {...defaultProps}>

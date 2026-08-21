@@ -19,8 +19,12 @@
     "edit": "Edit",
     "delete": "Delete"
   },
-  "genres": { "new": "New genre" },
-  "kinds": { "new": "New kind" },
+  "genres": {
+    "new": "New genre"
+  },
+  "kinds": {
+    "new": "New kind"
+  },
   "toast": {
     "cloned": "Cloned “{{name}}” to your standards",
     "cloneError": "Couldn't clone “{{name}}”",
@@ -111,5 +115,365 @@
     "restoreError": "Couldn't restore",
     "purged": "Permanently deleted",
     "purgeError": "Couldn't delete"
+  },
+  "system": {
+    "genres": {
+      "universal": {
+        "name": "Universal",
+        "description": "Genre-independent attributes shared by every story."
+      },
+      "fantasy": {
+        "name": "Fantasy",
+        "description": "Magic, supernatural forces and imaginary worlds."
+      },
+      "xianxia": {
+        "name": "Xianxia",
+        "description": "Cultivation, immortals, sects and martial fantasy."
+      },
+      "romance": {
+        "name": "Romance",
+        "description": "Stories centered on love and intimate relationships."
+      },
+      "drama": {
+        "name": "Drama",
+        "description": "Character-focused stories driven by conflict and emotion."
+      },
+      "historical": {
+        "name": "Historical",
+        "description": "Stories grounded in a historical period or setting."
+      },
+      "mystery": {
+        "name": "Mystery",
+        "description": "Investigations, secrets and the search for hidden truth."
+      }
+    },
+    "kinds": {
+      "character": {
+        "name": "Character",
+        "description": "An individual person or named being who acts or speaks in the story."
+      },
+      "location": {
+        "name": "Location",
+        "description": "A physical place that characters can travel to or stand in."
+      },
+      "item": {
+        "name": "Item / Prop",
+        "description": "A physical object such as a weapon, treasure, garment or vehicle."
+      },
+      "event": {
+        "name": "Event",
+        "description": "Something that happens: a battle, journey, betrayal or revelation."
+      },
+      "terminology": {
+        "name": "Terminology",
+        "description": "An abstract term, doctrine, rank, title or concept."
+      },
+      "power_system": {
+        "name": "Power system",
+        "description": "An ordered scheme of powers or ranks that characters can advance through."
+      },
+      "species": {
+        "name": "Species",
+        "description": "A kind of being or race, not an individual character."
+      },
+      "organization": {
+        "name": "Organization",
+        "description": "A group of people acting together: a faction, house, guild or government."
+      },
+      "relationship": {
+        "name": "Relationship",
+        "description": "A meaningful connection between characters or groups."
+      },
+      "plot_arc": {
+        "name": "Plot arc",
+        "description": "A sustained storyline with a trigger, stakes and resolution."
+      },
+      "social_setting": {
+        "name": "Social setting",
+        "description": "The social order, era, customs and hierarchy shaping the story."
+      },
+      "trope": {
+        "name": "Trope",
+        "description": "A recurring narrative pattern or convention."
+      },
+      "technique": {
+        "name": "Technique",
+        "description": "A named action, method or skill performed by a character."
+      },
+      "colleague": {
+        "name": "Colleague",
+        "description": "A person you work with."
+      },
+      "decision": {
+        "name": "Decision",
+        "description": "A choice that was made and affects what happens next."
+      },
+      "jargon": {
+        "name": "Jargon",
+        "description": "Domain terminology or an acronym used in the text."
+      },
+      "meeting": {
+        "name": "Meeting",
+        "description": "A scheduled discussion or gathering."
+      },
+      "org": {
+        "name": "Organization",
+        "description": "A company, team, or external organization."
+      },
+      "project": {
+        "name": "Project",
+        "description": "A body of work with a goal and expected outcome."
+      },
+      "task": {
+        "name": "Task",
+        "description": "An actionable item of work that needs to be completed."
+      }
+    },
+    "attributes": {
+      "name": {
+        "name": "Name",
+        "description": "Name attribute."
+      },
+      "term": {
+        "name": "Term",
+        "description": "Term attribute."
+      },
+      "aliases": {
+        "name": "Aliases",
+        "description": "Aliases attribute."
+      },
+      "gender": {
+        "name": "Gender",
+        "description": "Gender attribute."
+      },
+      "role": {
+        "name": "Role",
+        "description": "Role attribute."
+      },
+      "occupation": {
+        "name": "Occupation",
+        "description": "Occupation attribute."
+      },
+      "social_class": {
+        "name": "Social Class",
+        "description": "Social Class attribute."
+      },
+      "affiliation": {
+        "name": "Affiliation",
+        "description": "Affiliation attribute."
+      },
+      "appearance": {
+        "name": "Appearance",
+        "description": "Appearance attribute."
+      },
+      "personality": {
+        "name": "Personality",
+        "description": "Personality attribute."
+      },
+      "emotional_wound": {
+        "name": "Emotional Wound",
+        "description": "Emotional Wound attribute."
+      },
+      "love_language": {
+        "name": "Love Language",
+        "description": "Love Language attribute."
+      },
+      "relationships": {
+        "name": "Relationships",
+        "description": "Relationships attribute."
+      },
+      "description": {
+        "name": "Description",
+        "description": "Description attribute."
+      },
+      "type": {
+        "name": "Type",
+        "description": "Type attribute."
+      },
+      "parent_location": {
+        "name": "Parent Location",
+        "description": "Parent Location attribute."
+      },
+      "atmosphere": {
+        "name": "Atmosphere",
+        "description": "Atmosphere attribute."
+      },
+      "significance": {
+        "name": "Significance",
+        "description": "Significance attribute."
+      },
+      "owner": {
+        "name": "Owner",
+        "description": "Owner attribute."
+      },
+      "symbolic_meaning": {
+        "name": "Symbolic Meaning",
+        "description": "Symbolic Meaning attribute."
+      },
+      "date_in_story": {
+        "name": "Date in Story",
+        "description": "Date in Story attribute."
+      },
+      "location": {
+        "name": "Location",
+        "description": "Location attribute."
+      },
+      "participants": {
+        "name": "Participants",
+        "description": "Participants attribute."
+      },
+      "emotional_impact": {
+        "name": "Emotional Impact",
+        "description": "Emotional Impact attribute."
+      },
+      "outcome": {
+        "name": "Outcome",
+        "description": "Outcome attribute."
+      },
+      "category": {
+        "name": "Category",
+        "description": "Category attribute."
+      },
+      "definition": {
+        "name": "Definition",
+        "description": "Definition attribute."
+      },
+      "usage_note": {
+        "name": "Usage Note",
+        "description": "Usage Note attribute."
+      },
+      "tiers": {
+        "name": "Tiers",
+        "description": "Tiers attribute."
+      },
+      "rank": {
+        "name": "Position in the Ladder",
+        "description": "Position in the Ladder attribute."
+      },
+      "entry_requirement": {
+        "name": "Entry Requirement",
+        "description": "Entry Requirement attribute."
+      },
+      "capabilities": {
+        "name": "Capabilities",
+        "description": "Capabilities attribute."
+      },
+      "arc_type": {
+        "name": "Arc Type",
+        "description": "Arc Type attribute."
+      },
+      "parties": {
+        "name": "Parties",
+        "description": "Parties attribute."
+      },
+      "trigger": {
+        "name": "Trigger",
+        "description": "Trigger attribute."
+      },
+      "stakes": {
+        "name": "Stakes",
+        "description": "Stakes attribute."
+      },
+      "chapters_span": {
+        "name": "Chapters Span",
+        "description": "Chapters Span attribute."
+      },
+      "emotional_beats": {
+        "name": "Emotional Beats",
+        "description": "Emotional Beats attribute."
+      },
+      "resolution": {
+        "name": "Resolution",
+        "description": "Resolution attribute."
+      },
+      "era": {
+        "name": "Era",
+        "description": "Era attribute."
+      },
+      "class_hierarchy": {
+        "name": "Class Hierarchy",
+        "description": "Class Hierarchy attribute."
+      },
+      "rules_norms": {
+        "name": "Rules and Norms",
+        "description": "Rules and Norms attribute."
+      },
+      "romance_obstacles": {
+        "name": "Romance Obstacles",
+        "description": "Romance Obstacles attribute."
+      },
+      "traits": {
+        "name": "Traits",
+        "description": "Traits attribute."
+      },
+      "abilities": {
+        "name": "Abilities",
+        "description": "Abilities attribute."
+      },
+      "habitat": {
+        "name": "Habitat",
+        "description": "Habitat attribute."
+      },
+      "culture": {
+        "name": "Culture",
+        "description": "Culture attribute."
+      },
+      "how_manifested": {
+        "name": "How Manifested",
+        "description": "How Manifested attribute."
+      },
+      "subverted": {
+        "name": "Subverted",
+        "description": "Subverted attribute."
+      },
+      "related_characters": {
+        "name": "Related Characters",
+        "description": "Related Characters attribute."
+      },
+      "relationship_type": {
+        "name": "Relationship Type",
+        "description": "Relationship Type attribute."
+      },
+      "status": {
+        "name": "Status",
+        "description": "Status attribute."
+      },
+      "tropes": {
+        "name": "Tropes",
+        "description": "Tropes attribute."
+      },
+      "dynamic": {
+        "name": "Dynamic",
+        "description": "Dynamic attribute."
+      },
+      "key_conflict": {
+        "name": "Key Conflict",
+        "description": "Key Conflict attribute."
+      },
+      "turning_points": {
+        "name": "Turning Points",
+        "description": "Turning Points attribute."
+      },
+      "leader": {
+        "name": "Leader",
+        "description": "Leader attribute."
+      },
+      "headquarters": {
+        "name": "Headquarters",
+        "description": "Headquarters attribute."
+      },
+      "members": {
+        "name": "Members",
+        "description": "Members attribute."
+      },
+      "effects": {
+        "name": "Effects",
+        "description": "Effects attribute."
+      },
+      "user": {
+        "name": "User",
+        "description": "User attribute."
+      }
+    }
   }
 }

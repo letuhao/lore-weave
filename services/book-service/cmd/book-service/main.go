@@ -94,6 +94,11 @@ func main() {
 		time.Duration(cfg.ReparseSweepIntervalSeconds)*time.Second,
 		cfg.ReparseSweepBatchSize,
 	)
+	go srv.RunEPUBAssetRetentionSweeper(
+		sweepCtx,
+		time.Duration(cfg.ReparseSweepIntervalSeconds)*time.Second,
+		time.Duration(cfg.EPUBImportAssetRetentionHours)*time.Hour,
+	)
 
 	go func() {
 		slog.Info("listening", "addr", cfg.HTTPAddr)

@@ -28,6 +28,7 @@ from app.clients.llm_client import LLMClient
 # convention but one source of truth beats a drifting copy.
 from app.services.glossary_build import engine
 from app.services.glossary_build.prompts import BATCH_MAX, NARROW_THRESHOLD, select_fields
+from app.llm_budget import max_tokens_for
 
 logger = logging.getLogger("app.services.glossary_build")
 
@@ -156,12 +157,15 @@ class GlossaryBuildService:
 
     # ── LLM binding: engine's injected callable → the platform job seam ──────
     def _llm_fn(self, *, user_id: str, model_source: str, model_ref: str):
-        async def call(messages: list[dict], max_tokens: int) -> str:
+        async def call(messages: list[dict], *, budget: str,
+                       target: int | None = None, language: str | None = None) -> str:
             job = await self._llm.submit_and_wait(
                 user_id=user_id, operation="chat",
                 model_source=model_source, model_ref=model_ref,
                 input={"messages": messages, "response_format": {"type": "text"},
-                       "temperature": 0.4, "max_tokens": max_tokens, **no_thinking_fields()},
+                       "temperature": 0.4,
+                       "max_tokens": max_tokens_for(budget, target=target, language=language),
+                       **no_thinking_fields()},
                 job_meta={"usage_purpose": "glossary_build"},
             )
             if getattr(job, "status", None) != "completed":
@@ -401,9 +405,23 @@ class GlossaryBuildService:
         task = _DRIVER_TASKS.pop(str(run_id), None)
         if task is not None:
             task.cancel()
+        # Every state the active-run index HOLDS must be cancellable, or a book can be
+        # stranded. Measured 2026-08-03 on the Mị Đế book: a run sat at `edges_ready` since
+        # 27 July — `uq_glossary_build_active_book` covers
+        # (planning, plan_ready, building, proposing, kg_projecting, edges_ready) while this
+        # list covered five of the six, so the wizard refused to start a new run with
+        # ACTIVE_RUN and cancel refused with BAD_STATE. No way forward and no way out, from
+        # the UI or the API.
+        #
+        # `edges_ready` is a HUMAN checkpoint (CP3 — approve relationships). Abandoning a
+        # review is an ordinary thing to do, and a checkpoint that cannot be abandoned is a
+        # trap rather than a gate. `kg_projecting` is in-flight work the driver owns, and the
+        # driver task is cancelled two lines above — the same treatment `building` and
+        # `proposing` already get.
         run = await self._repo.transition(
             run_id, owner,
-            ["draft", "planning", "plan_ready", "building", "proposing"], "cancelled")
+            ["draft", "planning", "plan_ready", "building", "proposing",
+             "kg_projecting", "edges_ready"], "cancelled")
         if run is None:
             raise GlossaryBuildError(409, "BAD_STATE", "run is not cancellable")
         return await self.get(run_id, owner)

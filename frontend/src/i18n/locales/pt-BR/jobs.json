@@ -59,7 +59,8 @@
     "noActive": "Nenhum job ativo.",
     "more": "Carregar mais",
     "toggleChildren": "Alternar filhos",
-    "noChildren": "Sem jobs filhos."
+    "noChildren": "Sem jobs filhos.",
+    "errorWithReason": "Não foi possível carregar os trabalhos: {{error}}"
   },
   "row": {
     "ran": "executou {{d}}",
@@ -85,6 +86,7 @@
   "controls": {
     "pause": "Pausar",
     "resume": "Retomar",
+    "resumeFromCheckpoint": "Retomar do checkpoint",
     "cancel": "Cancelar",
     "cancelConfirm": "Parar agora? O trabalho em andamento será descartado; as partes concluídas serão mantidas.",
     "cancelYes": "Sim",
@@ -95,7 +97,9 @@
     "retry": "Tentar novamente",
     "retried": "Reenviado como um novo job.",
     "stale": "O estado do job mudou — atualizado.",
-    "actionFailed": "Falha na ação: {{error}}"
+    "actionFailed": "Falha na ação: {{error}}",
+    "retryBenchmarkMissing": "A tentativa de reexecução não está disponível: o modelo de embedding não possui um benchmark. Execute o benchmark do modelo e tente novamente.",
+    "retryBenchmarkFailed": "A tentativa de reexecução não está disponível: o modelo de embedding falhou no último benchmark."
   },
   "monitor": {
     "back": "Todos os jobs",

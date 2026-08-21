@@ -37,6 +37,7 @@ from loreweave_agent_control.state_merge import (  # noqa: F401 — re-export fo
     build_messages,
     merge_state,
 )
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ async def run_executive(
             input={
                 "messages": messages,
                 "temperature": 0.0,
-                "max_tokens": 500,
+                "max_tokens": max_tokens_for("working_memory_executive", target=1),
                 **_NO_THINKING,
             },
             chunking=None,
@@ -125,7 +126,7 @@ async def run_executive(
         logger.warning("executive: LLM call failed session=%s err=%s", session_id, exc)
         return "llm_failed"
 
-    if getattr(job, "status", None) != "completed":
+    if (why := unusable(job, "working_memory_executive")):
         return "llm_failed"
 
     content = _extract_content(getattr(job, "result", None))

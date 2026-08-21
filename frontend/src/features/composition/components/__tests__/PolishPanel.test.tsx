@@ -110,3 +110,59 @@ describe('applySelfHealEdits', () => {
     expect(applySelfHealEdits(src, drift)).toBe(src);
   });
 });
+
+// ── S3 · a finding nothing could place must not render as "clean" ────────────────────────
+//
+// The panel showed `{{edits}} edits · {{refuted}} dropped` and, with no proposals, fell
+// through to "No issues found — the prose is clean." A self-heal finding whose quoted text
+// cannot be located in the chapter produces no proposal — so a run that found problems and
+// placed none was pixel-identical to a chapter with nothing wrong.
+
+describe('PolishPanel · unplaced findings', () => {
+  it('does NOT claim the prose is clean when findings could not be located', () => {
+    state.value = base({
+      ran: true,
+      proposals: [],
+      stats: {
+        findings: 2,
+        located: 0,
+        edits: 0,
+        refuted: 0,
+        unplaced: [
+          { kind: 'unlocated', placed: false, quote: 'he smiled thinly', why: 'not_located' },
+          { kind: 'unlocated', placed: false, quote: 'the wind rose', why: 'not_located' },
+        ],
+      },
+    });
+    render_();
+    // by TESTID, not by copy. `t()` returns the KEY in this environment (no i18n
+    // provider), so `queryByText(/prose is clean/)` was vacuous — it matched nothing
+    // in EVERY state, including the one it was written to catch.
+    expect(screen.queryByTestId('polish-clean')).toBeNull();
+    const box = screen.getByTestId('polish-unplaced');
+    // `toBeVisible` would pass on a box rendering `undefined` — assert the CONTENT.
+    expect(within(box).getByText(/he smiled thinly/)).toBeTruthy();
+    expect(within(box).getByText(/the wind rose/)).toBeTruthy();
+  });
+
+  it('CONTROL — with nothing unplaced it still says the prose is clean', () => {
+    state.value = base({
+      ran: true,
+      proposals: [],
+      stats: { findings: 0, located: 0, edits: 0, refuted: 0, unplaced: [] },
+    });
+    render_();
+    expect(screen.getByTestId('polish-clean')).toBeTruthy();
+    expect(screen.queryByTestId('polish-unplaced')).toBeNull();
+  });
+
+  it('CONTROL — an OLD server that sends no `unplaced` key degrades to the old behaviour', () => {
+    state.value = base({
+      ran: true,
+      proposals: [],
+      stats: { findings: 0, located: 0, edits: 0, refuted: 0 },
+    });
+    render_();
+    expect(screen.getByTestId('polish-clean')).toBeTruthy();
+  });
+});

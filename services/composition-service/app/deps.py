@@ -25,6 +25,7 @@ from app.db.repositories.canon_rules import CanonRulesRepo
 from app.db.repositories.error_blocks import ErrorBlocksRepo
 from app.db.repositories.daily_progress import DailyProgressRepo
 from app.db.repositories.derivatives import DerivativesRepo
+from app.db.repositories.epub_import_hierarchy import EpubImportHierarchyRepo
 from app.db.repositories.generation_corrections import GenerationCorrectionsRepo
 from app.db.repositories.generation_jobs import GenerationJobsRepo
 from app.db.repositories.grounding_pins import GroundingPinsRepo
@@ -116,6 +117,11 @@ async def get_derivatives_repo() -> DerivativesRepo:
 
 async def get_outline_repo() -> OutlineRepo:
     return OutlineRepo(get_pool())
+
+
+async def get_epub_import_hierarchy_repo() -> EpubImportHierarchyRepo:
+    """Composition-owned EPUB ToC persistence; Book remains chapter SSOT."""
+    return EpubImportHierarchyRepo(get_pool())
 
 
 async def get_work_chapter_drafts_repo() -> WorkChapterDraftsRepo:

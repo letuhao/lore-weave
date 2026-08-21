@@ -20,6 +20,8 @@ import json
 import logging
 from typing import Any
 
+from app.llm_budget import max_tokens_for
+
 logger = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = (
@@ -32,12 +34,10 @@ _SYSTEM_PROMPT = (
 
 # Cost-bound a single judge call; more edges loop over batches.
 _MAX_EDGES_PER_CALL = 20
-_BASE_OUTPUT_TOKENS = 128
-_TOKENS_PER_EDGE = 24
-
-
-def _max_tokens_for(batch_len: int) -> int:
-    return _BASE_OUTPUT_TOKENS + _TOKENS_PER_EDGE * batch_len
+# The hand-rolled `_BASE_OUTPUT_TOKENS + _TOKENS_PER_EDGE * n` sizer that used to live here
+# is now the `succession_entailment` row in app/llm_budget.py. It was a SECOND sizing model —
+# no floor, no reasoning allowance, no context-window clamp — and the per-edge shape it
+# encoded survives as the row's `target`, which VERDICT reads.
 
 
 def edge_id(from_code: str, to_code: str) -> str:
@@ -155,7 +155,8 @@ async def judge_entailments(
                 user_id=user_id, operation="chat", model_source=model_source,
                 model_ref=model_ref,
                 input={"messages": build_messages(batch), "temperature": 0.0,
-                       "max_tokens": _max_tokens_for(len(batch))},
+                       "max_tokens": max_tokens_for(
+                           "succession_entailment", target=len(batch))},
                 job_meta={"extractor": "succession_entailment"},
             )
         except Exception as exc:  # advisory — an LLM outage never fails the report

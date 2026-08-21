@@ -78,12 +78,12 @@ export function SessionSettingsPanel({
         <div className="flex items-center gap-2">
           <Settings className="h-4 w-4 text-muted-foreground" />
           <h3 className="text-sm font-semibold">{t('settings.title')}</h3>
-          {ed.saving && <span className="text-[10px] text-muted-foreground">saving…</span>}
+          {ed.saving && <span className="text-[10px] text-muted-foreground">{t('sessionSettings.saving')}</span>}
         </div>
         <button
           type="button"
           onClick={() => void ed.flush().finally(onClose)}
-          aria-label="Close"
+          aria-label={t('sessionSettings.close')}
           className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
         >
           <X className="h-4 w-4" />
@@ -91,8 +91,7 @@ export function SessionSettingsPanel({
       </div>
 
       <p className="border-b border-border px-5 py-2 text-[10px] text-muted-foreground">
-        Settings for <b>this chat</b>. Anything you don&apos;t set here is inherited from the
-        book, then your account, then the system default — and each row says which.
+        {t('sessionSettings.description')}
       </p>
 
       {ed.error && (
@@ -111,14 +110,14 @@ export function SessionSettingsPanel({
             embedded: same controls, no second slide-over fighting this one for the edge. */}
         <div data-section="voice">
           <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Voice
+            {t('sessionSettings.voice')}
           </h4>
           <VoiceSettingsPanel open embedded onClose={onClose} />
         </div>
 
         <section className="rounded border border-border p-3 text-[11px] text-muted-foreground">
-          <div className="flex justify-between"><span>Messages</span><span>{session.message_count}</span></div>
-          <div className="flex justify-between"><span>Status</span><span>{session.status}</span></div>
+          <div className="flex justify-between"><span>{t('sessionSettings.messages')}</span><span>{session.message_count}</span></div>
+          <div className="flex justify-between"><span>{t('sessionSettings.status.label')}</span><span>{t('sessionSettings.status.' + session.status, { defaultValue: session.status })}</span></div>
         </section>
       </div>
     </div>

@@ -458,7 +458,11 @@
       "replaceFactSave": "Ersetzung speichern",
       "replaceFactSuccess": "Fakt ersetzt",
       "markWrongUndo": "Rückgängig machen",
-      "markWrongUndoFailed": "Rückgängig machen fehlgeschlagen: {{error}}"
+      "markWrongUndoFailed": "Rückgängig machen fehlgeschlagen: {{error}}",
+      "tabs": {
+        "current": "Aktuell",
+        "temporal": "Zeitlich"
+      }
     },
     "edit": {
       "title": "Entität bearbeiten",
@@ -517,11 +521,32 @@
       "discoveredHint": "Neue Entitäten werden als „entdeckt“ markiert. Der Status „Kanonisch“ wird durch das Verankern im Glossar erreicht."
     },
     "kind": {
+      "unknown": "Unbekannte Art",
+      "person": "Person",
+      "artifact": "Artefakt",
       "character": "Charakter",
       "location": "Ort",
       "organization": "Organisation",
       "concept": "Konzept",
-      "item": "Gegenstand"
+      "item": "Gegenstand",
+      "event_ref": "Ereignis",
+      "preference": "Vorliebe",
+      "event": "Ereignis",
+      "terminology": "Terminologie",
+      "power_system": "Kraftsystem",
+      "species": "Spezies",
+      "relationship": "Beziehung",
+      "plot_arc": "Handlungsbogen",
+      "social_setting": "Soziales Setting",
+      "trope": "Trope",
+      "technique": "Technik",
+      "colleague": "Kollege",
+      "decision": "Entscheidung",
+      "jargon": "Jargon",
+      "meeting": "Meeting",
+      "org": "Organisation",
+      "project": "Projekt",
+      "task": "Aufgabe"
     },
     "archive": {
       "action": "Archivieren",
@@ -707,7 +732,32 @@
         "errorAlreadyRunning": "Für dieses Projekt läuft bereits ein Benchmark. Bitte warten und erneut versuchen.",
         "errorProviderFlake": "Embedding-Anbieter ist während des Durchlaufs ausgefallen. Bitte versuche es erneut.",
         "errorGeneric": "Benchmark fehlgeschlagen: {{message}}"
-      }
+      },
+      "benchmarkNoRun": "⋯ Noch kein Benchmark – führen Sie den Golden-Set-Benchmark aus, um die Extraktion zu aktivieren.",
+      "bookIdLocked": "Dieses Buch (gesperrt)",
+      "canonCapture": "Neue Namen automatisch aus dem Chat erfassen",
+      "canonCaptureCeilingOff": "Für dieses Deployment deaktiviert – Ihre Auswahl wurde gespeichert, aber die Erfassung erfolgt erst, wenn ein Administrator sie wieder aktiviert.",
+      "canonCaptureHint": "Alle paar Interaktionen werden die in Ihrem Gespräch eingeführten Namen als Vorschläge dem Glossar-Review-Posteingang dieses Buches hinzugefügt – niemals direkt als Kanon. Pro Erfassung wird ein zusätzlicher KI-Aufruf verwendet, der über Ihr eigenes Modell abgerechnet wird.",
+      "canonCaptureNoBook": "Verknüpfen Sie ein Buch mit diesem Projekt, um Namen in dessen Glossar zu erfassen.",
+      "embeddingModel": "Embedding-Modell",
+      "embeddingModelEmpty": "Keine Embedding-fähigen Modelle konfiguriert – für die Extraktion ist eines erforderlich.",
+      "embeddingModelHint": "Bestimmt, welchen Vektorraum dieses Projekt für die semantische Textstellen-Abfrage verwendet.",
+      "embeddingModelNone": "Keines (keine semantischen Textstellen)",
+      "genre": "Genre",
+      "genrePlaceholder": "z. B. Tiên hiệp, Cultivation, Fantasy…",
+      "memoryConfirm": "Vor dem Speichern von Erinnerungen bestätigen",
+      "memoryConfirmHint": "Fakten, die die KI sich merken möchte, warten auf Ihre Bestätigung, anstatt automatisch gespeichert zu werden.",
+      "rerankDiscoveryHint": "Selbst gehostet? Fügen Sie unter KI-Modellen eine lokale Rerank-Anmeldeinformation (Cohere-kompatibel) hinzu und klicken Sie dann auf Aktualisieren – Rerank-Modelle werden automatisch erkannt.",
+      "rerankModel": "Rerank-Modell (optional)",
+      "rerankModelEmpty": "Keine Rerank-fähigen Modelle konfiguriert. Registrieren Sie eines, um die Junk-Ablehnung zu aktivieren.",
+      "rerankModelHint": "Cross-Encoder-Rerank zur Ablehnung von Suchmüll bei der Rohsuche. Optional – wenn leer gelassen, behält die Suche die Fusionsreihenfolge bei.",
+      "rerankModelNone": "Keine (Rerank überspringen – Fusionsreihenfolge beibehalten)",
+      "toolCalling": "Gedächtnis-Tools im Chat",
+      "toolCallingHint": "Erlauben Sie der KI, während des Chats in diesem Projekt im Gedächtnis zu suchen, Informationen abzurufen und sich Notizen zu machen.",
+      "benchmarkFailed": "✗ Benchmark nicht bestanden (recall@3 {{recall}}) — dieses Modell hat die Qualitätsuntergrenze für die Extraktion unterschritten; versuchen Sie ein anderes Embedding-Modell.",
+      "benchmarkInconclusive": "⋯ Benchmark nicht eindeutig (recall@3 {{recall}}) — es sind ≥3 Durchläufe erforderlich, um dieses Modell zu validieren. Starten Sie den Test erneut.",
+      "benchmarkPassed": "✓ Benchmark bestanden (recall@3 {{recall}}).",
+      "genreError": "Das Genre darf maximal {{max}} Zeichen lang sein."
     },
     "archiveDialog": {
       "title": "Projekt archivieren?",
@@ -910,6 +960,32 @@
         "unpin": "Lösen",
         "budget": "+{{tokens}} Token pro Fenster ({{count}} angepinnt × ~50).",
         "noBook": "Das Anpinnen erfordert ein verknüpftes Buch. Verknüpfe zuerst ein Buch mit diesem Projekt."
+      },
+      "disabled": {
+        "benchmarkRequired": "Führen Sie das Golden-Set-Benchmark durch und bestehen Sie es, um die Extraktion (oben) zu aktivieren.",
+        "checkingBenchmark": "Embedding-Benchmark wird geprüft…",
+        "fixConcurrency": "Parallele Aufrufe müssen zwischen 1 und 64 liegen.",
+        "fixMaxSpend": "Geben Sie eine gültige Ausgabegrenze ein.",
+        "fixRange": "Korrigieren Sie den Kapitelbereich.",
+        "pickEmbedding": "Wählen Sie ein Embedding-Modell aus.",
+        "pickLlm": "Wählen Sie ein LLM-Modell zur Extraktion aus."
+      },
+      "embedding": {
+        "changeViaDialog": "Dieses Projekt hat bereits ein Embedding-Modell. Verwenden Sie „Modell ändern“, um es zu wechseln – dies baut den Graphen neu auf.",
+        "saveFailed": "Embedding-Modell konnte nicht gespeichert werden: {{error}}",
+        "saved": "Embedding-Modell gespeichert – führen Sie das untenstehende Benchmark aus, um die Extraktion zu aktivieren."
+      },
+      "prereq": {
+        "benchmarkChecking": "Embedding-Benchmark wird geprüft…",
+        "benchmarkPassed": "Embedding-Benchmark bestanden",
+        "benchmarkPending": "Embedding-Benchmark bestanden (wählen Sie zuerst ein Modell aus)",
+        "benchmarkRequired": "Embedding-Benchmark erforderlich – führen Sie ihn über den Modell-Picker unten aus",
+        "embedding": "Embedding-Modell ausgewählt",
+        "llm": "Extraktions-LLM-Modell ausgewählt"
+      },
+      "reasoning": {
+        "hint": "Standardmäßig deaktiviert – die Extraktion gibt JSON zurück, und verborgenes „Denken“ kann das Output-Budget erschöpfen. Nur bei komplexen Inhalten mit einem Reasoning-Modell aktivieren.",
+        "label": "Modell-Reasoning (Denken) aktivieren"
       }
     },
     "errorViewer": {
@@ -973,7 +1049,10 @@
       "saving": "Speichern...",
       "cancel": "Abbrechen",
       "saved": "Extraktionseinstellungen gespeichert.",
-      "failed": "Speichern fehlgeschlagen: {{error}}"
+      "failed": "Speichern fehlgeschlagen: {{error}}",
+      "filterModel": "Filter-Modell (optional)",
+      "filterModelDefault": "Extraktionsmodell verwenden (Standard)",
+      "filterModelHint": "LLM, das die Präzision der Beziehungen bewertet. Wenn der Standardwert beibehalten wird, verwendet der Filter Ihr Extraktionsmodell (pro Benutzer, BYOK). Wählen Sie ein stärkeres Modell für eine präzisere Filterung."
     },
     "confirmDestructive": {
       "cancel": "Abbrechen",
@@ -988,7 +1067,9 @@
       },
       "rebuildStep2": {
         "title": "Letzte Chance – wirklich neu aufbauen?",
-        "description": "Durch Klicken auf „Neu aufbauen“ wird der Lösch- und Wiederaufbauvorgang gestartet. Sobald der neue Job läuft, gibt es kein Zurück mehr."
+        "description": "Durch Klicken auf „Neu aufbauen“ wird der Lösch- und Wiederaufbauvorgang gestartet. Sobald der neue Job läuft, gibt es kein Zurück mehr.",
+        "descriptionCount": "Dies LÖSCHT dauerhaft {{entities}} Entitäten, {{events}} Ereignisse und {{facts}} Fakten und erstellt das Projekt anschließend komplett neu. Dieser Vorgang kann nicht rückgängig gemacht werden.",
+        "typePrompt": "Geben Sie den Projektnamen zur Bestätigung ein"
       },
       "disable": {
         "title": "Extraktion deaktivieren?",
@@ -1082,7 +1163,8 @@
       },
       "diffToggle": "Differenz zum aktuellen Stand zeigen",
       "diffEmpty": "Keine Unterschiede."
-    }
+    },
+    "loading": "Lädt…"
   },
   "indicator": {
     "label": "Wissens-Indikator",
@@ -1090,7 +1172,8 @@
     "modes": {
       "global": "Global",
       "project": "Projekt",
-      "degraded": "Eingeschränkt"
+      "degraded": "Eingeschränkt",
+      "multi": "{{count}} Wissensgraphen"
     },
     "popover": {
       "projectHeading": "Projekt-Gedächtnis",
@@ -1100,7 +1183,8 @@
       "projectBody": "Diese Sitzung ist mit <strong>{{name}}</strong> verknüpft. Die KI sieht bei jedem Schritt deine globale Bio sowie die Zusammenfassung und die Glossar-Einträge des Projekts.",
       "globalBody": "Diese Sitzung hat kein verknüpftes Projekt. Die KI sieht nur deine globale Bio. Verknüpfe ein Projekt in den Sitzungseinstellungen, um ihr Zugriff auf buchspezifische Informationen zu geben.",
       "degradedBody": "Der Knowledge-Service war beim letzten Schritt nicht erreichbar. Die KI hat auf die letzten Nachrichten als Fallback zurückgegriffen – dein Projektgedächtnis ist vorübergehend nicht im Prompt enthalten. Die Wiederherstellung erfolgt automatisch beim nächsten Schritt, sobald der Dienst wieder verfügbar ist.",
-      "manage": "Wissen verwalten"
+      "manage": "Wissen verwalten",
+      "multiBody": "Dieser Chat basiert gleichzeitig auf {{count}} Wissensgraphen – Fakten sind mit ihrer Quelle markiert."
     }
   },
   "picker": {
@@ -1312,5 +1396,83 @@
       "confirm": "Verknüpfen"
     },
     "emptyHint": "Triage sammelt alle extrahierten Informationen, die noch nicht in dein Schema passen – eine leere Warteschlange bedeutet, dass alles korrekt zugeordnet wurde."
+  },
+  "temporal": {
+    "canonical": {
+      "asOfChapter": "Stand Kapitel {{ordinal}}",
+      "current": "aktuell",
+      "loadFailed": "Das Kanon-Element für diesen Punkt in der Geschichte konnte nicht geladen werden.",
+      "sourceCanonContent": "verfasster Kanon",
+      "sourceCanonContentHint": "Zeigt den verfassten Kanon (kein zusammengeklappter Snapshot für diesen Punkt vorhanden).",
+      "status": {
+        "current": "aktuell",
+        "stale": "veraltet",
+        "unbuildable": "nicht verfügbar"
+      },
+      "unbuildable": "Synthese hier nicht verfügbar — sicherer Abbau."
+    },
+    "retrieval": {
+      "chapter": "Kapitel {{chapter}}",
+      "ariaLabel": "Suche nach Abruf",
+      "currentStateNote": "Ergebnisse beziehen sich auf den aktuellen Zustand (zeitliche Abfrage noch nicht verfügbar).",
+      "error": "Suche fehlgeschlagen: {{error}}",
+      "noResults": "Kein passender Kontext gefunden.",
+      "noText": "(kein Vorschautext)",
+      "placeholder": "Kontext dieses Buches durchsuchen…",
+      "typeToSearch": "Tippen Sie, um den Kontext dieser Entität zu durchsuchen."
+    },
+    "slider": {
+      "atChapter": "Kapitel {{ordinal}}",
+      "aria": "Kapitel-Reihenfolge in der Erzählzeit verschieben",
+      "head": "Anfang (aktuell)",
+      "headButton": "Anfang (aktuell)",
+      "label": "Story-Zeit",
+      "loadFailed": "Zeitstrahl konnte nicht geladen werden.",
+      "noChanges": "Noch keine Änderungen in der Story-Zeit."
+    },
+    "translation": {
+      "asOfChapter": "Kapitel {{n}}",
+      "asOfLabel": "Stand: {{label}}",
+      "error": "Kontext konnte nicht geladen werden: {{error}}",
+      "asAuthored": "wie verfasst",
+      "asOfHead": "aktuellster Stand",
+      "badgeCached": "übersetzt · zwischengespeichert",
+      "badgeFresh": "übersetzt",
+      "empty": "Für diesen Punkt in der Geschichte ist kein Kontext verfügbar.",
+      "failNoModel": "Kein Übersetzungsmodell festgelegt. Wählen Sie eines in den Übersetzungseinstellungen aus, um den übersetzten Kontext anzuzeigen.",
+      "failProvider": "Übersetzung fehlgeschlagen. Es wird vorerst der Originalkontext angezeigt.",
+      "failQuota": "Übersetzung nicht verfügbar — Kontingent des Anbieters erschöpft.",
+      "langOriginal": "Original ({{lang}})",
+      "languageLabel": "Anzeigesprache",
+      "title": "Kontext pro Episode",
+      "translating": "Wird übersetzt… die erste Ansicht kann einen Moment dauern"
+    },
+    "diff": {
+      "absent": "—",
+      "atChapter": "In Kapitel {{asOf}}",
+      "current": "Aktuell",
+      "hint": "Verschieben Sie den Zeitregler, um ein vergangenes Kapitel mit dem aktuellen Stand zu vergleichen.",
+      "loadFailed": "Differenz konnte nicht geladen werden: {{error}}",
+      "loading": "Differenz wird geladen…",
+      "noChanges": "Keine Einzelwertänderungen zwischen Kapitel {{asOf}} und jetzt.",
+      "title": "Differenzansicht"
+    },
+    "timeline": {
+      "chapter": "Kap. {{chapter}}",
+      "empty": "Noch keine Änderungen für dieses Element aufgezeichnet.",
+      "interval": {
+        "closed": "[{{from}} → {{to}}]",
+        "open": "[{{from}} → offen)"
+      },
+      "kind": {
+        "invalidated": "ungültig gemacht",
+        "open": "offen",
+        "superseded": "ersetzt"
+      },
+      "loadFailed": "Änderungs-Timeline konnte nicht geladen werden: {{error}}",
+      "loadMore": "Mehr laden",
+      "loading": "Änderungen werden geladen…",
+      "title": "Änderungs-Timeline"
+    }
   }
 }

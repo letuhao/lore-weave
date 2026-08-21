@@ -72,7 +72,11 @@ export const researchApi = {
   },
 
   list(bookId: string, token: string): Promise<ResearchJob[]> {
-    return apiJson<{ jobs: ResearchJob[] }>(`${BASE}/books/${bookId}/research-jobs`, { token }).then((r) => r.jobs);
+    return apiJson<unknown>(`${BASE}/books/${bookId}/research-jobs`, { token }).then((r) => {
+      if (Array.isArray(r)) return r as ResearchJob[];
+      if (r && typeof r === 'object' && Array.isArray((r as { jobs?: unknown }).jobs)) return (r as { jobs: ResearchJob[] }).jobs;
+      return [];
+    });
   },
 
   get(bookId: string, jobId: string, token: string): Promise<ResearchJob> {

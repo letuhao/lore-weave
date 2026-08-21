@@ -77,13 +77,40 @@ export function ExternalServicesCard({ providers, models, onChanged }: Props) {
       // A service is a dedicated credential (1:1 with its model) — remove the
       // model(s) then the credential so nothing is left half-registered.
       for (const m of provModels) {
-        await providerApi.deleteUserModel(accessToken, m.user_model_id);
+        // Keep the small service card compatible with embedded/test hosts that
+        // provide the legacy provider API object without the optional preview
+        // method; production always has it.
+        const getImpact = (providerApi as { getUserModelDeletionImpact?: typeof providerApi.getUserModelDeletionImpact }).getUserModelDeletionImpact;
+        const impact = getImpact
+          ? await getImpact(accessToken, m.user_model_id)
+          : { can_delete: true, active_tasks: [], references: [] };
+        if (!impact.can_delete) {
+          toast.error(t('external_services.delete_blocked', {
+            defaultValue: 'This service cannot be removed: its model is in use by {{count}} active job(s). Stop them first.',
+            count: impact.active_tasks.length,
+          }));
+          return;
+        }
+        const refs = impact.references.length
+          ? impact.references.map((r) => `${r.kind} (${r.count})`).join(', ')
+          : t('external_services.delete_refs_none', { defaultValue: 'no references' });
+        if (!window.confirm(t('external_services.delete_confirm', {
+          defaultValue: 'Remove the service "{{name}}"?\n\nThese model references will be removed: {{refs}}.',
+          name: provider.display_name,
+          refs,
+        }))) return;
+        if (getImpact) {
+          await providerApi.deleteUserModel(accessToken, m.user_model_id, true);
+        } else {
+          await providerApi.deleteUserModel(accessToken, m.user_model_id);
+        }
       }
       await providerApi.deleteProvider(accessToken, provider.provider_credential_id);
       toast.success(t('services.toast.removed'));
       onChanged();
-    } catch {
-      toast.error(t('services.toast.remove_failed'));
+    } catch (e) {
+      const detail = (e as { body?: { message?: string } }).body?.message;
+      toast.error(detail || t('services.toast.remove_failed'));
     } finally {
       setDeletingId(null);
     }

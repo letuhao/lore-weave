@@ -485,7 +485,15 @@ func (w *Worker) Process(
 		_ = w.repo.UpdateProgress(ctx, jobID, intPtr(1), 1, 0)
 	}
 
-	result, _, outTok := agg.Finalize()
+	result, inputTokens, outputTokens := agg.Finalize()
+	// Persist measured usage on the job row. Every prior progress update
+	// hard-coded tokens_used=0, hiding real LLM usage for completed jobs.
+	progressTotal := 1
+	if len(chunkPieces) > 1 {
+		progressTotal = len(chunkPieces)
+	}
+	_ = w.repo.UpdateProgress(ctx, jobID, &progressTotal, progressTotal, inputTokens+outputTokens)
+
 	finishReason, _ := result["finish_reason"].(string)
 
 	// A call that produced NOTHING is not a success. The stream can end cleanly while the
@@ -496,7 +504,7 @@ func (w *Worker) Process(
 	// `model_no_output` and advised "a reasoning model? use a non-reasoning distill model"
 	// for a job whose real problem was an empty upstream response. A silent success is the
 	// worst of the three outcomes, because it is the only one nobody can act on.
-	if emptyCompletion(result, outTok) {
+	if emptyCompletion(result, outputTokens) {
 		logger.Error("provider returned an EMPTY completion — finalizing FAILED, not completed",
 			"job_id", jobID.String(), "operation", operation)
 		// LLM_UPSTREAM_ERROR, not a new code: it is already in the llm-gateway contract, already

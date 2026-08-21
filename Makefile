@@ -18,7 +18,12 @@ LINTS := \
 	prompt-assembly-discipline-lint \
 	meta-sensitive-read-bypass-lint
 
-.PHONY: lint
+.PHONY: lint test-env-python
+
+##@ Test environment
+test-env-python: ## Create or refresh Python service test virtual environments
+	bash ./scripts/bootstrap-python-test-envs.sh
+
 lint:
 	@set -e; \
 	for l in $(LINTS); do \

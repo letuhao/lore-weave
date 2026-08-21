@@ -39,7 +39,11 @@ export function InlineAiLayer({
   const [mode, setMode] = useState<Mode>(readMode);
   const g = useInlineGhost(editor, { projectId, sceneId, modelRef, modelKind, modelName, token });
 
-  const pickMode = (m: Mode) => { setMode(m); try { localStorage.setItem(MODE_KEY, m); } catch { /* private mode */ } };
+  const pickMode = (m: Mode) => {
+    setMode(m);
+    try { localStorage.setItem(MODE_KEY, m); } catch { /* private mode */ }
+    window.dispatchEvent(new CustomEvent('lw-editor-mode-change', { detail: { mode: m } }));
+  };
 
   const disabledHint = !modelRef
     ? t('inline.need_model', { defaultValue: 'Set a default model in the co-writer Settings' })

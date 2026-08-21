@@ -29,6 +29,9 @@ From `frontend/`:
 | `PLAYWRIGHT_BASE_URL` | `http://localhost:5174` | Override frontend URL |
 | `PLAYWRIGHT_TEST_EMAIL` | `claude-test@loreweave.dev` | Test account email |
 | `PLAYWRIGHT_TEST_PASSWORD` | `Claude@Test2026` | Test account password |
+| `PLAYWRIGHT_EXECUTABLE_PATH` | unset | Use a system browser (for example `/usr/bin/google-chrome`) when Playwright browsers are not installed |
+| `PLAYWRIGHT_DEVTOOLS_PORT` | unset | Pass a Chrome DevTools remote-debugging port to the launched browser |
+| `PLAYWRIGHT_VIDEO` | `retain-on-failure` | Set to `off` when system ffmpeg is unavailable |
 
 ## When you change frontend source
 

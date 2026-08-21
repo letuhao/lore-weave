@@ -176,3 +176,83 @@ async def test_check_extraction_canon_full_path_with_llm():
     assert out[0].confirmed is True
     assert out[0].source == "llm_judge"
     assert llm.calls == 1
+
+
+# ── invariant 2: no model is silently its own judge ─────────────────────────
+#
+# Until 2026-08-03 this path WAS that. `pass2_orchestrator._maybe_run_canon_check_gate`
+# hands the canon judge the extraction `model_ref`, so the model that produced the
+# assertions confirmed the contradictions in them, and nothing said so. It was found by
+# building `scripts/judge-resolution-gate.py` — composition's copy of this rule had been
+# audited eight times and nobody had asked whether a SECOND service had a judge at all.
+#
+# Labelled, not refused (the sealed S6 decision): a day-one refusal turns every
+# default-configured extraction into an unjudged one, and this service has no critic
+# setting with which to clear the refusal.
+
+@pytest.mark.asyncio
+async def test_a_judge_that_IS_the_extraction_model_is_labelled_self_judged():
+    llm = _FakeLLM('{"verdicts":[{"entity_id":"e-alice","violated":true,"why":"acts"}]}')
+    out = await judge_extraction_contradiction(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter_text="Alice smiled.", candidates=[_cand()],
+        extraction_model_ref="m",
+    )
+    assert out[0].confirmed is True, "the verdict still stands — this is a label, not a refusal"
+    assert out[0].judged_by_self is True
+
+
+@pytest.mark.asyncio
+async def test_CONTROL_a_genuinely_different_judge_is_not_self_judged():
+    """Without this the test above passes for a flag that is hardcoded True."""
+    llm = _FakeLLM('{"verdicts":[{"entity_id":"e-alice","violated":true,"why":"acts"}]}')
+    out = await judge_extraction_contradiction(
+        llm, user_id="u", model_source="user_model", model_ref="judge-model",
+        chapter_text="Alice smiled.", candidates=[_cand()],
+        extraction_model_ref="extractor-model",
+    )
+    assert out[0].judged_by_self is False
+
+
+@pytest.mark.asyncio
+async def test_a_caller_that_names_no_extraction_model_gets_None_not_False():
+    """`None` is "nobody asked"; `False` is "asked, and the judge is independent".
+
+    Collapsing them would let an un-migrated caller read as verified-independent, which is
+    the two-states-one-answer defect this whole cycle is about.
+    """
+    llm = _FakeLLM('{"verdicts":[{"entity_id":"e-alice","violated":true,"why":"acts"}]}')
+    out = await judge_extraction_contradiction(
+        llm, user_id="u", model_source="user_model", model_ref="m",
+        chapter_text="Alice smiled.", candidates=[_cand()],
+    )
+    assert out[0].judged_by_self is None
+
+
+@pytest.mark.asyncio
+async def test_check_extraction_canon_threads_the_extraction_model_through():
+    """The wiring, not the predicate — the label is useless if the top-level entry drops it."""
+    llm = _FakeLLM('{"verdicts":[{"entity_id":"e-alice","violated":true,"why":"acts"}]}')
+    snap = _snap(_ent("e-alice", "Alice", "gone", from_order=1))
+    out = await check_extraction_canon(
+        "Alice smiled and picked up her sword.", snap, llm=llm, user_id="u",
+        model_source="user_model", model_ref="m", extraction_model_ref="m",
+    )
+    assert out and out[0].judged_by_self is True
+
+
+def test_judge_is_self_compares_across_TYPES():
+    """A `UUID` and its own `str` must not read as two different models.
+
+    The two sides arrive differently typed — one off a job message, one off a request body —
+    and an identity check between them is False, which would report a model as an independent
+    judge of its own output while every same-typed test stayed green.
+    """
+    import uuid
+    from loreweave_canon_check import judge_is_self
+    u = uuid.uuid4()
+    assert judge_is_self(u, str(u)) is True
+    assert judge_is_self(str(u), u) is True
+    assert judge_is_self(u, uuid.uuid4()) is False
+    assert judge_is_self(None, u) is False, "unknown is not self-judging"
+    assert judge_is_self(u, None) is False

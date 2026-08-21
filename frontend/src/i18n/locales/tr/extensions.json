@@ -9,7 +9,9 @@
     "permissions": "Araç izinleri",
     "proposals": "Öneriler",
     "activity": "Etkinlik günlüğü",
-    "ingest": "Kayıt kaynakları"
+    "ingest": "Kayıt kaynakları",
+    "bindings": "Otomatik Kurulum",
+    "workflows": "Tarifler"
   },
   "quota": {
     "unavailable": "Kullanım bilgisi yok",

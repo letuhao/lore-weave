@@ -74,7 +74,14 @@
     "accept": "接受",
     "discard": "舍弃",
     "stop": "停止",
-    "stale": "选区已更改 — 请重试。"
+    "stale": "选区已更改 — 请重试。",
+    "scenePlan": "Suggest scenes",
+    "scenePlanOnly": "This selection is available for scene suggestions only.",
+    "scenePlanInvalid": "The model did not return valid scene proposals. Try again.",
+    "scenePlanNeedsOutline": "This chapter has no outline yet. Create or extract its plan first.",
+    "scenePlanCreateFailed": "Could not create scene proposals.",
+    "createScenes": "Create selected scenes",
+    "applying": "Creating…"
   },
   "inline": {
     "mode": "写作模式",
@@ -147,7 +154,14 @@
     "promoted": "已提升为正式的假设衍生版本。",
     "promotedPartial": "已提升，但有 {{n}} 个版本未能添加。",
     "promotedProsePartial": "已提升，但有 {{n}} 个版本的正文未能保存 — 请重新提升以重试。",
-    "promoteHint": "请至少生成一个版本才能进行提升"
+    "promoteHint": "请至少生成一个版本才能进行提升",
+    "vsCanon": {
+      "absoluteHint": "获取评分（无基准参考）",
+      "judging": "· 对比正史……",
+      "noBaseline": "· 无正史基准",
+      "take": "获取",
+      "vs": "对比正史"
+    }
   },
   "cast": "角色",
   "codex": {
@@ -254,7 +268,8 @@
     "linkMissing": "其中一个地点已不存在。",
     "delete": "移除 {{name}}",
     "deleteConfirm": "要从世界地图中移除“{{name}}”吗？这将把该地点归档。",
-    "deleteFailed": "无法移除该地点。"
+    "deleteFailed": "无法移除该地点。",
+    "backdropNoChapter": "打开一个章节以设置背景。"
   },
   "grounding": "事实依据",
   "canon": "正典",
@@ -339,7 +354,21 @@
     "noHits": "尚未找到匹配的参考资料。",
     "library": "库",
     "delete": "删除",
-    "empty": "尚未添加参考资料 — 请在上方添加灵感源。"
+    "empty": "尚未添加参考资料 — 请在上方添加灵感源。",
+    "addEmbedModel": "添加嵌入模型",
+    "content": "内容",
+    "contentRecomputes": "保存内容后将重新计算此引用的嵌入。",
+    "deleteBody": "这将将其从书架中移除，且无法撤销。",
+    "deleteTitle": "删除此引用？",
+    "done": "完成",
+    "edit": "编辑",
+    "filter": "筛选…",
+    "noMatch": "没有符合筛选条件的参考内容。",
+    "reembedding": "重新嵌入…",
+    "saveContent": "保存内容（重新嵌入）",
+    "saveMetadata": "保存详情",
+    "saving": "正在保存…",
+    "sourceUrl": "来源 URL（可选）"
   },
   "progressPanel": {
     "loading": "正在加载进度…",
@@ -356,7 +385,8 @@
     "words": "字",
     "goalPlaceholder": "字/天",
     "setGoal": "设置目标",
-    "goalHint": "设为 0 以清除目标"
+    "goalHint": "设为 0 以清除目标",
+    "goalLegacy": "此目标来自书籍的共享设置 —— 设置它将使其成为您的专属设置。"
   },
   "workSettings": {
     "defaultModel": "默认起草模型",
@@ -368,7 +398,11 @@
     "chapter": "章节（单次生成）",
     "narrativeThread": "追踪叙事线索（伏笔与承诺）",
     "narrativeThreadHint": "建议：检测未完成的伏笔并重新注入，使生成内容履行或回应这些伏笔；将未兑现的伏笔作为“债务”视图呈现。可选开启。",
-    "saveError": "无法保存设置 — 请重试。"
+    "saveError": "无法保存设置 — 请重试。",
+    "criticModel": "评审模型（独立评判者）",
+    "criticModelHint": "一个不同的模型将根据您的设定对每篇草稿进行评分，并可以拦截与设定冲突的章节。如果没有评审模型，则没有任何机制可以独立检查文笔 —— 模型无法对自己创作的内容进行评分。",
+    "criticSameAsDrafter": "此模型与撰写文笔的模型相同，因此它会对自己的作品进行评分 —— 服务器将拒绝此操作并跳过评判。请选择一个不同的模型。",
+    "noCritic": "无评分机制 — 草稿不会进行独立评分"
   },
   "loadingStats": "正在加载质量数据…",
   "statsUnavailable": "质量统计数据不可用。",
@@ -502,7 +536,25 @@
     "err_no_chapters": "本书尚未创建章节 —— 请先创建章节再进行规划。",
     "err_too_many_chapters": "章节过多，无法一次性规划。",
     "err_bad_entity": "部分场景角色不在本书的术语表中。",
-    "err_bad_chapter": "计划中的某个章节不属于本书。"
+    "err_bad_chapter": "计划中的某个章节不属于本书。",
+    "beat_label": "节拍",
+    "inactive_cast": "实体处于非活跃状态",
+    "add_template": "添加模板",
+    "create_template_title": "新建结构模板",
+    "template_name": "名称",
+    "template_name_placeholder": "例如：英雄之旅",
+    "template_kind": "类型",
+    "template_beats": "节拍（每行一个）",
+    "template_beats_placeholder": "开端\n转折点\n高潮",
+    "template_create": "创建模板",
+    "template_creating": "正在创建…",
+    "template_create_error": "无法创建模板",
+    "close": "关闭",
+    "chapter_scope": "范围",
+    "all_chapters": "所有章节",
+    "recreate_current": "重构当前章节",
+    "recreate_all": "重构所有章节",
+    "done": "完成"
   },
   "threads": "情节线",
   "threadsTitle": "情节线",
@@ -649,13 +701,16 @@
     "overuse": "\"{{name}}\" 已在 {{chapters}} 中使用过 — 建议尝试不同的变化。",
     "list": {
       "noMatch": "没有匹配的模组 — 请清除筛选条件。",
-      "truncated": "正在显示前 100 项 — 请通过搜索或筛选来查看其余内容。"
+      "truncated": "正在显示前 100 项 — 请通过搜索或筛选来查看其余内容。",
+      "loadMore": "加载更多",
+      "loadingMore": "正在加载…"
     },
     "error": {
       "load": "无法加载 — 请重试。"
     },
     "permission": {
-      "readOnly": "这是一个共享模板 — 请克隆一份以创建可编辑的私人副本。"
+      "readOnly": "这是一个共享模板 — 请克隆一份以创建可编辑的私人副本。",
+      "noSession": "会话重载前无法进行编辑。"
     },
     "action": {
       "open": "打开",
@@ -666,11 +721,19 @@
       "cancel": "取消",
       "retry": "重试",
       "swap": "切换",
-      "clear": "自由创作"
+      "clear": "自由创作",
+      "bind": "绑定主题",
+      "discard": "舍弃",
+      "edit": "编辑",
+      "mine": "挖掘",
+      "promote": "提升",
+      "restore": "还原",
+      "save": "保存"
     },
     "card": {
       "draft": "挖掘草稿",
-      "tension": "强度"
+      "tension": "强度",
+      "shared": "已共享"
     },
     "empty": {
       "title": "您的模组库已准备就绪",
@@ -718,7 +781,13 @@
       "toUser": "我的库",
       "whatItDoes": "将此模组复制到您的库中（一个私有的、可编辑的克隆体）。",
       "continue": "继续",
-      "estimating": "正在估算…"
+      "estimating": "正在估算…",
+      "bodyUser": "采用将在您的库中创建一份私有的、可编辑的副本。",
+      "sharedHint": "所有拥有此书访问权限的人都可以查看并编辑此动机。",
+      "targetBook": "此书 (私有)",
+      "targetBookShared": "与协作者共享",
+      "targetLegend": "添加到",
+      "targetUser": "我的库"
     },
     "quota": {
       "adopt": "本周期您已采用 {{used}}/{{limit}} 个 — 请归档部分模组或稍后再试。"
@@ -745,7 +814,10 @@
     "binding": {
       "freeForm": "未匹配到模组 — 此场景为自由创作。",
       "commitGenerate": "确认并撰写此场景 →",
-      "noWork": "为本书制定一个将主题与场景绑定的计划。"
+      "noWork": "为本书制定一个将主题与场景绑定的计划。",
+      "committedTitle": "绑定场景动机",
+      "loadError": "无法加载场景动机。",
+      "sectionTitle": "场景动机"
     },
     "swap": {
       "title": "切换模组",
@@ -770,7 +842,13 @@
         "warn": "强度偏移",
         "bad": "错过节拍"
       },
-      "rerunNeedsModel": "选择一个模型以重新进行一致性检查"
+      "rerunNeedsModel": "选择一个模型以重新进行一致性检查",
+      "bindCta": "将动机绑定至场景 →",
+      "couldNotCheck": "无法检查",
+      "notChecked": "尚未检查",
+      "notWritten": "尚未撰写",
+      "openScene": "在检查器中打开此场景",
+      "written": "已撰写"
     },
     "arc": {
       "mobileNotice": "时间轴网格在更大的屏幕上可用 — 在此您可以将其作为列表进行编辑。",
@@ -827,7 +905,8 @@
         "driftFolded": "折叠（从未绑定）",
         "untitledArc": "（未命名弧线）",
         "truncated": "正在显示第 {{shown}} / {{count}} 项 — 使用“目录”或更高级别的方案以查找更多内容。",
-        "tabSuggest": "建议"
+        "tabSuggest": "建议",
+        "restore": "还原"
       },
       "import": {
         "privacy": "原始文本仅供您个人私密使用，绝不会被分享。只有生成的抽象结构可以发布 —— 且发布操作会移除原始引用。",
@@ -883,7 +962,42 @@
         "error": "无法将章节归类为卷。",
         "done": "已将 {{chapters}} 个章节归类为 {{arcs}} 卷。",
         "none": "暂无章节可进行分卷。"
-      }
+      },
+      "apply": {
+        "dropMerge": "缩放对齐",
+        "error": "无法生成应用预览。",
+        "previewOnly": "仅预览 —— 请在书籍内打开此弧线以确认更改。",
+        "rescaled": "已重新缩放 {{from}} → {{to}} 章",
+        "roster": "绑定角色（针对整个弧线执行一次）",
+        "run": "预览方案",
+        "running": "正在预览…",
+        "targetChapters": "目标章节",
+        "title": "应用到新书（预览）",
+        "unbound": "未绑定的角色：{{keys}}"
+      },
+      "backToList": "所有弧线模板",
+      "chapterCount": "{{count}} 章",
+      "empty": "此弧线尚未包含任何情节线或布局。",
+      "grabbed": "已抓取 {{name}}。方向键移动，Shift+方向键调整大小，Enter 放置，Esc 释放。",
+      "loadError": "无法加载此弧线时间线。",
+      "loading": "正在加载时间线…",
+      "materialize": {
+        "blurb": "将此弧线落实到当前书籍中 —— 将生成章节的场景大纲及主题绑定。",
+        "conflict": "部分章节已有既定计划。是否用此弧线替换它们的场景？",
+        "done": "已在 {{chapters}} 个章节中落实了 {{scenes}} 个场景。",
+        "error": "无法具象化此叙事弧线。",
+        "folded": "由于章节数量缩放，{{count}} 个主题已被折叠。",
+        "replace": "替换现有场景",
+        "run": "具象化至本书",
+        "running": "正在具象化…",
+        "unresolved": "{{count}} 个主题无法解析，已跳过。"
+      },
+      "placementDesc": "{{thread}} 线程，第 {{from}}-{{to}} 章",
+      "readonly": "此叙事弧线为只读。将其添加到您的库中即可编辑时间线。",
+      "saveConflict": "已重新加载 — 此叙事弧线在别处已发生更改。",
+      "saveError": "无法保存 — 将在下次编辑时重试。",
+      "saved": "已保存",
+      "saving": "正在保存…"
     },
     "simple": {
       "actant": {
@@ -1014,6 +1128,111 @@
       "overCap": "每次翻译任务最多处理 {{cap}} 个 motif — 请取消选择 {{over}} 个。",
       "confirmWhat": "使用您的模型将 {{count}} 个 motif 翻译为 {{lang}}。",
       "doneTitle": "已将 {{total}} 个中的 {{written}} 个翻译为 {{lang}}"
+    },
+    "arcConf": {
+      "causal": "因果验证",
+      "caused": "已引起",
+      "chShort": "章",
+      "coarse": "粗略 · 仅限结构",
+      "deepError": "无法运行深度一致性检查。",
+      "deepWhat": "使用您的模型对小说的散文进行重新标记，并将其与此叙事弧进行比对（由 LLM 测量）。",
+      "drift": "最大偏差 {{drift}}",
+      "empty": "此叙事弧尚未生成任何内容。",
+      "entailed": "蕴含",
+      "estimating": "正在估算…",
+      "legalTransitions": "合法",
+      "maxDrift": "最大偏差 {{drift}}",
+      "model": "标记模型",
+      "noPlanned": "无规划曲线",
+      "noProse": "尚未提取正文 —— 请生成场景以测量偏差。",
+      "noWork": "将此叙事弧线具象化为书籍以查看符合度。",
+      "notTagged": "情节推进需要标记 —— 请使用模型运行。",
+      "pacing": "节奏",
+      "proseDrift": "正文偏差（实际 vs 计划）",
+      "proseDriftTitle": "深度正文符合度",
+      "proseScale": "基于提取事件的张力 (1–5 ×20)",
+      "proseSuccession": "正文连贯性",
+      "proseThreads": "正文中的叙事线",
+      "runDeep": "运行深度符合度分析",
+      "running": "运行中…",
+      "structural": "结构性",
+      "succUntagged": "继承关系需要主题标签 —— 请使用模型运行。",
+      "succession": "继承关系 (结构性)",
+      "successionOk": "未发现顺序冲突。",
+      "threadMissing": "未在正文中体现",
+      "threads": "叙事线进度",
+      "title": "叙事弧一致性",
+      "unmaterialized": "未具象化",
+      "unplannedLabel": "正文中未规划",
+      "violation": "{{label}}：{{n}} 处顺序错误"
+    },
+    "editor": {
+      "add": "添加",
+      "beatIntent": "意图",
+      "beatLabel": "节拍",
+      "beats": "节拍",
+      "conflict": "此动机已在别处更改 —— 请重新打开以获取最新版本后再进行编辑。",
+      "deceived": "被欺骗者（用逗号分隔）",
+      "effects": "效果",
+      "emotion": "情感",
+      "examples": "示例（作者编写）",
+      "gap": "差距",
+      "genres": "类型（用逗号分隔）",
+      "kind": "类型",
+      "knows": "知情者（用逗号分隔）",
+      "name": "名称",
+      "preconditions": "前提条件",
+      "roleConstraints": "限制条件",
+      "roleLabel": "标签",
+      "roles": "角色",
+      "saveError": "保存失败。",
+      "saving": "正在保存…",
+      "scheme": "信息不对称",
+      "summary": "摘要（嵌入用于检索）",
+      "tension": "张力 (1–5)"
+    },
+    "kind": {
+      "arcs": "情节弧模板",
+      "label": "库",
+      "motifs": "主题模式"
+    },
+    "lens": {
+      "title": "主题模式"
+    },
+    "mine": {
+      "belowGate": "有 {{n}} 个候选对象低于质量门槛。",
+      "bookHint": "单本书籍很少会出现重复模式 —— 在语料库范围内搜索效果更佳。",
+      "corpus": "我的全部语料库",
+      "estimating": "正在估算…",
+      "failed": "挖掘失败。",
+      "minSupport": "最小支持度",
+      "minedN": "已挖掘 {{n}} 份草稿 — 请进行复核",
+      "model": "挖掘模型",
+      "noCorpus": "尚未分析语料库 — 请先提取书籍，然后再进行挖掘。",
+      "noPatterns": "未发现循环模式。请尝试扩大语料库范围或降低最小支持度。",
+      "quota": "挖掘配额已满。",
+      "run": "开始挖掘",
+      "running": "正在挖掘…",
+      "scope": "范围",
+      "thisBook": "本书",
+      "title": "挖掘你的创作主题",
+      "what": "将你作品库中反复出现的剧情模式抽象为草拟主题 (由 LLM 计量)。"
+    },
+    "sync": {
+      "apply": "从上游获取 {{n}}",
+      "applying": "正在应用…",
+      "available": "上游模板有更新。",
+      "conflict": "冲突 — 你们双方都编辑了此内容",
+      "error": "无法应用合并。",
+      "keepMine": "保留我的所有更改",
+      "mine": "我的",
+      "noChange": "上游版本已更新，但没有可合并的字段变更。",
+      "review": "检查并合并",
+      "take": "采用上游",
+      "theirs": "上游",
+      "threeWay": "三向合并",
+      "title": "上游更新",
+      "twoWay": "双向合并"
     }
   },
   "authoringRun": {
@@ -1051,7 +1270,14 @@
       "allowlistAdd": "添加工具…",
       "runGateCheck": "运行门禁检查 →",
       "gating": "检查中…",
-      "cancel": "取消"
+      "cancel": "取消",
+      "chaptersEmpty": "本书尚未包含任何章节 —— 请根据您的大纲创建章节以开始起草。",
+      "chaptersEmptyCta": "先打开规划器以生成大纲 →",
+      "materialize": "根据此大纲创建章节 →",
+      "materializedOk": "已根据您的大纲生成 {{count}} 个章节。",
+      "materializing": "正在生成章节……",
+      "modelEmpty": "请前往“设置 → 模型”添加聊天模型以进行草拟。",
+      "modelLabel": "草拟模型"
     },
     "gate": {
       "title": "门禁检查",
@@ -1140,5 +1366,392 @@
   "canonUncheckedUnparseable": "审校模型没有返回可用的答复",
   "canonUncheckedFailed": "检查本身出错了",
   "canonUncheckedOther": "本次检查无法执行",
-  "canonUncheckedWhich": "有 {{count}} 项检查未完成"
+  "canonUncheckedWhich": "有 {{count}} 项检查未完成",
+  "structureTemplates": {
+    "templates": {
+      "save_the_cat": "救猫咪",
+      "hero_journey": "英雄之旅",
+      "story_circle": "故事圆环",
+      "kishotenketsu": "起承转合",
+      "web_novel": "网文叙事弧",
+      "generic": "三幕式（通用）"
+    },
+    "beats": {
+      "save_the_cat": {
+        "opening_image": {
+          "label": "开场画面",
+          "purpose": "展示故事的现状，为全书定下基调。"
+        },
+        "theme_stated": {
+          "label": "主题陈述",
+          "purpose": "通过角色之口或情节暗示故事的核心主题。"
+        },
+        "setup": {
+          "label": "铺垫",
+          "purpose": "介绍主角、世界观及当前生活中的缺陷。"
+        },
+        "catalyst": {
+          "label": "催化剂",
+          "purpose": "打破现状的突发事件，迫使主角做出改变。"
+        },
+        "debate": {
+          "label": "辩论",
+          "purpose": "主角在采取行动前对改变产生的犹豫或挣扎。"
+        },
+        "break_into_two": {
+          "label": "进入第二幕",
+          "purpose": "主角决定离开旧世界，踏上全新的旅程。"
+        },
+        "b_story": {
+          "label": "B故事",
+          "purpose": "引入副线情节，通过次要角色或事件来深化主题或发展主角的情感线。"
+        },
+        "fun_and_games": {
+          "label": "娱乐与游戏",
+          "purpose": "展示故事的核心吸引力，让读者体验主角在面对新局面时的反应与精彩片段。"
+        },
+        "midpoint": {
+          "label": "中点",
+          "purpose": "故事的转折点，冲突升级，主角从被动应对转为主动出击。"
+        },
+        "bad_guys_close_in": {
+          "label": "反派逼近",
+          "purpose": "压力不断增加，反派或阻碍力量开始对主角构成实质威胁。"
+        },
+        "all_is_lost": {
+          "label": "一无所有",
+          "purpose": "主角遭遇重大挫折，似乎陷入绝境，情绪跌至谷底。"
+        },
+        "dark_night": {
+          "label": "暗夜时刻",
+          "purpose": "在绝望中进行最后的反思，为最终的觉醒或反击做铺垫。"
+        },
+        "break_into_three": {
+          "label": "进入第三幕",
+          "purpose": "主角决定离开舒适区，正式踏上旅程。"
+        },
+        "finale": {
+          "label": "结局",
+          "purpose": "主角解决核心冲突，完成最终对决。"
+        },
+        "final_image": {
+          "label": "最终画面",
+          "purpose": "展示主角在经历一切后的转变，与开篇形成对比。"
+        }
+      },
+      "hero_journey": {
+        "ordinary_world": {
+          "label": "平凡世界",
+          "purpose": "展示主角在冒险开始前的日常生活与现状。"
+        },
+        "call_to_adventure": {
+          "label": "冒险的召唤",
+          "purpose": "一个事件打破了平静，向主角提出了挑战或任务。"
+        },
+        "refusal_of_the_call": {
+          "label": "拒绝召唤",
+          "purpose": "主角对改变现状感到恐惧，试图逃避或拒绝接受任务。"
+        },
+        "meeting_the_mentor": {
+          "label": "遇见导师",
+          "purpose": "主角遇到导师，获得指引或必要的工具。"
+        },
+        "crossing_the_threshold": {
+          "label": "跨越门槛",
+          "purpose": "主角离开熟悉的世界，正式踏入充满未知的冒险领域。"
+        },
+        "tests_allies_enemies": {
+          "label": "考验、盟友与敌人",
+          "purpose": "主角在旅途中经历一系列挑战，学习规则，并结识伙伴或遭遇对手。"
+        },
+        "approach": {
+          "label": "接近",
+          "purpose": "主角接近冒险的核心区域或最终的考验。"
+        },
+        "ordeal": {
+          "label": "严峻考验",
+          "purpose": "主角面临生死攸关的危机或内心最深处的恐惧。"
+        },
+        "reward": {
+          "label": "奖励",
+          "purpose": "主角在克服困难后获得的宝藏、知识或力量。"
+        },
+        "the_road_back": {
+          "label": "回归之路",
+          "purpose": "主角在返回途中必须面对最后的考验。"
+        },
+        "resurrection": {
+          "label": "重生",
+          "purpose": "主角经历最终的蜕变或重生，解决最后的冲突。"
+        },
+        "return_with_elixir": {
+          "label": "带着灵药回归",
+          "purpose": "主角带着改变世界的宝藏或智慧回到原点。"
+        }
+      },
+      "story_circle": {
+        "you": {
+          "label": "你",
+          "purpose": "主角处于舒适区，处于现状中。"
+        },
+        "need": {
+          "label": "需求",
+          "purpose": "主角意识到某种缺失，产生了改变的欲望。"
+        },
+        "go": {
+          "label": "出发",
+          "purpose": "主角离开舒适区，进入未知领域。"
+        },
+        "search": {
+          "label": "寻找",
+          "purpose": "寻找"
+        },
+        "find": {
+          "label": "发现",
+          "purpose": "发现"
+        },
+        "take": {
+          "label": "获取",
+          "purpose": "获取"
+        },
+        "return": {
+          "label": "回归",
+          "purpose": "回归"
+        },
+        "change": {
+          "label": "改变",
+          "purpose": "改变"
+        }
+      },
+      "kishotenketsu": {
+        "ki": {
+          "label": "起",
+          "purpose": "引入故事背景"
+        },
+        "sho": {
+          "label": "承",
+          "purpose": "介绍故事背景、角色和初步冲突。"
+        },
+        "ten": {
+          "label": "转",
+          "purpose": "情节发生重大转折或意外发展。"
+        },
+        "ketsu": {
+          "label": "结",
+          "purpose": "解决冲突并为故事画上句号。"
+        }
+      },
+      "web_novel": {
+        "hook": {
+          "label": "钩子",
+          "purpose": "在开头迅速吸引读者注意力。"
+        },
+        "establishment": {
+          "label": "铺垫",
+          "purpose": "建立世界观、角色关系及当前处境。"
+        },
+        "rising_conflict": {
+          "label": "冲突升级",
+          "purpose": "增加障碍，提升紧张感和节奏。"
+        },
+        "setback": {
+          "label": "挫折",
+          "purpose": "增加剧情冲突，让主角陷入困境"
+        },
+        "climax": {
+          "label": "高潮",
+          "purpose": "故事的情绪顶点，解决核心冲突"
+        },
+        "resolution": {
+          "label": "结局",
+          "purpose": "交代故事余波，回归平静"
+        }
+      },
+      "generic": {
+        "setup": {
+          "label": "开端",
+          "purpose": "介绍角色、背景及引发冲突的事件"
+        },
+        "confrontation": {
+          "label": "对抗",
+          "purpose": "冲突升级，主角面临重重阻碍"
+        },
+        "resolution": {
+          "label": "结局",
+          "purpose": "解决冲突并完成叙事闭环"
+        }
+      }
+    },
+    "kinds": {
+      "save_the_cat": "救猫咪结构",
+      "hero_journey": "英雄之旅结构",
+      "story_circle": "故事圆环结构",
+      "kishotenketsu": "起承转合结构",
+      "web_novel": "网络小说篇章结构",
+      "generic": "三幕式（通用）结构"
+    }
+  },
+  "branchdiff": {
+    "allNew": "全新内容（无正文对照）",
+    "branch": "变体",
+    "canon": "正文",
+    "chg": "变更",
+    "empty": "尚未出现分歧文本 —— 所有场景均继承自正文。请将“如果……会怎样”画布上的版本提升为正式版本，即可在此查看差异。",
+    "error": "无法读取分支文本。",
+    "loading": "正在读取文本……",
+    "new": "新增",
+    "noProseBody": "此分歧场景的“如果”版本尚未包含正文 —— 请在“如果”画布上进行创作，其差异内容随后会显示在此处。",
+    "noProseTitle": "尚未编写",
+    "noSource": "此分支没有可对比的源内容。",
+    "scenes": "{{n}} 个分歧",
+    "todo": "待办",
+    "untitledScene": "场景"
+  },
+  "canonBrokenBadge": "{{n}} 个冲突 →",
+  "canonConflictDiscard": "舍弃我的修改",
+  "canonConflictKeepTheirs": "保留对方的修改",
+  "canonConflictReapply": "将我的编辑重新应用到 v{{v}}",
+  "canonConflictTitle": "此规则已在别处更改 —— 您的草稿将保留在下方。",
+  "canonview": {
+    "active": "{{n}} 个生效",
+    "branchHint": "在此分支前，正典已知的信息",
+    "branchToggle": "分支处正典状态",
+    "canonState": "正典状态",
+    "chapterN": "第 {{n}} 章",
+    "countGlossary": "· {{n}} 个实体",
+    "coverage": "出现在 {{pct}}% 的章节中",
+    "established": "截至目前已确立",
+    "events": "{{n}} 个时间线事件",
+    "gone": "{{n}} 个已消失",
+    "knowledgeUnavailable": "正典状态不可用 —— 知识服务未响应。",
+    "loading": "正在读取正典……",
+    "noChapter": "当前未聚焦章节 —— 请打开一个场景以查看该章节时的正典状态。",
+    "noneHere": "本章未关联任何实体。",
+    "notAnalyzed": "本章尚未进行分析 —— 请提取书籍内容以填充设定集。",
+    "presence": "出现在本章中",
+    "srcGlossary": "· 术语表",
+    "srcKnowledge": "· 知识点",
+    "title": "设定截至",
+    "windowUnavailable": "阅读进度未知 —— 本章无法查看窗口。"
+  },
+  "coverageAbandoned": "已遗忘的伏笔 {{n}} 个",
+  "coverageAbsent": "缺失的伏笔 {{n}} 个",
+  "coverageClean": "无遗忘的伏笔 —— 书籍完成了所有铺垫。",
+  "coverageDropped": "已承诺但未兑现：",
+  "coverageIntro": "提示 —— 大纲中设置的伏笔在整本书中得到兑现的情况。仅限阅读。",
+  "coverageLoading": "正在分析全书……",
+  "coverageNa": "无法获取承诺覆盖率。",
+  "coverageNoPromises": "大纲中未发现可追踪的承诺。",
+  "coveragePaid": "已完成 {{n}}",
+  "coverageProgressing": "进行中 {{n}}",
+  "coverageRerun": "重新分析",
+  "coverageRun": "分析故事承诺",
+  "coverageTitle": "故事承诺",
+  "divergence": {
+    "active": "进行中",
+    "addOverride": "添加覆盖",
+    "archive": "归档",
+    "archiveConflict": "内容已在别处更改 —— 已重新加载。",
+    "archiveFailed": "归档失败 — 请重试。",
+    "archived": "已归档 — 其章节与知识已保存；已从列表中移除。",
+    "branchPoint": "分歧点",
+    "branchedAt": "在第 {{n}} 章发生分歧",
+    "branchedUnknown": "分歧点未知",
+    "canonRules": "正典规则",
+    "canonRulesPlaceholder": "每行一条规则（例如：此分支中魔法不再存在）。",
+    "canonTag": "正典",
+    "canonical": "正典",
+    "canonicalSection": "正典",
+    "chapterN": "第 {{n}} 章",
+    "editFailed": "保存失败 — 请重试。",
+    "emptyDerivatives": "暂无“如果”版本。版本会在某一章对您的书籍进行分支并产生分歧——原著将保持为只读的正史。",
+    "loading": "正在加载……",
+    "new": "新建分歧",
+    "no": "否",
+    "noAnchoredEntities": "此分支的源文本中尚未锚定术语表中的角色——请在术语表中锚定实体，以便在此设置视角或进行覆盖。",
+    "noOverrides": "暂无实体覆盖。",
+    "noPov": "— 无视角锚点 —",
+    "noWork": "本书尚未制定计划——请先规划好大纲弧线和章节，然后再在此创建“如果”分支。",
+    "overrideEntity": "要覆盖的实体",
+    "overrideNamePlaceholder": "此版本中的新名称（可选）……",
+    "overridePlaceholder": "该实体有何不同（例如：现在变成了反派）……",
+    "overrideRemoved": "覆盖已移除。",
+    "overrides": "覆盖",
+    "pickEntity": "覆盖另一个实体…",
+    "povAnchor": "POV 锚点",
+    "remove": "移除",
+    "removeConfirm": "确定移除？",
+    "rename": "重命名",
+    "renameConflict": "内容已在别处更改 —— 请重新加载并重试。",
+    "renameFailed": "无法重命名 —— 请重试。",
+    "renamePlaceholder": "假设性名称 (1–200 个字符)",
+    "renameTitle": "重命名此假设",
+    "renamed": "已重命名。",
+    "restoreFailed": "无法还原 —— 内容可能已在别处更改。",
+    "restored": "已恢复到列表。",
+    "save": "保存",
+    "saveRules": "保存规则",
+    "saving": "正在保存…",
+    "specError": "无法加载分支规格 — 请尝试重新选择。",
+    "specLoading": "正在加载规格…",
+    "switchFailed": "切换失败 — 请重试。",
+    "switchTo": "切换至",
+    "tabDiff": "差异",
+    "tabSpec": "规格",
+    "taxonomy": "分类法",
+    "title": "假设版本",
+    "unavailable": "创作服务不可用 — 请稍后重试。",
+    "undo": "撤销",
+    "undoFailed": "无法还原覆盖内容。",
+    "undoSuperseded": "该实体已存在更新的覆盖内容 — 无需还原。",
+    "unnamed": "未命名版本",
+    "yes": "是",
+    "derivativesSection": "衍生内容 ({{n}})"
+  },
+  "mark": {
+    "action": "标记问题",
+    "cancel": "取消",
+    "duplicate": "您已经使用该注释标记过此段落了。",
+    "failed": "无法保存标记。请重试。",
+    "kind": "问题类型",
+    "no_selection": "请在标记前先选择有问题的段落。",
+    "note": "这段文字有什么问题？",
+    "note_ph": "例如：她在第 3 章去世了……",
+    "note_required": "请说明问题所在 —— 共同创作者将根据批注进行修改。",
+    "save": "标记",
+    "saved": "已标记 —— 共同创作者可以查看此内容。"
+  },
+  "polishAll": "全部",
+  "polishAllDet": "全部确定性修改",
+  "polishApply": "应用 {{count}} 项已选内容",
+  "polishClean": "未发现问题 —— 文本表达流畅。",
+  "polishClear": "清除",
+  "polishDeterministic": "自动",
+  "polishIntro": "在修改应用到正文前，请先预览建议的修复方案。确定性编辑（代词、拼写错误）已预先勾选；语义编辑将以未勾选状态显示，由您自行判断。",
+  "polishLoading": "正在分析…",
+  "polishNoModel": "请先选择一个模型。",
+  "polishRerank": "自动打分 (AI，费用更高)",
+  "polishRerankHint": "每次润色会额外调用一次 AI 来自动标记优质内容（速度较慢，费用更高）。",
+  "polishRerun": "重新润色",
+  "polishRun": "开始润色",
+  "polishSemantic": "语义级",
+  "polishStats": "{{edits}} 次修改 · {{refuted}} 个因校验被舍弃",
+  "polishUnplaced": "有 {{count}} 个发现无法在文中定位 —— 已在下方列出，未进行修复。",
+  "polishUnplacedNoQuote": "（无引用文本）",
+  "qualityCriticNa": "评论功能不可用。",
+  "qualityHasFix": "建议修复 ↓",
+  "qualityIntro": "仅供参考 —— 关于本章的评分标准及其承诺但未兑现的内容。此处内容不会改变您的文笔。",
+  "qualityLoading": "分析中…",
+  "qualityNoThreads": "本章未提出任何新线索。",
+  "qualityRerun": "重新分析",
+  "qualityRun": "分析质量",
+  "qualityThreadsNa": "线索审计不可用。",
+  "qualityThreadsRaised": "本章提出了 {{n}} 个线索：",
+  "qualityThreadsResolved": "{{r}} 个已在此处得到回应",
+  "qualityTitle": "质量报告",
+  "resolveWorkFailed": "知识服务不可用 —— 无法完成背景知识设定。",
+  "resolvingWork": "正在完成设定… 知识服务曾短暂不可用。",
+  "retry": "重试",
+  "threadFocusMissing": "您所属的承诺在此视图中不可见 —— 它可能已被支付。请将过滤器切换为“全部”。",
+  "canonConflictCurrent": "当前 (v{{v}}): {{text}}"
 }

@@ -14,6 +14,7 @@ import hashlib
 import json
 import logging
 import os
+from typing import Awaitable, Callable
 from uuid import UUID
 
 from loreweave_internal_client import build_internal_client
@@ -553,6 +554,38 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
 
     await _emit_unified_progress()  # baseline (0/N fresh, or k/N on resume) before the loop
 
+    async def _emit_batch_progress(
+        batch_count: int, batch_input: int, batch_output: int, batch_total: int,
+    ) -> None:
+        # A chapter is intentionally still 0/N until its atomic writeback finishes,
+        # but expose completed LLM batches and their measured cost immediately.
+        nonlocal _last_cost
+        calls_done = total_llm_calls + batch_count
+        live_input = total_input_tokens + batch_input
+        live_output = total_output_tokens + batch_output
+        priced = await resolve_job_cost_usd(
+            owner_user_id=str(user_id), model_source=model_source, model_ref=model_ref,
+            input_tokens=live_input, output_tokens=live_output,
+        )
+        if priced is not None:
+            _last_cost = priced
+        await emit_job_event_safe(
+            pool, service=_JOB_SERVICE, job_id=str(job_id), owner_user_id=str(user_id),
+            kind=_JOB_KIND, status="running",
+            progress={"done": completed + failed, "total": len(chapter_ids)},
+            detail_status=(
+                f"{completed + failed}/{len(chapter_ids)} chapters · "
+                f"{batch_count}/{batch_total} LLM calls"
+            ),
+            params={
+                "llm_calls_done": calls_done,
+                "current_batch_calls_done": batch_count,
+                "current_batch_calls_total": batch_total,
+            },
+            cost_usd=_last_cost,
+            tokens_in=live_input or None, tokens_out=live_output or None,
+        )
+
     for idx, chapter_id_str in enumerate(chapter_ids):
         chapter_id = UUID(chapter_id_str) if isinstance(chapter_id_str, str) else chapter_id_str
 
@@ -613,6 +646,7 @@ async def _run_extraction_job(msg: dict, job_id: UUID, user_id: str, pool, publi
                 cache_policy=cache_policy,
                 pool=pool,
                 llm_client=llm_client,
+                on_batch_progress=_emit_batch_progress,
             )
             # Update known entities with newly created entities (capped at 200 to prevent
             # unbounded prompt growth — design §7 says ~50 entities ≈ 250 tokens)
@@ -863,6 +897,7 @@ async def _process_extraction_chapter(
     strategy: str = "batched",
     force_refresh: bool = False,
     cache_policy: str = "refresh_if_stale",
+    on_batch_progress: Callable[[int, int, int, int], Awaitable[None]] | None = None,
 ) -> dict:
     """Extract entities from a single chapter via LLM."""
     import time as _time
@@ -985,6 +1020,9 @@ async def _process_extraction_chapter(
     # no longer invisible; the chapter status is then DERIVED from these (not from a bare
     # entity count). Persisted post-loop, idempotent on a stable event_id (INV-O13).
     batch_outcomes: list[dict] = []
+    # Completed logical calls, including stage-1 sweep calls. Sweeps do not
+    # produce batch outcome rows, so keep this counter separately.
+    progress_calls = 0
 
     def _record_outcome(call_idx: int, batch: list, status: str, *, finish_reason=None,
                         entities_found=0, validation_rejected_count=0,
@@ -1003,6 +1041,16 @@ async def _process_extraction_chapter(
             "error_code": error_code,
             "event_id": compute_event_id(str(job_id), str(chapter_id), call_idx, content_hash),
         })
+
+    async def _report_batch_progress(*, count_call: bool = True) -> None:
+        """Publish progress after every window/batch attempt, including cache hits."""
+        nonlocal progress_calls
+        if count_call:
+            progress_calls += 1
+        if on_batch_progress is not None:
+            await on_batch_progress(
+                progress_calls, total_input_tokens, total_output_tokens, total_calls,
+            )
 
     def _accept(entities: list[dict], window_text: str = "") -> None:
         # Attach this chapter's link to each entity (fresh per run — NOT cached) and merge
@@ -1105,6 +1153,8 @@ async def _process_extraction_chapter(
     # CACHE key uses `chunk_idx`=window_idx + the real `batch_idx` so each window's parse caches
     # independently. `window_text` replaces the whole-chapter text in the prompt.
     total_calls = len(windows) * len(batches)
+    if strategy in TWO_STAGE_SHAPES:
+        total_calls += len(windows)
 
     # ── `edc_cited` stage 1: sweep for named mentions + a verbatim quote ──────────────
     #
@@ -1166,6 +1216,7 @@ async def _process_extraction_chapter(
                 ]
                 log.info("extraction: chapter %s window %d — sweep CACHE HIT (%d mention(s), "
                          "0 tokens)", chapter_id, _wi, len(_sweep_cache[_wi]))
+                await _report_batch_progress()
                 continue
             nonlocal_cache_exec.append(1)
             try:
@@ -1245,14 +1296,12 @@ async def _process_extraction_chapter(
                                          for n, e in _sweep_cache[_wi]],
                         parse_status="ok", overwrite=_sweep_busted,
                     )
+                await _report_batch_progress()
             except Exception as exc:  # noqa: BLE001 — one window must not lose the chapter
                 log.warning("extraction: chapter %s window %d — sweep failed: %s",
                             chapter_id, _wi, exc)
                 _sweep_cache[_wi] = []
-        # The sweep is a real LLM call per window, so the chapter's call budget grew.
-        total_calls += len(windows)
-
-
+                await _report_batch_progress()
     # D-EXTRACTION-BATCH-CONCURRENCY — the per-(window,batch) unit body, extracted into a
     # coroutine so the units can run CONCURRENTLY under a semaphore (see the driver below).
     # asyncio is single-threaded, so the shared collectors mutate safely between awaits;
@@ -1266,6 +1315,7 @@ async def _process_extraction_chapter(
         # silently truncating; the entities from the fitting windows/batches still land.
         if (window_idx, batch_idx) in unplannable_keys:
             _record_outcome(call_idx, batch, UNPLANNABLE)
+            await _report_batch_progress(count_call=False)
             log.warning("extraction: chapter %s call %d/%d (win %d batch %d) — UNPLANNABLE, "
                         "skipped LLM (block exceeds context)",
                         chapter_id, call_idx + 1, total_calls, window_idx, batch_idx)
@@ -1314,6 +1364,7 @@ async def _process_extraction_chapter(
                 call_idx, batch, cached.get("parse_status") or "ok",
                 finish_reason=cached.get("finish_reason"), entities_found=len(entities),
             )
+            await _report_batch_progress()
             log.info("extraction: chapter %s call %d/%d (win %d) — CACHE HIT (%d entities, 0 tokens, effort=%s)",
                      chapter_id, call_idx + 1, total_calls, window_idx, len(entities), _effort_band)
             _accept(entities, window_text)
@@ -1339,6 +1390,7 @@ async def _process_extraction_chapter(
                 # Stage 1 produced nothing usable. Emitting the chapter here would silently
                 # turn this into the one-call shape and report it as the two-stage one.
                 _record_outcome(call_idx, batch, "sweep_empty", entities_found=0)
+                await _report_batch_progress()
                 log.warning("extraction: chapter %s window %d — stage-1 sweep produced no "
                             "mentions; skipping stage 2 (this is a PARSE result, not an "
                             "extraction result)", chapter_id, window_idx)
@@ -1435,6 +1487,7 @@ async def _process_extraction_chapter(
             # OBS — the batch failed at the LLM; record it so the chapter can't read as
             # clean (was: a bare `continue` that silently dropped the batch).
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
+            await _report_batch_progress()
             return
         except (LLMTransientRetryNeededError, LLMError) as exc:
             log.error(
@@ -1442,6 +1495,7 @@ async def _process_extraction_chapter(
                 chapter_id, batch_idx + 1, len(batches), exc,
             )
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=exc.__class__.__name__)
+            await _report_batch_progress()
             return
 
         if sdk_job.status != "completed":
@@ -1451,6 +1505,7 @@ async def _process_extraction_chapter(
                 sdk_job.status, err_code, chapter_id, batch_idx + 1, len(batches), batch,
             )
             _record_outcome(call_idx, batch, LLM_ERROR, error_code=err_code)
+            await _report_batch_progress()
             return
 
         # chatAggregator output: {"messages": [{"role":"assistant","content":...}], "usage": {...}}
@@ -1513,6 +1568,7 @@ async def _process_extraction_chapter(
             entities_found=len(entities), validation_rejected_count=rejected,
             input_tokens=input_tokens, output_tokens=output_tokens,
         )
+        await _report_batch_progress()
 
         # CACHE/M6 — record the EXECUTE-ledger row (LLM-skip on a future re-run). Only CLEAN
         # batches are cached ({ok, empty_valid}): a `truncated` (entities lost) or

@@ -60,13 +60,23 @@ func TestArchiveWorkerLiveSmoke_ArchiveAndRestore(t *testing.T) {
 	const nRows = 5
 
 	// Clean slate: a prior run DROPs the partition on success; recreate fresh.
+	//
+	// db-safety-gate: ok — `partName` is a const this test owns (`events_p_2020_01`),
+	// and the two `mustApply` calls above have already put this DSN through
+	// `testsafe.EnsureThrowawayDB`, so LW_INTEGRATION_DB cannot be a real service DB by
+	// the time execution reaches here. That guard used to live only in
+	// `mustApplyEventSchema`, which this harness does not call — it moved into
+	// `mustApply` itself on 2026-08-09 for exactly that reason.
 	_, _ = db.Exec(`DROP TABLE IF EXISTS ` + partName)
 	if _, err := db.Exec(`CREATE TABLE ` + partName + ` PARTITION OF events FOR VALUES FROM ('2020-01-01') TO ('2020-02-01')`); err != nil {
 		t.Fatalf("create old partition: %v", err)
 	}
 	t.Cleanup(func() {
+		// db-safety-gate: ok — same two tables this test created moments ago, on a DSN
+		// `mustApply` has already proven throwaway. Both names are constants; neither is
+		// derived from data or the environment.
 		_, _ = db.Exec(`DROP TABLE IF EXISTS ` + partName)
-		_, _ = db.Exec(`DROP TABLE IF EXISTS events_restore_202001`)
+		_, _ = db.Exec(`DROP TABLE IF EXISTS events_restore_202001`) // db-safety-gate: ok — see above
 		_, _ = db.Exec(`DELETE FROM archive_state WHERE reality_id=$1`, realityID)
 	})
 

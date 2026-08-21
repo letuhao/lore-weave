@@ -77,7 +77,10 @@ export function configureGatewayApp(
     changeOrigin: true,
     // Allow large bodies for cover image upload (multipart/form-data)
     selfHandleResponse: false,
-    pathFilter: (pathname: string) => pathname.startsWith('/v1/books'),
+    pathFilter: (pathname: string) =>
+      pathname.startsWith('/v1/books') ||
+      pathname.startsWith('/v1/epub-imports') ||
+      pathname.startsWith('/v1/import-jobs'),
   });
   // C21 — thin `/v1/worlds*` passthrough to book-service (worlds + bible
   // provisioning live in book-service, same target as `/v1/books`). This is a
@@ -586,7 +589,11 @@ export function configureGatewayApp(
     if (req.path.startsWith('/v1/book/actions')) {
       return bookActionsProxyFn(req, res, next);
     }
-    if (req.path.startsWith('/v1/books')) {
+    if (
+      req.path.startsWith('/v1/books') ||
+      req.path.startsWith('/v1/epub-imports') ||
+      req.path.startsWith('/v1/import-jobs')
+    ) {
       return bookProxyFn(req, res, next);
     }
     if (req.path.startsWith('/v1/worlds')) {

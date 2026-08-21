@@ -6,6 +6,7 @@ import { useAuth } from '@/auth';
 import { extractionApi } from './api';
 import { ModelPicker, useUserModels } from '@/components/model-picker';
 import { EffortSelect, type EffortLevel } from '@/components/ai-task';
+import { tieringApi } from '@/features/glossary/tieringApi';
 import type { ExtractionProfileKind, ExtractionProfile, AttributeAction } from './types';
 import { cn } from '@/lib/utils';
 
@@ -35,19 +36,24 @@ export function StepProfile({
   onClose,
 }: StepProfileProps) {
   const { t } = useTranslation('extraction');
+  const { t: tStandards } = useTranslation('standards');
+  const kindLabel = (kind: ExtractionProfileKind) => tStandards(`system.kinds.${kind.code}.name`, { defaultValue: kind.name });
+  const attrLabel = (code: string, fallback: string) => tStandards(`system.attributes.${code}.name`, { defaultValue: fallback });
   const { accessToken } = useAuth();
   const [kinds, setKinds] = useState<ExtractionProfileKind[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedKinds, setExpandedKinds] = useState<Set<string>>(new Set());
+  const [applyingDefaults, setApplyingDefaults] = useState(false);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   // Shared model fetch (W5) — extraction drives an LLM step, so chat capability.
   // Active-only is the shared hook's default (server-side filter).
   const { models: userModels } = useUserModels({ capability: 'chat' });
 
-  // Load extraction profile on mount (models load via the shared picker hook)
-  useEffect(() => {
+  const loadProfile = () => {
     if (!accessToken) return;
     setLoading(true);
+    setProfileError(null);
     extractionApi
       .getProfile(bookId, accessToken)
       .then((profileResp) => {
@@ -70,8 +76,26 @@ export function StepProfile({
           onProfileChange(initial);
         }
       })
+      .catch((error) => setProfileError(error instanceof Error ? error.message : t('profile.loadError')))
       .finally(() => setLoading(false));
-  }, [accessToken, bookId]); // eslint-disable-line react-hooks/exhaustive-deps
+  };
+
+  useEffect(() => { loadProfile(); }, [accessToken, bookId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const applyDefaults = async () => {
+    if (!accessToken || applyingDefaults) return;
+    setApplyingDefaults(true);
+    setProfileError(null);
+    try {
+      await tieringApi.adoptOntology(bookId, { genres: [], kinds: [] }, accessToken);
+      onProfileChange({});
+      loadProfile();
+    } catch (error) {
+      setProfileError(error instanceof Error ? error.message : t('profile.defaultsError'));
+    } finally {
+      setApplyingDefaults(false);
+    }
+  };
 
   const toggleKind = (kindCode: string, kind: ExtractionProfileKind) => {
     const next = { ...profile };
@@ -215,6 +239,20 @@ export function StepProfile({
         )}
       </div>
 
+      {profileError && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">{profileError}</p>
+      )}
+      {kinds.length === 0 && !profileError && (
+        <div className="rounded-md border border-amber-500/30 bg-amber-500/5 px-3 py-3 text-xs">
+          <p className="font-medium">{t('profile.noKindsTitle')}</p>
+          <p className="mt-1 text-muted-foreground">{t('profile.noKindsDescription')}</p>
+          <button type="button" onClick={() => void applyDefaults()} disabled={applyingDefaults} className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-primary px-2.5 py-1.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50">
+            {applyingDefaults && <Loader2 className="h-3 w-3 animate-spin" />}
+            {applyingDefaults ? t('profile.addingDefaults') : t('profile.addDefaults')}
+          </button>
+        </div>
+      )}
+
       {/* Kind list */}
       <div className="max-h-[400px] overflow-y-auto space-y-1 rounded-md border">
         {kinds.map((kind) => {
@@ -236,7 +274,7 @@ export function StepProfile({
                     className="h-3.5 w-3.5 rounded border-border accent-primary"
                   />
                   <span className="text-base">{kind.icon}</span>
-                  <span className="text-sm font-medium">{kind.name}</span>
+                  <span className="text-sm font-medium">{kindLabel(kind)}</span>
                   {isEnabled && (
                     <span className="text-[10px] text-muted-foreground">
                       {t('profile.attrsSelected', { count: activeAttrs })}
@@ -301,7 +339,7 @@ export function StepProfile({
                         )}
                       >
                         <div className="flex items-center gap-2">
-                          <span>{attr.name}</span>
+                          <span>{attrLabel(attr.code, attr.name)}</span>
                           {attr.is_required && (
                             <span className="text-[9px] px-1 py-px rounded bg-primary/10 text-primary font-medium">
                               {t('profile.required')}

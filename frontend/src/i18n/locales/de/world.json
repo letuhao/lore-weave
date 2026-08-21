@@ -98,5 +98,27 @@
     "branchAt": "zweigt ab bei Kap. {{ch}}",
     "orphan": "· Quelle außerhalb dieser Welt",
     "edgeLabel": "Kap. {{ch}}"
+  },
+  "mapEditor": {
+    "bind": "Entität binden",
+    "delete": "Löschen",
+    "empty": "Noch keine Karten vorhanden – zeichne die Welt, in der deine Geschichte spielt.",
+    "entityPlaceholder": "Location-Entitäts-ID",
+    "error": "Diese Karte konnte nicht geladen werden.",
+    "label": "Beschriftung",
+    "marker": "Marker",
+    "name": "Name",
+    "newMap": "+ Neue Karte",
+    "newMapPrompt": "Name der neuen Karte",
+    "pickWorld": "Wähle eine Welt zum Kartieren aus.",
+    "region": "Region",
+    "save": "Speichern",
+    "unbind": "Entkoppeln",
+    "uploadImage": "Basisbild hochladen",
+    "vertexCapNotice": "{{count}} Eckpunkte — Umgestaltung oberhalb von {{max}} aus Performancegründen deaktiviert."
+  },
+  "maps": {
+    "empty": "Noch keine Karten vorhanden. Bitte den Assistenten bitten, „eine Karte dieser Welt zu erstellen“, um eine neue zu generieren.",
+    "heading": "Karten"
   }
 }

@@ -255,12 +255,24 @@ def _trio_rs():
     return seed
 
 
+def _fake_llm() -> AsyncMock:
+    """An LLMClient double for `_resume`.
+
+    `take_usage` is deliberately a SYNC MagicMock: on the real client it is a plain
+    method, so an AsyncMock would hand back a coroutine and `_resume`'s tuple unpack
+    would raise "cannot unpack non-iterable coroutine object". Returning (0, 0) keeps
+    these tests about the fold/lock semantics rather than token accounting."""
+    llm = AsyncMock()
+    llm.take_usage = MagicMock(return_value=(0, 0))
+    return llm
+
+
 async def test_trio_fold_serialises_under_for_update(monkeypatch):
     fresh = _trio_rs()
     conn = FakeConn([{"resume_state": fresh}])  # the locked re-read
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
 
     monkeypatch.setattr(dx, "op_for_job", lambda rs, jid: "event")
@@ -287,7 +299,7 @@ async def test_trio_fold_finalizes_outside_lock_when_complete(monkeypatch):
     pool = FakePool(conn)
     kc = AsyncMock()
     kc.persist_pass2.return_value = _persist_result()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
 
     monkeypatch.setattr(dx, "op_for_job", lambda rs, jid: "fact")
@@ -309,7 +321,7 @@ async def test_trio_fold_skips_when_concurrent_winner_advanced(monkeypatch):
     conn = FakeConn([{"resume_state": {"stage": dx.PERSIST, "trio_jobs": {}}}])
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
 
     called = {"fold": False}
@@ -332,7 +344,7 @@ async def test_entity_fold_skips_when_superseded():
     conn = FakeConn([None])  # claim returns no row
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
 
     await _resume(pool, kc, llm, None, "entity-job", EJ, {"stage": dx.ENTITY, "user_id": USER})
@@ -348,7 +360,7 @@ async def test_entity_fold_under_lock_submits_trio(monkeypatch):
     conn = FakeConn([{"resume_state": {"stage": dx.ENTITY, "user_id": USER}}])  # claim matches
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
     llm.submit_job = AsyncMock(side_effect=[SimpleNamespace(job_id=f"t{i}") for i in range(3)])
     monkeypatch.setattr(dx, "fold_entity_job", lambda rs, job: {**rs, "stage": dx.TRIO})
@@ -399,7 +411,7 @@ async def test_submit_map_bounds_inflight_to_concurrency_level():
     """_submit_map with concurrency_level=2 over a 5-way fan-out never runs >2 submits
     concurrently, yet submits all 5 (a precise wiring/spy assertion on the bound)."""
     rec = _ConcurrencyRecorder()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.submit_job = rec
     rs = {"user_id": USER, "concurrency_level": 2}
     submits = {f"k{i}": {"operation": "chat"} for i in range(5)}
@@ -417,7 +429,7 @@ async def test_submit_map_applies_default_cap_when_unset():
     than the default never runs more than `DEFAULT_DECOUPLED_SUBMIT_CAP` in flight, yet
     submits them all (was: every submit concurrent at once)."""
     rec = _ConcurrencyRecorder()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.submit_job = rec
     rs = {"user_id": USER}  # NO concurrency_level key (legacy / synthetic resume blob)
     fan_out = DEFAULT_DECOUPLED_SUBMIT_CAP + 3
@@ -436,7 +448,7 @@ async def test_submit_map_default_cap_for_zero_none_negative():
     fan_out = DEFAULT_DECOUPLED_SUBMIT_CAP + 2
     for bad in (0, None, -3):
         rec = _ConcurrencyRecorder()
-        llm = AsyncMock()
+        llm = _fake_llm()
         llm.submit_job = rec
         rs = {"user_id": USER, "concurrency_level": bad}
         submits = {f"k{i}": {"operation": "chat"} for i in range(fan_out)}
@@ -451,7 +463,7 @@ async def test_submit_map_bumps_llm_calls_counter():
     submitted, on the caller's (locked) conn, so the Jobs GUI's realized call count tracks
     every decoupled trio/recovery/filter submit."""
     conn = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.submit_job = AsyncMock(side_effect=lambda **kw: SimpleNamespace(job_id="pj"))
     rs = {"user_id": USER}
     submits = {f"k{i}": {"operation": "chat"} for i in range(3)}
@@ -470,6 +482,11 @@ async def _run_emit_kg(row: dict | None):
     """Drive _emit_kg_progress with a scripted job row; return the emit_job_event_safe kwargs
     (or None if no emit fired). emit_job_event_safe is patched (the unit asserts the GUI
     payload, not the relay)."""
+    # The progress SELECT also pulls the cumulative token counters. They are NOT NULL
+    # DEFAULT 0 in the schema, so a real row always carries them; default them here
+    # rather than in every caller, which is about targets/estimates, not tokens.
+    if row is not None:
+        row = {"tokens_in": 0, "tokens_out": 0, **row}
     pool = MagicMock()
     pool.fetchrow = AsyncMock(return_value=row)
     with patch("app.llm_extract_consumer.emit_job_event_safe", new=AsyncMock()) as emit:
@@ -522,7 +539,7 @@ async def test_entity_fold_trio_submit_respects_concurrency_level(monkeypatch):
     conn = FakeConn([{"resume_state": dict(seed)}])  # claim matches
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
     llm.submit_job = rec
     monkeypatch.setattr(dx, "fold_entity_job",
@@ -592,7 +609,7 @@ async def test_real_fold_completes_and_finalizes_with_seed_keys_intact():
     pool = FakePool(conn)
     kc = AsyncMock()
     kc.persist_pass2.return_value = _persist_result()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = _job({"facts": []})  # the 3rd op → completes the fan-in
 
     # NB: dx.fold_trio_job is the REAL implementation here (no monkeypatch).
@@ -626,7 +643,7 @@ async def test_trio_complete_dispatches_recovery_under_lock(monkeypatch):
     conn = FakeConn([{"resume_state": fresh}])  # trio FOR UPDATE re-read
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
     llm.submit_job = AsyncMock(return_value=SimpleNamespace(job_id="rjob0"))
     monkeypatch.setattr(dx, "op_for_job", lambda rs, jid: "fact")
@@ -652,7 +669,7 @@ async def test_recovery_complete_dispatches_filter(monkeypatch):
     conn = FakeConn([{"resume_state": base}])
     pool = FakePool(conn)
     kc = AsyncMock()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
     llm.submit_job = AsyncMock(return_value=SimpleNamespace(job_id="fjob0"))
     monkeypatch.setattr(dx, "recovery_task_for_job", lambda rs, jid: "r0")
@@ -677,7 +694,7 @@ async def test_filter_complete_finalizes_and_persists(monkeypatch):
     pool = FakePool(conn)
     kc = AsyncMock()
     kc.persist_pass2.return_value = _persist_result()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
     monkeypatch.setattr(dx, "filter_task_for_job", lambda rs, jid: "f:entity:0")
     monkeypatch.setattr(dx, "fold_filter_terminal", lambda rs, k, job: {**rs, "stage": dx.PERSIST})
@@ -700,7 +717,7 @@ async def test_empty_recovery_advances_through_to_persist(monkeypatch):
     pool = FakePool(conn)
     kc = AsyncMock()
     kc.persist_pass2.return_value = _persist_result()
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = SimpleNamespace(status="completed", result={})
     llm.submit_job = AsyncMock()
     monkeypatch.setattr(dx, "op_for_job", lambda rs, jid: "fact")
@@ -752,7 +769,7 @@ def _sdk_job(status, result=None):
 async def test_sweep_redrives_a_terminal_job(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = _sdk_job("completed")
     calls = _spy_resume(monkeypatch)
 
@@ -764,7 +781,7 @@ async def test_sweep_redrives_a_terminal_job(monkeypatch):
 async def test_sweep_leaves_inflight_job_alone(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["j1"])])
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = _sdk_job("running")  # slow ≠ stuck
     calls = _spy_resume(monkeypatch)
 
@@ -776,7 +793,7 @@ async def test_sweep_leaves_inflight_job_alone(monkeypatch):
 async def test_sweep_tries_next_id_when_get_job_errors(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["bad", "good"])])
-    llm = AsyncMock()
+    llm = _fake_llm()
 
     async def get_job(jid, user_id=None):
         if jid == "bad":
@@ -799,7 +816,7 @@ async def test_sweep_redrives_persist_stage_row(monkeypatch):
     row = {"job_id": EJ, "provider_job_ids": ["j1"],
            "resume_state": {"stage": dx.PERSIST, "user_id": USER}}
     pool = FakePool(FakeConn([]), fetch_rows=[row])
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = _sdk_job("completed")
     calls = _spy_resume(monkeypatch)
 
@@ -811,7 +828,7 @@ async def test_sweep_redrives_persist_stage_row(monkeypatch):
 async def test_sweep_redrives_once_per_row_then_breaks(monkeypatch):
     conn = FakeConn([])
     pool = FakePool(conn, fetch_rows=[_stranded_row(["j1", "j2"])])  # both terminal
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = _sdk_job("completed")
     calls = _spy_resume(monkeypatch)
 
@@ -830,7 +847,7 @@ async def test_sweep_resolves_byok_owner_for_get_job(monkeypatch):
         "resume_state": {"stage": dx.TRIO, "user_id": USER, "billing_user_id": BILL},
     }
     pool = FakePool(FakeConn([]), fetch_rows=[row])
-    llm = AsyncMock()
+    llm = _fake_llm()
     llm.get_job.return_value = _sdk_job("completed")
     _spy_resume(monkeypatch)
 

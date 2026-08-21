@@ -164,6 +164,22 @@ n_declared=$(printf '%s\n' "$declared" | grep -c . || true)
 
 for sym in $emitted; do
   if ! is_declared "$sym" "$declared"; then
+    # Ported from `main` at the 2026-08-21 merge. `$declared` is built once, and a
+    # short read of the inventory while something else writes this tree names an
+    # INNOCENT metric as undeclared — CI saw exactly that against bytes that passed
+    # locally. The root cause of the short read is not established, so rather than
+    # guess, re-read the file for THIS symbol before reporting: a finding then needs
+    # two independent reads to agree, and a transient one says so.
+    #
+    # Kept even though the emitted-side batch `grep` this originally guarded is gone
+    # (replaced here by a Python reader that strips `#[cfg(test)]`). The guard is
+    # about the DECLARED side, which is still built in one pass.
+    if grep -qE "^[[:space:]]*-[[:space:]]*name:[[:space:]]*\"?${sym}\"?[[:space:]]*$" "$inventory"; then
+      echo "[observability-inventory] WARN — $sym missing from the batch read but present on"
+      echo "  re-read. Treating as a TRANSIENT read, not a finding. If this recurs, the"
+      echo "  declared-set build (and whatever writes this tree concurrently) is the bug."
+      continue
+    fi
     echo "[observability-inventory] FAIL — $sym emitted from code but NOT declared in inventory.yaml"
     violations=$((violations + 1))
   fi

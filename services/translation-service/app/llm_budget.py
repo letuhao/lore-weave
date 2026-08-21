@@ -64,24 +64,53 @@ class CallProfile:
     ceiling: int | None = None
     #: The flat literal this row replaced, or None if the call never had one.
     was: int | None = None
+    #: True ⇒ no per-call signal can change this row's resolved budget, by construction.
+    #:
+    #: Every MIRROR row is one: `call_budget` returns the omit sentinel BEFORE the sizing
+    #: model runs, so `target`/`language`/`reasoning`/`context_length` are all discarded. The
+    #: docstring above already said passing them is "harmless"; what it did not say is that it
+    #: is also POINTLESS, and the difference matters to a gate that counts kwargs. Three of
+    #: this service's four call sites are these rows, so without this flag the only way to
+    #: clear them from the no-signal ratchet is to pass arguments that are read by nothing.
+    #:
+    #: Mirrors composition-service's field of the same name, and like it, is PROBED by this
+    #: service's registry test rather than trusted.
+    signal_inert: bool = False
 
 
 #: code → its profile. Resolution happens per call so a call site can thread the signals it
 #: holds; the rows themselves stay declarative.
 PROFILES: dict[TranslationCall, CallProfile] = {
     # A chapter chunk translated in a stateless request.
-    "translate_chunk": CallProfile(OutputKind.MIRROR),
+    "translate_chunk": CallProfile(OutputKind.MIRROR, signal_inert=True),
     # The session-translator's stateful per-chunk call (carries history + memo).
-    "translate_session_chunk": CallProfile(OutputKind.MIRROR),
+    "translate_session_chunk": CallProfile(OutputKind.MIRROR, signal_inert=True),
     # The decoupled worker's compaction step: it rewrites the running memo, so its length
     # tracks the memo it is compacting rather than a figure we pick.
-    "compact_memo": CallProfile(OutputKind.MIRROR),
+    "compact_memo": CallProfile(OutputKind.MIRROR, signal_inert=True),
     # Stage 1 of the two-stage (EDC-cited) extraction shape: one call per window returning
     # `[{"name","evidence"}, …]`. STRUCTURED, not MIRROR — nothing about the source text sets
     # this length, and a clipped array is unparseable rather than short. The floor is the
     # `_EXTRACTION_OUTPUT_CEILING = 8000` literal it replaces, declared rather than left to
     # the kind's 4096 default, which would have HALVED it on adoption.
     "glossary_sweep": CallProfile(OutputKind.STRUCTURED, floor=8000, ceiling=8000, was=8000),
+    # The BATCHED translate call, on both the decoupled worker and the session translator.
+    # PROSE and not MIRROR, which is the judgement in this row: its siblings above send no
+    # cap at all because the source sets the length, but these two deliberately DO cap —
+    # against what the context window still has room for after the prompt. A MIRROR row
+    # short-circuits every signal and returns the omit sentinel, so it cannot carry that
+    # bound. The bound itself was a FOURTH hand-rolled sizing model,
+    #   min(_TRANSLATION_MAX_OUTPUT_TOKENS, max(2048, window - prompt_estimate - 2048))
+    # written out twice; it survives as the per-call `ceiling`, which can only LOWER, with
+    # the SDK's floor and reasoning allowance underneath it.
+    "translate_batch": CallProfile(OutputKind.PROSE, floor=2048),
+    # Two rows where the CEILING is the length control, not a safety net — the same shape as
+    # composition's `compress`. Both write a canonical glossary value bounded by the
+    # ~2000-rune cap, and neither prompt carries a length directive, so `max_tokens` was the
+    # de-facto size control. Adopting the PROSE floor (1024) without pinning the ceiling
+    # would have let the output grow past the thing whose size it exists to respect.
+    "fold_canonical_description": CallProfile(OutputKind.PROSE, floor=512, ceiling=512),
+    "resummarize_attribute_value": CallProfile(OutputKind.PROSE, floor=512, ceiling=512),
 }
 
 

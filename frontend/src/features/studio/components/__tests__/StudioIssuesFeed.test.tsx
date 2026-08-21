@@ -46,7 +46,10 @@ describe('StudioIssuesFeed (O3)', () => {
     });
     render(<StudioIssuesFeed />);
     fireEvent.click(screen.getByTestId('studio-issue-unplanned_chapter'));
-    expect(openPanel).toHaveBeenCalledWith('plan-hub', { focus: true, params: { bookId: 'b1' } });
+    // `unplanned_chapter` routes to `decompose` (catalog S-13, "decompose a book against an
+    // authored structure") rather than plan-hub — a written-but-unplanned chapter is decomposed
+    // against the structure, not re-planned. The point of this test is the ABSENT focus id.
+    expect(openPanel).toHaveBeenCalledWith('decompose', { focus: true, params: { bookId: 'b1' } });
   });
 
   it('surfaces source warnings (absent, not zero)', () => {

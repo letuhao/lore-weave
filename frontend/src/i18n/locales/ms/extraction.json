@@ -30,7 +30,13 @@
     "allOverwrite": "Semua Ganti",
     "required": "diperlukan",
     "thinkingEnabled": "Aktifkan pemikiran / penaakulan",
-    "thinkingHint": "Fungsi 'Off' disyorkan untuk pengekstrakan JSON. Aktifkan untuk model seperti Gemma yang menaakul secara berbeza apabila pemikiran diaktifkan."
+    "thinkingHint": "Fungsi 'Off' disyorkan untuk pengekstrakan JSON. Aktifkan untuk model seperti Gemma yang menaakul secara berbeza apabila pemikiran diaktifkan.",
+    "addDefaults": "Tambah jenis lalai",
+    "addingDefaults": "Menambah…",
+    "defaultsError": "Tidak dapat menambah jenis entiti lalai.",
+    "loadError": "Tidak dapat memuat profil pengekstrakan.",
+    "noKindsDescription": "Pengekstrakan memerlukan sekurang-kurangnya satu jenis untuk dicari. Tambah jenis lalai untuk bermula, atau tetapkan jenis anda sendiri dalam glosari.",
+    "noKindsTitle": "Buku ini belum mempunyai jenis entiti"
   },
   "batch": {
     "title": "Konfigurasi Kelompok",
@@ -65,7 +71,19 @@
     "thinkingOn": "Pemikiran: aktif (penaakulan diaktifkan)",
     "thinkingOff": "Pemikiran: tidak aktif (lebih pantas, JSON lebih baik)",
     "startExtraction": "Mula Ekstrak",
-    "editProfile": "Edit Profil"
+    "editProfile": "Edit Profil",
+    "cacheAuto": "Jalankan semula apabila ada sebarang perubahan (lalai)",
+    "cacheForce": "Sentiasa ekstrak semula — abaikan cache",
+    "cacheHint": "Ada mengedit definisi jenis? Tetapan lalai akan menjalankan semula secara automatik.",
+    "cachePolicy": "Hasil cache",
+    "cacheReuse": "Gunakan semula hasil cache jika boleh",
+    "concurrency": "Panggilan LLM selari",
+    "concurrencyHint": "1 = berturutan. Tingkatkan nilai ini jika model anda menyokong permintaan serentak.",
+    "strategy": "Bentuk prompt",
+    "strategyBatched": "Berkelompok — paling menyeluruh (lalai)",
+    "strategyDelta": "Satu panggilan + delta — paling murah",
+    "strategyEdc": "Imbas kemudian taip — ~56% lebih murah, pemantapan terbaik",
+    "strategySingle": "Satu panggilan — ~66% lebih murah, terlepas jenis yang jarang berlaku"
   },
   "progress": {
     "title": "Mengekstrak Glosari",
@@ -107,7 +125,11 @@
     "draftNote": "Semua entiti baru dicipta sebagai draf — semak di tab Glosari",
     "viewGlossary": "Semak di Glosari",
     "runAgain": "Ekstrak semula",
-    "close": "Tutup"
+    "close": "Tutup",
+    "cacheAllFresh": "Semua {{n}} kelompok telah diekstrak secara segar.",
+    "cacheForced": "(cache telah dilewati melalui permintaan)",
+    "cacheRerunHint": "Jika anda telah mengubah definisi jenis sejak itu, jalankan semula dengan «Sentiasa ekstrak semula».",
+    "cacheServed": "{{pct}}% daripada larian ini ({{cached}} daripada {{total}} kelompok) telah DIGUNAKAN SEMULA daripada pengekstrakan sebelumnya, bukan dibaca semula."
   },
   "button": {
     "extract": "Ekstrak Glosari",

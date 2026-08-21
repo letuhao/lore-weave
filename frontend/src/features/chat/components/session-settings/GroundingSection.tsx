@@ -11,6 +11,7 @@ import type { SessionSettingsEditor } from '@/features/chat-ai-settings/hooks/us
 
 export function GroundingSection({ ed }: { ed: SessionSettingsEditor }) {
   const { t: tKnowledge } = useTranslation('knowledge');
+  const { t } = useTranslation('chat');
   const { session } = ed;
 
   const groundingField = ed.field('grounding', 'grounding_enabled');
@@ -24,12 +25,12 @@ export function GroundingSection({ ed }: { ed: SessionSettingsEditor }) {
   return (
     <section className="space-y-4" data-testid="session-grounding-section">
       <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-        Grounding &amp; memory
+        {t('sessionSettings.grounding.title')}
       </h4>
 
       <div>
         <label className="mb-1.5 flex items-center text-xs font-medium text-muted-foreground">
-          Ground answers in this book&apos;s lore
+          {t('sessionSettings.grounding.label')}
           <TierChip tier={groundingField?.source_tier} />
           <ClearOverride
             show={ed.isOverridden('grounding', 'grounding_enabled')}
@@ -50,12 +51,12 @@ export function GroundingSection({ ed }: { ed: SessionSettingsEditor }) {
               : 'border-border bg-background text-muted-foreground hover:text-foreground'
           }`}
         >
-          {on ? 'On — retrieval runs each turn' : 'Off — no retrieval this chat'}
+          {on ? t('sessionSettings.grounding.on') : t('sessionSettings.grounding.off')}
         </button>
         <p className="mt-1 text-[10px] text-muted-foreground">
           {on
-            ? 'Glossary, knowledge-graph facts and passages are pulled into every turn.'
-            : 'The assistant answers from the conversation alone, and may invent lore.'}
+            ? t('sessionSettings.grounding.onHint')
+            : t('sessionSettings.grounding.offHint')}
         </p>
       </div>
 
@@ -71,7 +72,7 @@ export function GroundingSection({ ed }: { ed: SessionSettingsEditor }) {
         />
         <p className="mt-1 text-[10px] text-muted-foreground">
           {projectIds.length >= 2
-            ? 'Grounded on every selected knowledge graph at once — facts are tagged with their source.'
+            ? t('sessionSettings.grounding.multiHint')
             : tKnowledge('picker.hint')}
         </p>
       </div>

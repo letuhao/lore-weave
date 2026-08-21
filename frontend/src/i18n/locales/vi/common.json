@@ -172,5 +172,10 @@
     "saved": "Đã lưu thứ tự mô hình",
     "saveFailed": "Không lưu được thứ tự.",
     "loadFailed": "Không tải được danh sách mô hình."
+  },
+  "errorBoundary": {
+    "title": "Không thể hiển thị trang này",
+    "description": "Đã xảy ra lỗi giao diện. Lỗi đã được lưu vào nhật ký chẩn đoán; vui lòng thử lại thao tác này.",
+    "retry": "Thử lại"
   }
 }

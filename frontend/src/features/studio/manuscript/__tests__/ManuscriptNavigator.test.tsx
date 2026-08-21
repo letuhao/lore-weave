@@ -64,6 +64,22 @@ describe('ManuscriptNavigator', () => {
     expect(totals).not.toContain('manuscript.statScenes');
   });
 
+  it('offers inline rename and reversible delete actions for flat chapter rows', async () => {
+    const renameChapter = vi.fn(() => Promise.resolve());
+    const trashChapter = vi.fn(() => Promise.resolve());
+    hook.value = base({ rows: [nodeRow(n('c1', 'chapter', { title: 'Old title' }))], renameChapter, trashChapter });
+    render_();
+
+    fireEvent.click(screen.getByTestId('manuscript-chapter-rename-c1'));
+    const input = screen.getByTestId('manuscript-chapter-rename-input-c1');
+    fireEvent.change(input, { target: { value: 'New title' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(renameChapter).toHaveBeenCalledWith('c1', 'New title');
+
+    fireEvent.click(screen.getByTestId('manuscript-chapter-trash-c1'));
+    expect(trashChapter).toHaveBeenCalledWith('c1');
+  });
+
   it('outline book footer shows arc · ch · sc totals', () => {
     hook.value = base({ source: 'outline', rows: [nodeRow(n('arc1', 'arc'))], counts: { arcs: 1, chapters: 12, scenes: 35 } });
     render_();

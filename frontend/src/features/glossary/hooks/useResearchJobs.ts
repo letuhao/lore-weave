@@ -32,7 +32,7 @@ export function useKindResearch(bookId: string, kindId: string | null) {
 
   // The list is created_at DESC, so the first job for this kind is the newest.
   const job = useMemo<ResearchJob | null>(() => {
-    if (!kindId || !query.data) return null;
+    if (!kindId || !query.data || !Array.isArray(query.data)) return null;
     return query.data.find((j) => j.kind_id === kindId) ?? null;
   }, [query.data, kindId]);
 

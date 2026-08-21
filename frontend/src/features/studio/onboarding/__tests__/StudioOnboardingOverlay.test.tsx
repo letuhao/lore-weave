@@ -31,8 +31,8 @@ describe('StudioOnboardingOverlay', () => {
     expect(onSkip).toHaveBeenCalledOnce();
   });
 
-  // #19 G7 — every dismiss path (Esc, backdrop, the X button) counts as skip via onOpenChange;
-  // FormDialog wires Radix Dialog's onOpenChange to fire on all of them.
+  // #19 G7 — explicit dismiss paths (Esc and the X button) count as skip. FormDialog
+  // deliberately blocks backdrop dismissal so a click outside cannot discard the choice.
   it('any dialog dismissal (onOpenChange(false)) is treated as skip, never a trap', () => {
     const onSkip = vi.fn();
     render(<StudioOnboardingOverlay open onChooseRole={vi.fn()} onSkip={onSkip} />);

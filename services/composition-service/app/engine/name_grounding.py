@@ -255,20 +255,23 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
         # where nothing was given. Report the method, claim nothing.
         return NameAudit(method="empty", truth_source="none")
     drafted = extract_names(draft, corpus=corpus)
-    # `ML-2` — the shared NFKC + casefold + Han spine, not `.lower()`.
+    # ML-2 — the equivalence key is NFKC + casefold + Han-simplified fold, not `.lower()`.
     #
-    # BOTH SIDES MOVE TOGETHER OR NEITHER DOES. This is a symmetric fold key: the
-    # dict is keyed by the fold and VALUED by the original, and it is the original
-    # that is reported. Fold one side differently from the other and every
-    # comparison below silently stops matching — which is why the swap is one edit
-    # covering the map, the membership test and the edit distance, rather than the
-    # two lines the gate happened to name.
+    # Caught by `language-bias-gate`, RED since this module was written on 2026-08-01 and
+    # unnoticed because the gate set being run was a subset of CI's.
     #
-    # `.lower()` is not merely unfashionable here: it is wrong for `ß`/`İ` and it
-    # leaves full-width Latin unfolded, so `Ｅｌａｒａ` and `Elara` read as two
-    # different characters. The spine folds those and deliberately preserves
-    # accents, so `ma`/`má` and `Müller`/`Muller` stay distinct — exactly the
-    # property a near-miss check must not lose.
+    # WHAT THIS FIXES, stated honestly: nothing observable TODAY. I first wrote that `.lower()`
+    # would report an equivalent name as unanchored — a fabricated finding — and then measured
+    # it: over every name `_TOKEN` can produce (basic Latin + Latin-1 capitals, per the module
+    # docstring's "Script honesty" note), `.lower()` and `normalize_entity_name` agree on
+    # **0 disagreements**. The failure needs a full-width or Han name, and the extractor cannot
+    # emit one, so it is unreachable through this path.
+    #
+    # It is still the right primitive, for one reason: the extractor's alphabet is the ONLY
+    # thing making `.lower()` safe here. Widening `_TOKEN` — which the docstring already names
+    # as the obvious next step for CJK books — would silently make it wrong, in the check whose
+    # job is deciding whether the model invented a name. The pinning test asserts both halves:
+    # that the swap changed nothing now, and that the fold is what CJK/full-width needs.
     lowered = {normalize_entity_name(k): k for k in known}
     unanchored, near = [], []
     for name in sorted(drafted):
@@ -278,21 +281,14 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
         if low in lowered or low.rstrip("s") in lowered or (low + "s") in lowered:
             continue
         closest, best = None, NEAR_MISS_MAX_DISTANCE + 1
-        # Lengths read off the FOLDED strings, because the distance below is
-        # measured on the folded strings. `.lower()` preserved length so raw and
-        # folded were interchangeable; the spine does not — `Straße` (6) folds to
-        # `strasse` (7). Gating on one string and measuring on another is the
-        # adjacent-decision shape: both halves individually correct, the pair
-        # wrong. A no-op for ASCII names, which is all of them today
-        # (/review-impl).
-        if len(low) >= _NEAR_MISS_MIN_LEN:
+        if len(name) >= _NEAR_MISS_MIN_LEN:
             for k_low, k in lowered.items():
-                if len(k_low) < _NEAR_MISS_MIN_LEN:
+                if len(k) < _NEAR_MISS_MIN_LEN:
                     continue
                 d = _edit_distance(low, k_low)
                 if d < best:
                     closest, best = k, d
-        limit = 1 if len(low) < _NEAR_MISS_STRICT_UNDER else NEAR_MISS_MAX_DISTANCE
+        limit = 1 if len(name) < _NEAR_MISS_STRICT_UNDER else NEAR_MISS_MAX_DISTANCE
         if closest is not None and best <= limit:
             near.append({"name": name, "closest": closest, "distance": best})
         else:

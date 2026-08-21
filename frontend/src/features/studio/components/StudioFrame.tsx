@@ -134,7 +134,12 @@ function StudioFrameInner({ bookId, initialChapterId }: { bookId: string; initia
 
   return (
     <div className="flex h-screen w-full flex-col overflow-hidden bg-background">
-      <StudioTopBar bookId={bookId} bookTitle={bookTitle} onOpenQuickOpen={() => setPalette('quick')} />
+      <StudioTopBar
+        bookId={bookId}
+        bookTitle={bookTitle}
+        onOpenQuickOpen={() => setPalette('quick')}
+        onOpenGuide={() => host.openPanel('user-guide', { focus: true })}
+      />
 
       {/* Tier-4 manuscript unit hoisted ABOVE dockview (#08) so the editor's in-flight edits
           survive a dock float / close, and the Lane-B reconciler + editor read one owner store.

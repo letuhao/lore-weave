@@ -36,6 +36,11 @@ export type JobError = { code: string; message: string };
  *  no schema change. Values are scalars or short arrays; never the raw prompt/secret. */
 export type JobParams = Record<string, unknown>;
 
+export function retryBlockedReason(params: JobParams | null): string | null {
+  const value = params?.retry_blocked_reason;
+  return typeof value === 'string' && value.trim() ? value : null;
+}
+
 /** One job projection row as returned by GET /v1/jobs and /v1/jobs/{service}/{job_id}. */
 export interface Job {
   service: string;

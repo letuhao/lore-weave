@@ -247,6 +247,12 @@ func (s *Server) applyEntityEdit(w http.ResponseWriter, r *http.Request) {
 
 	detail, err := s.loadEntityDetail(ctx, bookID, entityID)
 	if err != nil {
+		// LOG THE CAUSE. The edit above has already COMMITTED at this point, so a bare
+		// "load failed" tells the caller the write failed when it did not, and tells the
+		// operator nothing at all about which read broke. It cost a full bisect to learn
+		// that this 500 was a read-back problem rather than an apply problem.
+		slog.Error("apply-edit: load-back failed AFTER the edit committed",
+			"book_id", bookID.String(), "entity_id", entityID.String(), "error", err.Error())
 		writeError(w, http.StatusInternalServerError, "GLOSS_INTERNAL", "load failed")
 		return
 	}

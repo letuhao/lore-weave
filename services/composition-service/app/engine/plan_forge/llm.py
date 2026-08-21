@@ -12,7 +12,7 @@ from loreweave_llm.errors import LLMError
 
 from app.clients.eval_client import extract_judge_content
 from app.clients.llm_client import LLMClient
-from app.llm_budget import max_tokens_for
+from app.llm_budget import unusable, max_tokens_for
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +85,10 @@ class ProviderPlanForgeLLM:
         system: str,
         user: str,
         temperature: float = 0.2,
-        max_tokens: int = max_tokens_for("plan_forge_chat"),
+        # Sentinel, resolved below. The response is a whole planning package and its item
+        # count is what the step is producing, so there is no truthful `target` to pass and
+        # this site stays on the no-signal ratchet by design — see the resolution point.
+        max_tokens: int | None = None,
         cancel_check: Callable[[], Awaitable[bool]] | None = None,
         schema: dict[str, Any] | None = None,
         frequency_penalty: float | None = None,
@@ -104,6 +107,14 @@ class ProviderPlanForgeLLM:
         `frequency_penalty` overrides the default anti-loop strength. Callers raise it when a
         previous attempt came back as a repetition loop — the one lever that actually addresses that
         failure, since the grammar cannot forbid a loop inside a string."""
+        # Resolved per call rather than as a default argument. Nothing here can pass a
+        # `target`: this method serves every plan-forge step (analyze, materialize, refine,
+        # elaborate, and each one's JSON repair), and the item count is precisely what the
+        # step is generating. `language` is not read by STRUCTURED. So the row's measured
+        # floor — 12000, sized for a whole planning package in one response — IS the answer,
+        # and this site is left counted as backlog rather than cleared with a kwarg the kind
+        # would discard.
+        max_tokens = max_tokens or max_tokens_for("plan_forge_chat")
         check = cancel_check if cancel_check is not None else self._cancel_check
         anti_loop = dict(_ANTI_LOOP)
         if frequency_penalty is not None:
@@ -145,8 +156,13 @@ class ProviderPlanForgeLLM:
                                        cancel_check=cancel_check, schema=None)
             logger.warning("plan_forge LLM error step=%s: %s", step, exc)
             raise PlanForgeLLMError(str(exc)) from exc
-        if job.status != "completed":
-            raise PlanForgeLLMError(f"LLM job status={job.status}")
+        # This raise is what keeps the repair layer honest. `_parse_with_repair` catches a
+        # JSONDecodeError and spends a SECOND call asking the model to repair its own
+        # output — so a response clipped at 12,000 tokens would be handed to a repairer
+        # that cheerfully returns a well-formed object with items missing. Parseable and
+        # wrong is worse than unparseable. Truncation must not reach the salvage path.
+        if (why := unusable(job, "plan_forge_chat")):
+            raise PlanForgeLLMError(f"LLM job unusable: {why}")
         content = extract_judge_content(job.result)
         if not content.strip():
             raise PlanForgeLLMError("empty LLM response")

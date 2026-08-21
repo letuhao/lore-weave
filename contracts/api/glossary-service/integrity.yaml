@@ -1,0 +1,32 @@
+openapi: 3.0.3
+info:
+  title: LoreWeave Glossary Integrity API
+  version: 1.0.0
+servers:
+  - url: https://glossary-service.loreweave.dev
+paths:
+  /v1/glossary/books/{book_id}/integrity:
+    get:
+      summary: Check book lore integrity
+      parameters:
+        - in: path
+          name: book_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Integrity report }
+        '401': { description: Unauthorized }
+        '403': { description: Forbidden }
+  /v1/glossary/books/{book_id}/integrity/repair:
+    post:
+      summary: Repair safe book lore integrity issues
+      parameters:
+        - in: path
+          name: book_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Repair result }
+        '401': { description: Unauthorized }
+        '403': { description: Edit permission required }
+        '500': { description: Repair failed }

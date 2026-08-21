@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { Entity } from '../api';
 import { anchorPercent, entityStatus, statusGlyph } from '../lib/entityStatus';
+import { entityKindLabel } from '../lib/entityKinds';
 
 // K19d.1 — presentational entities table. Row click + Enter/Space
 // set selectedEntityId on the parent tab. a11y: rows are focusable
@@ -147,7 +148,7 @@ export function EntitiesTable({
                       {e.name}
                     </span>
                   </span>
-                  <span className="text-muted-foreground">{e.kind}</span>
+                  <span className="text-muted-foreground">{entityKindLabel(t, e.kind)}</span>
                   <span className="truncate text-muted-foreground" title={e.project_id ?? ''}>
                     {e.project_id ?? t('entities.table.global')}
                   </span>
@@ -200,7 +201,7 @@ export function EntitiesTable({
                     </span>
                   </span>
                   <span className="shrink-0 text-[11px] uppercase tracking-wide text-muted-foreground">
-                    {e.kind}
+                    {entityKindLabel(t, e.kind)}
                   </span>
                 </div>
                 <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[11px] text-muted-foreground">

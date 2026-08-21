@@ -21,6 +21,8 @@ interface Props {
 
 export function EdgeTypeRow({ edge, disabled, usageCount, availableKinds, onPatch, onDelete }: Props) {
   const { t } = useTranslation('kgOntology');
+  const { t: tKnowledge } = useTranslation('knowledge');
+  const kindLabel = (code: string) => tKnowledge(`kind.${code}`, { defaultValue: code });
   const [editing, setEditing] = useState(false);
   const [label, setLabel] = useState(edge.label);
   const [cardinality, setCardinality] = useState<Cardinality>(edge.cardinality);
@@ -102,7 +104,7 @@ export function EdgeTypeRow({ edge, disabled, usageCount, availableKinds, onPatc
         )}
       </td>
       <td className="py-1.5 text-muted-foreground">
-        {(edge.source_node_kinds ?? []).join('/') || '—'} → {(edge.target_node_kinds ?? []).join('/') || '—'}
+        {(edge.source_node_kinds ?? []).map(kindLabel).join('/') || '—'} → {(edge.target_node_kinds ?? []).map(kindLabel).join('/') || '—'}
       </td>
       <td className="py-1.5">
         {edge.temporal && <OntologyChip variant="temporal">{t('schema.temporal')}</OntologyChip>}

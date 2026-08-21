@@ -203,6 +203,11 @@
     "rescanPartial": "Reescaneo completado (receta omitida — el conocimiento no suministró versiones) — {{count}} nuevos",
     "rescanPartial_other": "Reescaneo completado (receta omitida — el conocimiento no suministró versiones) — {{count}} nuevos",
     "rescanFailed": "Error en el reescaneo",
+    "rescanUnchecked": "Reescaneo incompleto — {{count}} artículo no se comparó",
+    "rescanUnchecked_other": "Reescaneo incompleto — {{count}} artículos no se compararon",
+    "coverageGap": "El último escaneo no pudo comparar {{count}} artículo (conocimiento inaccesible); esta lista puede estar incompleta.",
+    "coverageGap_other": "El último escaneo no pudo comparar {{count}} artículos (conocimiento inaccesible); esta lista puede estar incompleta.",
+    "coverageUnknown": "Este escaneo no informó cuánto comparó, por lo que la lista puede estar incompleta.",
     "ledgerNote": "Los cambios de conocimiento se registran aquí automáticamente (un registro diferido, no en tiempo real). Las banderas cambian pero nada se regenera por sí solo; los tokens se gastan solo cuando pulsas Regenerar.",
     "reason": {
       "entity_changed": "Entrada de glosario cambiada",
