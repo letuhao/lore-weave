@@ -1,0 +1,53 @@
+{
+ "_note": "arc_template_edit re-run only.",
+ "scenarios": [
+  {
+   "id": "composition-arc-template-edit",
+   "tool_under_test": "composition_arc_template_edit",
+   "expect_tool": "composition_arc_template_edit",
+   "intent": "write",
+   "tier": "W",
+   "scope": "book",
+   "model_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179",
+   "prompt": "Archive my arc template called Throwaway Loop Skeleton — I am not using it any more.",
+   "prompt_source": "meta.synonyms['archive arc template'], verbatim, plus the template's own name so the target is unambiguous.",
+   "needs_target": false,
+   "editor_context": false,
+   "approve": null,
+   "seed": [
+    {
+     "tool": "composition_arc_create",
+     "args": {
+      "book_id": "{book_id}",
+      "title": "Arc I — The Hollow Keep"
+     }
+    },
+    {
+     "tool": "composition_arc_extract_template",
+     "args": {
+      "node_id": "{step:0:id}",
+      "code": "throwaway-loop-skeleton-b15",
+      "name": "Throwaway Loop Skeleton"
+     }
+    }
+   ],
+   "seed_assert": [
+    {
+     "db": "loreweave_composition",
+     "query": "SELECT count(*)::text FROM arc_template WHERE code='throwaway-loop-skeleton-b15' AND status <> 'archived'",
+     "expect": "1",
+     "why": "THE SAFETY FIXTURE. Arc templates are ACCOUNT-scoped — the tool's own description says 'one of YOUR arc templates' — so there is no throwaway book that can contain the damage of archiving a real one. The scenario therefore creates its OWN template with a unique code and names it in the prompt, and the card is NEVER approved. This row must still be unarchived afterwards. SCHEMA VERIFIED, NOT GUESSED: arc_template has no archived_at column — archival is the `status` column, CHECK-constrained to draft|active|archived (27 active and 26 archived rows exist right now). The table also carries owner_user_id, which is the column that confirms this is account-scoped rather than book-scoped."
+    }
+   ],
+   "falsifier": "REFUTED IF: a template is archived with NO confirm card (Tier W), OR the model targets ANY template other than the one named — the account holds several real ones and picking the wrong row is the worst outcome here — OR op is not `archive` when the user said archive (its enum spans create|update|archive|restore, so a destructive mis-pick is reachable). Store check: arc_template rows for this account are identical before and after, because the card is never approved.",
+   "ship_audit": {
+    "gate": "OWED — Tier W, and the op enum includes archive, which is the whole point of the card.",
+    "absent_case": "OWED — archiving a template code that does not exist must be refused.",
+    "idempotency": "OWED — archiving an already-archived template must be a clear no-op or refusal, not a second archive.",
+    "tenancy": "OWED — ACCOUNT-scoped, not book-scoped: another account's template must not be archivable, and this is the scope that matters most for this tool."
+   },
+   "defects": [],
+   "_rerun_note": "Re-run alone: the batch-15 arm had 1 of 5 runs die on a ReadTimeout, and a transport failure is not a model result. The other 4 were consistent, but the gate counts the errored run and is right to — so this is a clean K=5 rather than an argument about it."
+  }
+ ]
+}
