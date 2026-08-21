@@ -1,0 +1,1742 @@
+{
+ "batch": "batch17-v2",
+ "generated_by": "fe_runner",
+ "approval_mode": "none",
+ "tools": [
+  {
+   "tool": "composition_canon_rule_edit",
+   "scenario": "composition-canon-rule-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the rule is deleted with NO confirm card (Tier A), OR the op chosen is not `delete` when the user said delete — its enum spans create|update|delete|restore, and a `create` here would ADD a rule the author asked to remove, which is the worst outcome reachable — OR the model invents a rule_id rather than resolving 'magic always costs memory'. Store check: canon_rule live count stays 1 and is_archived stays false.",
+   "answer_expect": null,
+   "falsifier_sha": "9591d5ab7973f996",
+   "ship_audit": {
+    "gate": "EXERCISED — Tier A, card raised 5/5 and the store is unchanged without approval. LIVE this went 0/5 -> 5/5 on the superseded-tool fix: before it, the model called the legacy composition_canon_rule_delete every time. It also called composition_list_canon_rules first, resolving the rule's TEXT to a rule_id rather than inventing one.",
+    "absent_case": "EXERCISED — a rule_id that does not exist is refused 'not found or not accessible'.",
+    "idempotency": "EXERCISED and it is the CORRECT counter-example to the arc_template archive defect found in batch 15: deleting an already-deleted rule is REFUSED rather than reported as a second success. op=restore brings it back.",
+    "tenancy": "EXERCISED — a project_id the caller does not own is refused."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02243-2c14-7667-9421-25b3d5b741f1",
+     "session_id": "01a02243-4af3-7bb2-9181-3cbd856848a6",
+     "prompt": "Delete canon rule — drop the rule that says magic always costs memory.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_canon_rule_edit",
+      "composition_list_canon_rules"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:22.910594+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.537053+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.337009+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.322916+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:22.910594+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.537053+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.337009+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.322916+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02243-cdaa-7d29-8cb7-318a007c228f",
+     "session_id": "01a02243-ebda-70c9-ae5a-9dd9886f738d",
+     "prompt": "Delete canon rule — drop the rule that says magic always costs memory.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_canon_rule_edit",
+      "composition_list_canon_rules"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.244309+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.682359+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.507885+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.499133+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.244309+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.682359+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.507885+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:04.499133+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02244-5700-7080-b1bb-6bd6eea3d850",
+     "session_id": "01a02244-72ee-7314-96bd-d0d5e440dadd",
+     "prompt": "Delete canon rule — drop the rule that says magic always costs memory.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_canon_rule_edit",
+      "composition_list_canon_rules"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.409664+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.858404+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.668273+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.659277+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.409664+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.858404+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.668273+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:39.659277+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02244-c619-7493-9ea1-20a2b8d3c45d",
+     "session_id": "01a02244-e156-7344-a93c-3c33db08f4d0",
+     "prompt": "Delete canon rule — drop the rule that says magic always costs memory.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_canon_rule_edit",
+      "composition_list_canon_rules"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:07.839104+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:08.22074+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:08.0658+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:08.055629+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:07.839104+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:08.22074+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:08.0658+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:08.055629+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02245-3d63-7757-8b66-6b08f2997b09",
+     "session_id": "01a02245-526d-7da4-84eb-8046b5cf0743",
+     "prompt": "Delete canon rule — drop the rule that says magic always costs memory.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_canon_rule_edit",
+      "composition_list_canon_rules"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.359028+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.717671+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.56699+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.558804+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.359028+00"
+       },
+       "loreweave_composition.canon_rule": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.717671+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.56699+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:38.558804+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 5
+  },
+  {
+   "tool": "composition_decompile_arcs",
+   "scenario": "composition-decompile-arcs",
+   "intent": "write",
+   "falsifier": "REFUTED IF: arcs are materialised with NO confirm card, OR the reply reports arcs as already created when the card is still pending (this tool is deterministic and $0, which makes it tempting to treat as harmless — but it still WRITES a spec layer), OR it claims a grouping that does not match the chapter count it was given. CONTROL: the tool's own description says it is for a flat/imported book with no plan, which is exactly this fixture.",
+   "answer_expect": null,
+   "falsifier_sha": "51eb02c4c905a5a1",
+   "ship_audit": {
+    "gate": "NOT REACHED — the confirm card only mints when there is work to do, and this fixture cannot produce outline_node chapters. See blocked_reason.",
+    "empty_case": "EXERCISED and it is the fix shipped this cycle: zero chapters now returns {outcome: no_op, reason: 'no chapters to decompile'} with NO token, and the model relays it accurately 5/5.",
+    "idempotency": "NOT REACHED — re-running over an existing arc layer needs a first successful run, which the gate leg above never reaches.",
+    "tenancy": "EXERCISED — a book/project the caller cannot reach is refused 'not found or not accessible'.",
+    "absent_case": "EXERCISED — the missing object is refused rather than fabricated."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02243-2c09-715d-bc4c-90e6d691c657",
+     "session_id": "01a02243-4c20-7d5e-adaf-1367a6abcd82",
+     "prompt": "Group chapters into arcs for this book — decompile arcs.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_decompile_arcs",
+      "composition_list_outline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:00:23.878579+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.32667+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.298548+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:00:23.878579+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.32667+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.298548+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can't group the chapters into arcs yet because there are no chapters in the book's outline to group. \n\nIt looks like this book is currently empty or hasn't had its chapters added to the structure yet. Once you've added chapters or imported them, I'll be able to decompile them into arcs for you.\n\nI did not re-read the book's outline before answering, and my previous response was based on the fact that the outline is currently empty. According to the most recent check of the outline, there are no chapters or scenes present in the structure to group into arcs."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02243-dee5-798a-9cca-1fbc054840d9",
+     "session_id": "01a02243-febb-738e-acd3-64c022160242",
+     "prompt": "Group chapters into arcs for this book — decompile arcs.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_decompile_arcs",
+      "composition_list_outline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:01:09.469512+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:08.873619+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:08.861703+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:01:09.469512+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:08.873619+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:08.861703+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've attempted to group the chapters into arcs, but it looks like there aren't any chapters in the book's structure yet to group. \n\nOnce you've written or imported some chapters, I'll be able to decompile them into an arc structure for you.\n\nI did not re-read the book's outline before answering, and my previous response was based on the fact that the outline is currently empty. According to the most recent check of the book's structure, there are no chapters or scenes listed in the outline."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02244-6b30-7308-a0a8-fc77ec697d44",
+     "session_id": "01a02244-86a1-780c-aed9-0d4c426ceb52",
+     "prompt": "Group chapters into arcs for this book — decompile arcs.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_decompile_arcs",
+      "composition_list_outline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:01:45.416366+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:44.822202+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:44.813939+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:01:45.416366+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:44.822202+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:44.813939+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've attempted to group the chapters into arcs, but it looks like there are no chapters in the book's outline to group yet. \n\nThis usually happens if the chapters haven't been created or imported into the story structure. Once you've added some chapters, I'll be able to decompile them into arcs for you.\n\nI have checked the book's outline, and it is currently empty. There are no chapters or scenes listed in the structure to group into arcs."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02244-ff11-7e19-827a-785a85c9521c",
+     "session_id": "01a02245-1f47-79f9-a37d-d10fd9fae704",
+     "prompt": "Group chapters into arcs for this book — decompile arcs.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_decompile_arcs",
+      "composition_list_outline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:02:23.325499+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:22.66984+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:22.662198+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:02:23.325499+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:22.66984+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:22.662198+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I can't group the chapters into arcs because there are no chapters in the book's outline to group. \n\nIt looks like this book hasn't had any chapters created or imported into the structure yet. Once you've added some chapters, I'll be able to decompile them into arcs for you.\n\nI did not re-read the book's outline before answering, and my previous response was based on the fact that the outline is currently empty. According to the most recent check of the outline, there are no chapters or scenes present in the structure to group into arcs."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02245-d614-7888-8d4b-2af5077087ec",
+     "session_id": "01a02245-f49b-79e7-bf45-58b0a6ade88f",
+     "prompt": "Group chapters into arcs for this book — decompile arcs.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_decompile_arcs",
+      "composition_list_outline"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:03:18.198158+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:17.671741+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:17.662417+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 4,
+        "latest": "2026-08-21 03:03:18.198158+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:17.671741+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:17.662417+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've attempted to group the chapters into arcs, but it looks like there aren't any chapters in the book's outline yet to group. \n\nThis usually happens if the chapters haven't been created or imported into the story structure. Once we have chapters in the manuscript, I'll be able to decompile them into arcs for you.\n\nI have checked the book's outline, and it is currently empty. There are no arcs, chapters, or scenes recorded in the structure, which is why I cannot group them into arcs at this time."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on a PRECONDITION CHAIN — its WRITE path cannot be reached from this harness. The engine groups `outline_node` rows of kind='chapter', which are minted by scene_decompile AT IMPORT; a fixture whose chapters come from book_chapter_create has none, so the dry-run legitimately counts 0 and there is nothing to confirm. What this batch DID prove is the no-op half, and it was a defect fixed inside this cycle: before, the tool minted a confirm card titled 'Decompile 0 chapter(s) into ~0 arc(s)' and the model told the author 'I've prepared the arc structure for your book; please confirm the change in the card' on 5 of 5 runs. After, it returns {outcome: no_op, reason: 'no chapters to decompile'} with no token, and the model says 'there are no chapters in the book's outline to group' — 5 of 5, measured. Tenancy is clean (a foreign book_id is refused) and PROPOSE writes nothing (0 arcs after every probe). Proving the create path needs an IMPORTED book, which this fixture cannot build."
+  },
+  {
+   "tool": "composition_create_derivative",
+   "scenario": "composition-create-derivative",
+   "intent": "write",
+   "falsifier": "REFUTED IF: a derivative is created with NO confirm card, OR the model invents a `taxonomy`/`pov_anchor`/`branch_point` the author never specified (the description constrains taxonomy to pov_shift|character_transform|au, and picking one silently commits the author to a divergence they did not choose), OR the reply describes the derivative as created while the card is still pending. Store check: composition_work rows with this project as source_work_id stay 0.",
+   "answer_expect": null,
+   "falsifier_sha": "d473d4f1b3a28ecd",
+   "ship_audit": {
+    "gate": "The card IS the audit, and it held: called 5/5, suspended 5/5, and composition_work rows carrying this project as source_work_id stayed 0. Deriving is 'only archivable (not undoable)' by its own description, so the card is never approved — the same standing this loop gave settings_model_set_default in batch 13.",
+    "absent_case": "EXERCISED — a project_id that does not exist is refused before any token is minted.",
+    "tenancy": "EXERCISED via the same refusal; another account's Work is not forkable."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02243-2c12-7bb4-95ab-f441dedf03ef",
+     "session_id": "01a02243-4984-71dc-82cc-9f2c6681fb83",
+     "prompt": "Spawn a what-if from this book — call it The Drowned Court, where Aldric never climbed the stair.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_create_derivative"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:22.907331+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.327963+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.305603+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:22.907331+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.327963+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.305603+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02243-ae9c-72ff-9bf9-884ce2df7773",
+     "session_id": "01a02243-cc11-703c-bb0a-4bac2ba467c3",
+     "prompt": "Spawn a what-if from this book — call it The Drowned Court, where Aldric never climbed the stair.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_create_derivative"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:56.304346+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:56.571218+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:56.563547+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:56.304346+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:56.571218+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:56.563547+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02244-01f0-75f8-89c5-5294ac30460a",
+     "session_id": "01a02244-1a56-7d9d-ad6e-8626c5670344",
+     "prompt": "Spawn a what-if from this book — call it The Drowned Court, where Aldric never climbed the stair.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_create_derivative"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:16.974265+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:17.200541+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:17.193076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:16.974265+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:17.200541+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:17.193076+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02244-5abc-7fa3-9f1e-b5d3c1a73c73",
+     "session_id": "01a02244-7342-7eb0-861e-8d7a5d691c0c",
+     "prompt": "Spawn a what-if from this book — call it The Drowned Court, where Aldric never climbed the stair.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_create_derivative"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:40.368824+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:40.629737+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:40.620896+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:40.368824+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:40.629737+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:40.620896+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02244-ab99-7a8c-82c7-6f09027ea410",
+     "session_id": "01a02244-c6f4-701d-8edc-b0d89860dcf0",
+     "prompt": "Spawn a what-if from this book — call it The Drowned Court, where Aldric never climbed the stair.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_create_derivative"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:01.07397+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:01.325989+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:01.316796+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:01.07397+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:01.325989+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:01.316796+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 5
+  },
+  {
+   "tool": "composition_authoring_run_review",
+   "scenario": "composition-authoring-run-review",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the model invents a run_id (D-DECLARED-UUID, guarded at the argument chokepoint), OR the reply claims a run was paused when none exists, OR the op chosen is not pause/stop when the user said pause — its enum spans pause|close|accept_unit|reject_unit and `close` ENDS a run rather than pausing it, which is not what was asked. 🔴 NOTE THE TIER TENSION worth watching: this is Tier A, yet its description calls these 'auto-applied (no confirm-token) actions'. If a card does NOT mint, that is the declaration and the behaviour disagreeing, and which one is right is a finding either way.",
+   "answer_expect": null,
+   "falsifier_sha": "5f6224b638fa619d",
+   "ship_audit": {
+    "gate": "EXERCISED AND IT IS THE FINDING: a Tier-A card WAS raised on 2 of 5, carrying a run_id that matches no authoring run. So the gate mechanism works — the card mints and the store stays unchanged without a click — but it minted over an object that does not exist. See blocked_reason.",
+    "absent_case": "EXERCISED — the missing object is refused rather than fabricated.",
+    "tenancy": "EXERCISED — a book/project the caller cannot reach is refused 'not found or not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02243-2c0c-78e4-9994-644be93036b4",
+     "session_id": "01a02243-49ab-71d8-a2f2-4af0acf9a708",
+     "prompt": "Pause the authoring run for this book — stop run.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_review",
+      "composition_diagnostics"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:22.913759+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.326627+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.298435+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:22.913759+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.326627+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:00:23.298435+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I'm having trouble identifying the specific authoring run you want to pause. I can see the book, but I need the unique ID for the active run to stop it.\n\nIf you can provide the name or ID of the run, I'll take care of it immediately."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02244-39be-76ec-b7c4-0fc8fb858540",
+     "session_id": "01a02244-57cb-76ea-8640-ac24fe6baf3e",
+     "prompt": "Pause the authoring run for this book — stop run.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_review",
+      "composition_diagnostics"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:31.90983+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:32.170233+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:32.152848+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:31.90983+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:32.170233+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:32.152848+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02244-89f4-7941-a442-da9ff61d29d4",
+     "session_id": "01a02244-a65a-76b0-ba8e-5051783778a8",
+     "prompt": "Pause the authoring run for this book — stop run.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_review",
+      "composition_diagnostics"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:52.462529+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:52.719805+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:52.712496+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:52.462529+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:52.719805+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:01:52.712496+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I'm having trouble pausing the current authoring run. It seems there's a conflict with the IDs I'm using. \n\nI'll need to find the correct run ID for this book before I can proceed with pausing it. One moment."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02246-099c-775f-9012-931ee274f931",
+     "session_id": "01a02246-2327-745a-892e-5080166d70c9",
+     "prompt": "Pause the authoring run for this book — stop run.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_review"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": true,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:30.648141+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:30.864861+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:30.857315+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:30.648141+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:30.864861+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:30.857315+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": ""
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02246-679a-7667-b8b7-4792cb0d52a3",
+     "session_id": "01a02246-826a-702f-995b-ce0f51e299ec",
+     "prompt": "Pause the authoring run for this book — stop run.",
+     "called": true,
+     "surfaced": true,
+     "called_tools": [
+      "composition_authoring_run_review",
+      "composition_diagnostics"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:54.683599+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:54.88122+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:54.874525+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:54.683599+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:54.88122+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:54.874525+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I'm sorry, I'm having trouble identifying the specific authoring run you want to pause. To do this, I need the unique ID for the active run.\n\nCould you please provide the **Run ID**? (If you aren't sure, I can try to list all active runs for you first)."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 5,
+   "wrote_count": 0,
+   "suspended_count": 2,
+   "blocked_reason": "BLOCKED, and the reason is a finding rather than a fixture gap. The superseded fix took it from 0/5 to 5/5 called (the model had been calling the legacy composition_authoring_run_pause every time). On 3 of 5 the model then did the right thing and asked the author for the run id. On the other 2 it MINTED A TIER-A CARD carrying a run_id that matches no authoring run — there were zero for the book — while composition_authoring_run_list, proven in batch 16 to answer 'there are none', sat unused on the same wire. The id is structurally valid and was created in the same second as the book, so it is a real-but-wrong id rather than a random one, and neither the nil-UUID nor the whitespace guard can see it. I cannot say WHICH id it was: the throwaway fixtures are torn down, so the row is gone. What is provable is that the author was asked to approve pausing a run that does not exist. The pause path has therefore never been exercised against a real run, which for the tool's whole purpose is the leg that matters."
+  },
+  {
+   "tool": "composition_derivative_edit",
+   "scenario": "composition-derivative-edit",
+   "intent": "write",
+   "falsifier": "REFUTED IF: the model invents a project_id for a derivative that does not exist, OR the reply claims a divergence spec was updated or a derivative archived when there is none, OR it picks `archive` on a prompt whose primary verb is update — the prompt deliberately names both so the CHOICE is observable, and archiving something the author only asked to update would be acting beyond the request.",
+   "answer_expect": null,
+   "falsifier_sha": "cfda12ac40c9b3f7",
+   "ship_audit": {
+    "gate": "NOT REACHED — called 0/5 in the clean arm because the model correctly read the context first and found no derivative to edit. See blocked_reason.",
+    "absent_case": "EXERCISED — the missing object is refused rather than fabricated.",
+    "tenancy": "EXERCISED — a book/project the caller cannot reach is refused 'not found or not accessible'."
+   },
+   "defects": [],
+   "runs": [
+    {
+     "via": "fe_runner",
+     "rep": 0,
+     "book_id": "01a02245-1104-7669-b64c-f8cffd411b6f",
+     "session_id": "01a02245-2c9a-7539-86b2-42701ba01c9d",
+     "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_get_derivative_context"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:27.046129+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:27.324945+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:27.308755+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:27.046129+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:27.324945+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:02:27.308755+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked your project, but it looks like there isn't an active \"what-if\" derivative (dị bản) currently running for this book. \n\nBecause there is no active derivative to update or archive, I can't proceed with those changes. If you intended to work on a specific derivative, please let me know its name or provide the project details!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 1,
+     "book_id": "01a02245-d1c3-7679-8472-0ef5597c7013",
+     "session_id": "01a02245-ecd6-7312-97d1-9645f36a6ff4",
+     "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_get_derivative_context"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:16.361956+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:16.5924+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:16.583935+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:16.361956+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:16.5924+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:16.583935+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot update or archive the divergence spec because there is no active derivative in this project. The current work is the canonical version.\n\nIf you intended to work on a specific derivative, please let me know its name or provide the project ID. Otherwise, if you'd like to create a new derivative (a \"what-if\" version of your story) to experiment with different plot points or character arcs, I can help you with that!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 2,
+     "book_id": "01a02246-3cf3-7d67-a80d-a706c0d6ee58",
+     "session_id": "01a02246-58a7-791a-bb0b-b9db803af95d",
+     "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_get_derivative_context"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:43.777083+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:43.999969+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:43.992433+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:43.777083+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:43.999969+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:03:43.992433+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked your project, but it looks like there isn't an active \"what-if\" derivative (dị bản) currently running for this book. \n\nBecause there is no active derivative to update or archive, I can't proceed with those changes. If you intended to work on a specific branch or if you'd like me to create a new derivative first, just let me know!"
+    },
+    {
+     "via": "fe_runner",
+     "rep": 3,
+     "book_id": "01a02246-8c2a-7afa-bdcb-c3168b3124a2",
+     "session_id": "01a02246-a4a5-7eb5-b216-5fdba48d4550",
+     "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_get_derivative_context"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:04.072365+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:04.257642+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:04.251492+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:04.072365+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:04.257642+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:04.251492+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I cannot update or archive the divergence spec because the current project is not a derivative (it is the canonical work). \n\nIf you intended to work on a specific derivative, please let me know which one, or if you would like to create a new one first."
+    },
+    {
+     "via": "fe_runner",
+     "rep": 4,
+     "book_id": "01a02246-e848-7637-a799-b99f49fe0978",
+     "session_id": "01a02247-0217-70fb-97ec-f92339a6866e",
+     "prompt": "Update the divergence spec for my derivative — archive derivative if it is stale.",
+     "called": false,
+     "surfaced": true,
+     "called_tools": [
+      "composition_get_derivative_context"
+     ],
+     "error": null,
+     "approvals": [],
+     "left_suspended": false,
+     "store": {
+      "before": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:27.656873+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:27.854563+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:27.847927+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      },
+      "after": {
+       "loreweave_book.chapters": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:27.656873+00"
+       },
+       "loreweave_composition.composition_work": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:27.854563+00"
+       },
+       "loreweave_knowledge.knowledge_projects": {
+        "rows": 1,
+        "latest": "2026-08-21 03:04:27.847927+00"
+       },
+       "neo4j.Fact.total": {
+        "rows": 354,
+        "latest": "-"
+       },
+       "neo4j.Fact.project": {
+        "rows": 0,
+        "latest": "-"
+       }
+      }
+     },
+     "store_diff": {},
+     "answer": "I've checked the project, but it looks like there isn't an active derivative (what-if version) currently being tracked for this book. \n\nIf you intended to work on a specific derivative, please let me know its name or the changes you'd like to make, and I can help you create or update it."
+    }
+   ],
+   "surfaced_count": 5,
+   "called_count": 0,
+   "wrote_count": 0,
+   "suspended_count": 0,
+   "blocked_reason": "BLOCKED on a PRECONDITION CHAIN that cannot be broken by design: editing a derivative requires one to exist, and the only way to make one is composition_create_derivative, whose card this loop never approves because deriving is 'only archivable (not undoable)'. Called 0/5 — and that is the model behaving BETTER than before, not worse. In the first arm it called this tool on 2 of 5 and suspended a card to edit a derivative that does not exist. In the re-run it calls composition_get_derivative_context first and answers 'there is no active derivative in this project. The current work is the canonical version' — a correct reading instead of a card for a no-op. I am NOT claiming the superseded fix caused that: it removed two competing siblings (composition_archive_derivative, composition_divergence_spec_update) from the wire, which plausibly helped, but the consumer is stochastic and one A/B does not separate the two. Direct probes confirm the tool's own boundaries: op=restore and op=update_spec on an absent project are refused, and op=archive reports its missing expected_version before anything else."
+  }
+ ]
+}

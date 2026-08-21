@@ -2174,6 +2174,46 @@
    "evidence_file": "docs/eval/toolloop/2026-08-14/batch16-v2.json",
    "evidence_class": "gate-backed",
    "counts_toward_release": true
+  },
+  "composition_canon_rule_edit": {
+   "state": "proven",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch17-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch17-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_create_derivative": {
+   "state": "proven",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "PROVEN by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch17-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 5/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch17-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_decompile_arcs": {
+   "state": "blocked",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch17-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a PRECONDITION CHAIN — its WRITE path cannot be reached from this harness. The engine groups `outline_node` rows of kind='chapter', which are minted by scene_decompile AT IMPORT; a fixture whose chapters come from book_chapter_create has none, so the dry-run legitimately counts 0 and there is nothing to confirm. What this batch DID prove is the no-op half, and it was a defect fixed inside this cycle: before, the tool minted a confirm card titled 'Decompile 0 chapter(s) into ~0 arc(s)' and the model told the author 'I've prepared the arc structure for your book; please confirm the change in the card' on 5 of 5 runs. After, it returns {outcome: no_op, reason: 'no chapters to decompile'} with no token, and the model says 'there are no chapters in the book's outline to group' — 5 of 5, measured. Tenancy is clean (a foreign book_id is refused) and PROPOSE writes nothing (0 arcs after every probe). Proving the create path needs an IMPORTED book, which this fixture cannot build.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch17-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_authoring_run_review": {
+   "state": "blocked",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch17-v2.json. MEASURED: surfaced 5/5, called 5/5, suspended-on-card 2/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED, and the reason is a finding rather than a fixture gap. The superseded fix took it from 0/5 to 5/5 called (the model had been calling the legacy composition_authoring_run_pause every time). On 3 of 5 the model then did the right thing and asked the author for the run id. On the other 2 it MINTED A TIER-A CARD carrying a run_id that matches no authoring run — there were zero for the book — while composition_authoring_run_list, proven in batch 16 to answer 'there are none', sat unused on the same wire. The id is structurally valid and was created in the same second as the book, so it is a real-but-wrong id rather than a random one, and neither the nil-UUID nor the whitespace guard can see it. I cannot say WHICH id it was: the throwaway fixtures are torn down, so the row is gone. What is provable is that the author was asked to approve pausing a run that does not exist. The pause path has therefore never been exercised against a real run, which for the tool's whole purpose is the leg that matters.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch17-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
+  },
+  "composition_derivative_edit": {
+   "state": "blocked",
+   "cycle": "batch-14 (2026-08-14)",
+   "note": "BLOCKED by scripts/toolloop/gate.py against docs/eval/toolloop/2026-08-14/batch17-v2.json. MEASURED: surfaced 5/5, called 0/5, suspended-on-card 0/5, owning store moved on 0/5 run(s). ship_audit and falsifier are on file in the same entry. BLOCKED REASON: BLOCKED on a PRECONDITION CHAIN that cannot be broken by design: editing a derivative requires one to exist, and the only way to make one is composition_create_derivative, whose card this loop never approves because deriving is 'only archivable (not undoable)'. Called 0/5 — and that is the model behaving BETTER than before, not worse. In the first arm it called this tool on 2 of 5 and suspended a card to edit a derivative that does not exist. In the re-run it calls composition_get_derivative_context first and answers 'there is no active derivative in this project. The current work is the canonical version' — a correct reading instead of a card for a no-op. I am NOT claiming the superseded fix caused that: it removed two competing siblings (composition_archive_derivative, composition_divergence_spec_update) from the wire, which plausibly helped, but the consumer is stochastic and one A/B does not separate the two. Direct probes confirm the tool's own boundaries: op=restore and op=update_spec on an absent project are refused, and op=archive reports its missing expected_version before anything else.",
+   "evidence_file": "docs/eval/toolloop/2026-08-14/batch17-v2.json",
+   "evidence_class": "gate-backed",
+   "counts_toward_release": true
   }
  },
  "defects": {
@@ -2413,6 +2453,20 @@
    "boundary": "Drafts are OWNER-ONLY. raw_search.py already enforced that by downgrading a non-owner's surface=all to canon. The two fixed tools resolve project through the OWNER-KEYED projects_repo.get(ctx.user_id, ...), so the caller IS the owner. The READER-facing sites (tools/reader_tools.py, wiki/context.py) keep the canon default deliberately and a test pins that, because flipping them would leak unpublished drafts to readers.",
    "second_half": "The payload lied too: an empty result was reported as 'this project has no indexed memory yet' for ANY reason, so 'I found nothing' reached the model as 'nothing is indexed', and reached the author as 'it hasn't been established in the story yet'. Now: 'no stored knowledge matched this query', with the index caveat appended only when the semantic leg actually reported not_indexed.",
    "live_result": "memory_search re-run K=5: 5 of 5 replies carry 'low tide', none states a false absence, no silent turns — against 1 of 3 correct before. story_search verified fixed by direct probe and returned to in_cycle for its own live run."
+  },
+  "D-SUPERSEDED-TOOL-COMPETES-WITH-ITS-REPLACEMENT": {
+   "state": "fixed",
+   "found": "2026-08-14",
+   "measured": "Of the 54 distinct tools advertised across batch 17, 5 were legacy and every one was the direct predecessor of a tool under test. The model called the predecessor on 3 of 5 scenarios, so three unified tools scored 0/5 with nothing wrong with them.",
+   "ab": "A/B on the same scenarios after the fix: composition_canon_rule_edit 0/5 -> 5/5 called (and it now calls composition_list_canon_rules first, resolving the rule's TEXT to an id); composition_authoring_run_review 0/5 -> 5/5 called. composition_derivative_edit went 2/5 -> 0/5, which is BETTER behaviour, not worse: it now reads the context and reports there is no derivative instead of minting a card to edit one that does not exist. NOT claimed as caused by the fix — the consumer is stochastic and one A/B cannot separate that from noise.",
+   "root_cause": "CAT-4's exclusion was applied in search_catalog() and the domain hot-seed but not to the turn catalog actually advertised — a third reach-path. The answerability matcher pulls the sibling in because it shares the user's vocabulary with its replacement, and the older, more specific name wins.",
+   "boundary": "Only dropped when the named replacement is in the SAME catalog. 31 of the 117 legacy tools name no successor (book_create, book_chapter_publish, book_chapter_delete) and are left alone; 0 of the remaining 86 have a dangling superseded_by. Also gave pinned_legacy_tools its first consumer on the turn path."
+  },
+  "D-DECOMPILE-CONFIRMS-A-NO-OP": {
+   "state": "fixed",
+   "found": "2026-08-14",
+   "measured": "composition_decompile_arcs minted a confirm card titled 'Decompile 0 chapter(s) into ~0 arc(s)' with dry_run {chapters: 0, would_create_arcs: 0}, and the model told the author 'I've prepared the arc structure for your book; please confirm the change in the card' on 5 of 5 runs. After the fix it returns {outcome: no_op, reason: 'no chapters to decompile'} with no token and the model says 'there are no chapters in the book's outline to group' — 5 of 5.",
+   "control": "The ZERO was correct and I chased that before touching it. The engine groups outline_node rows minted by scene_decompile AT IMPORT; the fixture's chapters came from book_chapter_create, which does not create them. Three controls: stable across three attempts with delays (not a sync lag), composition_package_tree on the same book reported chapter_count=3 (the service can see the book), and the engine reads the same rows as the dry-run (pinned by a test, so the card can never promise work the engine will not do)."
   }
  },
  "deferred_questions": {
@@ -2873,14 +2927,14 @@
  "progress": {
   "_note": "Counted from this ledger's own rows, never typed. in_cycle is NOT terminal and is not counted as concluded.",
   "tools_declared": 315,
-  "tools_concluded": 104,
+  "tools_concluded": 109,
   "tools_in_cycle": 0,
-  "tools_proven": 82,
-  "tools_blocked": 22,
+  "tools_proven": 84,
+  "tools_blocked": 25,
   "defects_proven": 23,
   "defects_open": 0,
   "deferred_questions": 7,
-  "last_batch": "batch-14 (2026-08-14)",
+  "last_batch": "batch-17 (2026-08-14)",
   "evidence_split": {
    "gate_backed": 62,
    "prose_note_pre_gate": 30,
@@ -2902,7 +2956,8 @@
   {
    "id": "OBS-MODEL-WILL-NOT-LOOK-UP-AN-ID",
    "occurrences": [
-    "2026-08-14, batch 15, composition_arc_template_edit, 5 of 5 runs on a clean K=5. Asked to archive a template BY NAME ('Throwaway Loop Skeleton') that the seed had really created, the model declined every time — 'I can't archive that template by its name alone. I need its unique ID' — and asked the author for it. DECLINING BEATS GUESSING and the store was untouched, so this is not a defect in the tool. What makes it an observation is that the supplier EXISTS and works: composition_arc_template_list returns the account's templates with their ids, one call away, and I verified it directly. The model asked the human for a UUID it could have looked up. Same shape as the earlier instances, now on a Tier-W tool where the consequence is that the confirm card never mints at all — 0 of 5 runs raised one, so the gate leg cannot be exercised through the model."
+    "2026-08-14, batch 15, composition_arc_template_edit, 5 of 5 runs on a clean K=5. Asked to archive a template BY NAME ('Throwaway Loop Skeleton') that the seed had really created, the model declined every time — 'I can't archive that template by its name alone. I need its unique ID' — and asked the author for it. DECLINING BEATS GUESSING and the store was untouched, so this is not a defect in the tool. What makes it an observation is that the supplier EXISTS and works: composition_arc_template_list returns the account's templates with their ids, one call away, and I verified it directly. The model asked the human for a UUID it could have looked up. Same shape as the earlier instances, now on a Tier-W tool where the consequence is that the confirm card never mints at all — 0 of 5 runs raised one, so the gate leg cannot be exercised through the model.",
+    "2026-08-14, batch 17, composition_authoring_run_review, 2 of 5 — and this instance is WORSE than the others, because the model did not ask, it FABRICATED. It minted a Tier-A card carrying run_id=01a02244-3a86-… for a book that had ZERO authoring runs, while composition_authoring_run_list — proven in batch 16 to answer 'there are none' — sat unused on the same wire. The id is structurally valid and was created in the same second as the book, so it is a real-but-wrong id (most likely the project or a chapter) rather than a random one, which is exactly why neither the nil-UUID nor the whitespace guard can see it. The other 3 of 5 asked the author for the id, which is the right answer. The author was asked to approve pausing a run that does not exist."
    ]
   },
   {
