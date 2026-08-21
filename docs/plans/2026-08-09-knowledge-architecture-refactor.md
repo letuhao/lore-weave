@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: implement `AgeGraphStore.merge_event` + `.update_event_fields` — T57 refuted the blocker; 5 conformance skips become assertions.**
+**RESUME: `merge_fact` on AGE — the last event/fact refusal. T58 shipped the event writes; the same SQL-host method applies.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -2549,6 +2549,100 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   4216 passed — knowledge-service unit suite (checklist tuple now names all seven new methods)
   ```
 
+  ### ✅ T58 2026-08-22 — **AGE writes events.** `_EVENT_WRITE_REFUSERS` is EMPTY, and five skips became assertions
+
+  ```
+  conformance, all four adapters:   102 passed / 59 skipped  ->  116 passed / 49 skipped
+  age alone:                         25 passed              ->   36 passed
+  knowledge unit suite: 4296         port-adoption-gate 54/19/2, class (d) 34/34 (unchanged)
+  ```
+
+  `merge_event` and `update_event_fields` are implemented on `AgeGraphStore`. T57 refuted the
+  Blocker; this is the build, and the five behavioural rules that skipped for `age` now run:
+  min-wins `event_order`, the author-rename rules, the OCC clash, archive idempotence, and the
+  new union rule below.
+
+  📐 **No `ON CREATE` / `ON MATCH`, and none needed.** Every assignment is ONE expression that
+  degenerates correctly on create — min-wins against a null order **is** the incoming order, a
+  union against an absent list **is** the incoming list. Proven both ways on AGE 1.7.0
+  including the re-run, so the create path and the merge path are the same statement rather
+  than two that can drift.
+
+  🔴 **`WITH … WHERE` AFTER `SET` SILENTLY DISCARDS THE WRITE ON AGE.** The first cut mirrored
+  the Neo4j arm's trailing tenancy filter (`SET … WITH e WHERE e.user_id = $u RETURN e`). The
+  node was created, the query returned zero rows, and **every assigned property came back
+  empty — with no error**:
+
+  ```
+  A. MERGE + SET + WITH…WHERE + RETURN     -> (0 rows)
+  B. the same without the WITH filter      -> {"id":"x2","user_id":"u1"}   ✅
+  C. read A's node back                    -> user_id is EMPTY   <- the SET never landed
+  ```
+
+  Tenancy moved into the MERGE key instead, which is safe because `event_id()` already hashes
+  `user_id` into the id, so the pair cannot disagree. **This is the most dangerous AGE
+  behaviour found so far** — a silent partial write, not a refusal — and it is exactly what
+  §1.4's *"refuse rather than half-implement"* rule exists to keep out of the codebase.
+
+  🎯 **A BITE FOUND A RULE THAT DID NOT EXIST.** Mutating the adapter to REPLACE participants
+  instead of unioning them selected **no test at all** — `merge_event`'s multi-source contract
+  says *"participants union-merge (no duplicates)"* and, on any adapter, nothing asserted it.
+  `test_a_re_mention_UNION_MERGES_participants_instead_of_replacing_them` now does, on all
+  four, and the case is deliberately **overlapping** (`{Mei,Kai}` then `{Kai,Rin}`): a disjoint
+  second mention passes under both union and concatenation. It also pins that an EMPTY mention
+  does not wipe the list — silence is not erasure.
+
+  ⚠️ **AND EMPTYING THE SET MADE ITS OWN GUARD UNFAILABLE.** `test_age_REFUSES_the_event_writes`
+  read `if _which(store) not in _EVENT_WRITE_REFUSERS: skip` — correct while AGE refused, and a
+  permanent skip on **every** adapter the moment it stopped. A test that skips on all four
+  parameters still prints as coverage, which is the exact shape it was written to prevent, one
+  level up. Rewritten as
+  `test_the_event_write_REFUSERS_SET_is_honest_in_BOTH_directions`: a listed adapter must
+  really raise, an unlisted one must really work. The second half is what has teeth today.
+
+  ⚠️ **The skips were hiding a second gap: `_to_event` dropped SEVEN fields**, including
+  `version` and `archived_at` — both asserted by rules that skipped for `age` only because they
+  need `merge_event` to create the row. **A skip does not just hide the operation it names; it
+  hides every assertion downstream of it.**
+
+  **BITE ×4:**
+
+  ```
+  17. latest-wins instead of min-wins        FAILED …keeps_the_EARLIEST_reading_position[age]
+  18. union becomes replace                  FAILED …UNION_MERGES_participants…[age]
+  19. the OCC version check dropped          Failed: DID NOT RAISE VersionMismatchError
+  20. merge_event refuses again, set empty   Failed: "age is NOT in _EVENT_WRITE_REFUSERS but
+                                                     still refuses … five behavioural rules
+                                                     above are passing vacuously"
+  ```
+
+  🐞 **I destroyed the implementation mid-batch and had to rebuild it.** Reaching for
+  `git checkout -- app/adapters/age_graph_store.py` to undo a bite discarded the whole
+  uncommitted file, not the one line. Recovered from the scratch block it was assembled from,
+  and every later bite used a plain `cp` backup. **`git checkout` is not an undo for work that
+  has never been committed** — the same category as the CRLF line-shift and the piped exit
+  code earlier today: three harness errors, each of which produced output that read like a
+  finding about the code.
+
+  📐 **OCC is a compare-and-swap, not a lock.** The Neo4j arm uses
+  `FOREACH (_ IN CASE … | SET …)`, which AGE does not have. Two statements in one transaction
+  instead, with the UPDATE carrying `WHERE coalesce(e.version,1) = <observed>` — a writer that
+  loses a race changes nothing and gets `VersionMismatchError` rather than overwriting the
+  winner. The deferral asked for a *same-statement* snapshot; 2026-08-11 had already shown the
+  single-statement form is the WRONG one on AGE. **Same transaction was always the requirement.**
+
+  ⛔ **What is still refused, and correctly:** `merge_fact` — a different deferral, its own
+  `test_age_REFUSES_the_fact_write` still runs and still passes. AGE's remaining 14 skips are
+  that plus the `neo4j` parameter, which needs `TEST_NEO4J_URI`.
+
+  **QC (a) gates:** knowledge unit **4296**; `port-adoption-gate` 54/19/2 and class (d) 34/34
+  unchanged — this is adapter work, not migration; `graph-port-gate` PASS (309 scanned);
+  `knowledge-access-gate` PASS; four plan gates green.
+  **QC (b) the seam:** ✅ the conformance suite against a **real AGE 1.7.0** on the product's
+  own Postgres image — 36 `[age]` assertions, not skips.
+  **QC (c) real data:** events created, re-merged, renamed, archived and version-clashed in a
+  real AGE graph; the participants union asserted on stored values read back.
+
   ### 🔴 T57 2026-08-22 — **`D-AGE-EVENT-WRITE-UNIMPLEMENTED` is REFUTED**, and the probe that refutes it was written eleven days ago
 
   📐 **PO 2026-08-22:** *"i remember we already audit and seem like everything is stale and never
@@ -2616,7 +2710,7 @@ The substrate already works; nothing reads it. `composition-service` passes `as_
   **QC (c) real data:** the four result sets above are pasted from the run, not described;
   `["a","b","c"]` is the value the deferral said could not be produced without APOC.
 
-  ### 🔻 DEFERRAL `D-AGE-EVENT-WRITE-UNIMPLEMENTED`
+  ### ✅ ~~DEFERRAL `D-AGE-EVENT-WRITE-UNIMPLEMENTED`~~ — **DISCHARGED 2026-08-22 (T58)**: both methods implemented, `_EVENT_WRITE_REFUSERS` is empty, five skips became assertions.
 
   | | |
   |---|---|

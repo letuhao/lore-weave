@@ -61,7 +61,10 @@ from uuid import uuid4
 from loreweave_extraction.canonical import canonicalize_entity_name
 
 from app.db.neo4j_repos.entities import Entity, EntityDetail
-from app.db.neo4j_repos.events import Event
+from app.db.neo4j_repos.canonical import canonicalize_text as _canonicalize_text
+# `event_id` is aliased because `update_event_fields` takes a PARAMETER of that name;
+# an unaliased import would be shadowed inside the method that needs it most.
+from app.db.neo4j_repos.events import Event, event_id as _event_id
 from app.domain.graph_labels import COUNTABLE_LABELS
 from app.domain.graph_models import Fact
 from app.db.neo4j_repos.relations import Relation
@@ -145,6 +148,18 @@ def _to_event(props: dict) -> Event:
             "chapter_id": props.get("chapter_id"),
             "event_order": props.get("event_order"),
             "chronological_order": props.get("chronological_order"),
+            # ⚠️ These seven were MISSING, and the event-write skips hid it. `version` and
+            # `archived_at` are asserted by conformance rules that skipped for `age` because
+            # they need `merge_event` to create the row -- so un-skipping the writes is what
+            # surfaced them. A skip does not only hide the operation it names; it hides every
+            # assertion downstream of it.
+            "event_date_iso": props.get("event_date_iso"),
+            "time_cue": props.get("time_cue"),
+            "participants": props.get("participants") or [],
+            "source_types": props.get("source_types") or [],
+            "confidence": props.get("confidence") or 0.0,
+            "archived_at": props.get("archived_at"),
+            "version": props.get("version") or 1,
         }
     )
 
@@ -883,12 +898,93 @@ class AgeGraphStore:
         source_type: str = "book_content",
         confidence: float = 0.0,
     ) -> Event:
-        raise NotImplementedError(
-            "AgeGraphStore.merge_event — see D-AGE-EVENT-WRITE-UNIMPLEMENTED. The ON MATCH "
-            "branch (min-wins event_order for CM4 spoiler-safety, union-merged participants, "
-            "upgrade-not-overwrite summary) has no APOC-free AGE equivalent yet. Refusing "
-            "rather than half-merging: a wrong event_order is silent in both directions."
-        )
+        """Idempotent upsert, keyed exactly as the Neo4j arm keys it.
+
+        AGE has no `ON CREATE` / `ON MATCH`, so every assignment below is written as ONE
+        expression that degenerates correctly on create — `coalesce(e.x, …)` for create-only
+        fields, and for the accumulating ones the same expression that merges also produces
+        the initial value when the property is absent. That is not a trick: min-wins against
+        a null order IS the incoming order, and a union against an absent list IS the
+        incoming list. Proven both ways on AGE 1.7.0 in T58, including the re-run.
+
+        🔴 `D-AGE-EVENT-WRITE-UNIMPLEMENTED` said this had "no APOC-free AGE equivalent".
+        Refuted by T57/T58: the list union is a plain Cypher list comprehension AGE accepts,
+        so it needs neither APOC, nor the SQL host, nor a read-modify-write — and therefore
+        no lock. The measurement is `docs/measurements/2026-08-22-age-event-write-probe.md`.
+
+        ⚠️ **Tenancy is in the MERGE KEY, not in a trailing filter, and that is not a style
+        choice.** The first cut wrote `… SET … WITH e WHERE e.user_id = $u RETURN e`, mirroring
+        the Neo4j arm. On AGE 1.7.0 a `WITH` clause after `SET` **silently discards the SET** —
+        measured: the node was created and every assigned property came back empty, with no
+        error. Keying the MERGE on `(id, user_id)` is safe because `event_id()` already hashes
+        `user_id` into the id, so the pair cannot disagree.
+        """
+        if not title:
+            raise ValueError("title must be a non-empty string")
+        if not source_type:
+            raise ValueError("source_type must be a non-empty string")
+        eid = _event_id(
+            user_id=user_id, project_id=project_id, chapter_id=chapter_id, title=title)
+        canonical_title = _canonicalize_text(title)
+        # R1, mirroring the repo: order-preserving dedup BEFORE the write, so a sloppy
+        # extractor passing ["a","a","b"] cannot land a duplicate on the create path. The
+        # union below only dedups against what is already stored.
+        deduped = list(dict.fromkeys(participants or []))
+        # R4: "" → null so the coalesce reads it as "no new value" rather than as a
+        # deliberate clear. Same for time_cue.
+        norm_summary = summary or None
+        norm_time_cue = time_cue or None
+        stamp = datetime.now(timezone.utc).isoformat()
+        inc = _lit(deduped)
+        cy = f"""
+        MERGE (e:Event {{id: {_lit(eid)}, user_id: {_lit(user_id)}}})
+        SET e.project_id         = coalesce(e.project_id, {_lit(project_id)}),
+            e.title              = coalesce(e.title, {_lit(title)}),
+            e.canonical_title    = coalesce(e.canonical_title, {_lit(canonical_title)}),
+            e.chapter_id         = coalesce(e.chapter_id, {_lit(chapter_id)}),
+            e.evidence_count     = coalesce(e.evidence_count, 0),
+            e.mention_count      = coalesce(e.mention_count, 0),
+            e.version            = coalesce(e.version, 1),
+            e.created_at         = coalesce(e.created_at, {_lit(stamp)}),
+            e.summary            = coalesce(e.summary, {_lit(norm_summary)}),
+            e.time_cue           = coalesce(e.time_cue, {_lit(norm_time_cue)}),
+            e.chronological_order = coalesce(e.chronological_order,
+                                             {_lit(chronological_order)}),
+            e.event_order = CASE
+                WHEN {_lit(event_order)} IS NULL THEN e.event_order
+                WHEN e.event_order IS NULL THEN {_lit(event_order)}
+                WHEN {_lit(event_order)} < e.event_order THEN {_lit(event_order)}
+                ELSE e.event_order END,
+            e.event_date_iso = CASE
+                WHEN {_lit(event_date_iso)} IS NULL THEN e.event_date_iso
+                WHEN e.event_date_iso IS NULL THEN {_lit(event_date_iso)}
+                WHEN size({_lit(event_date_iso)}) > size(e.event_date_iso)
+                    THEN {_lit(event_date_iso)}
+                ELSE e.event_date_iso END,
+            e.participants = CASE
+                WHEN size({inc}) = 0 THEN coalesce(e.participants, [])
+                ELSE coalesce(e.participants, [])
+                     + [p IN {inc} WHERE NOT p IN coalesce(e.participants, [])] END,
+            e.source_types = CASE
+                WHEN e.source_types IS NULL THEN [{_lit(source_type)}]
+                WHEN {_lit(source_type)} IN e.source_types THEN e.source_types
+                ELSE e.source_types + [{_lit(source_type)}] END,
+            e.confidence = CASE
+                WHEN e.confidence IS NULL THEN {_lit(confidence)}
+                WHEN {_lit(confidence)} > e.confidence THEN {_lit(confidence)}
+                ELSE e.confidence END,
+            e.updated_at = {_lit(stamp)}
+        RETURN e
+        """
+        rows = await self._run(cy)
+        if not rows:
+            # MERGE always returns its node, so an empty result means the write did not
+            # happen. Raising beats returning a fabricated Event: the caller would persist
+            # it as if the merge had landed.
+            raise RuntimeError(
+                f"merge_event: AGE returned no row for event {eid} — the write did not land"
+            )
+        return _to_event(_props(rows[0]["v"]))
 
     async def update_event_fields(
         self,
@@ -901,11 +997,78 @@ class AgeGraphStore:
         event_date_iso: str | None,
         expected_version: int,
     ) -> tuple[Event | None, dict | None]:
-        raise NotImplementedError(
-            "AgeGraphStore.update_event_fields — see D-AGE-EVENT-WRITE-UNIMPLEMENTED. Needs "
-            "the same-statement pre-edit `before` snapshot the OCC correction event is "
-            "written from; without it a caller would silently lose the audit half."
-        )
+        """User-edit with optimistic concurrency; returns `(event, before)`.
+
+        The Neo4j arm does this in one statement with `FOREACH (_ IN CASE … | SET …)`, a
+        conditional-write idiom AGE does not have. Two statements in ONE TRANSACTION instead,
+        which is what `D-AGE-EVENT-WRITE-UNIMPLEMENTED` actually needed — it says
+        "same-statement", and the 2026-08-11 construct probe had already established that the
+        single-statement form is the WRONG one on AGE: Postgres does not guarantee evaluation
+        order inside a CTE, and it returned `was_created=false` for a node that did not exist.
+        Same transaction is the requirement; same statement was never it.
+
+        The version check is a compare-and-swap, not a lock: the UPDATE carries
+        `WHERE coalesce(e.version, 1) = <observed>`, so a writer that lost a race updates
+        nothing and gets `VersionMismatchError` rather than silently overwriting the winner.
+        """
+        from app.db.repositories import VersionMismatchError
+
+        canonical_title = _canonicalize_text(title) if title is not None else None
+        stamp = datetime.now(timezone.utc).isoformat()
+        read = f"""
+        MATCH (e:Event {{id: {_lit(event_id)}}})
+        WHERE e.user_id = {_lit(user_id)}
+        RETURN e
+        """
+
+        def _wrap(cy: str, cols: str) -> str:
+            tag = self._dollar_tag(cy)
+            return f"SELECT * FROM cypher('{self._graph}', ${tag}${cy}${tag}$) as ({cols})"
+
+        async with self._pool.acquire() as conn:
+            async with conn.transaction():
+                rows = await conn.fetch(_wrap(read, "v agtype"))
+                if not rows:
+                    return None, None
+                props = _props(rows[0]["v"])
+                current = props.get("version") or 1
+                # §6.3 — the pre-edit snapshot the correction event is written from. Taken
+                # from the SAME transaction as the write, so it cannot record a state the
+                # edit did not start from.
+                before = {
+                    "title": props.get("title"),
+                    "summary": props.get("summary"),
+                    "time_cue": props.get("time_cue"),
+                    "event_date_iso": props.get("event_date_iso"),
+                    "participants": props.get("participants") or [],
+                }
+                if current != expected_version:
+                    raise VersionMismatchError(_to_event(props))
+                write = f"""
+                MATCH (e:Event {{id: {_lit(event_id)}}})
+                WHERE e.user_id = {_lit(user_id)}
+                  AND coalesce(e.version, 1) = {_lit(current)}
+                SET e.title = CASE WHEN {_lit(title)} IS NULL
+                                   THEN e.title ELSE {_lit(title)} END,
+                    e.canonical_title = CASE WHEN {_lit(canonical_title)} IS NULL
+                                   THEN e.canonical_title ELSE {_lit(canonical_title)} END,
+                    e.summary = CASE WHEN {_lit(summary)} IS NULL
+                                   THEN e.summary ELSE {_lit(summary)} END,
+                    e.time_cue = CASE WHEN {_lit(time_cue)} IS NULL
+                                   THEN e.time_cue ELSE {_lit(time_cue)} END,
+                    e.event_date_iso = CASE WHEN {_lit(event_date_iso)} IS NULL
+                                   THEN e.event_date_iso ELSE {_lit(event_date_iso)} END,
+                    e.version = {_lit(current + 1)},
+                    e.updated_at = {_lit(stamp)}
+                RETURN e
+                """
+                written = await conn.fetch(_wrap(write, "v agtype"))
+                if not written:
+                    # Someone else bumped the version between the read and the write. The
+                    # CAS refused, which is the whole point — report the clash rather than
+                    # returning the row we failed to change.
+                    raise VersionMismatchError(_to_event(props))
+                return _to_event(_props(written[0]["v"])), before
 
     async def events_in_window(
         self,

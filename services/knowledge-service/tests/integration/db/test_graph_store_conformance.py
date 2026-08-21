@@ -563,7 +563,13 @@ async def test_an_authored_relation_carries_its_story_position(store):
 
 #: AGE refuses the two event WRITES (D-AGE-EVENT-WRITE-UNIMPLEMENTED). The refusal is
 #: itself asserted below, so "AGE is skipped here" can never quietly become "AGE passed".
-_EVENT_WRITE_REFUSERS = {"age"}
+# T58 (2026-08-22): EMPTY. `D-AGE-EVENT-WRITE-UNIMPLEMENTED` claimed the ON MATCH branch
+# had "no APOC-free AGE equivalent"; T57/T58 measured that the list union is a plain
+# Cypher list comprehension AGE accepts, so `merge_event` and `update_event_fields` are
+# implemented and the five skips below became assertions. Kept as a set rather than
+# deleted: it is the mechanism by which a future refusal stays VISIBLE instead of being
+# a silently-passing adapter, and the guard test below pins that it is honest either way.
+_EVENT_WRITE_REFUSERS: set[str] = set()
 
 
 
@@ -579,6 +585,46 @@ async def _an_event(store, u, p, title="The Betrayal", **kw):
     return await store.merge_event(
         user_id=u, project_id=p, title=title, chapter_id="ch-1",
         source_type="chapter", **kw)
+
+
+@pytest.mark.asyncio
+async def test_a_re_mention_UNION_MERGES_participants_instead_of_replacing_them(store):
+    """`merge_event`'s multi-source contract says participants union-merge with no duplicates,
+    and until 2026-08-22 **no rule asserted it on any adapter**.
+
+    The gap was found by a BITE, not by reading: mutating the AGE adapter to overwrite the
+    stored list instead of unioning it selected no test at all. A semantic three adapters are
+    required to share, with nothing pinning it, is the shape `_EVENT_WRITE_REFUSERS` exists to
+    make impossible one level up.
+
+    Replacement is the dangerous direction and it is silent: chapter 2 re-mentions the event
+    naming only Kai, and Mei — extracted from chapter 1 — disappears from the event with no
+    error, no log, and a perfectly plausible-looking row.
+    """
+    if _which(store) in _EVENT_WRITE_REFUSERS:
+        pytest.skip("AGE refuses this write — see test_age_REFUSES_the_event_writes")
+    u, p, _ = _ids()
+    first = await _an_event(store, u, p, participants=["Mei", "Kai"])
+    assert sorted(first.participants) == ["Kai", "Mei"], (
+        "the create path lost a participant before any merge happened"
+    )
+    # Overlapping, not disjoint: 'Kai' must not appear twice, which is what tells a union
+    # apart from a concatenation. A disjoint second mention passes under both.
+    second = await _an_event(store, u, p, participants=["Kai", "Rin"])
+    assert second.id == first.id, "merge_event minted a second node for the same key"
+    assert sorted(second.participants) == ["Kai", "Mei", "Rin"], (
+        f"participants are {second.participants!r} — a re-mention must UNION: 'Mei' came "
+        f"from the earlier mention and must survive, and 'Kai' must not be duplicated"
+    )
+
+    # An EMPTY mention must not wipe the list either. `merge_event` treats "no participants
+    # supplied" as no new information, not as a deliberate clear — the same reason `summary`
+    # normalizes "" to None.
+    third = await _an_event(store, u, p, participants=[])
+    assert sorted(third.participants) == ["Kai", "Mei", "Rin"], (
+        f"an empty participants list CLEARED the stored ones ({third.participants!r}) — "
+        f"a mention that names nobody is silence, not an erasure"
+    )
 
 
 @pytest.mark.asyncio
@@ -672,23 +718,50 @@ async def test_archive_event_is_idempotent(store):
 
 
 @pytest.mark.asyncio
-async def test_age_REFUSES_the_event_writes_rather_than_answering_wrongly(store):
-    """The skips above are only honest while the refusal is REAL.
+async def test_the_event_write_REFUSERS_SET_is_honest_in_BOTH_directions(store):
+    """`_EVENT_WRITE_REFUSERS` must describe reality, whichever way it points.
 
-    Without this, `_EVENT_WRITE_REFUSERS` would be a way to make AGE's gap invisible — the
-    suite would report green for three adapters while one silently did nothing. The port's
-    rule is that an operation which answers wrongly is worse than one that refuses, and an
-    empty return here would read as "no such event" to every caller.
+    ⚠️ **Rewritten 2026-08-22 (T58) because emptying the set made the old version
+    unfailable.** It read `if _which(store) not in _EVENT_WRITE_REFUSERS: skip` — correct while
+    AGE refused, and a permanent skip for every adapter the moment AGE stopped. A test that
+    skips on all four parameters still prints as coverage, which is precisely the shape it was
+    written to prevent, one level up.
+
+    So it now asserts the set both ways:
+
+    * a listed adapter must REALLY raise — otherwise the set is a way to hide a silent no-op,
+      the suite reporting green for three adapters while one does nothing;
+    * an UNLISTED adapter must really implement it — otherwise a `NotImplementedError`
+      re-appearing (a bad rebase, a half-finished refactor) would turn five behavioural rules
+      into five silent passes without anyone editing this file.
+
+    The second half is what has teeth today, and it is what the old version could not say.
     """
-    if _which(store) not in _EVENT_WRITE_REFUSERS:
-        pytest.skip("only the refusing adapters are pinned here")
     u, p, _ = _ids()
-    with pytest.raises(NotImplementedError, match="D-AGE-EVENT-WRITE-UNIMPLEMENTED"):
-        await store.merge_event(user_id=u, project_id=p, title="X", chapter_id="ch-1")
-    with pytest.raises(NotImplementedError, match="D-AGE-EVENT-WRITE-UNIMPLEMENTED"):
+    listed = _which(store) in _EVENT_WRITE_REFUSERS
+    if listed:
+        with pytest.raises(NotImplementedError, match="D-AGE-EVENT-WRITE-UNIMPLEMENTED"):
+            await store.merge_event(user_id=u, project_id=p, title="X", chapter_id="ch-1")
+        with pytest.raises(NotImplementedError, match="D-AGE-EVENT-WRITE-UNIMPLEMENTED"):
+            await store.update_event_fields(
+                user_id=u, event_id="x", title=None, summary=None, time_cue=None,
+                event_date_iso=None, expected_version=1)
+        return
+
+    # Not listed ⇒ it must actually work. `NotImplementedError` is the only failure this
+    # rule judges; a genuine bug belongs to the behavioural rules above, which run for
+    # exactly the adapters that reach this branch.
+    try:
+        ev = await store.merge_event(user_id=u, project_id=p, title="X", chapter_id="ch-1")
         await store.update_event_fields(
-            user_id=u, event_id="x", title=None, summary=None, time_cue=None,
-            event_date_iso=None, expected_version=1)
+            user_id=u, event_id=ev.id, title="Y", summary=None, time_cue=None,
+            event_date_iso=None, expected_version=ev.version)
+    except NotImplementedError as exc:
+        pytest.fail(
+            f"{_which(store)} is NOT in _EVENT_WRITE_REFUSERS but still refuses the event "
+            f"writes ({exc}) — five behavioural rules above are passing vacuously. Either "
+            f"implement it or put the adapter back in the set, where the skips are visible."
+        )
 
 
 # ── the paginated browse (T17 A3) ────────────────────────────────────────────
