@@ -43,11 +43,11 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 48 of 88 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 49 of 89 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/35) · `T46` (6/10) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/35) · `T46` (7/11) · `T48` (1/2) · `T49`
 
-> ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
+> ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
 > `(n/m)` counts **evidence blocks**, not sub-tasks — the `###`/`####` headings a row has accumulated and how many are ✅. It is a progress signal, not a contract: the row is done when its own criteria are met, not at `m/m`.
 >
@@ -6148,7 +6148,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `Lâm Trạch -[betrayed]-> Lâm Uyên` ranks **11 of 20** rather than being cut. <!-- doc-language-gate: ok -- stored entity names, as above -->
   A synthetic fixture would not have caught this; the 20-of-24 ratio is a property of a real cast.
 
-  ### 🔻 DEFERRAL `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` — superseded; kept for the record
+  ### ~~DEFERRAL~~ `D-QC5-ACCEPTANCE-BOOK-ROLES-UNPLACED` — **CLOSED 2026-08-11 by its own body, marker fixed 2026-08-21 (T46m) and the measurement re-run.**
 
   | | |
   |---|---|
@@ -14690,6 +14690,41 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a) gates:** composition unit **3634 → 3636**; plan gates green. **QC (b):** N/A because no
   service seam changed. **QC (c) real data:** N/A — this is a shape invariant; the evidence is the
   two key sets and the bites.
+
+  ### ✅ T46m 2026-08-21 — **a fifth stale marker, and its own measurement now reads better than when it was written**
+
+  ```
+  the deferral's own one-command re-run, dev graph, project 019f9f41:
+    edges 42  placed 32        (was 25 / 13 on 2026-08-11 — placement 52% -> 76%)
+    event-subject RELATES_TO: 0   <- the malformed edge (b) cites is GONE
+  QC-5 span, OPEN deferral headings:  12 -> 4 -> 3
+  ```
+
+  The heading read `🔻 DEFERRAL` while the block's own title says *"superseded; kept for the
+  record"* and its `Retry when` opens *"~~(a) lands.~~ **CLOSED 2026-08-11, same session.**"* T46h
+  found four of these; this is the fifth, and its keyword heuristic missed it because the closure
+  sits behind a strike-through inside the field rather than at its head. Read, not matched.
+
+  ✅ **(a) is closed and has improved since.** It was *"relations must be written WITH a story
+  position"*; the fix landed 2026-08-11 and the deferral names the re-run as its mechanism. Run
+  today: **32 of 42** edges carry `valid_from_ordinal`, against **13 of 25** when the block was
+  written. More edges, and a higher share of them placed.
+
+  🎯 **(b)'s cited symptom is now absent from the graph entirely.** It was an
+  event-phrase-as-entity subject on a `betrayed` edge — and the deferral had already reassigned it
+  (*"it belongs to the extractor's over-extraction class, not here"*). Measured: **zero**
+  `RELATES_TO` edges in this project have an `kind:'event'` subject. The entity behind it was one
+  of the eighteen the zero-evidence cascade removed during today's re-extraction (T25d), so the
+  example is gone as a side effect of a run made for another reason.
+
+  ⛔ **Ten edges remain unplaced (42 − 32), and that is NOT this row's claim to make.** The
+  deferral's concern was the role check being asked of the wrong SET on the acceptance book; with
+  no event-subject edges left, the malformed case it names is gone. General placement coverage
+  belongs to the extraction path, and the block already says the check *"is inert on unplaced
+  edges rather than wrong about them"* — invisible to an as-of read, not incorrect in it.
+
+  **QC (a) gates:** plan gates green. **QC (b):** N/A because no code changed. **QC (c) real
+  data:** 42 real relation edges on the dev graph, counted with the deferral's own query.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
