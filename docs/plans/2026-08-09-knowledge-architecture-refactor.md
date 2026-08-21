@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` ③ step 1 — drive passage writes on lw-iso until `soak-armed-gate` reads SOAKING. Dev secondary holds 0 passages (T25k).**
+**RESUME: `T25` ③ step 2 — flip `knowledge_vector_read_primary=postgres` on iso. Step 1 done: SOAKING, 533 writes (T25l).**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 ~~**A13 measured what "opportunistically" leaves ... nothing in the 54 is available to pick up**~~ — **RETRACTED by A14 (2026-08-22), and this sentence is what parked the row.** Re-derived from the AST: class (d) is **34** (not 28) and **10 modules need no port growth at all** — 7 whose last repo import is a constant, 3 whose remaining names §3.1 already deletes. The number is now emitted by `port-adoption-gate` on every run (`class (d) 34/34`), so it cannot go stale again.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 69 rows done · 10 open · 59 of 109 evidence blocks closed inside them.**
+**59 of 69 rows done · 10 open · 60 of 110 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/29) · `T25` (6/13) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/29) · `T25` (7/14) · `T33` (2/3) · `QC-5` (22/45) · `T46` (9/14) · `T54` (1/3) · `T55` · `T56` · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -3577,6 +3577,68 @@ vectors and validity intervals live in different stores.
   so there was nothing to cut over. **T24b wired all three readers and T25 ② built the
   switch**, per-scope for the reason the T25b tripwire fired on (SPEC §3.3). What ③ still
   needs is not code: **the soak** — and ~~QC-3's rebuild measurement above 65 536 vectors~~, which **QC-3a already delivered on 2026-08-10** (`docs/measurements/2026-08-10-diskann-rebuild-scale.md`, *Complete*, eight points across the threshold; 70 000 rows at 502.9 s / 252.9 s, and `maintenance_work_mem` binds four times earlier than the threshold does). Corrected 2026-08-21, T25c.
+
+  ### ✅ T25l 2026-08-22 — **the passage soak is SOAKING**, on real writes, with the durable count agreeing
+
+  ```
+  POST /internal/projects/019fefde…/backfill-passages   (lw-iso, throwaway)
+    {"chapters_ingested":100,"passages_created":533,"chapters_failed":0}
+
+  [soak-armed-gate] SOAKING — 533 write(s) landed, secondary_failed = 0
+
+  knowledge_vector_dual_write_total{outcome="both",scope="passage"}            533.0
+  knowledge_vector_dual_write_total{outcome="secondary_failed",scope="passage"}  0.0
+  knowledge_vector_dual_write_total{outcome="primary_failed",scope="passage"}    0.0
+
+  iso secondary passage_vectors_1024   12 -> 545      (+533, exactly)
+  ```
+
+  `D-T25B-SOAK`'s clause is *"a non-trivial write count with `secondary_failed` observed at zero
+  **while writes were demonstrably flowing**"*. All three terms are met for the first time, and
+  T25k's step 1 is discharged.
+
+  📐 **The durable count is the point, not a nicety.** `soak-armed-gate`'s own note warns the
+  counter is PROCESS-LOCAL — a restart resets it, so `ARMED_IDLE` means "no writes since the last
+  restart", not "no writes ever". Here the two agree exactly: the counter says 533 and the table
+  grew by 533. That is what makes this a measurement rather than a reading of one instrument.
+  T25k found dev in precisely the ambiguous state (`ARMED_IDLE`, 0 passage rows) and iso in the
+  other one (`ARMED_IDLE`, but 12 rows already durable from before the restart).
+
+  🔧 **Driven through the service's OWN admin route, not a script reaching past it.** The
+  backfill resolves user, book and embedding config from `knowledge_projects` and reuses the
+  production `ingest_chapter_passages` path, so what soaked is the publish-time write path —
+  not a test double shaped like it. Run on **lw-iso** (rule 1: CODE on iso). Dev Neo4j was not
+  written: T25k established the ingest MERGEs `:Passage` nodes and GRANTS does not authorise it.
+
+  **BITE ×3 on the verdict this batch rests on** — the same metrics snapshot, mutated:
+
+  ```
+  7. one secondary_failed on the REAL snapshot
+       SOAKING -> FAILING — secondary_failed = 1 across 534 write(s)
+  8. the 533 writes zeroed, family still present
+       SOAKING -> ARMED_IDLE — "wired but only 0 write(s) have reached it"
+  9. --require-soaking, dev (ARMED_IDLE) vs iso (SOAKING)
+       dev  exit 1        iso  exit 0
+  ```
+
+  ⚠️ **Bite 9 first read as a HOLE and was not one — my harness lied.** `python … | head` then
+  `echo $?` reports **`head`'s** status, so `--require-soaking` looked like it returned 0 on an
+  ARMED_IDLE stack. Re-run without the pipe: exit 1. That is the second time today a bite went
+  wrong at the harness rather than the target (A14's lone-LF line shift was the first), and both
+  produced output that reads exactly like a real finding. **A bite is only evidence once you know
+  which process the signal came from.**
+
+  **QC (a) gates:** `soak-armed-gate --selftest` 14/14 (pre-commit); four plan gates green;
+  `port-adoption-gate` unchanged at 54/19/2, class (d) 34/34 — this batch migrates nothing.
+  **QC (b) the seam:** ✅ this IS the seam — knowledge-service → `knowledge-pg`, exercised through
+  the public write path on a rebuilt iso stack, 533 round trips, zero failures.
+  **QC (c) real data:** 100 real chapters of a real iso book, 533 passages, counted in the
+  secondary before and after rather than inferred from the counter.
+
+  ⛔ **Next is step 2 and it is a TIER-4 switch (rule 4): `knowledge_vector_read_primary`, a
+  DEPLOY CEILING.** §3.3 is explicit that it cuts the **passage** scope only — entity reads stay
+  on Neo4j until `D-T25B-PG-ANCHOR-SCORE` has an answer — so the flip must be proven not to move
+  entity reads with it.
 
   ### 🔴 T25k 2026-08-22 — **③'s blocker is a CONFIG FLIP nobody named, not the benchmark DDL**
 
