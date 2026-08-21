@@ -1072,6 +1072,59 @@ CURRENT isolation model exactly. Per-project graphs remain available and are wha
 uses. Adopting them at the same moment as the engine swap would mean a later divergence could
 not be attributed to either change.
 
+## 9 · OWED — the dev vector cutover (T25 ③ step 3)
+
+### 9.1 Deleting the passage vector DDL needs dev on `postgres` first — **PO DECISION OWED**
+
+T25 ③'s remaining step is deleting `passage_embeddings_*` from `neo4j_schema.cypher`. Steps 1,
+2 and 5 are done and proven (T25l, T25m, T25n). Step 3 is blocked on a decision that is not
+mine to make, and it trips **two** of the run's five stop conditions at once.
+
+**What is proven and what that leaves.**
+
+| | |
+|---|---|
+| step 1 — the soak | ✅ T25l. `SOAKING`, 533 real writes, `secondary_failed = 0`, iso secondary `passage_vectors_1024` 12 → 545. |
+| step 2 — the read cutover | ✅ T25m. `KNOWLEDGE_VECTOR_READ_PRIMARY=postgres` → passage served by `PgVectorStore`, entity still by `Neo4jVectorStore`, both returning real hits. The switch now has a compose surface; it had none before. |
+| step 5 — the benchmarks | ✅ T25n. Both ensure `passage_embeddings_<dim>` themselves, same name and options. |
+| step 3 — delete the DDL | ⛔ **this section.** |
+| step 4 — entity/event DDL | stays, per §3.3, until `D-T25B-PG-ANCHOR-SCORE` has an answer. |
+
+**Why step 3 cannot be taken unilaterally.** Deleting the DDL breaks any deployment still
+reading `neo4j`, and dev is one: `knowledge_vector_read_primary` defaults to `neo4j` (T25k) and
+dev's secondary holds **zero passage rows** against 1051 passages in the dev graph. Measured on
+iso (T25n), a missing index does not degrade the search — `db.index.vector.queryNodes` raises
+`ProcedureCallFailed`, so dev semantic search becomes a 500.
+
+Cutting dev over therefore means populating dev's secondary first, and the only path that does
+that is a passage ingest, which **MERGEs `:Passage` nodes into the dev graph**. That is a write
+to a non-throwaway database, and the 2026-08-21 GRANTS authorise `docker compose up -d
+knowledge-service`, `recanon_honorifics --apply`, QC-3's sign-off and QC-5's clause — not this.
+
+So: *a PO decision is owed that GRANTS does not cover*, and *a write to a non-throwaway DB that
+GRANTS does not authorise*. Recorded here rather than worked around, and the row stays `[~]`
+with its steps individually evidenced rather than being marked blocked.
+
+**The options, stated so they can be chosen between.**
+
+1. **Grant the dev backfill, then flip dev.** `POST /internal/projects/{id}/backfill-passages`
+   per project, which re-ingests published chapters from their pinned revisions. It is
+   idempotent by content hash, so unchanged chapters skip the re-embed — but it does write
+   `:Passage` nodes and it does spend embedding tokens. Then
+   `KNOWLEDGE_VECTOR_READ_PRIMARY=postgres` on dev, and step 3 follows.
+2. **Flip dev WITHOUT backfilling.** Cheapest and wrong in a specific way: passage search on dev
+   silently returns nothing until something re-ingests, because the secondary is empty rather
+   than broken. This is the failure shape this plan has caught four times; naming it here so it
+   is refused deliberately rather than by accident.
+3. **Delete the DDL and leave dev on `neo4j`.** Not viable — that is the 500 above.
+4. **Leave step 3 open and take the rest of the queue.** T25 ③ stays the one unfinished part of
+   a row whose other parts are evidenced. Nothing else in the plan depends on the DDL being
+   gone; the AGE cutover depends on class (d), which is a different population (A14).
+
+**What does NOT block on this.** The AGE default (T54) waits on T17 class (d) — **34** modules
+needing port operations, derived and ratcheted by `port-adoption-gate` since A14. None of that
+is downstream of the vector DDL.
+
 ## How this file is kept honest
 
 * Every section is cited by the plan row it decides. `plan-final-verification.py` fails a `[~]`
