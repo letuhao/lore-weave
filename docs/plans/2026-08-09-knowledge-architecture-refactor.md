@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 57 of 101 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 57 of 102 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (21/42) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (6/12) · `T33` (2/3) · `QC-5` (21/43) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7254,6 +7254,63 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
 
+  ### 🔴 QC-5 C27 2026-08-22 — **driven through the STUDIO UI at last, and the first run exposed what the API path was hiding**
+
+  <!-- doc-language-gate: ok -- the UI is rendered in the user's language; the labels ARE the
+       evidence that these controls were operated through the real frontend -->
+
+  PO 2026-08-21: *drive it through the studio UI*. Done, on `lw-iso-frontend-1` (:25174), with a
+  live browser and a real session — no API call anywhere in the flow:
+
+  ```
+  /books/019f9f2d…/studio  ->  panel picker  ->  "Chế độ Agent"           (Agent Mode panel)
+  unchecked 12 of 13 chapter boxes, leaving ch12                          (12 real clicks)
+  "Kiểm tra điều kiện chạy →"  ->  gate: 4/4 green
+      ✓ plan_run_id → status=validated      ✓ 1 chapter(s), all in this book
+      ✓ $4.00 declared                      ✓ 3 tool(s) allowlisted
+  "Bắt đầu"  ->  RUNNING  ->  REPORT READY   ·  unit DRAFTED  ·  $0.0600 / $4.0000
+  ```
+
+  The verdict, **read out of the UI** (`agent-mode-critic-verdict` → `agent-mode-verdict-detail`):
+
+  ```json
+  { "coherence": 5, "voice_match": 5, "pacing": 4, "canon_consistency": 5,
+    "violations": [], "violations_raw_count": 0, "violations_dropped": 0,
+    "active_rule_count": 6, "canon_grounding": "as_of", "canon_cast_size": 13,
+    "critic_status": "not_configured",
+    "critic_ref": "019ebb72-27a2-72f3-a42d-d2d0e0ded179" }
+  ```
+
+  🔴 **`critic_status: "not_configured"`, and `critic_ref` IS THE DRAFTER'S MODEL.** S6 is
+  explicit that `same_as_drafter` and `not_configured` both mean **the prose graded itself**. On
+  the path a user actually takes, there is no judge.
+
+  **This is not a UI rendering quirk — it is in the stored request.** Both runs, same book, same
+  chapter, read from `authoring_runs.params`:
+
+  ```
+  UI-driven   01a02548…   params: [model_ref, model_source]
+  API-driven  01a024f6…   params: [model_ref, model_source,
+                                   critic_enabled, critic_model_ref, critic_model_source]
+  ```
+
+  And the API runs prove the difference is causal: **all seven** of C23/C25's runs recorded
+  `critic_status='configured'` with `critic_ref=51ea9fd7…` — a **distinct** model. The UI run
+  recorded `not_configured`. `grep -n critic` across `useNewRunForm.ts`, `NewRunView.tsx` and
+  `features/composition/authoringRuns/api.ts` returns **nothing**: the studio has no control for
+  it and its client never sends one.
+
+  ⛔ **SO C25's PASS WAS MEASURED ON A CONFIGURATION THE PRODUCT DOES NOT OFFER.** The gate's
+  arithmetic is not retracted — it scored what it was given, and every arm was real. What is
+  retracted is the SCOPE of the claim: the acceptance holds for a run whose critic is supplied
+  in the request body, and **the shipped studio path is not that run.**
+
+  🎯 **This is exactly what the row's own wording was protecting, and why restating the
+  criterion would have been the wrong call.** *"Through the real frontend"* had been recorded as
+  a gap by C3, restated by C4, and carried unmet through eleven evidence blocks and a passing
+  acceptance gate. The very first run through it found a judge that was not there. Three batches
+  of API-driven green did not retire the requirement, and the requirement is why this is known.
+
   ### 🔴 QC-5 C26 2026-08-21 — **the prose judge investigated: 3 of 4 attributed verdicts are FALSE, and the 4th is why QC-5 still stands**
 
   <!-- doc-language-gate: ok -- the rule texts and quoted spans ARE the adjudication; the finding
@@ -7672,7 +7729,19 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
 
   ### ~~DEFERRAL~~ `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED` — **CLOSED 2026-08-21 (C25). The five-run measurement landed on all four arms and the acceptance gate PASSES: 1a PASS (4/5 planted vs 0/5 control), 1b PASS, clause 2 PASS on two live `flow_control` runs. What remains of QC-5 is not a spread and not a decision — it is the frontend drive, reopened below under its own name.**
 
-  ### 🔻 DEFERRAL `D-QC5-NOT-DRIVEN-THROUGH-THE-STUDIO-UI`
+  ### ~~DEFERRAL~~ `D-QC5-NOT-DRIVEN-THROUGH-THE-STUDIO-UI` — **CLOSED 2026-08-22 (C27). Driven end to end through the real studio: panel picker → Agent Mode → chapter selection → gate 4/4 → start → REPORT READY → the critic verdict read out of the UI. The drive is done; what it FOUND is a different row, below.**
+
+  ### 🔻 DEFERRAL `D-STUDIO-CANNOT-CONFIGURE-A-DISTINCT-CRITIC`
+
+  | | |
+  |---|---|
+  | **Blocker** | Every authoring run started from the studio grades **its own prose**. The UI sends `params: [model_ref, model_source]` and nothing else, so `_resolved_critic` finds no critic and the run records `critic_status: "not_configured"` with `critic_ref` equal to the drafter's model. S6 says that means the prose graded itself. |
+  | **Evidence** | C27, from `authoring_runs.params` rather than from the screen: the UI run `01a02548…` carries two params; the API run `01a024f6…` carries five, including `critic_enabled` and `critic_model_ref=51ea9fd7…`. All seven C23/C25 runs recorded `configured`; the UI run recorded `not_configured`. `grep -n critic` over `useNewRunForm.ts`, `NewRunView.tsx` and `features/composition/authoringRuns/api.ts` returns nothing. |
+  | **Why it matters more than a missing control** | It means **QC-5's acceptance was measured on a configuration the product does not offer.** The gate's arithmetic stands and every arm was real; the SCOPE of the claim does not. A user cannot reproduce the run that passed. |
+  | **Mechanism** | `critic_status` already rides every verdict and the studio already renders it — C27 read `not_configured` straight out of `agent-mode-verdict-detail`. The defect is visible in the product today; nothing needs building to keep it visible. |
+  | **To unblock** | Give the new-run form a critic model control (the drafter picker is already there), send `critic_enabled` / `critic_model_ref` / `critic_model_source`, and re-run C25's four arms through the UI. Until then the studio should say plainly that the critique is self-graded rather than showing a score that looks like a judge's. |
+  | **Retry when** | Immediately — it is a form field and a request body, not a decision. |
+
 
   | | |
   |---|---|
