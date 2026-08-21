@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: GRANTS done · QC-3 ✅ · QC-5 acceptance PASSES on an independent chapter (row `[~]` on open deferrals). Next `T46` merge → `T25` ③ → `QC-6` → `T48` → `T49` ⛔.**
+**RESUME: QC-3 ✅ · QC-6 ✅ · QC-5 acceptance PASSES (row `[~]` on open deferrals). Next `T46` — pin-aware supersession now has a LIVE repro (QC-6b). Then `T25` ③ → `T48` → `T49` ⛔.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**58 of 66 rows done · 8 open · 44 of 89 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 42 of 85 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-6` (2/5) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (3/5) · `T33` (1/2) · `QC-5` (17/41) · `T46` (2/5) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -6095,7 +6095,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **Mechanism** | T50's `command_transport.go` already logs the transport on every entity command, so a new producer arriving on that surface is visible in the parity suite rather than needing its own tracker. `scripts/entity-lifecycle-outbox-gate.py` covers the mutations it will call. |
   | **Retry when** | T36 closes. ✅ **Retried and completed 2026-08-14.** |
 
-- [~] **QC-6** — Identity live proof
+- [x] **QC-6** — Identity live proof
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §4.3. Unfinished, not undecided.
   `/review-impl`. On a **live** stack: rename an entity, then re-kind it, then re-run extraction on a
   chapter that mentions it. Assert **no stale node**, **no minted duplicate**, and that the 77
@@ -6273,15 +6273,15 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   2. **QC-6's own assertion ("must be 0") is currently 2819**, so QC-6 cannot pass before T35,
      and no amount of live rename/re-kind proof changes that.
 
-  ### DEFERRAL `D-QC6-IDENTITY-LIVE-PROOF`
+  ### ~~DEFERRAL~~ `D-QC6-IDENTITY-LIVE-PROOF` — **CLOSED 2026-08-21 (QC-6b).** Both unblock conditions are met and re-measured, not assumed.
 
   | | |
   |---|---|
-  | **Blocker** | The live half (rename -> re-kind -> re-extract -> assert no stale node and no minted duplicate) asserts a **post-condition of a migration that has not run**. ~~T35 is deferred, so the assertion has nothing to be true of.~~ **T35 CLOSED 2026-08-21 (T35h) and QC-6's identity half then RAN (QC-6a) — finding a duplicate-minting defect the assertion existed to catch.** |
-  | **Evidence** | The data half above, run today: **2819 of 6297** nodes already disagree with a recomputed id, and QC-6's own criterion is *"must be 0"*. A live rename would add one more mismatch to 2819 and prove nothing about the property being asserted. |
-  | **To unblock** | `D-T35-OPAQUE-IDENTITY` closes and the 2819 stale rows are reconciled. |
-  | **Mechanism** | The count above is a one-command re-run whose output is self-describing, and `scripts/derived-entity-id-gate.py` (pre-commit + CI) keeps the caller set from growing meanwhile, so the debt can only shrink between now and then. |
-  | **Retry when** | T35 lands — and **re-run the count FIRST**, because *"must be 0"* is the acceptance criterion and **2819** is where it starts. |
+  | **Closed because** | Its *To unblock* read *"`D-T35-OPAQUE-IDENTITY` closes and the stale rows are reconciled"*. T35 closed 2026-08-21 (T35h). The stale rows were reconciled the same day by `recanon_honorifics --apply` (T46d): **1819 re-keyed, 1 merged, `actions=0` on the re-run**. |
+  | **Re-measured** | The deferral's own evidence line, re-run on the live graph today: ids disagreeing with a recompute **46 / 4853**, from **1847 / 4872** this morning and **2819 / 6297** when this block was written. |
+  | **Why 46 and not 0** | Because 0 would be **wrong**. QC-6a established that *"must be 0"* is the negation of §4.1 — opaque identity means `e.id` is deliberately NOT a function of the current name, so an author rename is *supposed* to leave the two disagreeing. The residue is legitimate renames plus the 6 rows `recanon` refuses to guess at. The count survives as a health indicator, which is what QC-6a demoted it to. |
+  | **Proof it was the LIVE half that closed it** | QC-6b ran the row's sequence end to end — rename → re-kind → real chapter extraction naming the old form 8 times → 1 node, `e.id` unmoved, 595 groups largest 1. That is the assertion this deferral said *"has nothing to be true of"*; it now has. |
+
 
 - [~] **QC-5** — 🎯 **Re-run the dogfood book — the design's own acceptance test**
   📐 **DECIDED** — [`docs/specs/2026-08-13-knowledge-refactor-open-decisions.md`](../specs/2026-08-13-knowledge-refactor-open-decisions.md) §2.1. Unfinished, not undecided.
@@ -13506,6 +13506,21 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   invariants, `anchor+delta` fold with `folds_since_reground`. **Move it working — do not rewrite
   from the weaker side.**
   (depends on T45)
+  🔴 **THE ASYMMETRY IS NOW A LIVE REPRODUCTION, not a table row (QC-6b, 2026-08-21).**
+  `bitemporal-parity-gate` has carried *"pin-aware supersession: postgres HAS it, neo4j does
+  NOT — an author's EXPLICIT close survives re-derivation in glossary and would be overwritten"*
+  as a capability difference. QC-6b renamed a real entity and re-kinded it, then ran a real
+  chapter extraction, and read the node back:
+
+  ```
+  after re-kind      canonical='lam trach vo anh'   kind=person     <- the author's edit
+  after extraction   canonical='lam trach'          kind=character  <- the extractor's
+  ```
+
+  Identity held perfectly (one node, `e.id` unmoved); the **content** did not. An author who
+  renames a character and then re-runs extraction loses the rename **silently** — no error, no
+  conflict, the node simply reads as the extractor left it. `maintain_chain`'s pin-awareness is
+  the mechanism that would have preserved it, and moving it is what this row is for.
   ---
   ### 📊 T46a 2026-08-14 — **"port Go → Python" is a category error, and the KG is the weaker side**
 
@@ -14066,6 +14081,59 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (c) real data:** nine runs behind the verdict — three fresh planted, three on chapter 10,
   three control — with the chapter-10 verdicts read from the persisted `critic_verdict` rows
   rather than from the report I printed.
+
+  ### ✅ QC-6b 2026-08-21 — **the row's proof AS THE ROW WRITES IT**: rename → re-kind → REAL re-extraction, in that order
+
+  ```
+  baseline  anchor -> 1 node  id=32338503...  canonical='lam trach'  kind=character
+            graph: 595 identity groups, largest 1
+  rename    -> 1 node · id UNMOVED · canonical changed (so the rest is not vacuous)
+  re-kind   -> 1 node · id UNMOVED · kind character -> person
+  REAL extraction, chapter 5 (names the target 8x under its OLD name)  job 01a023ad  complete
+  after     -> 1 node · id UNMOVED · 595 groups, largest 1
+  QC-6 SEQUENCED PROOF: PASS   (9 assertions, all read from the GRAPH)
+  ```
+
+  QC-6a proved the two minting writers **separately** and passed. The row asks for the
+  **sequence**, and the sequence is where the pre-T35 bug lived: an author renames a character,
+  the chapter TEXT still says the old name, the extractor hashes the old name, finds nothing at
+  the new id, and mints a second node for one person. QC-6a's second half drove `persist-pass2`
+  with a synthetic candidate; this drives the real pipeline — LLM extraction over a chapter that
+  names the target **eight times**, under the name the author just changed.
+
+  🎯 **Nothing forked.** One node before, one node after, `e.id` byte-identical at every step,
+  and the whole 595-node graph still groups 1:1 on `(user, project, canonical_name, kind)`.
+  Two guard assertions keep it from being green by construction: the rename and the re-kind are
+  each checked to have **actually landed** — a no-op rename would make every later assertion
+  true and meaningless.
+
+  ### 🔴 AND IT SURFACED T46'S ASYMMETRY, LIVE — the author's rename DID NOT SURVIVE
+
+  ```
+  after re-kind      canonical='lam trach vo anh'   kind=person     <- the author's edit
+  after extraction   canonical='lam trach'          kind=character  <- the extractor's
+  ```
+
+  The identity held; the **content did not**. Re-extraction overwrote the author's explicit
+  rename and re-kind with the values derived from the chapter text. This is exactly the row
+  `bitemporal-parity-gate` has been carrying as a capability difference — *"pin-aware
+  supersession: postgres HAS it, neo4j does NOT — an author's EXPLICIT close survives
+  re-derivation in glossary and would be overwritten"* — and it has been a table entry rather
+  than an observation. **It is now an observation**, on a real run, on a real entity.
+
+  📐 **Which is T46's case, made concrete.** `maintain_chain`'s pin-awareness is the mechanism
+  that would have preserved the author's edit, and it is the thing T46 exists to move from Go to
+  Python. Until it lands, an author who renames a character and then re-runs extraction loses the
+  rename silently — no error, no conflict, the node simply reads as the extractor left it. That
+  is a **content** defect, not an identity one, so it does not block QC-6's criteria; it belongs
+  to T46 and it now has a live reproduction rather than an argument.
+
+  **QC (a) gates:** plan gates green; no code changed — this is the acceptance run the row
+  specifies. **QC (b) the seam:** rename and re-kind through `glossary-sync-entity`, then a real
+  dispatched extraction through `lw-iso` knowledge-service → provider-registry → LM Studio,
+  status `complete`. **QC (c) real data:** a real entity (R1's betrayer) in a 595-node graph, and
+  a chapter that names it eight times; every assertion read from Neo4j, never from a response
+  body — QC-6a's first version trusted the body, got `None` four times and scored itself OK.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
