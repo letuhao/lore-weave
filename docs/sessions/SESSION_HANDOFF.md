@@ -8,6 +8,47 @@
 > ⚠️ **The plan is discovered by an explicit path, not by branch slug:**
 > `/aif-implement @docs/plans/2026-08-09-knowledge-architecture-refactor.md`
 
+## ⏸ 2026-08-21 — the run STOPPED on four decisions, and they are the whole remaining list
+
+Read the state from the commands, not from here — `python scripts/plan-final-verification.py`
+for the row census and `sed -n 46p` on the plan for the progress block. What this section is
+for is the part no command prints: **why** the open rows are open.
+
+**Four things need a person, and none of them is more effort:**
+
+1. **`T25` ③ — a write grant.** Dropping the Neo4j vector indexes is a destructive write to the
+   dev graph that the 2026-08-21 GRANTS do not cover. Same shape as the recanon grant.
+   Before granting it, note the soak has **disarmed itself twice** (T25c-2, T25f) and the dev
+   `passage` scope has never landed a write — the content-hash skip-gate refuses to re-embed
+   unchanged text, so it needs new chapter content, not another backfill run.
+2. **`D-QC5-ROLE-JUDGE-PRECISION` — a spend call.** Two experiments and a mechanism say the
+   judge model is the limit. It costs a stronger model or it stays `[~]`.
+3. **`D-QC5-ATTRIBUTION-CHANNEL-UNWIRED` — a design call** on the rule source, plus bounded
+   nondeterminism.
+4. **`T48` cannot be worked at all.** Its first criterion is *"every task fully implemented"*
+   and `plan-final-verification` refuses a QC row that certifies open work. It is a **re-run**
+   once the last row closes, not a task. `T49` is ⛔ and depends on it.
+
+**What the live runs proved**, each with its evidence block in the plan: identity holds across
+rename → re-kind → real re-extraction with zero forks (QC-6b); the vector soak reaches SOAKING
+on both scopes with primary/secondary parity (T25d, T25g); the canon loop closes on a chapter
+that did **not** motivate the criterion (QC-5 C17); the causal partial order writes non-zero and
+acyclic (T33c); `bitemporal-parity-gate` is at **0** asymmetries after pin-aware supersession
+landed (T46f).
+
+⚠️ **Three claims made during this run were RETRACTED, and the retractions are the useful part.**
+A "live reproduction" of T46's asymmetry was a mirror write reconverging on its SSOT (T46e); a
+request for a dev-write grant turned out to need two more published chapters instead (T33c); and
+a name-grounding fix shipped in a first version that accused the book's own authored alias, which
+the existing suite caught (T46n). Each was recorded in place rather than quietly patched — if a
+block in the plan reads as a correction of an earlier block, that is deliberate.
+
+🔔 **Three new gates, all wired:** `soak-armed-gate` (DISARMED/INDETERMINATE/ARMED_IDLE/SOAKING/
+FAILING — and FAILING outranks arming, because a failure count proves construction),
+`qc5-acceptance-gate` (clause 1a/1b, where 1b is UNSCORABLE without 1a), and
+`stale-deferral-gate` (a deferral whose heading says open while its own `Retry when` says
+closed — it found three on its first run that five hand passes had missed).
+
 **Phase 0 has landed (Commit 1).** The three lifecycle guards that the debt register recorded as
 closed and that were re-verified open. What makes this closure different from the last one is that
 each row cites a test that fails without the fix *and* a live smoke against a rebuilt binary:
