@@ -258,6 +258,67 @@ def extract_names(text: str, corpus: str | None = None) -> set[str]:
     return {w for w, mid in seen.items() if _is_name(w, mid, lowercase)}
 
 
+def extract_name_runs(text: str, corpus: str | None = None) -> set[str]:
+    """Consecutive capitalised tokens as ONE candidate name — `Thanh Trach Uyen`, not three words.
+
+    §2.1b. `extract_names` emits single WORDS, and `audit_names` expands the known cast to its
+    components for a stated reason: *"an invented full name whose FAMILY name matches a canon
+    character will now anchor on that part, trading some recall for a large precision gain"*.
+    That trade is right, and this is the half that buys the recall back: a novel COMBINATION of
+    known syllables — the shape a Vietnamese invented name takes, measured 2026-08-21 as
+    `unanchored: []` on a draft that invented a character — is only visible if something
+    compares the whole run against the whole name.
+
+    Two guards, both from the module's rule that a false accusation is the error that matters:
+
+    * **A run needs two or more ADJACENT capitalised tokens.** `The door opened` is not a run,
+      because `door` is not capitalised — sentence-initial ambiguity cannot manufacture one.
+    * **A leading token that appears lowercased anywhere in the corpus is trimmed.** `The Grey
+      Wren` at a sentence start yields `Grey Wren`, because `the` occurs lowercase elsewhere and
+      is therefore a sentence-position artefact rather than part of the name.
+    """
+    if not text:
+        return set()
+    lowercase = frozenset(
+        w for w in re.findall(r"([^\W\d_]{2,})", corpus if corpus is not None else text)
+        if w[:1].islower())
+    spans = _quoted_spans(text)
+    runs: set[str] = set()
+    current: list[str] = []
+    prev_end: int | None = None
+
+    def _flush() -> None:
+        words = list(current)
+        # Trim sentence-position artefacts at the HEAD. `lowercase` alone is not enough: on a
+        # short passage `the`/`then` may never appear lowercased, and `The Lane` / `Then
+        # Blorpnax` then look like two-word names — a false accusation, the error direction
+        # this module says matters. `_FUNCTION_WORDS` catches them regardless of corpus size.
+        while words and (words[0].lower() in lowercase
+                         or words[0].lower() in _FUNCTION_WORDS):
+            words.pop(0)
+        if len(words) >= 2:
+            # both forms: the trimmed one is what gets REPORTED, the untrimmed one is what a
+            # canon alias like `The Grey Wren` is actually stored as, and it must still anchor.
+            runs.add(" ".join(words))
+        # a run that trims down to one word is not a run — the per-word pass handles it, which
+        # is where plural tolerance and near-miss logic already live.
+
+    for m in _TOKEN.finditer(text):
+        word = _normalise(m.group(1))
+        adjacent = prev_end is not None and text[prev_end:m.start()] == " "
+        if _is_capitalised(word) and not _in_quotes(m.start(), spans):
+            if current and not adjacent:
+                _flush()
+                current = []
+            current.append(word)
+        else:
+            _flush()
+            current = []
+        prev_end = m.end()
+    _flush()
+    return runs
+
+
 def known_names_from_cast(rows: list[dict] | None) -> set[str] | None:
     """The authored surface forms for a book, as `audit_names(known_names=…)` wants them.
 
@@ -336,7 +397,40 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
         # unanchored, which is true but useless — and would flood the field on exactly the runs
         # where nothing was given. Report the method, claim nothing.
         return NameAudit(method="empty", truth_source="none")
-    drafted = extract_names(draft, corpus=corpus)
+    # §2.1b — RUNS FIRST. `known` above was expanded to components, which anchors an invented
+    # name that shares a syllable with a real one. Comparing the whole run against the whole
+    # name is what sees the novel COMBINATION; the per-word pass below still runs for anything
+    # a run did not cover, so single-word names are unaffected.
+    known_full = {_normalise(w) for w in (known_names or ()) if len(_normalise(w)) >= 3}
+    run_unanchored: list[str] = []
+    covered: set[str] = set()
+    def _trim_head(n: str) -> str:
+        """Drop leading function words so BOTH sides are compared the same way.
+
+        `extract_name_runs` trims `The` off a run as a sentence-position artefact. If the
+        stored alias is `The Grey Wren`, trimming only the draft side means the authored alias
+        never matches and is reported as invented — a false accusation, and the exact error
+        direction this module says matters. Symmetry is the fix, not a longer allowlist.
+        """
+        parts = n.split()
+        while parts and parts[0] in _FUNCTION_WORDS:
+            parts.pop(0)
+        return " ".join(parts)
+
+    known_full_norm = {normalize_entity_name(k) for k in known_full}
+    known_full_norm |= {_trim_head(k) for k in known_full_norm}
+    for run in sorted(extract_name_runs(draft, corpus=corpus)):
+        covered |= set(run.split())
+        low = normalize_entity_name(run)
+        # plural tolerance, mirroring the per-word pass: `Scribes` is the plural of `Scribe`,
+        # not a near miss of it.
+        low_trimmed = _trim_head(low)
+        forms = {low, low.rstrip("s"), low + "s",
+                 low_trimmed, low_trimmed.rstrip("s"), low_trimmed + "s"}
+        if forms & known_full_norm:
+            continue  # a known FULL name anchors ALL of its words
+        run_unanchored.append(run)
+    drafted = {w for w in extract_names(draft, corpus=corpus) if w not in covered}
     # ML-2 — the equivalence key is NFKC + casefold + Han-simplified fold, not `.lower()`.
     #
     # Caught by `language-bias-gate`, RED since this module was written on 2026-08-01 and
@@ -375,5 +469,6 @@ def audit_names(draft: str, grounding: str, language: str | None = None,
             near.append({"name": name, "closest": closest, "distance": best})
         else:
             unanchored.append(name)
-    return NameAudit(method="capitalised_latin", truth_source=truth, unanchored=unanchored,
+    return NameAudit(method="capitalised_latin", truth_source=truth,
+                     unanchored=sorted(run_unanchored + unanchored),
                      near_misses=near, known_count=len(known))

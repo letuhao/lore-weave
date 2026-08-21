@@ -371,8 +371,12 @@ def test_an_ALIAS_in_the_draft_is_not_accused_when_the_cast_carries_it():
     prompt = "Aurelia crossed the bridge."
     draft = "The Grey Wren crossed the bridge."
     names_without_aliases = known_names_from_cast([{"entity_id": "1", "name": "Aurelia"}])
-    assert "Wren" in audit_names(draft, prompt, "en",
-                                 known_names=names_without_aliases).unanchored, (
+    # §2.1b — the alias is now reported as the RUN `Grey Wren` rather than the word `Wren`
+    # (the leading article is trimmed as a sentence-position artefact). The fixture's point is
+    # unchanged: an alias-free cast must false-accuse here, or the assertion below proves
+    # nothing about what carrying the alias buys.
+    assert "Grey Wren" in audit_names(draft, prompt, "en",
+                                      known_names=names_without_aliases).unanchored, (
         "fixture is wrong: an alias-free cast is supposed to false-accuse here")
 
     with_aliases = known_names_from_cast(

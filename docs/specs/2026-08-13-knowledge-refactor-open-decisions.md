@@ -181,7 +181,9 @@ note that *"a name missing from `known` becomes a false accusation an author rea
 2. **A run must not be reported when only its head is sentence-initial ambiguity** — "The door
    opened" and "The Grey Wren" are the same shape to a run-joiner, and one of them is prose.
 
-⛔ **NOT implemented in this batch, deliberately.** It is a design change across 35 assertions
+✅ **IMPLEMENTED 2026-08-21 (T46n).** `extract_name_runs` + a run pass in `audit_names`, additive to the per-word pass. Both constraints above are met and bitten — and the FIRST implementation violated both, which the existing suite caught (seven failures, five real: prose became a name, a sentence-initial adverb joined one, a known plural was reported, and the book's own authored alias was accused). Two mistakes: the head-trim asked *"does this appear lowercased in the corpus"* instead of using `_FUNCTION_WORDS`, and it trimmed the draft side without trimming the known side. Symmetry was the fix.
+
+⛔ **Was NOT implemented in the diagnosing batch, deliberately.** It is a design change across 35 assertions
 and 3 production call sites in a check whose false-accusation direction is the one that hurts,
 and this was diagnosed at the end of a long run. It is **decided, not deferred**: the shape
 above is the fix, and

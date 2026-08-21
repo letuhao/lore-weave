@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 49 of 89 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 50 of 90 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/35) · `T46` (7/11) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/34) · `T46` (8/13) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -8149,7 +8149,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   `D-QC5-ROLE-JUDGE-PRECISION` stands, now with canon_consistency evidence beside the role-judge
   evidence. A discriminating check with poor precision is progress, not a finished guard.
 
-  ### 🔻 DEFERRAL `D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES`
+  ### ~~DEFERRAL~~ `D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES` — **FIXED 2026-08-21 (T46n).** Run-against-full-name comparison, per §2.1b, with both false-accusation constraints met and bitten.
 
   | | |
   |---|---|
@@ -14725,6 +14725,63 @@ misattribution question has no code path to reach.** No decision is owed by anyo
 
   **QC (a) gates:** plan gates green. **QC (b):** N/A because no code changed. **QC (c) real
   data:** 42 real relation edges on the dev graph, counted with the deferral's own query.
+
+  ### ✅ T46n 2026-08-21 — **the diacritic miss is FIXED**, and the first implementation of it was wrong
+
+  ```
+  before  known {"Lam Trach","Lam Uyen","To Thanh Dao"} · draft invents "Thanh Trach Uyen"
+          unanchored: []                      <- CLEAN, on an invented character
+  after   unanchored: ["Thanh Trach Uyen"]    <- the whole run, not a syllable
+          "Trinh Hac Vu"  reported whole (was the fragment "Hac")
+  composition unit 3636 -> 3639 · name-grounding suites 59 pass · BITE x3 (75-77)
+  ```
+
+  T46i diagnosed this and **decided not to implement it** at the end of a long run, because it
+  is a design change in the one check whose false-accusation direction is the one that hurts.
+  That caution was correct: **the first implementation violated both of §2.1b's constraints and
+  the existing suite caught it — seven failures, five of them real.**
+
+  🎯 **The syllable expansion was never the bug.** `audit_names` documents it as a deliberate
+  trade — *"an invented full name whose FAMILY name matches a canon character will now anchor on
+  that part, trading some recall for a large precision gain"*. `extract_name_runs` is the half
+  that buys the recall back: compare the whole RUN against the whole NAME, and fall through to
+  the per-word pass for anything a run did not cover. **Additive, not a reversal** — a test pins
+  that `extract_names` still emits words, so every existing caller keeps its meaning.
+
+  ### 🔴 WHAT THE FIRST VERSION GOT WRONG, both of them false accusations
+
+  ```
+  ['Mira', 'The Lane']      <- prose became a two-word name
+  ['Then Blorpnax']         <- a sentence-initial adverb joined the name
+  ['The Scribes']           <- a known plural, reported
+  ['Grey Wren']             <- THE BOOK'S OWN AUTHORED ALIAS, reported as invented
+  ```
+
+  Two distinct mistakes. **(1)** The head-trim asked *"does this word appear lowercased in the
+  corpus?"* — which fails on a short passage where `the`/`then` never occur lowercased.
+  `_FUNCTION_WORDS`, which the module already had, does not. **(2)** I trimmed the DRAFT side and
+  not the KNOWN side, so the stored alias `The Grey Wren` could never match the trimmed run
+  `Grey Wren`. **Symmetry was the fix, not a longer allowlist** — both sides are trimmed the
+  same way now, and runs get the same plural tolerance the per-word pass already had.
+
+  **BITE ×3:**
+
+  ```
+  75. remove the run pass          E "the invented combination should be reported whole,
+                                      got []"  (2 tests)
+  76. trim only the DRAFT side     E "an authored alias was accused: ['Grey Wren']"
+  77. head-trim drops _FUNCTION_WORDS  E 4 tests red, incl. the alias and the plural
+  ```
+
+  ⚠️ **Bite 77 silently NO-OPPED on its first attempt** — my match string was wrong, the file
+  was untouched, and the run reported 9 passed. That is not a bite result, it is the exact trap
+  the cycle contract names (*"exact-match replace silently no-ops"*). Redone **by line number**,
+  it reds four tests.
+
+  **QC (a) gates:** composition unit **3636 → 3639**; the four name-grounding suites 59 pass;
+  plan gates green. **QC (b):** N/A because no service seam changed — `audit_names` is in-process
+  and its callers are unchanged. **QC (c) real data:** the fixture cast is the acceptance book's
+  own three names, which is why the recurring-syllable collision is real rather than contrived.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 

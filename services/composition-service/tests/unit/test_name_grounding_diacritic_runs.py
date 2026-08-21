@@ -1,43 +1,40 @@
-"""D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES — DIAGNOSED and pinned (T46i, 2026-08-21).
+"""D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES — diagnosed (T46i), FIXED (T46n). §2.1b.
 
-The deferral said: *"Inspect `audit_names` against Vietnamese diacritic names —
-`capitalised_latin` is the suspect: either its extractor does not treat the diacritic run as
-one name, or a partial match against a real entity anchors it."* It is **both, and the second
-is the one that produces the reported symptom**.
+The defect, measured 2026-08-21: `audit_names` compared WORD against WORD. The cast was
+tokenised to its syllables (three names -> eight known entries) and the draft to individual
+capitalised words, so an invented name assembled from syllables that each appear in some OTHER
+character's name matched on every token:
 
-The reported symptom was `name_grounding: "checked"` with `unanchored_names: []` on a draft
-that introduced an invented three-syllable Vietnamese character name. Reproduced minimally:
-
-    known   {"Lam Trach", "Lam Uyen", "To Thanh Dao"}      -> known_count 8, NOT 3
+    known   {"Lam Trach", "Lam Uyen", "To Thanh Dao"}
     draft   "The door opened. Thanh Trach Uyen entered, and no one spoke."
-    result  unanchored: []   near_misses: []   <- CLEAN, on an invented character
+    result  unanchored: []      <- CLEAN, on an invented character
 
-THE MECHANISM. `audit_names` tokenises BOTH sides to WORDS: the known cast becomes its
-individual syllables (plus the full forms) and the draft becomes individual capitalised words.
-The comparison is therefore word-against-word. Vietnamese names are compositions of a small
-pool of recurring syllables, so an invented name assembled from syllables that each appear in
-some OTHER character's name matches on every token and the novel COMBINATION is never
-examined. `Thanh`, `Trach` and `Uyen` are each real; `Thanh Trach Uyen` is not, and nothing in
-the check ever looks at that string.
+The syllable expansion is not the bug — `audit_names` documents it as a deliberate trade,
+*"an invented full name whose FAMILY name matches a canon character will now anchor on that
+part, trading some recall for a large precision gain"*. `extract_name_runs` is the half that
+buys the recall back: compare the whole RUN against the whole NAME, and fall through to the
+per-word pass for anything a run did not cover.
 
-Two amplifiers, neither of them the root cause:
-  * `len(word) < 3` drops short syllables outright — `Vu` in the fixture below, and `Kỵ`/`Vô`  # doc-language-gate: ok -- the 2-char diacritic syllables ARE the measurement
-    in the real corpus, so those cannot be flagged even in principle;
-  * `_is_name` discounts sentence-initial capitals, removing a run's head.
+The two false-accusation constraints §2.1b set, and how each is met — both learned the hard
+way, because the first implementation violated both and the existing suite caught it:
 
-WHY THIS PINS THE BUG INSTEAD OF FIXING IT — decided, see §2.1b.
-The fix is to compare the capitalised RUN against the known FULL names, not syllables against
-syllables. That is a design change to a check whose own note says which error direction
-matters — *"a name missing from `known` becomes a false accusation an author reads"* — and
-run-joining manufactures exactly that risk ("The Grey Wren", a title followed by a name, a
-sentence-initial verb phrase). It touches 35 assertions and 3 production call sites. These
-tests fail the moment the behaviour changes, so the fix arrives deliberately with its own
-evidence rather than drifting in.
+  1. **A run matching a known full name anchors ALL of its words.** The run side trims leading
+     function words (`The Grey Wren` -> `Grey Wren`), so the KNOWN side is trimmed identically.
+     Trimming only one side reported the book's own authored alias as invented.
+  2. **Sentence-initial ambiguity cannot manufacture a run.** `The door opened` is not a run
+     because `door` is not capitalised; `Then Blorpnax` trims to one word and falls through to
+     the per-word pass. `_FUNCTION_WORDS` does this rather than "does it appear lowercase in
+     the corpus", which fails on a short passage where `then` never occurs lowercased.
 """
 
 from __future__ import annotations
 
-from app.engine.name_grounding import audit_names, extract_names, known_names_from_cast
+from app.engine.name_grounding import (
+    audit_names,
+    extract_name_runs,
+    extract_names,
+    known_names_from_cast,
+)
 
 _KNOWN_ROWS = [{"name": "Lam Trach"}, {"name": "Lam Uyen"}, {"name": "To Thanh Dao"}]
 _PROMPT = "Lam Uyen is the protagonist. To Thanh Dao betrayed him."
@@ -50,67 +47,76 @@ def _known():
     return known_names_from_cast(_KNOWN_ROWS)
 
 
-def test_an_invented_name_built_from_KNOWN_SYLLABLES_reads_CLEAN():
-    """The reported symptom, reproduced. This is the whole deferral in one assertion.
-
-    If it starts failing, the run-level comparison landed — that is the fix, not a
-    regression. Update §2.1b and delete these pins in the SAME commit.
-    """
+def test_an_invented_name_built_from_KNOWN_SYLLABLES_is_now_REPORTED():
+    """The defect, fixed. Each syllable is real; the combination is not, and the whole run is
+    what reaches the author."""
     audit = audit_names(_INVENTED, _PROMPT, "vi", known_names=_known())
-    assert audit.unanchored == [], (
-        f"the invented-combination case now reports {audit.unanchored} — the run-level fix for "
-        "D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES appears to have landed. Re-read §2.1b and "
-        "remove these pins in the same commit, so the plan and the code stop disagreeing."
-    )
-    assert audit.near_misses == []
-
-
-def test_the_known_side_is_tokenised_to_SYLLABLES_which_is_why():
-    """The cause, isolated from the symptom. Three cast names yield EIGHT known entries: the
-    individual syllables of ≥3 characters plus the full forms. Word-against-word comparison
-    follows from this, and so does the miss above.
-    """
-    audit = audit_names(_INVENTED, _PROMPT, "vi", known_names=_known())
-    assert len(_known()) == 3, "the cast really is three names"
-    assert audit.known_count == 8, (
-        f"known_count is {audit.known_count}; the syllable-splitting that causes this defect "
-        "may have changed. Re-derive the diagnosis in §2.1b before trusting it."
+    assert audit.unanchored == ["Thanh Trach Uyen"], (
+        f"the invented combination should be reported whole, got {audit.unanchored}"
     )
 
 
-def test_the_multi_syllable_name_is_never_ONE_candidate():
-    """Amplifier 1 — there is no run-joining, so the invented string is never compared."""
-    assert "Thanh Trach Uyen" not in extract_names(_INVENTED, _INVENTED + _PROMPT)
-
-
-def test_a_two_character_syllable_is_invisible_to_the_extractor():
-    """Amplifier 2, with its control: a 3-character sibling from the SAME name IS seen, so the
-    length floor is what excluded `Vu` rather than some other filter."""
-    got = extract_names(_FRAGMENT_CASE, _FRAGMENT_CASE + _PROMPT)
-    assert "Vu" not in got
-    assert "Hac" in got
-
-
-def test_when_a_syllable_IS_unknown_the_author_gets_a_FRAGMENT():
-    """The other half of the harm. `Trinh Hac Vu` contains one unknown syllable, so the check
-    does fire — and reports `Hac`. A reader who looks `Hac` up in the glossary and finds
-    nothing still does not know which name was invented.
-    """
+def test_the_author_gets_the_WHOLE_name_not_a_syllable_of_it():
+    """`Trinh Hac Vu` has one unknown syllable, so the old code fired — and reported `Hac`.
+    A reader who looks `Hac` up in the glossary and finds nothing still does not know which
+    name was invented."""
     audit = audit_names(_FRAGMENT_CASE, _PROMPT, "vi", known_names=_known())
-    assert audit.unanchored == ["Hac"], (
-        f"got {audit.unanchored}; if this now names the whole run, the fix landed — see §2.1b"
-    )
+    assert audit.unanchored == ["Trinh Hac Vu"], f"got {audit.unanchored}"
+
+
+def test_a_KNOWN_multi_word_name_in_the_draft_is_NOT_accused():
+    """Constraint 1. `Lam Uyen` is canon and appears in both drafts above; if the run pass
+    reported it, the fix would have traded a miss for a false accusation — the error direction
+    this module says matters."""
+    for draft in (_INVENTED, _FRAGMENT_CASE):
+        audit = audit_names(draft, _PROMPT, "vi", known_names=_known())
+        assert "Lam Uyen" not in audit.unanchored, f"canon accused in {draft!r}"
+
+
+def test_sentence_initial_prose_does_NOT_become_a_run():
+    """Constraint 2, isolated. `The door opened` is a capitalised word followed by lowercase
+    ones; treating it as a two-word name would accuse the prose itself."""
+    runs = extract_name_runs(_INVENTED, _INVENTED + _PROMPT)
+    assert not any(r.startswith("The ") for r in runs), runs
+    assert "Thanh Trach Uyen" in runs
+
+
+def test_a_leading_function_word_is_trimmed_on_BOTH_sides():
+    """The bug the first implementation shipped: the run side trimmed `The` and the known side
+    did not, so the authored alias `The Grey Wren` was reported as invented."""
+    known = known_names_from_cast([{"name": "Aurelia", "aliases": ["The Grey Wren"]}])
+    audit = audit_names("The Grey Wren crossed the bridge.", "Aurelia waited.", "en",
+                        known_names=known)
+    assert audit.unanchored == [], f"an authored alias was accused: {audit.unanchored}"
+
+
+def test_a_run_that_trims_to_ONE_word_falls_through_to_the_per_word_pass():
+    """`Then Blorpnax` is not a two-word name. Trimming leaves one word, which the per-word
+    pass owns — that is where plural tolerance and near-miss logic already live."""
+    known = known_names_from_cast([{"name": "Aurelia"}])
+    audit = audit_names("Aurelia waited. Then Blorpnax arrived.", "Aurelia waited.", "en",
+                        known_names=known)
+    assert audit.unanchored == ["Blorpnax"], f"got {audit.unanchored}"
+
+
+def test_the_per_word_pass_still_runs_for_single_word_names():
+    """The fix must not replace the old behaviour, only cover what it missed."""
+    known = known_names_from_cast([{"name": "Aurelia"}])
+    audit = audit_names("Aurelia met Varenne alone.", "Aurelia waited.", "en",
+                        known_names=known)
+    assert "Varenne" in audit.unanchored
 
 
 def test_the_check_still_ANNOUNCES_itself_honestly():
-    """The control that stops the pins above being read as 'the check is broken'. It is not:
-    `truth_source` and `method` are reported truthfully, which is the only reason this defect
-    is visible at all. A check that misreported its own coverage would be far worse.
-    """
+    """Unchanged by the fix, and the reason the defect was visible at all."""
     audit = audit_names(_INVENTED, _PROMPT, "vi", known_names=_known())
     assert audit.truth_source == "glossary"
     assert audit.method == "capitalised_latin"
-    caseless = audit_names(_INVENTED, _PROMPT, "zh", known_names=_known())
-    assert caseless.method == "caseless_script", (
-        "a caseless script must say it cannot check, not report a clean result"
-    )
+    assert audit_names(_INVENTED, _PROMPT, "zh", known_names=_known()).method == "caseless_script"
+
+
+def test_extract_names_is_untouched_so_the_per_word_contract_holds():
+    """`extract_name_runs` is additive: the word extractor still emits words, so every existing
+    caller and assertion keeps its meaning."""
+    got = extract_names(_INVENTED, _INVENTED + _PROMPT)
+    assert "Thanh Trach Uyen" not in got

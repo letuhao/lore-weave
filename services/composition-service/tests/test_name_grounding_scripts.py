@@ -28,7 +28,11 @@ def test_a_vietnamese_name_is_extracted_at_all():
 def test_an_invented_vietnamese_name_is_reported_unanchored():
     draft = "Lâm Uyên đứng lặng. Kẻ tên Lục Vô Tội bước tới và cười."  # doc-language-gate: ok -- Vietnamese fixture; this script IS the subject under test
     audit = audit_names(draft, grounding="", language="vi", known_names=_CANON)
-    assert "Tội" in audit.unanchored, f"invented name not reported: {audit.unanchored}"  # doc-language-gate: ok -- Vietnamese fixture; this script IS the subject under test
+    # §2.1b — the WHOLE invented run is now reported, not a syllable of it. Reporting
+    # a fragment is not merely less useful: an author who looks the fragment up in the
+    # glossary and finds nothing still does not know which name was invented.
+    assert audit.unanchored == ["Lục Vô Tội"], (  # doc-language-gate: ok -- the invented name IS the assertion
+        f"invented name not reported as a whole: {audit.unanchored}")
 
 
 def test_canon_names_are_NOT_reported_unanchored():
