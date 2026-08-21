@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 52 of 92 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 53 of 93 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (18/35) · `T46` (9/14) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/28) · `T25` (4/10) · `T33` (2/3) · `QC-5` (19/36) · `T46` (9/14) · `T48` (1/2) · `T49`
 
 > ⚠️ **10 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -7166,6 +7166,43 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   | **To unblock** | Decide where `active_rules` comes from for the headless seam — the canon-rule corpus the critique endpoint uses, or rules derived from the bible's cast facts — and feed it through `canon_bible.py` beside `present_facts`. Then re-run C3's three chapters **N ≥ 3 times** and report the score distribution, not a single number. |
   | **Retry when** | ~~The rule source is decided (a PO/design call, not effort) **and** the nondeterminism is bounded by repeated runs.~~ **Both halves are now settled and neither is yet measured.** The rule source was decided in §2.2 and is verified in code (above). The nondeterminism is bounded by **PO 2026-08-21, §7.3: five runs, temperature 0, seeded where the provider supports it, reporting the DISTRIBUTION and never one number.** So this row now waits on a RUN, not on a decision — which is the first time that has been true of it. |
 
+
+  ### ✅ QC-5 C20 2026-08-21 — **§7.3's number moves in the gate, and it makes C17 unscorable on purpose**
+
+  Rule 5: a gate's number moves in the SAME COMMIT as the decision that moved it.
+  `scripts/qc5-acceptance-gate.py` held §2.1's rule as `RUNS_PER_ARM = 3, MAJORITY = 2`.
+  PO §7.3 replaced it with **five runs, majority 3**, so the constant moves here.
+
+  **The three-run rule was retired by the measurement it produced.** Chapter 12 scored
+  `1/SEVERE` in run `019ff9d6` and `2/warn` in `019ff9de` on unchanged inputs — three was the
+  sample size that FAILED to settle the question it was chosen to settle.
+
+  Two halves of §7.3 were already true and are recorded rather than built: **temperature is
+  already 0 on the judge** (`engine/critic.py:265`), and **seeding has no plumbing anywhere in
+  the critic path** — so a run reports five samples and says it is unseeded, per §7.3's own
+  caveat. An unseeded five-run spread is weaker evidence than a seeded one and must not be
+  written up as if it were.
+
+  ⛔ **THE INTENDED CASUALTY: QC-5 C17's PASS no longer scores.** It was a three-run
+  measurement. Under the new constant it is `UNSCORABLE`, and that is the point — letting a
+  three-run PASS stand in for a five-run one is exactly the substitution this gate exists to
+  refuse. C17 is **unrescored, not wrong**, and the re-score is owed as
+  `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`.
+
+  The fixtures are now parameterised on the constant, so the number has one home and a fixture
+  cannot keep asserting a retired ratio while passing. The majority pair moved from 2-of-3 to
+  **3-of-5** with it.
+
+  **🦷 BITE — `RUNS_PER_ARM = 5` → `3`, the retired rule put back:**
+
+  ```
+  FAIL  a THREE-run measurement is now UNSCORABLE, not a PASS: expected UNSCORABLE, got PASS
+  1 check(s) FAILED
+  ```
+
+  Exactly one check red, and it is the substitution itself rather than an arithmetic
+  side-effect — the other eleven, including both majority fixtures, re-derive from the constant
+  and stay green. Restored; **12/12**.
 
   ### ✅ QC-5 C19 2026-08-21 — the second seam now declares itself, and the guard that was supposed to protect it was **green by construction**
 

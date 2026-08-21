@@ -39,10 +39,22 @@ import sys
 
 PASS, FAIL, UNSCORABLE = "PASS", "FAIL", "UNSCORABLE"
 
-#: §2.1 keeps three runs per arm and majority rule. Measured 2026-08-13: three runs gave
-#: severe/warn/ok, so unanimity fails a working pipeline and one run passes a broken one.
-MAJORITY = 2
-RUNS_PER_ARM = 3
+#: ~~§2.1 keeps three runs per arm and majority rule. Measured 2026-08-13: three runs gave
+#: severe/warn/ok, so unanimity fails a working pipeline and one run passes a broken one.~~
+#:
+#: **PO §7.3, 2026-08-21 — FIVE runs per arm, majority 3.** The three-run rule was retired by
+#: the measurement it produced: chapter 12 scored `1/SEVERE` in run `019ff9d6` and `2/warn` in
+#: `019ff9de` on unchanged inputs, so three was the sample size that FAILED to settle the
+#: question it was chosen to settle. Temperature is already 0 on the judge (`critic.py:265`);
+#: seeding is best-effort and currently unavailable, which a measurement must SAY rather than
+#: imply — an unseeded five-run spread is weaker evidence than a seeded one.
+#:
+#: ⚠️ This number moving makes every THREE-run measurement UNSCORABLE, including QC-5 C17's
+#: PASS. That is the intended consequence and not collateral: C17 is unrescored, not wrong,
+#: and letting a three-run PASS stand in for a five-run one is the substitution this whole
+#: gate exists to refuse. Tracked as `D-QC5-FIVE-RUN-SPREAD-NOT-MEASURED`.
+MAJORITY = 3
+RUNS_PER_ARM = 5
 
 
 def _clause_1a(planted: list[dict]) -> tuple[str, str]:
@@ -175,38 +187,48 @@ def selftest() -> int:
         bad += not ok
         print(f"  {'PASS' if ok else 'FAIL'}  {name}: expected {want}, got {got}")
 
-    signed_off = [_planted(), _planted(), _planted(), _flow(), _flow(), _flow()]
-    check("the signed-off shape: 1a 3/3 and a canon-clean flow", signed_off, PASS)
+    signed_off = [_planted()] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM
+    check(f"the signed-off shape: 1a {RUNS_PER_ARM}/{RUNS_PER_ARM} and a canon-clean flow", signed_off, PASS)
 
     # THE REGRESSION THIS GATE EXISTS FOR. Identical flow arm, 1a removed.
     check("the SAME clean flow with NO planted arm is unscorable",
           [r for r in signed_off if r["arm"] == "flow"], UNSCORABLE)
 
     check("a critic that misses the planted violation fails 1a",
-          [_planted(canon=5, attributed=0, raw=1)] * 3 + [_flow()] * 3, FAIL)
+          [_planted(canon=5, attributed=0, raw=1)] * RUNS_PER_ARM + [_flow()] * RUNS_PER_ARM, FAIL)
 
     # The C7/C13 history: flow runs that FOUND things and attributed none.
     check("flow runs that discard what they found fail 1b",
-          [_planted()] * 3 + [_flow(canon=4, attributed=0, raw=3)] * 3, FAIL)
+          [_planted()] * RUNS_PER_ARM + [_flow(canon=4, attributed=0, raw=3)] * RUNS_PER_ARM, FAIL)
 
     # ── clause 2: the 2026-08-21 re-run's finding, both directions ───────────
     check("clause 2 fires on a vacuous 5/5 when only 1a backs it (no flow control)",
-          [_planted()] * 3 + [_flow(canon=5, attributed=0, raw=0)] * 3, FAIL)
+          [_planted()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM, FAIL)
     check("the SAME 5/5 runs pass once a flow_control shows the critic live",
-          [_planted()] * 3 + [_flow(canon=5, attributed=0, raw=0)] * 3 + [_control()], PASS)
+          [_planted()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM + [_control()], PASS)
     check("a flow_control that itself found NOTHING does not license the 5/5",
-          [_planted()] * 3 + [_flow(canon=5, attributed=0, raw=0)] * 3
+          [_planted()] * RUNS_PER_ARM + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM
           + [_control(raw=0)], FAIL)
     check("clause 2 keeps its ORIGINAL teeth when 1a fails, control or not",
-          [_planted(canon=5, attributed=0, raw=1)] * 3
-          + [_flow(canon=5, attributed=0, raw=0)] * 3 + [_control()], FAIL)
+          [_planted(canon=5, attributed=0, raw=1)] * RUNS_PER_ARM
+          + [_flow(canon=5, attributed=0, raw=0)] * RUNS_PER_ARM + [_control()], FAIL)
 
-    # Majority, not unanimity.
-    check("1a passes on 2 of 3 planted runs",
-          [_planted(), _planted(), _planted(canon=5, attributed=0, raw=1)] + [_flow()] * 3, PASS)
-    check("1a fails on 1 of 3",
-          [_planted(), _planted(canon=5, attributed=0, raw=1),
-           _planted(canon=5, attributed=0, raw=1)] + [_flow()] * 3, FAIL)
+    # Majority, not unanimity — and the threshold MOVED with §7.3, so these pin 3-of-5 and
+    # 2-of-5 rather than the old 2-of-3. A fixture left at the old ratio would keep passing
+    # while asserting a rule nobody uses.
+    check(f"1a passes on {MAJORITY} of {RUNS_PER_ARM} planted runs",
+          [_planted()] * MAJORITY + [_planted(canon=5, attributed=0, raw=1)] * (RUNS_PER_ARM - MAJORITY)
+          + [_flow()] * RUNS_PER_ARM, PASS)
+    check(f"1a fails on {MAJORITY - 1} of {RUNS_PER_ARM}",
+          [_planted()] * (MAJORITY - 1) + [_planted(canon=5, attributed=0, raw=1)] * (RUNS_PER_ARM - MAJORITY + 1)
+          + [_flow()] * RUNS_PER_ARM, FAIL)
+
+    # ── §7.3's CONSEQUENCE, made executable ─────────────────────────────────────────────
+    # A three-run measurement no longer scores. This is the fixture that stops QC-5 C17's
+    # three-run PASS from being reused as if it were a five-run one — the substitution this
+    # gate exists to refuse, and the reason the constant above is not just a bigger number.
+    check("a THREE-run measurement is now UNSCORABLE, not a PASS",
+          [_planted()] * 3 + [_flow()] * 3, UNSCORABLE)
 
     # The property no single fixture pins: 1a decides how the SAME 1b input reads.
     #
@@ -215,8 +237,8 @@ def selftest() -> int:
     # overall verdict there whatever 1b said — so a 1b that had stopped consulting 1a
     # entirely still produced the expected overall answer. Bite 61 landed exactly there and
     # the selftest stayed green, which is this file's own defect class caught in itself.
-    flow_only = [_flow()] * 3
-    with_a_overall, with_a_rows = score([_planted()] * 3 + flow_only)
+    flow_only = [_flow()] * RUNS_PER_ARM
+    with_a_overall, with_a_rows = score([_planted()] * RUNS_PER_ARM + flow_only)
     without_a_overall, without_a_rows = score(flow_only)
     b_with = next(v for n, v, _ in with_a_rows if n.startswith("1b"))
     b_without = next(v for n, v, _ in without_a_rows if n.startswith("1b"))
