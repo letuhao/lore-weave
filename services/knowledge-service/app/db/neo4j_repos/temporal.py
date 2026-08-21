@@ -142,11 +142,23 @@ WITH chain, chain[i] AS cur
 // the same next-greater bound (a real overlap) or both stay open if co-last.
 WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
            | x.valid_from_ordinal] AS greaters
+// §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
+// derivation, and this maintainer must not overwrite it. Mirrors the Postgres
+// `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
+// is preserved because a pin is not a competing deriver, it is an input the deriver skips.
+// `coalesce(..., false)` so every node written before the pin existed behaves EXACTLY as
+// before — this guard is a no-op until something actually pins.
 SET cur.valid_to_ordinal =
-      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.valid_to_ordinal
+           WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
-    cur.updated_at = datetime()
+      CASE WHEN coalesce(cur.valid_to_pinned, false)
+             THEN coalesce(cur.valid_to_ordinal, $open_ceiling)
+           WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
+    // not even the timestamp: a pinned row is untouched by derivation, so an operator
+    // reading `updated_at` is not told the chain rewrote something it did not.
+    cur.updated_at =
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
 RETURN count(cur) AS maintained
 """
 
@@ -189,11 +201,23 @@ WITH chain, chain[i] AS cur
 // the same next-greater bound (a real overlap) or both stay open if co-last.
 WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
            | x.valid_from_ordinal] AS greaters
+// §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
+// derivation, and this maintainer must not overwrite it. Mirrors the Postgres
+// `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
+// is preserved because a pin is not a competing deriver, it is an input the deriver skips.
+// `coalesce(..., false)` so every node written before the pin existed behaves EXACTLY as
+// before — this guard is a no-op until something actually pins.
 SET cur.valid_to_ordinal =
-      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.valid_to_ordinal
+           WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
-    cur.updated_at = datetime()
+      CASE WHEN coalesce(cur.valid_to_pinned, false)
+             THEN coalesce(cur.valid_to_ordinal, $open_ceiling)
+           WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
+    // not even the timestamp: a pinned row is untouched by derivation, so an operator
+    // reading `updated_at` is not told the chain rewrote something it did not.
+    cur.updated_at =
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
 RETURN count(cur) AS restitched
 """
 
@@ -218,11 +242,23 @@ WITH chain, chain[i] AS cur
 // the same next-greater bound (a real overlap) or both stay open if co-last.
 WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
            | x.valid_from_ordinal] AS greaters
+// §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
+// derivation, and this maintainer must not overwrite it. Mirrors the Postgres
+// `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
+// is preserved because a pin is not a competing deriver, it is an input the deriver skips.
+// `coalesce(..., false)` so every node written before the pin existed behaves EXACTLY as
+// before — this guard is a no-op until something actually pins.
 SET cur.valid_to_ordinal =
-      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.valid_to_ordinal
+           WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
-    cur.updated_at = datetime()
+      CASE WHEN coalesce(cur.valid_to_pinned, false)
+             THEN coalesce(cur.valid_to_ordinal, $open_ceiling)
+           WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
+    // not even the timestamp: a pinned row is untouched by derivation, so an operator
+    // reading `updated_at` is not told the chain rewrote something it did not.
+    cur.updated_at =
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
 RETURN count(cur) AS restitched
 """
 
@@ -289,10 +325,22 @@ WITH chain, chain[i] AS cur
 // the same next-greater bound (a real overlap) or both stay open if co-last.
 WITH cur, [x IN chain WHERE x.valid_from_ordinal > cur.valid_from_ordinal
            | x.valid_from_ordinal] AS greaters
+// §12.3.2 PIN — an explicitly-closed instance's `valid_to` is an AUTHORED INPUT, not a
+// derivation, and this maintainer must not overwrite it. Mirrors the Postgres
+// `maintain_chain`'s `AND ef.valid_to_pinned = false` exactly: the single-writer invariant
+// is preserved because a pin is not a competing deriver, it is an input the deriver skips.
+// `coalesce(..., false)` so every node written before the pin existed behaves EXACTLY as
+// before — this guard is a no-op until something actually pins.
 SET cur.valid_to_ordinal =
-      CASE WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.valid_to_ordinal
+           WHEN size(greaters) = 0 THEN NULL ELSE greaters[0] END,
     cur.valid_to_ordinal_eff =
-      CASE WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
-    cur.updated_at = datetime()
+      CASE WHEN coalesce(cur.valid_to_pinned, false)
+             THEN coalesce(cur.valid_to_ordinal, $open_ceiling)
+           WHEN size(greaters) = 0 THEN $open_ceiling ELSE greaters[0] END,
+    // not even the timestamp: a pinned row is untouched by derivation, so an operator
+    // reading `updated_at` is not told the chain rewrote something it did not.
+    cur.updated_at =
+      CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.updated_at ELSE datetime() END
 RETURN count(cur) AS maintained
 """

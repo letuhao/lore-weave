@@ -221,3 +221,71 @@ async def test_single_active_and_maintain_chain_are_distinct(mock_run):
     assert cyphers[0] == rm._CLOSE_PRIOR_SINGLE_ACTIVE_CYPHER
     assert cyphers[1] == rm._CREATE_RELATION_CYPHER
     assert cyphers[2] == tm.MAINTAIN_RELATION_CHAIN_CYPHER
+
+
+# ── T46: pin-aware supersession, the KG half ────────────────────────────────────────────
+#
+# `bitemporal-parity-gate` carried this as the plan's ONE recorded asymmetry: "pin-aware
+# supersession: postgres HAS it, neo4j does NOT — an author's EXPLICIT close survives
+# re-derivation in glossary and would be overwritten in the graph — the KG has no pin concept
+# at all." T46's row says to MOVE THE MATURE SIDE, not rewrite from the weaker one, so these
+# mirror the Postgres `maintain_chain`'s `AND ef.valid_to_pinned = false` clause-for-clause.
+#
+# The single-writer invariant (§12.3.3 LOCKED) is preserved and that is the whole design: a
+# pin is NOT a competing deriver of valid_to, it is an authored INPUT the one deriver skips.
+
+
+def _chain_cyphers():
+    """Every maintainer that re-derives valid_to. Fixing one and not the others would leave
+    an author's close surviving an append and dying on a retract — the worst of both."""
+    return {
+        "fact chain": tm.MAINTAIN_FACT_CHAIN_CYPHER,
+        "relation chain": tm.MAINTAIN_RELATION_CHAIN_CYPHER,
+        "restitch all fact chains": tm._RESTITCH_ALL_FACT_CHAINS_CYPHER,
+        "restitch all relation chains": tm._RESTITCH_ALL_RELATION_CHAINS_CYPHER,
+    }
+
+
+def test_EVERY_chain_maintainer_skips_a_pinned_valid_to():
+    """A pinned instance keeps its authored bound in all four maintainers.
+
+    Four, not one: `merge_fact` re-runs the chain on append and the retract sweep re-runs the
+    restitch variants. A pin honoured on append and overwritten on retract is not a pin.
+    """
+    for name, cy in _chain_cyphers().items():
+        assert "valid_to_pinned" in cy, f"{name} has no pin concept"
+        assert "CASE WHEN coalesce(cur.valid_to_pinned, false) THEN cur.valid_to_ordinal" in cy, (
+            f"{name} still derives valid_to for a pinned instance — an author's explicit "
+            f"close is overwritten by the next append or retract"
+        )
+
+
+def test_the_pin_guard_COALESCES_so_pre_pin_nodes_are_unchanged():
+    """The guard must be a strict no-op for every node written before pins existed. Without
+    `coalesce`, `cur.valid_to_pinned` is NULL on those nodes and the CASE goes unknown —
+    which in Cypher is not true, but relying on that is how a three-valued-logic bug ships.
+    """
+    for name, cy in _chain_cyphers().items():
+        assert "coalesce(cur.valid_to_pinned, false)" in cy, name
+        assert "cur.valid_to_pinned = true" not in cy, (
+            f"{name} compares the flag directly instead of coalescing — a NULL flag on a "
+            f"pre-pin node would take the unknown branch"
+        )
+
+
+def test_a_pinned_row_keeps_its_TIMESTAMP_too():
+    """`updated_at` is how an operator sees whether derivation touched a row. Bumping it on a
+    row the maintainer deliberately skipped reports work that did not happen."""
+    for name, cy in _chain_cyphers().items():
+        assert (
+            "cur.updated_at =\n      CASE WHEN coalesce(cur.valid_to_pinned, false) "
+            "THEN cur.updated_at ELSE datetime() END" in cy
+        ), f"{name} bumps updated_at on a pinned row it did not modify"
+
+
+def test_the_pinned_EFF_bound_is_the_authored_close_not_the_open_ceiling():
+    """`valid_to_ordinal_eff` drives as-of reads. A pinned close at N means the value is
+    ABSENT after N; falling back to `$open_ceiling` would make an explicitly-closed fact read
+    as still holding forever — the exact opposite of what the author said."""
+    for name, cy in _chain_cyphers().items():
+        assert "THEN coalesce(cur.valid_to_ordinal, $open_ceiling)" in cy, name

@@ -70,11 +70,19 @@ PARITY: list[tuple[str, str, str, bool, bool, str]] = [
     (
         "pin-aware supersession",
         r"valid_to_pinned\s*=\s*false",
-        r"valid_to_pinned|\bpinned\b",
-        True, False,
-        "an author's EXPLICIT close survives re-derivation in glossary and would be "
-        "overwritten in the graph — the KG has no pin concept at all. T46's row names this "
-        "capability by name and says do not rewrite from the weaker side.",
+        # NOT `valid_to_pinned|\bpinned\b`. That alternation matched any COMMENT saying
+        # "pinned", so once `kg_expected` flipped to True the row became a criterion that
+        # cannot fail: bite 69 renamed every `valid_to_pinned` in the KG and the gate stayed
+        # green off the prose alone. The probe now matches the GUARD the maintainers actually
+        # execute, so deleting it reds the gate.
+        r"coalesce\(cur\.valid_to_pinned,\s*false\)",
+        True, True,
+        "an author's EXPLICIT close must survive re-derivation on BOTH sides. Was the plan's "
+        "one recorded asymmetry — 'the KG has no pin concept at all' — closed 2026-08-21 "
+        "(T46f) by moving the Postgres semantics across rather than rewriting from the weaker "
+        "side, as T46's row requires: all FOUR Cypher chain maintainers now skip a pinned "
+        "valid_to, mirroring `AND ef.valid_to_pinned = false` clause for clause. Proven live "
+        "on a real chain with an unpinned control that MUST move in the same run.",
     ),
     (
         "strictly-greater next bound",

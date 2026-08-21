@@ -35,7 +35,7 @@ scope if full plan, not small slices, need full plan first before do anything el
 Phase 2 (`b042380b5` + T17) · Phase 3 (T18–T25, T25b parts 1/2a) · Phase 4 (T26–T29, T50) ·
 Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every task in them is `[~]`.
 
-**RESUME: `T25` ③ needs the DEV passage scope (skip-gate blocks it without new text) + a destructive-drop grant. Both scopes soak clean (T25g). `T46` has no live evidence (T46e).**
+**RESUME: `T46` — pin lands (T46f, parity asymmetries 0); still owed: natural key, interval invariants, anchor+delta fold. `T25` ③ needs a dev passage soak + a drop grant.**
 
 ⚠️ **`T17` is no longer the RESUME, deliberately.** It held the pointer for ten batches while its own spec section says the opposite: §1.3 — *"`port-adoption-gate`'s ceiling is therefore not going to zero, and that is correct"*. A10's set-cover priced the rest at **128 distinct names, one module freed per port operation after the second**. Its FLOOR (18, rising) is the number that means anything; the ceiling is a tail to leave. T17 continues opportunistically — a module falls off when a batch frees it — not as the head of the queue. 📊 **A13 measured what "opportunistically" leaves: all 54 remaining binders classified — 28 gated on T35's shape decision, 17 deleted rather than migrated by §3.1, and 9 (janitors + one-shot scripts) decided OUT permanently. **Nothing in the 54 is available to pick up**, so T17's ceiling is now a DERIVED number, not a backlog.
 
@@ -43,9 +43,9 @@ Phase 5 (T30–T37, T52, QC-4/5/6). **Phases 6–9 have not started** — every 
 <!-- Derived from the checkboxes by scripts/plan-progress-block.py. Do NOT hand-edit:
      a hand-maintained copy of this is what drifted for two days and sent a session
      to rebuild T42b, which had already shipped. Tick the row instead. -->
-**59 of 66 rows done · 7 open · 44 of 88 evidence blocks closed inside them.**
+**59 of 66 rows done · 7 open · 45 of 90 evidence blocks closed inside them.**
 
-**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/41) · `T46` (2/4) · `T48` (1/2) · `T49`
+**OPEN:** `T17` (18/30) · `T25` (4/8) · `T33` (2/3) · `QC-5` (17/41) · `T46` (3/6) · `T48` (1/2) · `T49`
 
 > ⚠️ **11 evidence block(s) name no row** and were attributed by POSITION — the rule that made `T39` read 16/24 while owning 2. Name the row in the heading (`A11`, `T35d`, `QC-5`) and this number falls to zero.
 
@@ -14343,6 +14343,71 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (b) the seam:** a rebuilt `lw-iso` knowledge-service (it predated the arming gauge) writing
   through the real dual-write store to a real second Postgres.
   **QC (c) real data:** 12 real passage vectors, counted on both sides and keyed 1:1.
+
+  ### ✅ T46f 2026-08-21 — **pin-aware supersession lands in the KG.** The plan's one bitemporal asymmetry is closed.
+
+  ```
+  bitemporal-parity-gate   1 known asymmetry -> 0        (kg_expected False -> True)
+  knowledge-service unit   4275 -> 4285                  BITE x2 (68-69)
+  LIVE on a real chain (lw-iso):
+    seeded   pinned from=10 to=15 pinned=True | control from=20 to=999 | later from=30
+    maintain_fact_chain -> maintained=3
+    after    pinned to=15 eff=15 pinned=True | control to=30 eff=30   <- CONTROL MOVED
+    T46 PIN LIVE PROOF: PASS
+  ```
+
+  T46e retracted a claimed reproduction and left the row with **no live evidence**. This supplies
+  it, and closes the capability the row names.
+
+  🎯 **Moved, not rewritten from the weaker side** — which is what T46's row demands in as many
+  words. The Postgres `maintain_chain` carries `AND ef.valid_to_pinned = false`, with the
+  reasoning that matters: *"a pinned close is NOT a competing deriver — it is an authored INPUT
+  that maintain_chain must respect"*, so the §12.3.3 single-writer invariant survives. The Cypher
+  now mirrors it clause for clause.
+
+  ✅ **All FOUR maintainers, not one.** `MAINTAIN_FACT_CHAIN`, `MAINTAIN_RELATION_CHAIN`, and both
+  `_RESTITCH_ALL_*` variants re-derive `valid_to`; the first two run on append, the restitch pair
+  on retract. **A pin honoured on append and overwritten on retract is not a pin**, so the guard is
+  in all four and a test enumerates them by name rather than sampling one.
+
+  📐 **Three properties, each with a reason a comment could not enforce.** The bound is skipped;
+  `valid_to_ordinal_eff` falls back to the *authored close*, never `$open_ceiling` (a pinned fact
+  reading as "still holding forever" is the precise opposite of what the author said); and
+  `updated_at` is left alone, because bumping it on a row the maintainer deliberately skipped
+  reports work that did not happen. `coalesce(..., false)` keeps every pre-pin node byte-identical.
+
+  ### 🔴 AND THE PARITY GATE I FLIPPED WAS A CRITERION THAT COULD NOT FAIL
+
+  Flipping `kg_expected` to `True` is worthless if the probe cannot detect the guard leaving.
+  **Bite 69 renamed every `valid_to_pinned` in the KG and the gate stayed GREEN.** Its cypher probe
+  was `valid_to_pinned|pinned`, and `pinned` matched **my own comments** — the same
+  literal-token-in-a-comment false positive this repo has hit before. The probe now matches the
+  executable guard, `coalesce\(cur\.valid_to_pinned,\s*false\)`, and the re-run bite reds it
+  **while the prose still says "pinned"**, which is the only version of this check worth having.
+
+  **BITE ×2:**
+
+  ```
+  68. the fact chain stops honouring the pin   E "fact chain still derives valid_to for a
+                                                  pinned instance — an author's explicit close
+                                                  is overwritten by the next append or retract"
+  69. remove the guard, keep the comments      E FIRST RUN: gate stayed GREEN (rc 0) — the
+                                                  probe was matching prose. After tightening:
+                                                  "FAIL — the two `maintain_chain`
+                                                  implementations moved", rc 1
+  ```
+
+  ⚠️ **What this does NOT close.** T46's row also names the content-addressed natural key,
+  half-open interval invariants and the `anchor+delta` fold with `folds_since_reground`. This is
+  the pin capability only — the one the parity gate tracked and the one QC-6b's retraction left
+  owing. The row stays `[~]`.
+
+  **QC (a) gates:** knowledge-service unit **4275 → 4285**; `bitemporal-parity-gate` 1 asymmetry
+  → **0**, its expectation moved in the SAME commit as the code (rule 5); plan gates green.
+  **QC (b) the seam:** the real `MAINTAIN_FACT_CHAIN_CYPHER` executed against a real Neo4j on a
+  rebuilt `lw-iso` image, results read back from the graph.
+  **QC (c) real data:** a three-instance chain with an **unpinned control that had to move in the
+  same run** — without it, an inert maintainer would have passed every other assertion.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
