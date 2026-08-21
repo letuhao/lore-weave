@@ -146,6 +146,49 @@ until T42 settles AGE's write strategy, and are *decided*, not pending.
 
 ## 2 · The critic and QC-5
 
+### 2.1b `name_grounding` misses invented names built from KNOWN syllables — **DECIDED (T46i, 2026-08-21)**
+
+`D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES` asked someone to *inspect* `audit_names` against
+Vietnamese diacritic names and named two suspects. It is **both**, and the second produces the
+reported symptom — `name_grounding: "checked"` with `unanchored_names: []` on a draft that
+invented a character. Reproduced minimally:
+
+```
+known   {"Lam Trach", "Lam Uyen", "To Thanh Dao"}   ->  known_count 8, NOT 3
+draft   "The door opened. Thanh Trach Uyen entered, and no one spoke."
+result  unanchored: []   near_misses: []              <-  CLEAN, on an invented character
+```
+
+🎯 **The cause is word-against-word comparison.** `audit_names` tokenises BOTH sides to words:
+the cast becomes its individual syllables (plus the full forms — hence 8 from 3), and the draft
+becomes individual capitalised words. Vietnamese names are compositions of a small pool of
+recurring syllables, so an invented name assembled from syllables that each appear in some
+OTHER character's name matches on every token. `Thanh`, `Trach` and `Uyen` are each real;
+`Thanh Trach Uyen` is not, and **nothing in the check ever looks at that string**.
+
+Two amplifiers, neither of them the root cause: `len(word) < 3` drops short syllables outright
+(`Vu`, and `Kỵ`/`Vô` in the real corpus), and `_is_name` discounts sentence-initial capitals, <!-- doc-language-gate: ok -- the two-character diacritic syllables ARE the measurement: their length is what the extractor drops -->
+removing a run's head. When one syllable IS unknown the check fires but reports the
+**fragment** — the author is told `Hac`, not `Trinh Hac Vu`.
+
+📐 **DECIDED — the fix is to compare the capitalised RUN against the known FULL names**, not
+syllables against syllables, with the syllable comparison kept as a fallback so a single-word
+name still works. Two constraints the implementation must honour, both from the module's own
+note that *"a name missing from `known` becomes a false accusation an author reads"*:
+
+1. **A run that matches a known full name anchors ALL of its words** — otherwise every
+   multi-word canonical name becomes a false accusation the day this ships.
+2. **A run must not be reported when only its head is sentence-initial ambiguity** — "The door
+   opened" and "The Grey Wren" are the same shape to a run-joiner, and one of them is prose.
+
+⛔ **NOT implemented in this batch, deliberately.** It is a design change across 35 assertions
+and 3 production call sites in a check whose false-accusation direction is the one that hurts,
+and this was diagnosed at the end of a long run. It is **decided, not deferred**: the shape
+above is the fix, and
+[`test_name_grounding_diacritic_runs.py`](../../services/composition-service/tests/unit/test_name_grounding_diacritic_runs.py)
+pins today's wrong behaviour with messages that name this section, so the fix cannot land
+silently and cannot be mistaken for a regression when it does.
+
 ### 2.1 The acceptance measurement is **three runs, majority rule** — **DECIDED**
 *Replaces `D-QC5-PIPELINE-NOT-REPRODUCIBLE`.*
 

@@ -8155,7 +8155,7 @@ MCP. What is missing is outbox-in-the-same-transaction as part of their contract
   |---|---|
   | **Blocker** | The deterministic name-grounding check reported `name_grounding: "checked"` with `unanchored_names: []` on the very draft that introduced a three-syllable invented Vietnamese character name <!-- doc-language-gate: ok -- the name itself is quoted in the wrapped evidence block above, where it is the subject matter --> with **zero** canon entities. The cheap check that exists to catch exactly this missed it; only the LLM canon check caught it. |
   | **Evidence** | Job `019ff423` envelope: `method: "capitalised_latin"`, `unanchored: []`. The glossary and KG both return 0 entities matching that name. |
-  | **To unblock** | Inspect `audit_names` against Vietnamese diacritic names — `capitalised_latin` is the suspect: either its extractor does not treat the diacritic run as one name, or a partial match against a real entity anchors it. |
+  | **To unblock** | ~~Inspect `audit_names` against Vietnamese diacritic names — `capitalised_latin` is the suspect.~~ ✅ **DIAGNOSED AND DECIDED 2026-08-21 (T46i), [§2.1b](../specs/2026-08-13-knowledge-refactor-open-decisions.md).** Both suspects are real and the SECOND produces the symptom: `audit_names` compares WORD against WORD (3 cast names become `known_count` **8** — the syllables plus the full forms), so an invented name assembled from syllables that each appear in some OTHER character's name matches on every token and the novel COMBINATION is never examined. Reproduced: `Thanh Trach Uyen` against `{Lam Trach, Lam Uyen, To Thanh Dao}` -> `unanchored: []`. The fix is run-against-full-name comparison; what is left is the implementation, which §2.1b specifies with its two false-accusation constraints. |
   | **Mechanism** | This draft is a free regression fixture: a real generation containing a real invented name, with the expected answer known. |
   | **Retry when** | Immediately — it is cheap, deterministic, and needs no model. |
 
@@ -14501,6 +14501,59 @@ misattribution question has no code path to reach.** No decision is owed by anyo
   **QC (a) gates:** plan gates green; `plan-progress-block --write` re-derived in this commit
   (rule 5). **QC (b):** N/A because no code changed. **QC (c) real data:** the persisted
   `critic_verdict` rows from this session's authoring runs are what closed the fourth.
+
+  ### 📊 T46i 2026-08-21 — **the diacritic name-grounding miss is DIAGNOSED**, and it is not what the deferral guessed
+
+  ```
+  known   {"Lam Trach", "Lam Uyen", "To Thanh Dao"}   ->  known_count 8, NOT 3
+  draft   "The door opened. Thanh Trach Uyen entered, and no one spoke."
+  result  unanchored: []   near_misses: []            <-  CLEAN, on an invented character
+  composition unit 3628 -> 3634                        BITE 72
+  ```
+
+  `D-NAME-GROUNDING-MISSES-DIACRITIC-NAMES` said *"Immediately — it is cheap, deterministic, and
+  needs no model"* and asked for an inspection with two suspects. It is **both**, and the second
+  is the one that produces the reported `unanchored_names: []`.
+
+  🎯 **`audit_names` compares WORD against WORD.** The cast is tokenised to its individual
+  syllables plus the full forms — three names become **eight** known entries — and the draft is
+  tokenised to individual capitalised words. Vietnamese names are compositions of a small pool of
+  recurring syllables, so an invented name built from syllables that each appear in some OTHER
+  character's name matches on every token. `Thanh`, `Trach` and `Uyen` are each real;
+  **`Thanh Trach Uyen` is not, and nothing in the check ever looks at that string.**
+
+  ⚠️ **The deferral's first suspect is real but only an amplifier.** There is no run-joining, and
+  `len(word) < 3` drops short syllables outright — `Vu`, and `Kỵ`/`Vô` in the real corpus — so <!-- doc-language-gate: ok -- the two-character diacritic syllables ARE the measurement: their length is what the extractor drops -->
+  those cannot be flagged even in principle. When one syllable IS unknown the check fires and
+  reports the **fragment**: the author is told `Hac`, not `Trinh Hac Vu`, which is not merely less
+  useful — looking `Hac` up in the glossary and finding nothing teaches the reader nothing.
+
+  📐 **Decided, not deferred** ([§2.1b](../specs/2026-08-13-knowledge-refactor-open-decisions.md)):
+  compare the capitalised RUN against the known FULL names, keeping the syllable comparison as a
+  fallback, under two constraints that both come from the module's own note that *"a name missing
+  from `known` becomes a false accusation an author reads"* — a run matching a known full name
+  must anchor ALL its words, and a run must not be reported on sentence-initial ambiguity alone
+  (*"The door opened"* and *"The Grey Wren"* are the same shape to a run-joiner).
+
+  ⛔ **Not implemented in this batch, and that is a decision rather than a shortfall.** It is a
+  design change across **35 assertions and 3 production call sites** in the one check whose
+  false-accusation direction is the one that hurts, diagnosed at the end of a long run. Landing
+  it hastily is how the two claims this session already retracted were made.
+
+  🔔 **So it ships a pin instead.** `test_name_grounding_diacritic_runs.py` freezes today's wrong
+  behaviour with assertion messages that name §2.1b, so the fix **cannot land silently** and
+  cannot be misread as a regression when it does. It carries its own control — the check still
+  announces `truth_source`/`method` honestly, which is the only reason this defect was visible
+  at all — so the pins are not read as "the check is broken".
+
+  **BITE 72:** simulate the fix (report the run as a whole) → *"the invented-combination case now
+  reports ['Thanh Trach Uyen'] — the run-level fix appears to have landed. Re-read §2.1b and
+  remove these pins in the same commit."*
+
+  **QC (a) gates:** composition unit **3628 → 3634**; plan gates green. **QC (b):** N/A because no
+  service seam changed — this is a diagnosis and a pin. **QC (c) real data:** the cast shape is the
+  acceptance book's own (`Lam Trach` / `Lam Uyen` / `To Thanh Dao`), which is why the
+  recurring-syllable collision is not hypothetical.
 
   ### ⛔ WHY T46 STAYS `[~]`, and it is not a deferral
 
